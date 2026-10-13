@@ -1,9 +1,9 @@
-//! Google Drive, as Documents uses it with the DSP's account: every file Dispatch can reach,
-//! what changed in them since, and making, uploading, downloading, renaming and trashing them.
-//! `drive.file` lets Dispatch reach only the files it made or was given, so listing them all is
-//! listing Documents, plus anything another DSP made with the same account, which the tree
-//! leaves out. Fixture mode keeps a Drive of its own in memory for each account, as Google
-//! keeps an account's files for every DSP that connects it.
+//! Google Drive, as Documents uses it with the DSP's account: what's inside its folder, what
+//! changed since, and making, uploading, downloading, renaming and trashing files. Dispatch
+//! reaches everything in the account's Drive, so the folder is read folder by folder, whoever
+//! made what's in it. A connection made before Dispatch asked for that reaches only the files
+//! it made or was given, and reads only those. Fixture mode keeps a Drive of its own in memory
+//! for each account, as Google keeps an account's files for every DSP that connects it.
 use super::google::{FILES, FOLDER, Google, HTTP, Timed, read, send, unreachable};
 use axum::body::Body;
 use axum::body::Bytes;
@@ -34,6 +34,11 @@ const FIELDS: &str = concat!(
 const ALL_DRIVES: (&str, &str) = ("supportsAllDrives", "true");
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
+/// Folders asked about in one listing, as long a query as Google takes.
+const FOLDERS_AT_ONCE: usize = 40;
+/// The most a folder is listed with: calls to Google, and files.
+const CALLS: usize = 500;
+const FILES_AT_MOST: usize = 50_000;
 /// What changed in the account's Drive.
 const CHANGES: &str = "https://www.googleapis.com/drive/v3/changes";
 /// Where a file's bytes go up.
@@ -241,8 +246,9 @@ pub struct Person {
 }
 
 impl Google {
-    /// Every file and folder Dispatch can reach in the account, out of the trash.
-    pub async fn list(&self, access: &str) -> Result<Vec<Item>> {
+    /// Everything inside the folder `root`, out of the trash, read a few folders at a time,
+    /// and the files outside it that shortcuts inside stand for.
+    pub async fn inside(&self, access: &str, root: &str) -> Result<Vec<Item>> {
         if let Self::Fixture = self {
             return fixture(access, |drive| Ok(drive.values().map(described).collect()));
         }
@@ -253,25 +259,63 @@ impl Google {
             next_page_token: Option<String>,
         }
         let mut items = Vec::new();
-        let mut next: Option<String> = None;
-        for _ in 0..PAGES {
-            let mut query = vec![
-                ("q", "trashed=false".to_owned()),
-                ("fields", format!("nextPageToken,files({FIELDS})")),
-                ("pageSize", "1000".to_owned()),
-                ("spaces", "drive".to_owned()),
-                ("includeItemsFromAllDrives", "true".to_owned()),
-                ("supportsAllDrives", "true".to_owned()),
-            ];
-            query.extend(next.take().map(|token| ("pageToken", token)));
-            let page: Page = send(HTTP.get(FILES).bearer_auth(access).query(&query)).await?;
-            items.extend(page.files);
-            match page.next_page_token {
-                Some(token) => next = Some(token),
-                None => return Ok(items),
+        let mut folders = vec![root.to_owned()];
+        let mut calls = 0;
+        while !folders.is_empty() {
+            let batch: Vec<String> = folders
+                .drain(..folders.len().min(FOLDERS_AT_ONCE))
+                .collect();
+            let parents: Vec<String> = batch
+                .iter()
+                .map(|folder| format!("'{folder}' in parents"))
+                .collect();
+            let q = format!("({}) and trashed=false", parents.join(" or "));
+            let mut next: Option<String> = None;
+            loop {
+                calls += 1;
+                ensure(
+                    calls <= CALLS && items.len() <= FILES_AT_MOST,
+                    "documents_too_many_files",
+                    507,
+                )?;
+                let mut query = vec![
+                    ("q", q.clone()),
+                    ("fields", format!("nextPageToken,files({FIELDS})")),
+                    ("pageSize", "1000".to_owned()),
+                    ("spaces", "drive".to_owned()),
+                    ("includeItemsFromAllDrives", "true".to_owned()),
+                    ("supportsAllDrives", "true".to_owned()),
+                ];
+                query.extend(next.take().map(|token| ("pageToken", token)));
+                let page: Page = send(HTTP.get(FILES).bearer_auth(access).query(&query)).await?;
+                folders.extend(
+                    page.files
+                        .iter()
+                        .filter(|item| item.mime_type == FOLDER)
+                        .map(|item| item.id.clone()),
+                );
+                items.extend(page.files);
+                match page.next_page_token {
+                    Some(token) => next = Some(token),
+                    None => break,
+                }
             }
         }
-        Err(Error::new("documents_too_many_files", 507))
+        // The files the shortcuts inside stand for, wherever they are: one the account no longer
+        // reaches is left out, and its shortcut reads as unavailable.
+        let targets: BTreeSet<String> = items
+            .iter()
+            .filter_map(|item| item.shortcut_details.as_ref())
+            .map(|shortcut| shortcut.target_id.clone())
+            .collect();
+        for target in targets {
+            match self.get(access, &target).await {
+                Ok(item) => items.push(item),
+                Err(error) if error.code == "documents_item_not_found" => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(items)
     }
     /// Where the account's changes are read from, for those after now: asked before its files
     /// are listed, so nothing changed while they were is missed.
@@ -1073,7 +1117,10 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
                 seen: Instant::now(),
             };
             drive.files.insert(id.clone(), item);
-            drive.hidden.insert(id);
+            // Inside the folder, Dispatch reaches them at once; elsewhere, once they're added.
+            if parent.is_none() {
+                drive.hidden.insert(id);
+            }
         }
         Ok(())
     })

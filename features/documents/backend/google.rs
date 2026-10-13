@@ -18,8 +18,10 @@ const REVOKE: &str = "https://oauth2.googleapis.com/revoke";
 const USERINFO: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 pub(super) const FILES: &str = "https://www.googleapis.com/drive/v3/files";
 /// Only the files Dispatch makes or is given: Google asks no review for it.
-const DRIVE_FILE: &str = "https://www.googleapis.com/auth/drive.file";
-const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive.file";
+/// Everything in the account's Drive: what's in the DSP's folder, whoever made it, and what
+/// the team adds from elsewhere.
+const DRIVE: &str = "https://www.googleapis.com/auth/drive";
+const SCOPES: &str = "openid email https://www.googleapis.com/auth/drive";
 /// A member linking their own Google account: only which address it is.
 const LINK_SCOPES: &str = "openid email";
 pub(super) const FOLDER: &str = "application/vnd.google-apps.folder";
@@ -256,7 +258,7 @@ impl Google {
             return Err(Error::new("google_sign_in_failed", 502));
         };
         // Google lets the person untick Drive on its consent screen.
-        if !tokens.scope.split(' ').any(|scope| scope == DRIVE_FILE) {
+        if !tokens.scope.split(' ').any(|scope| scope == DRIVE) {
             self.revoke(&refresh).await;
             return Err(Error::new("google_drive_not_allowed", 400));
         }

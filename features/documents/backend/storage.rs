@@ -19,6 +19,9 @@ const SECRET: &str = "google.enc";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Connection {
     pub broken: bool,
+    /// Whether it reaches everything in the account's Drive, rather than only the files
+    /// Dispatch made or was given, as one connected before Dispatch asked for that does.
+    pub full: bool,
     pub account: Account,
     pub folder_id: String,
     pub folder_name: String,
@@ -29,6 +32,7 @@ impl FromRow for Connection {
     fn from_row(row: &Row<'_>) -> Result<Self> {
         Ok(Self {
             broken: row.get::<String>("status")? == "broken",
+            full: row.get::<i64>("full_access")? == 1,
             account: Account {
                 email: row.get("account_email")?,
                 workspace: row.get::<String>("account_kind")? == "workspace",
@@ -219,8 +223,8 @@ impl DocumentsStore for Store {
         let db = self.dsp(dsp)?;
         db.exec(
             "INSERT OR REPLACE INTO documents_connection (id,status,account_email,account_kind,\
-             folder_id,folder_name,connected_by,connected_at,broken_at) \
-             VALUES (1,'connected',?,?,?,?,?,?,NULL)",
+             folder_id,folder_name,connected_by,connected_at,broken_at,full_access) \
+             VALUES (1,'connected',?,?,?,?,?,?,NULL,?)",
             params![
                 connection.account.email,
                 if connection.account.workspace {
@@ -232,6 +236,7 @@ impl DocumentsStore for Store {
                 connection.folder_name,
                 connection.connected_by,
                 connection.connected_at,
+                connection.full,
             ],
         )?;
         Ok(())

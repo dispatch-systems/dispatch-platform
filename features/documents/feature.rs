@@ -59,13 +59,20 @@ pub const FEATURE: Feature = Feature {
     // Numbered by Documents itself: core keeps the DSP's database, and every owner adds to it.
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,
-        list: &[Migration {
-            id: 1,
-            name: "documents_shared_files",
-            apply: Sql(include_str!(
-                "migrations/dsp/0001_documents_shared_files.sql"
-            )),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "documents_shared_files",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0001_documents_shared_files.sql"
+                )),
+            },
+            Migration {
+                id: 2,
+                name: "documents_full_access",
+                apply: Sql(include_str!("migrations/dsp/0002_documents_full_access.sql")),
+            },
+        ],
     }],
     // Google's sign-in client, and its file picker's keys.
     settings: &[

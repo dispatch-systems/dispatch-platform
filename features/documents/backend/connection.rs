@@ -62,6 +62,7 @@ fn described(
             folder_name: found.folder_name,
             connected_by: db.actor_name(dsp, &found.connected_by)?,
             connected_at: found.connected_at,
+            full_access: found.full,
         }),
         None => None,
     })
@@ -155,6 +156,7 @@ pub async fn finish(
     };
     let connection = Connection {
         broken: false,
+        full: true,
         account: granted.account,
         folder_id,
         folder_name,

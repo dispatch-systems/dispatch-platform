@@ -112,6 +112,10 @@ pub struct DocumentsConnection {
     /// Who connected it, while their account exists.
     pub connected_by: Option<String>,
     pub connected_at: String,
+    /// Whether Dispatch reaches everything in the account's Drive. One connected before
+    /// Dispatch asked for that reaches only the files it made or was given, until someone
+    /// reconnects it.
+    pub full_access: bool,
 }
 
 /// `POST /api/dsp/documents/connect/finish`: the account just connected.
