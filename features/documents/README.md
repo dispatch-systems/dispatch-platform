@@ -26,9 +26,9 @@ and weeks, so it's best submitted well before the limit.
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
   100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
-  `POST /api/dsp/documents/link` and `…/link/finish`. Behind `connections.manage`,
-  `POST /api/dsp/documents/add`, for files and folders picked in Google Drive. Public, the picker's
-  page: `GET /api/documents/google/picker`.
+  `POST /api/dsp/documents/link` and `…/link/finish`, and `POST /api/dsp/documents/add`, for
+  files and folders from Google Drive. Public, the picker's page:
+  `GET /api/documents/google/picker`.
 - **Browsing:** Dispatch reads the main folder from Google a few folders at a time, so another
   DSP's folder made with the same account is never listed, found or changed, and follows what
   changes in the account's Drive. A file someone makes in the folder in Drive shows as the
@@ -85,23 +85,25 @@ and weeks, so it's best submitted well before the limit.
   picture until the file changes; eight are fetched from Google at once across the server. The
   page asks for it as large as the screen shows it sharply (`s`): 600 pixels on a high-density
   screen, 300 on an ordinary one.
-- **Adding from Google Drive:** a file or folder elsewhere than the main folder comes in by
-  Google's picker. Those who manage the DSP's connections,
-  who hold its Google account, pick it on a page of its own in the same tab, signed in to
-  Google as that account: the page has rules of its own that let only Google's picker run, and
-  the dashboard's stay as they are. The Upload menu holds them beside uploading files and
-  folders, for those who can: Google Drive opens the picker on the folder open in Documents,
-  beside what's shared with the account and the shared drives it's in, and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it on the files
-  the link names, or on the folder, as pasting one on the page (outside a field) does.
-  Documents leaves the picker's page what to pick and where to go back to in the tab's session
-  storage. The page sends the browser to Google's sign-in, which comes straight back when the
-  browser is signed in to that account already, to the same return address as connecting, with
-  its answer in the fragment, which no server sees. That address takes it on to the picker's
-  page at the address it started at, the admin's or the DSP's own, as the state names. The page
-  gets its own short-lived token from Google, never the one Dispatch keeps, and names its
-  address to Google, though not the page, since the picker's key works only from Dispatch's own
-  addresses. It checks Google signed in the account that holds Documents and offers to switch
-  if not, then opens the picker. Once something is picked, or the picker is closed, it goes
+- **Adding from Google Drive:** every member adds a file or folder from elsewhere, from the
+  Upload menu beside uploading files and folders. Drive link asks for a Google Drive, Docs,
+  Sheets or Slides link, as pasting one on the page (outside a field) does, and adds what it
+  names at once when the account that holds Documents reaches it: anything in its Drive or
+  shared with it. Else, and from Google Drive in the menu, Google's picker opens on a page of
+  its own in the same tab, signed in to Google as the member (`picker.me`: the address the
+  folder is shared with them at, or their own): on the files the link named, or on their Drive,
+  beside what's shared with them and their shared drives. The page has rules of its own that
+  let only Google's picker run, and the dashboard's stay as they are. Documents leaves it what
+  to pick, the folder open, and where to go back to in the tab's session storage. The page
+  sends the browser to Google's sign-in, which comes straight back when the browser is signed
+  in already, to the same return address as connecting, with its answer in the fragment, which
+  no server sees. That address takes it on to the picker's page at the address it started at,
+  the admin's or the DSP's own, as the state names. The page gets its own short-lived token
+  from Google, never the one Dispatch keeps, and names its address to Google, though not the
+  page, since the picker's key works only from Dispatch's own addresses. With that token it
+  brings each file picked where the account that holds Documents reaches it, as the member:
+  one of theirs moves into the folder open, where the team has it; one someone else owns, or
+  one it can't move, is shared with that account, as an editor or else to view. Then it goes
   back to Documents, which adds what was picked. Leaving Documents while files upload asks
   first. Dispatch checks it reaches each file with the account's token, so a file picked as
   another account is refused. One already in Documents becomes visible; one elsewhere in the

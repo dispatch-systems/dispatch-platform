@@ -97,11 +97,15 @@ test('a role given Documents uses it, and only those who manage the DSP connecti
     ['/api/dsp/documents/account', undefined],
     ['/api/dsp/documents/connect', {}],
     ['/api/dsp/documents/disconnect', {}],
-    ['/api/dsp/documents/add', { files: ['any'], folder: null }],
   ] as const) {
     const refused = body ? await member.post(path, body) : await member.get(path);
     assert.equal(refused.status, 403, path);
   }
+  // Every member adds from Drive: here only nothing's connected yet.
+  assert.equal(
+    (await member.post('/api/dsp/documents/add', { files: ['any'], folder: null })).value.error,
+    'documents_not_connected',
+  );
   const account = await owner.get('/api/dsp/documents/account');
   assert.equal(account.status, 200, account.body);
   assert.deepEqual(account.value, { connection: null, available: true, storage: null });
@@ -491,7 +495,7 @@ test('a team uploads files into its folders, sees pictures of them, renames them
   assert.equal((await (await picture(listed.thumbnail)).json()).error, 'documents_item_not_found');
 });
 
-test('those who manage Documents add files and folders made directly in Drive, picked as its account', async (t) => {
+test('every member adds files and folders from Drive, and what the team makes in the folder shows', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -628,17 +632,16 @@ test('those who manage Documents add files and folders made directly in Drive, p
     'invalid_input',
   );
 
-  // Members who don't manage Documents don't add from Drive.
-  assert.equal((await member.read('/api/dsp/documents')).picker, null);
-  assert.equal(
-    (
-      await member.post('/api/dsp/documents/add', {
-        files: [receipts.id],
-        folder: null,
-      })
-    ).status,
-    403,
-  );
+  // Every member adds from Drive, picking as themselves where the folder is shared with them.
+  await until(async () => (await member.read('/api/dsp/documents')).me?.state === 'shared');
+  const theirs = (await member.read('/api/dsp/documents')).picker;
+  assert.equal(theirs.me, demo.member);
+  assert.equal(theirs.account, 'documents@example.com');
+  const byMember = await member.post('/api/dsp/documents/add', {
+    files: [receipts.id],
+    folder: null,
+  });
+  assert.equal(byMember.status, 200, byMember.body);
 });
 
 test("Google's picker runs on a page of its own, and the dashboard loads none of Google", async (t) => {

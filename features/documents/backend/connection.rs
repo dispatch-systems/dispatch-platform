@@ -28,14 +28,19 @@ use std::sync::Arc;
 /// The DSP's connection, as its members see it.
 pub fn overview(db: &Store, c: &Context) -> Result<DocumentsOverview> {
     let found = db.documents_connection(&c.dsp.id)?;
+    let me = team::mine(db, c)?;
+    // Each member picks from Google Drive as themselves: where the folder is shared with them.
+    let picking = me
+        .as_ref()
+        .map_or_else(|| c.auth.user.email.clone(), |mine| mine.email.clone());
     let picker = match (&found, Google::of(&db.config)) {
-        (Some(found), Ok(google)) => picker::setup(c, &google, found)?,
+        (Some(found), Ok(google)) => picker::setup(&google, found, picking)?,
         _ => None,
     };
     Ok(DocumentsOverview {
         connection: described(db, &c.dsp.id, found)?,
         available: Google::available(&db.config),
-        me: team::mine(db, c)?,
+        me,
         picker,
     })
 }
