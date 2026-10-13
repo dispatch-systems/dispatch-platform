@@ -1,9 +1,9 @@
-//! Adding files someone made directly in Google Drive. `drive.file` reaches only what Dispatch
-//! made or was given, so Google's own file picker gives them: whoever holds the DSP's Google
-//! account picks them in a window of its own, signed in to Google there. The dashboard never
-//! loads Google's scripts, and Dispatch never hands the account's token to a browser. The
-//! window tells the Documents page that opened it which files were picked, and that page adds
-//! them.
+//! Adding files and folders someone made directly in Google Drive. `drive.file` reaches only
+//! what Dispatch made or was given, so Google's own file picker gives them: whoever holds the
+//! DSP's Google account picks them in a window of its own, signed in to Google there. The
+//! dashboard never loads Google's scripts, and Dispatch never hands the account's token to a
+//! browser. The window tells the Documents page that opened it what was picked, and that page
+//! adds it.
 use super::{drive, google::Google, storage::Connection};
 use crate::api::types::{DriveFile, PickerSetup};
 use axum::{
@@ -23,6 +23,7 @@ pub fn setup(c: &Context, google: &Google, connection: &Connection) -> Result<Op
         return Ok(None);
     }
     let account = connection.account.email.clone();
+    let folder = connection.folder_id.clone();
     Ok(match google {
         Google::Fixture => {
             let made = drive::fixture_hidden(&format!("fixture:{account}"))?;
@@ -37,10 +38,12 @@ pub fn setup(c: &Context, google: &Google, connection: &Connection) -> Result<Op
                     .collect(),
                 google: None,
                 account,
+                folder,
             })
         }
         Google::Live(_) => google.picker_keys().map(|keys| PickerSetup {
             account,
+            folder,
             google: Some(keys),
             made_in_drive: Vec::new(),
         }),
@@ -76,9 +79,9 @@ pub fn page() -> Response {
 }
 
 /// The window: it signs in to Google as the account that holds Documents, opens Google's
-/// picker, and tells the Documents page what was picked, on a channel only this origin
-/// reaches, with the word the page gave it. Its settings come in the address's fragment,
-/// which never reaches a server.
+/// picker on the folder open in Documents, or on the files a pasted link named, and tells the
+/// Documents page what was picked, on a channel only this origin reaches, with the word the
+/// page gave it. Its settings come in the address's fragment, which never reaches a server.
 const PAGE: &str = r#"<!doctype html>
 <html lang="en">
 <head>
@@ -132,7 +135,9 @@ const PAGE: &str = r#"<!doctype html>
   function choose() {
     const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
       .setIncludeFolders(true)
-      .setSelectFolderEnabled(false);
+      .setSelectFolderEnabled(true);
+    if (sent.get('files')) view.setFileIds(sent.get('files'));
+    else view.setParent(sent.get('folder'));
     new google.picker.PickerBuilder()
       .addView(view)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)

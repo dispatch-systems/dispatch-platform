@@ -281,9 +281,9 @@ pub async fn upload(
     .item(&made, false))
 }
 
-/// Adds the files `ids`, picked with Google's picker, to the folder `parent`, or the main one.
-/// One already inside Documents only becomes reachable; one elsewhere in the account's Drive
-/// moves in.
+/// Adds the files and folders `ids`, picked with Google's picker, to the folder `parent`, or the
+/// main one. One already inside Documents only becomes reachable; one elsewhere in the account's
+/// Drive moves in. A folder brings itself only: what it holds is picked on its own.
 pub async fn add(
     state: &Arc<State>,
     c: Context,
@@ -306,7 +306,10 @@ pub async fn add(
             }
             found => found?,
         };
-        ensure(!item.folder(), "invalid_input", 400)?;
+        // The main folder is Documents itself.
+        if item.id == tree.root() {
+            continue;
+        }
         let inside = item.parents.iter().any(|folder| tree.is_folder(folder));
         added.push(if inside {
             item

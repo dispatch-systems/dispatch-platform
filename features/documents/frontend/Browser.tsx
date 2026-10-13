@@ -42,8 +42,8 @@ import { UploadNaming, UploadsPanel, dropped, picked, useUploads, type Picked } 
 import { useFromDrive } from './FromDrive.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
-// with what Documents makes and what anyone uploads, by picking files or dropping them on
-// the page. A file opens in Google, in a tab of its own, or downloads. Right-clicking a file or
+// with what Documents makes, what anyone uploads, by picking files or dropping them on the
+// page, and what those who hold its Google account add from Drive. A file opens in Google, in a tab of its own, or downloads. Right-clicking a file or
 // folder opens its menu where the pointer is.
 
 type Filter = 'all' | 'folders' | 'docs' | 'sheets' | 'slides' | 'uploads';
@@ -178,6 +178,12 @@ export function Browser({
             <Upload size={16} />
             Upload
           </button>
+          {overview.picker && (
+            <button className="documents-link-button" onClick={fromDrive.open}>
+              <HardDriveDownload size={16} />
+              Add from Drive
+            </button>
+          )}
           <Popover
             className="row-menu documents-new"
             label="New"

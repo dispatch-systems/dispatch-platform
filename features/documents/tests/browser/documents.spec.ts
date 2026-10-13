@@ -1,6 +1,12 @@
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
-import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  fromPage,
+  login,
+  openDsp,
+} from '../../../../core/shell/tests/support/fixtures.js';
 
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
 // mode's Google sends the browser straight back, as Google does once someone clicks Allow, and
@@ -122,15 +128,27 @@ test('a member names files as they upload, drops one on the page, renames and do
   expect(saved.suggestedFilename()).toBe('Route notes week 41.txt');
 });
 
-test('an owner adds a file someone made directly in Drive', async ({ page }) => {
+test('an owner adds a file someone made directly in Drive by pasting its link', async ({
+  page,
+}) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await connect(page);
-  // Fixture mode lists its Drive's files out of reach, where Google's picker would open.
-  await page.getByLabel('New').click();
-  await page.getByRole('button', { name: /Add from Google Drive/ }).click();
+  const made: { id: string; name: string }[] = (await fromPage(page, '/api/dsp/documents')).value
+    .picker.madeInDrive;
+  const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
+  await page
+    .context()
+    .grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin });
+  await page.evaluate(
+    (link) => navigator.clipboard.writeText(link),
+    `https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`,
+  );
+  await page.keyboard.press('ControlOrMeta+V');
+  // Fixture mode lists its Drive's files out of reach, where Google's picker would open, with
+  // the one the link names chosen.
   const picker = page.getByRole('dialog', { name: 'Add from Google Drive' });
-  await picker.getByLabel('Fuel receipts.pdf').check();
+  await expect(picker.getByLabel('Fuel receipts.pdf')).toBeChecked();
   await picker.getByRole('button', { name: 'Add 1 file' }).click();
   await expect(picker).toBeHidden();
   await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
