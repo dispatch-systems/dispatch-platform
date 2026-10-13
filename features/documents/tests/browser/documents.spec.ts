@@ -1,12 +1,6 @@
 import fs from 'node:fs';
 import type { Page } from '@playwright/test';
-import {
-  test,
-  expect,
-  fromPage,
-  login,
-  openDsp,
-} from '../../../../core/shell/tests/support/fixtures.js';
+import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
 // mode's Google sends the browser straight back, as Google does once someone clicks Allow, and
@@ -131,9 +125,13 @@ test('a member names files as they upload, drops one on the page, renames and do
 test('an owner adds a file someone made directly in Drive from its link', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
+  // The page's own read of Documents, once connected, names what its Drive holds out of reach.
+  const overview = page.waitForResponse(
+    async (response) =>
+      response.url().endsWith('/api/dsp/documents') && Boolean((await response.json()).picker),
+  );
   await connect(page);
-  const made: { id: string; name: string }[] = (await fromPage(page, '/api/dsp/documents')).value
-    .picker.madeInDrive;
+  const made: { id: string; name: string }[] = (await (await overview).json()).picker.madeInDrive;
   const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
   await page.getByLabel('Upload', { exact: true }).click();
   await page.getByRole('button', { name: 'Drive link' }).click();
