@@ -23,7 +23,7 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
   100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`. Behind `connections.manage`,
-  `POST /api/dsp/documents/add`, for files picked in Google Drive. Public, the picker's
+  `POST /api/dsp/documents/add`, for files and folders picked in Google Drive. Public, the picker's
   window: `GET /api/documents/google/picker`.
 - **Browsing:** with `drive.file`, Dispatch reaches only the files it made or was given, so it
   lists them all and keeps the ones inside the DSP's main folder: another DSP's folder made with
@@ -77,17 +77,24 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   picture until the file changes; eight are fetched from Google at once across the server. The
   page asks for it as large as the screen shows it sharply (`s`): 600 pixels on a high-density
   screen, 300 on an ordinary one.
-- **Adding from Google Drive:** a file someone made directly in Drive is out of `drive.file`'s
-  reach until Google's picker gives it. Those who manage the DSP's connections, who hold its
-  Google account, pick it in a window of its own, signed in to Google as that account: the window has rules of its
-  own that let only Google's sign-in and picker run, and the dashboard's stay as they are.
-  The window gets its own short-lived token from Google, never the one Dispatch keeps, and
-  tells the Documents page what was picked on a channel only Dispatch's own pages reach, with
-  a word the page gave it. Dispatch then checks it reaches each file with the account's token,
-  so a file picked as another account is refused. One already in Documents becomes visible;
-  one elsewhere in the account's Drive moves into the folder open. The picker needs
+- **Adding from Google Drive:** a file or folder someone made directly in Drive is out of
+  `drive.file`'s reach until Google's picker gives it. Those who manage the DSP's connections,
+  who hold its Google account, pick it in a window of its own, signed in to Google as that
+  account: the window has rules of its own that let only Google's sign-in and picker run, and
+  the dashboard's stay as they are. The page's Upload menu holds them beside uploading files
+  and folders, for those who can: Google Drive opens the picker on the folder open in
+  Documents, and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it
+  on the files the link names, or on the folder, as pasting one on the page (outside a field)
+  does. A browser that blocks the window offers to open it again with a click. The window gets
+  its own short-lived token from Google, never the one Dispatch keeps, and tells the Documents
+  page what was picked on a channel only Dispatch's own pages reach, with a word the page gave
+  it. Dispatch then checks it reaches each file with the account's token, so a file picked as
+  another account is refused. One already in Documents becomes visible; one elsewhere in the
+  account's Drive moves into the folder open. A folder brings only itself: what it holds is
+  picked once it's there, and stays where it is. Picking the main folder changes nothing. The
+  picker needs
   `DISPATCH_DEV_GOOGLE_API_KEY` and `…_GOOGLE_APP_ID` (the Google project's number), or
-  `DISPATCH_PRODUCTION_…`, beside the sign-in client; without them the menu doesn't offer it,
+  `DISPATCH_PRODUCTION_…`, beside the sign-in client; without them the page doesn't offer it,
   and with one alone the server refuses to start.
 - **Team access:** everyone who holds `documents.use` gets the main folder shared with them
   as an editor, and through it everything inside: at the Google account they linked, or else
@@ -118,8 +125,9 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
 - **Fixture mode** never calls Google: its sign-in comes straight back with
   `fixture:<email>` as the code, and each account's Drive is kept in memory. A member who
   links signs in as `teammate@example.com`, and an address at `example.net` is no Google
-  account. Its Drive also holds files made directly in Drive, out of reach until they're
-  picked, and in place of Google's picker the page lists them.
+  account. Its Drive also holds files and a folder made directly in Drive, out of reach until
+  they're picked, and in place of Google's picker the page lists them, with those a pasted
+  link names chosen.
 - **Page:** Documents, in a DSP's sidebar. It keeps the folders it opened, shows them at once
   when they open again and asks for them anew behind them, every 15 seconds while one is
   open; it asks for a folder as the pointer rests on it. A folder opening for the first time,

@@ -2,6 +2,6 @@
 import type { ItemKind } from "./ItemKind";
 
 /**
- * A file in the account's Drive that Documents can't reach yet.
+ * A file or folder in the account's Drive that Documents can't reach yet.
  */
 export type DriveFile = { id: string, name: string, kind: ItemKind, };

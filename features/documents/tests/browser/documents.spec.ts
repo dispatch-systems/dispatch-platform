@@ -122,15 +122,28 @@ test('a member names files as they upload, drops one on the page, renames and do
   expect(saved.suggestedFilename()).toBe('Route notes week 41.txt');
 });
 
-test('an owner adds a file someone made directly in Drive', async ({ page }) => {
+test('an owner adds a file someone made directly in Drive from its link', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
+  // The page's own read of Documents, once connected, names what its Drive holds out of reach.
+  const overview = page.waitForResponse(
+    async (response) =>
+      response.url().endsWith('/api/dsp/documents') && Boolean((await response.json()).picker),
+  );
   await connect(page);
-  // Fixture mode lists its Drive's files out of reach, where Google's picker would open.
-  await page.getByLabel('New').click();
-  await page.getByRole('button', { name: /Add from Google Drive/ }).click();
+  const made: { id: string; name: string }[] = (await (await overview).json()).picker.madeInDrive;
+  const receipts = made.find((file) => file.name === 'Fuel receipts.pdf')!;
+  await page.getByLabel('Upload', { exact: true }).click();
+  await page.getByRole('button', { name: 'Drive link' }).click();
+  const linking = page.getByRole('dialog', { name: 'Add a Drive link' });
+  await linking
+    .getByRole('textbox', { name: 'Link' })
+    .fill(`https://drive.google.com/file/d/${receipts.id}/view?usp=drive_link`);
+  await linking.getByRole('button', { name: 'Add' }).click();
+  // Fixture mode lists its Drive's files out of reach, where Google's picker would open, with
+  // the one the link names chosen.
   const picker = page.getByRole('dialog', { name: 'Add from Google Drive' });
-  await picker.getByLabel('Fuel receipts.pdf').check();
+  await expect(picker.getByLabel('Fuel receipts.pdf')).toBeChecked();
   await picker.getByRole('button', { name: 'Add 1 file' }).click();
   await expect(picker).toBeHidden();
   await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();

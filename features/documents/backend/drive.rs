@@ -112,11 +112,6 @@ pub struct Item {
     #[serde(skip, default = "Instant::now")]
     pub seen: Instant,
 }
-impl Item {
-    pub fn folder(&self) -> bool {
-        self.mime_type == FOLDER
-    }
-}
 /// Someone a folder is shared with, as Drive lists them.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -931,22 +926,35 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
     });
     work(drive)
 }
-/// Puts files in fixture mode's Drive as someone making them directly in Drive would: two in
-/// `folder`, one elsewhere in the account's Drive, all out of Dispatch's reach.
+/// Puts files in fixture mode's Drive as someone making them directly in Drive would: a folder
+/// and a file in `folder`, a Doc in that folder, and a picture elsewhere in the account's Drive,
+/// all out of Dispatch's reach.
 pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
+    let id = || Ok::<_, Error>(format!("fixture-{}", crypto::hex(&crypto::random::<8>()?)));
+    let safety = id()?;
     fixture(access, |drive| {
-        for (name, mime, size, inside) in [
-            ("Weekly safety huddle", DOC, None, true),
-            ("Fuel receipts.pdf", "application/pdf", Some("48213"), true),
-            ("Route map 2025.png", "image/png", Some("231004"), false),
+        for (name, mime, size, parent) in [
+            ("Safety", FOLDER, None, Some(folder)),
+            ("Weekly safety huddle", DOC, None, Some(safety.as_str())),
+            (
+                "Fuel receipts.pdf",
+                "application/pdf",
+                Some("48213"),
+                Some(folder),
+            ),
+            ("Route map 2025.png", "image/png", Some("231004"), None),
         ] {
-            let id = format!("fixture-{}", crypto::hex(&crypto::random::<8>()?));
+            let id = if mime == FOLDER {
+                safety.clone()
+            } else {
+                id()?
+            };
             let item = Item {
                 web_view_link: link(mime, &id),
                 id: id.clone(),
                 name: name.to_owned(),
                 mime_type: mime.to_owned(),
-                parents: inside.then(|| folder.to_owned()).into_iter().collect(),
+                parents: parent.map(str::to_owned).into_iter().collect(),
                 modified_time: iso(),
                 last_modifying_user: Some(Person {
                     display_name: Some("Keisha Brown".to_owned()),

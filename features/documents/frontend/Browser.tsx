@@ -4,9 +4,11 @@ import {
   Download,
   Ellipsis,
   ExternalLink,
+  FileUp,
   FolderUp,
   HardDriveDownload,
   LayoutGrid,
+  Link2,
   List,
   Plus,
   Upload,
@@ -43,10 +45,11 @@ import { UploadNaming, UploadsPanel, dropped, picked, useUploads, type Picked } 
 import { useFromDrive } from './FromDrive.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
-// with what Documents makes and what anyone uploads, by picking files or dropping them on
-// the page. A file opens in Google, in a tab of its own, or downloads. Right-clicking a file or
-// folder opens its menu where the pointer is. What's made, renamed or trashed shows at once,
-// and goes back if Google refuses it; a folder that hasn't come yet leaves the last one shown.
+// with what Documents makes, what anyone uploads, by picking files or dropping them on the
+// page, and what those who hold its Google account add from Drive. A file opens in Google, in
+// a tab of its own, or downloads. Right-clicking a file or folder opens its menu where the
+// pointer is. What's made, renamed or trashed shows at once, and goes back if Google refuses
+// it; a folder that hasn't come yet leaves the last one shown.
 
 type Filter = 'all' | 'folders' | 'docs' | 'sheets' | 'slides' | 'uploads';
 const FILTERS: [Filter, string][] = [
@@ -345,10 +348,48 @@ export function Browser({
             <ExternalLink size={16} />
             Open in Drive
           </a>
-          <button className="documents-link-button" onClick={() => files.current?.click()}>
-            <Upload size={16} />
-            Upload
-          </button>
+          <Popover
+            className="row-menu documents-upload"
+            triggerClassName="documents-link-button"
+            label="Upload"
+            trigger={
+              <>
+                <Upload size={16} />
+                Upload
+              </>
+            }
+            anchored
+          >
+            <button onClick={() => files.current?.click()}>
+              <span className="documents-menu-icon">
+                <FileUp size={16} />
+              </span>
+              Files
+            </button>
+            <button onClick={() => folders.current?.click()}>
+              <span className="documents-menu-icon">
+                <FolderUp size={16} />
+              </span>
+              Folder
+            </button>
+            {overview.picker && (
+              <>
+                <span className="documents-menu-rule" role="separator" />
+                <button onClick={fromDrive.askLink}>
+                  <span className="documents-menu-icon">
+                    <Link2 size={16} />
+                  </span>
+                  Drive link
+                </button>
+                <button onClick={fromDrive.open}>
+                  <span className="documents-menu-icon">
+                    <HardDriveDownload size={16} />
+                  </span>
+                  Google Drive
+                </button>
+              </>
+            )}
+          </Popover>
           <Popover
             className="row-menu documents-new"
             label="New"
@@ -366,33 +407,6 @@ export function Browser({
                 {label}
               </button>
             ))}
-            <span className="documents-menu-rule" role="separator" />
-            <button onClick={() => files.current?.click()}>
-              <span className="documents-menu-icon">
-                <Upload size={16} />
-              </span>
-              Upload files
-            </button>
-            <button onClick={() => folders.current?.click()}>
-              <span className="documents-menu-icon">
-                <FolderUp size={16} />
-              </span>
-              Upload a folder
-            </button>
-            {overview.picker && (
-              <>
-                <span className="documents-menu-rule" role="separator" />
-                <button className="documents-from-drive" onClick={fromDrive.open}>
-                  <span className="documents-menu-icon">
-                    <HardDriveDownload size={16} />
-                  </span>
-                  <span>
-                    Add from Google Drive
-                    <small>Files someone made directly in Drive</small>
-                  </span>
-                </button>
-              </>
-            )}
           </Popover>
           <input
             ref={files}

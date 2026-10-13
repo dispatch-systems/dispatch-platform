@@ -271,9 +271,13 @@
   background: var(--violet-surface);
 }
 
-/* The heading's buttons. */
+/* The heading's buttons, and its menus: Upload and New. */
+.documents-upload,
 .documents-new {
   position: relative;
+}
+.documents-upload summary {
+  padding: 8px 14px;
 }
 .documents-new summary {
   display: inline-flex;
@@ -286,6 +290,7 @@
   color: var(--primary-foreground);
   font-weight: 500;
 }
+.documents-upload .account-popover,
 .documents-new .account-popover {
   width: 220px;
 }
@@ -761,7 +766,7 @@
   color: var(--warning);
 }
 
-/* Uploading: the New menu's upload items, the hint over the page while files are dragged on
+/* Uploading: the Upload menu's items, the hint over the page while files are dragged on
    it, and how the uploads are going, in the corner. */
 .documents-menu-rule {
   display: block;
@@ -933,15 +938,6 @@
   }
 }
 /* Adding files made directly in Drive. */
-.documents-new .account-popover .documents-from-drive {
-  align-items: flex-start;
-}
-.documents-from-drive small {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
 .documents-picked {
   display: grid;
   gap: 10px;

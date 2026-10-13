@@ -3,7 +3,7 @@ import type { DriveFile } from "./DriveFile";
 import type { PickerKeys } from "./PickerKeys";
 
 /**
- * What adding files made directly in Google Drive needs.
+ * What adding files and folders made directly in Google Drive needs.
  */
 export type PickerSetup = {
 /**
@@ -11,11 +11,15 @@ export type PickerSetup = {
  */
 account: string,
 /**
+ * The main folder in Google Drive, where the picker opens at the top of Documents.
+ */
+folder: string,
+/**
  * Google's keys for its file picker, which a browser uses as they are. None in fixture
  * mode, which lists the files instead.
  */
 google: PickerKeys | null,
 /**
- * In fixture mode, the files made directly in its Drive.
+ * In fixture mode, the files and folders made directly in its Drive.
  */
 madeInDrive: Array<DriveFile>, };

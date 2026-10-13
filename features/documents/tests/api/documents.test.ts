@@ -491,7 +491,7 @@ test('a team uploads files into its folders, sees pictures of them, renames them
   assert.equal((await (await picture(listed.thumbnail)).json()).error, 'documents_item_not_found');
 });
 
-test('those who manage Documents add files made directly in Drive, picked as its account', async (t) => {
+test('those who manage Documents add files and folders made directly in Drive, picked as its account', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -511,6 +511,7 @@ test('those who manage Documents add files made directly in Drive, picked as its
   assert.deepEqual(picker.madeInDrive.map((file: Picked) => [file.name, file.kind]).sort(), [
     ['Fuel receipts.pdf', 'pdf'],
     ['Route map 2025.png', 'image'],
+    ['Safety', 'folder'],
     ['Weekly safety huddle', 'doc'],
   ]);
   const top = async () =>
@@ -542,10 +543,29 @@ test('those who manage Documents add files made directly in Drive, picked as its
     ),
     ['Route map 2025.png'],
   );
-  assert.deepEqual(
-    (await setup()).madeInDrive.map((file: Picked) => file.name),
-    ['Weekly safety huddle'],
-  );
+  // A folder made inside Documents shows where it is, and what it holds once that's picked too.
+  const safety = await owner.post('/api/dsp/documents/add', {
+    files: [made('Safety').id],
+    folder: fleet.id,
+  });
+  assert.equal(safety.status, 200, safety.body);
+  assert.deepEqual(await top(), ['Fleet', 'Safety', 'Fuel receipts.pdf']);
+  const inSafety = async () =>
+    (await owner.read(`/api/dsp/documents/folder?id=${made('Safety').id}`)).items.map(
+      (item: { name: string }) => item.name,
+    );
+  assert.deepEqual(await inSafety(), []);
+  await owner.post('/api/dsp/documents/add', {
+    files: [made('Weekly safety huddle').id],
+    folder: null,
+  });
+  assert.deepEqual(await inSafety(), ['Weekly safety huddle']);
+  assert.deepEqual((await setup()).madeInDrive, []);
+  // Picking the main folder itself changes nothing.
+  const main = await owner.post('/api/dsp/documents/add', { files: [picker.folder], folder: null });
+  assert.equal(main.status, 200, main.body);
+  assert.deepEqual(main.value, []);
+  assert.deepEqual(await top(), ['Fleet', 'Safety', 'Fuel receipts.pdf']);
   // A file the account wasn't given was picked as another account.
   assert.equal(
     (await owner.post('/api/dsp/documents/add', { files: ['someone-elses-file'], folder: null }))
