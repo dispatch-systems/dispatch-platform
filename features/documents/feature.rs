@@ -12,7 +12,10 @@ pub use api::types::{
 };
 
 use dispatch_core::{
-    db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
+    db::{
+        Kind, Migration, Migrations, OwnMigrations,
+        migrations::Apply::{Code, Sql},
+    },
     manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
@@ -70,7 +73,7 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 2,
                 name: "documents_full_access",
-                apply: Sql(include_str!("migrations/dsp/0002_documents_full_access.sql")),
+                apply: Code(backend::storage::add_full_access),
             },
         ],
     }],

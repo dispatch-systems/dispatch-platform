@@ -4,7 +4,7 @@
 use super::google::Account;
 use dispatch_core::{
     Error, Result,
-    db::{self, FromRow, Row, Store, iso, now},
+    db::{self, Db, FromRow, Row, Store, iso, migrations::add_column, now},
     foundation::crypto,
 };
 use rusqlite::params;
@@ -14,6 +14,18 @@ use std::collections::BTreeMap;
 /// How long a sign-in started at Google may take to come back.
 const SIGN_IN_MS: i64 = 10 * 60 * 1000;
 const SECRET: &str = "google.enc";
+
+/// Documents' migration 2: whether the connection reaches everything in the account's Drive,
+/// as Dispatch asks of every connection since. One made before reaches only the files Dispatch
+/// made or was given, until someone reconnects it.
+pub(crate) fn add_full_access(db: &Db) -> Result<()> {
+    add_column(
+        db,
+        "documents_connection",
+        "full_access",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+}
 
 /// The DSP's Google connection, as stored.
 #[derive(Clone, Debug, PartialEq, Eq)]

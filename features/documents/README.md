@@ -1,8 +1,11 @@
 # Documents
 
-A DSP's shared folders, Docs and Sheets, kept in a Google account the DSP connects: a Google
-Workspace account or anyone's own Google account. Dispatch makes one main folder there and
-works only with what it makes or is given (`drive.file`), so Google asks for no review.
+A DSP's shared folders, Docs and Sheets, kept in a Google account the DSP connects, best one
+kept for Documents alone. Dispatch makes one main folder there and reaches the account's whole
+Drive (`drive`), so everything in the folder shows, whoever made it and however. Google calls
+that scope restricted: unreviewed, up to 100 accounts may grant it over the app's life, each
+seeing that Google hasn't verified the app; past that, Google reviews it, with a yearly
+security assessment.
 
 - **Switch:** `documents`, off for every DSP until the platform owner switches it on.
 - **Permissions:** `documents.use`, to see and work in the DSP's Documents: everyone who holds
@@ -25,10 +28,13 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   `POST /api/dsp/documents/link` and `…/link/finish`. Behind `connections.manage`,
   `POST /api/dsp/documents/add`, for files and folders picked in Google Drive. Public, the picker's
   page: `GET /api/documents/google/picker`.
-- **Browsing:** with `drive.file`, Dispatch reaches only the files it made or was given, so it
-  lists them all and keeps the ones inside the DSP's main folder: another DSP's folder made with
-  the same account is never listed, found or changed. A file opens in Google, in a tab of its
-  own. Google names the connected account for every change Dispatch makes, so Dispatch records
+- **Browsing:** Dispatch reads the main folder from Google a few folders at a time, so another
+  DSP's folder made with the same account is never listed, found or changed, and follows what
+  changes in the account's Drive. A file someone makes in the folder in Drive shows as the
+  folder is read next. A connection made before Dispatch asked for the whole Drive
+  (`fullAccess` false) reaches only the files Dispatch made or was given, and reads only those,
+  until someone reconnects it: Settings' Google Drive card says `Limited Access` and offers to
+  reconnect. A file opens in Google, in a tab of its own. Google names the connected account for every change Dispatch makes, so Dispatch records
   who added each file and who last changed it, and names them instead.
 - **The copy:** the server keeps the list of each DSP's Documents in memory (each file's name,
   type, folder, size, who changed it when and Google's links, never what a file holds), and a
@@ -78,8 +84,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   picture until the file changes; eight are fetched from Google at once across the server. The
   page asks for it as large as the screen shows it sharply (`s`): 600 pixels on a high-density
   screen, 300 on an ordinary one.
-- **Adding from Google Drive:** a file or folder someone made directly in Drive is out of
-  `drive.file`'s reach until Google's picker gives it. Those who manage the DSP's connections,
+- **Adding from Google Drive:** a file or folder elsewhere than the main folder comes in by
+  Google's picker. Those who manage the DSP's connections,
   who hold its Google account, pick it on a page of its own in the same tab, signed in to
   Google as that account: the page has rules of its own that let only Google's picker run, and
   the dashboard's stay as they are. The Upload menu holds them beside uploading files and
@@ -141,8 +147,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   eight): the dialog shows the name without it, and `…/rename` refuses a name that changes it
   (`documents_extension_kept`). Folders and Google's own Docs, Sheets and Slides have none, so
   their whole name changes. Each item names its `extension` for the dialog.
-- **Reconnecting** takes the same Google account only: `drive.file` reaches the files
-  Dispatch made through that account and no other.
+- **Reconnecting** takes the same Google account only: the folder and its files are that
+  account's.
 - **Data:** `documents_connection`, `documents_connect_requests`, `documents_files`,
   `documents_people` (who the folder is shared with, and at what address) and
   `documents_shared_files` (the shares Dispatch made of files someone else owns), in each
@@ -154,10 +160,10 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
 - **Fixture mode** never calls Google: its sign-in comes straight back with
   `fixture:<email>` as the code, and each account's Drive is kept in memory. A member who
   links signs in as `teammate@example.com`, and an address at `example.net` is no Google
-  account. Its Drive also holds files and a folder made directly in Drive, and two Sheets
+  account. Its Drive also holds files and a folder made directly in the main folder, which
+  Documents shows at once, and a picture elsewhere in the account's Drive and two Sheets
   someone else owns and shared with the account, `Route tracker` and `Fuel prices`, to view
-  only, out of reach until
-  they're picked, and in place of Google's picker the page lists them, with those a pasted
+  only, which come in once they're picked, and in place of Google's picker the page lists them, with those a pasted
   link names chosen.
 - **Page:** Documents, in a DSP's sidebar. It keeps the folders it opened, shows them at once
   when they open again and asks for them anew behind them, every 15 seconds while one is
