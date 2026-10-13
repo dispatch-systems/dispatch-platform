@@ -14,6 +14,7 @@ GET /api/dsp/paycom/meal-breaks/period-gaps Dsp("timecard.view") Read
 GET /api/dsp/paycom/settings Dsp("timecard.view") Read
 GET /api/dsp/paycom/status Dsp("timecard.view") Read
 GET /api/dsp/schedules Dsp("timecard.manage") Read
+GET /api/dsp/timecards/punches/{code} Dsp("timecard.view") Read
 GET /api/dsp/timecards/page Dsp("timecard.view") Read
 GET /api/dsp/timecards Dsp("timecard.view") Read
 POST /api/dsp/cortex/meal-breaks/collect Dsp("collections.run") Write

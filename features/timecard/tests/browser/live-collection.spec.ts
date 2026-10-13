@@ -58,6 +58,7 @@ test('driver results update open timecards and meal breaks without resetting the
   await page.route('**/api/dsp/paycom/settings', (route) =>
     route.fulfill({ json: { revision: 0, values: paycomDefaults, options: {}, history: [] } }),
   );
+  await page.route('**/api/dsp/timecards/punches/*', (route) => route.fulfill({ json: card }));
   await page.route('**/api/dsp/timecards/page?*', (route) => {
     rowReads++;
     return route.fulfill({ json: { rows: [card], total: 1, available: true, collectedAt: null } });

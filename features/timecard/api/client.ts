@@ -5,6 +5,7 @@ import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { cancelPrefetches, prefetchData } from '../../../core/shell/frontend/runtime/prefetch.js';
 import type {
   DailyTimecards,
+  DailyTimecard,
   DailyTimecardPage,
   MealComparisonPage,
   EmployeeTimecardPeriod,
@@ -104,6 +105,12 @@ export const useDailyTimecards = (url: string, refreshKey?: string | null) =>
   useCachedData<DailyTimecardPage>(url, performancePolicy.recoveryPollMs, refreshKey);
 export const useMealComparison = (url: string, refreshKey?: string | null) =>
   useCachedData<MealComparisonPage>(url, performancePolicy.recoveryPollMs, refreshKey);
+export const useDailyPunches = (date: string, code: string, refreshKey?: string | null) =>
+  useCachedData<DailyTimecard>(
+    `/api/dsp/timecards/punches/${encodeURIComponent(code)}?date=${date}`,
+    performancePolicy.recoveryPollMs,
+    refreshKey,
+  );
 export const exportDailyTimecards = (date: string, sort: string, desc: boolean) =>
   api<DailyTimecards>(
     dailyTimecardsUrl(date).replace(

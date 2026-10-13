@@ -5,6 +5,7 @@ import type {
   EmployeeTimecardResponse,
   EmployeesResponse,
   DailyTimecards,
+  DailyTimecard,
   DailyTimecardPage,
   MealComparisonPage,
   Punch,
@@ -87,8 +88,9 @@ export const employeesSchema = z.object({
   total: count,
   collectedAt: z.nullable(text),
 }) satisfies z.ZodMiniType<EmployeesResponse>;
+const dailyCard = z.extend(card, { name: text }) satisfies z.ZodMiniType<DailyTimecard>;
 export const dailyTimecardsSchema = z.object({
-  rows: z.array(z.extend(card, { name: text })),
+  rows: z.array(dailyCard),
   collectedAt: z.nullable(text),
   available: z.boolean(),
 }) satisfies z.ZodMiniType<DailyTimecards>;
@@ -259,6 +261,7 @@ export const replies: Replies = (route, method) => {
     if (route === paycomSettingsPath) return paycomSettingsSchema;
     if (route === employeesPath) return employeesSchema;
     if (/^\/api\/dsp\/employees\/[^/]+$/.test(route)) return employeeTimecardSchema;
+    if (route.startsWith('/api/dsp/timecards/punches/')) return dailyCard;
     if (route === dailyPagePath) return dailyPageSchema;
     if (route === mealPagePath) return mealPageSchema;
     if (route === '/api/dsp/timecards') return dailyTimecardsSchema;

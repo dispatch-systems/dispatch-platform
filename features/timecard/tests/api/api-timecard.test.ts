@@ -102,6 +102,12 @@ test('Rust workforce settings enforce revisions, filter employees and timecards,
   const date = detail.timecards[0].date;
   const daily = await owner.get(`/api/dsp/timecards?date=${date}&sort=totalHours&direction=desc`);
   assert.equal(daily.value.rows.length, 11);
+  const card = daily.value.rows[0];
+  const punches = await owner.get(`/api/dsp/timecards/punches/${card.employeeCode}?date=${date}`);
+  assert.equal(punches.status, 200);
+  assert.deepEqual(punches.value, card);
+  assert.equal((await owner.get(`/api/dsp/timecards/punches/absent?date=${date}`)).status, 404);
+
   assert.equal((await owner.get('/api/dsp/timecards?date=2026-02-30')).status, 400);
   const member = await f.client('member@dispatch.test');
   await member.select(north.id);
