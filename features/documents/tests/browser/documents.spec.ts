@@ -38,6 +38,8 @@ test('large folders keep one page mounted in both layouts, search every item and
     location: null,
     thumbnail: null,
     extension: '.txt',
+    shortcut: false,
+    unavailable: false,
   }));
   await page.route('**/api/dsp/documents/folder*', async (route) => {
     const response = await route.fetch();

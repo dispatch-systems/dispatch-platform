@@ -179,6 +179,23 @@ pub struct DocumentsItem {
     /// The extension its name keeps when renamed, such as `.pdf`: none for a folder, Google's
     /// own Docs, Sheets and Slides, or a name without one.
     pub extension: Option<String>,
+    /// A shortcut to a file someone else owns: it shows that file's name, which its owner
+    /// keeps, so it isn't renamed here.
+    pub shortcut: bool,
+    /// A shortcut whose file the account no longer reaches: its owner trashed it, or stopped
+    /// sharing it.
+    pub unavailable: bool,
+}
+
+/// What adding from Drive added, and the names of those shared with the account that it may
+/// not share on, so the team asks their owners for them.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct AddedFiles {
+    pub items: Vec<DocumentsItem>,
+    pub unshared: Vec<String>,
 }
 
 /// A step of the way to a folder.

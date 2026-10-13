@@ -812,6 +812,10 @@
 .documents-making {
   opacity: 0.6;
 }
+/* A shortcut whose file is gone. */
+.documents-unavailable {
+  opacity: 0.55;
+}
 @media (prefers-reduced-motion: reduce) {
   .documents-progress::after {
     width: 100%;

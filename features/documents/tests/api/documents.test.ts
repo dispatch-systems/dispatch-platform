@@ -509,6 +509,7 @@ test('those who manage Documents add files and folders made directly in Drive, p
   assert.equal(picker.google, null);
   const made = (name: string) => picker.madeInDrive.find((file: Picked) => file.name === name)!;
   assert.deepEqual(picker.madeInDrive.map((file: Picked) => [file.name, file.kind]).sort(), [
+    ['Fuel prices', 'sheet'],
     ['Fuel receipts.pdf', 'pdf'],
     ['Route map 2025.png', 'image'],
     ['Route tracker', 'sheet'],
@@ -531,7 +532,7 @@ test('those who manage Documents add files and folders made directly in Drive, p
   });
   assert.equal(added.status, 200, added.body);
   assert.deepEqual(
-    added.value.map((item: { name: string; addedBy: string }) => [item.name, item.addedBy]),
+    added.value.items.map((item: { name: string; addedBy: string }) => [item.name, item.addedBy]),
     [
       ['Fuel receipts.pdf', 'Platform support'],
       ['Route map 2025.png', 'Platform support'],
@@ -571,6 +572,7 @@ test('those who manage Documents add files and folders made directly in Drive, p
       folder: null,
     });
     assert.equal(tracker.status, 200, tracker.body);
+    assert.deepEqual(tracker.value.unshared, []);
   }
   const trackers = (await owner.read('/api/dsp/documents/folder')).items.filter(
     (item: { name: string }) => item.name === 'Route tracker',
@@ -579,6 +581,8 @@ test('those who manage Documents add files and folders made directly in Drive, p
   assert.notEqual(trackers[0].id, shared.id);
   assert.equal(trackers[0].kind, 'sheet');
   assert.equal(trackers[0].url, `https://docs.google.com/spreadsheets/d/${shared.id}/edit`);
+  assert.equal(trackers[0].shortcut, true);
+  assert.equal(trackers[0].unavailable, false);
   // The team gets the Sheet shared with them, where the folder is shared with them.
   const dsp = <T>(query: string) =>
     f.database(`dsps/${north.id}/data/dispatch.sqlite`, (db) => db.prepare(query).all()) as T[];
@@ -595,12 +599,27 @@ test('those who manage Documents add files and folders made directly in Drive, p
       .sort(),
     team.map((email) => [shared.id, email]).sort(),
   );
+  // One the account may only view, it can't share on: the team asks its owner for it.
+  const prices = await owner.post('/api/dsp/documents/add', {
+    files: [made('Fuel prices').id],
+    folder: null,
+  });
+  assert.equal(prices.status, 200, prices.body);
+  assert.deepEqual(prices.value.unshared, ['Fuel prices']);
+  assert.equal(prices.value.items[0].shortcut, true);
   assert.deepEqual((await setup()).madeInDrive, []);
   // Picking the main folder itself changes nothing.
   const main = await owner.post('/api/dsp/documents/add', { files: [picker.folder], folder: null });
   assert.equal(main.status, 200, main.body);
-  assert.deepEqual(main.value, []);
-  assert.deepEqual(await top(), ['Fleet', 'Safety', 'Route tracker', 'Fuel receipts.pdf']);
+  assert.deepEqual(main.value, { items: [], unshared: [] });
+  // Shortcuts sort as their files changed, so only what's at the top is checked here.
+  assert.deepEqual((await top()).sort(), [
+    'Fleet',
+    'Fuel prices',
+    'Fuel receipts.pdf',
+    'Route tracker',
+    'Safety',
+  ]);
   // Taking the shortcut out of Documents takes back the shares Dispatch made of the Sheet.
   const trashed = await owner.post(`/api/dsp/documents/items/${trackers[0].id}/trash`, {});
   assert.equal(trashed.status, 200, trashed.body);

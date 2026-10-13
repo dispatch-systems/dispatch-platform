@@ -11,6 +11,7 @@ import type { DocumentsFolder } from './generated/DocumentsFolder.js';
 import type { DocumentsItem } from './generated/DocumentsItem.js';
 import type { NewKind } from './generated/NewKind.js';
 import type { MySharing } from './generated/MySharing.js';
+import type { AddedFiles } from './generated/AddedFiles.js';
 
 export type { DocumentsAccount } from './generated/DocumentsAccount.js';
 export type { DriveStorage } from './generated/DriveStorage.js';
@@ -23,6 +24,7 @@ export type { ItemKind } from './generated/ItemKind.js';
 export type { NewKind } from './generated/NewKind.js';
 export type { MySharing } from './generated/MySharing.js';
 export type { PickerSetup } from './generated/PickerSetup.js';
+export type { AddedFiles } from './generated/AddedFiles.js';
 
 // Documents's endpoints, as its screens call them.
 
@@ -137,7 +139,7 @@ export const uploadFile = (
 };
 /** Adds files picked with Google's picker to `folder`, or the top. */
 export const addFiles = (files: string[], folder: string | undefined) =>
-  call<DocumentsItem[]>('/api/dsp/documents/add', { files, folder: folder ?? null });
+  call<AddedFiles>('/api/dsp/documents/add', { files, folder: folder ?? null });
 /**
  * Google's picture of a file, at the address its item names, as large as the screen shows it
  * sharply: 600 pixels on a high-density screen, 300 on an ordinary one, which holds a quarter

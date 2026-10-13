@@ -84,7 +84,7 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   Google as that account: the page has rules of its own that let only Google's picker run, and
   the dashboard's stay as they are. The Upload menu holds them beside uploading files and
   folders, for those who can: Google Drive opens the picker on the folder open in Documents,
-  and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it on the files
+  beside what's shared with the account and the shared drives it's in, and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it on the files
   the link names, or on the folder, as pasting one on the page (outside a field) does.
   Documents leaves the picker's page what to pick and where to go back to in the tab's session
   storage. The page sends the browser to Google's sign-in, which comes straight back when the
@@ -101,10 +101,18 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   account's Drive moves into the folder open. Only its owner moves a file, so one someone else
   owns and shared with the account, or one Google won't move (`cannotAddParent`), gets a
   shortcut in the folder open instead, as Drive's own Add shortcut does, once however often
-  it's added. Documents shows a shortcut as the file it stands for and opens that file, a
-  download takes that file's bytes, and renaming or trashing it changes only the shortcut. A
-  shortcut to a folder opens the folder in Drive, since Dispatch can't reach what it holds.
-  The team gets the file shared with them, as **Team access** says. A folder brings only itself:
+  it's added. Documents keeps the file a shortcut stands for beside its tree, and shows the
+  shortcut as that file: its kind, its owner's name for it, and when and by whom it last
+  changed, which it sorts by. It opens that file, and a download takes that file's bytes. Its
+  name is the owner's, so it isn't renamed in Dispatch; trashing it trashes only the shortcut.
+  Once the account no longer reaches the file, because its owner trashed it or stopped sharing
+  it, the shortcut is `unavailable`: shown faded, opening nothing, and only trashed. A shortcut
+  to a folder opens the folder in Drive, since Dispatch can't reach what it holds. The team
+  gets the file shared with them, as **Team access** says; one the account may not share on,
+  as when it may only view it, can't be, and adding it says the team asks its owner for it
+  (`unshared` in the answer). Files in a shared drive come in as shortcuts too: every call
+  about one file says Dispatch understands shared drives (`supportsAllDrives`), and listing
+  and the change feed include their files. A folder brings only itself:
   what it holds is picked once it's there, and stays where it is. Picking the main folder
   changes nothing. The picker needs
   `DISPATCH_DEV_GOOGLE_API_KEY` and `…_GOOGLE_APP_ID` (the Google project's number), or
@@ -146,8 +154,9 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
 - **Fixture mode** never calls Google: its sign-in comes straight back with
   `fixture:<email>` as the code, and each account's Drive is kept in memory. A member who
   links signs in as `teammate@example.com`, and an address at `example.net` is no Google
-  account. Its Drive also holds files and a folder made directly in Drive, and a Sheet someone
-  else owns and shared with the account (`Route tracker`), out of reach until
+  account. Its Drive also holds files and a folder made directly in Drive, and two Sheets
+  someone else owns and shared with the account, `Route tracker` and `Fuel prices`, to view
+  only, out of reach until
   they're picked, and in place of Google's picker the page lists them, with those a pasted
   link names chosen.
 - **Page:** Documents, in a DSP's sidebar. It keeps the folders it opened, shows them at once

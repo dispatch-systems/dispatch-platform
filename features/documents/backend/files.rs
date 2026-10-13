@@ -12,7 +12,9 @@ use super::{
     team,
     tree::{Row, Tree},
 };
-use crate::api::types::{DocumentsFolder, DocumentsItem, FolderStep, ItemKind, NewKind};
+use crate::api::types::{
+    AddedFiles, DocumentsFolder, DocumentsItem, FolderStep, ItemKind, NewKind,
+};
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
@@ -389,7 +391,7 @@ pub async fn add(
     access: Dsp,
     ids: Vec<String>,
     parent: Option<String>,
-) -> Result<Vec<DocumentsItem>> {
+) -> Result<AddedFiles> {
     let dsp = c.dsp.id.clone();
     let (_, tree) = tree(state, &dsp).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
@@ -397,8 +399,10 @@ pub async fn add(
     let drive = open(state, &dsp, false).await?;
     drive.google.grant(&drive.access, &ids)?;
     let mut added = Vec::new();
-    // Whether it made a shortcut to a file someone else owns, to share with the team.
+    // Whether it made a shortcut to a file someone else owns, to share with the team, and
+    // those the account may not share on.
     let mut shortcuts = false;
+    let mut unshared = Vec::new();
     for id in &ids {
         // Picked as another Google account, the file was given to that account instead.
         let item = match drive.google.get(&drive.access, id).await {
@@ -427,14 +431,23 @@ pub async fn add(
             true => drive.google.move_into(&drive.access, &item, &parent).await,
             false => Err(Error::new("documents_cannot_move", 409)),
         };
-        let item = match moved {
+        let (item, file) = match moved {
             Err(error) if error.code == "documents_cannot_move" => {
                 shortcuts = true;
-                drive.google.shortcut(&drive.access, &item, &parent).await?
+                if !item.capabilities.can_share {
+                    unshared.push(item.name.clone());
+                }
+                let made = drive.google.shortcut(&drive.access, &item, &parent).await?;
+                (made, Some(item))
             }
-            moved => moved?,
+            moved => (moved?, None),
         };
-        mirror::of(&dsp).put(&drive.connection.folder_id, item.clone());
+        // The shortcut first, then the file it stands for, which stays beside it.
+        let mirror = mirror::of(&dsp);
+        mirror.put(&drive.connection.folder_id, item.clone());
+        if let Some(file) = file {
+            mirror.put(&drive.connection.folder_id, file);
+        }
         added.push(item);
     }
     let named: Vec<(String, String)> = added
@@ -466,10 +479,14 @@ pub async fn add(
         names: &names,
         account: &connection.account.email,
     };
-    Ok(added
+    let items = added
         .into_iter()
-        .map(|item| described.item(&Row::from(item), false))
-        .collect())
+        .map(|item| match tree.get(&item.id) {
+            Some(row) => described.item(row, false),
+            None => described.item(&Row::from(item), false),
+        })
+        .collect();
+    Ok(AddedFiles { items, unshared })
 }
 
 /// The file `id`, to save, as Google sends it.
@@ -625,7 +642,9 @@ impl Described<'_> {
     fn item(&self, row: &Row, located: bool) -> DocumentsItem {
         let record = self.records.get(&*row.id);
         let named = |user: &String| self.names.get(user).cloned();
-        let modifier = row.by.as_deref();
+        // A shortcut shows the file it stands for: its name, and who changed it last.
+        let shown = row.shown();
+        let modifier = shown.by.as_deref();
         // Google names the account for what Dispatch did, and the person for what they did
         // in Google.
         let by_account = modifier
@@ -638,10 +657,10 @@ impl Described<'_> {
         };
         DocumentsItem {
             id: row.id.to_string(),
-            name: row.name.to_string(),
+            name: shown.name.to_string(),
             kind: kind(row.mime.as_str()),
-            size: row.size,
-            modified_at: row.modified.to_string(),
+            size: shown.size,
+            modified_at: shown.modified.to_string(),
             modified_by,
             added_by: record.and_then(|record| named(&record.added_by)),
             items: row.folder().then(|| self.tree.count(&row.id) as u32),
@@ -652,8 +671,10 @@ impl Described<'_> {
                 .and_then(|parent| self.tree.get(parent))
                 .filter(|_| located)
                 .map(|parent| parent.name.to_string()),
-            thumbnail: self.picture(row),
-            extension: extension(&row.name, row.mime.as_str()).map(str::to_owned),
+            thumbnail: self.picture(shown),
+            extension: extension(&shown.name, row.mime.as_str()).map(str::to_owned),
+            shortcut: row.target.is_some(),
+            unavailable: row.unavailable(),
         }
     }
     /// Where the page fetches Google's picture of `row`, keeping its link for the DSP to

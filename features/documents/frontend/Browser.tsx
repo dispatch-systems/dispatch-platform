@@ -129,6 +129,9 @@ type Pending = {
 const SETTLING_MS = 30_000;
 /** Whether `item` stands in for something Google is still making. */
 const making = (item: DocumentsItem) => item.id.startsWith('pending:');
+/** How a row or card shows: dimmed while Google makes it, or once its file is gone. */
+const look = (item: DocumentsItem) =>
+  making(item) ? ' documents-making' : item.unavailable ? ' documents-unavailable' : '';
 
 /** Folders first, by name; then files, the most recently changed first: as the server sorts. */
 function arranged(items: DocumentsItem[]) {
@@ -291,6 +294,8 @@ export function Browser({
         location: null,
         thumbnail: null,
         extension: null,
+        shortcut: false,
+        unavailable: false,
       },
     });
     void perform(
@@ -665,7 +670,7 @@ function Opens({
   className?: string;
   children: ReactNode;
 }) {
-  if (making(item)) return <span className={className}>{children}</span>;
+  if (making(item) || item.unavailable) return <span className={className}>{children}</span>;
   return item.kind === 'folder' ? (
     <a
       className={className}
@@ -692,19 +697,19 @@ function Actions({ item, ask }: { item: DocumentsItem; ask: (asked: Asked) => vo
       anchored
       lazy
     >
-      {item.kind !== 'folder' && (
+      {item.kind !== 'folder' && !item.unavailable && (
         <a href={item.url} target="_blank" rel="noreferrer">
           <ExternalLink size={14} />
           Open in Google
         </a>
       )}
-      {item.kind !== 'folder' && (
+      {item.kind !== 'folder' && !item.unavailable && (
         <button disabled={saving.busy} onClick={() => void saving.run()}>
           <Download size={14} />
           {downloadLabel(item)}
         </button>
       )}
-      <button onClick={() => ask({ to: 'rename', item })}>Rename</button>
+      {!item.shortcut && <button onClick={() => ask({ to: 'rename', item })}>Rename</button>}
       <button className="danger" onClick={() => ask({ to: 'trash', item })}>
         Move to trash
       </button>
@@ -738,7 +743,7 @@ function Table({ view, items, searching, ask }: ViewProps) {
           {items.map((item) => (
             <tr
               key={item.id}
-              className={making(item) ? 'documents-making' : undefined}
+              className={look(item).trim() || undefined}
               onContextMenu={openContextMenu}
             >
               <td>
@@ -752,10 +757,14 @@ function Table({ view, items, searching, ask }: ViewProps) {
               </td>
               <td className="muted">{typeOf(item)}</td>
               <td>
-                <span className="documents-edited">
-                  {labels.edited(item.modifiedAt)}
-                  {item.modifiedBy && <small>{item.modifiedBy}</small>}
-                </span>
+                {item.unavailable ? (
+                  <span className="muted">Unavailable</span>
+                ) : (
+                  <span className="documents-edited">
+                    {labels.edited(item.modifiedAt)}
+                    {item.modifiedBy && <small>{item.modifiedBy}</small>}
+                  </span>
+                )}
               </td>
               <td>
                 {item.addedBy ? (
@@ -788,7 +797,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <div className="documents-card-grid">
             {folders.map((item) => (
               <div
-                className={`documents-folder-card${making(item) ? ' documents-making' : ''}`}
+                className={`documents-folder-card${look(item)}`}
                 key={item.id}
                 onContextMenu={openContextMenu}
               >
@@ -811,7 +820,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <div className="documents-card-grid">
             {files.map((item) => (
               <div
-                className={`documents-file-card${making(item) ? ' documents-making' : ''}`}
+                className={`documents-file-card${look(item)}`}
                 key={item.id}
                 onContextMenu={openContextMenu}
               >
@@ -824,7 +833,9 @@ function Grid({ view, items, searching, ask }: ViewProps) {
                       <small>
                         {searching
                           ? `in ${item.location ?? 'Documents'}`
-                          : `Edited ${labels.inline(item.modifiedAt)}${item.modifiedBy ? ` by ${item.modifiedBy}` : ''}`}
+                          : item.unavailable
+                            ? 'Unavailable'
+                            : `Edited ${labels.inline(item.modifiedAt)}${item.modifiedBy ? ` by ${item.modifiedBy}` : ''}`}
                       </small>
                     </span>
                   </span>

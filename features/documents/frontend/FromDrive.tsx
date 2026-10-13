@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
 import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';
 import { addFiles, type PickerSetup } from '../api/client.js';
 import { driveLinks } from './driveLinks.js';
@@ -19,6 +20,10 @@ const PICKED = 'dispatch-documents-picked';
 
 /** Where the picker opens: on the files a link named, or a folder's, or else the open one's. */
 type At = { files: string[]; folder?: string };
+
+/** Names as a sentence lists them: "A", "A or B", "A, B or C". */
+const listed = (names: string[]) =>
+  names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names[0];
 
 /** What the picker's page picked, once, if it went back to this page. */
 function takePicked() {
@@ -43,13 +48,16 @@ export function useFromDrive(
   // Fixture mode's list, with the files a pasted link named chosen.
   const [choosing, setChoosing] = useState<string[]>();
   const [linking, setLinking] = useState(false);
-  const adding = useAction(
-    async (files: string[]) => {
-      await addFiles(files, folder);
-      added();
-    },
-    { success: 'Added to Documents' },
-  );
+  const { notify } = useFeedback();
+  const adding = useAction(async (files: string[]) => {
+    const { unshared } = await addFiles(files, folder);
+    added();
+    notify(
+      unshared.length
+        ? `Added to Documents. You can't share ${listed(unshared)}, so teammates ask its owner to open it.`
+        : 'Added to Documents',
+    );
+  });
   function open(at: At = { files: [] }) {
     if (!picker) return;
     if (!picker.google) return setChoosing(at.files);
