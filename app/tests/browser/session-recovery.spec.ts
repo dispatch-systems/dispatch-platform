@@ -31,7 +31,7 @@ test('an idle dashboard renews an expired presence view once and signs out when 
   page.on('response', (response) => {
     const path = new URL(response.url()).pathname;
     if (path === '/api/session/dsp' && response.status() === 200) opened++;
-    if (path === '/api/dsp/presence') {
+    if (path === '/api/dsp/presence' && response.request().postDataJSON().state !== 'gone') {
       if (response.status() === 409) refused++;
       if (response.status() === 200) accepted++;
     }

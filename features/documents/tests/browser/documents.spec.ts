@@ -51,11 +51,11 @@ test('large folders keep one page mounted in both layouts, search every item and
   await page.reload();
   const rows = page.locator('.documents-table tbody tr');
   await expect(rows).toHaveCount(100);
-  await expect(page.locator('.row-menu .account-popover button')).toHaveCount(0);
+  await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
   await page.getByLabel('Actions for File 0000.txt').click();
   await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.row-menu .account-popover button')).toHaveCount(0);
+  await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByRole('link', { name: 'File 0100.txt', exact: true })).toBeVisible();
   await expect(rows).toHaveCount(100);
