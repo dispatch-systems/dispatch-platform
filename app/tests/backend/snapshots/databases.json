@@ -58,6 +58,9 @@
       [10, "documents_files", "9a5cddc24f08a790"],
       [11, "documents_people", "fb130ca99f140d80"],
       [12, "accounts", "3b90671344bd46dd"]
+    ],
+    "owned": [
+      ["documents", 1, "documents_shared_files", "2f535ad4e09b9f2d"]
     ]
   },
   {

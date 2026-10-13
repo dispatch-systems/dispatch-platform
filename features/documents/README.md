@@ -104,7 +104,7 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   it's added. Documents shows a shortcut as the file it stands for and opens that file, a
   download takes that file's bytes, and renaming or trashing it changes only the shortcut. A
   shortcut to a folder opens the folder in Drive, since Dispatch can't reach what it holds.
-  Teammates open the file only if its owner shared it with them. A folder brings only itself:
+  The team gets the file shared with them, as **Team access** says. A folder brings only itself:
   what it holds is picked once it's there, and stays where it is. Picking the main folder
   changes nothing. The picker needs
   `DISPATCH_DEV_GOOGLE_API_KEY` and `…_GOOGLE_APP_ID` (the Google project's number), or
@@ -123,16 +123,23 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   share Dispatch gave them. Sharing follows the team within a minute, and is brought up to date
   when Google is connected and when a member links. The main folder and everything Dispatch
   makes in it can't be shared on by its editors (`writersCanShare` off), so the team decides
-  who it's shared with.
+  who it's shared with. A file someone else owns that Documents holds a shortcut to is shared
+  with them too, as an editor, at the same address, as far as its owner lets the account
+  share it: when the shortcut comes in, and whenever the folder's sharing is brought up to
+  date. Dispatch keeps the shares it made of such files (`documents_shared_files`) and takes
+  back only those: from members who leave or lose `documents.use`, and from everyone once the
+  shortcut leaves Documents. A share its owner made stays.
 - **Renaming** a file keeps its extension, the letters and digits after its last dot (up to
   eight): the dialog shows the name without it, and `…/rename` refuses a name that changes it
   (`documents_extension_kept`). Folders and Google's own Docs, Sheets and Slides have none, so
   their whole name changes. Each item names its `extension` for the dialog.
 - **Reconnecting** takes the same Google account only: `drive.file` reaches the files
   Dispatch made through that account and no other.
-- **Data:** `documents_connection`, `documents_connect_requests`, `documents_files` and
-  `documents_people` (who the folder is shared with, and at what address), in
-  each DSP's own database; the account's refresh token, encrypted in the DSP's secrets as `google.enc`.
+- **Data:** `documents_connection`, `documents_connect_requests`, `documents_files`,
+  `documents_people` (who the folder is shared with, and at what address) and
+  `documents_shared_files` (the shares Dispatch made of files someone else owns), in each
+  DSP's own database; the account's refresh token, encrypted in the DSP's secrets as
+  `google.enc`.
 - **Upkeep:** every minute, the folder is shared anew for each connected DSP whose team
   changed, read from Dispatch alone. Hourly, a connection Google stopped accepting is marked
   broken, and each connected DSP's sharing is checked against Google's own list.

@@ -3,12 +3,13 @@
 //! they linked, or else their Dispatch email. Google refuses an address that is no Google
 //! account, so Dispatch emails that member, once, how to link one, and Documents asks them to
 //! until they do. Members who leave, or no longer use Documents, lose the share Dispatch gave
-//! them.
+//! them. A file someone else owns, which Documents holds a shortcut to, is shared with them
+//! too, as far as the account may share it.
 use super::{
     drive::{Refused, Share},
     files,
     google::Google,
-    storage::{DocumentsStore, Person, Sharing},
+    storage::{DocumentsStore, Person, SharedFile, Sharing},
 };
 use crate::api::types::{GoogleSignIn, MySharing, SharingState};
 use dispatch_core::{
@@ -21,7 +22,7 @@ use dispatch_core::{
 };
 use serde_json::json;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -138,6 +139,8 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
     };
     let mut changed: Vec<Person> = Vec::new();
     let mut mail: Vec<String> = Vec::new();
+    // Where the folder is shared with each member, for the files shared with them too.
+    let mut addresses: Vec<String> = Vec::new();
     for member in &wanted {
         let before = people.iter().find(|person| person.user == member.user);
         let linked = before.and_then(|person| person.linked.clone());
@@ -179,6 +182,9 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
                 Err(Refused::Other(code)) => person.sharing = Sharing::Refused(code),
             }
         }
+        if let (Sharing::Shared, Some((email, _))) = (&person.sharing, &person.shared) {
+            addresses.push(email.clone());
+        }
         if before != Some(&person) {
             changed.push(person);
         }
@@ -210,7 +216,99 @@ pub async fn sync(state: &Arc<State>, dsp: &str) -> Result<Vec<Share>> {
             Ok(())
         })
         .await?;
+    share_files(state, dsp, &drive, &addresses).await?;
     Ok(shares)
+}
+
+/// Shares each file someone else owns that Documents holds a shortcut to with everyone the
+/// folder is shared with, as far as the account may share it, and takes back the shares
+/// Dispatch made from those who left, and of files no longer in Documents. Shares anyone else
+/// made stay, so someone the file's owner shared it with keeps it.
+async fn share_files(
+    state: &Arc<State>,
+    dsp: &str,
+    drive: &files::Drive,
+    addresses: &[String],
+) -> Result<()> {
+    let (_, tree) = files::tree(state, dsp).await?;
+    let targets = tree.targets();
+    let account = drive.connection.account.email.to_lowercase();
+    let wanted: BTreeSet<String> = addresses
+        .iter()
+        .map(|email| email.to_lowercase())
+        .filter(|email| *email != account)
+        .collect();
+    let at = dsp.to_owned();
+    let made = state.read(move |db| db.documents_shared_files(&at)).await?;
+    let mut saved = Vec::new();
+    for file in &targets {
+        let missing: Vec<&String> = wanted
+            .iter()
+            .filter(|email| {
+                !made
+                    .iter()
+                    .any(|shared| &shared.file == file && &shared.email == *email)
+            })
+            .collect();
+        if missing.is_empty() {
+            continue;
+        }
+        // Its owner may not let the account see who has it, or share it on.
+        let Ok(shares) = drive.google.shares(&drive.access, file).await else {
+            continue;
+        };
+        for email in missing {
+            let has = shares.iter().any(|share| {
+                share
+                    .email_address
+                    .as_deref()
+                    .is_some_and(|other| other.eq_ignore_ascii_case(email))
+            });
+            if has {
+                continue;
+            }
+            match drive.google.share(&drive.access, file, email).await {
+                Ok(Ok(share)) => saved.push(SharedFile {
+                    file: file.clone(),
+                    email: email.clone(),
+                    share,
+                }),
+                Err(error) if error.code == "google_connection_broken" => return Err(error),
+                _ => {}
+            }
+        }
+    }
+    let mut taken = Vec::new();
+    for shared in made {
+        if targets.contains(&shared.file) && wanted.contains(&shared.email) {
+            continue;
+        }
+        match drive
+            .google
+            .unshare(&drive.access, &shared.file, &shared.share)
+            .await
+        {
+            Err(error) if error.code == "google_connection_broken" => return Err(error),
+            // One Google won't take back is forgotten all the same: the account may no
+            // longer reach the file.
+            _ => taken.push(shared),
+        }
+    }
+    if saved.is_empty() && taken.is_empty() {
+        return Ok(());
+    }
+    let at = dsp.to_owned();
+    state
+        .run(move |db| {
+            for shared in &saved {
+                db.save_documents_shared_file(&at, shared)?;
+            }
+            for shared in &taken {
+                db.remove_documents_shared_file(&at, shared)?;
+            }
+            Ok(())
+        })
+        .await
 }
 
 /// Emails a member how to link a Google account, so the folder can be shared with them. A
@@ -294,6 +392,11 @@ pub fn nudge(state: &Arc<State>, dsp: &str) {
     if turn(dsp).try_lock().is_err() {
         return;
     }
+    share_soon(state, dsp);
+}
+/// Shares the folder, and the files Documents holds shortcuts to, at the DSP's next turn:
+/// once a shortcut comes or goes.
+pub fn share_soon(state: &Arc<State>, dsp: &str) {
     let (state, dsp) = (Arc::clone(state), dsp.to_owned());
     tokio::spawn(async move {
         if let Err(error) = sync(&state, &dsp).await {

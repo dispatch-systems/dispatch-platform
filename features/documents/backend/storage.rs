@@ -126,6 +126,29 @@ pub trait DocumentsStore {
     fn remove_documents_person(&self, dsp: &str, user: &str) -> Result<()>;
     /// Keeps the Google account a member linked, to share the folder with it next.
     fn link_documents_google(&self, dsp: &str, user: &str, email: &str) -> Result<()>;
+    /// Every share Dispatch made of a file someone else owns.
+    fn documents_shared_files(&self, dsp: &str) -> Result<Vec<SharedFile>>;
+    /// Keeps a share Dispatch made of such a file.
+    fn save_documents_shared_file(&self, dsp: &str, shared: &SharedFile) -> Result<()>;
+    /// Forgets a share Dispatch took back.
+    fn remove_documents_shared_file(&self, dsp: &str, shared: &SharedFile) -> Result<()>;
+}
+/// A share Dispatch made of a file someone else owns, with a teammate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SharedFile {
+    pub file: String,
+    pub email: String,
+    /// Drive's ID for the share.
+    pub share: String,
+}
+impl FromRow for SharedFile {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            file: row.get("file_id")?,
+            email: row.get("email")?,
+            share: row.get("share_id")?,
+        })
+    }
 }
 impl DocumentsStore for Store {
     fn documents_connection(&self, dsp: &str) -> Result<Option<Connection>> {
@@ -300,6 +323,27 @@ impl DocumentsStore for Store {
              VALUES (?1,?2,'needs_account',?3) ON CONFLICT(user_id) DO UPDATE SET \
              linked_email=excluded.linked_email,updated_at=excluded.updated_at",
             params![user, email, iso()],
+        )?;
+        Ok(())
+    }
+    fn documents_shared_files(&self, dsp: &str) -> Result<Vec<SharedFile>> {
+        self.dsp(dsp)?.query_as(
+            "SELECT file_id,email,share_id FROM documents_shared_files ORDER BY file_id,email",
+            [],
+        )
+    }
+    fn save_documents_shared_file(&self, dsp: &str, shared: &SharedFile) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "INSERT OR REPLACE INTO documents_shared_files (file_id,email,share_id,shared_at) \
+             VALUES (?,?,?,?)",
+            params![shared.file, shared.email, shared.share, iso()],
+        )?;
+        Ok(())
+    }
+    fn remove_documents_shared_file(&self, dsp: &str, shared: &SharedFile) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "DELETE FROM documents_shared_files WHERE file_id=? AND email=?",
+            params![shared.file, shared.email],
         )?;
         Ok(())
     }

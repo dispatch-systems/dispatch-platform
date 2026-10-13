@@ -11,7 +11,7 @@ pub use api::types::{
 };
 
 use dispatch_core::{
-    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
+    db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
     manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
@@ -32,6 +32,7 @@ pub const FEATURE: Feature = Feature {
             "documents_connect_requests",
             "documents_files",
             "documents_people",
+            "documents_shared_files",
         ],
     )],
     migrations: &[Migrations {
@@ -53,6 +54,17 @@ pub const FEATURE: Feature = Feature {
                 apply: Sql(include_str!("migrations/dsp/0011_documents_people.sql")),
             },
         ],
+    }],
+    // Numbered by Documents itself: core keeps the DSP's database, and every owner adds to it.
+    own_migrations: &[OwnMigrations {
+        kind: Kind::DSP,
+        list: &[Migration {
+            id: 1,
+            name: "documents_shared_files",
+            apply: Sql(include_str!(
+                "migrations/dsp/0001_documents_shared_files.sql"
+            )),
+        }],
     }],
     // Google's sign-in client, and its file picker's keys.
     settings: &[
