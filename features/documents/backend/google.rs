@@ -299,11 +299,11 @@ impl Google {
         })
     }
     /// Makes a folder at the top of the account's Drive and answers its ID. Fixture mode's
-    /// holds two files someone made directly in Drive, as a team's does in time.
+    /// account then holds files elsewhere in its Drive, as an account does.
     pub async fn create_folder(&self, access: &str, name: &str) -> Result<String> {
         let id = self.create(access, name, FOLDER, None).await?.id;
         if let Self::Fixture = self {
-            super::drive::fixture_made_in_drive(access, &id)?;
+            super::drive::fixture_made_in_drive(access)?;
         }
         Ok(id)
     }

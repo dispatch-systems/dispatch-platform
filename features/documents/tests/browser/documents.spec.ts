@@ -10,13 +10,13 @@ import { test, expect, login, openDsp } from '../../../../core/shell/tests/suppo
 /**
  * Connects Google as an owner does: from Documents to the Google Drive card on Settings'
  * Connections, which Google sends the browser back to, and which sends the owner on to
- * Documents, which shows what someone made directly in its folder in Drive.
+ * Documents, empty.
  */
 async function connect(page: Page) {
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await page.getByRole('link', { name: /Go to Settings/ }).click();
   await page.getByRole('button', { name: 'Connect Google' }).click();
-  await expect(page.getByRole('link', { name: /Fuel receipts\.pdf/ })).toBeVisible();
+  await expect(page.getByText('Nothing here yet')).toBeVisible();
 }
 
 test('large folders keep one page mounted in both layouts, search every item and reveal a new folder', async ({
@@ -79,7 +79,7 @@ test('large folders keep one page mounted in both layouts, search every item and
   await expect(page.getByRole('link', { name: /New folder/ })).toBeVisible();
 });
 
-test('an owner connects Google, lands in Documents and makes a folder and a Doc that opens in Google', async ({
+test('an owner connects Google, lands in an empty Documents and makes a folder and a Doc that opens in Google', async ({
   page,
 }) => {
   await login(page);

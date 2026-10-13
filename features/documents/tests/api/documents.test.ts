@@ -521,8 +521,11 @@ test('those who manage Documents add files and folders made directly in Drive, p
   const top = async () => (await listed()).map((item) => item.name);
   const named = async (name: string, folder?: string) =>
     (await listed(folder)).find((item) => item.name === name)!;
-  // Dispatch reaches the whole Drive: what someone made directly in the folder shows at once,
-  // folders and all.
+  // Dispatch reaches the whole Drive: what the team made directly in the folder meanwhile,
+  // as fixture mode's does by the time the DSP reconnects, shows without being added, folders
+  // and all.
+  assert.deepEqual(await top(), []);
+  await connect(owner);
   assert.deepEqual(await top(), ['Safety', 'Fuel receipts.pdf']);
   const safetyFolder = await named('Safety');
   assert.deepEqual(

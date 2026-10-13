@@ -160,10 +160,11 @@ security assessment.
 - **Fixture mode** never calls Google: its sign-in comes straight back with
   `fixture:<email>` as the code, and each account's Drive is kept in memory. A member who
   links signs in as `teammate@example.com`, and an address at `example.net` is no Google
-  account. Its Drive also holds files and a folder made directly in the main folder, which
-  Documents shows at once, and a picture elsewhere in the account's Drive and two Sheets
-  someone else owns and shared with the account, `Route tracker` and `Fuel prices`, to view
-  only, which come in once they're picked, and in place of Google's picker the page lists them, with those a pasted
+  account. A main folder it makes starts empty; reconnected to the one it kept, its team has
+  made a folder, a Doc in it and a PDF directly in it meanwhile, which Documents shows without
+  their being added. Its Drive also holds a picture elsewhere and two Sheets someone else owns
+  and shared with the account, `Route tracker` and `Fuel prices`, to view only, which come in
+  once they're picked, and in place of Google's picker the page lists them, with those a pasted
   link names chosen.
 - **Page:** Documents, in a DSP's sidebar. It keeps the folders it opened, shows them at once
   when they open again and asks for them anew behind them, every 15 seconds while one is
