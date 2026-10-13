@@ -167,8 +167,15 @@ const PAGE: &str = r#"<!doctype html>
   const PICKED = 'dispatch-documents-picked';
   const answer = new URLSearchParams(location.hash.slice(1));
   history.replaceState(null, '', location.pathname);
-  const asked = JSON.parse(sessionStorage.getItem(ASKED) || 'null');
-  const home = asked && new URL(asked.back, location.href);
+  // What Documents asked for, and the page to go back to; nothing if either can't be read.
+  let asked = null;
+  let home = null;
+  try {
+    asked = JSON.parse(sessionStorage.getItem(ASKED) || 'null');
+    home = new URL(asked.back);
+  } catch {
+    asked = null;
+  }
 
   // Back to Documents, with what was picked if anything was.
   function back(files) {

@@ -25,9 +25,13 @@ function takePicked() {
   const left = sessionStorage.getItem(PICKED);
   if (!left) return undefined;
   sessionStorage.removeItem(PICKED);
-  const { files, at } = JSON.parse(left) as { files?: string[]; at?: string };
-  const page = (href: string) => href.split('?')[0];
-  return files?.length && at && page(at) === page(location.href) ? files : undefined;
+  try {
+    const { files, at } = JSON.parse(left) as { files?: string[]; at?: string };
+    const page = (href: string) => href.split('?')[0];
+    return files?.length && at && page(at) === page(location.href) ? files : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Adds files from Drive into `folder`, or the top, calling `added` once they're in. */
