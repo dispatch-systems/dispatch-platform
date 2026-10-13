@@ -61,3 +61,61 @@ fn an_upload_asks_at_its_start_for_everything_documents_reads_of_the_file_it_mad
         "https://drive.google.com/file/d/1a2b3c/view"
     );
 }
+
+#[test]
+fn a_change_feed_page_reads_as_files_kept_and_files_gone() {
+    let page: ChangePage = serde_json::from_value(json!({
+        "newStartPageToken": "42",
+        "changes": [
+            {"fileId": "kept", "removed": false, "file": {
+                "id": "kept",
+                "name": "Fuel receipts.pdf",
+                "mimeType": "application/pdf",
+                "parents": ["folder"],
+                "modifiedTime": "2026-10-09T18:04:55.000Z",
+                "webViewLink": "https://drive.google.com/file/d/kept/view",
+                "trashed": false,
+            }},
+            {"fileId": "trashed", "removed": false, "file": {
+                "id": "trashed",
+                "name": "Old plan",
+                "mimeType": "application/pdf",
+                "modifiedTime": "2026-10-09T18:04:55.000Z",
+                "webViewLink": "https://drive.google.com/file/d/trashed/view",
+                "trashed": true,
+            }},
+            {"fileId": "deleted", "removed": true},
+            // A change to a shared drive itself.
+            {"removed": false},
+        ],
+    }))
+    .expect("Google's page reads");
+    let mut changed = Vec::new();
+    assert!(matches!(page.read(&mut changed), Some(Then::Done(next)) if next == "42"));
+    let read: Vec<(bool, &str)> = changed
+        .iter()
+        .map(|change| match change {
+            Changed::Kept(item) => (true, item.id.as_str()),
+            Changed::Gone(id) => (false, id.as_str()),
+        })
+        .collect();
+    assert_eq!(
+        read,
+        [(true, "kept"), (false, "trashed"), (false, "deleted")]
+    );
+    assert!(matches!(&changed[0], Changed::Kept(item) if item.parents == ["folder"]));
+}
+
+#[test]
+fn a_picture_is_asked_of_google_at_the_size_the_page_asked_for_and_only_of_google() {
+    let link = "https://lh3.googleusercontent.com/drive-storage/AJQWtB=s220";
+    assert_eq!(
+        sized(link, 300).as_deref(),
+        Some("https://lh3.googleusercontent.com/drive-storage/AJQWtB=s300")
+    );
+    assert_eq!(
+        sized(link, 600).as_deref(),
+        Some("https://lh3.googleusercontent.com/drive-storage/AJQWtB=s600")
+    );
+    assert_eq!(sized("https://example.com/picture=s220", 300), None);
+}

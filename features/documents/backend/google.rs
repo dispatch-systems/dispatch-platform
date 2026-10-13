@@ -3,12 +3,13 @@
 use crate::api::types::PickerKeys;
 use dispatch_core::{
     Error, Result,
-    foundation::{config::Config, crypto},
+    foundation::{config::Config, crypto, observability},
 };
 use serde::Deserialize;
+use serde_json::json;
 use std::{
     sync::{LazyLock, OnceLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const AUTHORIZE: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -217,7 +218,7 @@ impl Google {
         let _ = HTTP
             .post(REVOKE)
             .form(&[("token", tokens.access_token.as_str())])
-            .send()
+            .timed()
             .await;
         let profile = profile?;
         profile
@@ -313,7 +314,7 @@ impl Google {
             .get(format!("{FILES}/{id}"))
             .bearer_auth(access)
             .query(&[("fields", "id,trashed")])
-            .send()
+            .timed()
             .await
             .map_err(unreachable)?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -326,7 +327,7 @@ impl Google {
     /// Dispatch forgets the token whatever Google answers.
     pub async fn revoke(&self, refresh: &str) {
         if let Self::Live(_) = self {
-            let _ = HTTP.post(REVOKE).form(&[("token", refresh)]).send().await;
+            let _ = HTTP.post(REVOKE).form(&[("token", refresh)]).timed().await;
         }
     }
 }
@@ -410,7 +411,54 @@ async fn form<T: for<'de> Deserialize<'de>>(url: &str, fields: &[(&str, &str)]) 
 pub(super) async fn send<T: for<'de> Deserialize<'de>>(
     request: reqwest::RequestBuilder,
 ) -> Result<T> {
-    read(request.send().await.map_err(unreachable)?).await
+    read(request.timed().await.map_err(unreachable)?).await
+}
+/// Sends a request to Google as `send` does, noting how long Google took to answer it.
+pub(super) trait Timed {
+    fn timed(self) -> impl Future<Output = reqwest::Result<reqwest::Response>>;
+}
+impl Timed for reqwest::RequestBuilder {
+    fn timed(self) -> impl Future<Output = reqwest::Result<reqwest::Response>> {
+        sent(self)
+    }
+}
+/// Sends `request`, noting in the log how long Google took to answer it.
+async fn sent(request: reqwest::RequestBuilder) -> reqwest::Result<reqwest::Response> {
+    let (client, request) = request.build_split();
+    let request = request?;
+    let call = called(request.method(), request.url());
+    let started = Instant::now();
+    let answer = client.execute(request).await;
+    observability::event(
+        "info",
+        "documents.google",
+        json!({
+            "call": call,
+            "elapsedMs": started.elapsed().as_millis() as u64,
+            "status": answer.as_ref().ok().map(|response| response.status().as_u16()),
+        }),
+    );
+    answer
+}
+/// A request as the log names it: its method and address, without the IDs in its path or
+/// anything after it. A picture's address is only its host, since its path is its key.
+fn called(method: &reqwest::Method, url: &reqwest::Url) -> String {
+    let host = url.host_str().unwrap_or_default();
+    if !host.ends_with("googleapis.com") {
+        return format!("{method} {host}");
+    }
+    let mut named = false;
+    let path: Vec<&str> = url
+        .path_segments()
+        .into_iter()
+        .flatten()
+        .map(|segment| {
+            let id = named;
+            named = matches!(segment, "files" | "permissions");
+            if id { "{id}" } else { segment }
+        })
+        .collect();
+    format!("{method} {host}/{}", path.join("/"))
 }
 /// Google's answer, or what its refusal means for the connection.
 pub(super) async fn read<T: for<'de> Deserialize<'de>>(response: reqwest::Response) -> Result<T> {

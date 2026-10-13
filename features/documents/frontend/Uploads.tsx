@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle, X } from 'lucide-react';
 import { messageOf } from '../../../core/shell/frontend/lib/errors.js';
 import { Modal } from '../../../core/shell/frontend/ui/index.js';
-import { UPLOAD_LIMIT, createItem, uploadFile } from '../api/client.js';
+import { UPLOAD_LIMIT, createItem, uploadFile, type DocumentsItem } from '../api/client.js';
 import { size } from './items.js';
 
 // Uploading files and folders into the folder open, from a picker or dropped on the page:
@@ -62,8 +62,14 @@ export async function dropped(transfer: DataTransfer): Promise<Picked[]> {
   return found;
 }
 
-/** Uploads into `folder`, or the top, calling `uploaded` as each file lands. */
-export function useUploads(folder: string | undefined, uploaded: () => void) {
+/**
+ * Uploads into `folder`, or the top, calling `uploaded` with each folder made and each file as
+ * it lands, and the folder it went into.
+ */
+export function useUploads(
+  folder: string | undefined,
+  uploaded: (item: DocumentsItem, into: string | undefined) => void,
+) {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const next = useRef(0);
   const change = (key: number, update: Partial<Upload>) =>
@@ -93,9 +99,11 @@ export function useUploads(folder: string | undefined, uploaded: () => void) {
       if (!folders.has(key))
         folders.set(
           key,
-          into(path.slice(0, -1)).then(
-            async (parent) => (await createItem(parent, 'folder', path.at(-1)!)).id,
-          ),
+          into(path.slice(0, -1)).then(async (parent) => {
+            const made = await createItem(parent, 'folder', path.at(-1)!);
+            uploaded(made, parent);
+            return made.id;
+          }),
         );
       return folders.get(key)!;
     };
@@ -106,9 +114,11 @@ export function useUploads(folder: string | undefined, uploaded: () => void) {
         change(key, { state: 'uploading' });
         try {
           const parent = await into(each.path);
-          await uploadFile(each.file, each.upload.name, parent, (sent) => change(key, { sent }));
+          const item = await uploadFile(each.file, each.upload.name, parent, (sent) =>
+            change(key, { sent }),
+          );
           change(key, { state: 'done', sent: each.file.size });
-          uploaded();
+          uploaded(item, parent);
         } catch (error) {
           change(key, { state: 'failed', error: messageOf(error) });
         }

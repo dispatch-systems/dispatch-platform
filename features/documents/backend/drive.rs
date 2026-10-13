@@ -1,9 +1,10 @@
 //! Google Drive, as Documents uses it with the DSP's account: every file Dispatch can reach,
-//! and making, uploading, downloading, renaming and trashing them. `drive.file` lets Dispatch reach only the files it
-//! made or was given, so listing them all is listing Documents, plus anything another DSP made
-//! with the same account, which the tree leaves out. Fixture mode keeps a Drive of its own in
-//! memory for each account, as Google keeps an account's files for every DSP that connects it.
-use super::google::{FILES, FOLDER, Google, HTTP, read, send, unreachable};
+//! what changed in them since, and making, uploading, downloading, renaming and trashing them.
+//! `drive.file` lets Dispatch reach only the files it made or was given, so listing them all is
+//! listing Documents, plus anything another DSP made with the same account, which the tree
+//! leaves out. Fixture mode keeps a Drive of its own in memory for each account, as Google
+//! keeps an account's files for every DSP that connects it.
+use super::google::{FILES, FOLDER, Google, HTTP, Timed, read, send, unreachable};
 use axum::body::Body;
 use axum::body::Bytes;
 use dispatch_core::{
@@ -15,7 +16,7 @@ use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{LazyLock, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub const DOC: &str = "application/vnd.google-apps.document";
@@ -28,10 +29,13 @@ const FIELDS: &str = concat!(
 );
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
+/// What changed in the account's Drive.
+const CHANGES: &str = "https://www.googleapis.com/drive/v3/changes";
 /// Where a file's bytes go up.
 const UPLOADS: &str = "https://www.googleapis.com/upload/drive/v3/files";
-/// The longest side of a card's picture, in pixels: sharp on a high-density screen.
-const PICTURE_SIZE: u32 = 600;
+/// The longest sides a card's picture is fetched at, in pixels: sharp on an ordinary screen,
+/// and on a high-density one.
+pub const PICTURE_SIZES: [u32; 2] = [300, 600];
 /// The largest picture Dispatch hands on; Google's are a small part of it.
 const PICTURE_LIMIT: usize = 2 * 1024 * 1024;
 /// How many pictures the server fetches from Google at once, across every DSP.
@@ -104,6 +108,9 @@ pub struct Item {
     pub thumbnail_link: Option<String>,
     /// Which picture that is, a number that grows as the file changes.
     pub thumbnail_version: Option<String>,
+    /// When Google described it, which its picture's link lasts hours from.
+    #[serde(skip, default = "Instant::now")]
+    pub seen: Instant,
 }
 impl Item {
     pub fn folder(&self) -> bool {
@@ -139,6 +146,69 @@ pub enum Refused {
     Other(String),
 }
 
+/// What changed in the account's Drive since Dispatch last asked, and where to ask from next.
+pub struct Changes {
+    pub changed: Vec<Changed>,
+    pub next: String,
+}
+/// A file that changed: as it is now, or gone from Dispatch's reach, trashed or deleted.
+pub enum Changed {
+    Kept(Box<Item>),
+    Gone(String),
+}
+
+/// A page of Google's change feed.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChangePage {
+    #[serde(default)]
+    changes: Vec<Change>,
+    next_page_token: Option<String>,
+    new_start_page_token: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Change {
+    file_id: Option<String>,
+    #[serde(default)]
+    removed: bool,
+    file: Option<ChangedFile>,
+}
+#[derive(Deserialize)]
+struct ChangedFile {
+    #[serde(flatten)]
+    item: Item,
+    #[serde(default)]
+    trashed: bool,
+}
+/// Where the change feed goes on after a page: its next page, or where the changes after
+/// these start.
+enum Then {
+    Page(String),
+    Done(String),
+}
+impl ChangePage {
+    /// Adds the page's changes to `changed`, each file as it is now or gone from Dispatch's
+    /// reach; answers where the feed goes on, if Google said.
+    fn read(self, changed: &mut Vec<Changed>) -> Option<Then> {
+        for change in self.changes {
+            // A change to a shared drive itself names no file.
+            let Some(id) = change.file_id else { continue };
+            changed.push(match change.file {
+                Some(file) if !change.removed && !file.trashed => {
+                    Changed::Kept(Box::new(file.item))
+                }
+                _ => Changed::Gone(id),
+            });
+        }
+        match (self.new_start_page_token, self.next_page_token) {
+            (Some(next), _) => Some(Then::Done(next)),
+            (None, Some(page)) => Some(Then::Page(page)),
+            (None, None) => None,
+        }
+    }
+}
+
 /// Whoever last changed a file, as Google names them.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -151,7 +221,7 @@ impl Google {
     /// Every file and folder Dispatch can reach in the account, out of the trash.
     pub async fn list(&self, access: &str) -> Result<Vec<Item>> {
         if let Self::Fixture = self {
-            return fixture(access, |drive| Ok(drive.values().cloned().collect()));
+            return fixture(access, |drive| Ok(drive.values().map(described).collect()));
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -174,6 +244,70 @@ impl Google {
             match page.next_page_token {
                 Some(token) => next = Some(token),
                 None => return Ok(items),
+            }
+        }
+        Err(Error::new("documents_too_many_files", 507))
+    }
+    /// Where the account's changes are read from, for those after now: asked before its files
+    /// are listed, so nothing changed while they were is missed.
+    pub async fn start_changes(&self, access: &str) -> Result<String> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| Ok(drive.changes.to_string()));
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Start {
+            start_page_token: String,
+        }
+        let start: Start = send(
+            HTTP.get(format!("{CHANGES}/startPageToken"))
+                .bearer_auth(access),
+        )
+        .await?;
+        Ok(start.start_page_token)
+    }
+    /// What changed in the files Dispatch can reach since `from`, each as it is now.
+    pub async fn changes(&self, access: &str, from: &str) -> Result<Changes> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                let from: u64 = from
+                    .parse()
+                    .map_err(|_| Error::new("documents_changes_lost", 410))?;
+                let changed = drive
+                    .changed
+                    .iter()
+                    .filter(|(_, at)| **at > from)
+                    .map(|(id, _)| match drive.files.get(id) {
+                        Some(item) if !drive.hidden.contains(id) => {
+                            Changed::Kept(Box::new(described(item)))
+                        }
+                        _ => Changed::Gone(id.clone()),
+                    })
+                    .collect();
+                Ok(Changes {
+                    changed,
+                    next: drive.changes.to_string(),
+                })
+            });
+        }
+        let fields = format!(
+            "nextPageToken,newStartPageToken,changes(fileId,removed,file({FIELDS},trashed))"
+        );
+        let mut changed = Vec::new();
+        let mut at = from.to_owned();
+        for _ in 0..PAGES {
+            let page: ChangePage = send(HTTP.get(CHANGES).bearer_auth(access).query(&[
+                ("pageToken", at.as_str()),
+                ("fields", fields.as_str()),
+                ("pageSize", "1000"),
+                ("spaces", "drive"),
+                ("includeRemoved", "true"),
+            ]))
+            .await?;
+            match page.read(&mut changed) {
+                Some(Then::Done(next)) => return Ok(Changes { changed, next }),
+                Some(Then::Page(token)) => at = token,
+                None => return Err(Error::new("documents_changes_lost", 410)),
             }
         }
         Err(Error::new("documents_too_many_files", 507))
@@ -206,8 +340,10 @@ impl Google {
                     size: None,
                     thumbnail_link: None,
                     thumbnail_version: None,
+                    seen: Instant::now(),
                 };
                 drive.files.insert(id.clone(), item.clone());
+                drive.touch(&id);
                 Ok(item)
             });
         }
@@ -232,7 +368,9 @@ impl Google {
                 let item = drive.files.get_mut(id).ok_or_else(missing)?;
                 item.name = name.to_owned();
                 item.modified_time = iso();
-                Ok(item.clone())
+                let item = described(item);
+                drive.touch(id);
+                Ok(item)
             });
         }
         send(
@@ -299,7 +437,7 @@ impl Google {
             .bearer_auth(access)
             .query(&[("sendNotificationEmail", "false"), ("fields", "id")])
             .json(&json!({"type": "user", "role": "writer", "emailAddress": email}))
-            .send()
+            .timed()
             .await
             .map_err(super::google::unreachable)?;
         if response.status() == reqwest::StatusCode::BAD_REQUEST
@@ -335,7 +473,7 @@ impl Google {
         let response = HTTP
             .delete(format!("{FILES}/{id}/permissions/{share}"))
             .bearer_auth(access)
-            .send()
+            .timed()
             .await
             .map_err(super::google::unreachable)?;
         if response.status() == reqwest::StatusCode::NOT_FOUND || response.status().is_success() {
@@ -396,7 +534,7 @@ impl Google {
             });
         }
         let response = upload_start(access, name, mime, parent, length)
-            .send()
+            .timed()
             .await
             .map_err(unreachable)?;
         if !response.status().is_success() {
@@ -443,9 +581,11 @@ impl Google {
                         email_address: Some(account),
                     }),
                     size: Some(length.to_string()),
+                    seen: Instant::now(),
                 };
                 drive.files.insert(id.clone(), item.clone());
-                drive.contents.insert(id, bytes);
+                drive.contents.insert(id.clone(), bytes);
+                drive.touch(&id);
                 Ok(item)
             });
         }
@@ -454,7 +594,7 @@ impl Google {
             .bearer_auth(access)
             .header(reqwest::header::CONTENT_LENGTH, length)
             .body(reqwest::Body::wrap_stream(upload.stream()))
-            .send()
+            .timed()
             .await
             .map_err(|error| {
                 // The member's bytes stopped coming, rather than Google answering.
@@ -469,7 +609,7 @@ impl Google {
     /// Google's picture of what a file holds, by the `link` a listing gave, sized for a card.
     /// Google refusing it only leaves the card its drawing, so it never counts against the
     /// connection.
-    pub async fn picture(&self, access: &str, link: &str) -> Result<Picture> {
+    pub async fn picture(&self, access: &str, link: &str, size: u32) -> Result<Picture> {
         if let Self::Fixture = self {
             let id = link.strip_prefix("fixture:").ok_or_else(missing)?;
             return fixture(access, |drive| {
@@ -486,12 +626,12 @@ impl Google {
                 })
             });
         }
-        let link = sized(link).ok_or_else(missing)?;
+        let link = sized(link, size).ok_or_else(missing)?;
         let _turn = PICTURES.acquire().await.map_err(|_| missing())?;
         let mut response = PICTURE_HTTP
             .get(link)
             .bearer_auth(access)
-            .send()
+            .timed()
             .await
             .map_err(unreachable)?;
         let kind = response
@@ -525,10 +665,16 @@ impl Google {
             bytes: bytes.into(),
         })
     }
-    /// The file `item`, to save: Google's own Docs, Sheets and Slides as the Word, Excel and
-    /// PowerPoint files they export as, and an uploaded file as it was.
-    pub async fn download(&self, access: &str, item: &Item) -> Result<Download> {
-        let exported = match item.mime_type.as_str() {
+    /// The file `id`, named `name`, of `mime`, to save: Google's own Docs, Sheets and Slides
+    /// as the Word, Excel and PowerPoint files they export as, and an uploaded file as it was.
+    pub async fn download(
+        &self,
+        access: &str,
+        id: &str,
+        name: &str,
+        mime: &str,
+    ) -> Result<Download> {
+        let exported = match mime {
             DOC => Some(DOCX),
             SHEET => Some(XLSX),
             SLIDES => Some(PPTX),
@@ -537,35 +683,37 @@ impl Google {
             }
             _ => None,
         };
-        let (kind, name) = match exported {
-            Some((kind, ending)) => (kind.to_owned(), format!("{}.{ending}", item.name)),
-            None => (item.mime_type.clone(), item.name.clone()),
+        let (kind, saved) = match exported {
+            Some((kind, ending)) => (kind.to_owned(), format!("{name}.{ending}")),
+            None => (mime.to_owned(), name.to_owned()),
         };
         if let Self::Fixture = self {
             let bytes = fixture(access, |drive| {
-                drive.files.get(&item.id).ok_or_else(missing)?;
-                Ok(drive.contents.get(&item.id).cloned().unwrap_or_else(|| {
-                    format!("Fixture mode's export of {}", item.name).into_bytes()
-                }))
+                drive.files.get(id).ok_or_else(missing)?;
+                Ok(drive
+                    .contents
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("Fixture mode's export of {name}").into_bytes()))
             })?;
             return Ok(Download {
                 kind,
-                name,
+                name: saved,
                 length: Some(bytes.len() as u64),
                 body: Body::from(bytes),
             });
         }
         let request = match exported {
             Some((kind, _)) => TRANSFER
-                .get(format!("{FILES}/{}/export", item.id))
+                .get(format!("{FILES}/{id}/export"))
                 .query(&[("mimeType", kind)]),
             None => TRANSFER
-                .get(format!("{FILES}/{}", item.id))
+                .get(format!("{FILES}/{id}"))
                 .query(&[("alt", "media")]),
         };
         let response = request
             .bearer_auth(access)
-            .send()
+            .timed()
             .await
             .map_err(unreachable)?;
         if !response.status().is_success() {
@@ -576,7 +724,7 @@ impl Google {
         }
         Ok(Download {
             kind,
-            name,
+            name: saved,
             length: response.content_length(),
             body: Body::from_stream(response.bytes_stream()),
         })
@@ -587,7 +735,7 @@ impl Google {
         if let Self::Fixture = self {
             return fixture(access, |drive| {
                 (!drive.hidden.contains(id))
-                    .then(|| drive.files.get(id).cloned())
+                    .then(|| drive.files.get(id).map(described))
                     .flatten()
                     .ok_or_else(missing)
             });
@@ -605,7 +753,9 @@ impl Google {
             return fixture(access, |drive| {
                 let file = drive.files.get_mut(&item.id).ok_or_else(missing)?;
                 file.parents = vec![folder.to_owned()];
-                Ok(file.clone())
+                let file = described(file);
+                drive.touch(&item.id);
+                Ok(file)
             });
         }
         send(
@@ -626,6 +776,7 @@ impl Google {
         if let Self::Fixture = self {
             fixture(access, |drive| {
                 drive.hidden.retain(|id| !ids.contains(id));
+                ids.iter().for_each(|id| drive.touch(id));
                 Ok(())
             })?;
         }
@@ -635,7 +786,9 @@ impl Google {
     pub async fn trash(&self, access: &str, id: &str) -> Result<()> {
         if let Self::Fixture = self {
             return fixture(access, |drive| {
-                drive.files.remove(id).map(drop).ok_or_else(missing)
+                drive.files.remove(id).ok_or_else(missing)?;
+                drive.touch(id);
+                Ok(())
             });
         }
         let _: Item = send(
@@ -672,6 +825,7 @@ fn upload_start(
 }
 
 /// A picture of what a file holds, as Google sent it.
+#[derive(Clone)]
 pub struct Picture {
     pub kind: String,
     pub bytes: Bytes,
@@ -688,15 +842,16 @@ fn google(url: &reqwest::Url) -> bool {
         && (host.ends_with(".googleusercontent.com")
             || ["docs.google.com", "drive.google.com"].contains(&host))
 }
-/// Google's link to a picture, asking for it at a card's size: only a link of Google's own.
-fn sized(link: &str) -> Option<String> {
+/// Google's link to a picture, asking for it `size` pixels on its longest side: only a link of
+/// Google's own.
+fn sized(link: &str, size: u32) -> Option<String> {
     if !google(&reqwest::Url::parse(link).ok()?) {
         return None;
     }
     // Google names the size at the link's end, `=s220`.
     Some(match link.rsplit_once("=s") {
-        Some((start, size)) if !size.is_empty() && size.bytes().all(|b| b.is_ascii_digit()) => {
-            format!("{start}=s{PICTURE_SIZE}")
+        Some((start, given)) if !given.is_empty() && given.bytes().all(|b| b.is_ascii_digit()) => {
+            format!("{start}=s{size}")
         }
         _ => link.to_owned(),
     })
@@ -730,6 +885,10 @@ struct Drive {
     /// The files someone made directly in Drive, which Dispatch can't reach until someone
     /// picks them.
     hidden: BTreeSet<String>,
+    /// How many changes the Drive has had, and which of them each file changed in last, as
+    /// Google's change feed counts them.
+    changes: u64,
+    changed: BTreeMap<String, u64>,
 }
 impl Drive {
     /// The files Dispatch can reach.
@@ -737,6 +896,18 @@ impl Drive {
         self.files
             .values()
             .filter(|item| !self.hidden.contains(&item.id))
+    }
+    /// Notes a change to the file `id`, for the change feed.
+    fn touch(&mut self, id: &str) {
+        self.changes += 1;
+        self.changed.insert(id.to_owned(), self.changes);
+    }
+}
+/// A file as fixture mode's Google describes it now.
+fn described(item: &Item) -> Item {
+    Item {
+        seen: Instant::now(),
+        ..item.clone()
     }
 }
 static DRIVES: LazyLock<Mutex<BTreeMap<String, Drive>>> = LazyLock::new(Default::default);
@@ -755,6 +926,8 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
         uploads: BTreeMap::new(),
         contents: BTreeMap::new(),
         hidden: BTreeSet::new(),
+        changes: 0,
+        changed: BTreeMap::new(),
     });
     work(drive)
 }
@@ -782,6 +955,7 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
                 size: size.map(str::to_owned),
                 thumbnail_link: None,
                 thumbnail_version: None,
+                seen: Instant::now(),
             };
             drive.files.insert(id.clone(), item);
             drive.hidden.insert(id);
