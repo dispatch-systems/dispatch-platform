@@ -152,6 +152,18 @@ fn comparisons(
     timezone: &str,
     read: Read<'_>,
 ) -> Result<BTreeMap<String, MealComparison>> {
+    let cortex = store.collector(id, cortex::PROVIDER)?;
+    let mut live = store.live_results_range(id, cortex::PROVIDER, from, to)?;
+    if matches!(read, Read::Gaps)
+        && live.is_empty()
+        && cortex.one(
+            "SELECT 1 FROM meal_publications p WHERE p.active=1 AND p.report_date BETWEEN ? AND ? \
+             AND EXISTS(SELECT 1 FROM meal_records m WHERE m.publication_id=p.id) LIMIT 1",
+            [from, to],
+        )?.is_none()
+    {
+        return Ok(BTreeMap::new());
+    }
     let selected = match read {
         Read::Comparison(selected) => selected,
         Read::Gaps => None,
@@ -168,7 +180,6 @@ fn comparisons(
         codes
     };
     let days = punches::daily_sources(store, id, from, to, codes.as_deref())?;
-    let cortex = store.collector(id, cortex::PROVIDER)?;
     let mut publications: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     let mut ids = vec![];
     for mut publication in cortex.all(
@@ -228,13 +239,18 @@ fn comparisons(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
         )?,
     };
-    let mut live = store.live_results_range(id, cortex::PROVIDER, from, to)?;
     days.into_iter()
-        .map(|(date, source)| {
+        .filter_map(|(date, source)| {
             let publications = publications.remove(&date).unwrap_or_default();
             let live = live.remove(&date).unwrap_or_default();
-            let comparison = context.day(&date, source, &publications, &live)?;
-            Ok((date, comparison))
+            if matches!(read, Read::Gaps) && publications.is_empty() && live.is_empty() {
+                return None;
+            }
+            Some(
+                context
+                    .day(&date, source, &publications, &live)
+                    .map(|comparison| (date, comparison)),
+            )
         })
         .collect()
 }
