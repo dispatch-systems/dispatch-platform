@@ -155,7 +155,8 @@
         "documents_connect_requests",
         "documents_connection",
         "documents_files",
-        "documents_people"
+        "documents_people",
+        "documents_shared_files"
       ]
     },
     "subfeatures": []

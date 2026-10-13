@@ -579,12 +579,32 @@ test('those who manage Documents add files and folders made directly in Drive, p
   assert.notEqual(trackers[0].id, shared.id);
   assert.equal(trackers[0].kind, 'sheet');
   assert.equal(trackers[0].url, `https://docs.google.com/spreadsheets/d/${shared.id}/edit`);
+  // The team gets the Sheet shared with them, where the folder is shared with them.
+  const dsp = <T>(query: string) =>
+    f.database(`dsps/${north.id}/data/dispatch.sqlite`, (db) => db.prepare(query).all()) as T[];
+  const sharedFiles = () =>
+    dsp<{ file_id: string; email: string }>('SELECT file_id, email FROM documents_shared_files');
+  const team = dsp<{ shared_email: string }>(
+    "SELECT shared_email FROM documents_people WHERE state='shared'",
+  ).map((person) => person.shared_email);
+  assert.ok(team.length > 0);
+  await until(async () => sharedFiles().length === team.length);
+  assert.deepEqual(
+    sharedFiles()
+      .map((share) => [share.file_id, share.email])
+      .sort(),
+    team.map((email) => [shared.id, email]).sort(),
+  );
   assert.deepEqual((await setup()).madeInDrive, []);
   // Picking the main folder itself changes nothing.
   const main = await owner.post('/api/dsp/documents/add', { files: [picker.folder], folder: null });
   assert.equal(main.status, 200, main.body);
   assert.deepEqual(main.value, []);
   assert.deepEqual(await top(), ['Fleet', 'Safety', 'Route tracker', 'Fuel receipts.pdf']);
+  // Taking the shortcut out of Documents takes back the shares Dispatch made of the Sheet.
+  const trashed = await owner.post(`/api/dsp/documents/items/${trackers[0].id}/trash`, {});
+  assert.equal(trashed.status, 200, trashed.body);
+  await until(async () => sharedFiles().length === 0);
   // A file the account wasn't given was picked as another account.
   assert.equal(
     (await owner.post('/api/dsp/documents/add', { files: ['someone-elses-file'], folder: null }))

@@ -10,7 +10,7 @@ use super::{
     google::FOLDER,
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     mem,
     sync::Arc,
     time::Instant,
@@ -227,6 +227,13 @@ impl Tree {
         self.places.get(id).map(|place| &self.rows[*place as usize])
     }
     /// Whether `id` is the main folder or a folder inside it.
+    /// The files the shortcuts in Documents stand for.
+    pub fn targets(&self) -> BTreeSet<String> {
+        self.rows
+            .iter()
+            .filter_map(|row| row.target.as_deref().map(str::to_owned))
+            .collect()
+    }
     /// Whether a shortcut in Documents stands for the file `id`.
     pub fn stands_for(&self, id: &str) -> bool {
         self.rows

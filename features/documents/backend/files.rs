@@ -9,6 +9,7 @@ use super::{
     google::{FOLDER, Google, folder_url},
     mirror,
     storage::{Connection, DocumentsStore, Record},
+    team,
     tree::{Row, Tree},
 };
 use crate::api::types::{DocumentsFolder, DocumentsItem, FolderStep, ItemKind, NewKind};
@@ -153,7 +154,7 @@ macro_rules! on_drive {
 }
 /// The DSP's Documents, from the copy kept of its Drive: brought up to date in the background
 /// once it's a few seconds old, and before it answers once it's a minute old.
-async fn tree(state: &Arc<State>, dsp: &str) -> Result<(Connection, Arc<Tree>)> {
+pub(crate) async fn tree(state: &Arc<State>, dsp: &str) -> Result<(Connection, Arc<Tree>)> {
     let (connection, _) = connected(state, dsp).await?;
     let root = connection.folder_id.clone();
     let mirror = mirror::of(dsp);
@@ -396,6 +397,8 @@ pub async fn add(
     let drive = open(state, &dsp, false).await?;
     drive.google.grant(&drive.access, &ids)?;
     let mut added = Vec::new();
+    // Whether it made a shortcut to a file someone else owns, to share with the team.
+    let mut shortcuts = false;
     for id in &ids {
         // Picked as another Google account, the file was given to that account instead.
         let item = match drive.google.get(&drive.access, id).await {
@@ -426,6 +429,7 @@ pub async fn add(
         };
         let item = match moved {
             Err(error) if error.code == "documents_cannot_move" => {
+                shortcuts = true;
                 drive.google.shortcut(&drive.access, &item, &parent).await?
             }
             moved => moved?,
@@ -448,6 +452,9 @@ pub async fn add(
             Ok(())
         })
         .await?;
+    if shortcuts {
+        team::share_soon(state, &dsp);
+    }
     let (connection, tree) = self::tree(state, &dsp).await?;
     let ids: Vec<String> = added.iter().map(|item| item.id.clone()).collect();
     let at = dsp.clone();
@@ -558,7 +565,10 @@ pub async fn trash(state: &Arc<State>, c: Context, access: Dsp, id: String) -> R
     let dsp = c.dsp.id.clone();
     let (connection, tree) = tree(state, &dsp).await?;
     let root = connection.folder_id;
-    let name = tree.get(&id).ok_or_else(not_found)?.name.to_string();
+    let row = tree.get(&id).ok_or_else(not_found)?;
+    let name = row.name.to_string();
+    // A shortcut's file stops being shared with the team as the shortcut goes.
+    let shortcut = row.target.is_some();
     // Someone may have moved it out of Documents in Drive since the copy last heard: Google
     // says where it is now.
     let answer = on_drive!(state, &dsp, |google, token| google.get(token, &id));
@@ -570,6 +580,9 @@ pub async fn trash(state: &Arc<State>, c: Context, access: Dsp, id: String) -> R
     let answer = on_drive!(state, &dsp, |google, token| google.trash(token, &id));
     gone(&dsp, &root, &id, answer)?;
     mirror::of(&dsp).remove(&root, &id);
+    if shortcut {
+        team::share_soon(state, &dsp);
+    }
     state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
