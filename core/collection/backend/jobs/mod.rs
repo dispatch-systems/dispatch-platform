@@ -1,4 +1,5 @@
 mod executor;
+mod maintenance;
 mod queue;
 mod scheduler;
 pub use queue::{CancelJobs, JobFacts};

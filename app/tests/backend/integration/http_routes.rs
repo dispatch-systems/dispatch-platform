@@ -5,7 +5,7 @@ use dispatch_core::{
     server::http::{
         Access::{self, Agent, Dsp, PlatformOwner, Public, Session},
         Route,
-        Work::{self, Async, Memory, Read, Upload, Write},
+        Work::{self, Async, Bookkeeping, Memory, Read, Upload, Write},
     },
     tenancy::roles,
 };
@@ -57,9 +57,9 @@ const INVENTORY: &[Row] = &[
     ("GET", "/api/platform/support/tickets", PlatformOwner, Read, false),
     ("POST", "/api/platform/support/tickets/{id}/decision", PlatformOwner, Write, false),
     ("POST", "/api/platform/support/tickets/{id}/resume", PlatformOwner, Write, false),
-    ("POST", "/api/v1/support/worker/claim", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/claim", Agent("support worker"), Bookkeeping, false),
     ("GET", "/api/v1/support/worker/jobs/{id}/status", Agent("support worker"), Read, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/heartbeat", Agent("support worker"), Write, false),
+    ("POST", "/api/v1/support/worker/jobs/{id}/heartbeat", Agent("support worker"), Bookkeeping, false),
     ("POST", "/api/v1/support/worker/jobs/{id}/progress", Agent("support worker"), Write, false),
     ("POST", "/api/v1/support/worker/jobs/{id}/proposal", Agent("support worker"), Write, false),
     ("POST", "/api/v1/support/worker/jobs/{id}/evidence", Agent("support worker"), Write, false),

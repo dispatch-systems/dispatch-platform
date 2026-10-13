@@ -9,6 +9,7 @@ use dispatch_core::{
     foundation::observability,
     manifest::{Maintenance, Upkeep},
 };
+use futures_util::{StreamExt, stream};
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
 
@@ -21,8 +22,8 @@ pub const TEAM: Maintenance = Maintenance {
     run: follow,
 };
 
-/// Shares the folder anew for each connected DSP whose team changed. Reading the team takes
-/// a moment; the sharing runs on its own, so the scheduler doesn't wait on Google.
+/// Each pass checks DSPs in short database turns and shares at most two folders at
+/// once. The scheduler supervises the pass; no detached syncs pile up between ticks.
 fn follow(state: Arc<State>, due: bool) -> Upkeep {
     Box::pin(async move {
         if !due {
@@ -32,33 +33,37 @@ fn follow(state: Arc<State>, due: bool) -> Upkeep {
         if Google::of(&state.config).is_err() {
             return;
         }
-        let changed = state
-            .read(|db| {
-                let mut found = Vec::new();
-                for dsp in db.kept_dsps()? {
-                    if db.feature_enabled(&dsp, "documents")?
-                        && db.documents_connection(&dsp)?.is_some_and(|c| !c.broken)
-                        && team::stale(db, &dsp)?
-                    {
-                        found.push(dsp);
+        let dsps = match state.read(|db| db.kept_dsps()).await {
+            Ok(dsps) => dsps,
+            Err(error) => return failed(&error),
+        };
+        stream::iter(dsps)
+            .map(|dsp| {
+                let state = state.clone();
+                async move {
+                    let selected = dsp.clone();
+                    let changed = state
+                        .read(move |db| {
+                            Ok(db.feature_enabled(&selected, "documents")?
+                                && db
+                                    .documents_connection(&selected)?
+                                    .is_some_and(|c| !c.broken)
+                                && team::stale(db, &selected)?)
+                        })
+                        .await?;
+                    if changed {
+                        team::sync(&state, &dsp).await?;
                     }
+                    dispatch_core::Result::Ok(())
                 }
-                Ok(found)
+            })
+            .buffer_unordered(2)
+            .for_each(|result| async move {
+                if let Err(error) = result {
+                    failed(&error);
+                }
             })
             .await;
-        match changed {
-            Ok(changed) => {
-                for dsp in changed {
-                    let state = state.clone();
-                    tokio::spawn(async move {
-                        if let Err(error) = team::sync(&state, &dsp).await {
-                            failed(&error);
-                        }
-                    });
-                }
-            }
-            Err(error) => failed(&error),
-        }
     })
 }
 
@@ -70,41 +75,52 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
         let Ok(google) = Google::of(&state.config) else {
             return;
         };
-        let connected = state
-            .read(|db| {
-                let mut found = Vec::new();
-                for dsp in db.kept_dsps()? {
-                    if db.feature_enabled(&dsp, "documents")?
-                        && db.documents_connection(&dsp)?.is_some_and(|c| !c.broken)
-                        && let Some(token) = db.documents_refresh_token(&dsp)?
-                    {
-                        found.push((dsp, token));
-                    }
-                }
-                Ok(found)
-            })
-            .await;
-        let connected = match connected {
-            Ok(connected) => connected,
+        let dsps = match state.read(|db| db.kept_dsps()).await {
+            Ok(dsps) => dsps,
             Err(error) => return failed(&error),
         };
-        for (dsp, token) in connected {
-            // Only Google's refusal breaks it: an outage leaves it as it is, for next hour.
-            match google.access(&token).await {
-                Err(error) if error.code == "google_connection_broken" => {
-                    if let Err(error) = state.run(move |db| broken(db, &dsp)).await {
-                        failed(&error);
+        stream::iter(dsps)
+            .map(|dsp| {
+                let state = state.clone();
+                let google = &google;
+                async move {
+                    let selected = dsp.clone();
+                    let token = state
+                        .read(move |db| {
+                            if db.feature_enabled(&selected, "documents")?
+                                && db
+                                    .documents_connection(&selected)?
+                                    .is_some_and(|c| !c.broken)
+                            {
+                                db.documents_refresh_token(&selected)
+                            } else {
+                                Ok(None)
+                            }
+                        })
+                        .await?;
+                    let Some(token) = token else {
+                        return Ok(());
+                    };
+                    // Only Google's refusal breaks it: an outage leaves it for next hour.
+                    match google.access(&token).await {
+                        Err(error) if error.code == "google_connection_broken" => {
+                            state.run(move |db| broken(db, &dsp)).await?;
+                        }
+                        Err(error) => return Err(error),
+                        Ok(_) => {
+                            team::sync(&state, &dsp).await?;
+                        }
                     }
+                    dispatch_core::Result::Ok(())
                 }
-                Err(error) => failed(&error),
-                // Google's own list, for a share someone changed in Google Drive.
-                Ok(_) => {
-                    if let Err(error) = team::sync(&state, &dsp).await {
-                        failed(&error);
-                    }
+            })
+            .buffer_unordered(2)
+            .for_each(|result| async move {
+                if let Err(error) = result {
+                    failed(&error);
                 }
-            }
-        }
+            })
+            .await;
     })
 }
 
