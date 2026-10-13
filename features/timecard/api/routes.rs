@@ -248,7 +248,8 @@ fn meal_page(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let desc = descending(q)?;
     let (offset, limit) = page_bounds(q)?;
     let load = || db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str());
-    let day = if db.any_active_job(c.dsp_id(), KINDS)? {
+    let live = db.any_active_job(c.dsp_id(), KINDS)?;
+    let day = if live {
         std::sync::Arc::new(load()?)
     } else {
         c.state.read_cache.shared(
@@ -261,18 +262,31 @@ fn meal_page(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         )?
     };
     let preferences = db.timecard_preference_values(c.dsp_id())?;
-    Reply::of(&crate::backend::meals::page::page(
-        &day,
-        crate::backend::meals::page::Query {
-            search,
-            filter,
-            sort,
-            desc,
-            offset,
-            limit,
-            name_order: dispatch_core::db::s(&preferences["values"], "name_order"),
-        },
-    ))
+    let query = crate::backend::meals::page::Query {
+        search,
+        filter,
+        sort,
+        desc,
+        offset,
+        limit,
+        name_order: dispatch_core::db::s(&preferences["values"], "name_order"),
+    };
+    let ordering = if live {
+        std::sync::Arc::new(crate::backend::meals::page::order(&day, &query))
+    } else {
+        c.state.read_cache.shared(
+            dispatch_core::server::cache::Scope::tenant(crate::backend::meals::CACHED, c.dsp_id()),
+            format!(
+                "meal-order:{date}:{}:{}:{sort}:{desc}",
+                c.dsp.timezone, query.name_order
+            ),
+            c.state
+                .data_revision
+                .load(std::sync::atomic::Ordering::Relaxed),
+            || Ok(crate::backend::meals::page::order(&day, &query)),
+        )?
+    };
+    Reply::of(&crate::backend::meals::page::page(&day, query, &ordering))
 }
 
 fn sync_employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

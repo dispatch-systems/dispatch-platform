@@ -15,63 +15,60 @@ pub(crate) struct Query<'a> {
     pub limit: Option<usize>,
     pub name_order: &'a str,
 }
-pub(crate) fn page(day: &MealComparison, query: Query<'_>) -> MealComparisonPage {
+pub(crate) fn page(
+    day: &MealComparison,
+    query: Query<'_>,
+    ordering: &[usize],
+) -> MealComparisonPage {
     let mut counts = MealCounts::default();
     let search = query.search.to_lowercase();
-    let mut selected = Vec::new();
-    for (index, row) in day.rows.iter().enumerate() {
+    for row in &day.rows {
         let assessment = &row.assessment;
         counts.all += 1;
         counts.late += usize::from(assessment.late_in);
         counts.different += usize::from(assessment.different);
         counts.missing += usize::from(assessment.missing);
         counts.gaps += usize::from(assessment.long_gap);
-        let includes = match query.filter {
-            "late" => assessment.late_in,
-            "different" => assessment.different,
-            "missing" => assessment.missing,
-            "gaps" => assessment.long_gap,
-            _ => true,
-        };
-        let name = person_name(&row.source.name, query.name_order);
-        if includes
-            && (search.is_empty()
-                || format!(
-                    "{} {} {}",
-                    name,
-                    row.source
-                        .paycom
-                        .as_ref()
-                        .map_or("", |p| p.employee_code.as_str()),
-                    row.source
-                        .cortex
-                        .iter()
-                        .map(|m| m.driver_name.as_str())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                )
-                .to_lowercase()
-                .contains(&search))
-        {
-            selected.push((index, name));
-        }
     }
-    selected.sort_by(|(a, a_name), (b, b_name)| {
-        let a_row = &day.rows[*a];
-        let b_row = &day.rows[*b];
-        let order = if query.sort == "employee" {
-            compare(a_name, b_name)
-        } else {
-            numeric(a_row, query.sort, &day.date).cmp(&numeric(b_row, query.sort, &day.date))
-        };
-        (if query.desc { order.reverse() } else { order }).then_with(|| a.cmp(b))
-    });
+    let selected: Vec<_> = ordering
+        .iter()
+        .copied()
+        .filter(|index| {
+            let row = &day.rows[*index];
+            let assessment = &row.assessment;
+            let includes = match query.filter {
+                "late" => assessment.late_in,
+                "different" => assessment.different,
+                "missing" => assessment.missing,
+                "gaps" => assessment.long_gap,
+                _ => true,
+            };
+            includes
+                && (search.is_empty()
+                    || format!(
+                        "{} {} {}",
+                        person_name(&row.source.name, query.name_order),
+                        row.source
+                            .paycom
+                            .as_ref()
+                            .map_or("", |p| p.employee_code.as_str()),
+                        row.source
+                            .cortex
+                            .iter()
+                            .map(|m| m.driver_name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
+                    .to_lowercase()
+                    .contains(&search))
+        })
+        .collect();
     let total = selected.len();
     let rows = selected
         .into_iter()
         .skip(query.offset)
         .take(query.limit.unwrap_or(usize::MAX))
-        .map(|(index, _)| day.rows[index].clone())
+        .map(|index| day.rows[index].clone())
         .collect();
     MealComparisonPage {
         comparison: MealComparison {
@@ -86,12 +83,49 @@ pub(crate) fn page(day: &MealComparison, query: Query<'_>) -> MealComparisonPage
         counts,
     }
 }
+/// Compute keys once per row, then retain only the ordering. Paging and filtering
+/// reuse it while the underlying day is unchanged; live collections calculate afresh.
+pub(crate) fn order(day: &MealComparison, query: &Query<'_>) -> Vec<usize> {
+    let by_name = query.sort == "employee";
+    let mut keys: Vec<_> = day
+        .rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| {
+            (
+                index,
+                if by_name {
+                    person_name(&row.source.name, query.name_order)
+                } else {
+                    String::new()
+                },
+                if by_name {
+                    None
+                } else {
+                    numeric(row, query.sort, &day.date)
+                },
+            )
+        })
+        .collect();
+    keys.sort_by(|(a, a_name, a_number), (b, b_name, b_number)| {
+        let order = if by_name {
+            compare(a_name, b_name)
+        } else {
+            a_number.cmp(b_number)
+        };
+        (if query.desc { order.reverse() } else { order }).then_with(|| a.cmp(b))
+    });
+    keys.into_iter().map(|(index, _, _)| index).collect()
+}
 fn person_name(name: &str, order: &str) -> String {
     let full = name.split_once(',').map_or_else(
         || name.to_owned(),
         |(last, first)| format!("{first} {last}"),
     );
-    let full = full.split_whitespace().collect::<Vec<_>>().join(" ");
+    let full = full
+        .split(|c: char| (c.is_whitespace() && c != '\u{0085}') || c == '\u{feff}')
+        .collect::<Vec<_>>()
+        .join(" ");
     if order == "last_first" && name.contains(',') && full.contains(' ') {
         name.into()
     } else {
