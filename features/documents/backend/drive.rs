@@ -22,10 +22,11 @@ use std::{
 pub const DOC: &str = "application/vnd.google-apps.document";
 pub const SHEET: &str = "application/vnd.google-apps.spreadsheet";
 pub const SLIDES: &str = "application/vnd.google-apps.presentation";
+pub const SHORTCUT: &str = "application/vnd.google-apps.shortcut";
 /// What Documents asks of each file.
 const FIELDS: &str = concat!(
     "id,name,mimeType,parents,modifiedTime,lastModifyingUser(displayName,emailAddress),size,",
-    "webViewLink,thumbnailLink,thumbnailVersion"
+    "webViewLink,thumbnailLink,thumbnailVersion,ownedByMe,shortcutDetails(targetId,targetMimeType)"
 );
 /// Enough pages for 50,000 files; a Drive that keeps answering past them is not listed whole.
 const PAGES: usize = 50;
@@ -108,9 +109,21 @@ pub struct Item {
     pub thumbnail_link: Option<String>,
     /// Which picture that is, a number that grows as the file changes.
     pub thumbnail_version: Option<String>,
+    /// Whether the account owns it: only its owner moves a file from one folder to another.
+    #[serde(default)]
+    pub owned_by_me: bool,
+    /// For a shortcut, the file it stands for.
+    pub shortcut_details: Option<Shortcut>,
     /// When Google described it, which its picture's link lasts hours from.
     #[serde(skip, default = "Instant::now")]
     pub seen: Instant,
+}
+/// The file a shortcut stands for.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Shortcut {
+    pub target_id: String,
+    pub target_mime_type: String,
 }
 /// Someone a folder is shared with, as Drive lists them.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -335,6 +348,8 @@ impl Google {
                     size: None,
                     thumbnail_link: None,
                     thumbnail_version: None,
+                    owned_by_me: true,
+                    shortcut_details: None,
                     seen: Instant::now(),
                 };
                 drive.files.insert(id.clone(), item.clone());
@@ -576,6 +591,8 @@ impl Google {
                         email_address: Some(account),
                     }),
                     size: Some(length.to_string()),
+                    owned_by_me: true,
+                    shortcut_details: None,
                     seen: Instant::now(),
                 };
                 drive.files.insert(id.clone(), item.clone());
@@ -747,6 +764,7 @@ impl Google {
         if let Self::Fixture = self {
             return fixture(access, |drive| {
                 let file = drive.files.get_mut(&item.id).ok_or_else(missing)?;
+                ensure(file.owned_by_me, "documents_cannot_move", 409)?;
                 file.parents = vec![folder.to_owned()];
                 let file = described(file);
                 drive.touch(&item.id);
@@ -762,6 +780,48 @@ impl Google {
                     ("fields", FIELDS),
                 ])
                 .json(&json!({})),
+        )
+        .await
+    }
+    /// Makes a shortcut to the file `item` in the folder `folder`, as Drive's own "Add shortcut"
+    /// does for a file only its owner can move.
+    pub async fn shortcut(&self, access: &str, item: &Item, folder: &str) -> Result<Item> {
+        let target = Shortcut {
+            target_id: item.id.clone(),
+            target_mime_type: item.mime_type.clone(),
+        };
+        if let Self::Fixture = self {
+            let id = format!("fixture-{}", crypto::hex(&crypto::random::<8>()?));
+            return fixture(access, |drive| {
+                let made = Item {
+                    web_view_link: link(SHORTCUT, &id),
+                    id: id.clone(),
+                    mime_type: SHORTCUT.to_owned(),
+                    parents: vec![folder.to_owned()],
+                    modified_time: iso(),
+                    size: None,
+                    thumbnail_link: None,
+                    thumbnail_version: None,
+                    owned_by_me: true,
+                    shortcut_details: Some(target),
+                    seen: Instant::now(),
+                    ..item.clone()
+                };
+                drive.files.insert(id.clone(), made.clone());
+                drive.touch(&id);
+                Ok(made)
+            });
+        }
+        send(
+            HTTP.post(FILES)
+                .bearer_auth(access)
+                .query(&[("fields", FIELDS)])
+                .json(&json!({
+                    "name": item.name,
+                    "mimeType": SHORTCUT,
+                    "parents": [folder],
+                    "shortcutDetails": {"targetId": target.target_id},
+                })),
         )
         .await
     }
@@ -857,7 +917,8 @@ fn missing() -> Error {
 }
 
 /// Where Google opens a file of `mime`.
-fn link(mime: &str, id: &str) -> String {
+/// Where Google opens the file `id` of `mime`.
+pub fn link(mime: &str, id: &str) -> String {
     match mime {
         FOLDER => format!("https://drive.google.com/drive/folders/{id}"),
         DOC => format!("https://docs.google.com/document/d/{id}/edit"),
@@ -927,8 +988,8 @@ fn fixture<T>(access: &str, work: impl FnOnce(&mut Drive) -> Result<T>) -> Resul
     work(drive)
 }
 /// Puts files in fixture mode's Drive as someone making them directly in Drive would: a folder
-/// and a file in `folder`, a Doc in that folder, and a picture elsewhere in the account's Drive,
-/// all out of Dispatch's reach.
+/// and a file in `folder`, a Doc in that folder, a picture elsewhere in the account's Drive, and
+/// a Sheet someone else owns and shared with the account, all out of Dispatch's reach.
 pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
     let id = || Ok::<_, Error>(format!("fixture-{}", crypto::hex(&crypto::random::<8>()?)));
     let safety = id()?;
@@ -943,6 +1004,7 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
                 Some(folder),
             ),
             ("Route map 2025.png", "image/png", Some("231004"), None),
+            (SHARED_SHEET, SHEET, None, None),
         ] {
             let id = if mime == FOLDER {
                 safety.clone()
@@ -963,6 +1025,9 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
                 size: size.map(str::to_owned),
                 thumbnail_link: None,
                 thumbnail_version: None,
+                // Google shows a file shared with the account in no folder of the account's.
+                owned_by_me: name != SHARED_SHEET,
+                shortcut_details: None,
                 seen: Instant::now(),
             };
             drive.files.insert(id.clone(), item);
@@ -971,6 +1036,8 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
         Ok(())
     })
 }
+/// The Sheet someone else owns in fixture mode, shared with the account.
+pub const SHARED_SHEET: &str = "Route tracker";
 /// The files fixture mode's Drive holds that Dispatch can't reach yet.
 pub fn fixture_hidden(access: &str) -> Result<Vec<Item>> {
     fixture(access, |drive| {

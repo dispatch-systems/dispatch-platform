@@ -409,13 +409,26 @@ pub async fn add(
             continue;
         }
         let inside = item.parents.iter().any(|folder| tree.is_folder(folder));
-        let item = if inside {
-            item
-        } else {
-            drive
-                .google
-                .move_into(&drive.access, &item, &parent)
-                .await?
+        if inside {
+            mirror::of(&dsp).put(&drive.connection.folder_id, item.clone());
+            added.push(item);
+            continue;
+        }
+        // One shared with the account already has its shortcut in Documents.
+        if tree.stands_for(&item.id) {
+            continue;
+        }
+        // Only its owner moves a file. Documents gets a shortcut to one shared with the
+        // account, as Drive's own "Add shortcut" does, and to one Google won't move.
+        let moved = match item.owned_by_me {
+            true => drive.google.move_into(&drive.access, &item, &parent).await,
+            false => Err(Error::new("documents_cannot_move", 409)),
+        };
+        let item = match moved {
+            Err(error) if error.code == "documents_cannot_move" => {
+                drive.google.shortcut(&drive.access, &item, &parent).await?
+            }
+            moved => moved?,
         };
         mirror::of(&dsp).put(&drive.connection.folder_id, item.clone());
         added.push(item);
@@ -461,7 +474,7 @@ pub async fn download(state: &Arc<State>, c: &Context, id: String) -> Result<Dow
         .ok_or_else(not_found)?;
     let answer = on_drive!(state, &c.dsp.id, |google, token| google.download(
         token,
-        &item.id,
+        item.target.as_deref().unwrap_or(&item.id),
         &item.name,
         item.mime.as_str()
     ));
