@@ -31,3 +31,22 @@ test("an owner's own error codes read as it words them, and every other as befor
   assert.ok(refused instanceof ApiError);
   assert.equal(refused.message, 'Too many attempts. Wait a few minutes and try again.');
 });
+
+test("an error a proxy answers with a page of its own reads as a refused request, not as the page's code", async (t) => {
+  // Cloudflare answers a server's 502 with its own page.
+  t.mock.method(
+    globalThis,
+    'fetch',
+    async () =>
+      new Response('<!DOCTYPE html><title>502 Bad gateway</title>', {
+        status: 502,
+        headers: { 'content-type': 'text/html', 'x-request-id': 'request-2' },
+      }),
+  );
+  await assert.rejects(wordedApi({})('/api/dsp/example', {}), {
+    code: 'request_failed',
+    message: 'The request could not be completed.',
+    status: 502,
+    requestId: 'request-2',
+  });
+});

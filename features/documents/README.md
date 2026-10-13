@@ -42,7 +42,8 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   place or one that brings a folder in from elsewhere in the account, since the copy doesn't
   know what it holds. Trashing asks Google where the file is first, in case someone moved it out
   of Documents in Drive. Every call to Google is logged with how long it took
-  (`documents.google`).
+  (`documents.google`), and each refusal with Google's reason and its words, without the IDs
+  and addresses in them (`documents.google_refused`).
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's
   own settings: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
   (`DISPATCH_PRODUCTION_…` on Production), declared as its settings. Without both, no DSP can
