@@ -349,18 +349,47 @@ pub fn coalesced_read(
     access: Dsp,
     handler: impl Fn(&Store, &Member<'_>, &Input) -> Result<Reply> + Send + Sync + 'static,
 ) -> Route {
+    coalesced_read_by(
+        path,
+        access,
+        |_, _, input| Ok(serde_json::to_string(&(&input.path, &input.query))?),
+        handler,
+    )
+}
+/// Like `coalesced_read`, keyed by the underlying cached read rather than its page or
+/// date alias. The key reads only cheap metadata after authorization. Every waiter
+/// still authorizes and runs its own handler with the latest data.
+pub fn coalesced_read_by(
+    path: &'static str,
+    access: Dsp,
+    key: impl Fn(&Store, &Member<'_>, &Input) -> Result<String> + Send + Sync + 'static,
+    handler: impl Fn(&Store, &Member<'_>, &Input) -> Result<Reply> + Send + Sync + 'static,
+) -> Route {
+    let key = Arc::new(key);
     let mut route = read(path, access, handler);
     let Handler::Blocking(handler) = route.handler else {
         unreachable!()
     };
     route.handler = Handler::Async(Box::new(move |state, input| {
         let handler = handler.clone();
+        let key = key.clone();
         Box::pin(async move {
             let checking = input.clone();
-            let dsp = state
-                .read(move |db| Ok(access.authorize(db, &checking)?.dsp.id))
+            let shared = state.clone();
+            let key = state
+                .read(move |db| {
+                    let who = access.authorize(db, &checking)?;
+                    let context = Ctx {
+                        state: &shared,
+                        who,
+                    };
+                    Ok(serde_json::to_string(&(
+                        context.dsp_id(),
+                        path,
+                        key(db, &context, &checking)?,
+                    ))?)
+                })
                 .await?;
-            let key = serde_json::to_string(&(dsp, &input.path, &input.query))?;
             let turn = state.read_turns.enter(key).await?;
             let shared = state.clone();
             state

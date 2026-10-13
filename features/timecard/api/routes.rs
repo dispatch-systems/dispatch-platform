@@ -13,7 +13,7 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, descending, optional, optional_text, query_number},
-        route::{Dsp, Member, Route, coalesced_read, read, write},
+        route::{Dsp, Member, Route, coalesced_read, coalesced_read_by, read, write},
     },
 };
 use dispatch_cortex::{self as cortex, discovery::Scope};
@@ -43,7 +43,13 @@ const SORTS: &[&str] = &[
 
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
-        coalesced_read("/api/dsp/employees", VIEW, employees).logged(),
+        coalesced_read_by(
+            "/api/dsp/employees",
+            VIEW,
+            |_, _, _| Ok("roster".into()),
+            employees,
+        )
+        .logged(),
         read("/api/dsp/employees/{code}", VIEW, employee).logged(),
         write(
             "/api/dsp/employees/{code}/sync",
@@ -51,16 +57,17 @@ pub fn routes() -> Vec<Route> {
             sync_employee,
         ),
         read("/api/dsp/timecards", VIEW, timecards).logged(),
-        coalesced_read("/api/dsp/timecards/page", VIEW, timecard_page).logged(),
+        coalesced_read_by("/api/dsp/timecards/page", VIEW, day_key, timecard_page).logged(),
         read("/api/dsp/paycom/status", VIEW, paycom_status),
         read("/api/dsp/paycom/settings", VIEW, paycom_settings).logged(),
         write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         coalesced_read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
-        coalesced_read("/api/dsp/paycom/meal-breaks/page", VIEW, meal_page).logged(),
+        coalesced_read_by("/api/dsp/paycom/meal-breaks/page", VIEW, day_key, meal_page).logged(),
         read("/api/dsp/paycom/meal-breaks/period", VIEW, meal_period).logged(),
-        coalesced_read(
+        coalesced_read_by(
             "/api/dsp/paycom/meal-breaks/period-gaps",
             VIEW,
+            period_key,
             meal_period_gaps,
         )
         .logged(),
@@ -80,6 +87,20 @@ pub fn routes() -> Vec<Route> {
     ];
     routes.extend(schedule_routes("/api/dsp/schedules", MANAGE, "timecard"));
     routes
+}
+
+fn day_key(_: &Store, c: &Member, input: &Input) -> Result<String> {
+    let date = v::text(&input.query, "date", 10, 10)?;
+    Ok(format!("{date}:{}", c.dsp.timezone))
+}
+fn period_key(db: &Store, c: &Member, input: &Input) -> Result<String> {
+    let date = v::text(&input.query, "date", 10, 10)?;
+    let period = crate::backend::meals::period::gap_period(db, c.dsp_id(), date)?;
+    Ok(format!(
+        "{}:{}",
+        serde_json::to_string(&period)?,
+        c.dsp.timezone
+    ))
 }
 
 fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
