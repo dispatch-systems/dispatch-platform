@@ -123,12 +123,15 @@ export async function api<T>(
             ])
           : signal,
     });
-    const value = await response.json();
+    // A proxy in front of the server may answer an error with a page of its own.
+    const value = await response.json().catch(() => ({}));
     if (!response.ok) {
       recoverAccess(url, response.status, value.error);
       throw new ApiError(
-        value.error,
-        errorLabel(value.error) ?? value.message ?? 'The request could not be completed.',
+        value.error ?? 'request_failed',
+        (value.error && errorLabel(value.error)) ??
+          value.message ??
+          'The request could not be completed.',
         response.status,
         response.headers.get('x-request-id') ?? undefined,
       );

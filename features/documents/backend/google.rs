@@ -400,6 +400,9 @@ impl Refusal {
             .as_str()
             .or_else(|| error.pointer("/errors/0/reason")?.as_str())
     }
+    fn message(&self) -> Option<&str> {
+        self.error.as_ref()?.pointer("/message")?.as_str()
+    }
 }
 
 pub(super) fn unreachable(_: reqwest::Error) -> Error {
@@ -469,10 +472,44 @@ pub(super) async fn read<T: for<'de> Deserialize<'de>>(response: reqwest::Respon
         return serde_json::from_slice(&body).map_err(|_| Error::new("google_sign_in_failed", 502));
     }
     let refused = serde_json::from_slice::<Refusal>(&body).ok();
-    Err(refusal(
-        status.as_u16(),
-        refused.as_ref().and_then(Refusal::reason),
-    ))
+    let reason = refused.as_ref().and_then(Refusal::reason);
+    // Why Google refused, in its words without the IDs and addresses in them. A file that's
+    // gone is routine; anything else is worth a look.
+    observability::event(
+        if status == reqwest::StatusCode::NOT_FOUND {
+            "info"
+        } else {
+            "warn"
+        },
+        "documents.google_refused",
+        json!({
+            "status": status.as_u16(),
+            "reason": reason,
+            "message": refused.as_ref().and_then(Refusal::message).map(unnamed),
+        }),
+    );
+    Err(refusal(status.as_u16(), reason))
+}
+/// `words` without the IDs and email addresses in them.
+fn unnamed(words: &str) -> String {
+    words
+        .split(' ')
+        .map(|word| {
+            let bare = word.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+            let id = bare.len() >= 20
+                && bare
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            if word.contains('@') {
+                "{email}"
+            } else if id {
+                "{id}"
+            } else {
+                word
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 /// What a refusal means: Google no longer honors the account's token, so only a reconnect
 /// helps; the account's storage is full; the file is gone or was never Dispatch's to reach;

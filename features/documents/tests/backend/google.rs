@@ -24,3 +24,17 @@ fn only_a_token_google_gave_up_on_breaks_the_connection_and_drive_says_why_else(
         assert_eq!(refusal(status, error).code, code, "{status} {error:?}");
     }
 }
+
+#[test]
+fn a_refusal_is_logged_in_googles_words_without_the_ids_and_addresses_in_them() {
+    assert_eq!(
+        unnamed(
+            "The user has not granted the app 123 write access to the file 1AbCdEfGhIjKlMnOpQrStUvWxYz0123."
+        ),
+        "The user has not granted the app 123 write access to the file {id}"
+    );
+    assert_eq!(
+        unnamed("owner@example.com does not have permission."),
+        "{email} does not have permission."
+    );
+}
