@@ -3,7 +3,12 @@ import { localDate } from '../../../../../core/shell/frontend/lib/day.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Globe, Info } from 'lucide-react';
 import type { DailyTimecard, PaycomPreferences } from '../../../api/index.js';
-import { dailyPageUrl, exportDailyTimecards, useDailyTimecards } from '../../../api/client.js';
+import {
+  dailyPageUrl,
+  exportDailyTimecards,
+  useDailyTimecards,
+  useDailyPunches,
+} from '../../../api/client.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
   DataState,
