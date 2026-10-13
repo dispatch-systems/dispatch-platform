@@ -39,7 +39,7 @@
   "core/accounts/tests/browser/email-invitations.spec.ts › an address another DSP already has gets a login of its own at a newly invited DSP": 8.6,
   "core/accounts/tests/browser/email-invitations.spec.ts › an owner whose DSP has no details yet sets them up on opening it": 6.8,
   "core/accounts/tests/browser/member-profile.spec.ts › an expired invitation has its own page that returns to the separate sign-in page": 2.7,
-  "core/accounts/tests/browser/onboarding.spec.ts › desktop reveals map and form together and remains usable if the map fails": 7.0,
+  "core/accounts/tests/browser/onboarding.spec.ts › desktop form is usable while the map loads and if the map fails": 7.0,
   "core/accounts/tests/browser/sign-in.spec.ts › desktop animation lifecycle › graphics failure leaves a working sign-in form and a static van": 4.5,
   "core/accounts/tests/browser/sign-in.spec.ts › mobile loads only the form; reset and password reveal still work": 4.2,
   "core/accounts/tests/browser/sign-in.spec.ts › remember me uses seven days and unchecked sign-in keeps eight hours": 5.2,
