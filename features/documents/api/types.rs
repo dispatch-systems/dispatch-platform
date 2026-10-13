@@ -66,14 +66,17 @@ pub struct DocumentsAccount {
 #[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PickerSetup {
-    /// The Google account to pick them as: the one that holds the DSP's Documents.
+    /// The Google account that holds the DSP's Documents, which a file picked elsewhere is
+    /// shared with to come in.
     pub account: String,
-    /// The main folder in Google Drive, where the picker opens at the top of Documents.
+    /// The Google account the member picks as: the one they linked, or their own address.
+    pub me: String,
+    /// The main folder in Google Drive, where a file picked comes in at the top of Documents.
     pub folder: String,
     /// Google's keys for its file picker, which a browser uses as they are. None in fixture
     /// mode, which lists the files instead.
     pub google: Option<PickerKeys>,
-    /// In fixture mode, the files and folders made directly in its Drive.
+    /// In fixture mode, the files in its Drive outside Documents.
     pub made_in_drive: Vec<DriveFile>,
 }
 /// The keys Google's file picker opens with, none of them secret: they name the platform's

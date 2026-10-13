@@ -183,7 +183,7 @@ test('a member names files as they upload, drops one on the page, renames and do
   expect(saved.suggestedFilename()).toBe('Route notes week 41.txt');
 });
 
-test('an owner adds a file someone made directly in Drive from its link', async ({ page }) => {
+test('a file the Documents account reaches comes in from its link at once', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   // The page's own read of Documents, once connected, names what its Drive holds out of reach.
@@ -201,31 +201,37 @@ test('an owner adds a file someone made directly in Drive from its link', async 
     .getByRole('textbox', { name: 'Link' })
     .fill(`https://drive.google.com/file/d/${map.id}/view?usp=drive_link`);
   await linking.getByRole('button', { name: 'Add' }).click();
-  // Fixture mode lists its Drive's files out of reach, where Google's picker would open, with
-  // the one the link names chosen.
-  const picker = page.getByRole('dialog', { name: 'Add from Google Drive' });
-  await expect(picker.getByLabel('Route map 2025.png')).toBeChecked();
-  await picker.getByRole('button', { name: 'Add 1 file' }).click();
-  await expect(picker).toBeHidden();
+  // The account that holds Documents reaches it, so no picker opens.
+  await expect(page.getByText('Added to Documents')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Add from Google Drive' })).toBeHidden();
   await expect(page.getByRole('link', { name: /Route map 2025\.png/ })).toBeVisible();
 });
 
-test("Google's picker opens in the tab, signed in as the account, and comes back with what was picked", async ({
+test("a file only the member reaches comes in through Google's picker, signed in as them, in the tab", async ({
   page,
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   // Fixture mode has no picker of Google's: here the server offers one, and Google answers as
-  // it does for a browser signed in to the account already.
-  let account = '';
+  // it does for a browser signed in to the member already.
+  let me = '';
+  let into = '';
   await page.route('**/api/dsp/documents', async (route) => {
     const response = await route.fetch();
     const json = await response.json();
     if (json.picker) {
-      account = json.picker.account;
+      me = json.picker.me;
+      into = json.picker.folder;
       json.picker.google = { clientId: 'client', apiKey: 'key', appId: '1' };
     }
     await route.fulfill({ response, json });
+  });
+  // The account that holds Documents doesn't reach the file the link names, the first time.
+  let refused = false;
+  await page.route('**/api/dsp/documents/add', async (route) => {
+    if (refused) return route.continue();
+    refused = true;
+    await route.fulfill({ status: 409, json: { error: 'documents_picked_elsewhere' } });
   });
   const overview = page.waitForResponse(
     async (response) =>
@@ -233,22 +239,26 @@ test("Google's picker opens in the tab, signed in as the account, and comes back
   );
   await page.route('https://accounts.google.com/o/oauth2/v2/auth?**', async (route) => {
     const asked = new URL(route.request().url()).searchParams;
-    expect(asked.get('login_hint')).toBe(account);
+    expect(asked.get('login_hint')).toBe(me);
     const answer = new URLSearchParams({ access_token: 'token', state: asked.get('state')! });
     await route.fulfill({
       contentType: 'text/html',
       body: `<script>location.replace(${JSON.stringify(`${asked.get('redirect_uri')}#${answer}`)})</script>`,
     });
   });
-  await page.route('https://www.googleapis.com/drive/v3/about?**', (route) =>
-    route.fulfill({
-      headers: {
-        'access-control-allow-origin': '*',
-        'access-control-allow-headers': 'authorization',
-      },
-      json: { user: { emailAddress: account } },
-    }),
-  );
+  // The member owns it, so it moves, as them, into the folder open in Documents.
+  const moved: string[] = [];
+  await page.route('https://www.googleapis.com/drive/v3/files/**', async (route) => {
+    const cors = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'authorization,content-type',
+      'access-control-allow-methods': 'GET,PATCH,POST',
+    };
+    if (route.request().method() === 'OPTIONS')
+      return route.fulfill({ status: 204, headers: cors });
+    if (route.request().method() === 'PATCH') moved.push(route.request().url());
+    await route.fulfill({ headers: cors, json: { ownedByMe: true, parents: ['root'] } });
+  });
   // Google's picker picks what it was opened on.
   await page.route('https://apis.google.com/js/api.js', (route) =>
     route.fulfill({
@@ -292,4 +302,6 @@ test("Google's picker opens in the tab, signed in as the account, and comes back
   await expect(page.getByText('Added to Documents')).toBeVisible();
   await expect(page.getByRole('link', { name: /Route map 2025\.png/ })).toBeVisible();
   expect(page.context().pages()).toHaveLength(1);
+  expect(moved).toHaveLength(1);
+  expect(moved[0]).toContain(`addParents=${into}`);
 });

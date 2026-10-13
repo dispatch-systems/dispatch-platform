@@ -40,7 +40,7 @@ pub fn routes() -> Vec<Route> {
         upload("/api/dsp/documents/upload", USE, UPLOAD_LIMIT, upload_file),
         async_get("/api/dsp/documents/items/{id}/download", USE, download),
         async_get("/api/dsp/documents/items/{id}/thumbnail", USE, thumbnail),
-        async_post("/api/dsp/documents/add", CONNECTIONS, add_files),
+        async_post("/api/dsp/documents/add", USE, add_files),
         async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
         async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
         write("/api/dsp/documents/link", USE, link),

@@ -16,7 +16,6 @@ use axum::{
 };
 use dispatch_core::{
     Result,
-    accounts::Context,
     foundation::{
         config::{Config, Site},
         crypto,
@@ -29,8 +28,8 @@ pub const PICKER_PATH: &str = "/api/documents/google/picker";
 /// What adding files from Drive needs, for those who manage the DSP's connections while
 /// Google is connected, since only they hold its account: none on a server without the
 /// picker's keys.
-pub fn setup(c: &Context, google: &Google, connection: &Connection) -> Result<Option<PickerSetup>> {
-    if !c.allows("connections.manage") || connection.broken {
+pub fn setup(google: &Google, connection: &Connection, me: String) -> Result<Option<PickerSetup>> {
+    if connection.broken {
         return Ok(None);
     }
     let account = connection.account.email.clone();
@@ -49,11 +48,13 @@ pub fn setup(c: &Context, google: &Google, connection: &Connection) -> Result<Op
                     .collect(),
                 google: None,
                 account,
+                me,
                 folder,
             })
         }
         Google::Live(_) => google.picker_keys().map(|keys| PickerSetup {
             account,
+            me,
             folder,
             google: Some(keys),
             made_in_drive: Vec::new(),
@@ -125,14 +126,14 @@ fn html(page: &str, settings: &serde_json::Value, allowed: &str) -> Response {
 }
 
 /// The picker's page. The Documents page left it, in the tab's session storage, what to pick
-/// and where to go back to. It sends the browser to Google to sign in as the account that holds
-/// Documents, which comes straight back when the browser is signed in already, and opens
-/// Google's picker on the files a link named, or on the folder open in Documents. It checks
-/// Google signed in that account first, since a file picked as another can't be added. Then it
-/// goes back to Documents, leaving what was picked for it there. It names this address to
-/// Google, though not the page, since Google's picker key works only from Dispatch's own.
-/// Beside the folder open in Documents, the picker shows what's shared with the account, and
-/// the shared drives it's in.
+/// and where to go back to. It sends the browser to Google to sign in as the member, which comes
+/// straight back when the browser is signed in already, and opens Google's picker on the files
+/// a link named, or on the member's Drive, beside what's shared with them and their shared
+/// drives. Each file picked comes in as the member: one of theirs moves into the folder open in
+/// Documents, and one someone else owns is shared with the account that holds Documents, which
+/// adds a shortcut to it. Then it goes back to Documents, leaving what was picked for it there.
+/// It names this address to Google, though not the page, since Google's picker key works only
+/// from Dispatch's own.
 const PAGE: &str = r#"<!doctype html>
 <html lang="en">
 <head>
@@ -195,7 +196,7 @@ const PAGE: &str = r#"<!doctype html>
     document.getElementById('back').onclick = () => back();
     document.querySelector('main').hidden = false;
   }
-  function signIn(choosing) {
+  function signIn() {
     const word = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
       b.toString(16).padStart(2, '0'),
     ).join('');
@@ -206,23 +207,14 @@ const PAGE: &str = r#"<!doctype html>
       redirect_uri: settings.back,
       response_type: 'token',
       scope: 'https://www.googleapis.com/auth/drive.file',
-      login_hint: asked.account,
+      login_hint: asked.me,
       state,
     });
-    if (choosing) query.set('prompt', 'select_account');
     location.replace(`https://accounts.google.com/o/oauth2/v2/auth?${query}`);
   }
   async function open(token) {
     sessionStorage.setItem(ASKED, JSON.stringify({ ...asked, state: undefined }));
-    const signedIn = await fetch(
-      'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)',
-      { headers: { authorization: `Bearer ${token}` } },
-    )
-      .then((response) => (response.ok ? response.json() : undefined))
-      .then((about) => about?.user?.emailAddress, () => undefined);
-    if (signedIn && signedIn.toLowerCase() !== asked.account.toLowerCase())
-      return fail(`Sign in to Google as ${asked.account}.`, 'Switch account', () => signIn(true));
-    const failed = () => fail("Google Drive didn't open.", 'Try again', () => signIn(false));
+    const failed = () => fail("Google Drive didn't open.", 'Try again', () => signIn());
     if (!window.gapi) return failed();
     gapi.load('picker', { callback: () => choose(token), onerror: failed });
   }
@@ -232,12 +224,12 @@ const PAGE: &str = r#"<!doctype html>
         .setIncludeFolders(true)
         .setSelectFolderEnabled(true);
     const builder = new google.picker.PickerBuilder();
-    // A link's files alone; else the folder open in Documents, then what's shared with the
-    // account, and the shared drives it's in.
+    // A link's files alone; else the member's Drive, what's shared with them, and their shared
+    // drives.
     if (asked.files) builder.addView(view().setFileIds(asked.files));
     else
       builder
-        .addView(view().setParent(asked.folder))
+        .addView(view())
         .addView(view().setOwnedByMe(false))
         .addView(view().setEnableDrives(true));
     builder
@@ -245,19 +237,54 @@ const PAGE: &str = r#"<!doctype html>
       .setOAuthToken(token)
       .setDeveloperKey(asked.apiKey)
       .setAppId(asked.appId)
-      .setCallback((data) => {
-        if (data.action === google.picker.Action.PICKED) back(data.docs.map((doc) => doc.id));
-        else if (data.action === google.picker.Action.CANCEL) back();
+      .setCallback(async (data) => {
+        if (data.action === google.picker.Action.PICKED) {
+          const files = data.docs.map((doc) => doc.id);
+          for (const id of files) await bring(token, id);
+          back(files);
+        } else if (data.action === google.picker.Action.CANCEL) back();
       })
       .build()
       .setVisible(true);
   }
 
+  // Brings the file `id` where the account that holds Documents reaches it, as the member: one
+  // of theirs into the folder open in Documents, where the team has it; else it's shared with
+  // that account, at the most the member may give.
+  async function bring(token, id) {
+    const drive = (path, init = {}) =>
+      fetch(`https://www.googleapis.com/drive/v3/${path}`, {
+        ...init,
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      });
+    const all = 'supportsAllDrives=true';
+    const file = await drive(`files/${id}?fields=ownedByMe,parents,driveId&${all}`).then(
+      (response) => (response.ok ? response.json() : undefined),
+      () => undefined,
+    );
+    if (!file) return;
+    if (file.ownedByMe && !file.driveId) {
+      const parents = (file.parents || []).join(',');
+      const moved = await drive(
+        `files/${id}?addParents=${asked.into}&removeParents=${parents}&${all}`,
+        { method: 'PATCH', body: '{}' },
+      ).catch(() => undefined);
+      if (moved?.ok) return;
+    }
+    for (const role of ['writer', 'reader']) {
+      const shared = await drive(`files/${id}/permissions?sendNotificationEmail=false&${all}`, {
+        method: 'POST',
+        body: JSON.stringify({ type: 'user', role, emailAddress: asked.account }),
+      }).catch(() => undefined);
+      if (shared?.ok) return;
+    }
+  }
+
   if (!asked || home.origin !== location.origin) location.replace('/');
-  else if (!answer.has('state')) signIn(false);
+  else if (!answer.has('state')) signIn();
   else if (answer.get('state') !== asked.state || answer.get('error') === 'access_denied') back();
   else if (!answer.get('access_token'))
-    fail("Google didn't sign you in.", 'Try again', () => signIn(false));
+    fail("Google didn't sign you in.", 'Try again', () => signIn());
   else open(answer.get('access_token'));
 </script>
 </body>

@@ -7,11 +7,16 @@ import type { PickerKeys } from "./PickerKeys";
  */
 export type PickerSetup = {
 /**
- * The Google account to pick them as: the one that holds the DSP's Documents.
+ * The Google account that holds the DSP's Documents, which a file picked elsewhere is
+ * shared with to come in.
  */
 account: string,
 /**
- * The main folder in Google Drive, where the picker opens at the top of Documents.
+ * The Google account the member picks as: the one they linked, or their own address.
+ */
+me: string,
+/**
+ * The main folder in Google Drive, where a file picked comes in at the top of Documents.
  */
 folder: string,
 /**
@@ -20,6 +25,6 @@ folder: string,
  */
 google: PickerKeys | null,
 /**
- * In fixture mode, the files and folders made directly in its Drive.
+ * In fixture mode, the files in its Drive outside Documents.
  */
 madeInDrive: Array<DriveFile>, };
