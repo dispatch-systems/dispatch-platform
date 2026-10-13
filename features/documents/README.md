@@ -26,9 +26,9 @@ and weeks, so it's best submitted well before the limit.
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
   100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
-  `POST /api/dsp/documents/link` and `…/link/finish`. Behind `connections.manage`,
-  `POST /api/dsp/documents/add`, for files and folders picked in Google Drive. Public, the picker's
-  page: `GET /api/documents/google/picker`.
+  `POST /api/dsp/documents/link` and `…/link/finish`, and `POST /api/dsp/documents/add`, for
+  files and folders from Google Drive. Public, the picker's page:
+  `GET /api/documents/google/picker`.
 - **Browsing:** Dispatch reads the main folder from Google a few folders at a time, so another
   DSP's folder made with the same account is never listed, found or changed, and follows what
   changes in the account's Drive. A file someone makes in the folder in Drive shows as the

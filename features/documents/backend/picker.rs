@@ -240,8 +240,12 @@ const PAGE: &str = r#"<!doctype html>
       .setCallback(async (data) => {
         if (data.action === google.picker.Action.PICKED) {
           const files = data.docs.map((doc) => doc.id);
-          for (const id of files) await bring(token, id);
-          back(files);
+          // Back to Documents whatever Google answered: adding says what it can't reach.
+          try {
+            for (const id of files) await bring(token, id);
+          } finally {
+            back(files);
+          }
         } else if (data.action === google.picker.Action.CANCEL) back();
       })
       .build()
