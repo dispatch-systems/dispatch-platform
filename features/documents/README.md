@@ -24,7 +24,7 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`. Behind `connections.manage`,
   `POST /api/dsp/documents/add`, for files and folders picked in Google Drive. Public, the picker's
-  window: `GET /api/documents/google/picker`.
+  page: `GET /api/documents/google/picker`.
 - **Browsing:** with `drive.file`, Dispatch reaches only the files it made or was given, so it
   lists them all and keeps the ones inside the DSP's main folder: another DSP's folder made with
   the same account is never listed, found or changed. A file opens in Google, in a tab of its
@@ -79,17 +79,23 @@ works only with what it makes or is given (`drive.file`), so Google asks for no 
   screen, 300 on an ordinary one.
 - **Adding from Google Drive:** a file or folder someone made directly in Drive is out of
   `drive.file`'s reach until Google's picker gives it. Those who manage the DSP's connections,
-  who hold its Google account, pick it in a window of its own, signed in to Google as that
-  account: the window has rules of its own that let only Google's sign-in and picker run, and
-  the dashboard's stay as they are. The page's Upload menu holds them beside uploading files
-  and folders, for those who can: Google Drive opens the picker on the folder open in
-  Documents, and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it
-  on the files the link names, or on the folder, as pasting one on the page (outside a field)
-  does. A browser that blocks the window offers to open it again with a click. The window gets
-  its own short-lived token from Google, never the one Dispatch keeps, and tells the Documents
-  page what was picked on a channel only Dispatch's own pages reach, with a word the page gave
-  it. Dispatch then checks it reaches each file with the account's token, so a file picked as
-  another account is refused. One already in Documents becomes visible; one elsewhere in the
+  who hold its Google account, pick it on a page of its own in the same tab, signed in to
+  Google as that account: the page has rules of its own that let only Google's picker run, and
+  the dashboard's stay as they are. The Upload menu holds them beside uploading files and
+  folders, for those who can: Google Drive opens the picker on the folder open in Documents,
+  and Drive link asks for a Google Drive, Docs, Sheets or Slides link and opens it on the files
+  the link names, or on the folder, as pasting one on the page (outside a field) does.
+  Documents leaves the picker's page what to pick and where to go back to in the tab's session
+  storage. The page sends the browser to Google's sign-in, which comes straight back when the
+  browser is signed in to that account already, to the same return address as connecting, with
+  its answer in the fragment, which no server sees. That address takes it on to the picker's
+  page at the address it started at, the admin's or the DSP's own, as the state names. The page
+  gets its own short-lived token from Google, never the one Dispatch keeps, checks Google
+  signed in the account that holds Documents and offers to switch if not, then opens the
+  picker. Once something is picked, or the picker is closed, it goes back to Documents, which
+  adds what was picked. Leaving Documents while files upload asks first. Dispatch checks it
+  reaches each file with the account's token, so a file picked as another account is
+  refused. One already in Documents becomes visible; one elsewhere in the
   account's Drive moves into the folder open. A folder brings only itself: what it holds is
   picked once it's there, and stays where it is. Picking the main folder changes nothing. The
   picker needs

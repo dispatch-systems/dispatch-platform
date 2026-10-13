@@ -5,16 +5,30 @@ import { addFiles, type PickerSetup } from '../api/client.js';
 import { driveLinks } from './driveLinks.js';
 import { Tile } from './items.js';
 
-// Adding files and folders someone made directly in Google Drive. Google's picker opens in a
-// window of its own, signed in to Google as the account that holds Documents, on the folder
-// open here, and tells this page what was picked on a channel only this origin reaches. A
-// Google link, given in a dialog or pasted on the page, opens it on the files the link names.
-// Fixture mode has no picker of Google's: it lists its Drive's files here instead.
+// Adding files and folders someone made directly in Google Drive. Google's picker opens on a
+// page of its own in this tab, signed in to Google as the account that holds Documents, on the
+// folder open here, then comes back here with what was picked. A Google link, given in a dialog
+// or pasted on the page, opens it on the files the link names. Fixture mode has no picker of
+// Google's: it lists its Drive's files here instead.
 
-const CHANNEL = 'dispatch-documents-picker';
+const PICKER = '/api/documents/google/picker';
+/** What the picker's page is to pick, and where it goes back to, for this tab only. */
+const ASKED = 'dispatch-documents-picker';
+/** What it picked, left for the page it went back to. */
+const PICKED = 'dispatch-documents-picked';
 
 /** Where the picker opens: on the files a link named, or a folder's, or else the open one's. */
 type At = { files: string[]; folder?: string };
+
+/** What the picker's page picked, once, if it went back to this page. */
+function takePicked() {
+  const left = sessionStorage.getItem(PICKED);
+  if (!left) return undefined;
+  sessionStorage.removeItem(PICKED);
+  const { files, at } = JSON.parse(left) as { files?: string[]; at?: string };
+  const page = (href: string) => href.split('?')[0];
+  return files?.length && at && page(at) === page(location.href) ? files : undefined;
+}
 
 /** Adds files from Drive into `folder`, or the top, calling `added` once they're in. */
 export function useFromDrive(
@@ -24,11 +38,7 @@ export function useFromDrive(
 ) {
   // Fixture mode's list, with the files a pasted link named chosen.
   const [choosing, setChoosing] = useState<string[]>();
-  // Where the picker was to open when the browser blocked its window.
-  const [blocked, setBlocked] = useState<At>();
   const [linking, setLinking] = useState(false);
-  const channel = useRef<BroadcastChannel | undefined>(undefined);
-  useEffect(() => () => channel.current?.close(), []);
   const adding = useAction(
     async (files: string[]) => {
       await addFiles(files, folder);
@@ -38,27 +48,27 @@ export function useFromDrive(
   );
   function open(at: At = { files: [] }) {
     if (!picker) return;
-    setBlocked(undefined);
     if (!picker.google) return setChoosing(at.files);
-    // The word the window says back, so only what it picked for this page is added.
-    const word = crypto.randomUUID();
-    const sent = new URLSearchParams({ ...picker.google, account: picker.account, word });
-    if (at.files.length) sent.set('files', at.files.join(','));
-    else sent.set('folder', at.folder ?? folder ?? picker.folder);
-    const opened = window.open(
-      `/api/documents/google/picker#${sent}`,
-      CHANNEL,
-      'popup,width=1000,height=720',
+    sessionStorage.setItem(
+      ASKED,
+      JSON.stringify({
+        ...picker.google,
+        account: picker.account,
+        back: location.href,
+        ...(at.files.length
+          ? { files: at.files.join(',') }
+          : { folder: at.folder ?? folder ?? picker.folder }),
+      }),
     );
-    if (!opened) return setBlocked(at);
-    channel.current?.close();
-    channel.current = new BroadcastChannel(CHANNEL);
-    channel.current.onmessage = (event: MessageEvent<{ word?: string; files?: string[] }>) => {
-      if (event.data.word !== word || !event.data.files?.length) return;
-      channel.current?.close();
-      void adding.run(event.data.files);
-    };
+    location.assign(PICKER);
   }
+  // What the picker picked, once it's back here.
+  const ready = Boolean(picker);
+  useEffect(() => {
+    if (!ready) return;
+    const files = takePicked();
+    if (files) void adding.run(files);
+  }, [ready]);
   // A Google link pasted anywhere but a field opens the picker on what it names.
   const opener = useRef(open);
   useEffect(() => {
@@ -90,16 +100,6 @@ export function useFromDrive(
         />
       )}
       {linking && <DriveLink close={() => setLinking(false)} open={open} />}
-      {blocked && (
-        <Modal title="Add from Google Drive" onClose={() => setBlocked(undefined)}>
-          <div className="form-actions">
-            <button onClick={() => setBlocked(undefined)}>Cancel</button>
-            <button className="primary" onClick={() => open(blocked)}>
-              Open Google Drive
-            </button>
-          </div>
-        </Modal>
-      )}
     </>
   );
   return { open: () => open(), askLink: () => setLinking(true), dialog };

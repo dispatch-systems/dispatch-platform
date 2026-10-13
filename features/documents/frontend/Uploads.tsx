@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle, X } from 'lucide-react';
 import { messageOf } from '../../../core/shell/frontend/lib/errors.js';
 import { Modal } from '../../../core/shell/frontend/ui/index.js';
@@ -127,6 +127,14 @@ export function useUploads(
     await Promise.all(Array.from({ length: AT_ONCE }, work));
   }
   const clear = () => setUploads((all) => all.filter((each) => each.state === 'uploading'));
+  // Leaving the page while files go up, for Google's picker or otherwise, asks first.
+  const going = uploads.some((each) => each.state === 'waiting' || each.state === 'uploading');
+  useEffect(() => {
+    if (!going) return;
+    const stay = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', stay);
+    return () => window.removeEventListener('beforeunload', stay);
+  }, [going]);
   return { uploads, start, clear };
 }
 
