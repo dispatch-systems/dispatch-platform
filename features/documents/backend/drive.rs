@@ -765,12 +765,22 @@ pub fn fixture_made_in_drive(access: &str, folder: &str) -> Result<()> {
     let id = || Ok::<_, Error>(format!("fixture-{}", crypto::hex(&crypto::random::<8>()?)));
     let safety = id()?;
     fixture(access, |drive| {
-        for (id, name, mime, size, parent) in [
-            (safety.clone(), "Safety", FOLDER, None, Some(folder)),
-            (id()?, "Weekly safety huddle", DOC, None, Some(safety.as_str())),
-            (id()?, "Fuel receipts.pdf", "application/pdf", Some("48213"), Some(folder)),
-            (id()?, "Route map 2025.png", "image/png", Some("231004"), None),
+        for (name, mime, size, parent) in [
+            ("Safety", FOLDER, None, Some(folder)),
+            ("Weekly safety huddle", DOC, None, Some(safety.as_str())),
+            (
+                "Fuel receipts.pdf",
+                "application/pdf",
+                Some("48213"),
+                Some(folder),
+            ),
+            ("Route map 2025.png", "image/png", Some("231004"), None),
         ] {
+            let id = if mime == FOLDER {
+                safety.clone()
+            } else {
+                id()?
+            };
             let item = Item {
                 web_view_link: link(mime, &id),
                 id: id.clone(),
