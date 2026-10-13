@@ -604,6 +604,8 @@ test("Google's picker runs on a page of its own, and the dashboard loads none of
   const nonce = /'nonce-([\w-]+)'/.exec(policy)![1];
   const page = await picker.text();
   assert.ok(page.includes(`<script nonce="${nonce}">`));
+  // Google's picker key works only from Dispatch's own address, which the page names to it.
+  assert.ok(page.includes('<meta name="referrer" content="strict-origin">'));
   // Google sends the browser back to the platform's own return address, the one it knows,
   // and the page names the DSP address it's at, to go back on to.
   const back = `${f.env.DISPATCH_ORIGIN}/api/documents/google/return`;
