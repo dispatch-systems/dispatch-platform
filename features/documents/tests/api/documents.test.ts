@@ -97,11 +97,15 @@ test('a role given Documents uses it, and only those who manage the DSP connecti
     ['/api/dsp/documents/account', undefined],
     ['/api/dsp/documents/connect', {}],
     ['/api/dsp/documents/disconnect', {}],
-    ['/api/dsp/documents/add', { files: ['any'], folder: null }],
   ] as const) {
     const refused = body ? await member.post(path, body) : await member.get(path);
     assert.equal(refused.status, 403, path);
   }
+  // Every member adds from Drive: here only nothing's connected yet.
+  assert.equal(
+    (await member.post('/api/dsp/documents/add', { files: ['any'], folder: null })).value.error,
+    'documents_not_connected',
+  );
   const account = await owner.get('/api/dsp/documents/account');
   assert.equal(account.status, 200, account.body);
   assert.deepEqual(account.value, { connection: null, available: true, storage: null });
