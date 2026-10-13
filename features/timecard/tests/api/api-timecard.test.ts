@@ -222,6 +222,21 @@ test('Unicode employee sorting agrees with the dashboard locale and preserves di
             (a: string, b: string) => a.localeCompare(b, 'en') * (direction === 'desc' ? -1 : 1),
           ),
         );
+      } else {
+        const oddFirst = sort === 'inDay' || sort === 'outDay';
+        const first = oddFirst ? ['E1', 'E3', 'E5', 'E7'] : ['E0', 'E2', 'E4', 'E6', 'E8'];
+        const last = oddFirst ? ['E0', 'E2', 'E4', 'E6', 'E8'] : ['E1', 'E3', 'E5', 'E7'];
+        const expected =
+          sort === 'condition'
+            ? ['E0', 'E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E8']
+            : direction === 'desc'
+              ? [...last, ...first]
+              : [...first, ...last];
+        assert.deepEqual(
+          server.map((row: any) => row.employeeCode),
+          expected,
+          `${sort}/${direction}`,
+        );
       }
     }
   }
