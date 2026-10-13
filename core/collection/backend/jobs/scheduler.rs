@@ -1,10 +1,7 @@
 use super::executor::execute;
 use crate::{
     Error, Result, State,
-    collection::{
-        api::jobs::{JobKind, JobRow},
-        registry::Provider,
-    },
+    collection::api::jobs::{JobKind, JobRow},
     db::{FromRow, Row, now},
     foundation::crypto,
     job_statuses,
