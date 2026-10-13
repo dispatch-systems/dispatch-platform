@@ -4,8 +4,9 @@ A DSP's shared folders, Docs and Sheets, kept in a Google account the DSP connec
 kept for Documents alone. Dispatch makes one main folder there and reaches the account's whole
 Drive (`drive`), so everything in the folder shows, whoever made it and however. Google calls
 that scope restricted: unreviewed, up to 100 accounts may grant it over the app's life, each
-seeing that Google hasn't verified the app; past that, Google reviews it, with a yearly
-security assessment.
+seeing that Google hasn't verified the app. Past that, no other account can connect until the
+platform owner submits the app to Google for review, which takes a yearly security assessment
+and weeks, so it's best submitted well before the limit.
 
 - **Switch:** `documents`, off for every DSP until the platform owner switches it on.
 - **Permissions:** `documents.use`, to see and work in the DSP's Documents: everyone who holds

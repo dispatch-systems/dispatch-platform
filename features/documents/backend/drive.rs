@@ -261,6 +261,15 @@ impl Google {
         let mut items = Vec::new();
         let mut folders = vec![root.to_owned()];
         let mut calls = 0;
+        // Every call to Google counts, and what it brings, against the listing's limits.
+        let spend = |calls: &mut usize, items: &[Item]| {
+            *calls += 1;
+            ensure(
+                *calls <= CALLS && items.len() <= FILES_AT_MOST,
+                "documents_too_many_files",
+                507,
+            )
+        };
         while !folders.is_empty() {
             let batch: Vec<String> = folders
                 .drain(..folders.len().min(FOLDERS_AT_ONCE))
@@ -272,12 +281,7 @@ impl Google {
             let q = format!("({}) and trashed=false", parents.join(" or "));
             let mut next: Option<String> = None;
             loop {
-                calls += 1;
-                ensure(
-                    calls <= CALLS && items.len() <= FILES_AT_MOST,
-                    "documents_too_many_files",
-                    507,
-                )?;
+                spend(&mut calls, &items)?;
                 let mut query = vec![
                     ("q", q.clone()),
                     ("fields", format!("nextPageToken,files({FIELDS})")),
@@ -295,6 +299,11 @@ impl Google {
                         .map(|item| item.id.clone()),
                 );
                 items.extend(page.files);
+                ensure(
+                    items.len() <= FILES_AT_MOST,
+                    "documents_too_many_files",
+                    507,
+                )?;
                 match page.next_page_token {
                     Some(token) => next = Some(token),
                     None => break,
@@ -309,6 +318,7 @@ impl Google {
             .map(|shortcut| shortcut.target_id.clone())
             .collect();
         for target in targets {
+            spend(&mut calls, &items)?;
             match self.get(access, &target).await {
                 Ok(item) => items.push(item),
                 Err(error) if error.code == "documents_item_not_found" => {}
