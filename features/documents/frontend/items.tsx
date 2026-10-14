@@ -49,7 +49,7 @@ export function Thumb({ kind, picture }: { kind: ItemKind; picture?: string | nu
         className={`documents-thumb documents-thumb-picture${kind === 'image' ? ' documents-thumb-photo' : ''}`}
         aria-hidden="true"
       >
-        <img src={shown} alt="" onError={lost} />
+        <img src={shown} alt="" draggable={false} onError={lost} />
       </div>
     );
   return (

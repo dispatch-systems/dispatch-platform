@@ -42,6 +42,7 @@ pub fn routes() -> Vec<Route> {
         async_get("/api/dsp/documents/items/{id}/thumbnail", USE, thumbnail),
         async_post("/api/dsp/documents/add", USE, add_files),
         async_post("/api/dsp/documents/items/{id}/rename", USE, rename),
+        async_post("/api/dsp/documents/items/{id}/move", USE, move_item),
         async_post("/api/dsp/documents/items/{id}/trash", USE, trash),
         write("/api/dsp/documents/link", USE, link),
         async_post("/api/dsp/documents/link/finish", USE, finish_link),
@@ -101,6 +102,13 @@ fn file_id(id: &str) -> Result<String> {
     ensure(valid, "invalid_input", 400)?;
     Ok(id.to_owned())
 }
+/// The folder a body names, `folder`: none for the main one.
+fn into_folder(body: &serde_json::Value) -> Result<Option<String>> {
+    match &body["folder"] {
+        serde_json::Value::Null => Ok(None),
+        _ => Ok(Some(file_id(v::text(body, "folder", 1, 128)?)?)),
+    }
+}
 /// A file's name: up to 200 characters, without control characters or space around it.
 fn file_name(body: &serde_json::Value) -> Result<String> {
     let name = v::text(body, "name", 1, 400)?.trim();
@@ -125,10 +133,7 @@ async fn create(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.run(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["folder", "kind", "name"])?;
-    let folder = match &input.body["folder"] {
-        serde_json::Value::Null => None,
-        _ => Some(file_id(v::text(&input.body, "folder", 1, 128)?)?),
-    };
+    let folder = into_folder(&input.body)?;
     let kind = NewKind::parse(v::choice(
         &input.body,
         "kind",
@@ -182,10 +187,7 @@ async fn add_files(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply
     let asked = input.clone();
     let c = state.run(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["files", "folder"])?;
-    let folder = match &input.body["folder"] {
-        serde_json::Value::Null => None,
-        _ => Some(file_id(v::text(&input.body, "folder", 1, 128)?)?),
-    };
+    let folder = into_folder(&input.body)?;
     let files = input.body["files"]
         .as_array()
         .filter(|files| (1..=PICKED).contains(&files.len()))
@@ -231,6 +233,13 @@ async fn rename(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     v::fields(&input.body, &["name"])?;
     let (id, name) = (file_id(input.param("id"))?, file_name(&input.body)?);
     Reply::of(&files::rename(&state, c, access, id, name).await?)
+}
+async fn move_item(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["folder"])?;
+    let (id, folder) = (file_id(input.param("id"))?, into_folder(&input.body)?);
+    Reply::of(&files::move_to(&state, c, access, id, folder).await?)
 }
 async fn trash(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();

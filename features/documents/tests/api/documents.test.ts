@@ -138,7 +138,7 @@ async function connect(client: Client) {
   assert.equal(finished.status, 200, finished.body);
 }
 
-test('a team makes, finds, renames and trashes files, and never reaches another DSP’s', async (t) => {
+test('a team makes, finds, renames, moves and trashes files, and never reaches another DSP’s', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -196,6 +196,34 @@ test('a team makes, finds, renames and trashes files, and never reaches another 
     'documents_name_invalid',
   );
 
+  // A file moves to the top and back, each answer naming the folder it left; a folder takes
+  // what it holds with it, but never goes inside itself or a folder inside it.
+  const move = (id: string, folder: string | null) =>
+    owner.post(`/api/dsp/documents/items/${id}/move`, { folder });
+  const listed = async (folder?: string) =>
+    (await owner.get(`/api/dsp/documents/folder${folder ? `?id=${folder}` : ''}`)).value;
+  const out = await move(plan.id, null);
+  assert.equal(out.value.from, safety.id, out.body);
+  const atTop = (await listed()).items as { name: string; items: number | null }[];
+  assert.equal(atTop.find((item) => item.name === 'Safety & Compliance')?.items, 0);
+  assert.ok(atTop.some((item) => item.name === 'Rescue plan October'));
+  assert.equal((await move(plan.id, safety.id)).value.from, null);
+  const audits = await make('folder', 'Audits', safety.id);
+  for (const into of [safety.id, audits.id])
+    assert.equal((await move(safety.id, into)).value.error, 'documents_move_inside');
+  const archive = await make('folder', 'Archive');
+  assert.equal((await move(safety.id, archive.id)).status, 200);
+  const archived = await listed(safety.id);
+  assert.deepEqual(archived.path, [
+    { id: archive.id, name: 'Archive' },
+    { id: safety.id, name: 'Safety & Compliance' },
+  ]);
+  assert.deepEqual(archived.items.map((item: { name: string }) => item.name).sort(), [
+    'Audits',
+    'Rescue plan October',
+  ]);
+  assert.equal((await move(safety.id, null)).value.from, archive.id);
+
   // Summit connects the same Google account, and none of Northline's files are its to reach.
   await owner.select(summit.id);
   await connect(owner);
@@ -204,11 +232,15 @@ test('a team makes, finds, renames and trashes files, and never reaches another 
     [`/api/dsp/documents/folder?id=${safety.id}`, undefined],
     [`/api/dsp/documents/items/${plan.id}/rename`, { name: 'Mine now' }],
     [`/api/dsp/documents/items/${plan.id}/trash`, {}],
+    [`/api/dsp/documents/items/${plan.id}/move`, { folder: null }],
     ['/api/dsp/documents/new', { folder: safety.id, kind: 'doc', name: 'Mine now' }],
   ] as const) {
     const refused = body ? await owner.post(path, body) : await owner.get(path);
     assert.equal(refused.value.error, 'documents_item_not_found', path);
   }
+  // Nor does Summit's own file go into one of Northline's folders.
+  const notes = await make('doc', 'Summit notes');
+  assert.equal((await move(notes.id, safety.id)).value.error, 'documents_item_not_found');
 
   await owner.select(north.id);
   assert.equal((await owner.post(`/api/dsp/documents/items/${safety.id}/trash`, {})).status, 200);
@@ -216,7 +248,7 @@ test('a team makes, finds, renames and trashes files, and never reaches another 
     (await owner.get('/api/dsp/documents/folder')).value.items.map(
       (item: { name: string }) => item.name,
     ),
-    ['Fuel cards'],
+    ['Archive', 'Fuel cards'],
   );
 });
 

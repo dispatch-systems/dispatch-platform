@@ -204,6 +204,17 @@ pub struct AddedFiles {
     pub unshared: Vec<String>,
 }
 
+/// A file or folder moved, and the folder it was in, none for the top, which undoing the move
+/// takes it back to.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/documents/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct MovedItem {
+    pub item: DocumentsItem,
+    pub from: Option<String>,
+}
+
 /// A step of the way to a folder.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

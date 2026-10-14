@@ -1,7 +1,7 @@
 //! Browsing and changing a DSP's Documents: what a folder holds, and making, uploading,
-//! downloading, renaming and trashing files in it. A folder opens from the copy of the DSP's
-//! Drive kept in memory; a change asks Google outside the database, inside the DSP's own tree
-//! only, puts Google's answer in the copy, then checks the member's access again before it
+//! downloading, renaming, moving and trashing files in it. A folder opens from the copy of the
+//! DSP's Drive kept in memory; a change asks Google outside the database, inside the DSP's own
+//! tree only, puts Google's answer in the copy, then checks the member's access again before it
 //! records anything.
 use super::{
     connection,
@@ -13,7 +13,7 @@ use super::{
     tree::{Row, Tree},
 };
 use crate::api::types::{
-    AddedFiles, DocumentsFolder, DocumentsItem, FolderStep, ItemKind, NewKind,
+    AddedFiles, DocumentsFolder, DocumentsItem, FolderStep, ItemKind, MovedItem, NewKind,
 };
 use dispatch_core::{
     Error, Result, State,
@@ -575,6 +575,87 @@ pub async fn rename(
         account: &connection.account.email,
     }
     .item(&Row::from(renamed), false))
+}
+
+/// Moves the file or folder `id`, and whatever it holds, into the folder `into`, or the main
+/// one. A folder never goes inside itself.
+pub async fn move_to(
+    state: &Arc<State>,
+    c: Context,
+    access: Dsp,
+    id: String,
+    into: Option<String>,
+) -> Result<MovedItem> {
+    let dsp = c.dsp.id.clone();
+    let (connection, tree) = tree(state, &dsp).await?;
+    let root = connection.folder_id;
+    let into = into.unwrap_or_else(|| root.clone());
+    let row = tree.get(&id).ok_or_else(not_found)?;
+    ensure(tree.is_folder(&into), "documents_item_not_found", 404)?;
+    let inside = tree.path(&into).iter().any(|up| *up.id == *id);
+    ensure(!inside, "documents_move_inside", 409)?;
+    let name = row.shown().name.to_string();
+    // Someone may have moved it in Drive since the copy last heard: Google says where it is now.
+    let answer = on_drive!(state, &dsp, |google, token| google.get(token, &id));
+    let (_, now) = gone(&dsp, &root, &id, answer)?;
+    let Some(from) = now
+        .parents
+        .iter()
+        .find(|parent| tree.is_folder(parent))
+        .cloned()
+    else {
+        mirror::of(&dsp).put(&root, now);
+        return Err(not_found());
+    };
+    let moved = if from == into {
+        now
+    } else {
+        // Drive keeps a file in one folder, and only its owner moves it to another.
+        ensure(now.owned_by_me, "documents_cannot_move", 409)?;
+        let answer = on_drive!(state, &dsp, |google, token| google
+            .move_into(token, &now, &into));
+        let (_, moved) = answer?;
+        mirror::of(&dsp).put(&root, moved.clone());
+        let named = |folder: &str| match tree.get(folder) {
+            Some(row) => row.name.to_string(),
+            None => "Documents".to_owned(),
+        };
+        let (before, after) = (named(&from), named(&into));
+        let at = dsp.clone();
+        let title = name.clone();
+        state
+            .run(move |db| {
+                let c = access.revalidate(db, &c)?;
+                db.audit_with(
+                    Some(c.actor()),
+                    Some(&at),
+                    "documents.moved",
+                    &title,
+                    None,
+                    &[("folder", Some(before), Some(after))],
+                )
+            })
+            .await?;
+        moved
+    };
+    let (connection, tree) = self::tree(state, &dsp).await?;
+    let at = dsp.clone();
+    let (records, names) = state.read(move |db| known(db, &at, &[id])).await?;
+    let described = Described {
+        dsp: &dsp,
+        tree: &tree,
+        records: &records,
+        names: &names,
+        account: &connection.account.email,
+    };
+    let item = match tree.get(&moved.id) {
+        Some(row) => described.item(row, false),
+        None => described.item(&Row::from(moved), false),
+    };
+    Ok(MovedItem {
+        item,
+        from: (from != root).then_some(from),
+    })
 }
 
 /// Moves the file or folder `id`, and whatever it holds, to the account's trash.
