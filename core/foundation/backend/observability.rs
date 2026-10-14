@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 
 #[derive(Default)]
 pub struct RequestContext {
+    pub request_id: Option<String>,
     pub actor: Option<String>,
     pub tenant: Option<String>,
     pub account: Option<String>,
@@ -13,6 +14,12 @@ pub struct RequestContext {
     pub agent: Option<Box<dyn std::any::Any + Send>>,
 }
 pub type RequestTrace = std::sync::Arc<std::sync::Mutex<RequestContext>>;
+
+tokio::task_local! {
+    /// Each HTTP future's trace. Blocking work takes its own clone before spawning;
+    /// background jobs outside this scope have no request identity.
+    pub(crate) static REQUEST_TRACE: RequestTrace;
+}
 
 pub fn event(level: &str, event: &str, fields: Value) {
     eprintln!(

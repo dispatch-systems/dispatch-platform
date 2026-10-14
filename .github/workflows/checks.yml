@@ -179,6 +179,14 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+      - name: Preserve large-folder measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: dispatch-documents-performance-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: test-results/**/attachments/documents-performance*.json
+          if-no-files-found: ignore
+          retention-days: 30
   # The packaged runtime starts, signs in and serves: what a release's smoke test asks of the
   # same bytes, so a release never finds out first. It speaks HTTP only, so it needs no browser.
   smoke:
