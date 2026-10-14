@@ -146,10 +146,14 @@ export function size(bytes: number) {
   if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
   return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
 }
-/** What the list's type column says of an item. */
+/** Google's own kinds of file, which Google gives a size too. */
+const GOOGLE_KINDS: ItemKind[] = ['doc', 'sheet', 'slides'];
+/** What the list's type column says of an item: a Google file's kind, an upload's size. */
 export function typeOf(item: DocumentsItem) {
   if (item.kind === 'folder') return item.items === 1 ? '1 item' : `${item.items ?? 0} items`;
-  return item.size === null ? kindLabel(item.kind) : size(item.size);
+  return item.size === null || GOOGLE_KINDS.includes(item.kind)
+    ? kindLabel(item.kind)
+    : size(item.size);
 }
 
 const day = (value: Date, timeZone: string) =>
