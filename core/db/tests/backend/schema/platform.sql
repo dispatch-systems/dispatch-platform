@@ -30,6 +30,7 @@ CREATE TABLE security_challenges ( session_hash TEXT PRIMARY KEY REFERENCES sess
 CREATE TABLE session_metadata ( session_hash TEXT PRIMARY KEY REFERENCES sessions(hash) ON DELETE CASCADE, device TEXT NOT NULL );
 CREATE TABLE session_security ( session_hash TEXT PRIMARY KEY REFERENCES sessions(hash) ON DELETE CASCADE, verified_at INTEGER NOT NULL DEFAULT 0, password_verified_at INTEGER NOT NULL DEFAULT 0 );
 CREATE TABLE sessions (hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), user_version INTEGER NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE slack_teams ( team_id TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, connected_at TEXT NOT NULL );
 CREATE TABLE support_approvals ( ticket_id TEXT NOT NULL REFERENCES support_tickets(id), version INTEGER NOT NULL, owner_id TEXT NOT NULL, decision TEXT NOT NULL CHECK(decision IN ('approve','deny')), note TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(ticket_id,version), FOREIGN KEY(ticket_id,version) REFERENCES support_proposals(ticket_id,version) );
 CREATE TABLE support_attachments ( id TEXT PRIMARY KEY, ticket_id TEXT REFERENCES support_tickets(id), uploader_id TEXT NOT NULL, uploader_scope TEXT NOT NULL, name TEXT NOT NULL, media_type TEXT NOT NULL, bytes BLOB NOT NULL, private INTEGER NOT NULL DEFAULT 0 CHECK(private IN (0,1)), created_at INTEGER NOT NULL );
 CREATE TABLE support_evidence ( sequence INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, job_id TEXT NOT NULL REFERENCES support_jobs(id), ticket_id TEXT NOT NULL REFERENCES support_tickets(id), body TEXT NOT NULL, created_at INTEGER NOT NULL );
@@ -63,6 +64,7 @@ CREATE INDEX recovery_codes_user ON recovery_codes(user_id);
 CREATE INDEX resets_expiry ON resets(expires_at);
 CREATE UNIQUE INDEX roles_owner ON roles(dsp_id) WHERE system=1;
 CREATE INDEX session_expiry ON sessions(expires_at);
+CREATE INDEX slack_teams_dsp ON slack_teams (dsp_id);
 CREATE INDEX support_attachments_ticket ON support_attachments(ticket_id);
 CREATE INDEX support_evidence_ticket ON support_evidence(ticket_id,sequence);
 CREATE UNIQUE INDEX support_jobs_active ON support_jobs(ticket_id,kind,version) WHERE status IN ('queued','running','waiting') AND kind<>'answer';

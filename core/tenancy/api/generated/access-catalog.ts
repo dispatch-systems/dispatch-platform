@@ -11,7 +11,8 @@ export const pages = [
   "daily_performance",
   "documents",
   "team",
-  "settings"
+  "settings",
+  "slack"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -36,6 +37,7 @@ export const features = [
   "documents",
   "team",
   "settings",
+  "slack",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -166,6 +168,14 @@ export const featureCatalog = [
     "requires": [],
     "kind": "page",
     "mandatory": true
+  },
+  {
+    "id": "slack",
+    "label": "Slack",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "connects": true
   },
   {
     "id": "timecard.daily",

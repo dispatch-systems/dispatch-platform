@@ -33,6 +33,10 @@ const OUTSIDE_THE_API: &[&str] = &[
     "/oauth/token",
     "/oauth/register",
     "/oauth/revoke",
+    // Slack's own requests, which no page of Dispatch's sends: each must carry Slack's
+    // signature, made with the app's signing secret, which the feature checks before anything.
+    "/slack/events",
+    "/slack/interactions",
 ];
 
 // Every endpoint of core and the collectors: who may call it, which database access its

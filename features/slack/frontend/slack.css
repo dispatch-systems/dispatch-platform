@@ -1,0 +1,67 @@
+/* Slack's card on Settings' Connections. */
+.slack-logo {
+  flex-shrink: 0;
+}
+.slack-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.slack-workspaces {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.slack-workspaces li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding-block: 12px;
+  border-top: 1px solid var(--border);
+}
+.slack-workspaces li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.slack-workspace-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.slack-workspaces small,
+.slack-link small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.slack-workspaces small {
+  grid-column: 1;
+}
+.slack-workspace-actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.slack-link {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.slack-link input {
+  width: 100%;
+  font-size: 13px;
+}
+.slack-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}

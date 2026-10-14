@@ -18,6 +18,8 @@ pub const FEATURES: &[&Feature] = &[
     &dispatch_routes::FEATURE,
     #[cfg(feature = "settings")]
     &dispatch_settings::FEATURE,
+    #[cfg(feature = "slack")]
+    &dispatch_slack::FEATURE,
     #[cfg(feature = "team")]
     &dispatch_team::FEATURE,
     #[cfg(feature = "timecard")]
@@ -45,6 +47,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     all.extend(dispatch_dvic::typescript(cfg));
     #[cfg(feature = "routes")]
     all.extend(dispatch_routes::typescript(cfg));
+    #[cfg(feature = "slack")]
+    all.extend(dispatch_slack::typescript(cfg));
     #[cfg(feature = "timecard")]
     all.extend(dispatch_timecard::typescript(cfg));
     #[cfg(feature = "uniforms")]

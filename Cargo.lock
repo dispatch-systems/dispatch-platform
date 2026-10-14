@@ -613,6 +613,7 @@ dependencies = [
  "dispatch-paycom",
  "dispatch-routes",
  "dispatch-settings",
+ "dispatch-slack",
  "dispatch-team",
  "dispatch-timecard",
  "dispatch-uniforms",
@@ -844,6 +845,24 @@ dependencies = [
  "libc",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "dispatch-slack"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "dispatch-core",
+ "futures-util",
+ "hmac",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "ts-rs",
+ "url",
 ]
 
 [[package]]

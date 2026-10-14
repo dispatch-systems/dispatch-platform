@@ -1,0 +1,252 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
+import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
+
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+type Client = Awaited<ReturnType<Fixture['client']>>;
+
+// Fixture mode stands in for Slack: installing sends the browser straight back with a code
+// naming the workspace, `fixture:<team>`, and it signs with a secret tests sign with too.
+const SIGNING_SECRET = 'fixture-signing-secret';
+const install = (url: string) => {
+  const sent = new URL(url).searchParams;
+  return { state: sent.get('state')!, code: sent.get('code')! };
+};
+/** Where an address sends the browser, without following it. */
+const goes = async (url: string) => {
+  const answer = await fetch(url, { redirect: 'manual' });
+  return { status: answer.status, location: answer.headers.get('location') ?? '' };
+};
+/** Where Slack's return sends the browser: the address with what Slack sent taken out. */
+const returnedTo = async (url: string) => {
+  const { location } = await goes(url);
+  const [page, query] = location.split('?');
+  const kept = new URLSearchParams(query);
+  for (const field of ['slackState', 'slackCode', 'slackError']) kept.delete(field);
+  return kept.size ? `${page}?${kept}` : page;
+};
+/** Adds Dispatch to fixture workspace `team`, or the next free one, for the DSP open. */
+async function connect(client: Client, team?: string) {
+  const started = await client.post('/api/dsp/slack/connect');
+  assert.equal(started.status, 200, started.body);
+  const { state, code } = install(started.value.url);
+  return client.post('/api/dsp/slack/connect/finish', {
+    state,
+    code: team ? `fixture:${team}` : code,
+  });
+}
+const names = (account: { workspaces: { name: string }[] }) =>
+  account.workspaces.map((workspace) => workspace.name);
+/** Sends `body` to Slack's address `path` as Slack would, signed `at` seconds since 1970. */
+const fromSlack = (
+  f: Fixture,
+  path: string,
+  body: string,
+  { at = Math.floor(Date.now() / 1000), secret = SIGNING_SECRET } = {},
+) =>
+  fetch(`${f.env.DISPATCH_ORIGIN}${path}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-slack-request-timestamp': String(at),
+      'x-slack-signature': `v0=${createHmac('sha256', secret).update(`v0:${at}:${body}`).digest('hex')}`,
+    },
+    body,
+  });
+const event = (team: string, kind: Record<string, unknown>) =>
+  JSON.stringify({
+    type: 'event_callback',
+    team_id: team,
+    event_id: `Ev${Math.random().toString(36).slice(2)}`,
+    event: kind,
+  });
+
+test('an owner adds Dispatch to several workspaces, reconnects one and disconnects one', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsps = owner.session.dsps as { id: string; name: string }[];
+  const north = dsps.find((d) => d.name === 'Northline Logistics')!;
+  const summit = dsps.find((d) => d.name === 'Summit Delivery')!;
+  await owner.select(north.id);
+  assert.deepEqual(await owner.read('/api/dsp/slack/account'), {
+    available: true,
+    workspaces: [],
+    link: null,
+  });
+
+  const started = await owner.post('/api/dsp/slack/connect');
+  assert.equal(started.status, 200, started.body);
+  // Started at the admin's address, Slack sends the browser back to the DSP's Connections there.
+  assert.equal(
+    await returnedTo(started.value.url),
+    `${f.env.DISPATCH_ORIGIN}/#dsp/${north.id}/settings?tab=connections`,
+  );
+  // An install belongs to the DSP it started in.
+  const { state, code } = install(started.value.url);
+  await owner.select(summit.id);
+  const elsewhere = await owner.post('/api/dsp/slack/connect/finish', { state, code });
+  assert.equal(elsewhere.value.error, 'slack_connect_expired');
+  await owner.select(north.id);
+  const finished = await owner.post('/api/dsp/slack/connect/finish', { state, code });
+  assert.equal(finished.status, 200, finished.body);
+  const [operations] = finished.value.workspaces;
+  assert.equal(operations.name, 'Operations');
+  assert.equal(operations.status, 'connected');
+  assert.equal(operations.needsUpdate, false);
+  assert.equal(operations.byLink, false);
+  // Each install is used once.
+  const again = await owner.post('/api/dsp/slack/connect/finish', { state, code });
+  assert.equal(again.value.error, 'slack_connect_expired');
+
+  assert.equal((await connect(owner)).status, 200);
+  assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), ['Drivers', 'Operations']);
+  // Reconnecting names the workspace, so Slack doesn't ask which; it stays one of two.
+  const reconnect = await owner.post('/api/dsp/slack/connect', { team: operations.teamId });
+  assert.equal(install(reconnect.value.url).code, `fixture:${operations.teamId}`);
+  const reconnected = await owner.post('/api/dsp/slack/connect/finish', install(reconnect.value.url));
+  assert.deepEqual(names(reconnected.value), ['Drivers', 'Operations']);
+  // Only one of the DSP's own workspaces is reconnected or disconnected.
+  const unknown = await owner.post('/api/dsp/slack/connect', { team: 'T0SOMEONEELSE' });
+  assert.equal(unknown.value.error, 'slack_workspace_not_found');
+
+  const disconnected = await owner.post(
+    `/api/dsp/slack/workspaces/${operations.teamId}/disconnect`,
+  );
+  assert.equal(disconnected.status, 200, disconnected.body);
+  assert.deepEqual(names(disconnected.value), ['Drivers']);
+});
+
+test('a workspace belongs to one DSP, and a member connecting at its address comes back there', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const member = await f.client(demo.member);
+  const dsps = owner.session.dsps as { id: string; name: string }[];
+  const north = member.session.dsps[0] as { id: string; name: string };
+  const summit = dsps.find((d) => d.id !== north.id && d.name === 'Summit Delivery')!;
+  // Every permission starts off, so the owner lets the member's role manage connections.
+  await owner.select(north.id);
+  const roles: { id: string; name: string; permissions: string[] }[] = (
+    await owner.get('/api/dsp/roles')
+  ).value;
+  const role = roles.find((each) => each.name === 'Member')!;
+  const saved = await owner.post(`/api/dsp/roles/${role.id}`, {
+    name: role.name,
+    permissions: [...role.permissions, 'connections.manage'],
+  });
+  assert.equal(saved.status, 200, saved.body);
+  await member.select(north.id);
+
+  const started = await member.post('/api/dsp/slack/connect');
+  assert.equal(started.status, 200, started.body);
+  const address = `http://${demo.memberDsp}.localhost:${f.env.PORT}`;
+  assert.equal(await returnedTo(started.value.url), `${address}/#settings?tab=connections`);
+  const finished = await member.post('/api/dsp/slack/connect/finish', install(started.value.url));
+  assert.equal(finished.status, 200, finished.body);
+  const [workspace] = finished.value.workspaces;
+
+  // Another DSP is refused the workspace, and the first keeps it.
+  await owner.select(summit.id);
+  const taken = await connect(owner, workspace.teamId);
+  assert.equal(taken.value.error, 'slack_workspace_taken');
+  assert.deepEqual((await owner.read('/api/dsp/slack/account')).workspaces, []);
+  assert.deepEqual(names(await member.read('/api/dsp/slack/account')), [workspace.name]);
+  // Once the first lets it go, it's free.
+  await member.post(`/api/dsp/slack/workspaces/${workspace.teamId}/disconnect`);
+  assert.equal((await connect(owner, workspace.teamId)).status, 200);
+  assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), [workspace.name]);
+});
+
+test('the install link adds one workspace, once, for whoever opens it', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (d) => d.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  const first = (await owner.post('/api/dsp/slack/link')).value;
+  // A new link takes the place of the last.
+  const made = await owner.post('/api/dsp/slack/link');
+  assert.equal(made.status, 200, made.body);
+  const link = made.value.url as string;
+  assert.ok((await owner.read('/api/dsp/slack/account')).link);
+  assert.equal((await goes(first.url)).status, 404);
+
+  // Opened without signing in: on to Slack, and back to Dispatch in Slack.
+  const toSlack = await goes(link);
+  assert.equal(toSlack.status, 302);
+  const back = await goes(toSlack.location);
+  assert.equal(back.status, 302);
+  const opened = new URL(back.location);
+  assert.equal(`${opened.origin}${opened.pathname}`, 'https://slack.com/app_redirect');
+  const account = await owner.read('/api/dsp/slack/account');
+  assert.equal(account.link, null);
+  assert.deepEqual(
+    account.workspaces.map((each: { name: string; byLink: boolean }) => [each.name, each.byLink]),
+    [['Operations', true]],
+  );
+  assert.equal(opened.searchParams.get('team'), account.workspaces[0].teamId);
+  // Used once.
+  assert.equal((await goes(link)).status, 404);
+
+  // A cancelled link no longer works, nor one Slack hasn't finished with.
+  const cancelled = (await owner.post('/api/dsp/slack/link')).value.url;
+  const midway = await goes(cancelled);
+  await owner.post('/api/dsp/slack/link/cancel');
+  assert.equal((await goes(cancelled)).status, 404);
+  assert.equal((await goes(midway.location)).status, 404);
+  assert.equal((await owner.read('/api/dsp/slack/account')).workspaces.length, 1);
+});
+
+test("Slack's requests count only signed, and each reaches only its workspace's DSP", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const dsps = owner.session.dsps as { id: string; name: string }[];
+  const north = dsps.find((d) => d.name === 'Northline Logistics')!;
+  const summit = dsps.find((d) => d.name === 'Summit Delivery')!;
+  await owner.select(north.id);
+  const [northern] = (await connect(owner)).value.workspaces;
+  await owner.select(summit.id);
+  const [southern] = (await connect(owner)).value.workspaces;
+
+  // Slack checks the address before sending events there.
+  const challenge = JSON.stringify({ type: 'url_verification', challenge: 'c0ffee' });
+  const answered = await fromSlack(f, '/slack/events', challenge);
+  assert.equal(answered.status, 200);
+  assert.deepEqual(await answered.json(), { challenge: 'c0ffee' });
+
+  // Unsigned, signed otherwise, or late: refused, and nothing changes.
+  const removed = event(northern.teamId, { type: 'app_uninstalled' });
+  const unsigned = await fetch(`${f.env.DISPATCH_ORIGIN}/slack/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: removed,
+  });
+  assert.equal(unsigned.status, 401);
+  assert.equal((await fromSlack(f, '/slack/events', removed, { secret: 'guess' })).status, 401);
+  const late = Math.floor(Date.now() / 1000) - 600;
+  assert.equal((await fromSlack(f, '/slack/events', removed, { at: late })).status, 401);
+  const button = `payload=${encodeURIComponent(JSON.stringify({ type: 'block_actions', team: { id: northern.teamId } }))}`;
+  assert.equal((await fromSlack(f, '/slack/interactions', button, { secret: 'guess' })).status, 401);
+  assert.equal((await fromSlack(f, '/slack/interactions', button)).status, 200);
+
+  // Dispatch removed from the northern workspace in Slack: only Northline forgets it.
+  assert.equal((await fromSlack(f, '/slack/events', removed)).status, 200);
+  await owner.select(north.id);
+  await until(async () => (await owner.read('/api/dsp/slack/account')).workspaces.length === 0);
+  await owner.select(summit.id);
+  assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), [southern.name]);
+  // Its tokens revoked in Slack: the workspace waits to be reconnected.
+  const revoked = event(southern.teamId, {
+    type: 'tokens_revoked',
+    tokens: { bot: ['U0FIXTUREBOT'] },
+  });
+  assert.equal((await fromSlack(f, '/slack/events', revoked)).status, 200);
+  await until(
+    async () => (await owner.read('/api/dsp/slack/account')).workspaces[0].status === 'broken',
+  );
+});
