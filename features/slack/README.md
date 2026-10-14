@@ -51,12 +51,14 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   must carry Slack's signature of its time and body, made with the app's signing secret, and be
   no more than five minutes old: anything else is refused (`slack_unsigned`, 401). Dispatch
   answers at once, as Slack waits three seconds, and does the work after; an event Slack sends
-  again is handled once. A request may be up to 64 KiB, as any request to the server may. The
-  app is told when its Home tab is opened, which shows the DSP's name and a button to its
-  address; when it's removed from a workspace, which Dispatch then forgets; and when its tokens
-  there are revoked, which breaks the workspace until it's reconnected. The Home tab's button
-  only opens Dispatch, so interactions are only answered for now: a feature's buttons, forms and
-  shortcuts are handled there, for their workspace's DSP, as events are.
+  again is handled once. The app's removal from a workspace, or its tokens' revocation there, is
+  kept before Dispatch answers, and a failure is answered as one, so Slack sends it again. A
+  request may be up to 64 KiB, as any request to the server may. The app is told when its Home
+  tab is opened, which shows the DSP's name and a button to its address; when it's removed from
+  a workspace, which Dispatch then forgets; and when its tokens there are revoked, which breaks
+  the workspace until it's reconnected. The Home tab's button only opens Dispatch, so
+  interactions are only answered for now: a feature's buttons, forms and shortcuts are handled
+  there, for their workspace's DSP, as events are.
 - **Calling Slack:** everything that acts in Slack holds a `Bot`, the app's bot in one DSP's
   workspace, whose `call` calls any of Slack's API methods there. `Bot::serving` finds the bot
   for a workspace Slack named, while Dispatch acts there. The app's tokens rotate: each lasts

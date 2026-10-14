@@ -2,7 +2,9 @@
 //! shortcuts. Slack signs each request with the app's signing secret, which only it and the
 //! server hold, and names the workspace it came from, which is how a request finds its DSP:
 //! nothing anyone writes in Slack chooses one. Slack waits three seconds for an answer, so
-//! Dispatch answers at once and does the work after.
+//! Dispatch answers at once and does the work after, but for the app's removal from a
+//! workspace or its tokens' revocation there: those are kept first, and a failure answered as
+//! one, so Slack sends them again.
 //!
 //! Each kind of event and interaction has its line in a routing table below, `on_event` or
 //! `on_interaction`, which hands it to the module that handles it, with the bot in its
@@ -31,7 +33,7 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use std::{
     collections::VecDeque,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, MutexGuard},
 };
 
 /// What each event the app is told of does, by its type, for a workspace Dispatch acts in. An
@@ -69,45 +71,71 @@ pub async fn events(state: Arc<State>, request: Request) -> Response {
             }
             _ => middleware::failure(Error::new("invalid_input", 400)),
         },
-        Some("event_callback") if first_time(sent["event_id"].as_str().unwrap_or("")) => {
+        Some("event_callback") => {
+            let id = sent["event_id"].as_str().unwrap_or("").to_owned();
+            if !first_time(&id) {
+                return StatusCode::OK.into_response();
+            }
+            let team = sent["team_id"].as_str().unwrap_or("").to_owned();
+            let event = sent["event"].clone();
+            // The app removed from a workspace, or its tokens revoked there, is kept before
+            // Slack has its answer, so a failure has Slack send it again. Anything else is done
+            // after: Slack doesn't wait for it.
+            if let Some(lifecycle) = Lifecycle::of(&event) {
+                return match lifecycle.keep(&state, team).await {
+                    Ok(()) => StatusCode::OK.into_response(),
+                    Err(error) => {
+                        forget(&id);
+                        middleware::failure(error)
+                    }
+                };
+            }
             after(state, "slack_event_failed", move |state| async move {
-                event(&state, &sent).await
+                let kind = event["type"].as_str().unwrap_or("");
+                match Bot::serving(&state, &team).await? {
+                    Some(bot) => on_event(&bot, kind, &event).await,
+                    None => Ok(()),
+                }
             });
             StatusCode::OK.into_response()
         }
         _ => StatusCode::OK.into_response(),
     }
 }
-/// An event, for the DSP its workspace belongs to. The app being removed from the workspace,
-/// or losing its tokens there, counts whether or not Dispatch acts there now; anything else
-/// only while it does.
-async fn event(state: &Arc<State>, sent: &Value) -> Result<()> {
-    let team = sent["team_id"].as_str().unwrap_or("").to_owned();
-    let event = &sent["event"];
-    let kind = event["type"].as_str().unwrap_or("");
-    let lost_tokens = kind == "tokens_revoked"
-        && event["tokens"]["bot"]
-            .as_array()
-            .is_some_and(|bots| !bots.is_empty());
-    if kind == "app_uninstalled" || lost_tokens {
+
+/// What Slack says of the app in a workspace that counts whether or not Dispatch acts there
+/// now: it was removed from the workspace, or its tokens there were revoked.
+enum Lifecycle {
+    Removed,
+    Revoked,
+}
+impl Lifecycle {
+    fn of(event: &Value) -> Option<Self> {
+        match event["type"].as_str()? {
+            "app_uninstalled" => Some(Self::Removed),
+            "tokens_revoked"
+                if event["tokens"]["bot"]
+                    .as_array()
+                    .is_some_and(|bots| !bots.is_empty()) =>
+            {
+                Some(Self::Revoked)
+            }
+            _ => None,
+        }
+    }
+    /// Keeps it for the DSP the workspace `team` belongs to: forgets the workspace, or breaks
+    /// it until someone reconnects it.
+    async fn keep(self, state: &Arc<State>, team: String) -> Result<()> {
         let of = team.clone();
         let Some(dsp) = state.read(move |db| db.slack_team_dsp(&of)).await? else {
             return Ok(());
         };
-        let removed = kind == "app_uninstalled";
-        return state
-            .run(move |db| {
-                if removed {
-                    connection::removed(db, &dsp, &team)
-                } else {
-                    connection::broken(db, &dsp, &team)
-                }
+        state
+            .run(move |db| match self {
+                Self::Removed => connection::removed(db, &dsp, &team),
+                Self::Revoked => connection::broken(db, &dsp, &team),
             })
-            .await;
-    }
-    match Bot::serving(state, &team).await? {
-        Some(bot) => on_event(&bot, kind, event).await,
-        None => Ok(()),
+            .await
     }
 }
 
@@ -204,12 +232,11 @@ async fn received(
 fn first_time(id: &str) -> bool {
     const KEPT_MS: i64 = 15 * 60 * 1000;
     const MOST: usize = 2000;
-    static SEEN: LazyLock<Mutex<VecDeque<(String, i64)>>> = LazyLock::new(Default::default);
     if id.is_empty() {
         return true;
     }
     let at = now();
-    let mut seen = SEEN.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut seen = seen();
     while seen
         .front()
         .is_some_and(|(_, when)| at - when > KEPT_MS || seen.len() >= MOST)
@@ -221,6 +248,15 @@ fn first_time(id: &str) -> bool {
     }
     seen.push_back((id.to_owned(), at));
     true
+}
+/// The events Slack sent lately, by ID, with when each came.
+fn seen() -> MutexGuard<'static, VecDeque<(String, i64)>> {
+    static SEEN: LazyLock<Mutex<VecDeque<(String, i64)>>> = LazyLock::new(Default::default);
+    SEEN.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+/// Forgets the event `id`, which failed, so Slack sending it again is handled.
+fn forget(id: &str) {
+    seen().retain(|(sent, _)| sent != id);
 }
 
 #[cfg(test)]
