@@ -250,6 +250,91 @@ test('a member names files as they upload, drops one on the page, renames and do
   expect(saved.suggestedFilename()).toBe('Route notes week 41.txt');
 });
 
+test('a member drags files into folders and up the path, moves several at once, and undoes a move', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await connect(page);
+  for (const name of ['EOS Sheets', 'Archive']) {
+    await page.getByLabel('New').click();
+    await page.getByRole('button', { name: 'Folder', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name' }).fill(name);
+    await page.getByRole('button', { name: 'Create' }).click();
+  }
+  await page.getByLabel('Files to upload').setInputFiles(
+    ['October EOS.pdf', 'November EOS.pdf'].map((name) => ({
+      name,
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4'),
+    })),
+  );
+  await page
+    .getByRole('dialog', { name: 'Upload 2 files' })
+    .getByRole('button', { name: 'Upload' })
+    .click();
+  const october = page.getByRole('link', { name: /October EOS\.pdf/ });
+  const november = page.getByRole('link', { name: /November EOS\.pdf/ });
+  const sheets = page.getByRole('link', { name: /^EOS Sheets/ });
+  await expect(november).toBeVisible();
+
+  // Dragged onto a folder, a file goes into it; Undo brings it back.
+  await october.dragTo(sheets);
+  await expect(october).toHaveCount(0);
+  await expect(sheets).toContainText('1 item');
+  await page
+    .getByRole('status')
+    .filter({ hasText: 'Moved to EOS Sheets' })
+    .getByRole('button', { name: 'Undo' })
+    .click();
+  await expect(october).toBeVisible();
+  await expect(sheets).toContainText('0 items');
+
+  // Ctrl or ⌘ selects instead of opening, and Move to… moves what's selected.
+  await october.click({ modifiers: ['ControlOrMeta'] });
+  await november.click({ modifiers: ['ControlOrMeta'] });
+  await expect(page.getByText('2 selected')).toBeVisible();
+  await page.getByLabel('Actions for November EOS.pdf').click();
+  await page.getByRole('button', { name: 'Move to…' }).click();
+  const moving = page.getByRole('dialog', { name: 'Move 2 items' });
+  await moving.getByRole('button', { name: 'EOS Sheets' }).click();
+  await moving.getByRole('button', { name: 'Move here' }).click();
+  await expect(sheets).toContainText('2 items');
+  await expect(november).toHaveCount(0);
+
+  // Inside a folder, a file dragged onto a step of the path goes up to it.
+  await sheets.click();
+  await expect(november).toBeVisible();
+  await october.dragTo(
+    page.getByRole('navigation', { name: 'Folder' }).getByRole('link', { name: 'Documents' }),
+  );
+  await expect(october).toHaveCount(0);
+  await page
+    .getByRole('navigation', { name: 'Folder' })
+    .getByRole('link', { name: 'Documents' })
+    .click();
+  await expect(october).toBeVisible();
+
+  // A file from the computer dropped on a folder goes up into it.
+  await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['Checklist'], 'Checklist.txt', { type: 'text/plain' }));
+    const folder = [...document.querySelectorAll('.documents-folder-card')].find((card) =>
+      card.textContent?.startsWith('Archive'),
+    )!;
+    for (const type of ['dragover', 'drop'])
+      folder.dispatchEvent(
+        new DragEvent(type, { dataTransfer: transfer, bubbles: true, cancelable: true }),
+      );
+  });
+  await page
+    .getByRole('dialog', { name: 'Upload file' })
+    .getByRole('button', { name: 'Upload' })
+    .click();
+  await expect(page.getByRole('link', { name: /^Archive/ })).toContainText('1 item');
+  await expect(page.getByRole('link', { name: /Checklist\.txt/ })).toHaveCount(0);
+});
+
 test('a file the Documents account reaches comes in from its link at once', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');

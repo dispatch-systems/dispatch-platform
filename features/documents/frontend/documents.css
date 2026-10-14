@@ -348,6 +348,12 @@
 .documents-path svg {
   color: var(--muted-foreground);
 }
+/* A step of the path a drop lands in has room around its name, which it takes from the gap. */
+.documents-path a {
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
 .documents-path strong {
   font-weight: 600;
 }
@@ -845,15 +851,28 @@
   inset: 0;
   z-index: 3;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  gap: 10px;
+  padding-bottom: 16px;
   border: 2px dashed var(--primary);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--primary) 8%, var(--background));
-  color: var(--primary);
-  font-weight: 550;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
   pointer-events: none;
+}
+/* The folders show through the hint, so a file can be dropped on one; its words stay in view
+   below them. */
+.documents-drop-hint span {
+  position: sticky;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 550;
+  box-shadow: 0 6px 18px var(--shadow-color);
 }
 .documents-uploads {
   position: fixed;
@@ -967,4 +986,114 @@
 .documents-picked .documents-tile {
   width: 24px;
   height: 24px;
+}
+
+/* Selecting, dragging and dropping: what's selected is marked, what's dragged fades, and the
+   folder under it lights up. */
+.documents-folder-card,
+.documents-file-card {
+  transition:
+    border-color var(--motion-duration),
+    background-color var(--motion-duration),
+    opacity var(--motion-duration);
+}
+.documents-folder-card.documents-selected,
+.documents-file-card.documents-selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+.documents-table tr.documents-selected td {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.documents-carried {
+  opacity: 0.45;
+}
+.documents-folder-card.documents-over {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--primary) 14%, var(--card));
+}
+.documents-table tr.documents-over td {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.documents-table tr.documents-over td:first-child {
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+.documents-path a.documents-over {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  outline: 2px solid var(--primary);
+}
+/* What several dragged at once show as under the pointer: drawn off the screen, then gone. */
+.documents-drag-count {
+  position: fixed;
+  top: -100px;
+  left: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: 600 13px/1.4 var(--font-family);
+  white-space: nowrap;
+}
+
+/* Move to: the path of the folder it shows, and the folders in it, each opening on a click. */
+.documents-move-path {
+  min-height: 0;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.documents-move-path button {
+  min-height: 0;
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.documents-move-path button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.documents-move-folders {
+  height: min(320px, 45vh);
+  margin-bottom: 20px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.documents-move-folders ul {
+  list-style: none;
+}
+.documents-move-folders li + li {
+  border-top: 1px solid var(--border);
+}
+.documents-move-folders li button {
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.documents-move-folders li button:hover:not(:disabled) {
+  background: var(--accent);
+}
+.documents-move-folders li button span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.documents-move-folders li button > svg {
+  color: var(--muted-foreground);
+}
+.documents-move-folders > p {
+  padding: 14px;
 }

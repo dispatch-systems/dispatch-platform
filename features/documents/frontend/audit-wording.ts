@@ -41,6 +41,7 @@ const phrases: AuditPhrases = {
     ' to Documents from Google Drive',
   ],
   'documents.renamed': (e, { strong }) => ['renamed ', strong(e.detail), ' in Documents'],
+  'documents.moved': (e, { strong }) => ['moved ', strong(e.detail), ' in Documents'],
   'documents.trashed': (e, { strong }) => [
     'moved ',
     strong(e.detail),
@@ -60,7 +61,8 @@ export const wording: AuditWording = {
     'documents.uploaded',
     'documents.added',
     'documents.renamed',
+    'documents.moved',
     'documents.trashed',
   ],
-  fields: { name: 'Name' },
+  fields: { name: 'Name', folder: 'Folder' },
 };

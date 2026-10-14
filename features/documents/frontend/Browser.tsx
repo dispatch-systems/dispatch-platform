@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react';
 import {
   ChevronRight,
   Download,
@@ -31,6 +39,7 @@ import {
   createItem,
   downloadItem,
   foldersChanged,
+  moveItem,
   prefetchFolder,
   renameItem,
   trashItem,
@@ -44,13 +53,16 @@ import {
 import { Initials, Thumb, Tile, editedLabels, kindLabel, typeOf } from './items.js';
 import { UploadNaming, UploadsPanel, dropped, picked, useUploads, type Picked } from './Uploads.js';
 import { useFromDrive } from './FromDrive.js';
+import { MoveTo, carryCount, type Place } from './Moving.js';
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
 // with what Documents makes, what anyone uploads, by picking files or dropping them on the
-// page, and what the team adds from Google Drive. A file opens in Google, in
+// page or on a folder, and what the team adds from Google Drive. A file opens in Google, in
 // a tab of its own, or downloads. Right-clicking a file or folder opens its menu where the
-// pointer is. What's made, renamed or trashed shows at once, and goes back if Google refuses
-// it; a folder that hasn't come yet leaves the last one shown.
+// pointer is. Files and folders move by dragging them onto a folder or a step of the path, or
+// with Move to…; a click with Shift, Ctrl or ⌘ selects several to move together. What's made,
+// renamed, moved or trashed shows at once, and goes back if Google refuses it; a folder that
+// hasn't come yet leaves the last one shown.
 
 type Filter = 'all' | 'folders' | 'docs' | 'sheets' | 'slides' | 'uploads';
 const FILTERS: [Filter, string][] = [
@@ -112,21 +124,30 @@ type Layout = 'list' | 'grid';
 type Asked =
   | { to: 'make'; kind: NewKind }
   | { to: 'rename'; item: DocumentsItem }
+  | { to: 'move'; items: DocumentsItem[] }
   | { to: 'trash'; item: DocumentsItem };
 
 /**
  * A change the page shows before the folder it's in is read again with it: made, uploaded,
- * renamed or trashed in `folder`. Something being made has a stand-in's ID until Google makes
- * it. Once Google confirmed it, it shows until a reading of the folder does, or a while.
+ * renamed, moved or trashed in `folder`. Something being made has a stand-in's ID until Google
+ * makes it; something moved goes `to` a folder, or the top. Once Google confirmed it, it shows
+ * until a reading of the folder does, or a while, and a move counts in the cards of the folders
+ * it left and went into until they're read again (`counted`).
  */
 type Pending = {
   key: string;
   folder?: string;
-  change: 'made' | 'renamed' | 'trashed';
+  change: 'made' | 'renamed' | 'moved' | 'trashed';
   item: DocumentsItem;
+  to?: string;
   settled?: number;
+  counted?: boolean;
 };
 const SETTLING_MS = 30_000;
+/** Something Google moved, and the folder it was in: `null` for the top. */
+type Moved = { item: DocumentsItem; from: string | null };
+/** What the page's own drags carry, beside a link: the IDs of what's dragged. */
+const CARRIED = 'application/x-dispatch-documents';
 /** Whether `item` stands in for something Google is still making. */
 const making = (item: DocumentsItem) => item.id.startsWith('pending:');
 /** How a row or card shows: dimmed while Google makes it, or once its file is gone. */
@@ -155,16 +176,34 @@ function overlaid(
     each.change === 'made' ? !searching && each.folder === folder : true,
   );
   if (!here.length) return items;
+  const latest = (id: string) =>
+    here.findLast((each) => each.change !== 'made' && each.item.id === id);
+  // A folder's card counts what moved in or out of it until it's read again.
+  const counted = (item: DocumentsItem) => {
+    if (item.items === null) return item;
+    const moved = here.filter((each) => each.change === 'moved' && !each.counted);
+    const into = moved.filter((each) => each.to === item.id).length;
+    const out = moved.filter((each) => each.folder === item.id).length;
+    return into === out ? item : { ...item, items: Math.max(0, item.items + into - out) };
+  };
   const shown = items.flatMap((item) => {
-    const change = here.findLast((each) => each.change !== 'made' && each.item.id === item.id);
-    if (!change) return [item];
-    return change.change === 'trashed' ? [] : [{ ...item, name: change.item.name }];
+    const change = latest(item.id);
+    if (!change) return [counted(item)];
+    if (change.change === 'trashed') return [];
+    // A search shows what moved where it went; a folder, only what's in it.
+    if (change.change === 'moved' && !searching && change.to !== folder) return [];
+    return [{ ...counted(item), name: change.item.name, location: change.item.location }];
   });
   if (searching) return shown;
-  const made = here
-    .filter((each) => each.change === 'made' && !items.some((item) => item.id === each.item.id))
+  const arrived = here
+    .filter(
+      (each) =>
+        (each.change === 'made' ||
+          (each.change === 'moved' && each.to === folder && latest(each.item.id) === each)) &&
+        !items.some((item) => item.id === each.item.id),
+    )
     .map((each) => each.item);
-  return arranged([...made, ...shown]);
+  return arranged([...arrived, ...shown]);
 }
 
 /** The way to each folder the page has shown, so its path shows before the folder comes. */
@@ -190,7 +229,7 @@ export function Browser({
   );
   const listing = useDocumentsFolder(folder, query);
   const [asked, ask] = useState<Asked>();
-  const { perform } = useFeedback();
+  const { perform, notify } = useFeedback();
   const [pending, setPending] = useState<Pending[]>([]);
   const [reveal, setReveal] = useState<string>();
   const changes = useRef(0);
@@ -212,10 +251,11 @@ export function Browser({
     foldersChanged();
   });
   // Files picked or dropped on their own are named before they go up; a folder goes as it is.
-  const [naming, setNaming] = useState<Picked[]>();
-  const offer = (files: Picked[]) => {
-    if (files.some((each) => !each.path.length)) setNaming(files);
-    else void uploads.start(files);
+  // They go into the folder open, or the folder they were dropped on.
+  const [naming, setNaming] = useState<{ files: Picked[]; into?: string }>();
+  const offer = (files: Picked[], into = folder) => {
+    if (files.some((each) => !each.path.length)) setNaming({ files, into });
+    else void uploads.start(files, into);
   };
   const fromDrive = useFromDrive(overview.picker, folder, () => {
     listing.refresh();
@@ -223,12 +263,30 @@ export function Browser({
   });
   const files = useRef<HTMLInputElement>(null);
   const folders = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
+  // Whether files from the computer are over the page, and the folder or step of the path under
+  // the pointer as they or what the page carries are: '' for the top.
+  const [filesOver, setFilesOver] = useState(false);
+  const [over, setOver] = useState<string>();
+  // What's selected, and the one Shift selects from.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const anchor = useRef<string>(undefined);
+  // What's being dragged, and the same once the browser has drawn it, to fade.
+  const carried = useRef<DocumentsItem[]>(undefined);
+  const [carrying, setCarrying] = useState<ReadonlySet<string>>();
   // A listing Google refused may mean the connection broke: the overview says.
   useEffect(() => {
     if (listing.error) overviewChanged();
   }, [listing.error, overviewChanged]);
   useEffect(() => setSearch(''), [folder]);
+  useEffect(() => setSelected(new Set()), [folder, query, filter]);
+  useEffect(() => {
+    if (!selected.size) return;
+    const clear = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelected(new Set());
+    };
+    document.addEventListener('keydown', clear);
+    return () => document.removeEventListener('keydown', clear);
+  }, [selected]);
   const choose = (next: Layout) => {
     setLayout(next);
     localStorage.setItem(LAYOUT, next);
@@ -256,22 +314,33 @@ export function Browser({
       if (item.kind === 'folder')
         trails.set(item.id, [...read.path, { id: item.id, name: item.name }]);
   }, [read, searching]);
-  // A change Google confirmed goes once the folder is read with it.
+  // A change Google confirmed goes once the folder is read with it, and a move stops counting
+  // in its folders' cards once a reading after it does.
   useEffect(() => {
     if (!read) return;
     setPending((all) => {
-      const left = all.filter((each) => {
-        if (!each.settled) return true;
-        if (Date.now() - each.settled > SETTLING_MS) return false;
+      let changed = false;
+      const left = all.flatMap((each) => {
+        if (!each.settled) return [each];
         const listed = read.items.find((item) => item.id === each.item.id);
         const inside = !searching && each.folder === folder;
-        if (each.change === 'renamed') return listed?.name !== each.item.name;
-        if (each.change === 'made') return !(inside && listed);
-        return !(inside && !listed);
+        const shown =
+          Date.now() - each.settled > SETTLING_MS ||
+          (each.change === 'renamed'
+            ? listed?.name === each.item.name
+            : each.change === 'made'
+              ? inside && Boolean(listed)
+              : each.change === 'moved'
+                ? !searching && (each.to === folder ? Boolean(listed) : inside && !listed)
+                : inside && !listed);
+        changed ||= shown || (each.change === 'moved' && !each.counted);
+        if (shown) return [];
+        return [each.change === 'moved' ? { ...each, counted: true } : each];
       });
-      return left.length === all.length ? all : left;
+      return changed ? left : all;
     });
   }, [read, folder, searching]);
+  const items = at ? overlaid(at.items, pending, folder, showsSearch).filter(shown(filter)) : [];
   const make = (kind: NewKind, title: string) => {
     // A tab opened by the click itself, so no popup blocker stops it; it goes to the file once
     // Google has made it.
@@ -336,6 +405,147 @@ export function Browser({
       }
     }, 'Moved to the trash');
   };
+  /**
+   * Moves `items` out of `from` into `to`, one at a time, as Google takes them; Undo takes each
+   * back to the folder it was in.
+   */
+  const move = (moving: DocumentsItem[], to: Place, from = folder, undoing = false) => {
+    const location = to.id ? to.name : null;
+    const keys = moving.map((item) =>
+      show({ folder: from, change: 'moved', item: { ...item, location }, to: to.id }),
+    );
+    setSelected(new Set());
+    void perform(async () => {
+      const moved: Moved[] = [];
+      let failed: unknown;
+      for (const [index, item] of moving.entries()) {
+        try {
+          const answer = await moveItem(item.id, to.id);
+          settle(keys[index]!);
+          moved.push({ item, from: answer.from });
+        } catch (error) {
+          drop(keys[index]!);
+          failed ??= error;
+        }
+      }
+      if (moved.length) {
+        foldersChanged();
+        if (undoing) notify('Move undone');
+        else notify(`Moved to ${to.name}`, { label: 'Undo', run: () => undo(moved, to) });
+      }
+      if (failed) throw failed;
+    });
+  };
+  const undo = (moved: Moved[], to: Place) => {
+    const back = new Map<string | null, DocumentsItem[]>();
+    for (const { item, from } of moved) back.set(from, [...(back.get(from) ?? []), item]);
+    for (const [from, group] of back) {
+      // A search names the folder each was in; a folder, the one it is.
+      const name = from
+        ? (trails.get(from)?.at(-1)?.name ?? group[0]!.location ?? '')
+        : 'Documents';
+      move(group, { id: from ?? undefined, name }, to.id, true);
+    }
+  };
+  /**
+   * A click with Shift, Ctrl or ⌘ selects instead of opening: Ctrl or ⌘ adds or takes away
+   * one, and Shift selects those from the last one picked.
+   */
+  const pick = (item: DocumentsItem, event: ReactMouseEvent) => {
+    if (!(event.shiftKey || event.metaKey || event.ctrlKey) || making(item)) return;
+    event.preventDefault();
+    const ids = items.filter((each) => !making(each)).map((each) => each.id);
+    const start = anchor.current ? ids.indexOf(anchor.current) : -1;
+    if (event.shiftKey && start >= 0) {
+      const end = ids.indexOf(item.id);
+      setSelected(new Set(ids.slice(Math.min(start, end), Math.max(start, end) + 1)));
+      return;
+    }
+    anchor.current = item.id;
+    setSelected((all) => {
+      const next = new Set(all);
+      if (!next.delete(item.id)) next.add(item.id);
+      return next;
+    });
+  };
+  /** The selection, when `item` is in it, or else `item`. */
+  const chosen = (item: DocumentsItem) =>
+    selected.has(item.id) ? items.filter((each) => selected.has(each.id)) : [item];
+  /** Starts dragging `item`, with the rest of the selection when it's in it. */
+  const drag = (item: DocumentsItem) => (event: ReactDragEvent<HTMLElement>) => {
+    const moving = chosen(item);
+    carried.current = moving;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(CARRIED, moving.map((each) => each.id).join(' '));
+    if (moving.length > 1) carryCount(event.dataTransfer, moving.length);
+    else {
+      const box = event.currentTarget.getBoundingClientRect();
+      event.dataTransfer.setDragImage(
+        event.currentTarget,
+        event.clientX - box.left,
+        event.clientY - box.top,
+      );
+    }
+    setTimeout(() => {
+      if (carried.current === moving) setCarrying(new Set(moving.map((each) => each.id)));
+    });
+  };
+  const dragEnd = () => {
+    carried.current = undefined;
+    setCarrying(undefined);
+    setOver(undefined);
+  };
+  /**
+   * What lets `place` take a drop: what the page carries moves into it, and files from the
+   * computer upload into it. Nothing goes into itself.
+   */
+  const takes = (place: Place) => {
+    const key = place.id ?? '';
+    const fits = (event: ReactDragEvent) =>
+      carried.current
+        ? !carried.current.some((item) => item.id === place.id)
+        : event.dataTransfer.types.includes('Files');
+    return {
+      onDragOver: (event: ReactDragEvent) => {
+        if (!fits(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = carried.current ? 'move' : 'copy';
+        setOver(key);
+      },
+      onDragLeave: (event: ReactDragEvent) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setOver((now) => (now === key ? undefined : now));
+      },
+      onDrop: (event: ReactDragEvent) => {
+        if (!fits(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setFilesOver(false);
+        const moving = carried.current;
+        dragEnd();
+        if (moving) move(moving, place);
+        else void dropped(event.dataTransfer).then((files) => offer(files, place.id));
+      },
+    };
+  };
+  const moves: Moves = {
+    selected,
+    carrying,
+    over,
+    pick,
+    drag,
+    dragEnd,
+    takes,
+    moveTo: (item) => ask({ to: 'move', items: chosen(item) }),
+  };
+  // Where files from the computer go: the folder under the pointer, or the folder open.
+  const overName =
+    over === undefined
+      ? undefined
+      : over
+        ? (items.find((item) => item.id === over)?.name ??
+          path.find((step) => step.id === over)?.name)
+        : 'Documents';
   return (
     <>
       <div className="page-heading documents-heading">
@@ -444,7 +654,7 @@ export function Browser({
       </div>
       <div className="documents-toolbar">
         {path.length > 0 ? (
-          <Path view={view} path={path} />
+          <Path view={view} path={path} moves={moves} />
         ) : (
           <div className="documents-pills" role="group" aria-label="Show">
             {FILTERS.map(([value, label]) => (
@@ -481,32 +691,39 @@ export function Browser({
         </div>
       </div>
       <div
-        className={`documents-drop${dragging ? ' dragging' : ''}`}
+        className={`documents-drop${filesOver ? ' dragging' : ''}`}
         onDragOver={(event) => {
-          if (!event.dataTransfer.types.includes('Files')) return;
+          if (carried.current || !event.dataTransfer.types.includes('Files')) return;
           event.preventDefault();
-          setDragging(true);
+          setFilesOver(true);
         }}
         onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+            setFilesOver(false);
         }}
         onDrop={(event) => {
-          if (!event.dataTransfer.types.includes('Files')) return;
+          if (carried.current || !event.dataTransfer.types.includes('Files')) return;
           event.preventDefault();
-          setDragging(false);
-          void dropped(event.dataTransfer).then(offer);
+          setFilesOver(false);
+          void dropped(event.dataTransfer).then((files) => offer(files));
+        }}
+        onClick={(event) => {
+          // A click beside everything lets go of the selection.
+          if (selected.size && !(event.target as Element).closest('[data-item]'))
+            setSelected(new Set());
         }}
       >
-        {dragging && (
+        {filesOver && (
           <div className="documents-drop-hint" aria-hidden>
-            <Upload size={22} />
-            Drop to upload to {path.length ? name : 'Documents'}
+            <span>
+              <Upload size={18} />
+              Drop to upload to {overName ?? (path.length ? name : 'Documents')}
+            </span>
           </div>
         )}
         {coming && <div className="documents-progress" role="status" aria-label="Loading" />}
         <DataState data={at} error={listing.error} retry={listing.refresh}>
           {(at) => {
-            const items = overlaid(at.items, pending, folder, showsSearch).filter(shown(filter));
             if (!items.length)
               return showsSearch ? (
                 <Empty title="Nothing found">
@@ -529,11 +746,16 @@ export function Browser({
                   items={items}
                   searching={showsSearch}
                   ask={ask}
+                  moves={moves}
                   layout={layout}
                   reveal={reveal}
                   revealed={() => setReveal(undefined)}
                 />
-                <p className="documents-count">{counted(folders, items.length - folders)}</p>
+                <p className="documents-count">
+                  {selected.size
+                    ? `${selected.size} selected`
+                    : counted(folders, items.length - folders)}
+                </p>
               </div>
             );
           }}
@@ -542,8 +764,8 @@ export function Browser({
       <UploadsPanel uploads={uploads.uploads} clear={uploads.clear} />
       {naming && (
         <UploadNaming
-          files={naming}
-          upload={(files) => void uploads.start(files)}
+          files={naming.files}
+          upload={(files) => void uploads.start(files, naming.into)}
           done={() => setNaming(undefined)}
         />
       )}
@@ -570,6 +792,15 @@ export function Browser({
           save={(name) => rename(asked.item, name)}
         />
       )}
+      {asked?.to === 'move' && (
+        <MoveTo
+          items={asked.items}
+          path={path}
+          from={showsSearch ? undefined : (folder ?? null)}
+          move={(to) => move(asked.items, to)}
+          done={() => ask(undefined)}
+        />
+      )}
       {asked?.to === 'trash' && (
         <Trash item={asked.item} done={() => ask(undefined)} trash={() => trash(asked.item)} />
       )}
@@ -585,14 +816,19 @@ const counted = (folders: number, files: number) =>
     .filter(Boolean)
     .join(' and ');
 
-/** The way from the top of Documents to the folder open now. */
-function Path({ view, path }: { view: DspView; path: FolderStep[] }) {
+/** The way from the top of Documents to the folder open now: each step above it takes drops. */
+function Path({ view, path, moves }: { view: DspView; path: FolderStep[]; moves: Moves }) {
+  const dropOn = (place: Place) => ({
+    className: moves.over === (place.id ?? '') ? 'documents-over' : undefined,
+    ...moves.takes(place),
+  });
   return (
     <nav className="documents-path" aria-label="Folder">
       <a
         href={dspHash(view.dsp.id, 'documents')}
         onPointerEnter={() => prefetchFolder()}
         onFocus={() => prefetchFolder()}
+        {...dropOn({ name: 'Documents' })}
       >
         Documents
       </a>
@@ -606,6 +842,7 @@ function Path({ view, path }: { view: DspView; path: FolderStep[] }) {
               href={dspHash(view.dsp.id, 'documents', { folder: step.id })}
               onPointerEnter={() => prefetchFolder(step.id)}
               onFocus={() => prefetchFolder(step.id)}
+              {...dropOn({ id: step.id, name: step.name })}
             >
               {step.name}
             </a>
@@ -621,7 +858,47 @@ type ViewProps = {
   items: DocumentsItem[];
   searching: boolean;
   ask: (asked: Asked) => void;
+  moves: Moves;
 };
+
+/** Selecting, dragging and dropping, as the page keeps them. */
+type Moves = {
+  selected: ReadonlySet<string>;
+  /** What's being dragged, once the browser has drawn it. */
+  carrying?: ReadonlySet<string>;
+  /** The folder under what's dragged: '' for the top. */
+  over?: string;
+  pick: (item: DocumentsItem, event: ReactMouseEvent) => void;
+  drag: (item: DocumentsItem) => (event: ReactDragEvent<HTMLElement>) => void;
+  dragEnd: () => void;
+  takes: (place: Place) => {
+    onDragOver: (event: ReactDragEvent) => void;
+    onDragLeave: (event: ReactDragEvent) => void;
+    onDrop: (event: ReactDragEvent) => void;
+  };
+  /** Asks where to move `item`, with the rest of the selection when it's in it. */
+  moveTo: (item: DocumentsItem) => void;
+};
+/** How a row or card shows: as `look` has it, and selected, dragged or dropped on. */
+const marked = (item: DocumentsItem, moves: Moves) =>
+  look(item) +
+  (moves.selected.has(item.id) ? ' documents-selected' : '') +
+  (moves.carrying?.has(item.id) ? ' documents-carried' : '') +
+  (moves.over === item.id ? ' documents-over' : '');
+/**
+ * What a row or card takes to be selected and dragged, and a folder's to take drops. One Google
+ * is still making is neither.
+ */
+const handles = (item: DocumentsItem, moves: Moves) => ({
+  'data-item': '',
+  ...(!making(item) && {
+    draggable: true,
+    onClick: (event: ReactMouseEvent) => moves.pick(item, event),
+    onDragStart: moves.drag(item),
+    onDragEnd: moves.dragEnd,
+    ...(item.kind === 'folder' && moves.takes({ id: item.id, name: item.name })),
+  }),
+});
 
 /** Both layouts keep only one page mounted, including row menus and thumbnails. */
 function Listing({
@@ -687,7 +964,15 @@ function Opens({
   );
 }
 
-function Actions({ item, ask }: { item: DocumentsItem; ask: (asked: Asked) => void }) {
+function Actions({
+  item,
+  ask,
+  moves,
+}: {
+  item: DocumentsItem;
+  ask: (asked: Asked) => void;
+  moves: Moves;
+}) {
   const saving = useAction(() => downloadItem(item.id));
   return (
     <Popover
@@ -710,6 +995,7 @@ function Actions({ item, ask }: { item: DocumentsItem; ask: (asked: Asked) => vo
         </button>
       )}
       {!item.shortcut && <button onClick={() => ask({ to: 'rename', item })}>Rename</button>}
+      <button onClick={() => moves.moveTo(item)}>Move to…</button>
       <button className="danger" onClick={() => ask({ to: 'trash', item })}>
         Move to trash
       </button>
@@ -723,7 +1009,7 @@ const downloadLabel = (item: DocumentsItem) =>
     item.kind as 'doc' | 'sheet' | 'slides'
   ] ?? 'Download';
 
-function Table({ view, items, searching, ask }: ViewProps) {
+function Table({ view, items, searching, ask, moves }: ViewProps) {
   const labels = editedLabels(view.dsp.timezone);
   return (
     <div className="table-wrap">
@@ -743,8 +1029,9 @@ function Table({ view, items, searching, ask }: ViewProps) {
           {items.map((item) => (
             <tr
               key={item.id}
-              className={look(item).trim() || undefined}
+              className={marked(item, moves).trim() || undefined}
               onContextMenu={openContextMenu}
+              {...handles(item, moves)}
             >
               <td>
                 <Opens view={view} item={item} className="documents-name">
@@ -776,7 +1063,9 @@ function Table({ view, items, searching, ask }: ViewProps) {
                   <span className="muted">—</span>
                 )}
               </td>
-              <td className="cell-end">{!making(item) && <Actions item={item} ask={ask} />}</td>
+              <td className="cell-end">
+                {!making(item) && <Actions item={item} ask={ask} moves={moves} />}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -785,7 +1074,7 @@ function Table({ view, items, searching, ask }: ViewProps) {
   );
 }
 
-function Grid({ view, items, searching, ask }: ViewProps) {
+function Grid({ view, items, searching, ask, moves }: ViewProps) {
   const labels = editedLabels(view.dsp.timezone);
   const folders = items.filter((item) => item.kind === 'folder');
   const files = items.filter((item) => item.kind !== 'folder');
@@ -797,9 +1086,10 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <div className="documents-card-grid">
             {folders.map((item) => (
               <div
-                className={`documents-folder-card${look(item)}`}
+                className={`documents-folder-card${marked(item, moves)}`}
                 key={item.id}
                 onContextMenu={openContextMenu}
+                {...handles(item, moves)}
               >
                 <Opens view={view} item={item} className="documents-name">
                   <Tile kind="folder" size={18} />
@@ -808,7 +1098,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
                     <small>{searching ? `in ${item.location ?? 'Documents'}` : typeOf(item)}</small>
                   </span>
                 </Opens>
-                {!making(item) && <Actions item={item} ask={ask} />}
+                {!making(item) && <Actions item={item} ask={ask} moves={moves} />}
               </div>
             ))}
           </div>
@@ -820,9 +1110,10 @@ function Grid({ view, items, searching, ask }: ViewProps) {
           <div className="documents-card-grid">
             {files.map((item) => (
               <div
-                className={`documents-file-card${look(item)}`}
+                className={`documents-file-card${marked(item, moves)}`}
                 key={item.id}
                 onContextMenu={openContextMenu}
+                {...handles(item, moves)}
               >
                 <Opens view={view} item={item} className="documents-file-open">
                   <Thumb kind={item.kind} picture={item.thumbnail} />
@@ -840,7 +1131,7 @@ function Grid({ view, items, searching, ask }: ViewProps) {
                     </span>
                   </span>
                 </Opens>
-                {!making(item) && <Actions item={item} ask={ask} />}
+                {!making(item) && <Actions item={item} ask={ask} moves={moves} />}
               </div>
             ))}
           </div>

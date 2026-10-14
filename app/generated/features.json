@@ -131,6 +131,7 @@
         "GET /api/dsp/documents/items/{id}/thumbnail",
         "POST /api/dsp/documents/add",
         "POST /api/dsp/documents/items/{id}/rename",
+        "POST /api/dsp/documents/items/{id}/move",
         "POST /api/dsp/documents/items/{id}/trash",
         "POST /api/dsp/documents/link",
         "POST /api/dsp/documents/link/finish",

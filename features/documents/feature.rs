@@ -7,8 +7,8 @@ mod backend;
 pub use api::types::{
     AccountKind, AddedFiles, ConnectionStatus, DocumentsAccount, DocumentsConnection,
     DocumentsFolder, DocumentsItem, DocumentsOverview, DriveFile, DriveStorage, FolderStep,
-    GoogleConnected, GoogleSignIn, ItemKind, MySharing, NewKind, PickerKeys, PickerSetup,
-    SharingState,
+    GoogleConnected, GoogleSignIn, ItemKind, MovedItem, MySharing, NewKind, PickerKeys,
+    PickerSetup, SharingState,
 };
 
 use dispatch_core::{
@@ -100,6 +100,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         cfg,
         DocumentsOverview,
         AddedFiles,
+        MovedItem,
         PickerSetup,
         PickerKeys,
         DriveFile,

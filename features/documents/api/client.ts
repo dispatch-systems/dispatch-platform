@@ -12,6 +12,7 @@ import type { DocumentsItem } from './generated/DocumentsItem.js';
 import type { NewKind } from './generated/NewKind.js';
 import type { MySharing } from './generated/MySharing.js';
 import type { AddedFiles } from './generated/AddedFiles.js';
+import type { MovedItem } from './generated/MovedItem.js';
 
 export type { DocumentsAccount } from './generated/DocumentsAccount.js';
 export type { DriveStorage } from './generated/DriveStorage.js';
@@ -25,6 +26,7 @@ export type { NewKind } from './generated/NewKind.js';
 export type { MySharing } from './generated/MySharing.js';
 export type { PickerSetup } from './generated/PickerSetup.js';
 export type { AddedFiles } from './generated/AddedFiles.js';
+export type { MovedItem } from './generated/MovedItem.js';
 
 // Documents's endpoints, as its screens call them.
 
@@ -52,7 +54,8 @@ const wording: Record<string, string> = {
   documents_storage_full:
     'The Google account that holds Documents is out of storage. Free up space in it, or add storage with Google One.',
   documents_too_many_files: 'Documents holds more files than Dispatch can list at once.',
-  documents_cannot_move: "Google wouldn't move that file into Documents.",
+  documents_cannot_move: 'Only its owner can move this file. They can move it in Google Drive.',
+  documents_move_inside: "A folder can't go inside itself.",
   documents_picked_elsewhere:
     "The Google account that holds Documents can't open that file. Ask its owner to share it with you, then add it again.",
   upload_too_large: 'Files can be up to 100 MB.',
@@ -152,6 +155,11 @@ export const downloadItem = (id: string) =>
   moving(download(`/api/dsp/documents/items/${encodeURIComponent(id)}/download`));
 export const renameItem = (id: string, name: string) =>
   call<DocumentsItem>(`/api/dsp/documents/items/${encodeURIComponent(id)}/rename`, { name });
+/** Moves a file or folder, with whatever it holds, into `folder`, or the top. */
+export const moveItem = (id: string, folder: string | undefined) =>
+  call<MovedItem>(`/api/dsp/documents/items/${encodeURIComponent(id)}/move`, {
+    folder: folder ?? null,
+  });
 /** Moves a file or folder, with whatever it holds, to the Google account's trash. */
 export const trashItem = (id: string) =>
   call<unknown>(`/api/dsp/documents/items/${encodeURIComponent(id)}/trash`, {});

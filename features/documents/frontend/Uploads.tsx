@@ -5,8 +5,8 @@ import { Modal } from '../../../core/shell/frontend/ui/index.js';
 import { UPLOAD_LIMIT, createItem, uploadFile, type DocumentsItem } from '../api/client.js';
 import { size } from './items.js';
 
-// Uploading files and folders into the folder open, from a picker or dropped on the page:
-// the files picked on their own are named first, a folder's folders are made, then the files
+// Uploading files and folders into the folder open, from a picker or dropped on the page, or
+// into a folder they're dropped on: the files picked on their own are named first, a folder's folders are made, then the files
 // go up two at a time, each showing how far it got.
 
 /**
@@ -63,8 +63,8 @@ export async function dropped(transfer: DataTransfer): Promise<Picked[]> {
 }
 
 /**
- * Uploads into `folder`, or the top, calling `uploaded` with each folder made and each file as
- * it lands, and the folder it went into.
+ * Uploads into `folder`, or the top, unless told another, calling `uploaded` with each folder
+ * made and each file as it lands, and the folder it went into.
  */
 export function useUploads(
   folder: string | undefined,
@@ -74,7 +74,7 @@ export function useUploads(
   const next = useRef(0);
   const change = (key: number, update: Partial<Upload>) =>
     setUploads((all) => all.map((each) => (each.key === key ? { ...each, ...update } : each)));
-  async function start(files: Picked[]) {
+  async function start(files: Picked[], target = folder) {
     if (!files.length) return;
     const queued = files.map(({ path, file, name }) => {
       const upload: Upload = {
@@ -94,7 +94,7 @@ export function useUploads(
     // The folders a folder held, each made once, inside the one before it.
     const folders = new Map<string, Promise<string | undefined>>();
     const into = (path: string[]): Promise<string | undefined> => {
-      if (!path.length) return Promise.resolve(folder);
+      if (!path.length) return Promise.resolve(target);
       const key = path.join('/');
       if (!folders.has(key))
         folders.set(

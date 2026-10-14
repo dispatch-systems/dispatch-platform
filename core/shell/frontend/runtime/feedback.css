@@ -21,3 +21,7 @@
   border: 0;
   background: transparent;
 }
+.toast .toast-action {
+  color: var(--primary);
+  font-weight: 600;
+}

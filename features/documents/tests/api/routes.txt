@@ -12,6 +12,7 @@ POST /api/dsp/documents/add Dsp("documents.use") Async
 POST /api/dsp/documents/connect Dsp("connections.manage") Write
 POST /api/dsp/documents/connect/finish Dsp("connections.manage") Async
 POST /api/dsp/documents/disconnect Dsp("connections.manage") Async
+POST /api/dsp/documents/items/{id}/move Dsp("documents.use") Async
 POST /api/dsp/documents/items/{id}/rename Dsp("documents.use") Async
 POST /api/dsp/documents/items/{id}/trash Dsp("documents.use") Async
 POST /api/dsp/documents/link Dsp("documents.use") Write

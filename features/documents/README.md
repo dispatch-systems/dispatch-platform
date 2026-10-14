@@ -25,7 +25,7 @@ and weeks, so it's best submitted well before the limit.
   `POST /api/dsp/documents/connect`, `…/connect/finish` and `…/disconnect`. Behind `documents.use` too:
   `GET /api/dsp/documents/folder` (a folder and what it holds, or with `q`, what a search inside
   it found), `POST …/new` (a folder, Doc, Sheet or Slides), `POST …/upload` (a file, up to
-  100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
+  100 MB), `GET …/items/{id}/download` and `…/items/{id}/thumbnail`, and `POST …/items/{id}/rename`, `…/move` and `…/trash`. Behind `documents.use` as well, for a member's own Google account:
   `POST /api/dsp/documents/link` and `…/link/finish`, and `POST /api/dsp/documents/add`, for
   files and folders from Google Drive. Public, the picker's page:
   `GET /api/documents/google/picker`.
@@ -66,7 +66,7 @@ and weeks, so it's best submitted well before the limit.
 - **Uploads and downloads:** files picked or dropped on their own are named first, in a
   dialog that shows each name without its extension and keeps the extension; a folder's files
   keep their names. A file streams through Dispatch to Google as it arrives, into the folder
-  open, never held whole. Its type is the browser's, but never one of Google's own,
+  open, or the folder or step of the path it was dropped on, never held whole. Its type is the browser's, but never one of Google's own,
   which Google would convert the bytes into. Like what Dispatch makes, its editors can't share
   it on. A folder uploaded or dropped on the page keeps its folders: Dispatch makes them first.
   A download streams back as Google sends it: an uploaded file as it was, Google's own Docs,
@@ -150,6 +150,14 @@ and weeks, so it's best submitted well before the limit.
   eight): the dialog shows the name without it, and `…/rename` refuses a name that changes it
   (`documents_extension_kept`). Folders and Google's own Docs, Sheets and Slides have none, so
   their whole name changes. Each item names its `extension` for the dialog.
+- **Moving** a file or folder takes whatever it holds with it, into another folder of
+  Documents or the top: dragged onto a folder or a step of the path, or with Move to… in its
+  menu, which needs no pointer. A click with Shift, Ctrl or ⌘ selects instead of opening, and
+  what's selected drags and moves together. Like trashing, `…/move` asks Google where the file
+  is first; it refuses a folder going inside itself (`documents_move_inside`), and does nothing
+  to one already there. Only its owner moves a file, so one the account doesn't own, as one a
+  member made in Drive, stays (`documents_cannot_move`). Its answer names the folder it was
+  in, so Undo, on the toast that says where it went, takes each back.
 - **Reconnecting** takes the same Google account only: the folder and its files are that
   account's.
 - **Data:** `documents_connection`, `documents_connect_requests`, `documents_files`,
@@ -172,5 +180,5 @@ and weeks, so it's best submitted well before the limit.
 - **Page:** Documents, in a DSP's sidebar. It keeps the folders it opened, shows them at once
   when they open again and asks for them anew behind them, every 15 seconds while one is
   open; it asks for a folder as the pointer rests on it. A folder opening for the first time,
-  or a search, leaves what was shown until it comes. Making, renaming and trashing show at once,
-  and go back with the reason if Google refuses; an upload shows its file as it lands.
+  or a search, leaves what was shown until it comes. Making, renaming, moving and trashing show
+  at once, and go back with the reason if Google refuses; an upload shows its file as it lands.
