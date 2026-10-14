@@ -64,7 +64,6 @@ CREATE INDEX recovery_codes_user ON recovery_codes(user_id);
 CREATE INDEX resets_expiry ON resets(expires_at);
 CREATE UNIQUE INDEX roles_owner ON roles(dsp_id) WHERE system=1;
 CREATE INDEX session_expiry ON sessions(expires_at);
-CREATE INDEX slack_teams_dsp ON slack_teams (dsp_id);
 CREATE INDEX support_attachments_ticket ON support_attachments(ticket_id);
 CREATE INDEX support_evidence_ticket ON support_evidence(ticket_id,sequence);
 CREATE UNIQUE INDEX support_jobs_active ON support_jobs(ticket_id,kind,version) WHERE status IN ('queued','running','waiting') AND kind<>'answer';
