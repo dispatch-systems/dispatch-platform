@@ -14,7 +14,7 @@ suite in sequence:
 | checks          | `checks`                                   | Source privacy/secrets, types, formatting, bundle budget and dashboard logic. |
 | browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                               |
 | smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                   |
-| benchmark       | `benchmark`                                | The Rust workload budget.                                                     |
+| benchmark       | `benchmark`                                | The Rust workload budget; in the queue a break is rechecked beside the base.  |
 | core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.       |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                       |
 | collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
