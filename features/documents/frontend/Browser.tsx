@@ -551,10 +551,6 @@ export function Browser({
       <div className="page-heading documents-heading">
         <div>
           <h1>Documents</h1>
-          <p>
-            Shared with everyone at {view.dsp.name}. Anything added here also shows up in Google
-            Drive.
-          </p>
         </div>
         <div className="heading-actions">
           <a
