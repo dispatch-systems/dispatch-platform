@@ -102,7 +102,8 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
 
   assert.equal((await connect(owner)).status, 200);
   assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), ['Drivers', 'Operations']);
-  // Reconnecting names the workspace, so Slack doesn't ask which; it stays one of two.
+  // Reconnecting names the workspace, so Slack doesn't ask which, as fixture mode's code shows;
+  // it stays one of two.
   const reconnect = await owner.post('/api/dsp/slack/connect', { team: operations.teamId });
   assert.equal(install(reconnect.value.url).code, `fixture:${operations.teamId}`);
   const reconnected = await owner.post(
@@ -255,4 +256,29 @@ test("Slack's requests count only signed, and each reaches only its workspace's 
   await until(
     async () => (await owner.read('/api/dsp/slack/account')).workspaces[0].status === 'broken',
   );
+  // Removed from Slack while Slack is switched off for the DSP: still forgotten, as it's gone.
+  const switched = (enabled: boolean) =>
+    owner.post(`/api/platform/dsps/${summit.id}/features`, { feature: 'slack', enabled });
+  assert.equal((await switched(false)).status, 200);
+  const gone = event(southern.teamId, { type: 'app_uninstalled' });
+  assert.equal((await fromSlack(f, '/slack/events', gone)).status, 200);
+  assert.equal((await switched(true)).status, 200);
+  await owner.select(summit.id);
+  await until(async () => (await owner.read('/api/dsp/slack/account')).workspaces.length === 0);
+
+  // A workspace whose tokens Slack stopped honouring breaks as the bot next acts there, as its
+  // Home tab is opened, and is whole again once reconnected.
+  await owner.select(north.id);
+  const [lapsed] = (await connect(owner, 'T0GONE1')).value.workspaces;
+  const opened = event(lapsed.teamId, { type: 'app_home_opened', tab: 'home', user: 'U0OWNER' });
+  assert.equal((await fromSlack(f, '/slack/events', opened)).status, 200);
+  await until(
+    async () => (await owner.read('/api/dsp/slack/account')).workspaces[0].status === 'broken',
+  );
+  const reconnect = await owner.post('/api/dsp/slack/connect', { team: lapsed.teamId });
+  const reconnected = await owner.post(
+    '/api/dsp/slack/connect/finish',
+    install(reconnect.value.url),
+  );
+  assert.equal(reconnected.value.workspaces[0].status, 'connected');
 });

@@ -60,7 +60,9 @@ impl Bot {
         let token = self.token().await?;
         let answer = match slack.call(&token, method, args).await {
             Err(error) if error.code == "slack_token_expired" => {
-                slack.call(&self.instead_of(&token).await?, method, args).await
+                slack
+                    .call(&self.instead_of(&token).await?, method, args)
+                    .await
             }
             answer => answer,
         };
