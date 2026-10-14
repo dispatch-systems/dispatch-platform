@@ -226,7 +226,7 @@ impl System for Fake {
             // Production, by its backend's own words.
             let script = args.last().unwrap();
             return Ok(if script.contains("dispatch-backend backup") {
-                json!({"destination":"/home/dispatch/dispatch-platform/backups/2026-10-14-091500-before-v1.0.0","files":12}).to_string()
+                json!({"destination":"/srv/dispatch/backups/2026-10-14-091500-before-v1.0.0","files":12}).to_string()
             } else {
                 assert!(script.contains("dispatch-backend\" restore"));
                 let failed: &[&str] = if self.restorable.get() { &[] } else { &["platform.sqlite"] };
