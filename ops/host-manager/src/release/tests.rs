@@ -1281,7 +1281,7 @@ fn missing_notes_are_generated_from_the_merged_prs() {
         assert_eq!(
             notes,
             if served {
-                "- Accepted. The accepted change. In one paragraph.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
+                "- The accepted change. In one paragraph.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
             } else {
                 "- Accepted.\n\nIncludes [#8](https://github.com/dispatch-systems/dispatch-platform/pull/8).\n"
             }
