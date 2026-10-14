@@ -39,6 +39,8 @@ struct Fake {
     branch: RefCell<Option<String>>,
     /// The conclusion a dispatched run reaches.
     dispatched: Cell<&'static str>,
+    /// Whether every database in Production's restored backup checks out.
+    restorable: Cell<bool>,
 }
 impl Fake {
     fn fail(&self, point: &str) {
@@ -220,6 +222,21 @@ impl System for Fake {
             Value::Null
         } else if args.starts_with(&["git", "fetch"]) {
             Value::Null
+        } else if args[0] == "ssh" {
+            // Production, by its backend's own words.
+            let script = args.last().unwrap();
+            return Ok(if script.contains("dispatch-backend backup") {
+                json!({"destination":"/home/dispatch/dispatch-platform/backups/2026-10-14-091500-before-v1.0.0","files":12}).to_string()
+            } else {
+                assert!(script.contains("dispatch-backend\" restore"));
+                let failed: &[&str] = if self.restorable.get() { &[] } else { &["platform.sqlite"] };
+                format!(
+                    "{}\n{}\n",
+                    json!({"target":"/run/user/1000/dispatch-restore-check-x/r","files":12}),
+                    json!({"databases":4,"failed":failed})
+                )
+            }
+            .into_bytes());
         } else {
             return Native.command(args, cwd, timeout, output);
         };
@@ -306,8 +323,26 @@ struct Fixture {
     /// What CI built: the version main's source names, before the release stamps its own.
     built: artifact::Manifest,
 }
+/// The backend's snapshot of its databases, with the migrations `dsp` has.
+fn databases(dsp: &[&str]) -> String {
+    let migrations: Vec<Value> = dsp
+        .iter()
+        .enumerate()
+        .map(|(index, name)| json!([index + 1, name, "code"]))
+        .collect();
+    json!([{"name":"dsp","user_version":1,"cache_size":-512,"migrations":migrations,
+        "owned":[["documents",1,"documents_shared_files","2f535ad4e09b9f2d"]]}])
+    .to_string()
+}
 impl Fixture {
     fn new() -> Self {
+        Self::merging(false)
+    }
+    /// The accepted change brings a migration.
+    fn migrating() -> Self {
+        Self::merging(true)
+    }
+    fn merging(migration: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("dev");
         fs::create_dir(&root).unwrap();
@@ -326,8 +361,14 @@ impl Fixture {
             root.join("tooling/ci/test-plan.json"),
         )
         .unwrap();
+        let snapshot = root.join("app/tests/backend/snapshots/databases.json");
+        fs::create_dir_all(snapshot.parent().unwrap()).unwrap();
+        fs::write(&snapshot, databases(&["baseline"])).unwrap();
         git(&root, &["add", "."]);
         git(&root, &["commit", "-m", "initial"]);
+        if migration {
+            fs::write(&snapshot, databases(&["baseline", "accounts"])).unwrap();
+        }
         let commit = merge_to_main(&root, "accepted");
         fs::create_dir_all(root.join("node_modules/.bin")).unwrap();
         fs::write(root.join("node_modules/.bin/tsx"), "fake smoke").unwrap();
@@ -392,6 +433,7 @@ impl Fixture {
             partial: RefCell::new(BTreeSet::new()),
             branch: RefCell::new(None),
             dispatched: Cell::new("success"),
+            restorable: Cell::new(true),
         };
         Self {
             temp,
@@ -1123,6 +1165,95 @@ fn a_release_needs_something_new_on_main_since_the_previous_one() {
     assert_eq!(release.pin(None).unwrap(), f.system.commit);
     let compared = format!("repos/{REPOSITORY}/compare/v0.9.0...{}", f.system.commit);
     assert!(f.system.has_call(&["gh", "api", &compared]));
+}
+
+#[test]
+fn migrations_publish_only_after_a_recent_production_backup_that_restores() {
+    let f = Fixture::migrating();
+    git(
+        &f.root,
+        &["tag", "v0.9.0", &format!("{}^1", f.system.commit)],
+    );
+    f.system.listed.replace(vec![
+        json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}),
+    ]);
+    let prepared = f.draft();
+    // The draft is listed first, beside the release before it.
+    f.system
+        .listed
+        .borrow_mut()
+        .push(json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}));
+    let release = f.release();
+    let published = || f.system.has_call(&["-F", "draft=false"]);
+    let refused = release.publish(&prepared).unwrap_err().to_string();
+    assert!(refused.contains("(dsp migration 2 accounts)"), "{refused}");
+    assert!(refused.contains("`release backup 1.0.0`"), "{refused}");
+    assert!(!published());
+    // A backup whose restored databases don't all check out proves nothing.
+    f.system.restorable.set(false);
+    let failed = run(
+        &[
+            "backup",
+            "1.0.0",
+            "--root",
+            f.root.to_str().unwrap(),
+            "--releases",
+            release.directory.to_str().unwrap(),
+            "--dev-origin",
+            DEV,
+            "--production-origin",
+            PRODUCTION,
+        ]
+        .map(String::from),
+        &f.system,
+    )
+    .unwrap_err();
+    assert!(failed.to_string().contains("integrity"), "{failed}");
+    assert!(release.publish(&prepared).is_err());
+    assert!(!published());
+    // One that restores lets it publish, while it's recent.
+    f.system.restorable.set(true);
+    let backup = release.backup().unwrap();
+    assert_eq!(backup["databases"], 4);
+    let receipt = release.directory.join(".v1.0.0-backup.json");
+    let mut recorded = io::read_json(&receipt).unwrap();
+    recorded["takenAt"] = json!(f.system.now() - 7.0 * 3600.0);
+    io::write_json(&receipt, &recorded).unwrap();
+    let stale = release.publish(&prepared).unwrap_err().to_string();
+    assert!(stale.contains("older than six hours"), "{stale}");
+    release.backup().unwrap();
+    release.publish(&prepared).unwrap();
+    assert!(published());
+    // Every Production step went over ssh, and the backup starts the service and its
+    // updates again whatever happens.
+    let calls = f.system.calls.borrow();
+    let ssh: Vec<_> = calls.iter().filter(|c| c[0] == "ssh").collect();
+    assert_eq!(ssh.len(), 6);
+    assert!(ssh.iter().any(|c| {
+        let script = c.last().unwrap();
+        script.contains("systemctl --user stop dispatch-production.service")
+            && script.contains("systemctl --user start dispatch-production.service dispatch-production-update.timer")
+            && script.contains("EXIT")
+    }));
+}
+
+#[test]
+fn a_release_without_migrations_needs_no_backup() {
+    let f = Fixture::new();
+    git(
+        &f.root,
+        &["tag", "v0.9.0", &format!("{}^1", f.system.commit)],
+    );
+    f.system.listed.replace(vec![
+        json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}),
+    ]);
+    let prepared = f.draft();
+    f.system
+        .listed
+        .borrow_mut()
+        .push(json!({"tag_name":"v0.9.0","draft":false,"prerelease":false}));
+    f.release().publish(&prepared).unwrap();
+    assert!(!f.system.calls.borrow().iter().any(|c| c[0] == "ssh"));
 }
 
 #[test]

@@ -527,6 +527,7 @@ impl Release<'_> {
             self.verify_assets(&release, false)?;
             return Ok(release);
         }
+        self.require_backup(&prepared.commit)?;
         self.checked_source(&prepared.commit)?;
         self.smoke(prepared)?;
         let release = self.ensure_draft(prepared)?;
