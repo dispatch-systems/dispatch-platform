@@ -178,12 +178,12 @@ async fn install(state: Arc<State>, request: Request) -> Response {
     else {
         return pages::stopped("slack_link_expired");
     };
+    // A link that doesn't work is turned away by a read, before anything takes the write lock.
     let checked = opened.clone();
-    let started = match state.read(move |db| link::opened(db, &checked)).await {
-        Ok(_) => state.run(move |db| link::start(db, &opened)).await,
-        Err(error) => Err(error),
-    };
-    match started {
+    if let Err(error) = state.read(move |db| link::opened(db, &checked)).await {
+        return pages::stopped(&error.code);
+    }
+    match state.run(move |db| link::start(db, &opened)).await {
         Ok(url) => Reply::redirect(url).into_response(),
         Err(error) => pages::stopped(&error.code),
     }

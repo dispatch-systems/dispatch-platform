@@ -28,8 +28,10 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   never takes the app out of it, though Slack, having installed it again, may stop honouring
   that DSP's tokens, which the hourly check then finds. An install Dispatch refuses for any
   other reason after Slack made it, as when the link was cancelled meanwhile, is taken back
-  out, so the app is never left in a workspace no DSP holds. Installing across a whole
-  Enterprise Grid organization is refused, and the app taken back out.
+  out, so the app is never left in a workspace no DSP holds. One refused while reconnecting a
+  workspace the DSP already holds stays installed with the tokens Dispatch had, which the
+  hourly check finds if Slack, having installed it again, stopped honouring them. Installing
+  across a whole Enterprise Grid organization is refused, and the app taken back out.
 - **The install link:** for whoever runs the DSP's Slack, who needn't be in Dispatch. Copy
   install link makes one, in place of any before, puts it on the clipboard and shows it on the
   card; Dispatch keeps only its hash. It works once, for seven days, until it's cancelled, and
@@ -46,14 +48,15 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   refusing a workspace's tokens.
 - **What Slack sends:** events to `POST /slack/events`, and what people do with the app's
   buttons and forms to `POST /slack/interactions`, both on the admin's address. Each request
-  must carry Slack's signature of its time and body, made with the app's signing secret, and
-  be no more than five minutes old: anything else is refused (`slack_unsigned`, 401). Dispatch
+  must carry Slack's signature of its time and body, made with the app's signing secret, and be
+  no more than five minutes old: anything else is refused (`slack_unsigned`, 401). Dispatch
   answers at once, as Slack waits three seconds, and does the work after; an event Slack sends
-  again is handled once. A request may be up to 64 KiB, as any request to the server may. The app is told when its Home tab is opened, which shows the DSP's name
-  and a button to its address; when it's removed from a workspace, which Dispatch then forgets;
-  and when its tokens there are revoked, which breaks the workspace until it's reconnected. The
-  Home tab's button only opens Dispatch, so interactions are only answered for now: a feature's
-  buttons, forms and shortcuts are handled there, for their workspace's DSP, as events are.
+  again is handled once. A request may be up to 64 KiB, as any request to the server may. The
+  app is told when its Home tab is opened, which shows the DSP's name and a button to its
+  address; when it's removed from a workspace, which Dispatch then forgets; and when its tokens
+  there are revoked, which breaks the workspace until it's reconnected. The Home tab's button
+  only opens Dispatch, so interactions are only answered for now: a feature's buttons, forms and
+  shortcuts are handled there, for their workspace's DSP, as events are.
 - **Calling Slack:** everything that acts in Slack holds a `Bot`, the app's bot in one DSP's
   workspace, whose `call` calls any of Slack's API methods there. `Bot::serving` finds the bot
   for a workspace Slack named, while Dispatch acts there. The app's tokens rotate: each lasts
