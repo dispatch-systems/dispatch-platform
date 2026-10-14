@@ -6,8 +6,8 @@ import { UPLOAD_LIMIT, createItem, uploadFile, type DocumentsItem } from '../api
 import { size } from './items.js';
 
 // Uploading files and folders into the folder open, from a picker or dropped on the page, or
-// into a folder they're dropped on: the files picked on their own are named first, a folder's folders are made, then the files
-// go up two at a time, each showing how far it got.
+// into a folder they're dropped on: the files picked on their own are named first, a folder's
+// folders are made, then the files go up two at a time, each showing how far it got.
 
 /**
  * A file to upload, with the folders it sits in inside what was picked or dropped, and the

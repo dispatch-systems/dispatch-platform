@@ -733,7 +733,6 @@ export function Browser({
                   upload them.
                 </Empty>
               );
-            const folders = items.filter((item) => item.kind === 'folder').length;
             return (
               <div className={coming ? 'documents-coming' : undefined}>
                 <Listing
@@ -747,11 +746,6 @@ export function Browser({
                   reveal={reveal}
                   revealed={() => setReveal(undefined)}
                 />
-                <p className="documents-count">
-                  {selected.size
-                    ? `${selected.size} selected`
-                    : counted(folders, items.length - folders)}
-                </p>
               </div>
             );
           }}
@@ -803,14 +797,6 @@ export function Browser({
     </>
   );
 }
-
-/** What the member asking needs to do to edit in Google, if anything. */
-const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
-/** "7 folders and 8 files", or only the part there is. */
-const counted = (folders: number, files: number) =>
-  [folders && count(folders, 'folder'), files && count(files, 'file')]
-    .filter(Boolean)
-    .join(' and ');
 
 /** The way from the top of Documents to the folder open now: each step above it takes drops. */
 function Path({ view, path, moves }: { view: DspView; path: FolderStep[]; moves: Moves }) {

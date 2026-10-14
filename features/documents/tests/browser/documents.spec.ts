@@ -293,7 +293,6 @@ test('a member drags files into folders and up the path, moves several at once, 
   // Ctrl or ⌘ selects instead of opening, and Move to… moves what's selected.
   await october.click({ modifiers: ['ControlOrMeta'] });
   await november.click({ modifiers: ['ControlOrMeta'] });
-  await expect(page.getByText('2 selected')).toBeVisible();
   await page.getByLabel('Actions for November EOS.pdf').click();
   await page.getByRole('button', { name: 'Move to…' }).click();
   const moving = page.getByRole('dialog', { name: 'Move 2 items' });

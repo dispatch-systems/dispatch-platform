@@ -457,11 +457,6 @@
   color: var(--steel);
   background: var(--steel-surface);
 }
-.documents-count {
-  margin-top: 14px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
 
 /* The grid. */
 .documents-cards {
