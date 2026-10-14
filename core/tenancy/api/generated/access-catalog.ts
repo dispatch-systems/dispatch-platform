@@ -11,7 +11,8 @@ export const pages = [
   "daily_performance",
   "documents",
   "team",
-  "settings"
+  "settings",
+  "slack"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -36,6 +37,7 @@ export const features = [
   "documents",
   "team",
   "settings",
+  "slack",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -168,6 +170,16 @@ export const featureCatalog = [
     "mandatory": true
   },
   {
+    "id": "slack",
+    "label": "Slack",
+    "permissions": [
+      "slack.manage"
+    ],
+    "requires": [],
+    "kind": "page",
+    "connects": true
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -264,7 +276,8 @@ export const permissions = [
   "daily_performance.view",
   "daily_performance.collect",
   "daily_performance.manage",
-  "documents.use"
+  "documents.use",
+  "slack.manage"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
@@ -284,6 +297,7 @@ export const permissionLabels = {
   "routes.manage": "Manage Routes",
   "routes.view": "View Routes",
   "settings.manage": "Manage DSP Settings",
+  "slack.manage": "Manage Slack",
   "timecard.manage": "Manage Timecard",
   "timecard.view": "View Timecard",
   "uniforms.adjust": "Adjust Uniform Inventory",
@@ -352,6 +366,12 @@ export const permissionGroups = [
     "Documents",
     [
       "documents.use"
+    ]
+  ],
+  [
+    "Slack",
+    [
+      "slack.manage"
     ]
   ],
   [

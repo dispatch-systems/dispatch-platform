@@ -27,6 +27,9 @@
       [21, "agent_tools", "code"],
       [22, "agent_tool_levels", "code"],
       [23, "ai_support", "6f9081123765772b"]
+    ],
+    "owned": [
+      ["slack", 1, "slack_teams", "35ab8bb0ffb56fd6"]
     ]
   },
   {
@@ -61,7 +64,8 @@
     ],
     "owned": [
       ["documents", 1, "documents_shared_files", "2f535ad4e09b9f2d"],
-      ["documents", 2, "documents_full_access", "code"]
+      ["documents", 2, "documents_full_access", "code"],
+      ["slack", 1, "slack", "8ca8fd50f814a724"]
     ]
   },
   {

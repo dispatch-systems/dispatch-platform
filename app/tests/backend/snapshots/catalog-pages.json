@@ -95,6 +95,14 @@
       "requires": [],
       "default": true,
       "mandatory": true
+    },
+    {
+      "id": "slack",
+      "label": "Slack",
+      "permissions": ["slack.manage"],
+      "requires": [],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -161,6 +169,7 @@
     "documents",
     "team",
     "settings",
+    "slack",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

@@ -477,6 +477,70 @@
     "tables": {},
     "subfeatures": []
   },
+  "slack": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "slack.manage"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [
+          [
+            "slack.",
+            "connections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": "slack-",
+      "demo": false,
+      "domains": [],
+      "live": [],
+      "maintenance": [
+        3600
+      ],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/slack/account",
+        "POST /api/dsp/slack/connect",
+        "POST /api/dsp/slack/connect/finish",
+        "POST /api/dsp/slack/workspaces/{team}/disconnect",
+        "POST /api/dsp/slack/link",
+        "POST /api/dsp/slack/link/cancel",
+        "GET /api/slack/return",
+        "GET /api/slack/install",
+        "POST /slack/events",
+        "POST /slack/interactions"
+      ],
+      "settings": [
+        [
+          "SLACK_CLIENT_ID",
+          "SLACK_CLIENT_SECRET",
+          "SLACK_SIGNING_SECRET"
+        ]
+      ]
+    },
+    "switch": "slack",
+    "mandatory": false,
+    "tables": {
+      "dsp": [
+        "slack_connect_requests",
+        "slack_install_links",
+        "slack_workspaces"
+      ],
+      "platform": [
+        "slack_teams"
+      ]
+    },
+    "subfeatures": []
+  },
   "team": {
     "collectors": [],
     "depends_on": [],
