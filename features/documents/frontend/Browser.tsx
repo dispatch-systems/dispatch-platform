@@ -186,7 +186,7 @@ export function Browser({
   const query = useSettled(search);
   const [filter, setFilter] = useState<Filter>('all');
   const [layout, setLayout] = useState<Layout>(() =>
-    localStorage.getItem(LAYOUT) === 'grid' ? 'grid' : 'list',
+    localStorage.getItem(LAYOUT) === 'list' ? 'list' : 'grid',
   );
   const listing = useDocumentsFolder(folder, query);
   const [asked, ask] = useState<Asked>();

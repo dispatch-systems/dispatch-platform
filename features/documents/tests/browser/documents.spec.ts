@@ -51,6 +51,10 @@ test('large folders keep one page mounted in both layouts, search every item and
     });
   });
   await page.reload();
+  // Cards, until someone picks the list.
+  const cards = page.locator('.documents-file-card');
+  await expect(cards).toHaveCount(100);
+  await page.getByRole('button', { name: 'List', exact: true }).click();
   const rows = page.locator('.documents-table tbody tr');
   await expect(rows).toHaveCount(100);
   await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
@@ -62,14 +66,14 @@ test('large folders keep one page mounted in both layouts, search every item and
   await expect(page.getByRole('link', { name: 'File 0100.txt', exact: true })).toBeVisible();
   await expect(rows).toHaveCount(100);
   await page.getByRole('button', { name: 'Grid', exact: true }).click();
-  await expect(page.locator('.documents-file-card')).toHaveCount(100);
+  await expect(cards).toHaveCount(100);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.locator('.documents-file-card')).toHaveCount(50);
+  await expect(cards).toHaveCount(50);
   await page.getByLabel('Search Documents').fill('File 0249');
-  await expect(page.locator('.documents-file-card')).toHaveCount(1);
+  await expect(cards).toHaveCount(1);
   await expect(page.getByRole('link', { name: /File 0249/ })).toBeVisible();
   await page.getByLabel('Search Documents').fill('');
-  await expect(page.locator('.documents-file-card')).toHaveCount(100);
+  await expect(cards).toHaveCount(100);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await page.getByLabel('New', { exact: true }).click();
@@ -137,6 +141,8 @@ test('a member names files as they upload, drops one on the page, renames and do
   const uploads = page.getByRole('region', { name: 'Uploads' });
   await expect(uploads).toContainText('2 uploaded');
   await expect(page.getByRole('link', { name: /Uniform policy 2026\.pdf/ })).toBeVisible();
+  // The list shows each upload's size.
+  await page.getByRole('button', { name: 'List', exact: true }).click();
   await expect(page.getByRole('row', { name: /Route notes\.txt/ })).toContainText('11 B');
 
   // Too large a file never leaves the browser. The file is sparse: its size, not its bytes.
