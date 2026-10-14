@@ -1,33 +1,45 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
-import type { DvicInspection } from '../../../api/index.js';
+import type { DvicInspection, DvicDaySummary } from '../../../api/index.js';
+import { useDayInspections } from '../../../api/client.js';
 import {
   bandLabel,
-  groupByVehicleClass,
   inspectionBand,
   inspectionClock,
   inspectionDuration as duration,
   inspectionInitials,
   inspectionShortfall,
-  repeatDrivers,
 } from '../../dvic.js';
-import { Empty } from '../../../../../core/shell/frontend/ui/index.js';
+import {
+  Empty,
+  ErrorBox,
+  Loading,
+  Pagination,
+} from '../../../../../core/shell/frontend/ui/index.js';
 import { DurationBar } from '../../InspectionDetail.js';
 
 function VehicleGroup({
   vehicles,
   label,
-  minimum,
-  rows,
+  date,
+  query,
+  publication,
   onSelect,
 }: {
   vehicles: 'dot' | 'non-dot';
   label: string;
-  minimum: number;
-  rows: DvicInspection[];
+  date: string;
+  query: string;
+  publication: string;
   onSelect: (row: DvicInspection) => void;
 }) {
-  const [limit, setLimit] = useState(100);
+  const [page, setPage] = useState(0);
+  const request = useDayInspections(date, query, vehicles, page, publication);
+  const data = request.data;
+  useEffect(() => {
+    if (data && page * 100 >= data.total && page)
+      setPage(Math.max(0, Math.ceil(data.total / 100) - 1));
+  }, [data, page]);
   return (
     <section className="dvic-group" aria-label={label}>
       <header>
@@ -35,12 +47,13 @@ function VehicleGroup({
           <i aria-hidden="true" />
           {label}
         </span>
-        <span>
-          {rows.length} short · minimum {duration(minimum)}
-        </span>
+        <span>{data ? `${data.total} short · minimum ${duration(data.minimum)}` : '—'}</span>
       </header>
       <div className="dvic-items">
-        {rows.slice(0, limit).map((row) => (
+        <ErrorBox message={request.error} />
+        {request.error && <button onClick={request.refresh}>Retry inspections</button>}
+        {!data && !request.error && <Loading />}
+        {data?.inspections.map((row) => (
           <button
             className="dvic-item"
             data-band={inspectionBand(row)}
@@ -70,11 +83,7 @@ function VehicleGroup({
             <ChevronRight size={16} aria-hidden="true" />
           </button>
         ))}
-        {rows.length > limit && (
-          <button className="dvic-more" onClick={() => setLimit((n) => n + 100)}>
-            Show more inspections ({rows.length - limit} remaining)
-          </button>
-        )}
+        {data && <Pagination page={page} pageSize={100} total={data.total} onChange={setPage} />}
       </div>
     </section>
   );
@@ -82,26 +91,34 @@ function VehicleGroup({
 
 /** One day's short inspections: headline numbers, repeat drivers, then records by vehicle. */
 export function DayDigest({
-  rows,
-  week,
+  day,
+  summary,
+  query,
+  publication,
   filtered,
   collected,
   onSelect,
 }: {
-  rows: DvicInspection[];
-  week: DvicInspection[];
+  day: string;
+  summary?: DvicDaySummary;
+  query: string;
+  publication: string;
   filtered: boolean;
   /** Whether a checked report covers the day. */
   collected: boolean;
   onSelect: (row: DvicInspection) => void;
 }) {
-  const repeat = useMemo(() => repeatDrivers(week, rows), [week, rows]);
-  const groups = useMemo(() => groupByVehicleClass(rows), [rows]);
+  const repeat = summary?.repeatDrivers ?? [];
+  const count = summary?.count ?? 0;
+  const groups = [
+    { vehicles: 'non-dot', label: 'Non-DOT · Cargo Van & CDV', total: summary?.nonDot ?? 0 },
+    { vehicles: 'dot', label: 'DOT · Step Van', total: summary?.dot ?? 0 },
+  ] as const;
   return (
     <>
       <div className="dvic-kpi">
         <span>Short inspections</span>
-        <strong>{rows.length || collected ? rows.length : '—'}</strong>
+        <strong>{count || collected ? count : '—'}</strong>
       </div>
       {repeat.length > 0 && (
         <p className="dvic-callout" role="note">
@@ -110,8 +127,19 @@ export function DayDigest({
           this week: {repeat.join(', ')}.
         </p>
       )}
-      {rows.length ? (
-        groups.map((group) => <VehicleGroup key={group.vehicles} {...group} onSelect={onSelect} />)
+      {count ? (
+        groups
+          .filter((group) => group.total)
+          .map((group) => (
+            <VehicleGroup
+              key={`${group.vehicles}:${day}:${query}`}
+              {...group}
+              date={day}
+              query={query}
+              publication={publication}
+              onSelect={onSelect}
+            />
+          ))
       ) : !collected ? (
         <Empty title="Not collected yet">
           No DVIC report collected so far covers this day, so its short inspections are unknown.

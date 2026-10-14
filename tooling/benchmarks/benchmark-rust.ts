@@ -138,7 +138,7 @@ async function run(app: Awaited<ReturnType<typeof prepare>>) {
       return response.json();
     }
     const login = await request('/api/auth/login', { email: demo.email, password: demo.password });
-    assert.equal(login.status, 200);
+    assert.equal(login.status, 200, `Login failed: ${await login.clone().text()}\n${logs}`);
     headers.cookie = login.headers.get('set-cookie')!.split(';')[0]!;
     const session = sessionSchema.parse(await json('/api/session'));
     headers['x-csrf-token'] = session.csrf;

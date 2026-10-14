@@ -1,6 +1,8 @@
 import type { Job, ScheduleInput, SchedulePreview } from '../../../core/collection/api/index.js';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import type { DvicInspections } from './index.js';
+import type { DvicSummary, DvicInspectionPage, DvicInspectionDetail } from './index.js';
+import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 
 // DVIC's endpoints, as its page and its settings call them. Only its own screens raise this,
 // so its words load with them; a station's absence a schedule meets too, so the manifest
@@ -20,6 +22,28 @@ export const previewSchedule = (
 export const collectDvic = (requestId: string, viewing: string) =>
   api<Job>('/api/dsp/dvic/collect', { requestId, viewing });
 export const cancelDvicJob = (id: string) => api(`/api/dsp/dvic/jobs/${id}/cancel`, {});
-/** One page of a week's inspections, from its address. */
-export const inspectionPage = (url: string, signal: AbortSignal) =>
-  api<DvicInspections>(url, undefined, signal);
+/** Counts cover the whole selection; the driver page carries at most seven cells each. */
+export const summaryUrl = (from: string, to: string, query: string, vehicles: string, page = 0) =>
+  '/api/dsp/dvic/summary?' +
+  new URLSearchParams({ from, to, q: query, vehicles, offset: String(page * 25) });
+export const useSummary = (url: string, publication: string) =>
+  useCachedData<DvicSummary>(url, performancePolicy.recoveryPollMs, publication);
+export const useDayInspections = (
+  date: string,
+  query: string,
+  vehicles: string,
+  page: number,
+  publication: string,
+) =>
+  useCachedData<DvicInspectionPage>(
+    '/api/dsp/dvic/day?' +
+      new URLSearchParams({ date, q: query, vehicles, offset: String(page * 100) }),
+    performancePolicy.recoveryPollMs,
+    publication,
+  );
+export const useInspection = (id: string, from: string, to: string, publication: string) =>
+  useCachedData<DvicInspectionDetail>(
+    '/api/dsp/dvic/inspection?' + new URLSearchParams({ id, from, to }),
+    performancePolicy.recoveryPollMs,
+    publication,
+  );
