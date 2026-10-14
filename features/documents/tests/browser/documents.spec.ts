@@ -22,65 +22,126 @@ async function connect(page: Page) {
 test('large folders keep one page mounted in both layouts, search every item and reveal a new folder', async ({
   page,
 }) => {
-  await login(page);
-  await openDsp(page, 'Northline Logistics');
-  await connect(page);
-  const items: DocumentsItem[] = Array.from({ length: 250 }, (_, index) => ({
-    id: `large-folder-${index}`,
-    name: `File ${String(index).padStart(4, '0')}.txt`,
-    kind: 'file',
-    size: 10,
-    modifiedAt: '2026-01-05T12:00:00Z',
-    modifiedBy: null,
-    addedBy: null,
-    items: null,
-    url: `https://drive.google.com/file/d/large-folder-${index}/view`,
-    location: null,
-    thumbnail: null,
-    extension: '.txt',
-    shortcut: false,
-    unavailable: false,
-  }));
-  await page.route('**/api/dsp/documents/folder*', async (route) => {
-    const response = await route.fetch();
-    const folder = await response.json();
-    const query = new URL(route.request().url()).searchParams.get('q')?.toLowerCase() ?? '';
-    await route.fulfill({
-      response,
-      json: { ...folder, items: items.filter((item) => item.name.toLowerCase().includes(query)) },
-    });
+  await page.addInitScript(() => {
+    const durations: number[] = [];
+    const observer = new PerformanceObserver((list) =>
+      durations.push(...list.getEntries().map((entry) => entry.duration)),
+    );
+    observer.observe({ entryTypes: ['longtask'] });
+    Object.assign(window, { documentsPerformance: { durations, observer } });
   });
-  await page.reload();
-  // Cards, until someone picks the list.
-  const cards = page.locator('.documents-file-card');
-  await expect(cards).toHaveCount(100);
-  await page.getByRole('button', { name: 'List', exact: true }).click();
-  const rows = page.locator('.documents-table tbody tr');
-  await expect(rows).toHaveCount(100);
-  await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
-  await page.getByLabel('Actions for File 0000.txt').click();
-  await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'File 0100.txt', exact: true })).toBeVisible();
-  await expect(rows).toHaveCount(100);
-  await page.getByRole('button', { name: 'Grid', exact: true }).click();
-  await expect(cards).toHaveCount(100);
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(cards).toHaveCount(50);
-  await page.getByLabel('Search Documents').fill('File 0249');
-  await expect(cards).toHaveCount(1);
-  await expect(page.getByRole('link', { name: /File 0249/ })).toBeVisible();
-  await page.getByLabel('Search Documents').fill('');
-  await expect(cards).toHaveCount(100);
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await page.getByLabel('New', { exact: true }).click();
-  await page.getByRole('button', { name: 'Folder', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Name' }).fill('New folder');
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.getByRole('link', { name: /New folder/ })).toBeVisible();
+  const measurements: {
+    layout: string;
+    nodes: number;
+    longTasks: number;
+    maxLongTaskMs: number;
+  }[] = [];
+  const measure = async (layout: string) => {
+    const measured = await page.evaluate(() => {
+      const { durations, observer } = (
+        window as typeof window & {
+          documentsPerformance: { durations: number[]; observer: PerformanceObserver };
+        }
+      ).documentsPerformance;
+      const tasks = [...durations, ...observer.takeRecords().map((entry) => entry.duration)];
+      durations.length = 0;
+      return {
+        nodes: document.querySelectorAll('*').length,
+        longTasks: tasks.length,
+        maxLongTaskMs: Math.max(0, ...tasks),
+      };
+    });
+    measurements.push({ layout, ...measured });
+    expect(measured.nodes).toBeLessThan(10_000);
+  };
+  const fileCount = 1500;
+  try {
+    await login(page);
+    await openDsp(page, 'Northline Logistics');
+    await connect(page);
+    const items: DocumentsItem[] = Array.from({ length: fileCount }, (_, index) => ({
+      id: `large-folder-${index}`,
+      name: `File ${String(index).padStart(4, '0')}.txt`,
+      kind: 'file',
+      size: 10,
+      modifiedAt: '2026-01-05T12:00:00Z',
+      modifiedBy: null,
+      addedBy: null,
+      items: null,
+      url: `https://drive.google.com/file/d/large-folder-${index}/view`,
+      location: null,
+      thumbnail: null,
+      extension: '.txt',
+      shortcut: false,
+      unavailable: false,
+    }));
+    await page.route('**/api/dsp/documents/folder*', async (route) => {
+      const response = await route.fetch();
+      const folder = await response.json();
+      const query = new URL(route.request().url()).searchParams.get('q')?.toLowerCase() ?? '';
+      await route.fulfill({
+        response,
+        json: { ...folder, items: items.filter((item) => item.name.toLowerCase().includes(query)) },
+      });
+    });
+    await page.reload();
+    const cards = page.locator('.documents-file-card');
+    await expect(cards).toHaveCount(100);
+    await measure('initial-grid');
+    await page.getByRole('button', { name: 'List', exact: true }).click();
+    const rows = page.locator('.documents-table tbody tr');
+    await expect(rows).toHaveCount(100);
+    await measure('list');
+    await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
+    await page.getByLabel('Actions for File 0000.txt').click();
+    await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.documents-table .row-menu .account-popover button')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.getByRole('link', { name: 'File 0100.txt', exact: true })).toBeVisible();
+    await expect(rows).toHaveCount(100);
+    await page.getByRole('button', { name: 'Grid', exact: true }).click();
+    await expect(page.locator('.documents-file-card')).toHaveCount(100);
+    await measure('grid');
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await measure('mobile-grid');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(page.locator('.documents-file-card')).toHaveCount(100);
+    await page.getByLabel('Search Documents').fill('File 1499');
+    await expect(page.locator('.documents-file-card')).toHaveCount(1);
+    await expect(page.getByRole('link', { name: /File 1499/ })).toBeVisible();
+    await page.getByLabel('Search Documents').fill('');
+    await expect(page.locator('.documents-file-card')).toHaveCount(100);
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.getByLabel('New', { exact: true }).click();
+    await page.getByRole('button', { name: 'Folder', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Name' }).fill('New folder');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByRole('link', { name: /New folder/ })).toBeVisible();
+  } finally {
+    const output = test.info().outputPath('documents-performance.json');
+    fs.writeFileSync(
+      output,
+      JSON.stringify(
+        {
+          files: fileCount,
+          pageSize: 100,
+          measurements,
+          note: 'Observed long tasks between interaction checkpoints; CI host load affects timings.',
+        },
+        null,
+        2,
+      ),
+    );
+    await test.info().attach('documents-performance', {
+      path: output,
+      contentType: 'application/json',
+    });
+  }
 });
 
 test('an owner connects Google, lands in an empty Documents and makes a folder and a Doc that opens in Google', async ({

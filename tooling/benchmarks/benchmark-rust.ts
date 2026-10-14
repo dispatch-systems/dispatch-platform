@@ -1,6 +1,12 @@
 import { collectorDatabase } from '../testing/collector-storage.js';
 import { demo, prepare } from '../testing/fixture-server.js';
-import { checkBenchmark, type Failure, type Measurement } from './benchmark-budget.js';
+import {
+  checkBenchmark,
+  type Failure,
+  type Measurement,
+  type TableRead,
+} from './benchmark-budget.js';
+import { DatabaseWork } from './database-work.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -91,7 +97,7 @@ function dataset(root: string) {
   }
   return { readers, writer: tenants.find((d) => d.name === 'Summit Delivery')! };
 }
-async function run(app: Awaited<ReturnType<typeof prepare>>) {
+async function run(app: Awaited<ReturnType<typeof prepare>>, databaseWork: DatabaseWork) {
   const { root, env, address: origin, binary: executable } = app;
   const tenants = dataset(root);
   let server: ChildProcess | undefined, timer: ReturnType<typeof setInterval> | undefined;
@@ -102,6 +108,7 @@ async function run(app: Awaited<ReturnType<typeof prepare>>) {
     server = spawn(executable, ['serve'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     server.stderr!.on('data', (data) => {
       logs = (logs + data).slice(-16000);
+      databaseWork.feed(data.toString());
     });
     server.stdout!.on('data', () => {});
     for (;;) {
@@ -166,7 +173,64 @@ async function run(app: Awaited<ReturnType<typeof prepare>>) {
       '/api/session',
       '/api/dsp/employees?limit=all',
       '/api/dsp/paycom/meal-breaks?date=2026-08-15',
+      '/api/dsp/timecards/page?date=2026-08-15&limit=100',
+      '/api/dsp/paycom/meal-breaks/page?date=2026-08-15&limit=100',
+      '/api/dsp/paycom/meal-breaks/period-gaps?date=2026-08-15',
     ];
+    // A real settings write invalidates derived reads without changing this dataset
+    // or expiring its DSP admission. Each cold sample starts from a fresh revision.
+    const invalidate = async () => {
+      const settings = await json('/api/dsp/paycom/settings', undefined, clients[0]);
+      await json(
+        '/api/dsp/paycom/settings',
+        { revision: settings.revision, values: settings.values },
+        clients[0],
+      );
+    };
+    await invalidate();
+    const heavy = Promise.all(
+      Array.from({ length: 8 }, async () => {
+        const response = await request(routes[6]!, undefined, clients[0]);
+        await response.arrayBuffer();
+        return response.status;
+      }),
+    );
+    // Let the expensive reads enter first; this is a workload phase, not a
+    // synchronization or timing assertion in a functional browser test.
+    await pause(25);
+    const light = await Promise.all(
+      Array.from({ length: 8 }, async () => {
+        const started = performance.now();
+        const response = await request('/api/session', undefined, clients[0]);
+        await response.arrayBuffer();
+        return { status: response.status, ms: performance.now() - started };
+      }),
+    );
+    const coldBurst = { heavyStatuses: await heavy, light };
+    const tableReads: TableRead[] = [];
+    for (const [route, url] of [
+      ['daily', routes[7]!],
+      ['meals', routes[8]!],
+      ['gaps', routes[9]!],
+    ] as const) {
+      await invalidate();
+      for (const temperature of ['cold', 'warm'] as const) {
+        const started = performance.now();
+        const response = await request(url, undefined, clients[0]);
+        const payload = await response.text();
+        const elapsed = performance.now() - started;
+        const value = JSON.parse(payload);
+        tableReads.push({
+          route,
+          temperature,
+          status: response.status,
+          ms: elapsed,
+          bytes: Buffer.byteLength(payload),
+          rows: value.rows?.length,
+          total: value.total,
+        });
+      }
+    }
     const stable = (route: string, value: any) => {
       if (route !== '/api/session') return value;
       const { dsps: _dsps, ...auth } = sessionSchema.parse(value);
@@ -177,6 +241,11 @@ async function run(app: Awaited<ReturnType<typeof prepare>>) {
         assert.equal((await json(routes[0]!, undefined, c)).total, employees);
         assert.equal((await json(routes[3]!, undefined, c)).rows.length, employees);
         assert.equal((await json(routes[2]!, undefined, c)).timecards.length, periodDays);
+        for (const route of [routes[7]!, routes[8]!]) {
+          const page = await json(route, undefined, c);
+          assert.equal(page.total, employees);
+          assert.equal(page.rows.length, 100);
+        }
         return Promise.all(
           routes.map(async (route) => stable(route, await json(route, undefined, c))),
         );
@@ -286,7 +355,8 @@ async function run(app: Awaited<ReturnType<typeof prepare>>) {
       if (backgroundError) throw backgroundError;
     }
     return {
-      format: 1,
+      format: 2,
+      workloadRoutes: routes,
       employeesPerDsp: employees,
       timecardsPerDsp: employees * days,
       binarySha256: createHash('sha256').update(fs.readFileSync(executable)).digest('hex'),
@@ -304,6 +374,8 @@ async function run(app: Awaited<ReturnType<typeof prepare>>) {
       completedCollections,
       observedRunning,
       measurements,
+      tableReads,
+      coldBurst,
       note: 'Synthetic TCP workload with full responses, two reader DSPs and one collecting DSP. Chromium and provider networking are covered separately by native capacity tests.',
     };
   } finally {
@@ -315,7 +387,7 @@ async function run(app: Awaited<ReturnType<typeof prepare>>) {
           child.kill('SIGKILL');
           reject(new Error('Benchmark core failed to stop'));
         }, 10000);
-        child.once('exit', () => {
+        child.once('close', () => {
           clearTimeout(timeout);
           resolve();
         });
@@ -338,7 +410,9 @@ const app = await prepare({
   },
 });
 try {
-  const report = await run(app);
+  const databaseWork = new DatabaseWork();
+  const measured = await run(app, databaseWork);
+  const report = { ...measured, databaseWork: databaseWork.report() };
   const output = JSON.stringify(report, null, 2) + '\n';
   if (values.output) fs.writeFileSync(values.output, output);
   process.stdout.write(output);

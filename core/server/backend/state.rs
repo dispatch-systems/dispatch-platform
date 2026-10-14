@@ -149,6 +149,7 @@ impl State {
         // Bound both queued requests and blocking threads. Short bursts wait without
         // allocating another database pool or failing otherwise healthy requests.
         let started = std::time::Instant::now();
+        let trace = observability::REQUEST_TRACE.try_with(Clone::clone).ok();
         let busy = || Error::new("platform_busy", 503);
         let unavailable = |_| Error::new("platform_unavailable", 503);
         let (queued, permit) = if PATIENT.try_with(|_| ()).is_ok() {
@@ -226,10 +227,16 @@ impl State {
                 state.mail_wake.notify_one();
             }
             if queued_ms + lock_ms + work_ms >= 25.0 {
+                let context = trace
+                    .as_ref()
+                    .map(|trace| trace.lock().unwrap_or_else(|poison| poison.into_inner()));
                 observability::event(
                     "info",
                     "database.slow",
                     serde_json::json!({
+                        "requestId":context.as_ref().and_then(|c| c.request_id.as_deref()),
+                        "route":context.as_ref().and_then(|c| c.route),
+                        "dspId":context.as_ref().and_then(|c| c.tenant.as_deref()),
                         "write":write, "queueMs":queued_ms, "lockMs":lock_ms, "workMs":work_ms,
                         "totalMs":started.elapsed().as_secs_f64()*1000.0
                     }),

@@ -64,11 +64,18 @@ pub async fn pipeline(
         Ok(id) => id,
         Err(error) => return error.into_response(),
     };
+    {
+        let mut context = trace.lock().unwrap_or_else(|poison| poison.into_inner());
+        context.request_id = Some(request_id.clone());
+        context.route = Some(route);
+    }
     let agent = request.uri().path().starts_with("/api/v1/");
     let mut response = match admit(&state, &request) {
         Ok(site) => {
             request.extensions_mut().insert(site);
-            next.run(request).await
+            observability::REQUEST_TRACE
+                .scope(trace.clone(), next.run(request))
+                .await
         }
         Err(error) => failure(error),
     };
