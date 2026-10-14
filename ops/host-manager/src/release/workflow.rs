@@ -170,9 +170,9 @@ impl Release<'_> {
             120,
         )?)
     }
-    /// Writes the release notes from the merged PRs: one line per PR, its title and the first
-    /// paragraph of its Summary section (or of Change, for older PRs), then the list of PRs.
-    /// A body GitHub cannot serve leaves the title alone.
+    /// Writes the release notes from the merged PRs: one line per PR, the first paragraph of
+    /// its Summary section (or of Change, for older PRs), then the list of PRs. A body GitHub
+    /// cannot serve, or one with neither section, leaves the title instead.
     pub(super) fn generate_notes(&self, commit: &str) -> Result<()> {
         let changes = match self.previous()? {
             Some(previous) => self.changes_after(&previous, commit)?,
@@ -198,12 +198,11 @@ impl Release<'_> {
                     60,
                 )
                 .ok();
-            let summary = body.as_deref().and_then(change_summary);
-            let title = plain_title(title).trim_end_matches('.').to_owned();
-            notes.push_str(&match summary {
-                Some(summary) => format!("- {title}. {summary}\n"),
-                None => format!("- {title}.\n"),
-            });
+            let line = match body.as_deref().and_then(change_summary) {
+                Some(summary) => summary,
+                None => format!("{}.", plain_title(title).trim_end_matches('.')),
+            };
+            notes.push_str(&format!("- {line}\n"));
         }
         let links: Vec<_> = changes
             .iter()
