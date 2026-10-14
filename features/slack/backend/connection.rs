@@ -153,20 +153,35 @@ pub async fn finish(
     let installed = Slack::of(&state.config)?
         .exchange(&state.config.origin, &code)
         .await?;
+    let made = (installed.team.clone(), installed.tokens.access.clone());
     let id = c.dsp.id.clone();
-    state
+    let kept = state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
             let (action, name) = keep(db, &c.dsp.id, installed, Some(&actor))?;
             c.audit(db, action, &name)
         })
-        .await?;
+        .await;
+    if kept.is_err() {
+        undo(state, made).await;
+    }
+    kept?;
     state.read(move |db| account(db, &id)).await
 }
 
-/// Keeps a workspace an install gave the DSP, connected by `by`, or by the install link: the
-/// action the activity log records, and the workspace's name. A workspace another DSP has is
-/// refused: it stays that DSP's, and its tokens there are left alone.
+/// Takes back an install Slack made and Dispatch then refused, `(team, token)`, so the app
+/// isn't left in a workspace with tokens nobody holds. A workspace a DSP holds keeps its
+/// installation, whichever DSP's it is: Slack removing the app removes it for every token.
+pub(super) async fn undo(state: &Arc<State>, (team, token): (String, String)) {
+    let held = state.read(move |db| db.slack_team_dsp(&team)).await;
+    if let (Ok(None), Ok(slack)) = (held, Slack::of(&state.config)) {
+        slack.uninstall(&token).await;
+    }
+}
+
+/// Keeps a workspace an install gave the DSP, connected by `by`, or by the install link, who
+/// then shows as having connected it, reconnected or not: the action the activity log records,
+/// and the workspace's name. A workspace another DSP has is refused, and stays that DSP's.
 pub(super) fn keep(
     db: &Store,
     dsp: &str,
@@ -204,7 +219,7 @@ pub async fn disconnect(
     let (dsp, of) = (c.dsp.id.clone(), team.clone());
     let found = state.read(move |db| db.slack_workspace(&dsp, &of)).await?;
     ensure(found.is_some(), "slack_workspace_not_found", 404)?;
-    let token = Bot::new(state, &c.dsp.id, &team).token(false).await.ok();
+    let token = Bot::new(state, &c.dsp.id, &team).token().await.ok();
     let id = c.dsp.id.clone();
     state
         .run(move |db| {

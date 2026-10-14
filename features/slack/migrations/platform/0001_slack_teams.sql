@@ -6,4 +6,3 @@ CREATE TABLE IF NOT EXISTS slack_teams (
     dsp_id TEXT NOT NULL,
     connected_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS slack_teams_dsp ON slack_teams (dsp_id);

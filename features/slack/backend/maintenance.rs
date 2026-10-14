@@ -1,9 +1,9 @@
-//! Slack's upkeep. Hourly, each working workspace of each DSP with Slack on is asked for, as
-//! the bot: that renews its token when it nears its end, so one nobody uses never lapses; keeps
-//! the workspace's name as Slack has it; and notices a workspace whose tokens Slack stopped
+//! Slack's upkeep. Hourly, each working workspace of each active DSP with Slack on is asked
+//! for, as the bot: that renews its token as it nears its end, so one nobody uses never lapses;
+//! keeps the workspace's name as Slack has it; and notices a workspace whose tokens Slack stopped
 //! honouring, so the card says so and the DSP can reconnect it before someone finds out by
 //! trying.
-use super::{bot::Bot, slack::Slack, storage::SlackStore};
+use super::{bot::Bot, connection, slack::Slack, storage::SlackStore};
 use dispatch_core::{
     Error, State,
     foundation::observability,
@@ -34,7 +34,7 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
             let at = dsp.clone();
             let found = state
                 .read(move |db| {
-                    if !db.feature_enabled(&at, "slack")? {
+                    if !connection::open(db, &at)? {
                         return Ok(Vec::new());
                     }
                     db.slack_workspaces(&at)

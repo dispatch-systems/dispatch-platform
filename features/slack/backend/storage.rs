@@ -162,7 +162,9 @@ impl SlackStore for Store {
         workspace: &Workspace,
         tokens: &Tokens,
     ) -> Result<()> {
+        ensure(team_id(&workspace.team), "slack_install_failed", 502)?;
         // The workspace becomes the DSP's first, so no two DSPs ever both hold it.
+        let held = self.slack_team_dsp(&workspace.team)?.is_some();
         let claimed = self.platform.exec(
             "INSERT INTO slack_teams (team_id,dsp_id,connected_at) VALUES (?1,?2,?3) \
              ON CONFLICT(team_id) DO UPDATE SET connected_at=excluded.connected_at \
@@ -170,21 +172,33 @@ impl SlackStore for Store {
             params![workspace.team, dsp, workspace.connected_at],
         )?;
         ensure(claimed > 0, "slack_workspace_taken", 409)?;
-        self.save_slack_tokens(dsp, &workspace.team, tokens)?;
-        self.dsp(dsp)?.exec(
-            "INSERT OR REPLACE INTO slack_workspaces (team_id,name,status,scopes,bot_user_id,\
-             app_id,connected_by,connected_at,broken_at) VALUES (?,?,'connected',?,?,?,?,?,NULL)",
-            params![
-                workspace.team,
-                workspace.name,
-                workspace.scopes.join(" "),
-                workspace.bot_user,
-                workspace.app,
-                workspace.connected_by,
-                workspace.connected_at,
-            ],
-        )?;
-        Ok(())
+        let kept = self
+            .save_slack_tokens(dsp, &workspace.team, tokens)
+            .and_then(|()| {
+                self.dsp(dsp)?.exec(
+                    "INSERT OR REPLACE INTO slack_workspaces (team_id,name,status,scopes,\
+                     bot_user_id,app_id,connected_by,connected_at,broken_at) \
+                     VALUES (?,?,'connected',?,?,?,?,?,NULL)",
+                    params![
+                        workspace.team,
+                        workspace.name,
+                        workspace.scopes.join(" "),
+                        workspace.bot_user,
+                        workspace.app,
+                        workspace.connected_by,
+                        workspace.connected_at,
+                    ],
+                )
+            });
+        // A claim this made goes with what failed after it, so no workspace is held by a DSP
+        // that doesn't list it.
+        if kept.is_err() && !held {
+            self.platform.exec(
+                "DELETE FROM slack_teams WHERE team_id=? AND dsp_id=?",
+                [&workspace.team, dsp],
+            )?;
+        }
+        kept.map(|_| ())
     }
     fn slack_tokens(&self, dsp: &str, team: &str) -> Result<Option<Tokens>> {
         let area = self.area(dsp, "secrets")?;

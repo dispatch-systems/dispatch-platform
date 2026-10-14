@@ -42,9 +42,10 @@ async fn on_event(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
         _ => Ok(()),
     }
 }
-/// What each interaction does, by its type and the action it names, for a workspace Dispatch
-/// acts in. The Home tab's one button opens Dispatch in the browser itself.
-async fn on_interaction(_: &Bot, kind: &str, action: &str) -> Result<()> {
+/// What each interaction does, by its type and the button, form or shortcut it names, for a
+/// workspace Dispatch acts in, with all Slack sent of it in `payload`. The Home tab's one button
+/// opens Dispatch in the browser itself.
+async fn on_interaction(_: &Bot, kind: &str, action: &str, _payload: &Value) -> Result<()> {
     match (kind, action) {
         ("block_actions", home::OPEN_DISPATCH) => Ok(()),
         _ => Ok(()),
@@ -134,7 +135,7 @@ pub async fn interactions(state: Arc<State>, request: Request) -> Response {
             .or_else(|| payload["view"]["callback_id"].as_str())
             .or_else(|| payload["callback_id"].as_str())
             .unwrap_or("");
-        on_interaction(&bot, kind, action).await
+        on_interaction(&bot, kind, action, &payload).await
     });
     StatusCode::OK.into_response()
 }
@@ -180,7 +181,9 @@ pub fn signed(secret: &str, headers: &HeaderMap, body: &[u8], now: i64) -> bool 
     mac.update(body);
     crypto::equal(&crypto::hex(&mac.finalize().into_bytes()), sent)
 }
-/// The body of a request Slack sent to `pattern`, once its signature is checked.
+/// The body of a request Slack sent to `pattern`, once its signature is checked. It may be up
+/// to 64 KiB, as any request's may: a form with many fields, as a `view_submission` brings,
+/// needs more.
 async fn received(
     state: &State,
     request: Request,

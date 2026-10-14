@@ -1,9 +1,14 @@
 //! The app's bot in one of a DSP's workspaces: what everything that acts in Slack holds, and
 //! its only way to call Slack. It calls any of Slack's API methods there with the workspace's
-//! token. Slack's tokens last twelve hours: the bot renews one within five minutes of its end
-//! before using it, with a refresh token Slack honours once, and keeps the new pair at once.
-//! One renewal runs at a time for each workspace, so two never spend the same refresh token.
-use super::{connection, slack::Slack, storage::SlackStore};
+//! token. Slack's tokens last twelve hours: the bot renews one before using it once less than
+//! an hour and five minutes is left, so the hourly check renews a token before it ends, with a
+//! refresh token Slack honours once, and keeps the new pair at once. One renewal runs at a time
+//! for each workspace, so two never spend the same refresh token.
+use super::{
+    connection,
+    slack::{Slack, Tokens},
+    storage::SlackStore,
+};
 use dispatch_core::{Error, Result, State, db::now};
 use serde_json::Value;
 use std::{
@@ -11,8 +16,9 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-/// How near its end a token is renewed before it's used.
-const RENEW_WITHIN_MS: i64 = 5 * 60 * 1000;
+/// How near its end a token is renewed before it's used: within the hourly check's hour, and
+/// five minutes more, so the check renews one before it ends.
+const RENEW_WITHIN_MS: i64 = 65 * 60 * 1000;
 
 /// The bot in the DSP's workspace `team`.
 pub struct Bot {
@@ -51,10 +57,10 @@ impl Bot {
     /// workspace's tokens breaks it, until someone reconnects it.
     pub async fn call(&self, method: &str, args: &Value) -> Result<Value> {
         let slack = Slack::of(&self.state.config)?;
-        let token = self.token(false).await?;
+        let token = self.token().await?;
         let answer = match slack.call(&token, method, args).await {
             Err(error) if error.code == "slack_token_expired" => {
-                slack.call(&self.token(true).await?, method, args).await
+                slack.call(&self.instead_of(&token).await?, method, args).await
             }
             answer => answer,
         };
@@ -66,9 +72,22 @@ impl Bot {
         answer
     }
 
-    /// The workspace's access token: renewed first when it's within five minutes of its end,
-    /// or whatever is left of it when `force`.
-    pub async fn token(&self, force: bool) -> Result<String> {
+    /// The workspace's access token, renewed first when it nears its end.
+    pub async fn token(&self) -> Result<String> {
+        self.renewed(|kept| {
+            kept.expires_at
+                .is_some_and(|expires| expires - now() <= RENEW_WITHIN_MS)
+        })
+        .await
+    }
+    /// A token in place of `refused`, which Slack said expired: renewed, unless another call
+    /// renewed it meanwhile.
+    async fn instead_of(&self, refused: &str) -> Result<String> {
+        self.renewed(|kept| kept.access == refused).await
+    }
+    /// The workspace's access token, renewed first when `due` says so of the kept tokens.
+    /// Slack refusing to renew it breaks the workspace.
+    async fn renewed(&self, due: impl FnOnce(&Tokens) -> bool) -> Result<String> {
         let lock = renewing(&self.dsp, &self.team);
         let _renewing = lock.lock().await;
         let (dsp, team) = (self.dsp.clone(), self.team.clone());
@@ -77,11 +96,8 @@ impl Bot {
             .read(move |db| db.slack_tokens(&dsp, &team))
             .await?
             .ok_or_else(|| Error::new("slack_not_connected", 404))?;
-        let due = kept
-            .expires_at
-            .is_some_and(|expires| expires - now() <= RENEW_WITHIN_MS);
         // A token without a refresh token never expires: the app's rotation is off.
-        let Some(refresh) = kept.refresh.filter(|_| force || due) else {
+        let Some(refresh) = kept.refresh.clone().filter(|_| due(&kept)) else {
             return Ok(kept.access);
         };
         match Slack::of(&self.state.config)?.refresh(&refresh).await {
@@ -121,3 +137,7 @@ fn renewing(dsp: &str, team: &str) -> Arc<tokio::sync::Mutex<()>> {
         .or_default()
         .clone()
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/bot.rs"]
+mod tests;

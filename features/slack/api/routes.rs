@@ -178,7 +178,12 @@ async fn install(state: Arc<State>, request: Request) -> Response {
     else {
         return pages::stopped("slack_link_expired");
     };
-    match state.run(move |db| link::start(db, &opened)).await {
+    let checked = opened.clone();
+    let started = match state.read(move |db| link::opened(db, &checked)).await {
+        Ok(_) => state.run(move |db| link::start(db, &opened)).await,
+        Err(error) => Err(error),
+    };
+    match started {
         Ok(url) => Reply::redirect(url).into_response(),
         Err(error) => pages::stopped(&error.code),
     }

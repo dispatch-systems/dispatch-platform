@@ -39,9 +39,9 @@ pub fn cancel(db: &Store, c: &Context) -> Result<SlackAccount> {
     connection::account(db, &c.dsp.id)
 }
 
-/// Starts installing the app by the link `link`, for whoever opened it: where their browser
-/// goes next.
-pub fn start(db: &Store, link: &str) -> Result<String> {
+/// Whether `link`, as someone opened it, is a DSP's install link that still works: the DSP it
+/// is for and its hash. A read, so a link that doesn't work costs no write.
+pub fn opened(db: &Store, link: &str) -> Result<(String, String)> {
     let (dsp, _) = link
         .split_once('.')
         .filter(|(dsp, _)| identifier(dsp, "dsp_"))
@@ -49,9 +49,15 @@ pub fn start(db: &Store, link: &str) -> Result<String> {
     let hash = crypto::sha(link);
     let works = db.slack_link_works(dsp, &hash).unwrap_or(false) && connection::open(db, dsp)?;
     ensure(works, "slack_link_expired", 404)?;
+    Ok((dsp.to_owned(), hash))
+}
+/// Starts installing the app by the link `link`, for whoever opened it: where their browser
+/// goes next.
+pub fn start(db: &Store, link: &str) -> Result<String> {
+    let (dsp, hash) = opened(db, link)?;
     let slack = Slack::of(&db.config)?;
-    let state = connection::new_state(dsp, Started::Link)?;
-    db.start_slack_install(dsp, &state, &Starter::Link(hash))?;
+    let state = connection::new_state(&dsp, Started::Link)?;
+    db.start_slack_install(&dsp, &state, &Starter::Link(hash))?;
     connection::install_url(db, &slack, &state, None)
 }
 
@@ -74,7 +80,8 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
         .exchange(&state.config.origin, &code)
         .await?;
     let opened = (installed.team.clone(), installed.app.clone());
-    state
+    let made = (installed.team.clone(), installed.tokens.access.clone());
+    let kept = state
         .run(move |db| {
             // The link may have been cancelled, or used, while Slack asked.
             let works = db.slack_link_works(&dsp, &hash)? && connection::open(db, &dsp)?;
@@ -83,6 +90,9 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
             db.end_slack_link(&dsp, Some(&hash))?;
             db.audit(None, Some(&dsp), action, &name)
         })
-        .await?;
-    Ok(opened)
+        .await;
+    if kept.is_err() {
+        connection::undo(state, made).await;
+    }
+    kept.map(|()| opened)
 }

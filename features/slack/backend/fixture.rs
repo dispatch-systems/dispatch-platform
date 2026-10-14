@@ -9,6 +9,7 @@ use dispatch_core::{
     db::{Store, now},
 };
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The secret its requests are signed with, which tests sign theirs with too.
 pub const SIGNING_SECRET: &str = "fixture-signing-secret";
@@ -71,11 +72,12 @@ fn name(team: &str) -> String {
 }
 /// New tokens for the workspace, `fixture-access:<team>:<turn>`, so each renewal gives others.
 fn tokens(team: &str) -> Tokens {
-    let turn = now();
+    static TURNS: AtomicU64 = AtomicU64::new(0);
+    let turn = TURNS.fetch_add(1, Ordering::Relaxed);
     Tokens {
         access: format!("fixture-access:{team}:{turn}"),
         refresh: Some(format!("fixture-refresh:{team}:{turn}")),
-        expires_at: Some(turn + LASTS_MS),
+        expires_at: Some(now() + LASTS_MS),
     }
 }
 /// The workspace a token of `kind` names, unless it is one that removed the app.
