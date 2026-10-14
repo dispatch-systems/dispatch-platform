@@ -172,13 +172,13 @@ fn in_slack(team: &str, app: &str) -> String {
 /// the DSP the link is for.
 async fn install(state: Arc<State>, request: Request) -> Response {
     let sent = query(&request);
-    let Some(link) = field(&sent, "link")
-        .filter(|link| (1..=200).contains(&link.len()))
+    let Some(opened) = field(&sent, "link")
+        .filter(|opened| (1..=200).contains(&opened.len()))
         .map(str::to_owned)
     else {
         return pages::stopped("slack_link_expired");
     };
-    match state.run(move |db| link::start(db, &link)).await {
+    match state.run(move |db| link::start(db, &opened)).await {
         Ok(url) => Reply::redirect(url).into_response(),
         Err(error) => pages::stopped(&error.code),
     }
