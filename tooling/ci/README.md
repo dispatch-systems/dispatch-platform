@@ -49,8 +49,10 @@ API tests, one at a time, a line each. Each run builds in a folder of its own un
 and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
 builds and several can test at once. Its commands run in a systemd scope with a low CPU
 weight, a soft memory ceiling and a high out-of-memory score, so Dev keeps priority.
-`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks, clippy
-and the tests the same way; `--plan` only names them.
+`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks and
+clippy the same way. A clippy pass is kept, in the repository's shared Git folder, for the
+Rust inputs it ran on, so clippy passes again without running until one of them changes;
+`--plan` only names them.
 `dispatchdev ship <number>` reads the PR from GitHub's API every 10 seconds, adds it to the
 merge queue once its admission check passed and GitHub knows it merges cleanly, and waits
 until GitHub merges it, printing the squash commit. A newer push is queued

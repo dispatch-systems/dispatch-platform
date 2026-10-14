@@ -1,9 +1,13 @@
-use crate::{REPOSITORY, Result, Runner, build::frontend};
+use crate::{
+    REPOSITORY, Result, Runner,
+    build::{self, Environment, frontend},
+    workspace,
+};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 /// Problems that stop a push. With a merge queue on `main`, the queue validates the actual
 /// merged state, so a moved `main` and other ready PRs no longer block.
@@ -398,22 +402,126 @@ pub fn print(plan: &Plan) {
 }
 /// `dispatchdev check`: the rule checks, then the lints the plan names, a line each, built in a
 /// folder of the run's own and deleted when it ends (`crate::test`). Every command's whole output
-/// is in the change's scratch folder.
-pub fn execute(root: &Path, plan: &Plan, keep: bool) -> Result<bool> {
+/// is in the change's scratch folder. Clippy that passed on identical Rust inputs passes again
+/// without running.
+pub fn execute(
+    root: &Path,
+    plan: &Plan,
+    keep: bool,
+    env: &Environment,
+    runner: &dyn Runner,
+) -> Result<bool> {
+    let clippy = plan
+        .commands
+        .iter()
+        .find(|command| command.starts_with("cargo clippy"));
+    let lints = match clippy {
+        Some(command) => Lints::of(root, command, env, runner)?,
+        None => None,
+    };
+    let reused = lints.as_ref().is_some_and(Lints::passed);
+    if let (true, Some(command)) = (reused, clippy) {
+        println!("ok     reused  {command} (passed on these Rust inputs before)");
+    }
     let commands: Vec<String> = ["npm run check:rules".to_owned()]
         .into_iter()
-        .chain(plan.commands.iter().cloned())
+        .chain(
+            plan.commands
+                .iter()
+                .filter(|command| !reused || Some(*command) != clippy)
+                .cloned(),
+        )
         .collect();
     let passed = crate::test::run_commands(root, &commands, keep)?;
     if passed {
+        if let (false, Some(lints)) = (reused, &lints) {
+            lints.keep(root, env, runner)?;
+        }
         println!(
             "All {} passed against {}. {}",
-            commands.len(),
+            commands.len() + usize::from(reused),
             plan.base,
             next_step(plan)
         );
     }
     Ok(passed)
+}
+
+/// Where clippy's passes are kept: a file for each set of Rust inputs one passed on, named by
+/// their fingerprint, in the repository's shared Git folder, so every worktree reuses them.
+const LINTS: &str = "dispatch-clippy";
+/// How many passes are kept, the most recent.
+const LINTS_KEPT: usize = 20;
+/// A clippy pass over the Rust inputs as they are, by their whole fingerprint: test code and
+/// this tool's own source too, which the release binary's key leaves out. What else decides
+/// clippy's verdict, its command, a configuration at the top and `CLIPPY` settings, is what
+/// the pass's file holds.
+pub struct Lints {
+    file: PathBuf,
+    key: String,
+    says: String,
+}
+impl Lints {
+    /// None when the inputs can't be fingerprinted reliably, as with a target folder of one's
+    /// own or `RUSTFLAGS`: clippy then always runs.
+    pub fn of(
+        root: &Path,
+        command: &str,
+        env: &Environment,
+        runner: &dyn Runner,
+    ) -> Result<Option<Self>> {
+        if !build::eligible(root, env, false)? {
+            return Ok(None);
+        }
+        let key = build::key(root, LINTS, env, runner)?;
+        let common = workspace::text(
+            runner,
+            &[
+                "git",
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            Some(root),
+        )?;
+        let config: String = ["clippy.toml", ".clippy.toml"]
+            .iter()
+            .filter_map(|name| fs::read_to_string(root.join(name)).ok())
+            .collect();
+        let settings: Vec<String> = env
+            .iter()
+            .filter(|(name, _)| name.starts_with("CLIPPY"))
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect();
+        Ok(Some(Self {
+            file: Path::new(&common).join(LINTS).join(&key),
+            key,
+            says: format!("{command}\n{}\n{config}", settings.join("\n")),
+        }))
+    }
+    /// Whether this clippy passed on these inputs before.
+    pub fn passed(&self) -> bool {
+        fs::read_to_string(&self.file).is_ok_and(|text| text == self.says)
+    }
+    /// Keeps the pass, unless the inputs changed while clippy ran, and lets go of the oldest.
+    pub fn keep(&self, root: &Path, env: &Environment, runner: &dyn Runner) -> Result<()> {
+        if build::key(root, LINTS, env, runner)? != self.key {
+            return Ok(());
+        }
+        workspace::write_private(&self.file, &self.says)?;
+        let folder = self.file.parent().ok_or("No folder for clippy's passes")?;
+        let mut kept: Vec<_> = fs::read_dir(folder)?
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                Some((entry.metadata().ok()?.modified().ok()?, entry.path()))
+            })
+            .collect();
+        kept.sort_by(|a, b| b.cmp(a));
+        for (_, old) in kept.into_iter().skip(LINTS_KEPT) {
+            let _ = fs::remove_file(old);
+        }
+        Ok(())
+    }
 }
 /// The lines of a failed command's output that say what failed: failing tests, panics,
 /// compiler errors and assertions; or else its last lines.
@@ -507,6 +615,93 @@ fn merge_queue(command: &dyn Fn(&[&str]) -> Result<String>) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+    /// A repository whose toolchain and Git folder are stood in for.
+    struct Repo(tempfile::TempDir);
+    impl Repo {
+        fn new() -> Self {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path();
+            fs::create_dir_all(root.join("app/backend")).unwrap();
+            fs::create_dir_all(root.join("app/tests/backend")).unwrap();
+            fs::create_dir_all(root.join(".git")).unwrap();
+            fs::write(
+                root.join("Cargo.toml"),
+                "[workspace]\nmembers = [\"app/backend\"]\n",
+            )
+            .unwrap();
+            fs::write(
+                root.join("app/backend/Cargo.toml"),
+                "[package]\nname = \"fixture\"\n",
+            )
+            .unwrap();
+            fs::write(root.join("app/backend/main.rs"), "fn main() {}").unwrap();
+            fs::write(
+                root.join("app/tests/backend/case.rs"),
+                "#[test] fn case() {}",
+            )
+            .unwrap();
+            Self(temp)
+        }
+        fn root(&self) -> &Path {
+            self.0.path()
+        }
+        fn lints(&self, command: &str, env: &Environment) -> Lints {
+            Lints::of(self.root(), command, env, self).unwrap().unwrap()
+        }
+    }
+    impl Runner for Repo {
+        fn command(&self, args: &[&str], _cwd: Option<&Path>, _timeout: u64) -> Result<Vec<u8>> {
+            Ok(match args[0] {
+                "git" => self.root().join(".git").to_str().unwrap().into(),
+                tool => format!("pinned {tool}").into_bytes(),
+            })
+        }
+    }
+    #[test]
+    fn clippy_passes_again_only_on_the_exact_rust_inputs_and_command_it_passed_on() {
+        const CLIPPY: &str = "cargo clippy --locked --all-targets -- -D warnings";
+        let repo = Repo::new();
+        let env = Environment::from([(
+            "CARGO_HOME".into(),
+            repo.root().join("cargo-home").to_str().unwrap().into(),
+        )]);
+        let lints = repo.lints(CLIPPY, &env);
+        assert!(!lints.passed());
+        lints.keep(repo.root(), &env, &repo).unwrap();
+        assert!(repo.lints(CLIPPY, &env).passed());
+        // Another command, or clippy settings, judge differently.
+        assert!(
+            !repo
+                .lints("cargo clippy --locked -- -D warnings", &env)
+                .passed()
+        );
+        let mut configured = env.clone();
+        configured.insert("CLIPPY_CONF_DIR".into(), "/elsewhere".into());
+        assert!(!repo.lints(CLIPPY, &configured).passed());
+        fs::write(repo.root().join("clippy.toml"), "msrv = \"1.80\"").unwrap();
+        assert!(!repo.lints(CLIPPY, &env).passed());
+        fs::remove_file(repo.root().join("clippy.toml")).unwrap();
+        // Test code counts, though the release binary's key leaves it out.
+        fs::write(
+            repo.root().join("app/tests/backend/case.rs"),
+            "#[test] fn other() {}",
+        )
+        .unwrap();
+        assert!(!repo.lints(CLIPPY, &env).passed());
+        // Inputs that change while clippy runs leave no pass behind.
+        let lints = repo.lints(CLIPPY, &env);
+        fs::write(repo.root().join("app/backend/main.rs"), "fn main() { () }").unwrap();
+        lints.keep(repo.root(), &env, &repo).unwrap();
+        assert!(!repo.lints(CLIPPY, &env).passed());
+        // A target folder of one's own can't be fingerprinted: clippy always runs.
+        let mut own = env.clone();
+        own.insert("CARGO_TARGET_DIR".into(), "/tmp/elsewhere".into());
+        assert!(
+            Lints::of(repo.root(), CLIPPY, &own, &repo)
+                .unwrap()
+                .is_none()
+        );
+    }
     #[test]
     fn a_check_coordinates_ready_branches_without_blocking_drafts() {
         let mut pull = json!({"number":1,"headRefName":"another","isDraft":true});
