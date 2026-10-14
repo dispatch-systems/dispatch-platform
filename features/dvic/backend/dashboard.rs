@@ -24,7 +24,7 @@ const DRIVERS: &str = ", named AS (
     SELECT *,row_number() OVER (PARTITION BY driverId ORDER BY
         startDate,startTime COLLATE dispatch_unicode DESC,id COLLATE dispatch_unicode DESC) nameRank
     FROM matched
-), drivers AS (
+), driver_totals AS (
     SELECT driverId,coalesce(nullif(max(CASE WHEN nameRank=1 THEN driverName END),''),driverId) driverName,
         count(*) count,json_group_array(DISTINCT fleetType) fleets,
         json_group_array(DISTINCT minimumSeconds) minimums
@@ -111,7 +111,7 @@ pub(crate) fn summary(
         params![station, from, to, query, vehicles],
     )? as usize;
     let mut drivers: Vec<DvicDriverSummary> = db.query_as(
-        &format!("{MATCHED}{DRIVERS} SELECT * FROM drivers ORDER BY count DESC,
+        &format!("{MATCHED}{DRIVERS} SELECT * FROM driver_totals ORDER BY count DESC,
             driverName COLLATE dispatch_unicode,driverId COLLATE dispatch_unicode LIMIT 25 OFFSET ?6"),
         params![station, from, to, query, vehicles, offset as i64],
     )?;
@@ -140,7 +140,7 @@ pub(crate) fn summary(
     }
     for (date, name) in db.query_as::<(String, String)>(
         &format!("{MATCHED}{DRIVERS} SELECT m.startDate,d.driverName FROM matched m
-            JOIN drivers d USING(driverId) WHERE d.count>=3 GROUP BY m.startDate,m.driverId
+            JOIN driver_totals d USING(driverId) WHERE d.count>=3 GROUP BY m.startDate,m.driverId
             ORDER BY d.count DESC,d.driverName COLLATE dispatch_unicode,d.driverId COLLATE dispatch_unicode"),
         params![station, from, to, query, vehicles],
     )? {
