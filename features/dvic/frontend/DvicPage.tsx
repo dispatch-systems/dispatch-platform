@@ -9,7 +9,7 @@ import {
   useCachedData,
   view as admittedToken,
 } from '../../../core/shell/frontend/runtime/api.js';
-import { cancelDvicJob, collectDvic } from '../api/client.js';
+import { cancelDvicJob, collectDvic, summaryUrl, useSummary } from '../api/client.js';
 import {
   readUpdateState,
   useUpdateState,
@@ -20,7 +20,6 @@ import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
-  filterInspections,
   inspectionDate,
   inspectionWeekday,
   isCollected,
@@ -43,7 +42,6 @@ import { CollectionSettings } from './settings/CollectionSettings.js';
 import { DayDigest } from './tabs/day/DayDigest.js';
 import { InspectionDetail } from './InspectionDetail.js';
 import { WeekGrid } from './tabs/week/WeekGrid.js';
-import { inspectionWeekCacheKey, useInspections } from './useInspections.js';
 
 const activeJob = (job: Job) => ['queued', 'running', 'waiting_verification'].includes(job.status);
 // Each view is a tab the platform switches on its own; the page has at least one while on.
@@ -83,7 +81,13 @@ export function isDvicPageReady(view: DspView) {
     dspHash(view.dsp.id, 'dvic'),
   );
   const { start } = selectedWeek(status, localDate(view.dsp.timezone), chosenWeek);
-  return dataCache.peek(inspectionWeekCacheKey(start, shiftDate(start, 6))).data !== undefined;
+  const hash = dspHash(view.dsp.id, 'dvic');
+  const query = readUpdateState('dvic-query', '', hash).trim().toLowerCase();
+  const vehicles = readUpdateState<VehicleClass>('dvic-vehicles', '', hash);
+  const page = readUpdateState('dvic-week-page', 0, hash);
+  return (
+    dataCache.peek(summaryUrl(start, shiftDate(start, 6), query, vehicles, page)).data !== undefined
+  );
 }
 
 export function DvicPage({ view }: { view: DspView }) {
@@ -106,6 +110,14 @@ export function DvicPage({ view }: { view: DspView }) {
   const [chosenWeek, setChosenWeek] = useUpdateState<string | undefined>('dvic-week', undefined);
   const [chosenDay, setChosenDay] = useUpdateState<string | undefined>('dvic-day', undefined);
   const [query, setQuery] = useUpdateState('dvic-query', '');
+  const [search, setSearch] = useState(query.trim().toLowerCase());
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setSearch(query.trim().toLowerCase()),
+      performancePolicy.employeeSearchDelayMs,
+    );
+    return () => clearTimeout(timer);
+  }, [query]);
   const [vehicles, setVehicles] = useUpdateState<VehicleClass>('dvic-vehicles', '');
   const [page, setPage] = useUpdateState('dvic-week-page', 0);
   const [selected, setSelected] = useState<string>();
@@ -138,26 +150,23 @@ export function DvicPage({ view }: { view: DspView }) {
     .map((week) => week.checkedAt)
     .sort()
     .at(-1);
-  const inspections = useInspections(
-    start,
-    end,
-    (completed ?? '') + ':' + (checked ?? ''),
-    status.data !== undefined,
+  const publication = (completed ?? '') + ':' + (checked ?? '');
+  useEffect(() => {
+    if (status.data)
+      dataCache.observeVersion('dvic', publication, (key) =>
+        ['summary?', 'day?', 'inspection?'].some((part) => key.startsWith('/api/dsp/dvic/' + part)),
+      );
+  }, [publication, status.data]);
+  const inspections = useSummary(
+    status.data ? summaryUrl(start, end, search, vehicles, page) : '',
+    publication,
   );
-  const rows = useMemo(
-    () => filterInspections(inspections.rows ?? [], query, vehicles),
-    [inspections.rows, query, vehicles],
-  );
-  const dayRows = useMemo(() => rows.filter((row) => row.startDate === day), [rows, day]);
-  const counts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of rows) counts.set(row.startDate, (counts.get(row.startDate) ?? 0) + 1);
-    return counts;
-  }, [rows]);
+  const summary = inspections.data;
+  const daySummary = summary?.days.find((item) => item.date === day);
+  const counts = new Map(summary?.days.map((item) => [item.date, item.count]));
   const filtered = !!(query || vehicles);
   const collected = (date: string) => isCollected(status.data?.covered ?? [], date);
-  const shown = tab === 'day' ? dayRows : rows;
-  const detail = inspections.rows?.find((row) => row.id === selected);
+  const shown = tab === 'day' ? (daySummary?.count ?? 0) : (summary?.totalInspections ?? 0);
   const newest = jobs[0];
   const canCollect = can(view, 'dvic.collect');
   const active = Boolean(running);
@@ -292,7 +301,7 @@ export function DvicPage({ view }: { view: DspView }) {
           {days.map((date) => (
             <button
               key={date}
-              disabled={date > today || inspections.rows === undefined}
+              disabled={date > today || summary === undefined}
               aria-pressed={day === date}
               onClick={() => {
                 setChosenDay(date);
@@ -302,7 +311,7 @@ export function DvicPage({ view }: { view: DspView }) {
               <span>{inspectionWeekday(date)}</span>
               <strong>{Number(date.slice(8))}</strong>
               <small>
-                {inspections.rows === undefined || date > today
+                {summary === undefined || date > today
                   ? '—'
                   : counts.get(date) || collected(date)
                     ? (counts.get(date) ?? 0) + ' short'
@@ -341,13 +350,12 @@ export function DvicPage({ view }: { view: DspView }) {
       <ErrorBox
         message={
           inspections.error
-            ? (inspections.rows ? 'Showing previously loaded inspections. ' : '') +
-              inspections.error
+            ? (summary ? 'Showing previously loaded inspections. ' : '') + inspections.error
             : ''
         }
       />
       {inspections.error && <button onClick={inspections.refresh}>Retry inspections</button>}
-      {inspections.rows === undefined ? (
+      {summary === undefined ? (
         !inspections.error &&
         !status.error &&
         (status.paused || inspections.paused ? (
@@ -363,8 +371,10 @@ export function DvicPage({ view }: { view: DspView }) {
                 {inspectionDate(day, true)}, {day.slice(0, 4)}
               </h2>
               <DayDigest
-                rows={dayRows}
-                week={rows}
+                day={day}
+                summary={daySummary}
+                query={search}
+                publication={publication}
                 filtered={filtered}
                 collected={collected(day)}
                 onSelect={(row) => setSelected(row.id)}
@@ -373,13 +383,13 @@ export function DvicPage({ view }: { view: DspView }) {
           ) : (
             <WeekGrid
               days={days}
-              rows={rows}
+              summary={summary}
               today={today}
               collected={collected}
               filtered={filtered}
               page={page}
               onPageChange={setPage}
-              onSelect={(row) => setSelected(row.id)}
+              onSelect={setSelected}
             />
           )}
           <footer className="dvic-footer">
@@ -391,20 +401,20 @@ export function DvicPage({ view }: { view: DspView }) {
               completion rate. Dates and times are as reported by Amazon.
             </span>
             <span>
-              {shown.length} {shown.length === 1 ? 'record' : 'records'}
+              {shown} {shown === 1 ? 'record' : 'records'}
               {tab === 'week' ? ' this week' : ''}
             </span>
           </footer>
         </>
       )}
-      {detail && (
+      {selected && (
         <InspectionDetail
-          row={detail}
-          related={(inspections.rows ?? [])
-            .filter((row) => row.driverId === detail.driverId && row.id !== detail.id)
-            .sort((a, b) => b.startTime.localeCompare(a.startTime))}
+          id={selected}
+          from={start}
+          to={end}
+          publication={publication}
           onClose={() => setSelected(undefined)}
-          onSelect={(row) => setSelected(row.id)}
+          onSelect={setSelected}
         />
       )}
       {settings && can(view, 'dvic.manage') && (

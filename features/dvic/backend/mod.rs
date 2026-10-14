@@ -1,6 +1,7 @@
 //! Short pre-trip inspections from Cortex's rolling supplementary workbooks.
 //! Publication weeks are ISO Monday–Sunday; inspection dates come from the rows.
 pub mod cli;
+pub(crate) mod dashboard;
 pub mod hidden;
 pub(crate) mod keeper;
 pub(crate) mod people;
@@ -24,6 +25,7 @@ use serde_json::{Value, json};
 
 /// The inspections it keeps.
 pub const DOMAIN: DataDomain = DataDomain::new("dvic");
+pub(crate) const CACHED: &str = "dvic.dashboard";
 /// The DVIC database beside `cortex.sqlite`.
 pub const DATABASE: Kind = Kind::new("dvic", 1);
 pub static STORAGE: AddedStorage = AddedStorage {

@@ -64,7 +64,7 @@
   "features/documents/tests/browser/documents.spec.ts › an owner connects Google, lands in an empty Documents and makes a folder and a Doc that opens in Google": 6.7,
   "features/driver_match/tests/browser/driver-match.spec.ts › Driver Match shows who might be listed twice and makes them one person": 4.8,
   "features/dvic/tests/browser/dvic.spec.ts › DVIC viewers can read without collection controls; a disabled feature has no page or navigation": 4.2,
-  "features/dvic/tests/browser/dvic.spec.ts › a full week follows the server cursor and does not present a failed page as zero records": 4.9,
+  "features/dvic/tests/browser/dvic.spec.ts › a large week opens without downloading every inspection and never shows a failed summary as zero": 4.9,
   "features/dvic/tests/browser/dvic.spec.ts › a run started elsewhere shows on an open DVIC page as soon as it finishes": 4.4,
   "features/dvic/tests/browser/dvic.spec.ts › schedules persist, pause, reject stale edits and delete; manual sync reaches a terminal state": 8.2,
   "features/dvic/tests/browser/dvic.spec.ts › the day digest and week grid read the same inspections, with details on desktop and mobile": 6.3,

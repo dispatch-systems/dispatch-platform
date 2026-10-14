@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  driversByCount,
-  filterInspections,
-  groupByVehicleClass,
   inspectionBand,
   inspectionClock,
   inspectionDuration,
   inspectionDate,
   inspectionWeekday,
   inspectionShortfall,
-  readInspectionWeek,
-  repeatDrivers,
-  shortestByDay,
   weekDays,
   weekStart,
 } from '../../frontend/dvic.js';
@@ -62,51 +56,6 @@ test('inspection weeks use Sunday dates across year and DST boundaries; source c
   assert.equal(inspectionDuration(19.999999999999996), '20s');
   assert.equal(inspectionShortfall(0), '0s');
 });
-test('filters use driver identity or name, not the VIN, and preserve distinct inspections', () => {
-  const rows = [row('a'), row('b', 'SV')];
-  assert.equal(filterInspections(rows, '  BROOKS ', '').length, 2);
-  assert.equal(filterInspections(rows, 'brooks', 'dot')[0]?.id, 'b');
-  assert.equal(filterInspections(rows, 'driver-1', '').length, 2);
-  assert.equal(filterInspections(rows, 'fixture', '').length, 0, 'VINs are not searched');
-  assert.deepEqual(
-    filterInspections([...rows, row('c', 'CDV')], '', 'non-dot').map((item) => item.id),
-    ['a', 'c'],
-  );
-});
-test('complete weeks follow cursors, deduplicate identities and fail rather than publishing partial totals', async () => {
-  const calls: (string | null)[] = [];
-  const signal = new AbortController().signal;
-  const rows = await readInspectionWeek(async (after) => {
-    calls.push(after);
-    return after
-      ? { inspections: [row('a'), row('b')], nextCursor: null }
-      : { inspections: [row('a')], nextCursor: 'next' };
-  }, signal);
-  assert.deepEqual(calls, [null, 'next']);
-  assert.deepEqual(
-    rows.map((item) => item.id),
-    ['a', 'b'],
-  );
-  await assert.rejects(
-    readInspectionWeek(async () => ({ inspections: [row('a')], nextCursor: 'loop' }), signal),
-    /changed while loading/,
-  );
-  await assert.rejects(
-    readInspectionWeek(async (after) => {
-      if (after) throw new Error('offline');
-      return { inspections: [row('a')], nextCursor: 'next' };
-    }, signal),
-    /offline/,
-  );
-  const abort = new AbortController();
-  await assert.rejects(
-    readInspectionWeek(async () => {
-      abort.abort();
-      return { inspections: [row('a')], nextCursor: null };
-    }, abort.signal),
-    { name: 'AbortError' },
-  );
-});
 test('DVIC mutations refresh DVIC without invalidating timecard data', () => {
   assert.equal(mutationAffects('/api/dsp/dvic/collect', '/api/dsp/dvic/status'), true);
   assert.equal(
@@ -130,78 +79,4 @@ test('bands follow the share of the minimum with exact boundaries', () => {
   assert.equal(inspectionBand(at(0)), 'low');
   assert.equal(inspectionBand(at(225, 300)), 'high');
   assert.equal(inspectionBand(at(104, 300)), 'low');
-});
-test('repeat drivers and driver grouping follow identity, not the displayed name', () => {
-  const week: DvicInspection[] = [
-    { ...row('a'), durationSeconds: 20, shortBySeconds: 70 },
-    { ...row('b'), startDate: '2026-09-25', durationSeconds: 10, shortBySeconds: 80 },
-    { ...row('c'), startDate: '2026-09-24', durationSeconds: 80, shortBySeconds: 10 },
-    {
-      ...row('d'),
-      driverId: 'driver-2',
-      driverName: 'Jordan Lee',
-      durationSeconds: 89.4,
-      shortBySeconds: 0.6,
-    },
-    { ...row('e'), driverId: 'driver-3', driverName: 'Old Name', startDate: '2026-09-22' },
-    { ...row('f'), driverId: 'driver-3', driverName: 'New Name', startDate: '2026-09-23' },
-  ];
-  const day = week.filter((item) => item.startDate === '2026-09-26');
-  assert.deepEqual(repeatDrivers(week, day), ['Taylor Brooks']);
-  assert.deepEqual(repeatDrivers(week, day, 1), ['Taylor Brooks', 'Jordan Lee']);
-  const drivers = driversByCount(week);
-  assert.deepEqual(
-    drivers.map((driver) => [driver.driverId, driver.driverName, driver.rows.length]),
-    [
-      ['driver-1', 'Taylor Brooks', 3],
-      ['driver-3', 'New Name', 2],
-      ['driver-2', 'Jordan Lee', 1],
-    ],
-  );
-  const step = { ...row('s', 'SV'), minimumSeconds: 300 as const, shortBySeconds: 226 };
-  const shorter = { ...row('w'), durationSeconds: 30, shortBySeconds: 60 };
-  assert.deepEqual(
-    groupByVehicleClass([step, row('v'), row('c', 'CDV'), shorter]).map((group) => [
-      group.vehicles,
-      group.minimum,
-      group.rows.map((item) => item.id),
-    ]),
-    [
-      ['non-dot', 90, ['w', 'c', 'v']],
-      ['dot', 300, ['s']],
-    ],
-  );
-  assert.deepEqual(
-    groupByVehicleClass([row('v')]).map((group) => group.vehicles),
-    ['non-dot'],
-  );
-});
-
-test('day cells keep the lowest share of the minimum, then the earliest start, then the first id', () => {
-  const rows = [
-    // A step van's 200s of 300 is less of its minimum than a cargo van's 80s of 90.
-    { ...row('cargo'), startDate: '2026-09-24', durationSeconds: 80 },
-    {
-      ...row('step', 'SV'),
-      startDate: '2026-09-24',
-      minimumSeconds: 300 as const,
-      durationSeconds: 200,
-    },
-    { ...row('b'), startDate: '2026-09-25', durationSeconds: 30 },
-    { ...row('a'), startDate: '2026-09-25', durationSeconds: 30 },
-    { ...row('after'), durationSeconds: 30 },
-    { ...row('early'), durationSeconds: 30, startTime: '2026-09-26 08:00:00' },
-  ];
-  const before = rows.map((item) => item.id);
-  const cells = shortestByDay(rows);
-  assert.deepEqual(
-    ['2026-09-24', '2026-09-25', '2026-09-26'].map((day) => cells.get(day)?.id),
-    ['step', 'a', 'early'],
-  );
-  assert.deepEqual(
-    rows.map((item) => item.id),
-    before,
-    'Grouping must not reorder source rows',
-  );
-  assert.equal(shortestByDay([]).size, 0);
 });

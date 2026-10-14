@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { seedDvic } from '../support/dvic.js';
+import { execFileSync } from 'node:child_process';
 
 const schedule = {
   name: 'Daily DVIC',
@@ -10,6 +12,168 @@ const schedule = {
   localTime: '18:00',
   enabled: true,
 };
+
+test('DVIC summaries and pages keep complete filtered counts, stable cells and fresh operator exclusions', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const { owner, dsp } = await seedDvic(f, 700);
+  f.database(`dsps/${dsp.id}/data/dvic/dvic.sqlite`, (db) => {
+    db.exec('BEGIN');
+    const insert = db.prepare(`INSERT INTO dvic_inspections
+      SELECT company_id,?,dsp_code,?,start_date,?,?,vin,?,inspection_type,inspection_status,
+        ?,end_time,?,?,?,report_date,source_modified_at,revision_id,?
+      FROM dvic_inspections WHERE inspection_key='page-row-0'`);
+    for (let i = 0; i < 700; i++) {
+      const step = i >= 1 && i <= 3;
+      const time = i === 2 || i === 3 ? '06:00:00' : i === 699 ? '12:00:00' : '09:00:00';
+      insert.run(
+        `extra-${String(i).padStart(4, '0')}`,
+        'TST1',
+        'EXTRA1',
+        i === 699 ? 'Zoë Changed' : 'Extra Driver',
+        step ? 'SV' : 'CV',
+        `2026-09-26T${time}`,
+        step ? 200 : i === 0 ? 80 : 85,
+        step ? 300 : 90,
+        1,
+        1,
+      );
+    }
+    for (let i = 0; i < 27; i++)
+      insert.run(
+        `driver-${i}`,
+        'TST1',
+        `MORE${i}`,
+        i === 0 ? 'Åke Example' : i === 1 ? 'Zoë Example' : `Driver ${String(i).padStart(2, '0')}`,
+        'CV',
+        '2026-09-26T09:00:00',
+        30,
+        90,
+        1,
+        1,
+      );
+    for (const [key, station, short, verified] of [
+      ['foreign', 'OTHER', 1, 1],
+      ['unverified', 'TST1', 1, 0],
+      ['corrected', 'TST1', 0, 1],
+    ] as const)
+      insert.run(
+        key,
+        station,
+        'EXCLUDED',
+        'Excluded',
+        'CV',
+        '2026-09-26T09:00:00',
+        30,
+        90,
+        short,
+        verified,
+      );
+    db.exec('COMMIT');
+  });
+  const role = (await owner.read('/api/dsp/roles')).find((role: any) => role.name === 'Member');
+  assert.equal(
+    (await owner.post(`/api/dsp/roles/${role.id}`, { name: 'Member', permissions: ['dvic.view'] }))
+      .status,
+    200,
+  );
+  const member = await f.client('member@dispatch.test');
+  await member.select(dsp.id);
+  const base = '/api/dsp/dvic';
+  const week = 'from=2026-09-20&to=2026-09-26';
+  const summary = await member.read(`${base}/summary?${week}`);
+  assert.equal(summary.totalInspections, 1427);
+  assert.equal(summary.totalDrivers, 36);
+  assert.equal(summary.drivers.length, 25);
+  assert.equal(summary.drivers[0].driverId, 'EXTRA1');
+  assert.equal(summary.drivers[0].driverName, 'Zoë Changed');
+  assert.deepEqual(summary.drivers[0].fleets, ['CV', 'SV']);
+  assert.deepEqual(summary.drivers[0].minimums, [90, 300]);
+  assert.equal(summary.drivers[0].count, 700);
+  assert.deepEqual(summary.drivers[0].cells, [
+    {
+      id: 'company-fixture:extra-0002',
+      startDate: '2026-09-26',
+      durationSeconds: 200,
+      minimumSeconds: 300,
+    },
+  ]);
+  const next = await member.read(`${base}/summary?${week}&offset=25`);
+  assert.equal(next.drivers.length, 11);
+  assert.equal(next.drivers.at(-1).driverName, 'Zoë Example');
+  assert.equal(
+    new Set([...summary.drivers, ...next.drivers].map((driver: any) => driver.driverId)).size,
+    36,
+  );
+  assert.equal(summary.days.find((day: any) => day.date === '2026-09-26').count, 827);
+  assert.equal(
+    summary.days.find((day: any) => day.date === '2026-09-26').repeatDrivers[0],
+    'Zoë Changed',
+  );
+  const dayUrl = `${base}/day?date=2026-09-26&vehicles=non-dot`;
+  const day = await member.read(dayUrl);
+  assert.equal(day.total, 791);
+  assert.equal(day.inspections.length, 100);
+  assert.equal(day.minimum, 90);
+  const dayNext = await member.read(dayUrl + '&offset=100');
+  assert.equal(dayNext.inspections.length, 100);
+  assert.ok(!day.inspections.some((row: any) => row.id === dayNext.inspections[0].id));
+  const unicode = await member.read(
+    `${base}/summary?${week}&q=${encodeURIComponent('  ZOË CHANGED  ')}`,
+  );
+  assert.equal(unicode.totalInspections, 1);
+  assert.equal(unicode.drivers[0].driverId, 'EXTRA1');
+  assert.equal(
+    (await member.read(`${base}/summary?${week}&q=FIXTURE`)).totalInspections,
+    0,
+    'VINs are not searched',
+  );
+  const dot = await member.read(`${base}/summary?${week}&q=extra1&vehicles=dot`);
+  assert.equal(dot.totalInspections, 3);
+  assert.deepEqual(dot.drivers[0].minimums, [300]);
+  assert.deepEqual(dot.days[0].repeatDrivers, ['Extra Driver']);
+  const detailUrl = `${base}/inspection?${week}&id=company-fixture:extra-0002`;
+  const detail = await member.read(detailUrl);
+  assert.equal(detail.inspection.vin, '1FIXTURE000000000');
+  assert.equal(detail.relatedTotal, 699);
+  assert.equal(detail.related.length, 50);
+  assert.equal(detail.related[0].id, 'company-fixture:extra-0699');
+  for (const url of [
+    `${base}/summary?from=2026-09-01&to=2026-09-30`,
+    `${base}/summary?${week}&vehicles=other`,
+    dayUrl + '&offset=-1',
+  ])
+    assert.equal((await member.get(url)).status, 400);
+  for (const id of [
+    'company-fixture:foreign',
+    'company-fixture:unverified',
+    'company-fixture:corrected',
+  ])
+    assert.equal((await member.get(`${base}/inspection?${week}&id=${id}`)).status, 404);
+  // The actual operator command writes from outside the running server. Warm
+  // summaries, day pages and detail must all stop answering the removed records.
+  execFileSync(
+    process.env.DISPATCH_TEST_BINARY ?? 'target/debug/dispatch-backend',
+    ['dvic-hide', dsp.id, 'EXTRA1', 'Fixture exclusion'],
+    { env: f.env, stdio: 'pipe' },
+  );
+  assert.equal((await member.read(`${base}/summary?${week}`)).totalInspections, 727);
+  assert.equal((await member.read(dayUrl)).total, 94);
+  assert.equal((await member.get(detailUrl)).status, 404);
+  const other = owner.session.dsps.find((value: any) => value.name === 'Summit Delivery');
+  await owner.select(other.id);
+  const isolated = await owner.get(`${base}/summary?${week}`);
+  assert.equal(isolated.status, 200, isolated.body);
+  assert.equal(isolated.value.totalInspections, 0);
+  assert.equal((await owner.get(detailUrl)).status, 404);
+  await owner.select(dsp.id);
+  assert.equal(
+    (await owner.post(`/api/dsp/roles/${role.id}`, { name: 'Member', permissions: [] })).status,
+    200,
+  );
+  await member.select(dsp.id);
+  assert.equal((await member.get(`${base}/summary?${week}`)).status, 403);
+});
 test('DVIC collects into its own database and schedules run independently of timecards', async (t) => {
   const f = await fixture();
   t.after(f.close);

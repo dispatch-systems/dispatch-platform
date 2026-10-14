@@ -140,22 +140,26 @@ test('the day digest and week grid read the same inspections, with details on de
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('a full week follows the server cursor and does not present a failed page as zero records', async ({
+test('a large week opens without downloading every inspection and never shows a failed summary as zero', async ({
   page,
   dispatch,
 }) => {
   const { dsp } = await seedDvic(dispatch, 501);
-  const cursors: string[] = [];
+  const inspections: string[] = [];
   page.on('request', (request) => {
-    if (request.url().includes('/dvic/inspections?')) cursors.push(request.url());
+    if (request.url().includes('/dvic/inspections?')) inspections.push(request.url());
   });
   await login(page);
   await openDsp(page, dsp.name);
   await page.getByRole('link', { name: 'DVIC', exact: true }).click();
   await page.getByRole('tab', { name: 'Week' }).click();
   await expect(page.locator('.dvic-footer')).toContainText('501 records this week');
-  expect(cursors.some((url) => new URL(url).searchParams.has('after'))).toBe(true);
-  await page.route('**/api/dsp/dvic/inspections?**', (route) =>
+  expect(inspections).toEqual([]);
+  await page.locator('.dvic-cell').first().click();
+  await expect(page.getByRole('dialog')).toContainText('Showing the 50 most recent');
+  await expect(page.locator('.dvic-related')).toHaveCount(50);
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.route('**/api/dsp/dvic/summary?**', (route) =>
     route.fulfill({
       status: 503,
       contentType: 'application/json',
@@ -166,7 +170,7 @@ test('a full week follows the server cursor and does not present a failed page a
   await expect(page.getByText('Report database unavailable', { exact: true })).toBeVisible();
   await expect(page.locator('.dvic-cell')).toHaveCount(0);
   await expect(page.getByText('No short inspections stored', { exact: true })).toHaveCount(0);
-  await page.unroute('**/api/dsp/dvic/inspections?**');
+  await page.unroute('**/api/dsp/dvic/summary?**');
   await page.getByRole('button', { name: 'Retry inspections' }).click();
   await expect(page.getByText('No short inspections stored', { exact: true })).toBeVisible();
 });

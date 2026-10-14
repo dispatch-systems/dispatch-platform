@@ -4,14 +4,17 @@ Backend collection through the existing Cortex connection. Enable the DSP's `dvi
 feature and configure its station before collecting. The dashboard's DVIC page has a
 Day tab (headline numbers, repeat drivers, and the day's records by vehicle type) and
 a Week tab (drivers by day, showing the shortest inspection or the count), with week
-navigation, driver/VIN search, vehicle filters, and inspection details. Bands state the
+navigation, driver name/ID search, vehicle filters, and inspection details. Bands state the
 share of the minimum reached (75%+, 35–75%, under 35%) without a verdict. Viewing,
 manual sync, and schedule management use the separate permissions below. Sync now
 checks recent publication weeks and those holding the week shown; historical backfills
 remain available through the API. A day no checked report covers reads Not collected, not
 zero: its short inspections are unknown.
-The page reads every cursor page before displaying counts, and keeps source wall times
-unchanged. It follows core's live collection updates (`live`, for `dvic.view`): a run that ends,
+The page reads complete week counts and at most 25 drivers' shortest day cells in one summary.
+Day records are paged at 100 per vehicle class; inspection details and at most 50 related
+records load when opened. Search, vehicle filters, repeat-driver counts and totals cover the
+entire selection, independently of paging. Source wall times stay unchanged. It follows
+core's live collection updates (`live`, for `dvic.view`): a run that ends,
 wherever it started, refreshes it at once, and one in progress is read every five seconds,
 since a DVIC run is announced only as it ends.
 CV/CDV inspections shorter than 90 seconds and SV inspections shorter than 300 seconds
@@ -22,17 +25,20 @@ validation rather than guessing a threshold.
 
 All endpoints use the existing authenticated DSP context and CSRF rules.
 
-| Endpoint                                                      | Permission     | Purpose                                                                                       |
-| ------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
-| `GET /api/dsp/dvic/status`                                    | `dvic.view`    | Recent jobs, report inventory, checked weeks, days covered, exception count                   |
-| `GET /api/dsp/dvic/inspections?from=2026-09-01&to=2026-09-30` | `dvic.view`    | Exceptions by actual inspection date; optional `driver`, `limit` (1–500), `after` cursor      |
-| `POST /api/dsp/dvic/collect`                                  | `dvic.collect` | Manual sync with `requestId`; optional ending `week`, number of `weeks` (1–26), `viewing` day |
-| `POST /api/dsp/dvic/jobs/{id}/cancel`                         | `dvic.collect` | Cancel this DSP's DVIC job                                                                    |
-| `GET/POST /api/dsp/dvic/schedules`                            | `dvic.manage`  | List/create DVIC schedules                                                                    |
-| `POST /api/dsp/dvic/schedules/{key}`                          | `dvic.manage`  | Edit a schedule with its current `revision`                                                   |
-| `POST /api/dsp/dvic/schedules/{key}/enabled`                  | `dvic.manage`  | Pause/resume with `enabled` and `revision`                                                    |
-| `POST /api/dsp/dvic/schedules/{key}/remove`                   | `dvic.manage`  | Delete with `revision`                                                                        |
-| `POST /api/dsp/dvic/schedules/preview`                        | `dvic.manage`  | Preview cadence in the DSP's timezone                                                         |
+| Endpoint                                                            | Permission     | Purpose                                                                                                   |
+| ------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
+| `GET /api/dsp/dvic/status`                                          | `dvic.view`    | Recent jobs, report inventory, checked weeks, days covered, exception count                               |
+| `GET /api/dsp/dvic/inspections?from=2026-09-01&to=2026-09-30`       | `dvic.view`    | Exceptions by actual inspection date; optional `driver`, `limit` (1–500), `after` cursor                  |
+| `GET /api/dsp/dvic/summary?from=2026-09-20&to=2026-09-26`           | `dvic.view`    | Complete counts and repeat drivers, and a 25-driver page; optional `q`, `vehicles`, `offset`              |
+| `GET /api/dsp/dvic/day?date=2026-09-26`                             | `dvic.view`    | A 100-inspection page ordered by share of minimum, start and identity; optional `q`, `vehicles`, `offset` |
+| `GET /api/dsp/dvic/inspection?from=2026-09-20&to=2026-09-26&id=...` | `dvic.view`    | One inspection and its 50 most recent related records, with the complete related count                    |
+| `POST /api/dsp/dvic/collect`                                        | `dvic.collect` | Manual sync with `requestId`; optional ending `week`, number of `weeks` (1–26), `viewing` day             |
+| `POST /api/dsp/dvic/jobs/{id}/cancel`                               | `dvic.collect` | Cancel this DSP's DVIC job                                                                                |
+| `GET/POST /api/dsp/dvic/schedules`                                  | `dvic.manage`  | List/create DVIC schedules                                                                                |
+| `POST /api/dsp/dvic/schedules/{key}`                                | `dvic.manage`  | Edit a schedule with its current `revision`                                                               |
+| `POST /api/dsp/dvic/schedules/{key}/enabled`                        | `dvic.manage`  | Pause/resume with `enabled` and `revision`                                                                |
+| `POST /api/dsp/dvic/schedules/{key}/remove`                         | `dvic.manage`  | Delete with `revision`                                                                                    |
+| `POST /api/dsp/dvic/schedules/preview`                              | `dvic.manage`  | Preview cadence in the DSP's timezone                                                                     |
 
 Other owners read DVIC through `DvicStore`: `dvic_inspections` as above, `dvic_drivers` (each
 driver with short inspections, by the name their latest one gave, with how many and when), and

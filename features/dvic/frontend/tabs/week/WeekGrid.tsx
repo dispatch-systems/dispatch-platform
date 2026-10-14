@@ -1,13 +1,11 @@
-import type { DvicInspection } from '../../../api/index.js';
-import { useEffect, useMemo } from 'react';
+import type { DvicSummary } from '../../../api/index.js';
+import { useEffect } from 'react';
 import {
   bandLabel,
-  driversByCount,
   inspectionBand,
   inspectionDate,
   inspectionDuration as duration,
   inspectionWeekday,
-  shortestByDay,
   type Band,
 } from '../../dvic.js';
 import { Empty, Pagination } from '../../../../../core/shell/frontend/ui/index.js';
@@ -17,7 +15,7 @@ const pageSize = 25;
 /** Drivers by day. Each cell is the driver's inspection time that day. */
 export function WeekGrid({
   days,
-  rows,
+  summary,
   today,
   collected,
   filtered,
@@ -26,37 +24,21 @@ export function WeekGrid({
   onSelect,
 }: {
   days: string[];
-  rows: DvicInspection[];
+  summary: DvicSummary;
   today: string;
   /** Whether a checked report covers the day. */
   collected: (date: string) => boolean;
   filtered: boolean;
   page: number;
   onPageChange: (page: number) => void;
-  onSelect: (row: DvicInspection) => void;
+  onSelect: (id: string) => void;
 }) {
-  const drivers = useMemo(
-    () =>
-      driversByCount(rows).map((driver) => ({
-        ...driver,
-        cells: shortestByDay(driver.rows),
-        minima: [...new Set(driver.rows.map((row) => row.minimumSeconds))]
-          .sort((a, b) => a - b)
-          .map(duration)
-          .join(' / '),
-      })),
-    [rows],
-  );
-  const totals = useMemo(() => {
-    const totals = new Map<string, number>();
-    for (const row of rows) totals.set(row.startDate, (totals.get(row.startDate) ?? 0) + 1);
-    return totals;
-  }, [rows]);
-  const currentPage = Math.min(page, Math.max(0, Math.ceil(drivers.length / pageSize) - 1));
+  const drivers = summary.drivers;
+  const totals = new Map(summary.days.map((day) => [day.date, day.count]));
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(summary.totalDrivers / pageSize) - 1));
   useEffect(() => {
     if (currentPage !== page) onPageChange(currentPage);
   }, [currentPage, page, onPageChange]);
-  const visible = drivers.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   return (
     <>
       <div className="dvic-legend" aria-hidden="true">
@@ -66,7 +48,7 @@ export function WeekGrid({
           </span>
         ))}
       </div>
-      {drivers.length ? (
+      {summary.totalDrivers ? (
         <>
           <div className="dvic-grid-wrap">
             <table className="dvic-grid">
@@ -92,16 +74,17 @@ export function WeekGrid({
                 </tr>
               </thead>
               <tbody>
-                {visible.map((driver) => (
+                {drivers.map((driver) => (
                   <tr key={driver.driverId}>
                     <th scope="row" className="dvic-grid-name">
                       <strong>{driver.driverName}</strong>
                       <small>
-                        {driver.fleets.join(' · ')} · min {driver.minima}
+                        {driver.fleets.join(' · ')} · min{' '}
+                        {driver.minimums.map(duration).join(' / ')}
                       </small>
                     </th>
                     {days.map((date) => {
-                      const shortest = driver.cells.get(date);
+                      const shortest = driver.cells.find((cell) => cell.startDate === date);
                       if (!shortest)
                         return (
                           <td key={date}>
@@ -114,14 +97,14 @@ export function WeekGrid({
                             className="dvic-cell"
                             data-band={inspectionBand(shortest)}
                             aria-label={`${driver.driverName}, ${inspectionDate(date, true)}: ${duration(shortest.durationSeconds)}`}
-                            onClick={() => onSelect(shortest)}
+                            onClick={() => onSelect(shortest.id)}
                           >
                             <strong>{duration(shortest.durationSeconds)}</strong>
                           </button>
                         </td>
                       );
                     })}
-                    <td className="dvic-grid-total">{driver.rows.length}</td>
+                    <td className="dvic-grid-total">{driver.count}</td>
                   </tr>
                 ))}
               </tbody>
@@ -131,7 +114,7 @@ export function WeekGrid({
             <Pagination
               page={currentPage}
               pageSize={pageSize}
-              total={drivers.length}
+              total={summary.totalDrivers}
               onChange={onPageChange}
             />
           </nav>

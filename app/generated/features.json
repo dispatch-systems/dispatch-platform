@@ -269,7 +269,9 @@
         "names": false,
         "subjects": []
       },
-      "cached": [],
+      "cached": [
+        "dvic.dashboard"
+      ],
       "commands": "dvic-",
       "demo": false,
       "domains": [
@@ -285,6 +287,9 @@
       "routes": [
         "GET /api/dsp/dvic/status",
         "GET /api/dsp/dvic/inspections",
+        "GET /api/dsp/dvic/summary",
+        "GET /api/dsp/dvic/day",
+        "GET /api/dsp/dvic/inspection",
         "POST /api/dsp/dvic/collect",
         "POST /api/dsp/dvic/jobs/{id}/cancel",
         "GET /api/dsp/dvic/schedules",

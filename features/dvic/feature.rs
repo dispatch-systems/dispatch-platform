@@ -4,7 +4,9 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    DvicCoverage, DvicInspection, DvicInspections, DvicReport, DvicStatus, DvicWeek,
+    DvicCell, DvicCoverage, DvicDaySummary, DvicDriverSummary, DvicInspection,
+    DvicInspectionDetail, DvicInspectionPage, DvicInspections, DvicReport, DvicStatus, DvicSummary,
+    DvicWeek,
 };
 /// What the app uses: its storage and its database.
 pub use backend::{DATABASE, DvicDriver, DvicStore};
@@ -15,6 +17,7 @@ use dispatch_core::{
         migrations::Apply::{Code, Sql},
     },
     manifest::{Audit, Commands, Feature, feature, optional, perm, tab},
+    server::cache::{Cached, DataDomain, Evicted::By},
     tenancy::api::audit::AuditArea::Collections,
 };
 
@@ -62,6 +65,10 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     domains: &[backend::DOMAIN],
+    cached: &[Cached {
+        read: backend::CACHED,
+        evicted: By(&[backend::DOMAIN, DataDomain::TENANT]),
+    }],
     audit: Audit {
         areas: &[("dvic.", Collections)],
         ..Audit::NONE
@@ -85,5 +92,11 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         DvicStatus,
         DvicInspection,
         DvicInspections,
+        DvicCell,
+        DvicDriverSummary,
+        DvicDaySummary,
+        DvicSummary,
+        DvicInspectionPage,
+        DvicInspectionDetail,
     )
 }

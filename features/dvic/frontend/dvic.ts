@@ -1,4 +1,4 @@
-import type { DvicCoverage, DvicInspection, DvicInspections } from '../api/index.js';
+import type { DvicCoverage, DvicInspection } from '../api/index.js';
 import { shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 
@@ -43,79 +43,24 @@ export const inspectionShortfall = (seconds: number) =>
 
 /** Step vans are DOT vehicles with the 5-minute minimum; cargo vans and CDVs are not. */
 export type VehicleClass = '' | 'dot' | 'non-dot';
-export const vehicleClass = (row: DvicInspection): VehicleClass =>
-  row.fleetType === 'SV' ? 'dot' : 'non-dot';
-
-export function filterInspections(rows: DvicInspection[], query: string, vehicles: VehicleClass) {
-  const needle = query.trim().toLowerCase();
-  return rows
-    .filter(
-      (row) =>
-        (!vehicles || vehicleClass(row) === vehicles) &&
-        [row.driverName, row.driverId].some((value) => value.toLowerCase().includes(needle)),
-    )
-    .sort(
-      (a, b) =>
-        b.startDate.localeCompare(a.startDate) ||
-        a.startTime.localeCompare(b.startTime) ||
-        a.id.localeCompare(b.id),
-    );
-}
-
-/** Publish a complete week at once, including every cursor page. Never show partial counts. */
-export async function readInspectionWeek(
-  read: (after: string | null) => Promise<DvicInspections>,
-  signal: AbortSignal,
-) {
-  const rows = new Map<string, DvicInspection>();
-  const cursors = new Set<string>();
-  let cursor: string | null = null;
-  for (let page = 0; page < 100; page++) {
-    signal.throwIfAborted();
-    const result = await read(cursor);
-    signal.throwIfAborted();
-    for (const row of result.inspections) rows.set(row.id, row);
-    cursor = result.nextCursor;
-    if (!cursor) return [...rows.values()];
-    if (cursors.has(cursor))
-      throw new Error('The inspection list changed while loading. Try again.');
-    cursors.add(cursor);
-  }
-  throw new Error('This week is too large to display. Contact your platform administrator.');
-}
 
 export const fleetLabel = (fleet: string) =>
   fleet === 'CV' ? 'CV · Cargo Van' : fleet === 'SV' ? 'SV · Step Van' : fleet;
 
 /** Share of the required minimum the inspection reached, capped at 1. */
-export const inspectionShare = (row: DvicInspection) =>
+export const inspectionShare = (row: Pick<DvicInspection, 'durationSeconds' | 'minimumSeconds'>) =>
   row.minimumSeconds > 0 ? Math.min(1, row.durationSeconds / row.minimumSeconds) : 0;
 
 // Neutral bands by share of the minimum. The labels state the share, not a verdict.
 export type Band = 'high' | 'mid' | 'low';
-export const inspectionBand = (row: DvicInspection): Band =>
-  inspectionShare(row) >= 0.75 ? 'high' : inspectionShare(row) >= 0.35 ? 'mid' : 'low';
+export const inspectionBand = (
+  row: Pick<DvicInspection, 'durationSeconds' | 'minimumSeconds'>,
+): Band => (inspectionShare(row) >= 0.75 ? 'high' : inspectionShare(row) >= 0.35 ? 'mid' : 'low');
 export const bandLabel: Record<Band, string> = {
   high: '75%+ of minimum',
   mid: '35–75% of minimum',
   low: 'Under 35% of minimum',
 };
-
-const shortestOrder = (a: DvicInspection, b: DvicInspection) =>
-  inspectionShare(a) - inspectionShare(b) ||
-  a.startTime.localeCompare(b.startTime) ||
-  a.id.localeCompare(b.id);
-const shortestFirst = (rows: DvicInspection[]) => [...rows].sort(shortestOrder);
-
-/** Each driver's day cell keeps its shortest share without filtering or sorting the week again. */
-export function shortestByDay(rows: DvicInspection[]) {
-  const days = new Map<string, DvicInspection>();
-  for (const row of rows) {
-    const previous = days.get(row.startDate);
-    if (!previous || shortestOrder(row, previous) < 0) days.set(row.startDate, row);
-  }
-  return days;
-}
 
 const initialsOf = (row: DvicInspection) =>
   (row.driverName || row.driverId)
@@ -124,60 +69,3 @@ const initialsOf = (row: DvicInspection) =>
     .map((word) => word[0])
     .join('');
 export const inspectionInitials = initialsOf;
-
-export interface DriverWeek {
-  driverId: string;
-  driverName: string;
-  fleets: string[];
-  rows: DvicInspection[];
-}
-
-/** Drivers with the most short inspections first; a name change never splits a driver. */
-export function driversByCount(rows: DvicInspection[]): DriverWeek[] {
-  const map = new Map<string, DvicInspection[]>();
-  for (const row of rows) {
-    const group = map.get(row.driverId);
-    if (group) group.push(row);
-    else map.set(row.driverId, [row]);
-  }
-  return [...map.entries()]
-    .map(([driverId, list]) => ({
-      driverId,
-      driverName: list.at(-1)!.driverName || driverId,
-      fleets: [...new Set(list.map((row) => row.fleetType))].sort(),
-      rows: list,
-    }))
-    .sort(
-      (a, b) =>
-        b.rows.length - a.rows.length ||
-        a.driverName.localeCompare(b.driverName) ||
-        a.driverId.localeCompare(b.driverId),
-    );
-}
-
-/** Names of the day's drivers with at least `minimum` short inspections in the loaded week. */
-export function repeatDrivers(week: DvicInspection[], day: DvicInspection[], minimum = 3) {
-  const present = new Set(day.map((row) => row.driverId));
-  return driversByCount(week)
-    .filter((driver) => present.has(driver.driverId) && driver.rows.length >= minimum)
-    .map((driver) => driver.driverName);
-}
-
-/** Non-DOT vehicles (cargo vans and CDVs) first, then DOT (step vans); each with its minimum. */
-export function groupByVehicleClass(rows: DvicInspection[]) {
-  return (
-    [
-      { vehicles: 'non-dot', label: 'Non-DOT · Cargo Van & CDV' },
-      { vehicles: 'dot', label: 'DOT · Step Van' },
-    ] as const
-  )
-    .map((group) => ({
-      ...group,
-      rows: shortestFirst(rows.filter((row) => vehicleClass(row) === group.vehicles)),
-    }))
-    .filter((group) => group.rows.length)
-    .map((group) => ({
-      ...group,
-      minimum: Math.max(...group.rows.map((row) => row.minimumSeconds)),
-    }));
-}
