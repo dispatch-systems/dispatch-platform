@@ -140,8 +140,11 @@ pub async fn interactions(state: Arc<State>, request: Request) -> Response {
 }
 
 /// Does `work` once Slack has its answer, logging why it failed, if it did, as `failed`.
-fn after<F>(state: Arc<State>, failed: &'static str, work: impl FnOnce(Arc<State>) -> F + Send + 'static)
-where
+fn after<F>(
+    state: Arc<State>,
+    failed: &'static str,
+    work: impl FnOnce(Arc<State>) -> F + Send + 'static,
+) where
     F: Future<Output = Result<()>> + Send + 'static,
 {
     tokio::spawn(async move {

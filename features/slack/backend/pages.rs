@@ -18,7 +18,10 @@ pub fn stopped(code: &str) -> Response {
             "This workspace is already connected to another DSP",
         ),
         "slack_cancelled" => (StatusCode::OK, "Dispatch wasn't added to Slack"),
-        _ => (StatusCode::BAD_GATEWAY, "Slack didn't finish adding Dispatch"),
+        _ => (
+            StatusCode::BAD_GATEWAY,
+            "Slack didn't finish adding Dispatch",
+        ),
     };
     let nonce = crypto::token().unwrap_or_default();
     let page = PAGE
@@ -58,7 +61,9 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; }
 </head>
 <body>
 <main>
-<svg viewBox="0 0 28 28" aria-hidden="true"><path fill="currentColor" d="M3 3h9C20 3 25 7.5 25 14s-5 11-13 11H3v-7h6v2h3c4.5 0 7-2.2 7-6s-2.5-6-7-6H9v6H3V3Z"/></svg>
+<svg viewBox="0 0 28 28" aria-hidden="true">
+<path fill="currentColor" d="M3 3h9C20 3 25 7.5 25 14s-5 11-13 11H3v-7h6v2h3c4.5 0 7-2.2 7-6s-2.5-6-7-6H9v6H3V3Z"/>
+</svg>
 <h1>{heading}</h1>
 </main>
 </body>

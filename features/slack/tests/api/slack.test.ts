@@ -105,7 +105,10 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
   // Reconnecting names the workspace, so Slack doesn't ask which; it stays one of two.
   const reconnect = await owner.post('/api/dsp/slack/connect', { team: operations.teamId });
   assert.equal(install(reconnect.value.url).code, `fixture:${operations.teamId}`);
-  const reconnected = await owner.post('/api/dsp/slack/connect/finish', install(reconnect.value.url));
+  const reconnected = await owner.post(
+    '/api/dsp/slack/connect/finish',
+    install(reconnect.value.url),
+  );
   assert.deepEqual(names(reconnected.value), ['Drivers', 'Operations']);
   // Only one of the DSP's own workspaces is reconnected or disconnected.
   const unknown = await owner.post('/api/dsp/slack/connect', { team: 'T0SOMEONEELSE' });
@@ -231,7 +234,10 @@ test("Slack's requests count only signed, and each reaches only its workspace's 
   const late = Math.floor(Date.now() / 1000) - 600;
   assert.equal((await fromSlack(f, '/slack/events', removed, { at: late })).status, 401);
   const button = `payload=${encodeURIComponent(JSON.stringify({ type: 'block_actions', team: { id: northern.teamId } }))}`;
-  assert.equal((await fromSlack(f, '/slack/interactions', button, { secret: 'guess' })).status, 401);
+  assert.equal(
+    (await fromSlack(f, '/slack/interactions', button, { secret: 'guess' })).status,
+    401,
+  );
   assert.equal((await fromSlack(f, '/slack/interactions', button)).status, 200);
 
   // Dispatch removed from the northern workspace in Slack: only Northline forgets it.

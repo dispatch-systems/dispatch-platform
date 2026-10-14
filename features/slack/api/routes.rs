@@ -69,7 +69,9 @@ fn account(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// reconnect or update.
 fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["team"])?;
-    let asked = optional(&input.body, "team", |body, key| team(v::text(body, key, 2, 32)?))?;
+    let asked = optional(&input.body, "team", |body, key| {
+        team(v::text(body, key, 2, 32)?)
+    })?;
     Reply::of(&connection::start(db, c, &input.site, asked)?)
 }
 async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
@@ -177,10 +179,7 @@ async fn install(state: Arc<State>, request: Request) -> Response {
     else {
         return pages::stopped("slack_link_expired");
     };
-    match state
-        .run(move |db| link::start(db, &link))
-        .await
-    {
+    match state.run(move |db| link::start(db, &link)).await {
         Ok(url) => Reply::redirect(url).into_response(),
         Err(error) => pages::stopped(&error.code),
     }

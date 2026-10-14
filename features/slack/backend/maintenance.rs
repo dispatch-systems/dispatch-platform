@@ -81,9 +81,5 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
 }
 
 fn failed(error: &Error) {
-    observability::event(
-        "error",
-        "slack_check_failed",
-        json!({"error": error.code}),
-    );
+    observability::event("error", "slack_check_failed", json!({"error": error.code}));
 }

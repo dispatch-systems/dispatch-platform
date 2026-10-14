@@ -194,11 +194,7 @@ impl SlackStore for Store {
         }
         db::private_file(&path, false)?;
         let key = db::key_file(&area.join("vault.key"))?;
-        let value = crypto::decrypt(
-            &key,
-            &binding(dsp, team),
-            &std::fs::read_to_string(path)?,
-        )?;
+        let value = crypto::decrypt(&key, &binding(dsp, team), &std::fs::read_to_string(path)?)?;
         let text = |field: &str| value[field].as_str().map(str::to_owned);
         Ok(text("access").map(|access| Tokens {
             access,
@@ -283,10 +279,7 @@ impl SlackStore for Store {
     fn end_slack_link(&self, dsp: &str, hash: Option<&str>) -> Result<bool> {
         let db = self.dsp(dsp)?;
         let ended = match hash {
-            Some(hash) => db.exec(
-                "DELETE FROM slack_install_links WHERE link_hash=?",
-                [hash],
-            )?,
+            Some(hash) => db.exec("DELETE FROM slack_install_links WHERE link_hash=?", [hash])?,
             None => db.exec("DELETE FROM slack_install_links", [])?,
         };
         Ok(ended > 0)

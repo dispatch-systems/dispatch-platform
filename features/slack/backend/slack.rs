@@ -102,10 +102,7 @@ impl Slack {
                 back.as_str(),
                 vec![
                     ("state", state.to_owned()),
-                    (
-                        "code",
-                        format!("fixture:{}", team.unwrap_or_default()),
-                    ),
+                    ("code", format!("fixture:{}", team.unwrap_or_default())),
                 ],
             ),
             Self::Live(client) => (
@@ -241,10 +238,13 @@ impl Slack {
     /// the workspace whatever Slack answers.
     pub async fn uninstall(&self, token: &str) {
         if let Self::Live(client) = self {
-            let request = HTTP.post(format!("{API}/apps.uninstall")).bearer_auth(token).form(&[
-                ("client_id", client.id.as_str()),
-                ("client_secret", client.secret.as_str()),
-            ]);
+            let request = HTTP
+                .post(format!("{API}/apps.uninstall"))
+                .bearer_auth(token)
+                .form(&[
+                    ("client_id", client.id.as_str()),
+                    ("client_secret", client.secret.as_str()),
+                ]);
             if let Ok(response) = timed("apps.uninstall", request).await {
                 let _ = answer("apps.uninstall", response).await;
             }
@@ -324,9 +324,15 @@ async fn answer(method: &str, response: reqwest::Response) -> Result<Value> {
 /// approved yet, so updating does; Slack is busy; or the request itself failed.
 fn refusal(reason: &str) -> Error {
     match reason {
-        "invalid_auth" | "not_authed" | "account_inactive" | "token_revoked"
-        | "invalid_refresh_token" | "app_uninstalled" | "team_access_not_granted"
-        | "invalid_code" | "code_already_used" => Error::new("slack_connection_broken", 409),
+        "invalid_auth"
+        | "not_authed"
+        | "account_inactive"
+        | "token_revoked"
+        | "invalid_refresh_token"
+        | "app_uninstalled"
+        | "team_access_not_granted"
+        | "invalid_code"
+        | "code_already_used" => Error::new("slack_connection_broken", 409),
         "token_expired" => Error::new("slack_token_expired", 409),
         "missing_scope" => Error::new("slack_needs_update", 409),
         "ratelimited" => Error::new("slack_rate_limited", 503),

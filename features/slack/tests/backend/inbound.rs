@@ -44,6 +44,11 @@ fn only_a_request_slack_signed_as_sent_and_recently_is_taken() {
     // No signature, or not Slack's kind.
     assert!(!signed(SECRET, &headers(AT, ""), BODY.as_bytes(), AT));
     let unversioned = SIGNATURE.trim_start_matches("v0=");
-    assert!(!signed(SECRET, &headers(AT, unversioned), BODY.as_bytes(), AT));
+    assert!(!signed(
+        SECRET,
+        &headers(AT, unversioned),
+        BODY.as_bytes(),
+        AT
+    ));
     assert!(!signed(SECRET, &HeaderMap::new(), BODY.as_bytes(), AT));
 }

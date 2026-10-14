@@ -36,7 +36,10 @@ pub fn install(code: &str) -> Result<Installed> {
     let team = code
         .strip_prefix("fixture:")
         .filter(|team| {
-            !team.is_empty() && team.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+            !team.is_empty()
+                && team
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
         })
         .ok_or_else(|| Error::new("slack_install_failed", 502))?;
     Ok(Installed {
@@ -61,10 +64,10 @@ pub fn call(token: &str, method: &str) -> Result<Value> {
 }
 
 fn name(team: &str) -> String {
-    TEAMS
-        .iter()
-        .find(|(id, _)| *id == team)
-        .map_or_else(|| format!("Workspace {team}"), |(_, name)| (*name).to_owned())
+    TEAMS.iter().find(|(id, _)| *id == team).map_or_else(
+        || format!("Workspace {team}"),
+        |(_, name)| (*name).to_owned(),
+    )
 }
 /// New tokens for the workspace, `fixture-access:<team>:<turn>`, so each renewal gives others.
 fn tokens(team: &str) -> Tokens {
