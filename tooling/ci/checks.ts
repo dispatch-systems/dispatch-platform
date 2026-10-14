@@ -72,7 +72,14 @@ if (process.argv.includes('--list')) {
   process.stdout.write(`${JSON.stringify(commands)}\n`);
   process.exit(0);
 }
-async function run(name: string, command: string, args: string[], env = process.env) {
+/** Runs a step, a line when it starts and ends; one not `required` fails nothing. */
+async function run(
+  name: string,
+  command: string,
+  args: string[],
+  env = process.env,
+  required = true,
+) {
   const start = Date.now();
   process.stdout.write(`[start] ${name}\n`);
   const child = spawn(command, args, { stdio: 'inherit', env });
@@ -83,7 +90,7 @@ async function run(name: string, command: string, args: string[], env = process.
   process.stdout.write(
     `[${ok ? 'pass' : 'fail'}] ${name} (${((Date.now() - start) / 1000).toFixed(1)}s)\n`,
   );
-  if (!ok) failures.push(name);
+  if (!ok && required) failures.push(name);
   return ok;
 }
 const npm = (name: string, ...args: string[]) =>
@@ -94,16 +101,42 @@ const execute = ({ name, command, args, env }: Command) =>
 function checks() {
   return Promise.all(checkCommands.map(execute));
 }
-/** The workload regression, against the build already in `.build`. */
-function benchmark() {
-  return run('Rust workload regression', process.execPath, [
+/**
+ * The workload regression, against the build already in `.build`. A build within its budgets
+ * passes at once. In the merge queue one that breaks a budget is judged again beside the base's
+ * build, in `.baseline`, run after it on the same runner: a runner that can't hold a budget for
+ * the base doesn't fail the build, though a clear regression from the base does.
+ */
+async function benchmark() {
+  const name = 'Rust workload regression';
+  const script = ['node_modules/tsx/dist/cli.mjs', 'tooling/benchmarks/benchmark-rust.ts'];
+  const report = '/tmp/dispatch-rust-benchmark.json';
+  const base = '/tmp/dispatch-rust-benchmark-base.json';
+  const measure = [...script, '--binary', '.build/services/rust/dispatch-backend', '--check'];
+  if (!fs.existsSync('.baseline/services/rust/dispatch-backend'))
+    return run(name, process.execPath, [...measure, '--output', report]);
+  if (await run(name, process.execPath, [...measure, '--output', report], process.env, false))
+    return true;
+  const remeasured =
+    fs.existsSync(report) &&
+    (await run(
+      "The base's workload",
+      process.execPath,
+      [...script, '--binary', '.baseline/services/rust/dispatch-backend', '--output', base],
+      process.env,
+      false,
+    ));
+  if (!remeasured) {
+    failures.push(name);
+    return false;
+  }
+  return run(`${name}, beside the base`, process.execPath, [
     'node_modules/tsx/dist/cli.mjs',
-    'tooling/benchmarks/benchmark-rust.ts',
-    '--binary',
-    '.build/services/rust/dispatch-backend',
-    '--check',
-    '--output',
-    '/tmp/dispatch-rust-benchmark.json',
+    'tooling/benchmarks/judge.ts',
+    '--report',
+    report,
+    '--baseline',
+    base,
   ]);
 }
 /**

@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkBenchmark, budgets, type BenchmarkReport } from '../benchmarks/benchmark-budget.js';
+import {
+  checkBenchmark,
+  budgets,
+  tolerances,
+  type BenchmarkReport,
+} from '../benchmarks/benchmark-budget.js';
 import { DatabaseWork } from '../benchmarks/database-work.js';
 const sample = (): BenchmarkReport => ({
   employeesPerDsp: 3000,
@@ -117,6 +122,63 @@ test('benchmark failures cannot pass as successful measurements', () => {
     checkBenchmark(report);
     assert.throws(() => checkBenchmark(report, true));
   }
+});
+test('beside its base on the same runner, a build is judged by both, and the runner by the base', () => {
+  const judge = (change: (base: BenchmarkReport, build: BenchmarkReport) => void) => {
+    const [base, build] = [sample(), sample()];
+    change(base, build);
+    return () => checkBenchmark(build, true, base);
+  };
+  // A runner whose base breaks a budget can't hold it: the base alone judges the build there.
+  const heavy = budgets.peakRssBytes + 40 * 1024 ** 2;
+  assert.doesNotThrow(
+    judge((base, build) => {
+      base.peakRssBytes = heavy;
+      build.peakRssBytes = heavy + 4 * 1024 ** 2;
+    }),
+  );
+  assert.doesNotThrow(
+    judge((base, build) => {
+      base.measurements[0]!.p95Ms = budgets.p95Ms + 100;
+      build.measurements[0]!.p95Ms = budgets.p95Ms + 150;
+    }),
+  );
+  // A base within the budget keeps it binding.
+  assert.throws(
+    judge((base, build) => {
+      base.peakRssBytes = budgets.peakRssBytes - 1024 ** 2;
+      build.peakRssBytes = budgets.peakRssBytes + 1;
+    }),
+    /peakRssBytes exceeds budget/,
+  );
+  // A build clearly worse than its base fails, though within every budget.
+  for (const worse of [
+    (base: BenchmarkReport, build: BenchmarkReport) => {
+      build.peakRssBytes = Math.ceil(base.peakRssBytes * tolerances.memory) + 1;
+    },
+    (base: BenchmarkReport, build: BenchmarkReport) => {
+      build.idleRssBytes = Math.ceil(base.idleRssBytes * tolerances.memory) + 1;
+    },
+    (base: BenchmarkReport, build: BenchmarkReport) => {
+      build.startupMs = base.startupMs * tolerances.startup + tolerances.startupMs + 1;
+    },
+    (base: BenchmarkReport, build: BenchmarkReport) => {
+      build.measurements[3]!.p95Ms = base.measurements[3]!.p95Ms + tolerances.p95Ms + 1;
+    },
+    (base: BenchmarkReport, build: BenchmarkReport) => {
+      build.measurements[5]!.requestsPerSecond =
+        base.measurements[5]!.requestsPerSecond * tolerances.throughput - 1;
+    },
+  ])
+    assert.throws(judge(worse), /the base's/);
+  // Noise within the tolerances passes.
+  assert.doesNotThrow(
+    judge((base, build) => {
+      build.peakRssBytes = Math.floor(base.peakRssBytes * 1.1);
+      build.measurements[3]!.p95Ms = base.measurements[3]!.p95Ms + 30;
+      build.measurements[5]!.requestsPerSecond = base.measurements[5]!.requestsPerSecond * 0.8;
+    }),
+  );
 });
 test('an HTTP error names the failed route, status and response', () => {
   const report = sample();
