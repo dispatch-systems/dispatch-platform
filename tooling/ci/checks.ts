@@ -72,7 +72,14 @@ if (process.argv.includes('--list')) {
   process.stdout.write(`${JSON.stringify(commands)}\n`);
   process.exit(0);
 }
-async function run(name: string, command: string, args: string[], env = process.env) {
+/** Runs a step, a line when it starts and ends; one not `required` fails nothing. */
+async function run(
+  name: string,
+  command: string,
+  args: string[],
+  env = process.env,
+  required = true,
+) {
   const start = Date.now();
   process.stdout.write(`[start] ${name}\n`);
   const child = spawn(command, args, { stdio: 'inherit', env });
@@ -83,7 +90,7 @@ async function run(name: string, command: string, args: string[], env = process.
   process.stdout.write(
     `[${ok ? 'pass' : 'fail'}] ${name} (${((Date.now() - start) / 1000).toFixed(1)}s)\n`,
   );
-  if (!ok) failures.push(name);
+  if (!ok && required) failures.push(name);
   return ok;
 }
 const npm = (name: string, ...args: string[]) =>
@@ -94,16 +101,34 @@ const execute = ({ name, command, args, env }: Command) =>
 function checks() {
   return Promise.all(checkCommands.map(execute));
 }
-/** The workload regression, against the build already in `.build`. */
-function benchmark() {
+/**
+ * The workload regression, against the build already in `.build`. In the merge queue the base's
+ * build, in `.baseline`, runs the same workload first on the same runner, and the build is judged
+ * beside it too; a base that can't run this workload leaves the budgets alone to judge.
+ */
+async function benchmark() {
+  const script = ['node_modules/tsx/dist/cli.mjs', 'tooling/benchmarks/benchmark-rust.ts'];
+  const base = '/tmp/dispatch-rust-benchmark-base.json';
+  let compared = false;
+  if (fs.existsSync('.baseline/services/rust/dispatch-backend')) {
+    compared = await run(
+      "The base's workload",
+      process.execPath,
+      [...script, '--binary', '.baseline/services/rust/dispatch-backend', '--output', base],
+      process.env,
+      false,
+    );
+    if (!compared)
+      process.stdout.write("The base's build can't run this workload: the budgets alone judge.\n");
+  }
   return run('Rust workload regression', process.execPath, [
-    'node_modules/tsx/dist/cli.mjs',
-    'tooling/benchmarks/benchmark-rust.ts',
+    ...script,
     '--binary',
     '.build/services/rust/dispatch-backend',
     '--check',
     '--output',
     '/tmp/dispatch-rust-benchmark.json',
+    ...(compared ? ['--baseline', base] : []),
   ]);
 }
 /**

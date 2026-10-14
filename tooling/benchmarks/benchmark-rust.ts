@@ -2,6 +2,8 @@ import { collectorDatabase } from '../testing/collector-storage.js';
 import { demo, prepare } from '../testing/fixture-server.js';
 import {
   checkBenchmark,
+  compared,
+  type BenchmarkReport,
   type Failure,
   type Measurement,
   type TableRead,
@@ -24,6 +26,8 @@ const { values } = parseArgs({
     binary: { type: 'string', default: 'target/release/dispatch-backend' },
     output: { type: 'string' },
     check: { type: 'boolean', default: false },
+    // The base's report, measured on the same runner just before: --check judges by it too.
+    baseline: { type: 'string' },
   },
 });
 const employees = 3000,
@@ -144,7 +148,15 @@ async function run(app: Awaited<ReturnType<typeof prepare>>, databaseWork: Datab
       assert(response.ok, `${route} returned ${response.status}`);
       return response.json();
     }
-    const login = await request('/api/auth/login', { email: demo.email, password: demo.password });
+    // Maintenance that starts with the server can hold every database turn for a few seconds
+    // over this much data: signing in waits for one, as a person would try again.
+    let login = await request('/api/auth/login', { email: demo.email, password: demo.password });
+    for (const waited = performance.now(); login.status === 503;) {
+      if (performance.now() - waited > 30_000) break;
+      await login.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      login = await request('/api/auth/login', { email: demo.email, password: demo.password });
+    }
     assert.equal(login.status, 200, `Login failed: ${await login.clone().text()}\n${logs}`);
     headers.cookie = login.headers.get('set-cookie')!.split(';')[0]!;
     const session = sessionSchema.parse(await json('/api/session'));
@@ -416,8 +428,13 @@ try {
   const output = JSON.stringify(report, null, 2) + '\n';
   if (values.output) fs.writeFileSync(values.output, output);
   process.stdout.write(output);
-  // Correctness is mandatory in every mode; --check also enforces broad CI budgets.
-  checkBenchmark(report, values.check);
+  // Correctness is mandatory in every mode; --check also enforces broad CI budgets, and a
+  // base measured beside it.
+  const baseline = values.baseline
+    ? (JSON.parse(fs.readFileSync(values.baseline, 'utf8')) as BenchmarkReport)
+    : undefined;
+  if (baseline) process.stdout.write(`Against the base's build:\n${compared(report, baseline)}`);
+  checkBenchmark(report, values.check, baseline);
 } finally {
   fs.rmSync(app.root, { recursive: true, force: true });
 }

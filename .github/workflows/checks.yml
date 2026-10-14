@@ -209,7 +209,9 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- smoke
-  # The workload regression measures the packaged build on a runner of its own.
+  # The workload regression measures the packaged build on a runner of its own. In the merge
+  # queue the base's build runs the same workload first on the same runner, and the build is
+  # judged beside it as well as by the budgets, so the runner's hardware cancels out.
   benchmark:
     needs: build
     if: contains('all benchmark', inputs.suite || 'all')
@@ -228,13 +230,39 @@ jobs:
         with:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
+      # The base's package: the one its queue run published once it passed, or else that run's
+      # build. Without one, as for a base still building, the budgets alone judge.
+      - name: Fetch the base's build
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          api() { gh api "repos/$GITHUB_REPOSITORY/$1" "${@:2}"; }
+          runs=$(api "actions/workflows/checks.yml/runs?event=merge_group&head_sha=$BASE&per_page=20" \
+            --jq '.workflow_runs[] | select(.head_branch | startswith("gh-readonly-queue/main/")) | .id' || true)
+          for run in $runs; do
+            id=$(api "actions/runs/$run/artifacts?per_page=100" --jq "[.artifacts[] | select(.expired | not)
+              | select(.name == \"dispatch-main-$BASE\" or (.name | startswith(\"dispatch-candidate-\")))]
+              | sort_by(.name) | last | .id // empty" || true)
+            if [ -n "$id" ] && api "actions/artifacts/$id/zip" > /tmp/base.zip \
+              && python3 -m zipfile -e /tmp/base.zip /tmp/base && mkdir .baseline \
+              && tar -xzf /tmp/base/dispatch-dev.tar.gz -C .baseline; then
+              echo "Measuring beside the build of the base $BASE, from run $run."
+              exit 0
+            fi
+            rm -rf .baseline
+          done
+          echo "No build of the base $BASE to measure beside: the budgets alone judge."
       - run: npm run check:ci -- benchmark
       - name: Preserve workload measurements
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dispatch-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/dispatch-rust-benchmark.json
+          path: |
+            /tmp/dispatch-rust-benchmark.json
+            /tmp/dispatch-rust-benchmark-base.json
           if-no-files-found: ignore
           retention-days: 30
   # Rust formatting, lints and tests.
