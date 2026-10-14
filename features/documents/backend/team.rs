@@ -8,7 +8,7 @@
 use super::{
     drive::{Refused, Share},
     files,
-    google::Google,
+    google::{self, Google},
     storage::{DocumentsStore, Person, SharedFile, Sharing},
 };
 use crate::api::types::{GoogleSignIn, MySharing, SharingState};
@@ -17,7 +17,7 @@ use dispatch_core::{
     accounts::Context,
     db::{Store, iso},
     ensure,
-    foundation::{crypto, observability},
+    foundation::{config::Site, crypto, observability},
     server::{http::route::Dsp, mail::templates},
 };
 use serde_json::json;
@@ -426,11 +426,17 @@ pub fn back_to_documents(sign_in: &str) -> bool {
     is_link(sign_in) && !sign_in.contains(FROM_SETTINGS)
 }
 /// Starts a member's sign-in with Google to link their own account, from Settings'
-/// Connections or else from Documents.
-pub fn start_link(db: &Store, c: &Context, from_settings: bool) -> Result<GoogleSignIn> {
+/// Connections or else from Documents, at the address `site`.
+pub fn start_link(
+    db: &Store,
+    c: &Context,
+    site: &Site,
+    from_settings: bool,
+) -> Result<GoogleSignIn> {
     let google = Google::of(&db.config)?;
     let link = if from_settings { FROM_SETTINGS } else { LINK };
-    let state = format!("{}{link}{}", c.dsp.id, crypto::token()?);
+    let named = google::sign_in_of(&c.dsp.id, site);
+    let state = format!("{named}{link}{}", crypto::token()?);
     let verifier = crypto::token()?;
     db.start_documents_sign_in(&c.dsp.id, c.actor(), &state, &verifier)?;
     Ok(GoogleSignIn {

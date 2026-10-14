@@ -18,8 +18,8 @@ use dispatch_core::{
     accounts::Context,
     db::{Store, iso},
     ensure,
-    foundation::crypto,
     foundation::observability,
+    foundation::{config::Site, crypto},
     server::http::route::Dsp,
 };
 use serde_json::json;
@@ -97,16 +97,20 @@ pub async fn account(state: &Arc<State>, dsp: &str) -> Result<DocumentsAccount> 
     })
 }
 
-/// Starts a sign-in with Google for the member. Reconnecting asks Google for the account
-/// already connected, since only it can reach the files Dispatch made.
-pub fn start(db: &Store, c: &Context) -> Result<GoogleSignIn> {
+/// Starts a sign-in with Google for the member, at the address `site`. Reconnecting asks
+/// Google for the account already connected, since only it can reach the files Dispatch made.
+pub fn start(db: &Store, c: &Context, site: &Site) -> Result<GoogleSignIn> {
     let google = Google::of(&db.config)?;
     let hint = db
         .documents_connection(&c.dsp.id)?
         .map(|found| found.account.email);
-    // The state Google carries back names the DSP, so the browser comes back to its
-    // Connections.
-    let state = format!("{}.connect.{}", c.dsp.id, crypto::token()?);
+    // The state Google carries back names the DSP, and the address `site` the member is at,
+    // so the browser comes back to its Connections there.
+    let state = format!(
+        "{}.connect.{}",
+        google::sign_in_of(&c.dsp.id, site),
+        crypto::token()?
+    );
     let verifier = crypto::token()?;
     db.start_documents_sign_in(&c.dsp.id, c.actor(), &state, &verifier)?;
     Ok(GoogleSignIn {
