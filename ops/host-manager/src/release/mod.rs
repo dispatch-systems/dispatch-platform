@@ -2,6 +2,7 @@
 //! stamped into the build CI made of it. GitHub and immutable assets are the source of
 //! truth; the small local journal only pins intent across process interruptions.
 mod assets;
+mod backup;
 mod origins;
 mod workflow;
 
@@ -21,10 +22,13 @@ use std::{
     time::Duration,
 };
 
-const HELP: &str = "Dispatch release [publish|status] [X.Y.Z] --root CHECKOUT
+const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHECKOUT
   publish   Release main's head: require the full suite and Dev serving the commit, publish
-            the release and verify Production installs it (the default).
+            the release and verify Production installs it (the default). A release that
+            brings migrations publishes only after a backup made for it in the last six hours.
   status    Inspect GitHub, saved assets and public health without changing release state.
+  backup    Back Production up for the release over ssh, stopping it for about a second,
+            restore the copy elsewhere and check every database, and record it.
 With no version, publish makes a new release, the latest published version bumped. It sets
 aside any release never published, unless that release already holds the same commit, which
 it continues. A version publishes, or finishes publishing, exactly that release.
@@ -37,6 +41,7 @@ Rerun the same command after fixing a failure. Tags and published assets are nev
 enum Stage {
     Publish,
     Status,
+    Backup,
 }
 
 struct Options {
@@ -65,6 +70,7 @@ impl Options {
         if let Some(stage) = iter.peek().and_then(|s| match s.as_str() {
             "publish" => Some(Stage::Publish),
             "status" => Some(Stage::Status),
+            "backup" => Some(Stage::Backup),
             _ => None,
         }) {
             value.stage = stage;
@@ -329,6 +335,9 @@ impl<'a> Release<'a> {
         lock.try_lock_exclusive()
             .map_err(|_| "Another release command is running")?;
         let _lock = ReleaseLock(lock);
+        if stage == Stage::Backup {
+            return self.backup();
+        }
         self.git(&["fetch", "--tags", "origin", "main"], None, 300)?;
         if self.fresh {
             self.replace_unpublished(requested)?;

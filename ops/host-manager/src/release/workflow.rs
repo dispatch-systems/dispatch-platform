@@ -83,7 +83,7 @@ impl Release<'_> {
         self.command(&command, cwd, timeout)
     }
     /// The newest published stable release before this one.
-    fn previous(&self) -> Result<Option<String>> {
+    pub(super) fn previous(&self) -> Result<Option<String>> {
         let listed: Vec<_> = all_releases(self.system)?
             .into_iter()
             .filter(|r| r["tag_name"] != self.tag)
