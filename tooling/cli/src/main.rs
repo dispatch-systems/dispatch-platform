@@ -23,8 +23,9 @@ A change, from start to finish:
                                    the merge queue runs them. Each run builds in a folder of
                                    its own, deleted when it ends unless --keep.
   check [--plan] [--keep]          Before a push: what stops the branch, the rule checks and
-        [--allow-concurrent]       clippy; the merge queue runs the tests. --plan only names
-                                   them.
+        [--allow-concurrent]       clippy, which passes again without running on Rust inputs
+                                   it passed on; the merge queue runs the tests. --plan only
+                                   names them.
   pr <name> --title <title>        Check the title and body, push the branch, and open the
      --body <file>                 PR or update it.
   ship <PR number> [--review]      Queue the PR as soon as GitHub admits it and wait until it
@@ -239,7 +240,8 @@ fn run() -> Result<()> {
                 check::print(&plan);
                 return Ok(());
             }
-            match check::execute(&root, &plan, line.flag("--keep"))? {
+            let env = std::env::vars().collect();
+            match check::execute(&root, &plan, line.flag("--keep"), &env, &Native)? {
                 true => Ok(()),
                 false => Err("A check failed.".into()),
             }
