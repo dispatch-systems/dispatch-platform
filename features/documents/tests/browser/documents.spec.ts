@@ -123,8 +123,10 @@ test('large folders keep one page mounted in both layouts, search every item and
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(page.getByRole('link', { name: /New folder/ })).toBeVisible();
   } finally {
-    await test.info().attach('documents-performance', {
-      body: JSON.stringify(
+    const output = test.info().outputPath('documents-performance.json');
+    fs.writeFileSync(
+      output,
+      JSON.stringify(
         {
           files: fileCount,
           pageSize: 100,
@@ -134,6 +136,9 @@ test('large folders keep one page mounted in both layouts, search every item and
         null,
         2,
       ),
+    );
+    await test.info().attach('documents-performance', {
+      path: output,
       contentType: 'application/json',
     });
   }
