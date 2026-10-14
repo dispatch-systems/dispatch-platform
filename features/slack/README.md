@@ -9,10 +9,13 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   or for a DSP that isn't active, the app stays in its workspaces and does nothing: Dispatch
   ignores what Slack sends for it, but for the app being removed or losing its tokens, and the
   hourly check passes it by. Switched on again, it carries on.
-- **Permissions:** none of its own. Its workspaces are among the DSP's own accounts, so its card
-  sits under DSP Connections on Settings' Connections, beside Paycom's, Cortex's and Google
-  Drive's, for those who hold `connections.manage` (Manage DSP Connections), which exists while
-  Slack is on.
+- **Permissions:** `slack.manage` (Manage Slack), to add Dispatch to the DSP's workspaces and
+  take it out, and to make and cancel the install link: apart from managing the DSP's other
+  connections. Like every permission, it starts off for every role; the DSP's owner turns it
+  on. Its workspaces are among the DSP's own accounts, so its card sits under DSP Connections
+  on Settings' Connections, beside Paycom's, Cortex's and Google Drive's, which that section
+  shows to those who hold `connections.manage` (Manage DSP Connections) as well: it exists
+  while Slack is on.
 - **Connecting:** Connect Slack, or Add workspace once there's one, sends the browser to Slack,
   which asks which workspace and for the app's permissions, and sends it back to Settings'
   Connections at the address it started at: the admin's, or the DSP's own. The card finishes
@@ -62,7 +65,7 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   `on_event` for events, `on_interaction` for buttons, forms and shortcuts. Then
   `dispatch-backend slack-manifest` prints the app to paste into Slack. The app asks for
   `team:read` alone today, to keep each workspace's name as Slack has it.
-- **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
+- **API:** behind `slack.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
   install link; `POST /api/dsp/slack/connect` (with `team`, to reconnect or update one),
   `…/connect/finish`, `…/workspaces/{team}/disconnect`, `…/link` and `…/link/cancel`. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install

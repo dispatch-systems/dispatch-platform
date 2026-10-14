@@ -129,7 +129,7 @@ test('a workspace belongs to one DSP, and a member connecting at its address com
   const dsps = owner.session.dsps as { id: string; name: string }[];
   const north = member.session.dsps[0] as { id: string; name: string };
   const summit = dsps.find((d) => d.id !== north.id && d.name === 'Summit Delivery')!;
-  // Every permission starts off, so the owner lets the member's role manage connections.
+  // Every permission starts off, so the owner lets the member's role manage Slack.
   await owner.select(north.id);
   const roles: { id: string; name: string; permissions: string[] }[] = (
     await owner.get('/api/dsp/roles')
@@ -137,7 +137,7 @@ test('a workspace belongs to one DSP, and a member connecting at its address com
   const role = roles.find((each) => each.name === 'Member')!;
   const saved = await owner.post(`/api/dsp/roles/${role.id}`, {
     name: role.name,
-    permissions: [...role.permissions, 'connections.manage'],
+    permissions: [...role.permissions, 'slack.manage'],
   });
   assert.equal(saved.status, 200, saved.body);
   await member.select(north.id);

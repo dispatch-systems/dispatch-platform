@@ -10,15 +10,17 @@ pub use api::types::{
 
 use dispatch_core::{
     db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql},
-    manifest::{Audit, Commands, Feature, feature, optional},
+    manifest::{Audit, Commands, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 
 pub const FEATURE: Feature = Feature {
     place: 120,
     switch: optional("slack", "Slack", &[]),
-    // Its workspaces are among the DSP's own accounts, managed on Settings' DSP Connections by
-    // those who manage the DSP's connections: it has no permissions of its own yet.
+    // Adding Dispatch to the DSP's workspaces, and taking it out: apart from managing the DSP's
+    // other connections, as what Slack shows a workspace is for those who manage Slack to say.
+    permissions: &[perm("slack.manage", "Manage Slack", 120)],
+    // Its workspaces are among the DSP's own accounts, on Settings' DSP Connections.
     dsp_connection: true,
     routes: api::routes::routes,
     tables: &[

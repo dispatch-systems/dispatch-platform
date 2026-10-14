@@ -25,21 +25,20 @@ use dispatch_core::{
 };
 use std::sync::Arc;
 
-/// The DSP's Slack workspaces are among its own accounts, on Settings' DSP Connections.
-const CONNECTIONS: Dsp = Dsp("connections.manage");
+const MANAGE: Dsp = Dsp("slack.manage");
 
 pub fn routes() -> Vec<Route> {
     vec![
-        read("/api/dsp/slack/account", CONNECTIONS, account),
-        write("/api/dsp/slack/connect", CONNECTIONS, connect),
-        async_post("/api/dsp/slack/connect/finish", CONNECTIONS, finish),
+        read("/api/dsp/slack/account", MANAGE, account),
+        write("/api/dsp/slack/connect", MANAGE, connect),
+        async_post("/api/dsp/slack/connect/finish", MANAGE, finish),
         async_post(
             "/api/dsp/slack/workspaces/{team}/disconnect",
-            CONNECTIONS,
+            MANAGE,
             disconnect,
         ),
-        write("/api/dsp/slack/link", CONNECTIONS, create_link),
-        write("/api/dsp/slack/link/cancel", CONNECTIONS, cancel_link),
+        write("/api/dsp/slack/link", MANAGE, create_link),
+        write("/api/dsp/slack/link/cancel", MANAGE, cancel_link),
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
         }),

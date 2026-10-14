@@ -1,13 +1,13 @@
 # Every route slack registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
-GET /api/dsp/slack/account Dsp("connections.manage") Read
+GET /api/dsp/slack/account Dsp("slack.manage") Read
 GET /api/slack/install Public Async
 GET /api/slack/return Public Async
-POST /api/dsp/slack/connect Dsp("connections.manage") Write
-POST /api/dsp/slack/connect/finish Dsp("connections.manage") Async
-POST /api/dsp/slack/link Dsp("connections.manage") Write
-POST /api/dsp/slack/link/cancel Dsp("connections.manage") Write
-POST /api/dsp/slack/workspaces/{team}/disconnect Dsp("connections.manage") Async
+POST /api/dsp/slack/connect Dsp("slack.manage") Write
+POST /api/dsp/slack/connect/finish Dsp("slack.manage") Async
+POST /api/dsp/slack/link Dsp("slack.manage") Write
+POST /api/dsp/slack/link/cancel Dsp("slack.manage") Write
+POST /api/dsp/slack/workspaces/{team}/disconnect Dsp("slack.manage") Async
 POST /slack/events Public Async
 POST /slack/interactions Public Async

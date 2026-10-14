@@ -483,7 +483,9 @@
     "frontend": true,
     "keeps": [],
     "migrations": {},
-    "permissions": [],
+    "permissions": [
+      "slack.manage"
+    ],
     "slots": {
       "after_collection": false,
       "audit": {

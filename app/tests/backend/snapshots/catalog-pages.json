@@ -99,7 +99,7 @@
     {
       "id": "slack",
       "label": "Slack",
-      "permissions": [],
+      "permissions": ["slack.manage"],
       "requires": [],
       "default": false,
       "mandatory": false
