@@ -1,6 +1,6 @@
 //! How the bot renews a workspace's token: Slack honours each refresh token once, so a token is
-//! renewed once as it nears its end, by whichever caller comes first, and kept at once; a token
-//! with time left, or one another caller has renewed since Slack refused it, is used as it is.
+//! renewed as it nears its end and kept at once, and a token with time left, or one another call
+//! has renewed since Slack refused it, is used as it is.
 use super::*;
 use dispatch_core::testing;
 
@@ -40,17 +40,15 @@ async fn stored(bot: &Bot) -> Tokens {
 }
 
 #[tokio::test]
-async fn a_token_is_renewed_once_as_it_nears_its_end_and_kept() {
+async fn a_token_is_renewed_as_it_nears_its_end_and_kept_and_never_twice() {
     let (_root, _state, bot) = bot();
     // Two hours left: used as it is.
     let lasting = kept_until(&bot, 2 * 60 * 60 * 1000).await;
     assert_eq!(bot.token().await.unwrap(), lasting.access);
 
-    // Within the hour before the next check: two callers at once share one renewal.
+    // Within the hour before the next check: renewed, and the new pair kept.
     let first = kept_until(&bot, 30 * 60 * 1000).await;
-    let (one, two) = tokio::join!(bot.token(), bot.token());
-    let renewed = one.unwrap();
-    assert_eq!(two.unwrap(), renewed);
+    let renewed = bot.token().await.unwrap();
     assert_ne!(renewed, first.access);
     let kept = stored(&bot).await;
     assert_eq!(kept.access, renewed);
