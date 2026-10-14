@@ -2,8 +2,6 @@ import { collectorDatabase } from '../testing/collector-storage.js';
 import { demo, prepare } from '../testing/fixture-server.js';
 import {
   checkBenchmark,
-  compared,
-  type BenchmarkReport,
   type Failure,
   type Measurement,
   type TableRead,
@@ -26,8 +24,6 @@ const { values } = parseArgs({
     binary: { type: 'string', default: 'target/release/dispatch-backend' },
     output: { type: 'string' },
     check: { type: 'boolean', default: false },
-    // The base's report, measured on the same runner just before: --check judges by it too.
-    baseline: { type: 'string' },
   },
 });
 const employees = 3000,
@@ -428,13 +424,8 @@ try {
   const output = JSON.stringify(report, null, 2) + '\n';
   if (values.output) fs.writeFileSync(values.output, output);
   process.stdout.write(output);
-  // Correctness is mandatory in every mode; --check also enforces broad CI budgets, and a
-  // base measured beside it.
-  const baseline = values.baseline
-    ? (JSON.parse(fs.readFileSync(values.baseline, 'utf8')) as BenchmarkReport)
-    : undefined;
-  if (baseline) process.stdout.write(`Against the base's build:\n${compared(report, baseline)}`);
-  checkBenchmark(report, values.check, baseline);
+  // Correctness is mandatory in every mode; --check also enforces broad CI budgets.
+  checkBenchmark(report, values.check);
 } finally {
   fs.rmSync(app.root, { recursive: true, force: true });
 }

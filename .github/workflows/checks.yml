@@ -210,8 +210,8 @@ jobs:
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- smoke
   # The workload regression measures the packaged build on a runner of its own. In the merge
-  # queue the base's build runs the same workload first on the same runner, and the build is
-  # judged beside it as well as by the budgets, so the runner's hardware cancels out.
+  # queue a build that breaks a budget is judged again beside the base's build on the same
+  # runner, so a runner that can't hold the budget for the base doesn't fail it.
   benchmark:
     needs: build
     if: contains('all benchmark', inputs.suite || 'all')
