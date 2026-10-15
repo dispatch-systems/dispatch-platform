@@ -8,8 +8,13 @@ fn a_dsp_gets_its_first_schedule_once() {
     let (_root, store, dsp) = testing::bootstrapped();
     // Without Driver Profiles, nothing.
     assert!(!first_schedule(&store, &dsp).unwrap());
+    let user = testing::a_user(&store);
+    // Driver Match, its part, needs Paycom, which this test leaves out.
     store
-        .set_feature(&dsp, "driver_profiles", true, &testing::a_user(&store))
+        .set_feature(&dsp, "driver_match", false, &user)
+        .unwrap();
+    store
+        .set_feature(&dsp, "driver_profiles", true, &user)
         .unwrap();
     testing::enable_connection(&store, &dsp, dispatch_cortex::PROVIDER).unwrap();
     // Nothing to collect by yet: it waits.
