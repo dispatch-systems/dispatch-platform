@@ -43,7 +43,7 @@ fn photo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Ok(Reply::picture(kind, bytes.into()))
 }
 /// The source and ID a decision names, of the sources this build has.
-fn source_id<'a>(b: &'a serde_json::Value) -> Result<(DriverSource, &'a str)> {
+fn source_id(b: &serde_json::Value) -> Result<(DriverSource, &str)> {
     let source = DriverSource::parse(v::text(b, "source", 1, 32)?)
         .ok_or_else(|| Error::new("invalid_input", 400))?;
     Ok((source, v::text(b, "id", 1, 64)?))
