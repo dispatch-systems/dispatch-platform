@@ -1,7 +1,8 @@
+import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import type { Driver } from '../../api/index.js';
 import { initials, photoUrl, toneOf } from '../driver-match.js';
 
-/** A person's photo from Amazon's roster, or their initials in their tone. */
+/** A person's photo from Amazon's roster, their initials in their tone until it comes. */
 export function DriverAvatar({
   driver,
   large = false,
@@ -9,13 +10,14 @@ export function DriverAvatar({
   driver: Pick<Driver, 'code' | 'name' | 'photo'>;
   large?: boolean;
 }) {
-  const className = `driver-avatar tone-${toneOf(driver.code)}${large ? ' large' : ''}`;
-  const photo = photoUrl(driver);
-  return photo ? (
-    <img className={className} src={photo} alt="" loading="lazy" />
-  ) : (
-    <span className={className} aria-hidden="true">
-      {initials(driver.name)}
+  const [box, src, lost] = usePicture<HTMLSpanElement>(photoUrl(driver));
+  return (
+    <span
+      ref={box}
+      className={`driver-avatar tone-${toneOf(driver.code)}${large ? ' large' : ''}`}
+      aria-hidden="true"
+    >
+      {src ? <img src={src} alt="" onError={lost} /> : initials(driver.name)}
     </span>
   );
 }

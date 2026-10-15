@@ -57,36 +57,38 @@ function Roster({ timezone }: { timezone: string }) {
   );
   const data = status.data;
   return (
-    <div className="driver-roster">
-      <div>
-        <b>Amazon roster</b>
-        <small>
-          {running ? (
-            running.message || 'Collecting'
-          ) : data?.collectedAt ? (
-            <>
-              <CircleCheck size={12} aria-hidden="true" />
-              {time(data.collectedAt, timezone)}
-              {data.nextRun && ` · Next ${time(data.nextRun, timezone)}`}
-            </>
-          ) : (
-            'Not collected yet'
-          )}
-        </small>
-        <ErrorBox message={collect.error} />
+    <>
+      <div className="driver-roster">
+        <div className="driver-roster-status">
+          <b>Amazon roster</b>
+          <small>
+            {running ? (
+              running.message || 'Collecting'
+            ) : data?.collectedAt ? (
+              <>
+                <CircleCheck size={12} aria-hidden="true" />
+                {time(data.collectedAt, timezone)}
+                {data.nextRun && ` · Next ${time(data.nextRun, timezone)}`}
+              </>
+            ) : (
+              'Not collected yet'
+            )}
+          </small>
+          <ErrorBox message={collect.error} />
+        </div>
+        <button onClick={() => setScheduling(true)}>
+          <CalendarClock size={15} aria-hidden="true" />
+          Schedule
+        </button>
+        <button
+          className="primary"
+          disabled={!data || Boolean(running) || collect.busy}
+          onClick={() => void collect.run()}
+        >
+          <RefreshCw size={15} aria-hidden="true" />
+          Collect now
+        </button>
       </div>
-      <button onClick={() => setScheduling(true)}>
-        <CalendarClock size={15} aria-hidden="true" />
-        Schedule
-      </button>
-      <button
-        className="primary"
-        disabled={!data || Boolean(running) || collect.busy}
-        onClick={() => void collect.run()}
-      >
-        <RefreshCw size={15} aria-hidden="true" />
-        Collect now
-      </button>
       {scheduling && (
         <ScheduleSettings
           endpoint={rosterSchedules}
@@ -99,6 +101,6 @@ function Roster({ timezone }: { timezone: string }) {
           }}
         />
       )}
-    </div>
+    </>
   );
 }

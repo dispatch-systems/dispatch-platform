@@ -3,7 +3,7 @@ import type { Driver, DriverId } from '../../api/index.js';
 import { confirmDriver } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
-import { confirmable, seenRange, shortId, sourceLabel } from '../driver-match.js';
+import { confirmable, phoneText, seenRange, shortId, sourceLabel } from '../driver-match.js';
 import { LinkTag, SourceMark } from '../parts/Tags.js';
 
 /**
@@ -36,24 +36,37 @@ export function SheetIds({
             </strong>
             <small>{[id.name, id.department].filter(Boolean).join(' · ')}</small>
             {id.emails.length + id.phones.length > 0 && (
-              <small>{[...id.emails, ...id.phones].join(' · ')}</small>
+              <small className="driver-contacts">
+                {id.emails.map((email) => (
+                  <span key={email}>{email}</span>
+                ))}
+                {id.phones.map((phone) => (
+                  <span key={phone} className="driver-phone">
+                    {phoneText(phone)}
+                  </span>
+                ))}
+              </small>
             )}
-            <small>{seenRange(id.firstSeen, id.lastSeen, today)}</small>
-          </div>
-          <div className="driver-id-actions">
-            <LinkTag link={id.linkedBy} />
-            {confirmable(id.linkedBy) && (
-              <button disabled={confirm.busy} onClick={() => void confirm.run(id)}>
-                Confirm
-              </button>
-            )}
-            {driver.ids.length > 1 && (
-              <button onClick={() => onSplit(id)}>
-                <Split size={14} aria-hidden="true" />
-                Split off
-              </button>
+            {(id.firstSeen || !id.listed) && (
+              <small>{seenRange(id.firstSeen, id.lastSeen, today)}</small>
             )}
           </div>
+          <LinkTag link={id.linkedBy} />
+          {(confirmable(id.linkedBy) || driver.ids.length > 1) && (
+            <div className="driver-id-actions">
+              {confirmable(id.linkedBy) && (
+                <button disabled={confirm.busy} onClick={() => void confirm.run(id)}>
+                  Confirm
+                </button>
+              )}
+              {driver.ids.length > 1 && (
+                <button onClick={() => onSplit(id)}>
+                  <Split size={14} aria-hidden="true" />
+                  Split off
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </section>

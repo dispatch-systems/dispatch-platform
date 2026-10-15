@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Driver, DriverPair } from '../../api/index.js';
+import { phoneText } from '../driver-match.js';
 import { DriverAvatar } from '../parts/DriverAvatar.js';
 import { RoleTag, SourceMark } from '../parts/Tags.js';
 
@@ -79,8 +80,8 @@ export function Comparison({ pair }: { pair: DriverPair }) {
       />
       <Row
         label="Phone"
-        person={list(phones(person))}
-        candidate={list(phones(candidate))}
+        person={list(phones(person).map(phoneText))}
+        candidate={list(phones(candidate).map(phoneText))}
         same={shared(phones(person), phones(candidate), digits)}
       />
       <Row

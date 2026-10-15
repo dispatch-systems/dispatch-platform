@@ -4,12 +4,12 @@ import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.j
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
 import { useDriverMatch } from '../../api/client.js';
 import { DriverSheet } from '../person/DriverSheet.js';
-import { NicknameList } from './NicknameList.js';
+import { VariantList } from './VariantList.js';
 import { PeopleTable } from './PeopleTable.js';
 import { ReviewList } from './ReviewList.js';
 import { RosterBar } from './RosterBar.js';
 
-/** Settings → Driver Match: who may be listed twice, nicknames to confirm, then everyone. */
+/** Settings → Driver Match: who may be listed twice, name variants to confirm, then everyone. */
 export function DriverMatchSettings({
   timezone,
   canCollect,
@@ -30,7 +30,7 @@ export function DriverMatchSettings({
           <>
             <RosterBar counts={data.counts} timezone={timezone} canCollect={canCollect} />
             <ReviewList pairs={data.review} drivers={data.drivers} />
-            <NicknameList drivers={data.drivers} onOpen={onOpen} />
+            <VariantList drivers={data.drivers} onOpen={onOpen} />
             <PeopleTable data={data} today={today} timezone={timezone} onOpen={onOpen} />
             {open && (
               <DriverSheet

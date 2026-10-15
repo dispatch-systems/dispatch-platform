@@ -49,7 +49,7 @@ only what was decided.
 - **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
 - **Its screen** is the Driver Match tab of a DSP's Settings: the roster's last and next
   collection (for those who hold `driver_profiles.collect`), the pairs to decide, the people
-  joined by a nickname to confirm, then everyone, by source, role and how surely matched.
+  joined by a name written another way to confirm, then everyone, by source, role and how surely matched.
 - **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on,
   everyone, and the pairs that may be one person), `…/counts`, `…/drivers/{code}` (one
   person's IDs, days and activity), `…/drivers/{code}/photo` (their photo from Amazon's roster),
@@ -64,9 +64,10 @@ only what was decided.
   every ID the DSP's data holds gets a code, source by source in their order. A new ID joins
   someone by, in turn: a link saved on the meal-break page; an email address or phone number
   only the two of them have, among every ID of either source, when their names agree; a name
-  nobody else carries; a nickname. Email addresses are compared in lower case and phone
-  numbers by their ten digits. A contact two IDs of one source share, as a family's phone,
-  joins nobody but suggests a rehire.
+  nobody else carries; the same name written another way, as without a second surname or by a
+  middle name. A nickname joins nobody: it suggests a pair to decide. Email addresses are
+  compared in lower case and phone numbers by their ten digits. A contact two IDs of one source
+  share, as a family's phone, joins nobody but suggests a rehire.
 - **Sources and kinds of data:** each feature whose data names people declares the kind of
   data it is in its `people` (`PeopleData`: its id, order, label, unit and icon) and the source
   of its IDs (`SourceData`, declared by whoever owns those IDs: Cortex for Amazon's, Paycom for

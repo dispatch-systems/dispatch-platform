@@ -1,9 +1,10 @@
-/* Settings → Driver Match: the roster bar, the pairs to decide, nicknames, then everyone. */
+/* Settings → Driver Match: the roster bar, the pairs to decide, name variants, then everyone. */
 .driver-match {
   max-width: 1080px;
   padding-top: 24px;
 }
-.driver-match h2 {
+.driver-section-head h2,
+h2.driver-variants-head {
   margin: 0;
   font-size: 16px;
   line-height: 24px;
@@ -85,26 +86,26 @@
   align-items: center;
   gap: 10px 14px;
 }
-.driver-roster > div {
+.driver-roster-status {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.driver-roster b {
+.driver-roster-status b {
   font-size: 13px;
   font-weight: 600;
 }
-.driver-roster small {
+.driver-roster-status small {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   color: var(--muted-foreground);
   font-size: 12px;
 }
-.driver-roster small svg {
+.driver-roster-status small svg {
   color: var(--success);
 }
-.driver-roster button {
+.driver-roster > button {
   gap: 7px;
   min-height: 34px;
   padding: 0 14px;
@@ -263,16 +264,20 @@ button.driver-pair-sides:hover {
   background: color-mix(in srgb, var(--success) 8%, transparent);
 }
 
-/* Nicknames to confirm, folded until opened. */
-.driver-nicknames {
+/* Name variants to confirm, folded until opened. */
+.driver-variants {
   margin-bottom: 28px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--card);
 }
-button.driver-nicknames-head {
+h2.driver-variants-head {
+  font-size: 14px;
+}
+.driver-variants-head > button {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
   min-height: 0;
@@ -282,28 +287,26 @@ button.driver-nicknames-head {
   background: transparent;
   color: inherit;
   font: inherit;
+  font-weight: 600;
 }
-.driver-nicknames-head h2 {
-  font-size: 14px;
-}
-.driver-nicknames-head > svg {
+.driver-variants-head svg {
   color: var(--muted-foreground);
   transition: transform var(--motion-duration);
 }
-.driver-nicknames-head[aria-expanded='false'] > svg {
+.driver-variants-head [aria-expanded='false'] > svg {
   transform: rotate(-90deg);
 }
-.driver-nickname {
+.driver-variant {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
   border-top: 1px solid var(--border);
 }
-.driver-nickname .driver-person {
+.driver-variant .driver-person {
   flex: 1;
 }
-.driver-nickname > button:not(.driver-person) {
+.driver-variant > button:not(.driver-person) {
   min-height: 30px;
   padding: 0 12px;
   font-size: 12.5px;
@@ -457,6 +460,11 @@ button.driver-person:hover strong {
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: -0.2px;
+}
+.driver-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
   object-fit: cover;
 }
 .driver-avatar.large {
@@ -625,11 +633,18 @@ button.driver-person:hover strong {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-.driver-id-actions {
+.driver-id small.driver-contacts {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
+  column-gap: 10px;
+}
+.driver-phone {
+  white-space: nowrap;
+}
+.driver-id-actions {
+  display: flex;
+  grid-column: 2 / -1;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .driver-id-actions button {

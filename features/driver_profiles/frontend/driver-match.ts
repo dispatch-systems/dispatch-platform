@@ -48,7 +48,7 @@ export const roleTones: Record<DriverRole, string> = {
 };
 export const linkLabels: Record<DriverLink, string> = {
   new: 'First ID',
-  variant: 'Nickname',
+  variant: 'Name variant',
   name: 'Same name',
   phone: 'Same phone',
   email: 'Same email',
@@ -158,12 +158,23 @@ export function goesBy(driver: Driver) {
   return undefined;
 }
 
+/** A phone number as it is read in the US, `(612) 555-0103`; any other as written. */
+export function phoneText(phone: string) {
+  const parts = /^(?:\+?1)?(\d{3})(\d{3})(\d{4})$/.exec(phone.replace(/[\s().-]/g, ''));
+  return parts ? `(${parts[1]}) ${parts[2]}-${parts[3]}` : phone;
+}
+
 /** Whether a search finds someone: by any name a source writes, their code, an ID or a contact. */
 export const driverSearchTerms = (driver: Driver) =>
   [
     driver.name,
     driver.code,
-    ...driver.ids.flatMap((id) => [id.id, id.name, ...id.emails, ...id.phones]),
+    ...driver.ids.flatMap((id) => [
+      id.id,
+      id.name,
+      ...id.emails,
+      ...id.phones.flatMap((phone) => [phone, phoneText(phone)]),
+    ]),
   ].map((text) => text.toLocaleLowerCase('en-US'));
 export function driverMatches(driver: Driver, query: string) {
   const wanted = query.trim().toLocaleLowerCase('en-US');
@@ -173,7 +184,7 @@ export function driverMatches(driver: Driver, query: string) {
 
 const linkedBy: Partial<Record<DriverLink, string>> = {
   name: 'joined by the same name',
-  variant: 'joined by a nickname',
+  variant: 'joined by a name variant',
   email: 'joined by the same email',
   phone: 'joined by the same phone',
   saved: 'linked on the meal-break page',
