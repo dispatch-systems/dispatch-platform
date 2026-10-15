@@ -22,16 +22,18 @@ impl People for Associates {
         DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
-        DriverSource::Amazon
+        DriverSource::new(&dispatch_cortex::PEOPLE)
     }
     /// Amazon's first: the roster holds the name Amazon has on file.
     fn order(&self) -> u16 {
         15
     }
-    /// Listed while the roster lists them as active.
+    /// Listed while the roster lists them as active, with the email address and personal
+    /// phone number Amazon has: a work phone may be the DSP's, passed from driver to driver.
     fn named(&self, store: &Store, dsp: &str) -> Result<Vec<Named>> {
         let rows = store.driver_profiles_db(dsp)?.all(
-            "SELECT transporter_id id,name,listed=1 AND status='ACTIVE' current FROM associates",
+            "SELECT transporter_id id,name,listed=1 AND status='ACTIVE' current,email,\
+             personal_phone phone,roles FROM associates",
             [],
         )?;
         Ok(rows
@@ -39,6 +41,17 @@ impl People for Associates {
             .map(|row| Named {
                 name: s(row, "name").to_owned(),
                 listed: row["current"] == 1,
+                emails: row["email"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .into_iter()
+                    .collect(),
+                phones: row["phone"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .into_iter()
+                    .collect(),
+                roles: serde_json::from_str(s(row, "roles")).unwrap_or_default(),
                 ..Named::new(s(row, "id"))
             })
             .collect())

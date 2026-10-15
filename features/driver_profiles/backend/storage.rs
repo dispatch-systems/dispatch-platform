@@ -14,7 +14,7 @@ use dispatch_cortex::{
 };
 use rusqlite::params;
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Its database beside Cortex's: `driver_profiles/driver_profiles.sqlite` in each DSP's data.
 pub(crate) const DATABASE: Kind = Kind::new("driver_profiles", 1);
@@ -68,6 +68,12 @@ pub trait DriverProfilesStore {
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
     /// When the roster was collected, what it holds, and when it is collected next.
     fn roster_status(&self, dsp: &str) -> Result<RosterStatus>;
+    /// Each listed associate with a photo kept, by transporter ID, with the photo's version:
+    /// its digest.
+    fn photo_versions(&self, dsp: &str) -> Result<BTreeMap<String, String>>;
+    /// The photo of the first of `transporters` the roster lists with one: its kind and its
+    /// bytes.
+    fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<(&'static str, Vec<u8>)>>;
 }
 impl DriverProfilesStore for Store {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>> {
@@ -220,6 +226,43 @@ impl DriverProfilesStore for Store {
             jobs: self.recent_jobs_of(dsp, JOB_KIND)?,
             ..status
         })
+    }
+    fn photo_versions(&self, dsp: &str) -> Result<BTreeMap<String, String>> {
+        Ok(self
+            .driver_profiles_db(dsp)?
+            .query_as::<(String, String)>(
+                "SELECT a.transporter_id,p.sha256 FROM associates a JOIN photos p \
+                 ON p.address=a.photo_address WHERE a.listed=1",
+                [],
+            )?
+            .into_iter()
+            .collect())
+    }
+    fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<(&'static str, Vec<u8>)>> {
+        let rows = self
+            .driver_profiles_db(dsp)?
+            .query_as::<(String, String, String)>(
+                "SELECT a.transporter_id,p.sha256,p.format FROM associates a JOIN photos p \
+             ON p.address=a.photo_address WHERE a.listed=1 \
+             AND a.transporter_id IN (SELECT value FROM json_each(?))",
+                [serde_json::to_string(transporters)?],
+            )?;
+        let Some((_, sha256, format)) = transporters
+            .iter()
+            .find_map(|id| rows.iter().find(|(t, _, _)| t == id))
+        else {
+            return Ok(None);
+        };
+        let (Some(name), Some(kind)) = (photos::file_name(sha256, format), photos::kind(format))
+        else {
+            return Ok(None);
+        };
+        match std::fs::read(photos::dir(self, dsp)?.join(name)) {
+            Ok(bytes) => Ok(Some((kind.content_type(), bytes))),
+            // Not collected again since a restore: the next collection brings it.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
     }
 }
 /// Every photo file the kept photos name.

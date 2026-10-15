@@ -103,6 +103,9 @@ impl DataDomain {
     pub const TENANT: Self = Self("tenant");
     /// Only scheduled collection dates, also shown in session DSP listings.
     pub const SCHEDULES: Self = Self("schedules");
+    /// Who is who among a DSP's people: the decisions the feature answering the directory
+    /// keeps, which any feature showing people reads.
+    pub const DRIVERS: Self = Self("drivers");
     pub const fn new(id: &'static str) -> Self {
         Self(id)
     }
@@ -116,7 +119,12 @@ impl DataDomain {
     }
 }
 /// Core's own domains, beside the features'.
-pub const DOMAINS: &[DataDomain] = &[DataDomain::LIVE, DataDomain::TENANT, DataDomain::SCHEDULES];
+pub const DOMAINS: &[DataDomain] = &[
+    DataDomain::LIVE,
+    DataDomain::TENANT,
+    DataDomain::SCHEDULES,
+    DataDomain::DRIVERS,
+];
 
 /// Which writes evict a cached read, as an owner that knows of the dependency declares it.
 /// A read is evicted by a write any of its declarations names.

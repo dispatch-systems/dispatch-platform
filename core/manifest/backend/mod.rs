@@ -18,7 +18,7 @@ use crate::{
     },
     tenancy::api::audit::AuditArea,
 };
-use people::People;
+use people::{Directory, People};
 use serde_json::Value;
 use std::{
     any::Any,
@@ -271,6 +271,11 @@ impl Registry {
         people.sort_by_key(|people| people.order());
         people
     }
+    /// Who each ID is, as the one feature that tells people apart answers, if this build has
+    /// it.
+    pub fn directory(&self) -> Option<&'static dyn Directory> {
+        self.features.iter().find_map(|feature| feature.directory)
+    }
     /// The permission that lets a member invite others, if a feature declares one; without
     /// it, only the platform owner invites.
     pub fn inviting(&self) -> Option<&'static str> {
@@ -402,6 +407,15 @@ impl Registry {
                 );
             }
         }
+        let answering = self
+            .features
+            .iter()
+            .filter(|f| f.directory.is_some())
+            .count();
+        assert!(
+            answering <= 1,
+            "{answering} features answer who each ID is; one at most may"
+        );
         let permissions: Vec<_> = self.permissions().collect();
         let inviting = permissions.iter().filter(|p| p.invites).count();
         assert!(
@@ -628,6 +642,9 @@ pub struct Feature {
     pub commands: Option<Commands>,
     /// Who its data names, for Driver Match to tell apart.
     pub people: &'static [&'static dyn People],
+    /// Who each ID its people name is, if it is the feature that tells them apart: one
+    /// feature at most answers.
+    pub directory: Option<&'static dyn Directory>,
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -659,6 +676,7 @@ pub const fn feature(name: &'static str) -> Feature {
         demo: None,
         commands: None,
         people: &[],
+        directory: None,
     }
 }
 

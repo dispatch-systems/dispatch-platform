@@ -1,5 +1,6 @@
-//! Read-only comparison across provider snapshots. Drivers join employees through
-//! Driver Match; unique names join the drivers it has not reached yet.
+//! Read-only comparison across provider snapshots. Drivers join employees through the
+//! directory, where the DSP has Driver Match on; unique names join the drivers it has not
+//! reached yet, and every driver where it has none.
 use crate::{
     api::{
         assessment::LateRule,
@@ -11,11 +12,29 @@ use dispatch_core::{
     Result,
     db::{Store, s},
     foundation::names::{self, Name, name_key},
+    manifest::{people::DriverSource, registry},
 };
 use dispatch_cortex as cortex;
-use dispatch_driver_profiles::{self as driver_match, DriverMatchStore};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+/// The links the meal-break page saved before Driver Match, which still reads them.
+const LINKS: &str = "employees.provider_links";
+
+/// Each Amazon driver the directory knows, with their person's Paycom codes and whether
+/// someone confirmed who they are. None without the directory, or while it is off.
+fn known(store: &Store, id: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>> {
+    let Some(directory) = registry().directory() else {
+        return Ok(BTreeMap::new());
+    };
+    let amazon = DriverSource::new(&cortex::PEOPLE);
+    let paycom = DriverSource::new(&dispatch_paycom::PEOPLE);
+    Ok(directory
+        .links(store, id, amazon, paycom)?
+        .into_iter()
+        .map(|(driver, link)| (driver, (link.ids, link.confirmed)))
+        .collect())
+}
 
 // Exact matches take priority over the more conservative name-variant pass.
 fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settings: &Value) {
@@ -233,8 +252,8 @@ fn comparisons(
     };
     let mut context = ComparisonContext {
         timezone, selected, meals, itineraries, late,
-        links: store.dsp(id)?.setting(driver_match::LINKS, json!({"revision":0,"links":[]}))?,
-        known: store.driver_links(id)?,
+        links: store.dsp(id)?.setting(LINKS, json!({"revision":0,"links":[]}))?,
+        known: known(store, id)?,
         latest_zone: cortex.one(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
         )?,

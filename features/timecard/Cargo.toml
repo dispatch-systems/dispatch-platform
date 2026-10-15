@@ -21,7 +21,6 @@ ts = ["dep:ts-rs", "dispatch-core/ts", "dispatch-paycom/ts"]
 [dependencies]
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
-dispatch-driver-profiles = { path = "../driver_profiles" }
 dispatch-paycom = { path = "../../collectors/paycom" }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }

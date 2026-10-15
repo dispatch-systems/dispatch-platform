@@ -22,7 +22,7 @@ impl People for MealDrivers {
         DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
-        DriverSource::Amazon
+        DriverSource::new(&dispatch_cortex::PEOPLE)
     }
     /// After routes, which spell names most plainly.
     fn order(&self) -> u16 {

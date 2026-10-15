@@ -1,18 +1,23 @@
-//! Who might be one person listed twice: someone only Paycom knows beside someone only
-//! Amazon knows, whose names come close without matching. A person decides; this only
-//! gathers the reasons.
+//! Who might be one person listed twice: two people no source knows both of, whose names
+//! come close without matching, or any two who alone share an email address or phone
+//! number. A person decides; this only gathers the reasons.
 use crate::api::types::{DriverEvidence, DriverEvidenceKind, DriverStrength};
 use dispatch_core::foundation::names::{Name, capitalized, short_form};
-use std::collections::BTreeSet;
+use dispatch_core::manifest::people::DriverSource;
+use std::collections::{BTreeMap, BTreeSet};
 
-/// One side of a possible pair: a person's code and every name its IDs carry.
+/// One person who might be another: their code, the sources that know them, and every
+/// name and contact their IDs carry.
 pub(crate) struct Side<'a> {
     pub code: &'a str,
+    pub sources: BTreeSet<DriverSource>,
     pub names: Vec<&'a str>,
+    pub emails: BTreeSet<&'a str>,
+    pub phones: BTreeSet<&'a str>,
 }
 pub(crate) struct Suggestion {
-    pub paycom: String,
-    pub amazon: String,
+    pub first: String,
+    pub second: String,
     pub evidence: Vec<DriverEvidence>,
 }
 
@@ -59,35 +64,53 @@ fn reasons(a: &Name, b: &Name) -> Vec<DriverEvidence> {
     out
 }
 
-/// Every pair worth a look, the strongest reasons each pair's names give. `apart` holds
-/// the pairs someone already decided are different people, as (first, second) codes.
-pub(crate) fn suggest(
-    paycom: &[Side<'_>],
-    amazon: &[Side<'_>],
-    apart: &BTreeSet<(String, String)>,
-) -> Vec<Suggestion> {
+/// Every pair worth a look, with the contacts only the two of them share and the strongest
+/// reasons their names give. Two people one source knows both of are a pair only by a
+/// shared contact, as a rehire under a second ID is. `apart` holds the pairs someone already
+/// decided are different people, as (first, second) codes.
+pub(crate) fn suggest(people: &[Side<'_>], apart: &BTreeSet<(String, String)>) -> Vec<Suggestion> {
+    // How many people carry each contact: one that more than two carry says nothing.
+    let mut carried: BTreeMap<(bool, &str), usize> = BTreeMap::new();
+    for side in people {
+        for email in &side.emails {
+            *carried.entry((true, email)).or_default() += 1;
+        }
+        for phone in &side.phones {
+            *carried.entry((false, phone)).or_default() += 1;
+        }
+    }
+    let names: Vec<Vec<Name>> = people
+        .iter()
+        .map(|side| side.names.iter().map(|n| Name::new(n)).collect())
+        .collect();
     let mut out = vec![];
-    for a in amazon {
-        let names_a: Vec<Name> = a.names.iter().map(|n| Name::new(n)).collect();
-        for p in paycom {
-            let key = if p.code < a.code {
-                (p.code.to_owned(), a.code.to_owned())
+    for (i, a) in people.iter().enumerate() {
+        for (j, b) in people.iter().enumerate().skip(i + 1) {
+            let key = if a.code < b.code {
+                (a.code.to_owned(), b.code.to_owned())
             } else {
-                (a.code.to_owned(), p.code.to_owned())
+                (b.code.to_owned(), a.code.to_owned())
             };
             if apart.contains(&key) {
                 continue;
             }
-            let best = p
-                .names
+            let shared = |mine: &BTreeSet<&str>, theirs: &BTreeSet<&str>, email: bool| {
+                mine.intersection(theirs)
+                    .any(|value| carried.get(&(email, *value)) == Some(&2))
+            };
+            let mut found = vec![];
+            if shared(&a.emails, &b.emails, true) {
+                found.push(evidence(DriverEvidenceKind::SameEmail));
+            }
+            if shared(&a.phones, &b.phones, false) {
+                found.push(evidence(DriverEvidenceKind::SamePhone));
+            }
+            if found.is_empty() && !a.sources.is_disjoint(&b.sources) {
+                continue;
+            }
+            let best = names[i]
                 .iter()
-                .flat_map(|n| {
-                    let name = Name::new(n);
-                    names_a
-                        .iter()
-                        .map(|x| reasons(&name, x))
-                        .collect::<Vec<_>>()
-                })
+                .flat_map(|x| names[j].iter().map(move |y| reasons(x, y)))
                 .max_by_key(|r| {
                     (
                         r.len(),
@@ -95,11 +118,12 @@ pub(crate) fn suggest(
                     )
                 })
                 .unwrap_or_default();
-            if !best.is_empty() {
+            found.extend(best);
+            if !found.is_empty() {
                 out.push(Suggestion {
-                    paycom: p.code.to_owned(),
-                    amazon: a.code.to_owned(),
-                    evidence: best,
+                    first: a.code.to_owned(),
+                    second: b.code.to_owned(),
+                    evidence: found,
                 });
             }
         }
@@ -107,16 +131,17 @@ pub(crate) fn suggest(
     out
 }
 
-/// The days both sides worked out of the days the Amazon side drove, where both sources
-/// were collected. `None` with fewer than two such days, which say nothing.
+/// The days both sides worked out of the days one side worked, where both sides' sources
+/// were collected: of the days someone drove, the days the other clocked in. `None` with
+/// fewer than two such days, which say nothing.
 pub(crate) fn worked_days(
     clocked: Option<&BTreeSet<String>>,
     drove: Option<&BTreeSet<String>>,
-    paycom_days: &BTreeSet<String>,
-    amazon_days: &BTreeSet<String>,
+    clocked_days: &BTreeSet<String>,
+    drove_days: &BTreeSet<String>,
 ) -> Option<DriverEvidence> {
     let drove = drove?;
-    let window: BTreeSet<&String> = paycom_days.intersection(amazon_days).collect();
+    let window: BTreeSet<&String> = clocked_days.intersection(drove_days).collect();
     let days: Vec<&String> = drove.iter().filter(|d| window.contains(d)).collect();
     if days.len() < 2 {
         return None;
@@ -132,8 +157,10 @@ pub(crate) fn worked_days(
     })
 }
 
-/// Strong when the last names agree and either the first name is a short form of the
-/// other or the two worked every one of at least three days together.
+/// Strong when an email address or phone number only they share agrees with their names,
+/// or when the last names agree and either the first name is a short form of the other or
+/// the two worked every one of at least three days together; never when they mostly worked
+/// apart.
 pub(crate) fn strength(evidence: &[DriverEvidence]) -> DriverStrength {
     let has = |kind| evidence.iter().any(|e| e.kind == kind);
     let all_days = evidence.iter().any(|e| {
@@ -143,7 +170,18 @@ pub(crate) fn strength(evidence: &[DriverEvidence]) -> DriverStrength {
     let partly = evidence.iter().any(|e| {
         e.kind == DriverEvidenceKind::WorkedDays && e.same.unwrap_or(0) * 2 < e.of.unwrap_or(0)
     });
-    if has(DriverEvidenceKind::SameLastName) && (all_days || short) && !partly {
+    let contact = has(DriverEvidenceKind::SameEmail) || has(DriverEvidenceKind::SamePhone);
+    let named = [
+        DriverEvidenceKind::SameLastName,
+        DriverEvidenceKind::SameFirstName,
+        DriverEvidenceKind::ShortForm,
+        DriverEvidenceKind::LastInitial,
+    ]
+    .into_iter()
+    .any(has);
+    if !partly
+        && ((contact && named) || (has(DriverEvidenceKind::SameLastName) && (all_days || short)))
+    {
         DriverStrength::Strong
     } else {
         DriverStrength::Possible

@@ -25,7 +25,7 @@ impl People for Employees {
         DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
-        DriverSource::Paycom
+        DriverSource::new(&paycom::PEOPLE)
     }
     fn order(&self) -> u16 {
         10

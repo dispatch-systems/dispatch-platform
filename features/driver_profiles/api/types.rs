@@ -2,7 +2,7 @@
 //! `generated/`, which `client.ts` imports.
 use dispatch_core::{
     collection::api::jobs::PublicJob,
-    manifest::people::{DriverData, DriverSource, DriverStatus},
+    manifest::people::{DriverData, DriverSource},
     text_enum,
 };
 use serde::Serialize;
@@ -36,11 +36,15 @@ pub struct RosterStatus {
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_profiles/api/generated/"))]
-    /// How an ID came to its person.
+    /// How an ID came to its person, surest last: as its first ID, by a name variant, a
+    /// unique name, a phone number or an email address only they share, a link saved on the
+    /// meal-break page, or someone's decision.
     pub enum DriverLink {
         New => "new",
-        Name => "name",
         Variant => "variant",
+        Name => "name",
+        Phone => "phone",
+        Email => "email",
         Saved => "saved",
         Person => "person",
     }
@@ -58,6 +62,8 @@ text_enum! {
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_profiles/api/generated/"))]
     /// Why two people might be one.
     pub enum DriverEvidenceKind {
+        SameEmail => "same_email",
+        SamePhone => "same_phone",
         SameLastName => "same_last_name",
         SameFirstName => "same_first_name",
         ShortForm => "short_form",
@@ -76,6 +82,19 @@ text_enum! {
         Apart => "apart",
     }
 }
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "features/driver_profiles/api/generated/"))]
+    /// What a person does for the DSP: a driver or a helper, as Amazon's roster says or their
+    /// routes show; office staff, outside the departments the DSP counts as drivers; or
+    /// someone who has left, whom no source lists and nothing has seen lately.
+    pub enum DriverRole {
+        Driver => "driver",
+        Helper => "helper",
+        Office => "office",
+        Former => "former",
+    }
+}
 
 /// One ID a person is known by, as its source wrote it.
 #[derive(Clone, Debug, Serialize)]
@@ -91,6 +110,13 @@ pub struct DriverId {
     pub name: String,
     pub department: Option<String>,
     pub position: Option<String>,
+    /// The email addresses and phone numbers its source has for them.
+    pub emails: Vec<String>,
+    pub phones: Vec<String>,
+    /// What its source says they do: `Driver`, `Helper`.
+    pub roles: Vec<String>,
+    /// On its source's current roster.
+    pub listed: bool,
     pub first_seen: Option<String>,
     pub last_seen: Option<String>,
     pub linked_by: DriverLink,
@@ -107,10 +133,17 @@ pub struct DriverId {
 pub struct Driver {
     pub code: String,
     pub name: String,
-    pub status: DriverStatus,
+    pub role: DriverRole,
+    /// How surely their IDs are one person's: the least sure link among them, `new` while
+    /// they hold one ID.
+    pub link: DriverLink,
+    /// Whether they are in a pair waiting for a decision.
+    pub review: bool,
     pub ids: Vec<DriverId>,
     pub appears: Vec<DriverData>,
     pub last_seen: Option<String>,
+    /// Their photo's version, when Amazon's roster holds one: its address carries it.
+    pub photo: Option<String>,
 }
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -120,22 +153,21 @@ pub struct Driver {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct DriverCounts {
-    /// Everyone with a code, office staff and those who have left included.
-    pub all: usize,
-    /// Everyone else.
-    pub drivers: usize,
-    /// Drivers known to both Paycom and Amazon.
-    pub matched: usize,
+    /// Everyone with a code.
+    pub people: usize,
     /// Pairs that might be one person.
     pub review: usize,
-    pub paycom_only: usize,
-    pub amazon_only: usize,
+    /// People joined by a name variant nobody confirmed.
+    pub unconfirmed: usize,
+    /// Drivers and helpers some source the DSP has does not know.
+    pub missing: usize,
+    pub drivers: usize,
+    pub helpers: usize,
     pub office: usize,
-    /// People only one source knows who have left: off Paycom's roster and unseen lately.
     pub former: usize,
 }
-/// One reason two people might be one. `short` and `long` name a short form and the
-/// name it stands for; `same` of `of` days count days both sides worked.
+/// One reason two people might be one. `short` and `long` name a short form and the name it
+/// stands for; `same` of `of` days count the days both worked.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -150,7 +182,8 @@ pub struct DriverEvidence {
     pub same: Option<usize>,
     pub of: Option<usize>,
 }
-/// Someone known only to Paycom and someone known only to Amazon who might be one person.
+/// Someone who might be someone else listed twice: `person` holds what `candidate` lacks, and
+/// joining them keeps `candidate`'s code.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -159,12 +192,12 @@ pub struct DriverEvidence {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct DriverPair {
-    pub paycom: Driver,
-    pub amazon: Driver,
+    pub person: Driver,
+    pub candidate: Driver,
     pub strength: DriverStrength,
     pub evidence: Vec<DriverEvidence>,
 }
-/// The Driver Match tab: the pairs to decide, then everyone.
+/// The Driver Match tab: the sources the DSP has, the pairs to decide, then everyone.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -175,6 +208,8 @@ pub struct DriverPair {
 pub struct DriverMatch {
     /// When collected data was last checked for new IDs.
     pub checked_at: Option<String>,
+    /// The sources of IDs the DSP's features have on, in their order.
+    pub sources: Vec<DriverSource>,
     pub counts: DriverCounts,
     pub review: Vec<DriverPair>,
     pub drivers: Vec<Driver>,
@@ -192,7 +227,8 @@ pub struct DriverActivity {
     /// scorecard.
     pub count: usize,
 }
-/// One day of the last fourteen. `None` where nothing was collected for that side.
+/// One source's last fourteen days of a person's work: for each day, whether they worked,
+/// `None` where nothing was collected.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -200,10 +236,9 @@ pub struct DriverActivity {
     ts(export_to = "features/driver_profiles/api/generated/")
 )]
 #[serde(rename_all = "camelCase")]
-pub struct DriverDay {
-    pub date: String,
-    pub clocked_in: Option<bool>,
-    pub drove: Option<bool>,
+pub struct DriverDays {
+    pub source: DriverSource,
+    pub worked: Vec<Option<bool>>,
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -233,7 +268,10 @@ pub struct DriverEvent {
 pub struct DriverDetails {
     pub driver: Driver,
     pub activity: Vec<DriverActivity>,
-    pub days: Vec<DriverDay>,
+    /// The last fourteen days, oldest first.
+    pub dates: Vec<String>,
+    /// What each source that saw them work says of those days.
+    pub days: Vec<DriverDays>,
     pub history: Vec<DriverEvent>,
     /// Codes merged into this person, which now lead here.
     pub merged_codes: Vec<String>,

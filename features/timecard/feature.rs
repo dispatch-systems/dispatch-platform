@@ -50,13 +50,10 @@ use dispatch_core::{
     tenancy::api::audit::AuditArea::Collections,
 };
 use dispatch_cortex as cortex;
-use dispatch_driver_profiles as driver_profiles;
 use dispatch_paycom as paycom;
 
 pub const FEATURE: Feature = Feature {
     place: 20,
-    // Its meal-break comparison joins drivers to employees by Driver Match's codes.
-    depends_on: &["driver_profiles"],
     switch: optional("timecard", "Timecard", &["timecards"]),
     subfeatures: &[
         tab("timecard.daily", "Timecard"),
@@ -175,7 +172,7 @@ pub const FEATURE: Feature = Feature {
                 punches::DOMAIN,
                 meals::DOMAIN,
                 DataDomain::LIVE,
-                driver_profiles::DRIVERS,
+                DataDomain::DRIVERS,
                 DataDomain::TENANT,
             ]),
         },

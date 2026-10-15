@@ -33,12 +33,20 @@ use dispatch_core::{
     },
     db::{Kind, Migration, Migrations, migrations::Apply::Sql},
     foundation::validate as v,
-    manifest::{Capability, Collection, Collector},
+    manifest::{Capability, Collection, Collector, people::SourceData},
 };
 use serde_json::Value;
 use std::path::Path;
 
 pub const PROVIDER: Provider = Provider::new("cortex");
+/// Amazon's transporter IDs, as the IDs people are known by: every Amazon source names a
+/// driver by the same one.
+pub const PEOPLE: SourceData = SourceData {
+    id: "amazon",
+    label: "Amazon",
+    mark: "AMZ",
+    order: 20,
+};
 pub static COLLECTOR: Cortex = Cortex;
 
 /// The application's own host.

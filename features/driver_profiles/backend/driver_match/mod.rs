@@ -1,15 +1,18 @@
 //! Driver Match: one code for each person the DSP's collections know, whatever each
 //! source calls them. Collected rows keep their sources' IDs; `person_ids` leads every ID
 //! to its person. New IDs get a person after every collection, joining someone only on a
-//! certain match; anything less waits for a decision in Settings.
+//! certain match; anything less waits for a decision in Settings. It reads only the
+//! features the DSP has on, and does nothing while it is off itself.
+mod contacts;
 pub(crate) mod maintenance;
 mod matching;
+mod overview;
 mod review;
 mod sources;
 
 use crate::api::types::{
-    Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
-    DriverId, DriverLink, DriverMatch, DriverPair, DriverStrength,
+    DriverActivity, DriverCounts, DriverDays, DriverDetails, DriverEvent, DriverEventKind,
+    DriverLink, DriverMatch,
 };
 use dispatch_core::{
     Error, Result,
@@ -17,17 +20,21 @@ use dispatch_core::{
     db::{Db, FromRow, Row, Store, iso},
     ensure,
     foundation::{crypto, names},
-    manifest::people::{DriverData, DriverSource, DriverStatus},
+    manifest::people::{self, DriverData, DriverSource, Link},
     server::cache::DataDomain,
 };
 use matching::{Member, Saved};
+use overview::overview;
 use rusqlite::params;
 use serde_json::{Value, json};
-use sources::{Days, DriverDepartments, Identity, Key, Seen};
+use sources::{Identity, Key};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Driver codes, the decisions about them and the IDs they lead to.
-pub const DOMAIN: DataDomain = DataDomain::new("drivers");
+/// Driver codes, the decisions about them and the IDs they lead to: core's own domain, as
+/// every feature showing people reads them.
+pub const DOMAIN: DataDomain = DataDomain::DRIVERS;
+/// Its part of Driver Profiles: it matches only while this is on.
+pub(crate) const PART: &str = "driver_match";
 /// When collected data was last checked for new IDs.
 const CHECKED: &str = "driver_match.checked_at";
 /// Links saved on the meal-break page before Driver Match, which reads them as decisions and
@@ -37,20 +44,12 @@ pub const LINKS: &str = "employees.provider_links";
 /// rarely spells a word.
 const ALPHABET: &[u8; 30] = b"23456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CODE_LENGTH: usize = 6;
-/// How long someone only one source knows can go unseen, off Paycom's roster, before
-/// they count as having left: days before the newest day anything was collected for.
+/// How long someone no source lists can go unseen before they count as having left: days
+/// before the newest day anything was collected for.
 const FORMER_AFTER_DAYS: i64 = 21;
 
 pub fn valid_code(code: &str) -> bool {
     code.len() == CODE_LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
-}
-
-/// Whether someone works in the office: outside the departments their source's settings
-/// count as drivers.
-fn office(x: &Identity, drivers: &DriverDepartments) -> bool {
-    drivers
-        .get(&x.source)
-        .is_some_and(|list| !list.contains(x.department.as_deref().unwrap_or("")))
 }
 
 /// What one pass reads: every ID the collections hold and the links saved on the meal-break
@@ -61,9 +60,10 @@ pub struct DriverSources {
 }
 
 /// A row of `person_ids`: an ID, its person and how it came to them. Nothing a source
-/// says about the person is kept here; that stays in the source's own database.
-struct IdRow {
-    source: DriverSource,
+/// says about the person is kept here; that stays in the source's own database. Its source
+/// is kept as written, as a feature no longer in the build may have named it.
+pub(crate) struct IdRow {
+    source: String,
     external_id: String,
     code: String,
     linked_by: DriverLink,
@@ -82,113 +82,13 @@ impl FromRow for IdRow {
         })
     }
 }
-/// Every ID the collections hold now, as they describe it.
-type Found = BTreeMap<Key, Identity>;
 impl IdRow {
-    fn key(&self) -> Key {
-        (self.source, self.external_id.clone())
+    /// Its source, while a feature in this build declares it.
+    fn source(&self) -> Option<DriverSource> {
+        DriverSource::parse(&self.source)
     }
-    /// The ID as its sources describe it now; one no source holds any more shows bare.
-    fn public(&self, found: &Found) -> DriverId {
-        let x = found.get(&self.key());
-        DriverId {
-            source: self.source,
-            id: self.external_id.clone(),
-            name: x.map(|x| x.name().to_owned()).unwrap_or_default(),
-            department: x.and_then(|x| x.department.clone()),
-            position: x.and_then(|x| x.position.clone()),
-            first_seen: x.and_then(|x| x.first_seen.clone()),
-            last_seen: x.and_then(|x| x.last_seen.clone()),
-            linked_by: self.linked_by,
-            linked_at: self.linked_at.clone(),
-        }
-    }
-}
-
-/// Everything the tab and the details panel read, gathered once.
-struct Overview {
-    result: DriverMatch,
-    rows: Vec<IdRow>,
-    found: Found,
-    activity: BTreeMap<Key, BTreeMap<DriverData, Seen>>,
-    days: Days,
-}
-
-/// A person as the tab lists them, before review marks the ones in a pair. `recent` is
-/// the first day that still counts as recent.
-fn driver(
-    code: &str,
-    ids: &[&IdRow],
-    activity: &BTreeMap<Key, BTreeMap<DriverData, Seen>>,
-    departments: &DriverDepartments,
-    found: &Found,
-    recent: &str,
-) -> Driver {
-    let paycom: Vec<&&IdRow> = ids
-        .iter()
-        .filter(|i| i.source == DriverSource::Paycom)
-        .collect();
-    let amazon = ids.iter().any(|i| i.source == DriverSource::Amazon);
-    let seen: Vec<&BTreeMap<DriverData, Seen>> =
-        ids.iter().filter_map(|i| activity.get(&i.key())).collect();
-    let last_seen = seen
-        .iter()
-        .flat_map(|data| data.values().filter_map(|s| s.last.clone()))
-        .chain(
-            ids.iter()
-                .filter_map(|i| found.get(&i.key())?.last_seen.clone()),
-        )
-        .max();
-    // Someone only one source knows who has left: off Paycom's roster, and in nothing
-    // collected lately. Nobody can match them, so they wait on no one.
-    let gone = !ids
-        .iter()
-        .any(|i| found.get(&i.key()).is_some_and(|x| x.listed))
-        && last_seen.as_deref().is_none_or(|last| last < recent);
-    let status = if !paycom.is_empty() && amazon {
-        if ids
-            .iter()
-            .any(|i| matches!(i.linked_by, DriverLink::Person | DriverLink::Saved))
-        {
-            DriverStatus::Confirmed
-        } else if ids.iter().any(|i| i.linked_by == DriverLink::Variant) {
-            DriverStatus::Variant
-        } else {
-            DriverStatus::Matched
-        }
-    } else if gone {
-        DriverStatus::Former
-    } else if amazon {
-        DriverStatus::AmazonOnly
-    } else if paycom
-        .iter()
-        .all(|i| found.get(&i.key()).is_some_and(|x| office(x, departments)))
-    {
-        DriverStatus::Office
-    } else {
-        DriverStatus::PaycomOnly
-    };
-    // Paycom's name is the legal one; Amazon's stands in when Paycom has none, and an ID
-    // no source holds any more when neither does.
-    let written = |source: DriverSource| {
-        ids.iter()
-            .filter(|i| i.source == source)
-            .find_map(|i| found.get(&i.key()))
-            .map(|x| names::display(x.name()))
-    };
-    let name = written(DriverSource::Paycom)
-        .or_else(|| written(DriverSource::Amazon))
-        .or_else(|| ids.first().map(|i| i.external_id.clone()))
-        .unwrap_or_default();
-    Driver {
-        code: code.to_owned(),
-        name,
-        status,
-        ids: ids.iter().map(|i| i.public(found)).collect(),
-        appears: DriverData::all()
-            .filter(|d| seen.iter().any(|data| data.contains_key(d)))
-            .collect(),
-        last_seen,
+    fn key(&self) -> Option<Key> {
+        Some((self.source()?, self.external_id.clone()))
     }
 }
 
@@ -201,7 +101,8 @@ pub trait DriverMatchStore {
     fn driver_match(&self, dsp: &str) -> Result<DriverMatch>;
     fn driver_counts(&self, dsp: &str) -> Result<DriverCounts>;
     fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails>;
-    fn driver_links(&self, dsp: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>>;
+    /// The photo of `code`'s person, from Amazon's roster: its kind and its bytes.
+    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<(&'static str, Vec<u8>)>>;
     fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch>;
     fn split_driver(
         &self,
@@ -211,6 +112,14 @@ pub trait DriverMatchStore {
         id: &str,
     ) -> Result<DriverMatch>;
     fn keep_drivers_apart(&self, c: &Context, code: &str, other: &str) -> Result<DriverMatch>;
+    /// Confirms one of `code`'s IDs is theirs, as a match only suggested it.
+    fn confirm_driver(
+        &self,
+        c: &Context,
+        code: &str,
+        source: DriverSource,
+        id: &str,
+    ) -> Result<DriverMatch>;
 }
 impl DriverMatchStore for Store {
     /// Gives every new ID in the DSP's collections a person. Answers how many IDs were new.
@@ -219,8 +128,9 @@ impl DriverMatchStore for Store {
     }
     /// Reads what a pass needs, without writing: run it under the shared lock.
     fn driver_sources(&self, dsp: &str) -> Result<DriverSources> {
+        let people = sources::people(self, dsp)?;
         Ok(DriverSources {
-            identities: sources::identities(self, dsp)?,
+            identities: sources::identities(&people, self, dsp)?,
             saved: saved_links(self, dsp)?,
         })
     }
@@ -231,27 +141,34 @@ impl DriverMatchStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let rows: Vec<IdRow> = db.query_as("SELECT * FROM person_ids", [])?;
-            let known: BTreeSet<Key> = rows.iter().map(IdRow::key).collect();
-            let names: BTreeMap<Key, &Vec<String>> = identities
+            let known: BTreeSet<(String, String)> = rows
                 .iter()
-                .map(|x| ((x.source, x.id.clone()), &x.names))
+                .map(|r| (r.source.clone(), r.external_id.clone()))
+                .collect();
+            let described: BTreeMap<Key, &Identity> = identities
+                .iter()
+                .map(|x| ((x.source, x.id.clone()), x))
                 .collect();
             let incoming: Vec<Identity> = identities
                 .iter()
-                .filter(|x| !known.contains(&(x.source, x.id.clone())))
+                .filter(|x| !known.contains(&(x.source.as_str().to_owned(), x.id.clone())))
                 .cloned()
                 .collect();
-            // An ID no source holds any more has no names to match by.
+            // An ID no source holds any more has nothing to match by.
             let mut people: BTreeMap<String, Vec<Member>> = BTreeMap::new();
             for row in &rows {
-                people.entry(row.code.clone()).or_default().push(Member {
-                    source: row.source,
-                    id: row.external_id.clone(),
-                    names: names
-                        .get(&row.key())
-                        .map(|n| (*n).clone())
-                        .unwrap_or_default(),
-                });
+                let Some(key) = row.key() else { continue };
+                let member = match described.get(&key) {
+                    Some(x) => Member::of(x),
+                    None => Member {
+                        source: key.0,
+                        id: key.1,
+                        names: vec![],
+                        emails: BTreeSet::new(),
+                        phones: BTreeSet::new(),
+                    },
+                };
+                people.entry(row.code.clone()).or_default().push(member);
             }
             let decided = matching::plan(people, &incoming, &saved);
             let now = iso();
@@ -301,12 +218,17 @@ impl DriverMatchStore for Store {
             .find(|d| d.code == code)
             .cloned()
             .ok_or_else(|| Error::new("not_found", 404))?;
-        let ids: Vec<&IdRow> = overview.rows.iter().filter(|r| r.code == code).collect();
+        let ids: Vec<(&IdRow, Key)> = overview
+            .rows
+            .iter()
+            .filter(|r| r.code == code)
+            .filter_map(|r| Some((r, r.key()?)))
+            .collect();
         let activity = DriverData::all()
             .filter_map(|data| {
                 let count: usize = ids
                     .iter()
-                    .filter_map(|i| overview.activity.get(&i.key())?.get(&data))
+                    .filter_map(|(_, key)| overview.activity.get(key)?.get(&data))
                     .map(|seen| seen.count)
                     .sum();
                 (count > 0).then_some(DriverActivity { data, count })
@@ -318,35 +240,40 @@ impl DriverMatchStore for Store {
             .parse()
             .unwrap_or(chrono_tz::UTC);
         let today = chrono::Utc::now().with_timezone(&zone).date_naive();
-        let worked = |source: DriverSource| -> Option<BTreeSet<&String>> {
-            ids.iter().any(|i| i.source == source).then(|| {
-                ids.iter()
-                    .filter(|i| i.source == source)
-                    .filter_map(|i| overview.days.of(&i.key()))
-                    .flatten()
-                    .collect()
-            })
-        };
-        let (clocked, drove) = (worked(DriverSource::Paycom), worked(DriverSource::Amazon));
-        let days = (0..14)
+        let dates: Vec<String> = (0..14)
             .rev()
-            .map(|back| {
-                let date = (today - chrono::Duration::days(back)).to_string();
-                let on = |days: &Option<BTreeSet<&String>>, covered: &BTreeSet<String>| {
-                    let days = days.as_ref()?;
-                    let here = days.contains(&date);
-                    (here || covered.contains(&date)).then_some(here)
-                };
-                DriverDay {
-                    clocked_in: on(&clocked, &overview.days.paycom),
-                    drove: on(&drove, &overview.days.amazon),
-                    date,
-                }
+            .map(|back| (today - chrono::Duration::days(back)).to_string())
+            .collect();
+        // Each source that knows them and was collected says, for each day it covers,
+        // whether they worked.
+        let mut known: Vec<DriverSource> = ids.iter().map(|(_, key)| key.0).collect();
+        known.sort();
+        known.dedup();
+        let days = known
+            .into_iter()
+            .filter_map(|source| {
+                let covered = overview.days.collected.get(&source)?;
+                let worked: BTreeSet<&String> = ids
+                    .iter()
+                    .filter(|(_, key)| key.0 == source)
+                    .filter_map(|(_, key)| overview.days.of(key))
+                    .flatten()
+                    .collect();
+                Some(DriverDays {
+                    source,
+                    worked: dates
+                        .iter()
+                        .map(|date| {
+                            let here = worked.contains(date);
+                            (here || covered.contains(date)).then_some(here)
+                        })
+                        .collect(),
+                })
             })
             .collect();
         let db = self.dsp(dsp)?;
         let mut history = vec![];
-        for id in &ids {
+        for (id, key) in &ids {
             history.push(DriverEvent {
                 at: id.linked_at.clone(),
                 kind: if id.linked_by == DriverLink::New {
@@ -354,12 +281,9 @@ impl DriverMatchStore for Store {
                 } else {
                     DriverEventKind::Linked
                 },
-                source: Some(id.source),
+                source: Some(key.0),
                 link: Some(id.linked_by),
-                name: overview
-                    .found
-                    .get(&id.key())
-                    .map(|x| names::display(x.name())),
+                name: overview.found.get(key).map(|x| names::display(x.name())),
                 code: None,
                 actor: actor_name(self, dsp, id.actor_id.as_deref())?,
             });
@@ -421,38 +345,28 @@ impl DriverMatchStore for Store {
         Ok(DriverDetails {
             driver,
             activity,
+            dates,
             days,
             history,
             merged_codes,
         })
     }
 
-    /// Every Amazon driver with a person: the Paycom codes that person holds, and whether
-    /// someone confirmed them rather than a name. The meal-break comparison joins by this.
-    fn driver_links(&self, dsp: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>> {
-        let rows: Vec<IdRow> = self.dsp(dsp)?.query_as(
-            "SELECT * FROM person_ids ORDER BY linked_at,external_id",
-            [],
-        )?;
-        let mut people: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
-        for row in &rows {
-            people.entry(&row.code).or_default().push(row);
-        }
-        let mut out = BTreeMap::new();
-        for ids in people.values() {
-            let paycom: Vec<String> = ids
-                .iter()
-                .filter(|i| i.source == DriverSource::Paycom)
-                .map(|i| i.external_id.clone())
-                .collect();
-            let confirmed = ids
-                .iter()
-                .any(|i| matches!(i.linked_by, DriverLink::Person | DriverLink::Saved));
-            for id in ids.iter().filter(|i| i.source == DriverSource::Amazon) {
-                out.insert(id.external_id.clone(), (paycom.clone(), confirmed));
-            }
-        }
-        Ok(out)
+    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<(&'static str, Vec<u8>)>> {
+        ensure(valid_code(code), "not_found", 404)?;
+        let db = self.dsp(dsp)?;
+        let code = surviving(&db, code)?;
+        let amazon: Vec<String> = db
+            .query_as::<(String,)>(
+                "SELECT external_id FROM person_ids WHERE code=? AND source=? \
+                 ORDER BY linked_at,external_id",
+                params![code, matching::AMAZON],
+            )?
+            .into_iter()
+            .map(|(id,)| id)
+            .collect();
+        drop(db);
+        crate::backend::storage::DriverProfilesStore::photo(self, dsp, &amazon)
     }
 
     /// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from
@@ -601,6 +515,86 @@ impl DriverMatchStore for Store {
         )?;
         self.driver_match(dsp)
     }
+
+    fn confirm_driver(
+        &self,
+        c: &Context,
+        code: &str,
+        source: DriverSource,
+        id: &str,
+    ) -> Result<DriverMatch> {
+        ensure(valid_code(code), "invalid_input", 400)?;
+        let dsp = c.dsp.id.as_str();
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            current(&db, code)?;
+            ensure(
+                db.exec(
+                    "UPDATE person_ids SET linked_by='person',linked_at=?1,actor_id=?2 \
+                     WHERE code=?3 AND source=?4 AND external_id=?5 AND linked_by<>'new'",
+                    params![iso(), c.actor(), code, source, id],
+                )? == 1,
+                "driver_changed",
+                409,
+            )?;
+            mirror_links(&db)
+        })?;
+        drop(db);
+        self.audit_ref(
+            Some(c.actor()),
+            Some(dsp),
+            "driver_match.confirmed",
+            code,
+            Some(code),
+            &[],
+            Some(("driver", code)),
+        )?;
+        self.driver_match(dsp)
+    }
+}
+
+/// Who each ID is, for the features that show people: Timecard's meal breaks name each
+/// driver's Paycom employee by it.
+pub(crate) struct Directory;
+impl people::Directory for Directory {
+    fn links(
+        &self,
+        store: &Store,
+        dsp: &str,
+        from: DriverSource,
+        to: DriverSource,
+    ) -> Result<BTreeMap<String, Link>> {
+        if !store.feature_enabled(dsp, PART)? {
+            return Ok(BTreeMap::new());
+        }
+        let rows: Vec<IdRow> = store.dsp(dsp)?.query_as(
+            "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
+             WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.external_id",
+            [],
+        )?;
+        let mut people: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
+        for row in &rows {
+            people.entry(&row.code).or_default().push(row);
+        }
+        let mut out = BTreeMap::new();
+        for (code, ids) in people {
+            let link = Link {
+                code: code.to_owned(),
+                ids: ids
+                    .iter()
+                    .filter(|i| i.source == to.as_str())
+                    .map(|i| i.external_id.clone())
+                    .collect(),
+                confirmed: ids
+                    .iter()
+                    .any(|i| matches!(i.linked_by, DriverLink::Person | DriverLink::Saved)),
+            };
+            for id in ids.iter().filter(|i| i.source == from.as_str()) {
+                out.insert(id.external_id.clone(), link.clone());
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// The links saved on the meal-break page before Driver Match, read as decisions.
@@ -658,192 +652,6 @@ fn new_person(
     Err(Error::new("driver_code_unavailable", 500))
 }
 
-fn overview(store: &Store, dsp: &str) -> Result<Overview> {
-    let found: Found = sources::identities(store, dsp)?
-        .into_iter()
-        .map(|x| ((x.source, x.id.clone()), x))
-        .collect();
-    let activity = sources::activity(store, dsp)?;
-    let days = sources::days(store, dsp)?;
-    let saved = saved_links(store, dsp)?;
-    let departments = sources::driver_departments(store, dsp)?;
-    // Counted from what was collected, not from today, so a DSP whose collections
-    // pause does not see everyone leave.
-    let recent = found
-        .values()
-        .filter_map(|x| x.last_seen.as_deref())
-        .chain(
-            activity
-                .values()
-                .flat_map(|data| data.values().filter_map(|s| s.last.as_deref())),
-        )
-        .filter_map(|day| chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok())
-        .max()
-        .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
-        .unwrap_or_default();
-    let db = store.dsp(dsp)?;
-    let rows: Vec<IdRow> = db.query_as(
-        "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
-         WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
-        [],
-    )?;
-    let apart: BTreeSet<(String, String)> = db
-        .query_as::<(String, String)>("SELECT first,second FROM people_apart", [])?
-        .into_iter()
-        .collect();
-    let checked_at = db
-        .setting(CHECKED, Value::Null)?
-        .as_str()
-        .map(str::to_owned);
-    drop(db);
-    let mut held: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
-    for row in &rows {
-        held.entry(&row.code).or_default().push(row);
-    }
-    let mut drivers: BTreeMap<String, Driver> = held
-        .iter()
-        .map(|(code, ids)| {
-            (
-                (*code).to_owned(),
-                driver(code, ids, &activity, &departments, &found, &recent),
-            )
-        })
-        .collect();
-    // Someone kept these apart from Paycom on the meal-break page; that decision stands.
-    let kept: BTreeSet<&str> = held
-        .iter()
-        .filter(|(_, ids)| {
-            ids.iter().any(|i| {
-                i.source == DriverSource::Amazon && saved.separate.contains(&i.external_id)
-            })
-        })
-        .map(|(code, _)| *code)
-        .collect();
-    // Everyone only one source knows, those who have left included: their records
-    // are worth joining all the same.
-    let side = |source: DriverSource| -> Vec<review::Side<'_>> {
-        let only = [
-            DriverStatus::PaycomOnly,
-            DriverStatus::AmazonOnly,
-            DriverStatus::Former,
-        ];
-        held.iter()
-            .filter(|(code, ids)| {
-                only.contains(&drivers[**code].status)
-                    && ids.iter().all(|i| i.source == source)
-                    && !kept.contains(**code)
-            })
-            .map(|(code, ids)| review::Side {
-                code,
-                // Every name an ID's sources write, so a middle name or a different
-                // spelling in one of them still counts.
-                names: ids
-                    .iter()
-                    .filter_map(|i| found.get(&i.key()))
-                    .flat_map(|x| x.names.iter().map(String::as_str))
-                    .collect(),
-            })
-            .collect()
-    };
-    let suggestions = review::suggest(
-        &side(DriverSource::Paycom),
-        &side(DriverSource::Amazon),
-        &apart,
-    );
-    let worked = |code: &str| -> Option<BTreeSet<String>> {
-        let sets: Vec<&BTreeSet<String>> = held
-            .get(code)?
-            .iter()
-            .filter_map(|i| days.of(&i.key()))
-            .collect();
-        (!sets.is_empty()).then(|| sets.into_iter().flatten().cloned().collect())
-    };
-    let mut pairs: Vec<(
-        DriverStrength,
-        usize,
-        String,
-        String,
-        Vec<crate::api::types::DriverEvidence>,
-    )> = vec![];
-    for mut suggestion in suggestions {
-        if let Some(days) = review::worked_days(
-            worked(&suggestion.paycom).as_ref(),
-            worked(&suggestion.amazon).as_ref(),
-            &days.paycom,
-            &days.amazon,
-        ) {
-            suggestion.evidence.push(days);
-        }
-        let strength = review::strength(&suggestion.evidence);
-        pairs.push((
-            strength,
-            suggestion.evidence.len(),
-            suggestion.paycom,
-            suggestion.amazon,
-            suggestion.evidence,
-        ));
-    }
-    // The strongest first, and no more than three choices for any one Amazon driver.
-    pairs.sort_by(|a, b| {
-        (a.0 != DriverStrength::Strong)
-            .cmp(&(b.0 != DriverStrength::Strong))
-            .then(b.1.cmp(&a.1))
-            .then_with(|| names::compare(&drivers[&a.3].name, &drivers[&b.3].name))
-    });
-    let mut shown: BTreeMap<String, usize> = BTreeMap::new();
-    pairs.retain(|pair| {
-        let count = shown.entry(pair.3.clone()).or_default();
-        *count += 1;
-        *count <= 3
-    });
-    for (_, _, paycom, amazon, _) in &pairs {
-        for code in [paycom, amazon] {
-            drivers.get_mut(code).unwrap().status = DriverStatus::Review;
-        }
-    }
-    let review: Vec<DriverPair> = pairs
-        .into_iter()
-        .map(|(strength, _, paycom, amazon, evidence)| DriverPair {
-            paycom: drivers[&paycom].clone(),
-            amazon: drivers[&amazon].clone(),
-            strength,
-            evidence,
-        })
-        .collect();
-    let mut list: Vec<Driver> = drivers.into_values().collect();
-    list.sort_by(|a, b| names::compare(&a.name, &b.name).then_with(|| a.code.cmp(&b.code)));
-    let count =
-        |statuses: &[DriverStatus]| list.iter().filter(|d| statuses.contains(&d.status)).count();
-    let office = count(&[DriverStatus::Office]);
-    let former = count(&[DriverStatus::Former]);
-    let counts = DriverCounts {
-        all: list.len(),
-        drivers: list.len() - office - former,
-        matched: count(&[
-            DriverStatus::Matched,
-            DriverStatus::Variant,
-            DriverStatus::Confirmed,
-        ]),
-        review: review.len(),
-        paycom_only: count(&[DriverStatus::PaycomOnly]),
-        amazon_only: count(&[DriverStatus::AmazonOnly]),
-        office,
-        former,
-    };
-    Ok(Overview {
-        result: DriverMatch {
-            checked_at,
-            counts,
-            review,
-            drivers: list,
-        },
-        rows,
-        found,
-        activity,
-        days,
-    })
-}
-
 /// The code a merged person's IDs went to, followed to the end.
 fn surviving(db: &Db, code: &str) -> Result<String> {
     let mut code = code.to_owned();
@@ -862,19 +670,22 @@ fn surviving(db: &Db, code: &str) -> Result<String> {
 }
 
 /// The name a code's person goes by now, as the tab shows it: Paycom's when they have
-/// one, else Amazon's. A merged code answers for the person who kept its IDs.
+/// one, else another source's. A merged code answers for the person who kept its IDs.
 fn driver_name(store: &Store, dsp: &str, code: &str) -> Result<Option<String>> {
     let ids = {
         let db = store.dsp(dsp)?;
         let code = surviving(&db, code)?;
-        db.query_as::<(DriverSource, String)>(
+        db.query_as::<(String, String)>(
             "SELECT source,external_id FROM person_ids WHERE code=? \
-             ORDER BY source='amazon',linked_at,external_id",
+             ORDER BY source<>'paycom',linked_at,external_id",
             [&code],
         )?
     };
-    for key in &ids {
-        if let Some(name) = sources::name_of(store, dsp, key)? {
+    for (source, id) in ids {
+        let Some(source) = DriverSource::parse(&source) else {
+            continue;
+        };
+        if let Some(name) = sources::name_of(store, dsp, &(source, id))? {
             return Ok(Some(names::display(&name)));
         }
     }

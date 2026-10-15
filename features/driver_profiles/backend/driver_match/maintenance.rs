@@ -1,5 +1,5 @@
 //! Driver Match's upkeep: giving every ID the DSP's collections hold a code, after each
-//! collection and hourly.
+//! collection and hourly, for each DSP that has it on.
 use super::DriverMatchStore;
 use dispatch_core::{
     Error, Result, State,
@@ -25,7 +25,17 @@ fn failed(event: &str, error: &Error) {
 // briefly.
 async fn assign(state: &Arc<State>, dsp: String) -> Result<()> {
     let reading = dsp.clone();
-    let found = state.read(move |db| db.driver_sources(&reading)).await?;
+    // Switched off, it matches nobody; the DSP's codes wait as they are.
+    let found = state
+        .read(move |db| {
+            db.feature_enabled(&reading, super::PART)?
+                .then(|| db.driver_sources(&reading))
+                .transpose()
+        })
+        .await?;
+    let Some(found) = found else {
+        return Ok(());
+    };
     let tenant = dsp.clone();
     state
         .run_scoped(dsp, super::DOMAIN, move |db| {

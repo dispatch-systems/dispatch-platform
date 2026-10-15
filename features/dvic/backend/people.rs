@@ -22,7 +22,7 @@ impl People for Drivers {
         DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
-        DriverSource::Amazon
+        DriverSource::new(&dispatch_cortex::PEOPLE)
     }
     /// Amazon's last: DVIC sometimes writes only a last initial.
     fn order(&self) -> u16 {
