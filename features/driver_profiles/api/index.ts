@@ -15,3 +15,4 @@ export type { DriverPair } from './generated/DriverPair.js';
 export type { DriverSource } from '../../../core/manifest/api/generated/DriverSource.js';
 export type { DriverStatus } from '../../../core/manifest/api/generated/DriverStatus.js';
 export type { DriverStrength } from './generated/DriverStrength.js';
+export type { RosterStatus } from './generated/RosterStatus.js';

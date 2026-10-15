@@ -26,7 +26,6 @@ test = false
 default = [
     "daily_performance",
     "documents",
-    "driver_match",
     "driver_profiles",
     "dvic",
     "home",
@@ -40,7 +39,6 @@ default = [
 ]
 daily_performance = ["dep:dispatch-daily-performance"]
 documents = ["dep:dispatch-documents"]
-driver_match = ["dep:dispatch-driver-match"]
 driver_profiles = ["dep:dispatch-driver-profiles"]
 dvic = ["dep:dispatch-dvic", "dispatch-mcp/dvic"]
 home = ["dep:dispatch-home"]
@@ -48,7 +46,7 @@ routes = ["dep:dispatch-routes"]
 settings = ["dep:dispatch-settings"]
 slack = ["dep:dispatch-slack"]
 team = ["dep:dispatch-team"]
-timecard = ["dep:dispatch-timecard", "driver_match"]
+timecard = ["dep:dispatch-timecard", "driver_profiles"]
 uniforms = ["dep:dispatch-uniforms"]
 weekly_scorecard = ["dep:dispatch-weekly-scorecard"]
 
@@ -65,7 +63,6 @@ dispatch-paycom = { path = "../../collectors/paycom" }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 dispatch-daily-performance = { path = "../../features/daily_performance", optional = true }
 dispatch-documents = { path = "../../features/documents", optional = true }
-dispatch-driver-match = { path = "../../features/driver_match", optional = true }
 dispatch-driver-profiles = { path = "../../features/driver_profiles", optional = true }
 dispatch-dvic = { path = "../../features/dvic", optional = true }
 dispatch-home = { path = "../../features/home", optional = true }
@@ -92,7 +89,6 @@ dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 dispatch-daily-performance = { path = "../../features/daily_performance", features = ["ts"] }
 dispatch-documents = { path = "../../features/documents", features = ["ts"] }
-dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"] }
 dispatch-driver-profiles = { path = "../../features/driver_profiles", features = ["ts"] }
 dispatch-dvic = { path = "../../features/dvic", features = ["ts"] }
 dispatch-routes = { path = "../../features/routes", features = ["ts"] }

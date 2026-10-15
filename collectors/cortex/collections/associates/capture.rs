@@ -86,8 +86,10 @@ impl Associate {
         )?;
         let text = |key: &str, max: usize| -> Option<String> {
             let value = row.get(key)?.as_str()?.trim();
-            (!value.is_empty() && value.chars().count() <= max && !value.chars().any(char::is_control))
-                .then(|| value.to_owned())
+            (!value.is_empty()
+                && value.chars().count() <= max
+                && !value.chars().any(char::is_control))
+            .then(|| value.to_owned())
         };
         let Some(transporter_id) = text("transporter_id", 64).filter(|id| token(id, 64)) else {
             return Ok(None);
@@ -150,7 +152,9 @@ pub(crate) fn photo_address(path: &str) -> bool {
         && !path.contains("..")
         && !path.contains("//")
         && !path.contains('#')
-        && !path.bytes().any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
+        && !path
+            .bytes()
+            .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
 }
 
 /// What a photo's bytes are. S3 serves Amazon's photos with no type of their own, so it is
@@ -169,9 +173,37 @@ impl PhotoFormat {
         match bytes {
             [0xFF, 0xD8, 0xFF, ..] => Some(Self::Jpeg),
             [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, ..] => Some(Self::Png),
-            [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some(Self::Webp),
+            [
+                b'R',
+                b'I',
+                b'F',
+                b'F',
+                _,
+                _,
+                _,
+                _,
+                b'W',
+                b'E',
+                b'B',
+                b'P',
+                ..,
+            ] => Some(Self::Webp),
             [b'G', b'I', b'F', b'8', ..] => Some(Self::Gif),
-            [_, _, _, _, b'f', b't', b'y', b'p', b'a', b'v', b'i', b'f', ..] => Some(Self::Avif),
+            [
+                _,
+                _,
+                _,
+                _,
+                b'f',
+                b't',
+                b'y',
+                b'p',
+                b'a',
+                b'v',
+                b'i',
+                b'f',
+                ..,
+            ] => Some(Self::Avif),
             _ => None,
         }
     }

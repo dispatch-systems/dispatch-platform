@@ -29,7 +29,9 @@ pub(crate) fn kind(extension: &str) -> Option<PhotoFormat> {
 /// extension it could not have written.
 pub(crate) fn file_name(sha256: &str, extension: &str) -> Option<String> {
     (sha256.len() == 64
-        && sha256.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        && sha256
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         && kind(extension).is_some())
     .then(|| format!("{sha256}.{extension}"))
 }

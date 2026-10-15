@@ -180,5 +180,5 @@ pub(crate) fn plan(
 }
 
 #[cfg(test)]
-#[path = "../tests/backend/matching.rs"]
+#[path = "../../tests/backend/driver_match/matching.rs"]
 mod tests;

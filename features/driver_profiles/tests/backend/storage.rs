@@ -25,16 +25,15 @@ fn a_photo_stays_while_amazon_lists_whoever_it_shows() {
         bind_roster_request(&store, &dsp).unwrap_err().code,
         "driver_profiles_abbreviation_required"
     );
-    store.set_profile(&dsp, json!({"abbreviation":"FXTR"})).unwrap();
+    store
+        .set_profile(&dsp, json!({"abbreviation":"FXTR"}))
+        .unwrap();
     publish(&store, &dsp, "job-1", roster(&store, &dsp));
     let dir = photos::dir(&store, &dsp).unwrap();
     let files = || std::fs::read_dir(&dir).unwrap().count();
     assert_eq!(files(), 8);
     // Every photo stands, so the next collection downloads none of them.
-    assert_eq!(
-        store.kept_photos(&dsp, "company-fixture").unwrap().len(),
-        8
-    );
+    assert_eq!(store.kept_photos(&dsp, "company-fixture").unwrap().len(), 8);
     // Amazon stops listing two; one more is inactive but still listed, and keeps theirs.
     let mut next = roster(&store, &dsp);
     next.associates

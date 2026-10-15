@@ -7,7 +7,7 @@ use dispatch_core::{
     manifest::people::{DriverSource, DriverStatus},
 };
 use dispatch_cortex::{discovery::Scope, meals};
-use dispatch_driver_match::{
+use dispatch_driver_profiles::{
     DriverEventKind, DriverMatch, DriverMatchStore, DriverStrength, valid_code,
 };
 use dispatch_paycom::fixtures;

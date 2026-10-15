@@ -7,7 +7,6 @@ import { feature as uniforms } from '../../features/uniforms/frontend/feature.js
 import { feature as routes } from '../../features/routes/frontend/feature.js';
 import { feature as dvic } from '../../features/dvic/frontend/feature.js';
 import { feature as weeklyScorecard } from '../../features/weekly_scorecard/frontend/feature.js';
-import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
 import { feature as driverProfiles } from '../../features/driver_profiles/frontend/feature.js';
 import { feature as dailyPerformance } from '../../features/daily_performance/frontend/feature.js';
 import { feature as documents } from '../../features/documents/frontend/feature.js';
@@ -32,7 +31,6 @@ export const features: readonly FrontendFeature[] = [
   routes,
   dvic,
   weeklyScorecard,
-  driverMatch,
   driverProfiles,
   dailyPerformance,
   documents,

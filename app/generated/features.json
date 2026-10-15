@@ -162,72 +162,6 @@
     },
     "subfeatures": []
   },
-  "driver_match": {
-    "collectors": [],
-    "depends_on": [],
-    "frontend": true,
-    "keeps": [],
-    "migrations": {
-      "dsp": [
-        {
-          "id": 7,
-          "name": "driver_match"
-        }
-      ],
-      "platform": [
-        {
-          "id": 10,
-          "name": "driver_codes"
-        }
-      ]
-    },
-    "permissions": [
-      "driver_match.manage"
-    ],
-    "slots": {
-      "after_collection": true,
-      "audit": {
-        "areas": [],
-        "names": true,
-        "subjects": [
-          "driver"
-        ]
-      },
-      "cached": [],
-      "commands": null,
-      "demo": false,
-      "domains": [
-        "drivers"
-      ],
-      "live": [],
-      "maintenance": [
-        3600
-      ],
-      "people": [],
-      "routes": [
-        "GET /api/dsp/driver-match",
-        "GET /api/dsp/driver-match/counts",
-        "GET /api/dsp/driver-match/drivers/{code}",
-        "POST /api/dsp/driver-match/merge",
-        "POST /api/dsp/driver-match/split",
-        "POST /api/dsp/driver-match/apart"
-      ],
-      "settings": []
-    },
-    "switch": "driver_match",
-    "mandatory": false,
-    "tables": {
-      "dsp": [
-        "people",
-        "people_apart",
-        "person_ids"
-      ],
-      "platform": [
-        "driver_codes"
-      ]
-    },
-    "subfeatures": []
-  },
   "driver_profiles": {
     "collectors": [
       "cortex"
@@ -243,13 +177,25 @@
           "id": 1,
           "name": "baseline"
         }
+      ],
+      "dsp": [
+        {
+          "id": 7,
+          "name": "driver_match"
+        }
+      ],
+      "platform": [
+        {
+          "id": 10,
+          "name": "driver_codes"
+        }
       ]
     },
     "permissions": [
       "driver_profiles.collect"
     ],
     "slots": {
-      "after_collection": false,
+      "after_collection": true,
       "audit": {
         "areas": [
           [
@@ -257,20 +203,24 @@
             "collections"
           ]
         ],
-        "names": false,
-        "subjects": []
+        "names": true,
+        "subjects": [
+          "driver"
+        ]
       },
       "cached": [],
       "commands": null,
       "demo": false,
       "domains": [
-        "driver_profiles"
+        "driver_profiles",
+        "drivers"
       ],
       "live": [
         "driver_profiles.collect"
       ],
       "maintenance": [
-        600
+        600,
+        3600
       ],
       "people": [
         "driver_profiles"
@@ -284,7 +234,13 @@
         "POST /api/dsp/driver-profiles/schedules/preview",
         "POST /api/dsp/driver-profiles/schedules/{key}",
         "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
-        "POST /api/dsp/driver-profiles/schedules/{key}/remove"
+        "POST /api/dsp/driver-profiles/schedules/{key}/remove",
+        "GET /api/dsp/driver-match",
+        "GET /api/dsp/driver-match/counts",
+        "GET /api/dsp/driver-match/drivers/{code}",
+        "POST /api/dsp/driver-match/merge",
+        "POST /api/dsp/driver-match/split",
+        "POST /api/dsp/driver-match/apart"
       ],
       "settings": []
     },
@@ -296,9 +252,19 @@
         "photos",
         "roster_runs",
         "settings"
+      ],
+      "dsp": [
+        "people",
+        "people_apart",
+        "person_ids"
+      ],
+      "platform": [
+        "driver_codes"
       ]
     },
-    "subfeatures": []
+    "subfeatures": [
+      "driver_match"
+    ]
   },
   "dvic": {
     "collectors": [
@@ -662,7 +628,7 @@
       "paycom"
     ],
     "depends_on": [
-      "driver_match"
+      "driver_profiles"
     ],
     "frontend": true,
     "keeps": [

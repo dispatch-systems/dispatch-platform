@@ -5,7 +5,7 @@ pub(crate) mod collect;
 mod fixture;
 
 pub use capture::{
-    Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo,
-    PhotoFormat, Request,
+    Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, PhotoFormat,
+    Request,
 };
 pub use fixture::fixture;

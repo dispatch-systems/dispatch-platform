@@ -76,17 +76,23 @@ impl DriverProfilesStore for Store {
     fn enqueue_roster(&self, dsp: &str, actor: Option<&str>, key: &str) -> Result<Value> {
         bind_roster_request(self, dsp)?;
         let job = self
-            .enqueue_batch(dsp, actor, &[(key.into(), cortex::PROVIDER, roster_request())])?
+            .enqueue_batch(
+                dsp,
+                actor,
+                &[(key.into(), cortex::PROVIDER, roster_request())],
+            )?
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
     fn kept_photos(&self, dsp: &str, company: &str) -> Result<Vec<String>> {
-        let rows = self.driver_profiles_db(dsp)?.query_as::<(String, String, String)>(
-            "SELECT p.address,p.sha256,p.format FROM photos p WHERE p.stored_at>=? AND EXISTS \
+        let rows = self
+            .driver_profiles_db(dsp)?
+            .query_as::<(String, String, String)>(
+                "SELECT p.address,p.sha256,p.format FROM photos p WHERE p.stored_at>=? AND EXISTS \
              (SELECT 1 FROM associates a WHERE a.photo_address=p.address AND a.company_id=?) \
              ORDER BY p.address",
-            params![at(now() - PHOTO_REFRESH_MS), company],
-        )?;
+                params![at(now() - PHOTO_REFRESH_MS), company],
+            )?;
         let dir = photos::dir(self, dsp)?;
         Ok(rows
             .into_iter()

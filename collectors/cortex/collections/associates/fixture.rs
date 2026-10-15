@@ -78,12 +78,16 @@ fn portrait(index: usize) -> Vec<u8> {
         for x in 0..SIZE {
             let (dx, dy) = (x as f32 - 48.0, y as f32);
             let head = dx * dx + (dy - 38.0) * (dy - 38.0) <= radius * radius;
-            let shoulders =
-                dy >= 62.0 && (dx * dx) / (34.0 * 34.0) + (dy - 100.0) * (dy - 100.0) / (38.0 * 38.0) <= 1.0;
+            let shoulders = dy >= 62.0
+                && (dx * dx) / (34.0 * 34.0) + (dy - 100.0) * (dy - 100.0) / (38.0 * 38.0) <= 1.0;
             let t = dy / SIZE as f32;
             for channel in 0..3 {
                 let tone = f32::from(top[channel]) * (1.0 - t) + f32::from(bottom[channel]) * t;
-                let value = if head || shoulders { tone * 0.2 + 255.0 * 0.8 } else { tone };
+                let value = if head || shoulders {
+                    tone * 0.2 + 255.0 * 0.8
+                } else {
+                    tone
+                };
                 raw.push(value.round() as u8);
             }
         }

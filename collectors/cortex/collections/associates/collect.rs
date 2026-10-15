@@ -2,7 +2,9 @@
 //! names, then every associate in one request, then the photos the DSP lacks, each from where
 //! the application redirects its address. Nothing after the roster needs a page, so the
 //! browser closes as soon as it is in.
-use super::capture::{Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, Request};
+use super::capture::{
+    Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, Request,
+};
 use crate as cortex;
 use crate::connection::Driver;
 use dispatch_core::{
@@ -56,8 +58,14 @@ pub(crate) fn company(reply: &Value, code: &str) -> Result<(String, String)> {
         .collect();
     match named.as_slice() {
         [one] => Ok(one.clone()),
-        [] => Err(Error::new(cortex::codes::CORTEX_SCOPE_MISMATCH.as_str(), 502)),
-        _ => Err(Error::new(cortex::codes::CORTEX_PROVIDER_AMBIGUOUS.as_str(), 502)),
+        [] => Err(Error::new(
+            cortex::codes::CORTEX_SCOPE_MISMATCH.as_str(),
+            502,
+        )),
+        _ => Err(Error::new(
+            cortex::codes::CORTEX_PROVIDER_AMBIGUOUS.as_str(),
+            502,
+        )),
     }
 }
 
@@ -87,7 +95,11 @@ pub(crate) fn roster(reply: &Value) -> Result<Vec<Associate>> {
         }
     }
     // A roster naming no one would say everyone left: it is a page that failed instead.
-    ensure(!associates.is_empty(), cortex::codes::CORTEX_SOURCE_CHANGED.as_str(), 502)?;
+    ensure(
+        !associates.is_empty(),
+        cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
+        502,
+    )?;
     Ok(associates)
 }
 

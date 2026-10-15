@@ -361,3 +361,60 @@ fn permissions_follow_their_feature() {
         [&"roles.manage".to_owned(), &"timecard.view".to_owned()]
     );
 }
+#[test]
+fn a_new_page_stays_on_for_every_dsp_that_had_one_of_its_parts_on() {
+    use std::os::unix::fs::PermissionsExt;
+    crate::install();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut config = dispatch_core::foundation::config::Config::load().unwrap();
+    config.root = root.path().into();
+    let db = Store::initialize(config).unwrap();
+    let owner = db
+        .create_user(
+            None,
+            "owner@example.test",
+            "Platform",
+            "Owner",
+            "Kept-test-2026!",
+        )
+        .unwrap();
+    let (had, lacked) = (
+        db.new_dsp("Had It", "UTC", &owner.id, false).unwrap().id,
+        db.new_dsp("Lacked It", "UTC", &owner.id, false).unwrap().id,
+    );
+    // An optional page's part that isn't a tab: a page of its own once, as the page that
+    // gathered it is new.
+    let part = catalog()
+        .iter()
+        .find(|f| !f.tab && matches!(f.kind, Kind::Sub(p) if !find(p).unwrap().mandatory))
+        .unwrap();
+    let Kind::Sub(page) = part.kind else {
+        unreachable!()
+    };
+    for dsp in [&had, &lacked] {
+        db.platform
+            .exec(
+                "DELETE FROM dsp_features WHERE dsp_id=? AND feature=?",
+                [dsp.as_str(), page],
+            )
+            .unwrap();
+    }
+    db.platform
+        .exec(
+            "UPDATE dsp_features SET enabled=(dsp_id=?) WHERE feature=?",
+            [had.as_str(), part.id],
+        )
+        .unwrap();
+    db.platform
+        .exec("DELETE FROM feature_availability WHERE feature=?", [page])
+        .unwrap();
+    db.keep_mandatory_features().unwrap();
+    assert!(db.feature_enabled(&had, page).unwrap());
+    assert!(db.feature_enabled(&had, part.id).unwrap());
+    assert!(!db.feature_enabled(&lacked, page).unwrap());
+    // Once: switched off later, it stays off.
+    db.set_feature(&had, page, false, &owner.id).unwrap();
+    db.keep_mandatory_features().unwrap();
+    assert!(!db.feature_enabled(&had, page).unwrap());
+}

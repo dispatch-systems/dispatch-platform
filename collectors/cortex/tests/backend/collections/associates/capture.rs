@@ -40,9 +40,18 @@ fn roster_rows_read_into_bounded_associates() {
         "//example.com/photo.jpg",
         "/workforce/../photo",
     ] {
-        assert_eq!(with("photo_url", json!(elsewhere)).unwrap().unwrap().photo, None);
+        assert_eq!(
+            with("photo_url", json!(elsewhere)).unwrap().unwrap().photo,
+            None
+        );
     }
-    assert_eq!(with("email_address", json!("not an address")).unwrap().unwrap().email, None);
+    assert_eq!(
+        with("email_address", json!("not an address"))
+            .unwrap()
+            .unwrap()
+            .email,
+        None
+    );
     // A row naming no one Amazon's other pages could name is passed over; one without a name
     // or a status means the page changed.
     assert!(with("transporter_id", json!("")).unwrap().is_none());

@@ -1,6 +1,6 @@
 //! Driver Match's upkeep: giving every ID the DSP's collections hold a code, after each
 //! collection and hourly.
-use crate::backend::DriverMatchStore;
+use super::DriverMatchStore;
 use dispatch_core::{
     Error, Result, State,
     foundation::observability,

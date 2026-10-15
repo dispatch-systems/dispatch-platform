@@ -108,8 +108,14 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies(
     assert_eq!(got.format, PhotoFormat::Jpeg);
     assert_eq!(got.bytes().unwrap(), b"\xFF\xD8\xFF a jpeg");
     // Only where Amazon serves photos; an answer that isn't a redirect is no photo.
-    assert_eq!(fetch("/workforce/away").await.unwrap_err(), "photo_redirect_unexpected");
-    assert_eq!(fetch("/workforce/page").await.unwrap_err(), "http_not_redirected");
+    assert_eq!(
+        fetch("/workforce/away").await.unwrap_err(),
+        "photo_redirect_unexpected"
+    );
+    assert_eq!(
+        fetch("/workforce/page").await.unwrap_err(),
+        "http_not_redirected"
+    );
     let s3 = url::Url::parse(&format!("https://{PHOTO_HOST}/photo?X-Amz-Expires=180")).unwrap();
     assert!(cortex::PHOTO_HOSTS.allows(&s3));
     assert!(!cortex::HOSTS.allows(&s3));

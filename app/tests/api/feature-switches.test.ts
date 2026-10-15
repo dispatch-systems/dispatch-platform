@@ -91,7 +91,8 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal(restored.changedBy, 'Platform Owner');
 
   // A connection is its own feature; the pages and parts requiring what it provides go with
-  // it: Timecard stays, without its Meal Breaks tab, which alone needs Cortex.
+  // it: Timecard stays, without its Meal Breaks tab, which alone needs Cortex. Driver Match
+  // goes with its page, Driver Profiles, and keeps its own switch.
   result = await platform.post(url, { feature: 'cortex', enabled: false });
   assert.deepEqual(result.value, {
     features: without(
@@ -100,7 +101,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'routes',
       'dvic',
       'weekly_scorecard',
-      'driver_match',
+      'driver_profiles',
       'daily_performance',
       'timecard.meal_breaks',
     ),
@@ -109,7 +110,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       { feature: 'routes', enabled: false },
       { feature: 'dvic', enabled: false },
       { feature: 'weekly_scorecard', enabled: false },
-      { feature: 'driver_match', enabled: false },
+      { feature: 'driver_profiles', enabled: false },
       { feature: 'daily_performance', enabled: false },
       { feature: 'timecard.meal_breaks', enabled: false },
     ],
@@ -129,7 +130,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'routes',
       'dvic',
       'weekly_scorecard',
-      'driver_match',
+      'driver_profiles',
       'daily_performance',
     ),
     changed: [
@@ -141,7 +142,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal((await platform.get('/api/dsp/routes/days')).status, 403);
   result = await platform.post(url, { feature: 'routes', enabled: true });
   assert.deepEqual(result.value, {
-    features: without(all, 'dvic', 'weekly_scorecard', 'driver_match', 'daily_performance'),
+    features: without(all, 'dvic', 'weekly_scorecard', 'driver_profiles', 'daily_performance'),
     changed: [{ feature: 'routes', enabled: true }],
   });
   await platform.select(north.id);
@@ -162,7 +163,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'routes',
       'dvic',
       'weekly_scorecard',
-      'driver_match',
+      'driver_profiles',
       'daily_performance',
       'documents',
       'slack',

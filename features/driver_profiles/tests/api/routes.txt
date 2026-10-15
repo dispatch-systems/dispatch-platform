@@ -1,12 +1,18 @@
 # Every route driver_profiles registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
-GET /api/dsp/driver-profiles/schedules Dsp("driver_profiles.collect") Read
-GET /api/dsp/driver-profiles/status Dsp("driver_profiles.collect") Read
+GET /api/dsp/driver-match Dsp("driver_match.manage") Read
+POST /api/dsp/driver-match/apart Dsp("driver_match.manage") Write
+GET /api/dsp/driver-match/counts Dsp("driver_match.manage") Read
+GET /api/dsp/driver-match/drivers/{code} Dsp("driver_match.manage") Read
+POST /api/dsp/driver-match/merge Dsp("driver_match.manage") Write
+POST /api/dsp/driver-match/split Dsp("driver_match.manage") Write
 POST /api/dsp/driver-profiles/collect Dsp("driver_profiles.collect") Write
 POST /api/dsp/driver-profiles/jobs/{id}/cancel Dsp("driver_profiles.collect") Async
+GET /api/dsp/driver-profiles/schedules Dsp("driver_profiles.collect") Read
 POST /api/dsp/driver-profiles/schedules Dsp("driver_profiles.collect") Write wakes-scheduler
 POST /api/dsp/driver-profiles/schedules/preview Dsp("driver_profiles.collect") Write
 POST /api/dsp/driver-profiles/schedules/{key} Dsp("driver_profiles.collect") Write wakes-scheduler
 POST /api/dsp/driver-profiles/schedules/{key}/enabled Dsp("driver_profiles.collect") Write wakes-scheduler
 POST /api/dsp/driver-profiles/schedules/{key}/remove Dsp("driver_profiles.collect") Write wakes-scheduler
+GET /api/dsp/driver-profiles/status Dsp("driver_profiles.collect") Read

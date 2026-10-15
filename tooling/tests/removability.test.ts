@@ -79,9 +79,9 @@ test("the feature map names the app's Cargo features, each with what it declares
     for (const used of declared)
       assert(enables.includes(`"${used}"`), `the app's ${name} feature does not enable ${used}`);
   }
-  // A leaf goes alone; Timecard declares Driver Match, so it goes with it.
+  // A leaf goes alone; Timecard declares Driver Profiles, so it goes with it.
   assert.deepEqual(leftOut(features, 'uniforms'), ['uniforms']);
-  assert.deepEqual(leftOut(features, 'driver_match'), ['driver_match', 'timecard']);
+  assert.deepEqual(leftOut(features, 'driver_profiles'), ['driver_profiles', 'timecard']);
 });
 
 test("the app's manifest loses the left-out features' crates, and no list names them", () => {
@@ -208,16 +208,16 @@ test('a dry run prints the plan and changes nothing', () => {
       'node_modules/tsx/dist/cli.mjs',
       'tooling/ci/removability.ts',
       '--feature',
-      'driver_match',
+      'driver_profiles',
       '--dry-run',
     ],
     { cwd: root, encoding: 'utf8' },
   );
   const lines = printed.trim().split('\n');
-  assert.match(lines[0]!, /^Leaving out driver_match, timecard; keeping /);
+  assert.match(lines[0]!, /^Leaving out driver_profiles, timecard; keeping /);
   assert.equal(
     lines.filter((line) =>
-      /^\(moves features\/driver_match, features\/timecard aside\)$/.test(line),
+      /^\(moves features\/driver_profiles, features\/timecard aside\)$/.test(line),
     ).length,
     1,
   );
@@ -229,7 +229,7 @@ test('a dry run prints the plan and changes nothing', () => {
     ['build', 'TypeScript', 'tests', 'types', 'bundle'],
   );
   assert.equal(fs.readFileSync(path.join(root, featureMap), 'utf8'), before);
-  assert(fs.existsSync(path.join(root, 'features/driver_match')));
+  assert(fs.existsSync(path.join(root, 'features/driver_profiles')));
 });
 
 test('a failure names the files and tests that reached into what was left out', () => {

@@ -27,7 +27,10 @@ pub const MAINTENANCE: Maintenance = Maintenance {
 /// Whether the DSP has Driver Profiles and never had its first schedule made.
 fn unscheduled(db: &Store, dsp: &str) -> Result<bool> {
     Ok(db.feature_enabled(dsp, "driver_profiles")?
-        && db.driver_profiles_db(dsp)?.setting(SCHEDULED, Value::Null)? != json!(true))
+        && db
+            .driver_profiles_db(dsp)?
+            .setting(SCHEDULED, Value::Null)?
+            != json!(true))
 }
 /// Makes the DSP's first schedule, if it still needs one and the roster can be collected.
 /// Answers whether it made one.

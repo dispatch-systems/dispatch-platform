@@ -53,14 +53,6 @@
       "mandatory": false
     },
     {
-      "id": "driver_match",
-      "label": "Driver Match",
-      "permissions": ["driver_match.manage"],
-      "requires": ["timecards", "routes"],
-      "default": false,
-      "mandatory": false
-    },
-    {
       "id": "driver_profiles",
       "label": "Driver Profiles",
       "permissions": ["driver_profiles.collect"],
@@ -163,6 +155,16 @@
       "requires": [],
       "default": true,
       "mandatory": false
+    },
+    {
+      "id": "driver_match",
+      "label": "Driver Match",
+      "page": "driver_profiles",
+      "tab": false,
+      "permissions": ["driver_match.manage"],
+      "requires": ["timecards", "routes"],
+      "default": true,
+      "mandatory": false
     }
   ],
   "catalog": [
@@ -172,7 +174,6 @@
     "routes",
     "dvic",
     "weekly_scorecard",
-    "driver_match",
     "driver_profiles",
     "daily_performance",
     "documents",
@@ -184,6 +185,7 @@
     "timecard.employees",
     "dvic.day",
     "dvic.week",
+    "driver_match",
     "paycom",
     "cortex"
   ]

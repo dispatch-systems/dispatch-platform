@@ -349,7 +349,9 @@ impl Store {
     /// Keeps what every DSP had: a feature or part that was mandatory when the server last
     /// started, and is optional now, is switched on, once, for every DSP there is, so making
     /// it optional takes it from none of them; a DSP made later starts with it off, as with
-    /// any optional feature. Then records what is mandatory now.
+    /// any optional feature. A page new since the last start that gathers parts DSPs had on
+    /// before, as when a page becomes another's part, is switched on, once, for each DSP with
+    /// one of those parts on, so they keep it. Then records what is mandatory now.
     pub fn keep_mandatory_features(&self) -> Result<()> {
         self.platform.transaction(|| {
             let recorded: BTreeMap<String, bool> = self
@@ -357,6 +359,28 @@ impl Store {
                 .query_as("SELECT feature,mandatory FROM feature_availability", [])?
                 .into_iter()
                 .collect();
+            // A platform starting for the first time has nothing to keep.
+            let new_pages = catalog()
+                .iter()
+                .filter(|f| f.kind == Kind::Page && !recorded.is_empty())
+                .filter(|f| !recorded.contains_key(f.id));
+            for page in new_pages {
+                let parts: Vec<&str> = catalog()
+                    .iter()
+                    .filter(|f| f.kind == Kind::Sub(page.id))
+                    .map(|f| f.id)
+                    .collect();
+                if parts.is_empty() {
+                    continue;
+                }
+                self.platform.exec(
+                    "INSERT INTO dsp_features(dsp_id,feature,enabled,changed_at) \
+                     SELECT DISTINCT dsp_id,?1,1,?2 FROM dsp_features WHERE enabled=1 \
+                     AND feature IN (SELECT value FROM json_each(?3)) \
+                     ON CONFLICT(dsp_id,feature) DO NOTHING",
+                    params![page.id, iso(), serde_json::to_string(&parts)?],
+                )?;
+            }
             let made_optional: Vec<&Feature> = catalog()
                 .iter()
                 .filter(|f| !f.mandatory && recorded.get(f.id) == Some(&true))

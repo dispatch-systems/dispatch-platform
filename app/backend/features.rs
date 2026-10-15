@@ -8,8 +8,6 @@ pub const FEATURES: &[&Feature] = &[
     &dispatch_daily_performance::FEATURE,
     #[cfg(feature = "documents")]
     &dispatch_documents::FEATURE,
-    #[cfg(feature = "driver_match")]
-    &dispatch_driver_match::FEATURE,
     #[cfg(feature = "driver_profiles")]
     &dispatch_driver_profiles::FEATURE,
     #[cfg(feature = "dvic")]
@@ -43,8 +41,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     all.extend(dispatch_daily_performance::typescript(cfg));
     #[cfg(feature = "documents")]
     all.extend(dispatch_documents::typescript(cfg));
-    #[cfg(feature = "driver_match")]
-    all.extend(dispatch_driver_match::typescript(cfg));
     #[cfg(feature = "driver_profiles")]
     all.extend(dispatch_driver_profiles::typescript(cfg));
     #[cfg(feature = "dvic")]

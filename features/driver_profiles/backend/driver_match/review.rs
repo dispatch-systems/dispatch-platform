@@ -151,5 +151,5 @@ pub(crate) fn strength(evidence: &[DriverEvidence]) -> DriverStrength {
 }
 
 #[cfg(test)]
-#[path = "../tests/backend/review.rs"]
+#[path = "../../tests/backend/driver_match/review.rs"]
 mod tests;
