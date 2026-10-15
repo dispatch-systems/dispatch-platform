@@ -45,13 +45,11 @@ async fn on_event(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
     }
 }
 /// What each interaction does, by its type and the button, form or shortcut it names, for a
-/// workspace Dispatch acts in, with all Slack sent of it in `payload`. The Home tab's one button
-/// opens Dispatch in the browser itself.
-async fn on_interaction(_: &Bot, kind: &str, action: &str, _payload: &Value) -> Result<()> {
-    match (kind, action) {
-        ("block_actions", home::OPEN_DISPATCH) => Ok(()),
-        _ => Ok(()),
-    }
+/// workspace Dispatch acts in, with all Slack sent of it in `payload`. The app has none yet:
+/// each will be handled from a `match (kind, action)` here, as events are in `on_event`, with
+/// a line such as `("block_actions", feature::ACTION) => feature::clicked(bot, payload).await`.
+async fn on_interaction(_bot: &Bot, _kind: &str, _action: &str, _payload: &Value) -> Result<()> {
+    Ok(())
 }
 
 /// Slack's events, at `/slack/events`.
