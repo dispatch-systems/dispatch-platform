@@ -212,8 +212,7 @@
       "commands": null,
       "demo": false,
       "domains": [
-        "driver_profiles",
-        "drivers"
+        "driver_profiles"
       ],
       "live": [
         "driver_profiles.collect"
@@ -238,9 +237,11 @@
         "GET /api/dsp/driver-match",
         "GET /api/dsp/driver-match/counts",
         "GET /api/dsp/driver-match/drivers/{code}",
+        "GET /api/dsp/driver-match/drivers/{code}/photo",
         "POST /api/dsp/driver-match/merge",
         "POST /api/dsp/driver-match/split",
-        "POST /api/dsp/driver-match/apart"
+        "POST /api/dsp/driver-match/apart",
+        "POST /api/dsp/driver-match/confirm"
       ],
       "settings": []
     },
@@ -627,9 +628,7 @@
       "cortex",
       "paycom"
     ],
-    "depends_on": [
-      "driver_profiles"
-    ],
+    "depends_on": [],
     "frontend": true,
     "keeps": [
       "cortex.meal_breaks.collect",

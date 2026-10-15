@@ -3,12 +3,12 @@ import type { DriverCounts } from './index.js';
 import { count, type Replies } from '../../../core/foundation/api/runtime.js';
 
 const driverCountsSchema = z.object({
-  all: count,
-  drivers: count,
-  matched: count,
+  people: count,
   review: count,
-  paycomOnly: count,
-  amazonOnly: count,
+  unconfirmed: count,
+  missing: count,
+  drivers: count,
+  helpers: count,
   office: count,
   former: count,
 }) satisfies z.ZodMiniType<DriverCounts>;

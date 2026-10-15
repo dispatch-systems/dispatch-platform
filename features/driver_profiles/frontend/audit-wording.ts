@@ -19,6 +19,11 @@ const phrases: AuditPhrases = {
     strong(e.target ?? 'two drivers'),
     ' apart',
   ],
+  'driver_match.confirmed': (e, { strong }) => [
+    'confirmed ',
+    strong(e.target ?? 'a driver'),
+    "'s match",
+  ],
 };
 
 export const wording: AuditWording = {

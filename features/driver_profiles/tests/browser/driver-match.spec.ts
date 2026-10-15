@@ -12,13 +12,15 @@ test('Driver Match shows who might be listed twice and makes them one person', a
   const tab = page.getByRole('tab', { name: /Driver Match/ });
   await expect(tab).toContainText('3');
   await tab.click();
-  const review = page.getByRole('region', { name: /might be listed twice/ });
-  const pairs = review.locator('.driver-pair');
+  const pairs = page.getByRole('region', { name: 'Needs review' }).locator('.driver-pair');
   await expect(pairs).toHaveCount(3);
   const ben = pairs.filter({ hasText: 'Ben Collins' });
   await expect(ben).toContainText('Ben is short for Benjamin');
   await expect(ben).toContainText('Strong match');
   await expect(pairs.filter({ hasText: 'Drew S.' })).toContainText('Possible match');
+  // Opened, a pair lines both sides up, field by field.
+  await ben.getByRole('button', { name: /Ben Collins/ }).click();
+  await expect(ben.getByText('Phone', { exact: true })).toBeVisible();
 
   await ben.getByRole('button', { name: 'Same person', exact: true }).click();
   await expect(
@@ -26,21 +28,22 @@ test('Driver Match shows who might be listed twice and makes them one person', a
   ).toBeVisible();
   await expect(pairs).toHaveCount(2);
   await expect(tab).toContainText('2');
-  // Someone marked as different is never suggested again.
+  // Someone marked as not them is never suggested again.
   await pairs
     .filter({ hasText: 'Drew S.' })
-    .getByRole('button', { name: 'Different people', exact: true })
+    .getByRole('button', { name: 'Not them', exact: true })
     .click();
   await expect(pairs).toHaveCount(1);
   // Someone Amazon saw only long ago, whom Paycom doesn't list, has left.
-  await page.getByRole('button', { name: /^Former/ }).click();
+  const roles = page.getByRole('group', { name: 'Filter by role' });
+  await roles.getByRole('button', { name: /^Former/ }).click();
   await expect(page.getByRole('row').filter({ hasText: 'Riley Quinn' })).toContainText('Former');
-  await page.getByRole('button', { name: /^All/ }).click();
+  await roles.getByRole('button', { name: /^Any role/ }).click();
 
   await page.getByLabel('Search drivers').fill('benjamin');
   const row = page.getByRole('row').filter({ hasText: 'Benjamin Collins' });
   await expect(row).toContainText('Confirmed');
-  await row.getByRole('button', { name: 'Open Benjamin Collins', exact: true }).click();
+  await row.getByRole('button', { name: /Benjamin Collins/ }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet).toContainText('Goes by Ben on Amazon');
   await expect(
@@ -49,7 +52,7 @@ test('Driver Match shows who might be listed twice and makes them one person', a
   // A wrong link comes apart again, and the two stay apart.
   await sheet
     .locator('.driver-id')
-    .filter({ hasText: 'Amazon' })
+    .filter({ hasText: 'Ben Collins' })
     .getByRole('button', { name: 'Split off', exact: true })
     .click();
   await page.getByRole('button', { name: 'Split off', exact: true }).last().click();

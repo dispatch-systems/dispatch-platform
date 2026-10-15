@@ -29,11 +29,10 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'daily_performance', enabled: false },
     { feature: 'timecard.meal_breaks', enabled: false },
   ]);
-  // Driver Match needs both sides: losing Paycom takes it too.
+  // Driver Match matches whatever is on, so losing Paycom leaves it on.
   assert.deepEqual(previewSwitch(all, 'paycom', false), [
     { feature: 'paycom', enabled: false },
     { feature: 'timecard', enabled: false },
-    { feature: 'driver_match', enabled: false },
   ]);
   // Enabling a page enables the one provider of each capability it lacks, then what its parts
   // on with it lack. Tabs default on.

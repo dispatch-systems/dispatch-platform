@@ -24,7 +24,7 @@ test('Driver Match gives everyone a code and answers only to its own permission'
     return Boolean(result.checkedAt) && result.drivers.length > 1;
   });
   assert.ok(result.drivers.every((driver) => code.test(driver.code)));
-  assert.equal(result.counts.all, result.drivers.length);
+  assert.equal(result.counts.people, result.drivers.length);
   const counts = await owner.get('/api/dsp/driver-match/counts');
   assert.equal(counts.status, 200, counts.body);
   assert.deepEqual(counts.value, result.counts);
@@ -33,7 +33,7 @@ test('Driver Match gives everyone a code and answers only to its own permission'
   const details: DriverDetails = (await owner.get(`/api/dsp/driver-match/drivers/${first!.code}`))
     .value;
   assert.equal(details.driver.code, first!.code);
-  assert.equal(details.days.length, 14);
+  assert.equal(details.dates.length, 14);
   assert.equal((await owner.get('/api/dsp/driver-match/drivers/NOPE00')).status, 404);
 
   // Two people kept apart: the decision is theirs to see in each one's history.

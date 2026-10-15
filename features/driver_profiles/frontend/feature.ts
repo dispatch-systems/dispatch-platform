@@ -24,7 +24,11 @@ export const feature: FrontendFeature = {
       visible: (view) => can(view, 'driver_match.manage'),
       load,
       render: ({ view }) =>
-        view && createElement(DriverMatchSettings, { timezone: view.dsp.timezone }),
+        view &&
+        createElement(DriverMatchSettings, {
+          timezone: view.dsp.timezone,
+          canCollect: can(view, 'driver_profiles.collect'),
+        }),
       // The badge counts the pairs to review on every tab; the open tab reads the whole roster.
       prefetch: (tab, view) =>
         can(view, 'driver_match.manage')
@@ -39,10 +43,14 @@ export const feature: FrontendFeature = {
     driver_profiles_abbreviation_required:
       "Set your DSP's abbreviation in its profile before collecting the roster.",
   },
-  // A finished collection can bring new drivers to match.
+  // A finished collection can bring new drivers to match, and the roster's own status.
   cache: {
-    collected: ['/api/dsp/driver-match'],
+    collected: ['/api/dsp/driver-match', '/api/dsp/driver-profiles/status'],
     write: (write, url) =>
-      write.startsWith('/api/dsp/driver-match') ? begins(url, '/api/dsp/driver-match') : undefined,
+      write.startsWith('/api/dsp/driver-match')
+        ? begins(url, '/api/dsp/driver-match')
+        : write.startsWith('/api/dsp/driver-profiles/')
+          ? begins(url, '/api/dsp/driver-profiles/status')
+          : undefined,
   },
 };

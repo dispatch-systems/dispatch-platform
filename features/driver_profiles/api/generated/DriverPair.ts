@@ -4,6 +4,7 @@ import type { DriverEvidence } from "./DriverEvidence";
 import type { DriverStrength } from "./DriverStrength";
 
 /**
- * Someone known only to Paycom and someone known only to Amazon who might be one person.
+ * Someone who might be someone else listed twice: `person` holds what `candidate` lacks, and
+ * joining them keeps `candidate`'s code.
  */
-export type DriverPair = { paycom: Driver, amazon: Driver, strength: DriverStrength, evidence: Array<DriverEvidence>, };
+export type DriverPair = { person: Driver, candidate: Driver, strength: DriverStrength, evidence: Array<DriverEvidence>, };

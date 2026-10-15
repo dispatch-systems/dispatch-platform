@@ -1,157 +1,49 @@
-import { useDeferredValue, useMemo, useState } from 'react';
-import { useUpdateState } from '../../../../core/shell/frontend/runtime/browser-update.js';
-import { useDriverMatch } from '../../api/client.js';
-import { useTableState } from '../../../../core/shell/frontend/runtime/useTableState.js';
+import { useCallback, useState } from 'react';
+import { useCollectionUpdates } from '../../../../core/collection/frontend/live-collection.js';
 import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
-import { time } from '../../../../core/shell/frontend/lib/format.js';
-import {
-  dataKinds,
-  dataLabel,
-  driverFilters,
-  driverFilter,
-  driverSearchTerms,
-  type DriverFilter,
-} from '../driver-match.js';
-import {
-  DataState,
-  DataTable,
-  Empty,
-  SearchInput,
-  TablePagination,
-  useDataTable,
-} from '../../../../core/shell/frontend/ui/index.js';
-import { DataIcon } from '../DataIcon.js';
-import { driverColumns } from '../driverColumns.js';
-import { DriverSheet } from '../DriverSheet.js';
-import { DriverSummary } from '../DriverSummary.js';
-import { ReviewCard } from '../ReviewCard.js';
+import { DataState } from '../../../../core/shell/frontend/ui/index.js';
+import { useDriverMatch } from '../../api/client.js';
+import { DriverSheet } from '../person/DriverSheet.js';
+import { NicknameList } from './NicknameList.js';
+import { PeopleTable } from './PeopleTable.js';
+import { ReviewList } from './ReviewList.js';
+import { RosterBar } from './RosterBar.js';
 
-/** Settings → Driver Match: who might be listed twice, then everyone with a code. */
-export function DriverMatchSettings({ timezone }: { timezone: string }) {
+/** Settings → Driver Match: who may be listed twice, nicknames to confirm, then everyone. */
+export function DriverMatchSettings({
+  timezone,
+  canCollect,
+}: {
+  timezone: string;
+  canCollect: boolean;
+}) {
+  // A finished roster collection brings its people in.
+  useCollectionUpdates();
   const request = useDriverMatch();
-  const [query, setQuery] = useUpdateState('driver-match-query', '');
-  const [filter, setFilter] = useUpdateState<DriverFilter>('driver-match-filter', 'all');
   const [open, setOpen] = useState<string | null>(null);
-  const state = useTableState('driver-match', { id: 'name', desc: false });
+  const onOpen = useCallback((code: string) => setOpen(code), []);
   const today = dateFormatter('en-CA', { timeZone: timezone }).format(new Date());
-  const drivers = useMemo(() => request.data?.drivers ?? [], [request.data]);
-  const prepared = useMemo(() => {
-    const counts = Object.fromEntries(driverFilters.map(([key]) => [key, 0])) as Record<
-      DriverFilter,
-      number
-    >;
-    counts.all = drivers.length;
-    const searchable = drivers.map((driver) => {
-      const kind = driverFilter(driver);
-      counts[kind]++;
-      return { driver, kind, terms: driverSearchTerms(driver) };
-    });
-    return { counts, searchable };
-  }, [drivers]);
-  const search = query.trim().toLocaleLowerCase('en-US');
-  const deferredSearch = useDeferredValue(search);
-  const searching = search !== deferredSearch;
-  const rows = useMemo(
-    () =>
-      prepared.searchable
-        .filter(
-          ({ kind, terms }) =>
-            (filter === 'all' || kind === filter) &&
-            terms.some((text) => text.includes(deferredSearch)),
-        )
-        .map(({ driver }) => driver),
-    [prepared, filter, deferredSearch],
-  );
-  const columns = useMemo(() => driverColumns(setOpen, today), [today]);
-  const table = useDataTable({
-    columns,
-    rows,
-    rowId: (driver) => driver.code,
-    state,
-    pageSize: 25,
-  });
   return (
     <div className="driver-match">
       <DataState data={request.data} error={request.error}>
         {(data) => (
           <>
-            <DriverSummary data={data} />
-            {data.review.length > 0 && <ReviewCard pairs={data.review} onOpen={setOpen} />}
-            <section aria-labelledby="driver-list-title">
-              <div className="driver-section-head">
-                <h2 id="driver-list-title">All drivers</h2>
-                <div className="driver-legend" aria-hidden="true">
-                  {dataKinds.map((kind) => (
-                    <span key={kind}>
-                      <DataIcon kind={kind} size={13} />
-                      {dataLabel(kind)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="driver-tools">
-                <div className="driver-filters" role="group" aria-label="Filter drivers">
-                  {driverFilters.map(([key, label]) => (
-                    <button
-                      key={key}
-                      className={key === 'review' ? 'review' : undefined}
-                      aria-pressed={filter === key}
-                      onClick={() => {
-                        setFilter(key);
-                        state.setPage(0);
-                      }}
-                    >
-                      {label}
-                      <span>{prepared.counts[key]}</span>
-                    </button>
-                  ))}
-                </div>
-                <SearchInput
-                  label="Search drivers"
-                  placeholder="Search name, code or ID"
-                  value={query}
-                  onChange={(value) => {
-                    setQuery(value);
-                    state.setPage(0);
-                  }}
-                />
-              </div>
-              {data.drivers.length === 0 ? (
-                <Empty title="No one to match yet">
-                  Codes appear after the first Paycom or Amazon collection.
-                </Empty>
-              ) : (
-                <div className="driver-table" aria-busy={searching} inert={searching}>
-                  <div className="table-wrap">
-                    <DataTable table={table} label="Drivers" />
-                  </div>
-                  {!rows.length && (
-                    <Empty title="No matching drivers">Try another name or filter.</Empty>
-                  )}
-                  <div className="driver-table-foot">
-                    <span>
-                      {rows.length === drivers.length
-                        ? `${drivers.length} people`
-                        : `${rows.length} of ${drivers.length} people`}
-                      {data.checkedAt && ` · Checked ${time(data.checkedAt, timezone)}`}
-                    </span>
-                    <TablePagination table={table} variant="pages" />
-                  </div>
-                </div>
-              )}
-            </section>
+            <RosterBar counts={data.counts} timezone={timezone} canCollect={canCollect} />
+            <ReviewList pairs={data.review} drivers={data.drivers} />
+            <NicknameList drivers={data.drivers} onOpen={onOpen} />
+            <PeopleTable data={data} today={today} timezone={timezone} onOpen={onOpen} />
+            {open && (
+              <DriverSheet
+                code={open}
+                drivers={data.drivers}
+                timezone={timezone}
+                today={today}
+                onClose={() => setOpen(null)}
+              />
+            )}
           </>
         )}
       </DataState>
-      {open && (
-        <DriverSheet
-          code={open}
-          drivers={drivers}
-          timezone={timezone}
-          today={today}
-          onClose={() => setOpen(null)}
-        />
-      )}
     </div>
   );
 }

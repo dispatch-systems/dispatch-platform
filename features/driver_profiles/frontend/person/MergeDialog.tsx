@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import type { Driver } from '../api/index.js';
-import { mergeDrivers } from '../api/client.js';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { driverMatches, statusLabels } from './driver-match.js';
-import { ErrorBox, Modal, SearchInput } from '../../../core/shell/frontend/ui/index.js';
-import { DriverAvatar } from './DriverAvatar.js';
+import type { Driver } from '../../api/index.js';
+import { mergeDrivers } from '../../api/client.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { driverMatches, roleLabels } from '../driver-match.js';
+import { ErrorBox, Modal, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
+import { DriverAvatar } from '../parts/DriverAvatar.js';
 
 /** Chooses who else is this person: their IDs move here, and their code leads here. */
 export function MergeDialog({
@@ -43,11 +43,11 @@ export function MergeDialog({
               checked={chosen === option.code}
               onChange={() => setChosen(option.code)}
             />
-            <DriverAvatar name={option.name} code={option.code} />
+            <DriverAvatar driver={option} />
             <span className="driver-person">
               <strong>{option.name}</strong>
               <small>
-                {option.code} · {statusLabels[option.status]}
+                {option.code} · {roleLabels[option.role]}
               </small>
             </span>
           </label>

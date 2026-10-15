@@ -47,7 +47,7 @@ export const roleTones: Record<DriverRole, string> = {
   former: 'neutral',
 };
 export const linkLabels: Record<DriverLink, string> = {
-  new: 'One ID',
+  new: 'First ID',
   variant: 'Nickname',
   name: 'Same name',
   phone: 'Same phone',
@@ -138,7 +138,7 @@ export const toneOf = (code: string) => [...code].reduce((sum, c) => sum + c.cha
 export const shortId = (id: DriverId) =>
   id.id.length > 12 ? `${id.id.slice(0, 4)}…${id.id.slice(-4)}` : id.id;
 /** The address of a person's photo, at the version they have. */
-export const photoUrl = (driver: Driver) =>
+export const photoUrl = (driver: Pick<Driver, 'code' | 'photo'>) =>
   driver.photo
     ? `/api/dsp/driver-match/drivers/${encodeURIComponent(driver.code)}/photo?v=${driver.photo.slice(0, 16)}`
     : undefined;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
+import type { Driver, DriverMatch } from '../../api/index.js';
 
 test('the roster collects with its photos, for those who may collect it', async (t) => {
   const f = await fixture();
@@ -38,6 +39,17 @@ test('the roster collects with its photos, for those who may collect it', async 
   // The photos are files in the DSP's cache, which backups leave out.
   const photos = path.join(f.root, 'dsps', north.id, 'cache', 'driver_profiles', 'photos');
   assert.equal(readdirSync(photos).length, 8);
+  // Driver Match gives each associate's photo to the person they are.
+  let pictured: Driver | undefined;
+  await until(async () => {
+    const result: DriverMatch = await owner.read('/api/dsp/driver-match');
+    pictured = result.drivers.find((driver) => driver.photo);
+    return Boolean(pictured);
+  });
+  const url = `/api/dsp/driver-match/drivers/${pictured!.code}/photo`;
+  const photo = await f.raw(url, undefined, owner.headers);
+  assert.equal(photo.status, 200);
+  assert.equal(photo.headers.get('content-type'), 'image/png');
   // No default role holds driver_profiles.collect, so a member is refused until a role grants it.
   const member = await f.client(demo.member);
   await member.select(north.id);

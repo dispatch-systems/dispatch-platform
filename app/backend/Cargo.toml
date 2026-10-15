@@ -46,7 +46,7 @@ routes = ["dep:dispatch-routes"]
 settings = ["dep:dispatch-settings"]
 slack = ["dep:dispatch-slack"]
 team = ["dep:dispatch-team"]
-timecard = ["dep:dispatch-timecard", "driver_profiles"]
+timecard = ["dep:dispatch-timecard"]
 uniforms = ["dep:dispatch-uniforms"]
 weekly_scorecard = ["dep:dispatch-weekly-scorecard"]
 
