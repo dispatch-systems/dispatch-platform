@@ -58,7 +58,8 @@ and weeks, so it's best submitted well before the limit.
   `/api/documents/google/return`. That route has no session (its cookie stays on Dispatch's own
   site), so it only passes what Google sent on to the page the sign-in started on, which
   finishes it as the member who started it: Settings' Connections for the DSP's account and for
-  a member linking theirs there, and Documents for a member linking theirs from there. Its
+  a member linking theirs there, and Documents for a member linking theirs from there, at the
+  address it started at: the admin's, or the DSP's own, where its members' sessions are. Its
   state says which. Once the DSP's account is connected, those who hold `documents.use` go on to
   Documents, which starts empty: Dispatch makes the main folder and nothing in it. Each sign-in
   is used once, by its starter, within ten minutes, and its code is bound to a PKCE verifier

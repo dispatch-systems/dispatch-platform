@@ -3,7 +3,13 @@
 //! outside the database and check again before they write.
 use crate::{
     api::types::{NewKind, SharingState},
-    backend::{connection, drive::PICTURE_SIZES, files, google::RETURN_PATH, picker, team},
+    backend::{
+        connection,
+        drive::PICTURE_SIZES,
+        files,
+        google::{self, RETURN_PATH},
+        picker, team,
+    },
 };
 use axum::{
     extract::Request,
@@ -76,7 +82,7 @@ async fn account(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> 
 }
 fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
-    Reply::of(&connection::start(db, c)?)
+    Reply::of(&connection::start(db, c, &input.site)?)
 }
 async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -256,7 +262,7 @@ fn link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let from = optional(&input.body, "from", |b, key| {
         v::choice(b, key, &["settings"])
     })?;
-    Reply::of(&team::start_link(db, c, from.is_some())?)
+    Reply::of(&team::start_link(db, c, &input.site, from.is_some())?)
 }
 async fn finish_link(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -268,8 +274,8 @@ async fn finish_link(state: Arc<State>, input: Input, access: Dsp) -> Result<Rep
 }
 /// Google sends the browser back here, without the session: its cookie stays on Dispatch's
 /// own site. So the browser goes on with what Google sent to the page the sign-in started on,
-/// the DSP's Connections or Documents, which finishes it as the member, in the session that
-/// started it.
+/// the DSP's Connections or Documents, at the address it started at, the admin's or the DSP's
+/// own, which finishes it as the member, in the session that started it.
 async fn returned(state: Arc<State>, request: Request) -> Response {
     let origin = &state.config.origin;
     let sent: Vec<(String, String)> =
@@ -293,17 +299,35 @@ async fn returned(state: Arc<State>, request: Request) -> Response {
     else {
         return Reply::redirect(format!("{origin}/")).into_response();
     };
-    let mut back = url::form_urlencoded::Serializer::new(String::new());
-    let page = if team::back_to_documents(sign_in) {
-        "documents"
+    let (page, back) = {
+        let mut back = url::form_urlencoded::Serializer::new(String::new());
+        let page = if team::back_to_documents(sign_in) {
+            "documents"
+        } else {
+            back.append_pair("tab", "connections");
+            "settings"
+        };
+        back.append_pair("googleState", sign_in);
+        match field("code") {
+            Some(code) => back.append_pair("googleCode", code),
+            None => back.append_pair("googleError", field("error").unwrap_or("failed")),
+        };
+        (page, back.finish())
+    };
+    // At the DSP's own address, where the member's session is, its pages need no DSP named.
+    let own = if google::started_at_own_address(sign_in) {
+        let at = dsp.to_owned();
+        state
+            .read(move |db| Ok(db.find_dsp(&at)?.code.map(|code| db.config.dsp_url(&code))))
+            .await
+            .ok()
+            .flatten()
     } else {
-        back.append_pair("tab", "connections");
-        "settings"
+        None
     };
-    back.append_pair("googleState", sign_in);
-    match field("code") {
-        Some(code) => back.append_pair("googleCode", code),
-        None => back.append_pair("googleError", field("error").unwrap_or("failed")),
-    };
-    Reply::redirect(format!("{origin}/#dsp/{dsp}/{page}?{}", back.finish())).into_response()
+    Reply::redirect(match own {
+        Some(address) => format!("{address}/#{page}?{back}"),
+        None => format!("{origin}/#dsp/{dsp}/{page}?{back}"),
+    })
+    .into_response()
 }

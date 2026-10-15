@@ -15,13 +15,17 @@ const signIn = (url: string) => {
   const sent = new URL(url).searchParams;
   return { state: sent.get('state')!, code: sent.get('code')! };
 };
-/** Where Google's return sends the browser for a sign-in: the page that finishes it. */
+/**
+ * Where Google's return sends the browser for a sign-in: the page that finishes it, at the
+ * address it's on.
+ */
 const returnedTo = async (url: string) => {
   const answer = await fetch(url, { redirect: 'manual' });
-  const [page, query] = new URL(answer.headers.get('location')!).hash.split('?');
+  const back = new URL(answer.headers.get('location')!);
+  const [page, query] = back.hash.split('?');
   const kept = new URLSearchParams(query);
   for (const field of ['googleState', 'googleCode', 'googleError']) kept.delete(field);
-  return kept.size ? `${page}?${kept}` : page;
+  return `${back.origin}/${page}${kept.size ? `?${kept}` : ''}`;
 };
 
 test('an owner connects Google, reconnects only the same account, and disconnects it', async (t) => {
@@ -37,8 +41,12 @@ test('an owner connects Google, reconnects only the same account, and disconnect
   const started = await owner.post('/api/dsp/documents/connect');
   assert.equal(started.status, 200, started.body);
   const { state, code } = signIn(started.value.url);
-  // It's one of the DSP's own accounts: Google sends the browser back to its Connections.
-  assert.equal(await returnedTo(started.value.url), `#dsp/${north.id}/settings?tab=connections`);
+  // It's one of the DSP's own accounts: Google sends the browser back to its Connections, at
+  // the admin's address the sign-in started at.
+  assert.equal(
+    await returnedTo(started.value.url),
+    `${f.env.DISPATCH_ORIGIN}/#dsp/${north.id}/settings?tab=connections`,
+  );
   // A sign-in belongs to the DSP it started in.
   await owner.select(summit.id);
   const elsewhere = await owner.post('/api/dsp/documents/connect/finish', { state, code });
@@ -328,15 +336,14 @@ test('the folder is shared with the team, and those without Google are emailed t
   assert.match(link()[0]!.html, />Open Documents<\/a>/);
 
   // The member links a Google account, and the folder is shared with it. Started on Documents,
-  // Google sends them back there; on Settings' Connections, back there.
+  // Google sends them back there; on Settings' Connections, back there: at their DSP's own
+  // address, where their session is.
+  const address = `http://${north.code}.localhost:${f.env.PORT}`;
   const fromSettings = await member.post('/api/dsp/documents/link', { from: 'settings' });
-  assert.equal(
-    await returnedTo(fromSettings.value.url),
-    `#dsp/${north.id}/settings?tab=connections`,
-  );
+  assert.equal(await returnedTo(fromSettings.value.url), `${address}/#settings?tab=connections`);
   const started = await member.post('/api/dsp/documents/link', {});
   assert.equal(started.status, 200, started.body);
-  assert.equal(await returnedTo(started.value.url), `#dsp/${north.id}/documents`);
+  assert.equal(await returnedTo(started.value.url), `${address}/#documents`);
   const { state, code } = signIn(started.value.url);
   assert.match(state, /\.link\./);
   // A link sign-in can't connect the DSP, nor a connect sign-in link an account.

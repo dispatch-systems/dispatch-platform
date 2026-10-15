@@ -3,7 +3,10 @@
 use crate::api::types::PickerKeys;
 use dispatch_core::{
     Error, Result,
-    foundation::{config::Config, crypto, observability},
+    foundation::{
+        config::{Config, Site},
+        crypto, observability,
+    },
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -27,6 +30,10 @@ const LINK_SCOPES: &str = "openid email";
 pub(super) const FOLDER: &str = "application/vnd.google-apps.folder";
 /// Where Google sends the browser back, on this server's own origin.
 pub const RETURN_PATH: &str = "/api/documents/google/return";
+/// A sign-in started at the DSP's own address says so after naming the DSP, as `<dsp>.own.…`,
+/// so Google's return takes the browser back there, where the member's session is. One that
+/// doesn't started at the admin's.
+const OWN: &str = "own";
 /// The account a preview's fixture Google signs in as.
 const FIXTURE_ACCOUNT: &str = "documents@example.com";
 /// The account a member links in a preview, as fixture Google signs them in.
@@ -337,6 +344,19 @@ impl Google {
 /// The folder's address in Google Drive.
 pub fn folder_url(id: &str) -> String {
     format!("https://drive.google.com/drive/folders/{id}")
+}
+
+/// What a sign-in's state starts with: the DSP, and whether it started at the DSP's own
+/// address, `site`.
+pub fn sign_in_of(dsp: &str, site: &Site) -> String {
+    match site {
+        Site::Dsp(_) => format!("{dsp}.{OWN}"),
+        _ => dsp.to_owned(),
+    }
+}
+/// Whether the sign-in `state` started at its DSP's own address.
+pub fn started_at_own_address(state: &str) -> bool {
+    state.split('.').nth(1) == Some(OWN)
 }
 
 /// Fixture mode's code names the account it signs in as, `fixture:<email>`: anyone's own
