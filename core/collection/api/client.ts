@@ -6,6 +6,7 @@ import type {
   CollectionUpdates,
   Connection,
   ScheduleInput,
+  SchedulePreview,
 } from './index.js';
 
 // Collection's endpoints, as the frontend calls them: live updates, schedules and connections.
@@ -35,6 +36,14 @@ export const setScheduleEnabled = (
 ) => api<CollectionSchedule>(`${schedules}/${id}/enabled`, { enabled, revision });
 export const removeSchedule = (schedules: string, id: string, revision: number) =>
   api(`${schedules}/${id}/remove`, { revision });
+/** When a schedule with this timing would run next. */
+export const previewSchedule = (
+  schedules: string,
+  timing: Pick<ScheduleInput, 'cadence' | 'intervalMinutes' | 'localTime'> & {
+    scheduleId?: string;
+  },
+  signal: AbortSignal,
+) => api<SchedulePreview>(`${schedules}/preview`, timing, signal);
 
 export const connectionUrl = (provider: Connection['provider']) =>
   `/api/dsp/connections/${provider}`;

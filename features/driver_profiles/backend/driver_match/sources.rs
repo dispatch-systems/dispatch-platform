@@ -46,10 +46,12 @@ pub(crate) struct Identity {
     pub last_seen: Option<String>,
     /// On a source's current roster.
     pub listed: bool,
-    /// Its contacts, each written one way, and the contacts as written.
+    /// Its contacts, each written one way, to match by.
     pub emails: BTreeSet<String>,
     pub phones: BTreeSet<String>,
-    pub written: (Vec<String>, Vec<String>),
+    /// The same contacts as its sources wrote them, to show.
+    pub written_emails: Vec<String>,
+    pub written_phones: Vec<String>,
     /// What its source says they do.
     pub roles: Vec<String>,
 }
@@ -66,7 +68,8 @@ impl Identity {
             listed: false,
             emails: BTreeSet::new(),
             phones: BTreeSet::new(),
-            written: (vec![], vec![]),
+            written_emails: vec![],
+            written_phones: vec![],
             roles: vec![],
         }
     }
@@ -132,14 +135,14 @@ pub(crate) fn identities(
                 if let Some(written) = contacts::email(email)
                     && entry.emails.insert(written)
                 {
-                    entry.written.0.push(email.trim().to_owned());
+                    entry.written_emails.push(email.trim().to_owned());
                 }
             }
             for phone in &named.phones {
                 if let Some(written) = contacts::phone(phone)
                     && entry.phones.insert(written)
                 {
-                    entry.written.1.push(phone.trim().to_owned());
+                    entry.written_phones.push(phone.trim().to_owned());
                 }
             }
             for role in named.roles {
@@ -155,9 +158,14 @@ pub(crate) fn identities(
         .collect())
 }
 
-/// The name one ID's sources write now, as `identities` would read it first.
-pub(crate) fn name_of(store: &Store, dsp: &str, (source, id): &Key) -> Result<Option<String>> {
-    for people in people(store, dsp)? {
+/// The name one ID's sources write now, of `people`, as `identities` would read it first.
+pub(crate) fn name_of(
+    people: &[&'static dyn People],
+    store: &Store,
+    dsp: &str,
+    (source, id): &Key,
+) -> Result<Option<String>> {
+    for people in people {
         if people.source() == *source
             && let Some(name) = people.name(store, dsp, id)?
         {

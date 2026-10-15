@@ -1,0 +1,84 @@
+//! The names the activity log puts to the codes Driver Match's entries keep: what a
+//! collection says about someone stays in its database, so the log reads it as it is shown.
+use super::sources;
+use super::{surviving, valid_code};
+use dispatch_core::{
+    Result,
+    db::Store,
+    foundation::names,
+    manifest::people::{DriverSource, People},
+};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+
+/// The name a code's person goes by now, as the tab shows it: Paycom's when they have
+/// one, else another source's, as `people` write them. A merged code answers for the person
+/// who kept its IDs.
+fn driver_name(
+    store: &Store,
+    dsp: &str,
+    people: &[&'static dyn People],
+    code: &str,
+) -> Result<Option<String>> {
+    let ids = {
+        let db = store.dsp(dsp)?;
+        let code = surviving(&db, code)?;
+        db.query_as::<(String, String)>(
+            "SELECT source,external_id FROM person_ids WHERE code=? \
+             ORDER BY source<>'paycom',linked_at,external_id",
+            [&code],
+        )?
+    };
+    for (source, id) in ids {
+        let Some(source) = DriverSource::parse(&source) else {
+            continue;
+        };
+        if let Some(name) = sources::name_of(people, store, dsp, &(source, id))? {
+            return Ok(Some(names::display(&name)));
+        }
+    }
+    Ok(None)
+}
+/// Puts today's names to the codes Driver Match's activity entries name. A code that finds
+/// no name stays as it is.
+pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
+    // What names people, read once for each DSP the entries are about.
+    let mut people: BTreeMap<String, Vec<&'static dyn People>> = BTreeMap::new();
+    let mut known: BTreeMap<(String, String), String> = BTreeMap::new();
+    for event in events {
+        let action = event["action"].as_str().unwrap_or_default();
+        let (Some(dsp), Some(target)) = (event["dspId"].as_str(), event["target"].as_str()) else {
+            continue;
+        };
+        let codes: Vec<&str> = target.split(" and ").collect();
+        if !action.starts_with("driver_match.") || !codes.iter().all(|c| valid_code(c)) {
+            continue;
+        }
+        let naming = people
+            .entry(dsp.to_owned())
+            .or_insert_with(|| sources::people(store, dsp).unwrap_or_default());
+        let mut named: Vec<String> = vec![];
+        for code in codes {
+            let name = known
+                .entry((dsp.to_owned(), code.to_owned()))
+                .or_insert_with(|| {
+                    driver_name(store, dsp, naming, code)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| code.to_owned())
+                })
+                .clone();
+            // Two codes merged into one person are that one person now.
+            if action != "driver_match.merged" || !named.contains(&name) {
+                named.push(name);
+            }
+        }
+        event["target"] = json!(named.join(" and "));
+    }
+}
+
+/// Who did something, as the DSP sees them.
+pub(super) fn actor_name(store: &Store, dsp: &str, id: Option<&str>) -> Result<Option<String>> {
+    let Some(id) = id else { return Ok(None) };
+    store.actor_name(dsp, id)
+}

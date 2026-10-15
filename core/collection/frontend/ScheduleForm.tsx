@@ -1,16 +1,22 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
-import type { CollectionSchedule, ScheduleInput } from '../../../../core/collection/api/index.js';
-import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
-import { removeSchedule, saveSchedule } from '../../../../core/collection/api/client.js';
-import { previewSchedule, schedules } from '../../api/client.js';
-import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
-import { time } from '../../../../core/shell/frontend/lib/format.js';
-import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
+import type { CollectionSchedule, ScheduleCollection, ScheduleInput } from '../api/index.js';
+import { ApiError } from '../../shell/frontend/runtime/api.js';
+import { previewSchedule, removeSchedule, saveSchedule } from '../api/client.js';
+import { messageOf } from '../../shell/frontend/lib/errors.js';
+import { time } from '../../shell/frontend/lib/format.js';
+import { ErrorBox, Modal } from '../../shell/frontend/ui/index.js';
 
 /** Runs `then` at once, or after the member chooses Save or Discard for unsaved edits. */
 export type Leave = (then: () => void) => void;
 
+/** What a new schedule starts as: its name and the time it collects at. */
+export type ScheduleDefaults = { name: string; localTime: string };
+
+/** One schedule of one collection, new or as it was read, served under `schedules`. */
 export function ScheduleForm({
+  schedules,
+  collection,
+  defaults,
   schedule,
   timezone,
   leaveRef,
@@ -18,6 +24,9 @@ export function ScheduleForm({
   onCancel,
   onReload,
 }: {
+  schedules: string;
+  collection: ScheduleCollection;
+  defaults: ScheduleDefaults;
   schedule: CollectionSchedule | null;
   timezone: string;
   leaveRef: MutableRefObject<Leave | null>;
@@ -29,11 +38,11 @@ export function ScheduleForm({
     schedule
       ? { ...schedule }
       : {
-          name: 'Daily DVIC',
-          collection: 'dvic',
+          name: defaults.name,
+          collection,
           cadence: 'daily',
           intervalMinutes: null,
-          localTime: '18:00',
+          localTime: defaults.localTime,
           enabled: true,
         },
   );
@@ -73,6 +82,7 @@ export function ScheduleForm({
       return;
     const timer = setTimeout(() => {
       void previewSchedule(
+        schedules,
         {
           cadence,
           intervalMinutes,
@@ -92,7 +102,7 @@ export function ScheduleForm({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [cadence, intervalMinutes, localTime, enabled, schedule?.id]);
+  }, [schedules, cadence, intervalMinutes, localTime, enabled, schedule?.id]);
   const edit = <K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) =>
     setDraft((old) => ({ ...old, [key]: value }));
   async function save(remove = false): Promise<boolean> {
@@ -104,7 +114,7 @@ export function ScheduleForm({
       else
         await saveSchedule(schedules, schedule?.id, {
           name: draft.name.trim(),
-          collection: 'dvic',
+          collection,
           cadence,
           intervalMinutes,
           localTime,
@@ -127,7 +137,7 @@ export function ScheduleForm({
   return (
     <>
       <form
-        className="dvic-schedule-form"
+        className="schedule-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -159,7 +169,7 @@ export function ScheduleForm({
               <option value="interval">Every interval</option>
             </select>
           </label>
-          <div className="dvic-schedule-timing">
+          <div className="schedule-timing">
             {cadence === 'interval' && (
               <label>
                 Every (hours)
@@ -185,7 +195,7 @@ export function ScheduleForm({
             </label>
           </div>
           <p className="muted">{timezone} · DSP timezone</p>
-          <label className="dvic-schedule-toggle">
+          <label className="schedule-toggle">
             <input
               type="checkbox"
               role="switch"
@@ -220,7 +230,7 @@ export function ScheduleForm({
         </div>
         {schedule &&
           (deleting ? (
-            <div className="dvic-delete-confirm">
+            <div className="schedule-delete-confirm">
               <p>Delete this schedule?</p>
               <button type="button" disabled={busy} onClick={() => setDeleting(false)}>
                 Keep schedule

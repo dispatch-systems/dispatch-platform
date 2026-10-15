@@ -36,7 +36,8 @@ fn id(source: DriverSource, id: &str, names: &[&str]) -> Identity {
         listed: false,
         emails: BTreeSet::new(),
         phones: BTreeSet::new(),
-        written: (vec![], vec![]),
+        written_emails: vec![],
+        written_phones: vec![],
         roles: vec![],
     }
 }

@@ -156,6 +156,8 @@ const entries = [
   'core/accounts/frontend/settings/tabs.ts',
   // The wait on collection updates, for a page that follows its collections live.
   'core/collection/frontend/live-collection.ts',
+  // A collection's schedules, for a feature that lets a DSP change when its collections run.
+  'core/collection/frontend/schedules.ts',
 ];
 
 test('an owner reaches another only through a front door or public entry', () => {

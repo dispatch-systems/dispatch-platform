@@ -22,6 +22,7 @@ export interface ScheduleInput {
 export type { CollectionSchedule } from './generated/CollectionSchedule';
 export type { CollectionSchedules } from './generated/CollectionSchedules';
 export type { SchedulePreview } from './generated/SchedulePreview';
+export type { ScheduleCollection };
 
 export type Connection = Narrow<GeneratedConnection, { provider: ConnectionFeature }>;
 
