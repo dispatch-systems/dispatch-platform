@@ -61,6 +61,14 @@
       "mandatory": false
     },
     {
+      "id": "driver_profiles",
+      "label": "Driver Profiles",
+      "permissions": ["driver_profiles.collect"],
+      "requires": ["associates"],
+      "default": false,
+      "mandatory": false
+    },
+    {
       "id": "daily_performance",
       "label": "Daily Performance",
       "permissions": [
@@ -165,6 +173,7 @@
     "dvic",
     "weekly_scorecard",
     "driver_match",
+    "driver_profiles",
     "daily_performance",
     "documents",
     "team",

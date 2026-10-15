@@ -228,6 +228,78 @@
     },
     "subfeatures": []
   },
+  "driver_profiles": {
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.associates.collect"
+    ],
+    "migrations": {
+      "driver_profiles": [
+        {
+          "id": 1,
+          "name": "baseline"
+        }
+      ]
+    },
+    "permissions": [
+      "driver_profiles.collect"
+    ],
+    "slots": {
+      "after_collection": false,
+      "audit": {
+        "areas": [
+          [
+            "driver_profiles.",
+            "collections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "driver_profiles"
+      ],
+      "live": [
+        "driver_profiles.collect"
+      ],
+      "maintenance": [
+        600
+      ],
+      "people": [
+        "driver_profiles"
+      ],
+      "routes": [
+        "GET /api/dsp/driver-profiles/status",
+        "POST /api/dsp/driver-profiles/collect",
+        "POST /api/dsp/driver-profiles/jobs/{id}/cancel",
+        "GET /api/dsp/driver-profiles/schedules",
+        "POST /api/dsp/driver-profiles/schedules",
+        "POST /api/dsp/driver-profiles/schedules/preview",
+        "POST /api/dsp/driver-profiles/schedules/{key}",
+        "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
+        "POST /api/dsp/driver-profiles/schedules/{key}/remove"
+      ],
+      "settings": []
+    },
+    "switch": "driver_profiles",
+    "mandatory": false,
+    "tables": {
+      "driver_profiles": [
+        "associates",
+        "photos",
+        "roster_runs",
+        "settings"
+      ]
+    },
+    "subfeatures": []
+  },
   "dvic": {
     "collectors": [
       "cortex"

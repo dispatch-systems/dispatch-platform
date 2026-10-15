@@ -1,6 +1,9 @@
 use super::{Db, Kind, identifier, key_file, migrations, private_dir, private_file, s};
 use crate::{Result, ensure, foundation::config::Config};
 use std::path::{Path, PathBuf};
+
+/// The DSP folder an owner keeps files in that it can collect again, which backups leave out.
+pub const CACHE: &str = "cache";
 /// A connection to one of a DSP's databases. Every lease of the same file within one store's
 /// work shares its connection, as the platform's database is shared, so work that reaches a
 /// DSP's database twice sees, and joins, the same transaction.
@@ -98,10 +101,13 @@ impl Store {
     pub fn take_mail_queued(&self) -> bool {
         self.mail_queued.replace(false)
     }
+    /// One of a DSP's folders: `data`, `config`, `state`, `secrets`, or `cache`, where an
+    /// owner keeps files it can collect again. Backups leave `cache` out, and it goes with
+    /// the DSP's folder.
     pub fn area(&self, dsp: &str, area: &str) -> Result<PathBuf> {
         ensure(identifier(dsp, "dsp_"), "invalid_dsp_id", 400)?;
         ensure(
-            ["data", "config", "state", "secrets"].contains(&area),
+            ["data", "config", "state", "secrets", CACHE].contains(&area),
             "invalid_area",
             400,
         )?;

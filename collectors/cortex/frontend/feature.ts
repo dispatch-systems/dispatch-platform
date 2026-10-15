@@ -23,5 +23,6 @@ export const feature: FrontendFeature = {
   scheduleIssues: {
     schedule_meals_required: 'Connect Cortex before enabling Meal Break collections.',
     schedule_dvic_required: 'Connect Cortex before enabling DVIC collections.',
+    schedule_associates_required: 'Connect Cortex before enabling roster collections.',
   },
 };

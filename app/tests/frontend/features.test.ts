@@ -26,6 +26,7 @@ test('a switch brings its dependencies along, as the backend does', () => {
     { feature: 'dvic', enabled: false },
     { feature: 'weekly_scorecard', enabled: false },
     { feature: 'driver_match', enabled: false },
+    { feature: 'driver_profiles', enabled: false },
     { feature: 'daily_performance', enabled: false },
     { feature: 'timecard.meal_breaks', enabled: false },
   ]);

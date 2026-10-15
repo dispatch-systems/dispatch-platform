@@ -226,6 +226,8 @@ pub fn backup(config: &Config, destination: &Path) -> Result<Value> {
                 && db::identifier(parts[1], "dsp_")
                 && parts[2..4] == ["state", "browsers"]
                 && parts.last() == Some(&"pulse");
+            // What a DSP's owners can collect again stays out: a restore collects it anew.
+            let dsp = parts.len() == 2 && parts[0] == "dsps" && db::identifier(parts[1], "dsp_");
             for item in fs::read_dir(source)? {
                 let item = item?;
                 let name = item.file_name().to_string_lossy().into_owned();
@@ -233,6 +235,7 @@ pub fn backup(config: &Config, destination: &Path) -> Result<Value> {
                 let pulse_runtime =
                     browser_pulse && name.ends_with("-runtime") && item.file_type()?.is_symlink();
                 if pulse_runtime
+                    || (dsp && name == db::CACHE)
                     || name.ends_with("-wal")
                     || name.ends_with("-shm")
                     || name.ends_with(".lock")

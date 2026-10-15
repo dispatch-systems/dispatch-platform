@@ -48,5 +48,13 @@ export const collections = [
     "label": "DVIC",
     "unit": "row",
     "counted": "rows"
+  },
+  {
+    "kind": "cortex.associates.collect",
+    "provider": "cortex",
+    "schedule": "associates",
+    "label": "Roster",
+    "unit": "associate",
+    "counted": "rows"
   }
 ] as const;

@@ -14,7 +14,7 @@ pub use row::{FromRow, Row};
 pub use schema::{
     DATABASES as CORE_DATABASES, MIGRATIONS as CORE_MIGRATIONS, TABLES as CORE_TABLES,
 };
-pub use store::{DspLease, Store};
+pub use store::{CACHE, DspLease, Store};
 pub fn identifier(value: &str, prefix: &str) -> bool {
     value.strip_prefix(prefix).is_some_and(|s| {
         s.len() == 32

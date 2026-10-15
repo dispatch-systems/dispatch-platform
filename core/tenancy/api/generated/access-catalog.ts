@@ -8,6 +8,7 @@ export const pages = [
   "dvic",
   "weekly_scorecard",
   "driver_match",
+  "driver_profiles",
   "daily_performance",
   "documents",
   "team",
@@ -33,6 +34,7 @@ export const features = [
   "dvic",
   "weekly_scorecard",
   "driver_match",
+  "driver_profiles",
   "daily_performance",
   "documents",
   "team",
@@ -127,6 +129,17 @@ export const featureCatalog = [
     "requires": [
       "timecards",
       "routes"
+    ],
+    "kind": "page"
+  },
+  {
+    "id": "driver_profiles",
+    "label": "Driver Profiles",
+    "permissions": [
+      "driver_profiles.collect"
+    ],
+    "requires": [
+      "associates"
     ],
     "kind": "page"
   },
@@ -247,7 +260,8 @@ export const featureCatalog = [
       "routes",
       "dvic",
       "daily_performance",
-      "weekly_scorecard"
+      "weekly_scorecard",
+      "associates"
     ]
   }
 ] as const;
@@ -267,6 +281,7 @@ export const permissions = [
   "weekly_scorecard.view",
   "weekly_scorecard.collect",
   "weekly_scorecard.manage",
+  "driver_profiles.collect",
   "driver_match.manage",
   "members.invite",
   "members.manage",
@@ -287,6 +302,7 @@ export const permissionLabels = {
   "daily_performance.view": "View Daily Performance",
   "documents.use": "Use Documents",
   "driver_match.manage": "Manage Driver Match",
+  "driver_profiles.collect": "Collect Driver Profiles",
   "dvic.collect": "Collect DVIC",
   "dvic.manage": "Manage DVIC",
   "dvic.view": "View DVIC",
@@ -352,6 +368,12 @@ export const permissionGroups = [
     "Driver Match",
     [
       "driver_match.manage"
+    ]
+  ],
+  [
+    "Driver Profiles",
+    [
+      "driver_profiles.collect"
     ]
   ],
   [

@@ -6,6 +6,7 @@
     ["cortex.daily_performance.collect", "daily_performance"],
     ["cortex.routes.collect", "routes"],
     ["cortex.dvic.collect", "dvic"],
+    ["cortex.associates.collect", "driver_profiles"],
     ["paycom", "timecard"],
     ["meal_break", "timecard"],
     ["both", "timecard"],
@@ -13,6 +14,7 @@
     ["daily_performance", "daily_performance"],
     ["routes", "routes"],
     ["dvic", "dvic"],
+    ["associates", "driver_profiles"],
     ["schedules", null],
     ["unknown", null],
     ["", null]
@@ -23,7 +25,15 @@
     ["cortex.weekly_scorecard.collect", "weekly_scorecard.collect"],
     ["cortex.daily_performance.collect", "daily_performance.collect"],
     ["cortex.routes.collect", "routes.collect"],
-    ["cortex.dvic.collect", "dvic.collect"]
+    ["cortex.dvic.collect", "dvic.collect"],
+    ["cortex.associates.collect", "driver_profiles.collect"]
   ],
-  "automates": ["timecard", "routes", "dvic", "weekly_scorecard", "daily_performance"]
+  "automates": [
+    "timecard",
+    "routes",
+    "dvic",
+    "weekly_scorecard",
+    "driver_profiles",
+    "daily_performance"
+  ]
 }

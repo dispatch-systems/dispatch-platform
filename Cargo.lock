@@ -606,6 +606,7 @@ dependencies = [
  "dispatch-daily-performance",
  "dispatch-documents",
  "dispatch-driver-match",
+ "dispatch-driver-profiles",
  "dispatch-dvic",
  "dispatch-home",
  "dispatch-host",
@@ -725,6 +726,19 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "ts-rs",
+]
+
+[[package]]
+name = "dispatch-driver-profiles"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
+ "dispatch-cortex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
  "ts-rs",
 ]
 

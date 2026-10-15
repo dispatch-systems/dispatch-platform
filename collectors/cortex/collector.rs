@@ -1,4 +1,5 @@
-//! Cortex: meal evidence, the weekly_scorecard, daily routes, and short DVIC inspections from Amazon Logistics.
+//! Cortex: meal evidence, the weekly_scorecard, daily routes, short DVIC inspections and the
+//! DSP's associates from Amazon Logistics.
 //! Its storage was added to DSPs that already existed, which is the path every later
 //! provider takes.
 mod collections;
@@ -8,12 +9,13 @@ pub use connection::performance;
 #[cfg(feature = "operator-probes")]
 mod probes;
 
-pub use collections::{daily_performance, dvic, meals, routes, weekly_scorecard};
+pub use collections::{associates, daily_performance, dvic, meals, routes, weekly_scorecard};
 /// Measures a day's routes read by a method, with the rows the feature keeping them shapes
 /// them into, which only the app's registry holds: the app's tests run it.
 #[cfg(feature = "operator-probes")]
 pub use probes::measure_route_method;
 
+use collections::associates::collect::PHOTO_HOST;
 use collections::dvic::collect::REPORT_HOST;
 use discovery::CollectionRequest;
 use dispatch_core::collection::registry::Provider;
@@ -67,6 +69,9 @@ fn amazon_cookie(domain: &str) -> bool {
 fn report_host(host: &str) -> bool {
     host == REPORT_HOST && allowed_host(host)
 }
+fn photo_host(host: &str) -> bool {
+    host == PHOTO_HOST
+}
 fn no_cookie(_: &str) -> bool {
     false
 }
@@ -87,6 +92,14 @@ pub(crate) static REPORT_HOSTS: RequestHosts = RequestHosts {
     http2: false,
 };
 
+/// Associates' photos, where the application redirects them: S3's photo host only, with no
+/// Amazon cookies. The browser never opens it.
+pub(crate) static PHOTO_HOSTS: RequestHosts = RequestHosts {
+    allowed: photo_host,
+    cookies: no_cookie,
+    http2: false,
+};
+
 /// Its database, `cortex/cortex.sqlite` in each DSP's data.
 pub const DATABASE: Kind = Kind::new("cortex", 1);
 const MIGRATIONS: &[Migrations] = &[Migrations {
@@ -99,7 +112,7 @@ const MIGRATIONS: &[Migrations] = &[Migrations {
 }];
 
 /// What it reads, meal breaks first.
-static COLLECTIONS: [Collection; 5] = [
+static COLLECTIONS: [Collection; 6] = [
     Collection {
         job_kind: meals::JOB_KIND,
         schedule: "meal_break",
@@ -140,6 +153,14 @@ static COLLECTIONS: [Collection; 5] = [
         counted: Counted::Rows,
         unconnected: "schedule_dvic_required",
     },
+    Collection {
+        job_kind: associates::JOB_KIND,
+        schedule: "associates",
+        label: "Roster",
+        unit: "associate",
+        counted: Counted::Rows,
+        unconnected: "schedule_associates_required",
+    },
 ];
 
 pub struct Cortex;
@@ -172,13 +193,19 @@ impl Collector for Cortex {
                 id: "weekly_scorecard",
                 label: "a weekly scorecard source",
             },
+            Capability {
+                id: "associates",
+                label: "an associates source",
+            },
         ]
     }
     fn collections(&self) -> &'static [Collection] {
         &COLLECTIONS
     }
     fn job_kind_for(&self, request: &Value) -> &'static str {
-        if dvic::Request::is(request) {
+        if associates::Request::is(request) {
+            associates::JOB_KIND
+        } else if dvic::Request::is(request) {
             dvic::JOB_KIND
         } else if daily_performance::Request::is(request) {
             daily_performance::JOB_KIND
@@ -246,6 +273,12 @@ impl Collector for Cortex {
         })
     }
     fn fixture(&self, _: &str, request: &Value) -> Result<Collected> {
+        if let Some(request) = associates::Request::parse(request)? {
+            return Ok(Collected {
+                data: serde_json::to_value(associates::fixture(&request)?)?,
+                scope: None,
+            });
+        }
         if let Some(request) = dvic::Request::parse(request)? {
             let scope = match request.scope_request() {
                 CollectionRequest::Discover(discovery) => {
@@ -308,7 +341,9 @@ impl Collector for Cortex {
         })
     }
     fn progress(&self, request: &Value) -> &'static str {
-        if dvic::Request::is(request) {
+        if associates::Request::is(request) {
+            "Collecting the roster"
+        } else if dvic::Request::is(request) {
             "Collecting DVIC"
         } else if daily_performance::Request::is(request) {
             "Collecting daily performance"
@@ -355,7 +390,9 @@ impl Collector for Cortex {
                             .sum()
                     })
                 }),
-            rows: total_rows(&data["reports"]).or_else(|| total_rows(&data["datasets"])),
+            rows: total_rows(&data["reports"])
+                .or_else(|| total_rows(&data["datasets"]))
+                .or_else(|| data["associates"].as_array().map(Vec::len)),
             ..Counts::default()
         }
     }
