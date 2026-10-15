@@ -117,4 +117,6 @@ at, and its tokens rotating. To make the app, or change it, paste that into Slac
 3. Under Event Subscriptions, have Slack check the Request URL again, now that the server
    answers it.
 4. Under Manage Distribution, Activate Public Distribution, so any workspace can install it.
-5. Under Basic Information, give it its icon.
+5. Under Basic Information, give it its icon: `tooling/icons/dispatch-dev.png` for Dispatch
+   Dev, with its DEV band, or `tooling/icons/dispatch.png` for Dispatch, each drawn from the SVG
+   beside it.
