@@ -5,7 +5,7 @@
 use super::slack::Tokens;
 use dispatch_core::{
     Error, Result,
-    db::{self, FromRow, Row, Store, iso, now},
+    db::{self, Db, FromRow, Row, Store, iso, migrations::add_column, now},
     ensure,
     foundation::crypto,
 };
@@ -16,6 +16,18 @@ use serde_json::json;
 const INSTALL_MS: i64 = 10 * 60 * 1000;
 /// How long an install link lasts.
 pub const LINK_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+
+/// Slack's migration 2, for adding Slack from New on Settings' DSP Connections. Each workspace's
+/// name in Dispatch, `label`, which whoever adds it may give it; without one it's known by its
+/// name in Slack. An install a member started: the workspace it named to Slack, to reconnect or
+/// update it, none for one started to add a workspace, which mustn't then be one the DSP already
+/// has; and, like the install link, the name the workspace it adds is to have.
+pub(crate) fn add_new_connections(db: &Db) -> Result<()> {
+    add_column(db, "slack_workspaces", "label", "TEXT")?;
+    add_column(db, "slack_connect_requests", "team_id", "TEXT")?;
+    add_column(db, "slack_connect_requests", "label", "TEXT")?;
+    add_column(db, "slack_install_links", "label", "TEXT")
+}
 
 /// A Slack workspace a DSP added Dispatch to, as stored.
 #[derive(Clone, Debug, PartialEq, Eq)]

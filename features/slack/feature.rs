@@ -9,7 +9,10 @@ pub use api::types::{
 };
 
 use dispatch_core::{
-    db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql},
+    db::{
+        Kind, Migration, OwnMigrations,
+        migrations::Apply::{Code, Sql},
+    },
     manifest::{Audit, Commands, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
@@ -55,9 +58,7 @@ pub const FEATURE: Feature = Feature {
                 Migration {
                     id: 2,
                     name: "slack_new_connections",
-                    apply: Sql(include_str!(
-                        "migrations/dsp/0002_slack_new_connections.sql"
-                    )),
+                    apply: Code(backend::storage::add_new_connections),
                 },
             ],
         },
