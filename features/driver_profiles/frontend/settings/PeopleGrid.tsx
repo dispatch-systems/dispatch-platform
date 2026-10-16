@@ -28,8 +28,13 @@ export function PeopleGrid({
   const [shown, setShown] = useState(PAGE);
   // What each filter would show, counted once per answer, with what a search reads.
   const prepared = useMemo(() => {
+    // Someone who has left shows only under Former.
     const shows = (key: PeopleFilter, driver: Driver) =>
-      key === 'all' || (key === 'missing' ? missing(driver, sources) : driver.role === key);
+      key === 'all'
+        ? driver.role !== 'former'
+        : key === 'missing'
+          ? missing(driver, sources)
+          : driver.role === key;
     const searchable = drivers.map((driver) => ({ driver, terms: driverSearchTerms(driver) }));
     const counts = Object.fromEntries(
       peopleFilters.map(([key]) => [key, drivers.filter((driver) => shows(key, driver)).length]),

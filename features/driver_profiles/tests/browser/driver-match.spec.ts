@@ -44,8 +44,10 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   await expect(check('Quinn Foster')).toHaveCount(0);
 
-  // Someone Amazon saw only long ago, whom Paycom doesn't list, has left; one Paycom has
-  // never heard of is missing from it.
+  // Someone Amazon saw only long ago, whom Paycom doesn't list, has left and shows only under
+  // Former; one Paycom has never heard of is missing from it.
+  await expect(card('Taylor Brooks')).toBeVisible();
+  await expect(card('Riley Quinn')).toHaveCount(0);
   const show = page.getByRole('group', { name: 'Show' });
   await show.getByRole('button', { name: /^Former/ }).click();
   await expect(card('Riley Quinn')).toContainText('Former');

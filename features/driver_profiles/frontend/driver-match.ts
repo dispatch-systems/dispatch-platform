@@ -12,7 +12,7 @@ import type {
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { driverData, driverSources } from '../../../core/manifest/api/generated/driver-data.js';
 
-/** Which people the tab shows: everyone, those of one role, or those a source lacks. */
+/** Which people the tab shows: everyone still there, those of one role, or those a source lacks. */
 export type PeopleFilter = 'all' | DriverRole | 'missing';
 export const peopleFilters: [PeopleFilter, string][] = [
   ['all', 'All'],

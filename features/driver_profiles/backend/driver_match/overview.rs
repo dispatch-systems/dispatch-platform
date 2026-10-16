@@ -118,6 +118,7 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         review: review.len(),
         unconfirmed: list
             .iter()
+            .filter(|d| d.role != DriverRole::Former)
             .flat_map(|d| &d.ids)
             .filter(|id| id.linked_by == DriverLink::Variant)
             .count(),
