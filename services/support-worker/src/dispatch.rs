@@ -795,9 +795,11 @@ async fn implement(
                 .await?;
                 continue 'correction;
             }
-            if let Some((run, logs)) = github::failure(config, &tree, number).await?
-                && run > saved(checkpoint)["lastHandledRun"].as_u64().unwrap_or(0)
+            let queue_run = github::queue_run(config, &tree, number).await?;
+            if let github::QueueRun::Failed(run, logs) = &queue_run
+                && *run > saved(checkpoint)["lastHandledRun"].as_u64().unwrap_or(0)
             {
+                let run = *run;
                 failure = format!("Merge queue required checks failed in run {run}:\n{logs}");
                 progress(
                     platform,
@@ -810,7 +812,9 @@ async fn implement(
                 .await?;
                 continue 'correction;
             }
+            // Out of the queue with its run still going, it waits for that run's verdict.
             if status["mergeQueueEntry"].is_null()
+                && !matches!(queue_run, github::QueueRun::Going)
                 && github::admitted(&status)
                 && status["mergeable"] == "MERGEABLE"
             {

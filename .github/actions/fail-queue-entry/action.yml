@@ -1,0 +1,28 @@
+name: Fail the queue entry
+description: Fail the gate as soon as a job it needs fails, so the merge queue takes the PR out without waiting for the rest of the run.
+runs:
+  using: composite
+  steps:
+    - name: Report the failed gate to the merge queue
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: ${{ github.event.merge_group.base_sha }}
+        JOB: ${{ github.job }}
+        RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        # Behind another entry, the run also tests that entry's change, which may be what
+        # failed. The gate judges it at the end of the run, by when the queue has dealt with
+        # the entry ahead.
+        main=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)
+        if [ "$main" != "$BASE" ]; then
+          echo "An entry is queued ahead of this one, so the gate reports at the end of the run."
+          exit 0
+        fi
+        # The ruleset requires the `platform` check from GitHub Actions, which this token
+        # reports as. The run goes on, and its own gate lists every failure.
+        gh api "repos/$GITHUB_REPOSITORY/check-runs" --silent \
+          -f name=platform -f head_sha="$GITHUB_SHA" -f status=completed -f conclusion=failure \
+          -f "output[title]=$JOB failed" \
+          -f "output[summary]=The rest of the run goes on, and its platform job lists every failure: $RUN"
+        echo "Reported the platform check failed, so the merge queue takes the PR out now."

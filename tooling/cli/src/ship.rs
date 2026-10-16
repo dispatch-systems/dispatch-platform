@@ -267,7 +267,7 @@ fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec<String> {
     ) else {
         return vec![];
     };
-    jobs["jobs"]
+    let failed: Vec<&Value> = jobs["jobs"]
         .as_array()
         .into_iter()
         .flatten()
@@ -280,6 +280,14 @@ fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec<String> {
             Some("cancelled") => !gating,
             _ => false,
         })
+        .collect();
+    // The gate fails whenever a suite did, and a failing suite reports it failed to the queue
+    // before the suite's own job ends, listed among the jobs: the gate is named only when it
+    // failed alone at the end.
+    let suites = failed.iter().any(|job| job["name"] != REQUIRED);
+    failed
+        .into_iter()
+        .filter(|job| job["name"] != REQUIRED || (!suites && !gating))
         .map(|job| {
             format!(
                 "{}: {} {}",
@@ -399,7 +407,7 @@ pub fn run(
             if !failed.is_empty() {
                 if queued.as_ref() == Some(head) {
                     return Err(format!(
-                        "#{number} failed its queue run, and GitHub takes it out of the queue once the run ends. Fix it, push and ship it again; shipping waits for it to leave the queue first. Failed jobs so far:\n- {}",
+                        "#{number} failed its queue run, and GitHub takes it out of the queue at once, or once the run ends if another PR is queued ahead of it. Fix it, push and ship it again; shipping waits for it to leave the queue first. Failed jobs so far:\n- {}",
                         failed.join("\n- ")
                     )
                     .into());
@@ -822,6 +830,13 @@ mod tests {
             {"name":"browser (3)","conclusion":null,"html_url":"https://github.com/job/5"},
             {"name":"platform","conclusion":null,"html_url":"https://github.com/job/3"}]})
     }
+    /// The same run once a browser shard's failing step reported the gate failed to the queue,
+    /// before the shard's own job ended.
+    fn reported() -> Value {
+        let mut value = running();
+        value["jobs"][3]["conclusion"] = "failure".into();
+        value
+    }
     /// The same run once a browser shard failed and the rest was cancelled.
     fn failing() -> Value {
         let mut value = running();
@@ -984,11 +999,13 @@ mod tests {
             .insert(RUNS.into(), VecDeque::from([runs(&[39]), runs(&[39, 40])]));
         github.rest.borrow_mut().insert(
             "actions/runs/40/jobs?per_page=100".into(),
-            VecDeque::from([running(), failing()]),
+            VecDeque::from([running(), reported(), failing()]),
         );
         let (result, said, _) = ship(&github);
         let error = result.unwrap_err().to_string();
         assert!(error.contains("#7 failed its queue run"), "{error}");
+        // The gate's early report is not named; the shard that failed is, once its job ends.
+        assert!(!error.contains("platform"), "{error}");
         assert!(
             error.contains("- browser (3): failure https://github.com/job/5"),
             "{error}"
