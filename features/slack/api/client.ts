@@ -29,6 +29,7 @@ const wording: Record<string, string> = {
   slack_organization_install: 'Add Dispatch to one workspace at a time.',
   slack_connection_broken: 'Slack stopped accepting the connection. Reconnect the workspace.',
   slack_needs_update: 'This workspace needs updating first.',
+  slack_integration_not_found: "That integration isn't available. Refresh the page.",
 };
 const call = wordedApi(wording);
 
@@ -89,6 +90,9 @@ export const setSlackChannel = (team: string, channel: string, member: boolean) 
     `${workspaceUrl(team)}/channels/${encodeURIComponent(channel)}/${member ? 'join' : 'leave'}`,
     {},
   );
+/** Switches the integration `id` on or off in the workspace `team`. */
+export const switchSlackIntegration = (team: string, id: string, on: boolean) =>
+  call<SlackAccount>(`${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`, { on });
 /**
  * A new install link, in place of any the DSP had, for a workspace to have the name `label` in
  * Dispatch: shown this once.

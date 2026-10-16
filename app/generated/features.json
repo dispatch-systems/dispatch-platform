@@ -39,6 +39,7 @@
       "domains": [
         "daily_performance"
       ],
+      "integrations": [],
       "live": [],
       "maintenance": [],
       "people": [
@@ -112,6 +113,7 @@
       "commands": null,
       "demo": false,
       "domains": [],
+      "integrations": [],
       "live": [],
       "maintenance": [
         3600,
@@ -197,6 +199,7 @@
       "commands": null,
       "demo": false,
       "domains": [],
+      "integrations": [],
       "live": [],
       "maintenance": [
         3600
@@ -266,6 +269,7 @@
       "domains": [
         "driver_profiles"
       ],
+      "integrations": [],
       "live": [
         "driver_profiles.collect"
       ],
@@ -350,6 +354,7 @@
       "domains": [
         "dvic"
       ],
+      "integrations": [],
       "live": [
         "dvic.view"
       ],
@@ -409,6 +414,7 @@
       "commands": null,
       "demo": false,
       "domains": [],
+      "integrations": [],
       "live": [],
       "maintenance": [],
       "people": [],
@@ -468,6 +474,7 @@
       "domains": [
         "routes"
       ],
+      "integrations": [],
       "live": [],
       "maintenance": [
         3600
@@ -536,6 +543,7 @@
       "commands": null,
       "demo": false,
       "domains": [],
+      "integrations": [],
       "live": [],
       "maintenance": [],
       "people": [],
@@ -574,6 +582,7 @@
       "commands": "slack-",
       "demo": false,
       "domains": [],
+      "integrations": [],
       "live": [],
       "maintenance": [
         3600
@@ -586,6 +595,7 @@
         "GET /api/dsp/slack/workspaces/{team}/channels",
         "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/join",
         "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/leave",
+        "POST /api/dsp/slack/workspaces/{team}/integrations/{integration}",
         "POST /api/dsp/slack/connect",
         "POST /api/dsp/slack/connect/finish",
         "POST /api/dsp/slack/workspaces/{team}/rename",
@@ -611,6 +621,7 @@
       "dsp": [
         "slack_connect_requests",
         "slack_install_links",
+        "slack_integrations",
         "slack_members",
         "slack_workspaces"
       ],
@@ -642,6 +653,7 @@
       "commands": null,
       "demo": false,
       "domains": [],
+      "integrations": [],
       "live": [],
       "maintenance": [],
       "people": [],
@@ -729,6 +741,7 @@
         "paycom",
         "meals"
       ],
+      "integrations": [],
       "live": [
         "timecard.view",
         "collections.run"
@@ -830,6 +843,7 @@
       "commands": null,
       "demo": false,
       "domains": [],
+      "integrations": [],
       "live": [],
       "maintenance": [],
       "people": [],
@@ -901,6 +915,7 @@
       "domains": [
         "weekly_scorecard"
       ],
+      "integrations": [],
       "live": [],
       "maintenance": [],
       "people": [

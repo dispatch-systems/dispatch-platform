@@ -1,17 +1,20 @@
 //! The Slack app itself, as Slack knows it: the permissions it asks each workspace for, the
 //! events it's told of, where Slack reaches this server, and, from those, its manifest. Adding
-//! to what the app does in Slack starts here: a permission in `SCOPES`, an event in `EVENTS`,
-//! and then its handler, where `inbound` routes it.
-use dispatch_core::{Result, ensure, foundation::config::Config};
+//! to what Slack itself does there starts here: a permission in `SCOPES`, an event in `EVENTS`,
+//! and then its handler, where `inbound` routes it. Another feature adds what it needs with an
+//! integration, which `scopes` and `events` add to these.
+use super::integrations;
+use dispatch_core::{
+    Result, ensure, foundation::config::Config, manifest::integrations::Integration,
+};
 use serde_json::{Value, json};
 
-/// What the bot may do in a workspace, which whoever installs it there approves: only what
-/// Dispatch uses. The hourly check reads the workspace's name with `team:read`. Its settings'
+/// What the bot may do in a workspace for Slack itself, which whoever installs it there
+/// approves: only what it uses. The hourly check reads the workspace's name with `team:read`. Its settings'
 /// Channels list the public channels and the private ones the bot was invited to
 /// (`channels:read`, `groups:read`), join public ones (`channels:join`) and leave either
 /// (`channels:manage`, `groups:write`). Driver Match reads its members, with their email
-/// addresses (`users:read`, `users:read.email`). A permission added here shows Update on each
-/// workspace's card until its admin approves it.
+/// addresses (`users:read`, `users:read.email`).
 pub const SCOPES: &[&str] = &[
     "team:read",
     "channels:read",
@@ -22,8 +25,9 @@ pub const SCOPES: &[&str] = &[
     "users:read",
     "users:read.email",
 ];
-/// What Slack tells the app of: its Home tab opened, someone joining the workspace or changing
-/// their profile, and its being removed from a workspace or losing its tokens there.
+/// What Slack tells the app of for Slack itself: its Home tab opened, someone joining the
+/// workspace or changing their profile, and its being removed from a workspace or losing its
+/// tokens there.
 pub const EVENTS: &[&str] = &[
     "app_home_opened",
     "team_join",
@@ -31,6 +35,32 @@ pub const EVENTS: &[&str] = &[
     "app_uninstalled",
     "tokens_revoked",
 ];
+
+/// What the app asks each workspace's admin to let it do: what Slack itself uses, then what its
+/// integrations need, each once. One added shows Update on each workspace's card until its
+/// admin approves it.
+pub fn scopes() -> Vec<&'static str> {
+    with_integrations(SCOPES, |integration| integration.needs)
+}
+/// What the app asks Slack to tell it of: what Slack itself hears of, then what its
+/// integrations do, each once.
+pub fn events() -> Vec<&'static str> {
+    with_integrations(EVENTS, |integration| integration.hears)
+}
+fn with_integrations(
+    own: &[&'static str],
+    theirs: fn(&Integration) -> &'static [&'static str],
+) -> Vec<&'static str> {
+    let mut all = own.to_vec();
+    for (_, integration) in integrations::declared() {
+        for each in theirs(integration) {
+            if !all.contains(each) {
+                all.push(each);
+            }
+        }
+    }
+    all
+}
 
 /// Where Slack sends the browser back after installing, on the admin's address.
 pub const RETURN_PATH: &str = "/api/slack/return";
@@ -77,12 +107,12 @@ fn manifest(config: &Config) -> Value {
         },
         "oauth_config": {
             "redirect_urls": [format!("{origin}{RETURN_PATH}")],
-            "scopes": {"bot": SCOPES},
+            "scopes": {"bot": scopes()},
         },
         "settings": {
             "event_subscriptions": {
                 "request_url": format!("{origin}{EVENTS_PATH}"),
-                "bot_events": EVENTS,
+                "bot_events": events(),
             },
             "interactivity": {
                 "is_enabled": true,

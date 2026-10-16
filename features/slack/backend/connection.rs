@@ -4,7 +4,7 @@
 //! Slack is called outside the database, and the member's permission is checked again after
 //! every wait, before anything is written. The install link, the other way in, is `link`'s.
 use super::{
-    app::SCOPES,
+    app::scopes,
     bot::Bot,
     fixture, members,
     slack::{Installed, Slack},
@@ -94,9 +94,10 @@ fn described(db: &Store, dsp: &str, workspace: Workspace) -> Result<SlackWorkspa
         } else {
             WorkspaceStatus::Connected
         },
-        needs_update: !SCOPES
+        needs_update: !scopes()
             .iter()
             .all(|scope| workspace.scopes.iter().any(|had| had == scope)),
+        integrations: db.slack_integrations(dsp, &workspace.team)?,
         connected_by: match &workspace.connected_by {
             Some(user) => db.actor_name(dsp, user)?,
             None => None,

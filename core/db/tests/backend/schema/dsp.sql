@@ -23,6 +23,7 @@ CREATE TABLE sessions ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES 
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE slack_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT, link_hash TEXT, expires_at INTEGER NOT NULL, team_id TEXT, label TEXT, CHECK ((user_id IS NULL) <> (link_hash IS NULL)) );
 CREATE TABLE slack_install_links ( id INTEGER PRIMARY KEY CHECK (id = 1), link_hash TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL , label TEXT);
+CREATE TABLE slack_integrations ( team_id TEXT NOT NULL, integration TEXT NOT NULL, turned_on_by TEXT NOT NULL, turned_on_at TEXT NOT NULL, PRIMARY KEY (team_id, integration) );
 CREATE TABLE slack_members ( team_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, display_name TEXT, email TEXT, phone TEXT, active INTEGER NOT NULL CHECK (active IN (0, 1)), guest INTEGER NOT NULL CHECK (guest IN (0, 1)), PRIMARY KEY (team_id, user_id) );
 CREATE TABLE slack_workspaces ( team_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), scopes TEXT NOT NULL, bot_user_id TEXT NOT NULL, app_id TEXT NOT NULL, connected_by TEXT, connected_at TEXT NOT NULL, broken_at TEXT , label TEXT);
 CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );

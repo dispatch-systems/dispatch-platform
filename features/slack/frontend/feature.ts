@@ -1,7 +1,12 @@
 import { createElement, lazy } from 'react';
-import { Hash } from 'lucide-react';
+import { Blocks, Hash } from 'lucide-react';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import { settingsPage, type FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
+import {
+  connectionIntegrations,
+  settingsPage,
+  type FrontendFeature,
+} from '../../../core/shell/frontend/runtime/slots.js';
+import { CHANNELS, INTEGRATIONS } from './sections.js';
 
 // Slack's frontend manifest, loaded up front: it stays small and loads its cards and its page
 // lazily. Its error codes are worded in its API client, which loads with them: only they and New
@@ -21,6 +26,9 @@ const loadPage = () => import('./page.js');
 const WorkspacePage = lazy(() => loadPage().then((module) => ({ default: module.WorkspacePage })));
 const ChannelsSection = lazy(() =>
   loadPage().then((module) => ({ default: module.ChannelsSection })),
+);
+const IntegrationsSection = lazy(() =>
+  loadPage().then((module) => ({ default: module.IntegrationsSection })),
 );
 
 export const feature: FrontendFeature = {
@@ -61,15 +69,26 @@ export const feature: FrontendFeature = {
       },
     },
   ],
-  // Its own section of each workspace's settings, where other features add theirs.
+  // Its own sections of each workspace's settings, among which other features add theirs: the
+  // channels Dispatch is in, and, while another feature works through Slack, the integrations
+  // switched on there, which other features declare in `connectionIntegrations`.
   connectionSections: [
     {
       connection: 'slack',
-      id: 'channels',
+      id: CHANNELS,
       label: 'Channels',
       icon: Hash,
       order: 10,
       render: ({ account }) => createElement(ChannelsSection, { team: account }),
+    },
+    {
+      connection: 'slack',
+      id: INTEGRATIONS,
+      label: 'Integrations',
+      icon: Blocks,
+      order: 20,
+      visible: (view) => Boolean(view && connectionIntegrations('slack', view).length),
+      render: (context) => createElement(IntegrationsSection, context),
     },
   ],
   // Its switch's icon on the DSPs page, and how its events read in the audit log.

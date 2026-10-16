@@ -12,7 +12,7 @@
 use super::{
     app::{EVENTS_PATH, INTERACTIONS_PATH},
     bot::Bot,
-    connection, home, members,
+    connection, home, integrations, members,
     slack::Slack,
     storage::SlackStore,
 };
@@ -36,14 +36,16 @@ use std::{
     sync::{Arc, LazyLock, Mutex, MutexGuard},
 };
 
-/// What each event the app is told of does, by its type, for a workspace Dispatch acts in. An
-/// event added to `app::EVENTS` is handled here.
+/// What each event the app is told of does, by its type, for a workspace Dispatch acts in: what
+/// Slack itself does, and then what the integrations on there that hear of it do. An event added
+/// to `app::EVENTS` is handled here.
 async fn on_event(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
     match kind {
-        "app_home_opened" => home::opened(bot, event).await,
-        "team_join" | "user_change" => members::told(bot, event).await,
-        _ => Ok(()),
+        "app_home_opened" => home::opened(bot, event).await?,
+        "team_join" | "user_change" => members::told(bot, event).await?,
+        _ => {}
     }
+    integrations::heard(bot, kind, event).await
 }
 /// What each interaction does, by its type and the button, form or shortcut it names, for a
 /// workspace Dispatch acts in, with all Slack sent of it in `payload`. The app has none yet:

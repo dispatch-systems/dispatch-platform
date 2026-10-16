@@ -12,6 +12,7 @@ POST /api/dsp/slack/link/cancel Dsp("connections.manage") Write
 POST /api/dsp/slack/workspaces/{team}/channels/{channel}/join Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/channels/{channel}/leave Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/disconnect Dsp("connections.manage") Async
+POST /api/dsp/slack/workspaces/{team}/integrations/{integration} Dsp("slack.manage") Write
 POST /api/dsp/slack/workspaces/{team}/rename Dsp("connections.manage") Write
 POST /slack/events Public Async
 POST /slack/interactions Public Async

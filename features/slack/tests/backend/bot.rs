@@ -8,7 +8,7 @@ const TEAM: &str = "T0FIXTURE1";
 
 /// A platform with one DSP, its server's state, and the bot in the DSP's workspace `TEAM`.
 fn bot() -> (impl Drop, Arc<State>, Bot) {
-    testing::install(&[], &[&crate::FEATURE]);
+    crate::backend::support::install();
     let (root, store, dsp) = testing::bootstrapped();
     let config = store.config.clone();
     drop(store);

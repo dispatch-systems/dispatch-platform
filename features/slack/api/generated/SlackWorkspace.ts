@@ -18,6 +18,10 @@ label: string | null, status: WorkspaceStatus,
  */
 needsUpdate: boolean,
 /**
+ * The IDs of the integrations on in it, as their features declare them.
+ */
+integrations: Array<string>,
+/**
  * The member who connected it, by name; none when it came by the install link, or they've
  * left.
  */

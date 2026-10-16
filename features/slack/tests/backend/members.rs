@@ -14,7 +14,7 @@ const DRIVERS: &str = "T0FIXTURE2";
 
 /// A platform with one DSP, and its server's state.
 fn platform() -> (impl Drop, Arc<State>, String) {
-    testing::install(&[], &[&crate::FEATURE]);
+    crate::backend::support::install();
     let (root, store, dsp) = testing::bootstrapped();
     let config = store.config.clone();
     drop(store);

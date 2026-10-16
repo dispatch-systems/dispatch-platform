@@ -34,6 +34,7 @@ pub const FEATURE: Feature = Feature {
             &[
                 "slack_workspaces",
                 "slack_members",
+                "slack_integrations",
                 "slack_connect_requests",
                 "slack_install_links",
             ],
@@ -66,6 +67,11 @@ pub const FEATURE: Feature = Feature {
                     id: 3,
                     name: "slack_members",
                     apply: Sql(include_str!("migrations/dsp/0003_slack_members.sql")),
+                },
+                Migration {
+                    id: 4,
+                    name: "slack_integrations",
+                    apply: Sql(include_str!("migrations/dsp/0004_slack_integrations.sql")),
                 },
             ],
         },

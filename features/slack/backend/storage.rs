@@ -1,7 +1,7 @@
-//! Slack's storage: in each DSP's own database, its workspaces, their members, the installs
-//! started for them and its install link; each workspace's tokens, encrypted in the DSP's secrets; and in the
-//! platform's database, which DSP each workspace belongs to. Only this crate writes SQL against
-//! its tables.
+//! Slack's storage: in each DSP's own database, its workspaces, their members, the
+//! integrations on in each, the installs started for them and its install link; each
+//! workspace's tokens, encrypted in the DSP's secrets; and in the platform's database, which DSP
+//! each workspace belongs to. Only this crate writes SQL against its tables.
 use super::slack::Tokens;
 use dispatch_core::{
     Error, Result,
@@ -222,6 +222,13 @@ pub trait SlackStore {
     /// Keeps one member of the workspace, as Slack describes them now: whether they're new or
     /// changed.
     fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool>;
+    /// The IDs of the integrations on in the workspace `team`, in order.
+    fn slack_integrations(&self, dsp: &str, team: &str) -> Result<Vec<String>>;
+    /// Switches the integration `id` on in the workspace `team`, as the member `by`: whether it
+    /// was off.
+    fn turn_on_slack_integration(&self, dsp: &str, team: &str, id: &str, by: &str) -> Result<bool>;
+    /// Switches the integration `id` off in the workspace `team`: whether it was on.
+    fn turn_off_slack_integration(&self, dsp: &str, team: &str, id: &str) -> Result<bool>;
     fn slack_link(&self, dsp: &str) -> Result<Option<Link>>;
     /// Keeps a new install link for the DSP, by its hash, in place of any it had, with the
     /// name the workspace it adds is to have.
@@ -409,6 +416,7 @@ impl SlackStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             db.exec("DELETE FROM slack_members WHERE team_id=?", [team])?;
+            db.exec("DELETE FROM slack_integrations WHERE team_id=?", [team])?;
             db.exec("DELETE FROM slack_workspaces WHERE team_id=?", [team])
         })?;
         drop(db);
@@ -453,6 +461,28 @@ impl SlackStore for Store {
     fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool> {
         let db = self.dsp(dsp)?;
         keep_member(&db, team, member)
+    }
+    fn slack_integrations(&self, dsp: &str, team: &str) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> = self.dsp(dsp)?.query_as(
+            "SELECT integration FROM slack_integrations WHERE team_id=? ORDER BY integration",
+            [team],
+        )?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
+    }
+    fn turn_on_slack_integration(&self, dsp: &str, team: &str, id: &str, by: &str) -> Result<bool> {
+        let added = self.dsp(dsp)?.exec(
+            "INSERT OR IGNORE INTO slack_integrations \
+             (team_id,integration,turned_on_by,turned_on_at) VALUES (?,?,?,?)",
+            params![team, id, by, iso()],
+        )?;
+        Ok(added > 0)
+    }
+    fn turn_off_slack_integration(&self, dsp: &str, team: &str, id: &str) -> Result<bool> {
+        let removed = self.dsp(dsp)?.exec(
+            "DELETE FROM slack_integrations WHERE team_id=? AND integration=?",
+            [team, id],
+        )?;
+        Ok(removed > 0)
     }
     fn slack_link(&self, dsp: &str) -> Result<Option<Link>> {
         let found: Option<(String, String, i64, Option<String>)> = self.dsp(dsp)?.one_as(

@@ -5,23 +5,30 @@ import {
   replaceHashQuery,
   settingsHash,
 } from '../../../core/shell/frontend/runtime/navigation.js';
-import { connectionSections } from '../../../core/shell/frontend/runtime/slots.js';
-import { Badge, DataState, ErrorBox, Loading } from '../../../core/shell/frontend/ui/index.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+import {
+  connectionSections,
+  type ConnectionSection,
+} from '../../../core/shell/frontend/runtime/slots.js';
+import { DataState, ErrorBox, Loading } from '../../../core/shell/frontend/ui/index.js';
 import { useSlackAccount, type SlackWorkspace } from '../api/client.js';
-import { day } from './day.js';
-import { SlackLogo } from './SlackLogo.js';
+import { INTEGRATIONS } from './sections.js';
+import { WorkspaceHero } from './WorkspaceHero.js';
 
-// One of the DSP's workspaces' settings, on a page of its own, for those who manage Slack: the
-// workspace at the top, and its sections down the side, Slack's own and those other features
-// add for each workspace, one at a time. A feature switched off for the DSP takes its sections
-// with it. The address names the workspace and the section open.
+// One of the DSP's workspaces' settings, on a page of their own, for those who manage Slack: the
+// workspace at the top, and its sections down the side, Slack's own and those other features add
+// for each workspace, one at a time. An integration's sections are listed under Integrations,
+// while it's on in the workspace. A feature switched off for the DSP takes its sections with it.
+// The address names the workspace and the section open.
 
 export function WorkspacePage({ session, view }: { session: SessionView; view: DspView }) {
   const team = hashQuery().get('workspace') ?? '';
   const account = useSlackAccount();
-  const sections = connectionSections('slack', view);
   const [asked, setAsked] = useState(hashQuery().get('section') ?? '');
-  const section = sections.find((each) => each.id === asked) ?? sections[0];
+  const open = (section: string) => {
+    replaceHashQuery({ workspace: team, section });
+    setAsked(section);
+  };
   const named = account.data?.workspaces.find((each) => each.teamId === team);
   return (
     <div className="slack-page">
@@ -41,19 +48,23 @@ export function WorkspacePage({ session, view }: { session: SessionView; view: D
           const workspace = data.workspaces.find((each) => each.teamId === team);
           if (!workspace)
             return <ErrorBox message="That workspace isn't connected. Refresh the page." />;
+          const sections = listed(connectionSections('slack', view), workspace);
+          const section = sections.find((each) => each.id === asked) ?? sections[0];
           return (
             <>
-              <Hero workspace={workspace} timeZone={view.dsp.timezone} />
+              <WorkspaceHero
+                workspace={workspace}
+                timeZone={view.dsp.timezone}
+                renames={can(view, 'connections.manage')}
+              />
               <div className="slack-page-body">
                 <nav className="slack-sections" aria-label="Sections">
-                  {sections.map(({ id, label, icon: Icon }) => (
+                  {sections.map(({ id, label, icon: Icon, integration }) => (
                     <button
                       key={id}
+                      className={integration ? 'slack-subsection' : undefined}
                       aria-current={id === section?.id ? 'page' : undefined}
-                      onClick={() => {
-                        replaceHashQuery({ workspace: team, section: id });
-                        setAsked(id);
-                      }}
+                      onClick={() => open(id)}
                     >
                       {Icon && <Icon size={16} />}
                       {label}
@@ -64,7 +75,7 @@ export function WorkspacePage({ session, view }: { session: SessionView; view: D
                   <section className="slack-section" aria-label={section.label}>
                     <h2>{section.label}</h2>
                     <Suspense fallback={<Loading />}>
-                      {section.render({ session, view, account: team })}
+                      {section.render({ session, view, account: team, open })}
                     </Suspense>
                   </section>
                 )}
@@ -77,43 +88,15 @@ export function WorkspacePage({ session, view }: { session: SessionView; view: D
   );
 }
 
-/** The workspace at the top of its page: its name, whether it works, and where it came from. */
-function Hero({ workspace, timeZone }: { workspace: SlackWorkspace; timeZone: string }) {
-  const broken = workspace.status === 'broken';
-  return (
-    <header className="slack-hero">
-      <span className="slack-mark slack-hero-mark">
-        <SlackLogo size={28} />
-      </span>
-      <div className="slack-hero-text">
-        <h1>{workspace.label ?? workspace.name}</h1>
-        <dl>
-          <div>
-            <dt>Workspace</dt>
-            <dd>{workspace.name}</dd>
-          </div>
-          <div>
-            <dt>Connected</dt>
-            <dd>
-              {day(workspace.connectedAt, timeZone)}
-              {workspace.byLink
-                ? ', by install link'
-                : workspace.connectedBy
-                  ? `, by ${workspace.connectedBy}`
-                  : ''}
-            </dd>
-          </div>
-        </dl>
-      </div>
-      <div className="slack-hero-status" role="status">
-        {broken ? (
-          <Badge value="failed">Needs Reconnecting</Badge>
-        ) : workspace.needsUpdate ? (
-          <Badge value="needs_verification">Needs Update</Badge>
-        ) : (
-          <Badge value="ready" />
-        )}
-      </div>
-    </header>
+/**
+ * The sections listed for `workspace`, in their order: an integration's only while it's on
+ * there, right under Integrations.
+ */
+function listed(sections: ConnectionSection[], workspace: SlackWorkspace) {
+  const integrations = sections.filter(
+    (section) => section.integration && workspace.integrations.includes(section.integration),
   );
+  return sections
+    .filter((section) => !section.integration)
+    .flatMap((section) => (section.id === INTEGRATIONS ? [section, ...integrations] : [section]));
 }

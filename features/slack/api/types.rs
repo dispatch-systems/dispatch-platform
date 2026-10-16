@@ -30,6 +30,8 @@ pub struct SlackWorkspace {
     pub status: WorkspaceStatus,
     /// Whether the bot needs permissions its admin hasn't approved yet: updating asks for them.
     pub needs_update: bool,
+    /// The IDs of the integrations on in it, as their features declare them.
+    pub integrations: Vec<String>,
     /// The member who connected it, by name; none when it came by the install link, or they've
     /// left.
     pub connected_by: Option<String>,

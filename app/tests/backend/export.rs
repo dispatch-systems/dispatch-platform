@@ -593,6 +593,9 @@ fn feature_map(root: &Path) -> String {
             "commands": feature.commands.as_ref().map(|commands| commands.prefix),
             "demo": feature.demo.is_some(),
             "domains": feature.domains.iter().map(|domain| domain.id()).collect::<Vec<_>>(),
+            "integrations": feature.integrations.iter()
+                .map(|integration| json!([integration.id, integration.connection]))
+                .collect::<Vec<_>>(),
             "live": feature.live,
             "maintenance": feature.maintenance.iter().map(|task| task.every.as_secs())
                 .collect::<Vec<_>>(),

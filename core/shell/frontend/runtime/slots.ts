@@ -183,9 +183,59 @@ export type ConnectionSection = {
   visible?: (view?: DspView) => boolean;
   /** The part of its owner's feature it belongs to: it goes with the part. */
   part?: Feature;
+  /**
+   * The integration whose settings it is, by its id: it's listed under the connection's
+   * integrations, and only while that's on for the account.
+   */
+  integration?: string;
   /** Draws it for the connection's account `account`, as its owner names that. */
-  render: (context: SettingsContext & { account: string }) => ReactNode;
+  render: (context: ConnectionSectionContext) => ReactNode;
 };
+/** What a section of a connection's settings is drawn with. */
+export type ConnectionSectionContext = SettingsContext & {
+  /** The connection's account it's drawn for, as the connection's owner names it. */
+  account: string;
+  /** Opens another of the connection's sections, by its id. */
+  open: (section: string) => void;
+};
+
+/**
+ * Something a feature does through another's connection, which the connection's settings switch
+ * on and off for each of its accounts, as Documents saves the files posted in Slack. Its backend
+ * declares it under the same id, with what it needs and hears of. Here it says what it is, for
+ * members who don't know: what it does, how it's used and what it sees, on its card, and what
+ * switching it on or off means, before it's switched.
+ */
+export type ConnectionIntegration = {
+  /** The connection it works through, as that connection's owner names it. */
+  connection: string;
+  /** As its backend declares it: `<feature>.<what>`. */
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  /** What it does, in a sentence or two. */
+  description: string;
+  /** How it's used, step by step. */
+  steps: readonly string[];
+  /** What Dispatch sees through the connection while it's on. */
+  sees: readonly IntegrationNote[];
+  /** What switching it on means, said before it's switched on. */
+  turningOn: readonly IntegrationNote[];
+  /** What switching it off means, said before it's switched off. */
+  turningOff: readonly IntegrationNote[];
+  /** Where it sits among the connection's integrations, lowest first. */
+  order: number;
+  /** Who sees it; omitted means everyone who sees the connection's settings. */
+  visible?: (view?: DspView) => boolean;
+  /** The part of its owner's feature it belongs to: it goes with the part. */
+  part?: Feature;
+  /** What it's doing in the account, on its card while it's on. */
+  summary?: (context: SettingsContext & { account: string }) => ReactNode;
+};
+/** One thing an integration says of itself, with its mark; without one, a tick. */
+export type IntegrationNote = { text: string; icon?: LucideIcon };
+/** An integration as the connection's settings list it, with the name of its feature, `from`. */
+export type ListedIntegration = ConnectionIntegration & { from: string };
 
 /**
  * A tab one feature adds to another's page. The page draws it among its own tabs, as Settings
@@ -332,6 +382,8 @@ export type FrontendFeature = {
   connectionPieces?: readonly ConnectionPiece[];
   /** Its sections of a connection's settings, its own or another owner's. */
   connectionSections?: readonly ConnectionSection[];
+  /** What it does through other owners' connections, switched on in their settings. */
+  connectionIntegrations?: readonly ConnectionIntegration[];
   /** How the response cache treats its reads. */
   cache?: CacheRules;
   /** Its reads that wait for a change before they answer, by path prefix. */
@@ -394,10 +446,19 @@ function present<T extends { part?: Feature }>(
   view: DspView | undefined,
   slot: (feature: FrontendFeature) => readonly T[] | undefined,
 ) {
-  return installed.flatMap((feature) =>
-    featureCatalog.some((f) => f.id === feature.name) && !hasFeature(view, feature.name as Feature)
+  return presentBy(view, slot).map(({ each }) => each);
+}
+/** What `present` answers, each with the owner that put it there. */
+function presentBy<T extends { part?: Feature }>(
+  view: DspView | undefined,
+  slot: (feature: FrontendFeature) => readonly T[] | undefined,
+) {
+  return installed.flatMap((owner) =>
+    featureCatalog.some((f) => f.id === owner.name) && !hasFeature(view, owner.name as Feature)
       ? []
-      : (slot(feature) ?? []).filter((each) => !each.part || hasFeature(view, each.part)),
+      : (slot(owner) ?? [])
+          .filter((each) => !each.part || hasFeature(view, each.part))
+          .map((each) => ({ owner, each })),
   );
 }
 /**
@@ -441,6 +502,19 @@ export const connectionSections = (connection: string, view: DspView) =>
   present(view, (feature) => feature.connectionSections)
     .filter((section) => section.connection === connection)
     .filter((section) => !section.visible || section.visible(view))
+    .sort((a, b) => a.order - b.order);
+/**
+ * The integrations through `connection` the view has and sees, in their order, each with the
+ * name of the feature it's part of, `from`.
+ */
+export const connectionIntegrations = (connection: string, view: DspView): ListedIntegration[] =>
+  presentBy(view, (feature) => feature.connectionIntegrations)
+    .filter(({ each }) => each.connection === connection)
+    .filter(({ each }) => !each.visible || each.visible(view))
+    .map(({ owner, each }) => ({
+      ...each,
+      from: featureCatalog.find((f) => f.id === owner.name)?.label ?? owner.name,
+    }))
     .sort((a, b) => a.order - b.order);
 /** The card of a connection. */
 export const connectionCard = (provider: string) =>
