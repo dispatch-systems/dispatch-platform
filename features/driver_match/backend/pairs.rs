@@ -1,9 +1,8 @@
 //! The pairs that may be one person: who they are, why, and which keeps their code.
 use super::IdRow;
-use super::matching::{AMAZON, Saved};
-use super::overview::Found;
+use super::legacy::{AMAZON, Saved};
 use super::review;
-use super::sources::{Days, Identity};
+use super::sources::{Days, Found, Identity};
 use crate::api::types::{Driver, DriverEvidence, DriverRole, DriverStrength};
 use dispatch_core::{foundation::names, manifest::people::DriverSource};
 use std::collections::{BTreeMap, BTreeSet};

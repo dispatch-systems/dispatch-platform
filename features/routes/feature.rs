@@ -78,7 +78,7 @@ pub const FEATURE: Feature = Feature {
     }],
     domains: &[backend::DOMAIN],
     maintenance: &[backend::maintenance::MAINTENANCE],
-    people: &[&backend::people::Drivers],
+    people: &[&backend::people::PEOPLE],
     // Its events are its collections' and their data's, which its settings keep.
     audit: Audit {
         areas: &[("routes.", Collections)],

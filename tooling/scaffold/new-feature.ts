@@ -16,10 +16,12 @@ import {
   formatRust,
   keeperOf,
   names as namesOf,
+  nextPeopleOrder,
   nextPermissionOrder,
   nextPlace,
   pageOf,
   parseArguments,
+  peopleSources,
   repositoryRoot,
   run,
   snapshotsNote,
@@ -41,6 +43,8 @@ export const usage = `Usage: npm run new:feature -- <name> [options]
   --tables <database>               a first table: dsp, a collector's database, or the
                                     feature's own name with --keeps for a database of its own
   --keeps <collector>.<collection>  the keeper of a collector's collection
+  --people <source>                 who its table names, connected to Driver Match by their
+                                    IDs of a source: amazon or paycom; needs --tables
   --page                            a page in a DSP's sidebar
   --tab-of <feature>                a tab of another feature's page
   --settings                        a tab on a DSP's Settings page
@@ -52,7 +56,7 @@ export const usage = `Usage: npm run new:feature -- <name> [options]
   --root <dir>                      the repository to write into (default: this one)`;
 
 const FLAGS = ['mandatory', 'api', 'page', 'settings', 'no-backend', 'dry-run'];
-const OPTIONS = ['tables', 'keeps', 'tab-of', 'label', 'out', 'root'];
+const OPTIONS = ['tables', 'keeps', 'people', 'tab-of', 'label', 'out', 'root'];
 /** Where the shell's frontend reads a DSP view's type from, relative to the root. */
 const DSP_VIEW = 'core/accounts/api/index.js';
 
@@ -85,7 +89,7 @@ export function featureValues(root: string, argv: string[]) {
       throw new UsageError(
         '--no-backend leaves only a frontend: add --page, --tab-of or --settings',
       );
-    const logic = ['api', 'tables', 'keeps'].filter(
+    const logic = ['api', 'tables', 'keeps', 'people'].filter(
       (piece) => args.flags.has(piece) || args.options.has(piece),
     );
     if (logic.length)
@@ -125,6 +129,17 @@ export function featureValues(root: string, argv: string[]) {
         `with --keeps for a database of its own beside the collector's`,
     );
 
+  // Who its table names, by the IDs of a source a collector declares.
+  const sources = peopleSources(root);
+  const named = args.options.get('people');
+  const source = named === undefined ? undefined : sources.find((each) => each.id === named);
+  if (named !== undefined && !source)
+    throw new UsageError(
+      `--people names a source of IDs: one of ${sources.map((each) => each.id).join(', ')}`,
+    );
+  if (source && !database)
+    throw new UsageError('--people reads who it names from its table: add --tables');
+
   let hostPage = { id: '', label: '' };
   if (host) {
     if (!features(root).includes(host))
@@ -147,7 +162,11 @@ export function featureValues(root: string, argv: string[]) {
   const crateOf = (collector: string) => `dispatch-${collector.replace(/_/g, '-')}`;
   const identOf = (collector: string) => `dispatch_${collector}`;
   const used = [
-    ...new Set([site, database?.owner === 'collector' ? database.name : ''].filter(Boolean)),
+    ...new Set(
+      [site, database?.owner === 'collector' ? database.name : '', source?.site ?? ''].filter(
+        Boolean,
+      ),
+    ),
   ].sort();
 
   const own = database?.owner === 'feature';
@@ -245,6 +264,11 @@ export function featureValues(root: string, argv: string[]) {
     migrationFile: `${String(migrationId).padStart(4, '0')}_${migrationName}.sql`,
     storageExports: `{${pascal}Item, ${pascal}Store}`,
     keeps,
+    people: Boolean(source),
+    peopleOrder: nextPeopleOrder(root),
+    peopleSource: source ? namesOf(source.id).label : '',
+    peopleIdent: source ? identOf(source.site) : '',
+    readPeople: open.replace(/^self\./, 'store.'),
     site,
     siteIdent: site ? identOf(site) : '',
     siteLabel: site ? namesOf(site).label : '',
@@ -293,6 +317,7 @@ function pieces(values: Values): [boolean, string, string][] {
     [values.tables as boolean, 'tests/backend/storage.rs', 'tests/backend/storage.rs'],
     [values.keeps as boolean, 'backend/keeper.rs', 'backend/keeper.rs'],
     [values.keeps as boolean, 'tests/backend/keeper.rs', 'tests/backend/keeper.rs'],
+    [values.people as boolean, 'backend/people.rs', 'backend/people.rs'],
     [values.frontend as boolean, 'frontend/feature.ts', 'frontend/feature.ts'],
     [values.page as boolean, 'frontend/index.ts', 'frontend/index.ts'],
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],
@@ -356,6 +381,11 @@ export async function planFeature(root: string, argv: string[]) {
     plan.notes.push(
       `Its migration to the ${values.database} database is its own number 1, recorded under its ` +
         "name, apart from every other owner's.",
+    );
+  if (values.people)
+    plan.notes.push(
+      `Its people are Driver Match's \`${name}\` kind of data; the app's people test reads them ` +
+        'from a new DSP, so its queries are tried without a test of its own.',
     );
   plan.notes.push(`\`npm run test:feature ${name}\` runs its tests of every kind.`);
   return { plan, args };

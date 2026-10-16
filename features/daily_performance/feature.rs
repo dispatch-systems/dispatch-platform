@@ -56,7 +56,7 @@ pub const FEATURE: Feature = Feature {
         areas: &[("daily_performance.", Collections)],
         ..Audit::NONE
     },
-    people: &[&backend::people::Drivers],
+    people: &[&backend::people::PEOPLE],
     ..feature("daily_performance")
 };
 

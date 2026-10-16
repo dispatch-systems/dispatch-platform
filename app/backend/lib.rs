@@ -88,6 +88,9 @@ mod job_queue;
 #[path = "../tests/backend/live_results.rs"]
 mod live_results;
 #[cfg(test)]
+#[path = "../tests/backend/people.rs"]
+mod people;
+#[cfg(test)]
 #[cfg(all(feature = "operator-probes", feature = "default"))]
 #[path = "../tests/backend/probes.rs"]
 mod probes;

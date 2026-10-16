@@ -12,7 +12,7 @@ use dispatch_core::{
     Result,
     db::{Store, s},
     foundation::names,
-    manifest::{people::DriverSource, registry},
+    manifest::people::{self, DriverSource, Person},
 };
 use dispatch_cortex as cortex;
 use serde_json::{Value, json};
@@ -32,20 +32,9 @@ fn separate(store: &Store, id: &str) -> Result<HashSet<String>> {
         .collect())
 }
 
-/// Each Amazon driver the directory knows, with their person's Paycom codes and whether
-/// someone confirmed who they are. None without the directory, or while it is off.
-fn known(store: &Store, id: &str) -> Result<BTreeMap<String, (Vec<String>, bool)>> {
-    let Some(directory) = registry().directory() else {
-        return Ok(BTreeMap::new());
-    };
-    let amazon = DriverSource::new(&cortex::PEOPLE);
-    let paycom = DriverSource::new(&dispatch_paycom::PEOPLE);
-    Ok(directory
-        .links(store, id, amazon, paycom)?
-        .into_iter()
-        .map(|(driver, link)| (driver, (link.ids, link.confirmed)))
-        .collect())
-}
+/// The source of each driver's ID, and of each employee's.
+const AMAZON: DriverSource = DriverSource::new(&cortex::PEOPLE);
+const PAYCOM: DriverSource = DriverSource::new(&dispatch_paycom::PEOPLE);
 
 pub(crate) fn meal_comparison(
     store: &Store,
@@ -177,7 +166,7 @@ fn comparisons(
     let mut context = ComparisonContext {
         timezone, selected, meals, itineraries, late,
         separate: separate(store, id)?,
-        known: known(store, id)?,
+        known: people::who(store, id, AMAZON)?,
         latest_zone: cortex.one(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
         )?,
@@ -201,7 +190,8 @@ struct ComparisonContext<'a> {
     timezone: &'a str,
     selected: Option<&'a [String]>,
     separate: HashSet<String>,
-    known: BTreeMap<String, (Vec<String>, bool)>,
+    /// Who each driver is, by their transporter ID.
+    known: BTreeMap<String, Person>,
     late: LateRule,
     latest_zone: Option<Value>,
     meals: HashMap<(String, String), Vec<Value>>,
@@ -291,16 +281,14 @@ impl ComparisonContext<'_> {
         // Driver Match says who each driver is: their employee on today's roster, if any.
         let listed: HashSet<&str> = roster.iter().map(|e| s(e, "code")).collect();
         for (transporter, driver) in drivers.iter_mut() {
-            let (codes, confirmed) = self
-                .known
-                .get(transporter)
-                .map_or((&[][..], false), |(codes, confirmed)| {
-                    (codes.as_slice(), *confirmed)
-                });
-            let code = codes.iter().find(|c| listed.contains(c.as_str()));
+            let person = self.known.get(transporter);
+            let code = person
+                .map_or(&[][..], |person| person.ids_of(PAYCOM))
+                .iter()
+                .find(|c| listed.contains(c.as_str()));
             driver["paycomCode"] = json!(code);
             driver["matchType"] = json!(match code {
-                Some(_) if confirmed => "saved",
+                Some(_) if person.is_some_and(|person| person.confirmed) => "saved",
                 Some(_) => "name",
                 None if self.separate.contains(transporter) => "separate",
                 None => "unmatched",

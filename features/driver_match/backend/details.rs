@@ -12,7 +12,7 @@ use dispatch_core::{
     db::Store,
     ensure,
     foundation::names,
-    manifest::people::{DriverData, DriverSource},
+    manifest::people::{DriverData, DriverSource, Photo},
 };
 use std::collections::BTreeSet;
 
@@ -164,11 +164,7 @@ pub(super) fn details(store: &Store, dsp: &str, code: &str) -> Result<DriverDeta
 }
 
 /// The photo of `code`'s person: the first a feature the DSP has on holds of their IDs.
-pub(super) fn photo(
-    store: &Store,
-    dsp: &str,
-    code: &str,
-) -> Result<Option<(&'static str, Vec<u8>)>> {
+pub(super) fn photo(store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
     ensure(valid_code(code), "not_found", 404)?;
     let db = store.dsp(dsp)?;
     let code = surviving(&db, code)?;
@@ -178,13 +174,16 @@ pub(super) fn photo(
     )?;
     drop(db);
     for people in sources::people(store, dsp)? {
+        let Some(photos) = people.photos else {
+            continue;
+        };
         let ids: Vec<String> = held
             .iter()
             .filter(|(source, _)| source == people.source().as_str())
             .map(|(_, id)| id.clone())
             .collect();
         if !ids.is_empty()
-            && let Some(photo) = people.photo(store, dsp, &ids)?
+            && let Some(photo) = photos(store, dsp, &ids)?
         {
             return Ok(Some(photo));
         }

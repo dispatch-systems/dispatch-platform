@@ -1,9 +1,7 @@
 //! A person as the tab lists them: what each source says of their IDs, what they do for the
 //! DSP, how surely their IDs are one person's, and their photo.
 use super::IdRow;
-use super::matching::PAYCOM;
-use super::overview::Found;
-use super::sources::{DriverDepartments, Identity, Key, Seen};
+use super::sources::{DriverDepartments, Found, Identity, Key, Seen};
 use crate::api::types::{Driver, DriverId, DriverLink, DriverRole};
 use dispatch_core::{
     foundation::names,
@@ -114,18 +112,14 @@ fn weakest(ids: &[(&IdRow, DriverSource)]) -> DriverLink {
         .min_by_key(|link| sureness(*link))
         .unwrap_or(DriverLink::New)
 }
-/// The name a person is shown by: Paycom's, the legal one; the next source's when Paycom has
-/// none; an ID no source holds any more when none does.
-fn shown_name(ids: &[(&IdRow, DriverSource)], found: &Found) -> String {
-    ids.iter()
-        .filter_map(|(row, source)| {
-            let x = found.get(&(*source, row.external_id.clone()))?;
-            Some((*source, names::display(x.name())))
-        })
-        .min_by_key(|(source, _)| (source.as_str() != PAYCOM, *source))
-        .map(|(_, name)| name)
-        .or_else(|| ids.first().map(|(row, _)| row.external_id.clone()))
-        .unwrap_or_default()
+/// The name a person is shown by: as the first source in the sources' order writes it, so a
+/// payroll's legal name comes before Amazon's; `ids` are in that order. None while no source
+/// holds any of their IDs.
+pub(super) fn shown_name(ids: &[(&IdRow, DriverSource)], found: &Found) -> Option<String> {
+    ids.iter().find_map(|(row, source)| {
+        let x = found.get(&(*source, row.external_id.clone()))?;
+        Some(names::display(x.name()))
+    })
 }
 
 /// A person as the tab lists them, before review marks the ones in a pair.
@@ -149,7 +143,10 @@ pub(super) fn driver(code: &str, ids: &[(&IdRow, DriverSource)], context: &Conte
         .max();
     Driver {
         code: code.to_owned(),
-        name: shown_name(ids, context.found),
+        // An ID no source holds any more names a person no source describes.
+        name: shown_name(ids, context.found)
+            .or_else(|| ids.first().map(|(row, _)| row.external_id.clone()))
+            .unwrap_or_default(),
         role: role(&keys, &described, last_seen.as_deref(), context),
         link: weakest(ids),
         review: false,

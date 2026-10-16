@@ -5,7 +5,7 @@ use crate::api::types::DriverLink;
 use dispatch_core::{
     Result,
     db::Store,
-    manifest::people::{self, DriverSource, Link},
+    manifest::people::{self, DriverSource, Person},
 };
 use std::collections::BTreeMap;
 
@@ -13,37 +13,41 @@ use std::collections::BTreeMap;
 /// driver's Paycom employee by it.
 pub(crate) struct Directory;
 impl people::Directory for Directory {
-    fn links(
+    fn people(
         &self,
         store: &Store,
         dsp: &str,
-        from: DriverSource,
-        to: DriverSource,
-    ) -> Result<BTreeMap<String, Link>> {
+        source: DriverSource,
+    ) -> Result<BTreeMap<String, Person>> {
         let rows: Vec<IdRow> = store.dsp(dsp)?.query_as(
             "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
              WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.external_id",
             [],
         )?;
-        let mut people: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
+        let mut held: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
         for row in &rows {
-            people.entry(&row.code).or_default().push(row);
+            held.entry(&row.code).or_default().push(row);
         }
         let mut out = BTreeMap::new();
-        for (code, ids) in people {
-            let link = Link {
+        for (code, ids) in held {
+            let mut person = Person {
                 code: code.to_owned(),
-                ids: ids
-                    .iter()
-                    .filter(|i| i.source == to.as_str())
-                    .map(|i| i.external_id.clone())
-                    .collect(),
                 confirmed: ids
                     .iter()
                     .any(|i| matches!(i.linked_by, DriverLink::Person | DriverLink::Saved)),
+                ..Person::default()
             };
-            for id in ids.iter().filter(|i| i.source == from.as_str()) {
-                out.insert(id.external_id.clone(), link.clone());
+            for id in &ids {
+                if let Some(kind) = id.source() {
+                    person
+                        .ids
+                        .entry(kind)
+                        .or_default()
+                        .push(id.external_id.clone());
+                }
+            }
+            for id in person.ids_of(source).to_vec() {
+                out.insert(id, person.clone());
             }
         }
         Ok(out)

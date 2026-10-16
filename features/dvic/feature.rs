@@ -77,7 +77,7 @@ pub const FEATURE: Feature = Feature {
         prefix: "dvic-",
         run: backend::cli::run,
     }),
-    people: &[&backend::people::Drivers],
+    people: &[&backend::people::PEOPLE],
     ..feature("dvic")
 };
 

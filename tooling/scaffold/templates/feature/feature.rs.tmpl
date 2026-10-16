@@ -57,6 +57,9 @@ pub const FEATURE: Feature = Feature {
         }],
     }],
 {{/tables}}
+{{#people}}
+    people: &[&backend::people::PEOPLE],
+{{/people}}
     ..feature("{{name}}")
 };
 {{#api}}

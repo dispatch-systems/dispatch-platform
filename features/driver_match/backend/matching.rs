@@ -2,6 +2,7 @@
 //! the decisions. Only certain answers link an ID to someone: an email address or phone
 //! number only the two of them have, with names that agree, or a name nobody else carries.
 //! Anything less gives the ID a person of its own, for a person to review.
+use super::legacy::{AMAZON, PAYCOM, Saved};
 use super::names::{Name, name_key};
 use super::sources::{Identity, Key};
 use crate::api::types::DriverLink;
@@ -28,16 +29,6 @@ impl Member {
         }
     }
 }
-/// Links saved on the meal-break page before Driver Match: an Amazon ID with the Paycom
-/// code someone linked it to, and Amazon IDs someone kept apart from Paycom.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct Saved {
-    pub links: BTreeMap<String, String>,
-    pub separate: BTreeSet<String>,
-}
-/// The sources the meal-break page's links name.
-pub(crate) const PAYCOM: &str = "paycom";
-pub(crate) const AMAZON: &str = "amazon";
 /// Where a new ID goes: to a person by code, or to a new person, `+0`, `+1` and on, that
 /// the store then gives a code.
 pub(crate) type Decision = (usize, String, DriverLink);

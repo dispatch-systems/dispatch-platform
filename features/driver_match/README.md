@@ -34,22 +34,18 @@ only what was decided.
   nobody else carries; the same name written another way, as without a second surname or by a
   middle name. A nickname joins nobody: it suggests a pair to decide. Email addresses are
   compared in lower case and phone numbers by their ten digits. A contact two IDs of one source
-  share, as a family's phone, joins nobody but suggests a rehire.
-- **Sources and kinds of data:** each feature whose data names people declares the kind of
-  data it is in its `people` (`PeopleData`: its id, order, label, unit and icon) and the source
-  of its IDs (`SourceData`, declared by whoever owns those IDs: Cortex for Amazon's, Paycom for
-  its own). Driver Match reads them from the generated `driver-data.ts`, and names none
-  itself, so a build without a feature lists them nowhere.
+  share, as a family's phone, joins nobody but suggests a rehire. What counts as one name
+  written two ways, and which first names are short for others, is `backend/names.rs`: no other
+  owner matches names.
+- **Names:** a person is shown by the name their first source writes, in the sources' order,
+  so a payroll's legal name comes before Amazon's.
 - **Roles:** Amazon's roster says who drives or only helps. Someone no source lists and
   nothing has seen for 21 days before the newest data has left. People no source shows driving,
   outside the departments a source's settings count as drivers, work in the office.
 - **Review:** two people no source knows both of, whose names tie them, or any two sharing a
   contact only they have, with how many days they worked together. The one holding fewer
   IDs joins the other, whose code both keep.
-- **Photos:** a feature that holds photos names each one's version beside the person in its
-  `people`, and serves it. A person's photo is the first held under one of their IDs.
-- **Directory:** it answers core's directory, so a feature showing people asks who an ID is
-  without depending on it: Timecard's meal breaks name each driver's employee by it.
+- **Photos:** a person's photo is the first a connection holds under one of their IDs.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
   `driver_match.kept_apart` and `driver_match.confirmed`, naming drivers by their codes; the
   log puts today's names to them.
@@ -57,3 +53,71 @@ only what was decided.
   `people`, `person_ids` and `people_apart` in each DSP's (DSP migration 7, and its own
   migration 1, which lets `person_ids` hold any source). Links saved on the meal-break page
   before Driver Match are read as decisions.
+
+## Connecting a feature
+
+Driver Match names no feature: a feature whose data names people connects itself, in its own
+folder, with one declaration in its manifest's `people` (`dispatch_core::manifest::people`).
+`dispatchdev new feature <name> --tables dsp --people amazon` writes one to start from.
+
+```rust
+// backend/people.rs
+pub const PEOPLE: People = People::new(
+    PeopleData { id: "fuel", order: 70, label: "Fuel", unit: "fill-up", icon: "Fuel" },
+    &dispatch_cortex::PEOPLE,
+    |store, dsp| {
+        people::named(
+            &*store.fuel_db(dsp)?,
+            "SELECT transporter_id id,driver_name name,min(day) first,max(day) last \
+             FROM fill_ups GROUP BY 1,2 ORDER BY last DESC",
+        )
+    },
+)
+.records(|store, dsp| {
+    people::records(
+        &*store.fuel_db(dsp)?,
+        "SELECT transporter_id id,count(*) count,max(day) last FROM fill_ups GROUP BY 1",
+    )
+});
+
+// feature.rs
+people: &[&backend::people::PEOPLE],
+```
+
+- **What it is** (`PeopleData`): its id, its place among the kinds (`order`, the next free
+  tens), its label, what one record is (`unit`) and its icon, by the name lucide-react exports
+  it as. Each person's sheet lists it so.
+- **Whose IDs** (`SourceData`): the source its people are named by, declared by whoever owns
+  those IDs: `&dispatch_cortex::PEOPLE` for Amazon's transporter IDs, `&dispatch_paycom::PEOPLE`
+  for Paycom's employee codes, or a source of its own. The sources' `order` is the order they
+  are listed in, and whose name a person is shown by.
+- **Who it names** (`read`): one `Named` for each ID and each way it writes their name, the
+  newest first. `people::named` reads them from a query by its columns' names: `id` and `name`,
+  and any of `first` and `last` (the days it saw them), `listed` (1 while its source's roster
+  lists them), `email`, `phone`, `roles` (a JSON list, as `["Driver"]`), `department`,
+  `position` and `photo` (the photo's version).
+- **How much it holds** (`.records`): `id`, `count` and `last` for each ID, counted in its
+  unit. Without it the kind is listed for nobody, and its data shows no one at work.
+- **When they worked** (`.workdays`): each ID with each day it worked, and the days the data
+  was collected for (`Workdays::daily` when every day it holds was collected), so two people
+  who never worked the same days are less likely one.
+- **Which departments drive** (`.driver_departments`): from the feature's settings; anyone it
+  names outside them works in the office.
+- **Photos** (`.photos`): serves the photo of the first of some IDs it holds one of, each named
+  with its version in `read`.
+- **Shortened names** (`.initials()`): it may write a last name as an initial, so its
+  spellings are read after every other kind's.
+
+Nothing else changes: Driver Match reads the kind while its feature is on, every ID it names
+gets a person, its Settings tab shows while one such feature is on, and the kind joins the
+generated `driver-data.ts` and `people-features.ts` with `npm run contracts:generate`. The app's
+people test (`app/tests/backend/people.rs`) runs every connection's queries against a new DSP,
+so a connection is tried without a test of its own; the registry refuses two kinds with one id
+or one order.
+
+## Asking who someone is
+
+A feature that shows people asks core, never Driver Match: `people::who(store, dsp, source)`
+answers, for each ID of `source` someone holds, their code, every ID they hold by source, and
+whether someone confirmed who they are, and nobody in a build without Driver Match. Timecard's
+meal breaks find each driver's employee so (`person.ids_of(PAYCOM)`).

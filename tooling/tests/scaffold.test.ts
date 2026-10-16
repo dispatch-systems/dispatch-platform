@@ -310,6 +310,29 @@ test("--tables <collector> stores in the collector's database and depends on its
   await refused(/--tables takes dsp/, 'fuel', '--tables', 'fuel');
 });
 
+test('--people connects its table to Driver Match by the IDs of a source, and needs --tables', async () => {
+  const plan = await feature('fuel', '--tables', 'dsp', '--people', 'amazon');
+  const people = file(plan, 'features/fuel/backend/people.rs');
+  assert.match(people, /^pub const PEOPLE: People = People::new\($/m);
+  assert.match(people, /^\s+&dispatch_cortex::PEOPLE,$/m);
+  assert.match(people, /&\*store\.dsp\(dsp\)\?,/);
+  assert.match(file(plan, 'features/fuel/feature.rs'), /people: &\[&backend::people::PEOPLE\],/);
+  assert.match(file(plan, 'features/fuel/backend/mod.rs'), /^pub\(crate\) mod people;$/m);
+  assert.match(
+    file(plan, 'features/fuel/Cargo.toml'),
+    /^dispatch-cortex = \{ path = "..\/..\/collectors\/cortex" \}$/m,
+  );
+  await refused(/--people reads who it names from its table/, 'fuel', '--people', 'amazon');
+  await refused(
+    /--people names a source of IDs: one of amazon, paycom/,
+    'fuel',
+    '--tables',
+    'dsp',
+    '--people',
+    'slack',
+  );
+});
+
 test('--keeps refuses a collection another feature keeps, or one that does not exist', async () => {
   await refused(
     /features\/dvic\/backend\/keeper\.rs keeps cortex\.dvic already/,
@@ -620,6 +643,8 @@ test('everything written is formatted as the repository formats it, with no plac
       'dsp',
       '--page',
       '--settings',
+      '--people',
+      'paycom',
       '--label',
       'Parking Lot',
     ),
