@@ -10,7 +10,12 @@ Timecard's collections. It names drivers through Driver Match.
 - **Switch:** `timecard`, off for every DSP until the platform owner switches it on. It needs
   timecards (Paycom), and its Meal Breaks tab alone needs meal breaks (Cortex); each switches
   on with what needs it. Its three tabs are parts of its own: Timecard, Meal Breaks and Employee
-  Search. It depends on Driver Match, which a build leaving Driver Match out leaves it out with.
+  Search.
+- **Drivers and employees:** the Meal Breaks tab pairs each driver with their employee through
+  core's directory, which Driver Match answers; it matches no names itself. A driver Driver
+  Match hasn't reached yet, as while a collection runs, waits unmatched, as does every driver
+  in a build without it. Drivers kept apart from Paycom on this page before Driver Match read
+  as separate.
 - **Permissions:** `timecard.view`, to read it; `timecard.manage`, which includes it, for its
   settings and schedules; and `collections.run`, to sync now or cancel a sync. The demo DSPs
   give Managers and Members View, and Managers Run Collections.

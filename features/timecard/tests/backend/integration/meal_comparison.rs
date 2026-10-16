@@ -1,7 +1,7 @@
 use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
 use dispatch_cortex::{self as cortex, discovery::Scope, meals};
-use dispatch_paycom::{self as paycom, fixtures};
+use dispatch_paycom::fixtures;
 use dispatch_timecard::TimecardStore;
 use serde_json::{Value, json};
 
@@ -21,8 +21,6 @@ fn seed(db: &Store, id: &str) -> (String, String) {
     // the period's first day.
     let mut workforce = fixtures::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
     let date = s(&workforce, "from").to_owned();
-    // Provider formatting differences should join without a saved identity.
-    workforce["employees"][0]["name"] = json!("Driver, Demo");
     let cards = workforce["timecards"].as_array_mut().unwrap();
     for card in cards {
         if card["employeeCode"] == "E002" {
@@ -42,8 +40,7 @@ fn seed(db: &Store, id: &str) -> (String, String) {
         provider: "provider-demo".into(),
         timezone: "America/Los_Angeles".into(),
     };
-    let mut capture = meals::fixture(&scope);
-    capture.itineraries[0].driver = "Demo Driver".into();
+    let capture = meals::fixture(&scope);
     let transporter = capture.itineraries[0].transporter_id.clone();
     db.publish_meals(id, "job-meals", &capture, &scope).unwrap();
     (date, transporter)
@@ -58,7 +55,7 @@ fn rows(data: &Value) -> &Vec<Value> {
 fn a_driver_whose_meal_punches_cant_be_read_is_unknown_not_absent() {
     install();
     let (_root, db, id) = common::bootstrapped();
-    let (date, _) = seed(&db, &id);
+    let (date, transporter) = seed(&db, &id);
     let scope = Scope {
         date: date.clone(),
         station: "DEMO1".into(),
@@ -68,7 +65,6 @@ fn a_driver_whose_meal_punches_cant_be_read_is_unknown_not_absent() {
     };
     let mut capture = meals::fixture(&scope);
     let route = &mut capture.itineraries[0];
-    route.driver = "Demo Driver".into();
     route.meals.clear();
     route.delivery_coverage = meals::Coverage::Unavailable;
     route.unreadable = Some("meal_repeat_sequence".into());
@@ -83,9 +79,10 @@ fn a_driver_whose_meal_punches_cant_be_read_is_unknown_not_absent() {
         .meal_comparison(&id, &date, "UTC")
         .map(|value| serde_json::to_value(value).unwrap())
         .unwrap();
+    // Timecard alone knows nobody's employee, so the driver has a row of their own.
     let row = rows(&data)
         .iter()
-        .find(|r| r["paycom"]["employeeCode"] == "E001")
+        .find(|r| r["id"] == format!("cortex:{transporter}"))
         .unwrap();
     assert_eq!(row["cortex"], json!([]));
     assert_eq!(row["assessment"]["status"], "cortex_unreadable");
@@ -145,53 +142,14 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
 }
 
 #[test]
-fn ambiguity_includes_employees_without_punches_and_drivers_without_meals() {
-    install();
-    let (_root, db, id) = common::bootstrapped();
-    let (date, _) = seed(&db, &id);
-    let paycom = db.collector(&id, paycom::PROVIDER).unwrap();
-    paycom
-        .exec(
-            "UPDATE employees SET name='DEMO DRIVER' WHERE code='E002'",
-            [],
-        )
-        .unwrap();
-    let data = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
-        .unwrap();
-    assert_eq!(data["rows"].as_array().unwrap().len(), 12);
-    assert_eq!(data["drivers"][0]["matchType"], "unmatched");
-    paycom
-        .exec(
-            "UPDATE employees SET name='Someone Else' WHERE code='E002'",
-            [],
-        )
-        .unwrap();
-    db.collector(&id, cortex::PROVIDER).unwrap().exec(
-        "INSERT INTO meal_itineraries SELECT publication_id,itinerary_id||'-2',transporter_id||'-2',driver_name,route_code,observed_at,route_complete,delivery_coverage,meal_state FROM meal_itineraries",[]
-    ).unwrap();
-    let data = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
-        .unwrap();
-    assert_eq!(data["rows"].as_array().unwrap().len(), 12);
-    assert_eq!(data["drivers"].as_array().unwrap().len(), 1);
-    assert_eq!(data["drivers"][0]["matchType"], "unmatched");
-}
-
-#[test]
 fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
     install();
     let (_root, db, id) = common::bootstrapped();
-    let mut previous_workforce =
-        fixtures::fixture_date("America/Los_Angeles", Some("2026-09-05".parse().unwrap())).unwrap();
-    previous_workforce["employees"][0]["name"] = json!("Driver, Demo");
-    db.publish_timecards(&id, &previous_workforce).unwrap();
-    let mut workforce =
-        fixtures::fixture_date("America/Los_Angeles", Some("2026-09-19".parse().unwrap())).unwrap();
-    workforce["employees"][0]["name"] = json!("Driver, Demo");
-    db.publish_timecards(&id, &workforce).unwrap();
+    for day in ["2026-09-05", "2026-09-19"] {
+        let workforce =
+            fixtures::fixture_date("America/Los_Angeles", Some(day.parse().unwrap())).unwrap();
+        db.publish_timecards(&id, &workforce).unwrap();
+    }
     for (date, before, after) in [
         ("2026-09-05", 99, 99), // Outside the period.
         ("2026-09-06", 7, 5),   // Exactly five minutes is excluded.
@@ -209,7 +167,6 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
         };
         let mut capture = meals::fixture(&scope);
         let route = &mut capture.itineraries[0];
-        route.driver = "Demo Driver".into();
         route.meals.truncate(1);
         let meal = &mut route.meals[0];
         meal.last_delivery = Some(meal.start - before * 60_000);
@@ -217,10 +174,22 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
         db.publish_meals(&id, &format!("period-{date}"), &capture, &scope)
             .unwrap();
     }
+    // Timecard alone knows nobody's employee: the driver's meals are their own row's.
+    let transporter = meals::fixture(&Scope {
+        date: "2026-09-06".into(),
+        station: "DEMO1".into(),
+        service_area_id: "area-demo".into(),
+        provider: "provider-demo".into(),
+        timezone: "America/Los_Angeles".into(),
+    })
+    .itineraries[0]
+        .transporter_id
+        .clone();
+    let driver = format!("cortex:{transporter}");
     let result = db
         .meal_period(
             &id,
-            "paycom:E001",
+            driver.as_str(),
             Some("2026-09-07"),
             None,
             "America/Los_Angeles",
@@ -233,7 +202,7 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
         result
             .days
             .iter()
-            .all(|day| day.rows.iter().all(|row| row.source.id == "paycom:E001"))
+            .all(|day| day.rows.iter().all(|row| row.source.id == driver))
     );
     assert_eq!(result.gaps.len(), 5);
     assert_eq!(
@@ -250,11 +219,11 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
         .meal_period_gaps(&id, "2026-09-07", "America/Los_Angeles")
         .unwrap();
     assert_eq!(everyone.period.as_ref(), Some(&result.period));
-    assert_eq!(everyone.counts["paycom:E001"], 5);
+    assert_eq!(everyone.counts[&driver], 5);
     let previous = db
         .meal_period(
             &id,
-            "paycom:E001",
+            driver.as_str(),
             Some("2026-09-05"),
             None,
             "America/Los_Angeles",
@@ -266,7 +235,7 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
     assert_eq!(
         db.meal_period_gaps(&id, "2026-09-05", "America/Los_Angeles")
             .unwrap()
-            .counts["paycom:E001"],
+            .counts[&driver],
         2
     );
     // A day past Paycom's latest period has no period to count over.
@@ -284,7 +253,7 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
         to: "2026-09-20".into(),
     };
     assert!(
-        db.meal_period(&id, "paycom:E001", None, Some(&invalid), "UTC")
+        db.meal_period(&id, driver.as_str(), None, Some(&invalid), "UTC")
             .is_err()
     );
 }

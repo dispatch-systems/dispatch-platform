@@ -1,6 +1,6 @@
-//! Read-only comparison across provider snapshots. Drivers join employees through the
-//! directory, where the DSP has Driver Match on; unique names join the drivers it has not
-//! reached yet, and every driver where it has none.
+//! Read-only comparison across provider snapshots. Drivers join employees through core's
+//! directory, which Driver Match answers: a driver it has not reached yet, as in a collection
+//! still running, waits unmatched.
 use crate::{
     api::{
         assessment::LateRule,
@@ -11,15 +11,26 @@ use crate::{
 use dispatch_core::{
     Result,
     db::{Store, s},
-    foundation::names::{self, Name, name_key},
+    foundation::names,
     manifest::{people::DriverSource, registry},
 };
 use dispatch_cortex as cortex;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-/// The links the meal-break page saved before Driver Match, which still reads them.
+/// The links the meal-break page saved before Driver Match, which reads them as decisions:
+/// the drivers kept apart from Paycom there show as separate.
 const LINKS: &str = "employees.provider_links";
+/// The drivers the meal-break page kept apart from Paycom, by transporter ID.
+fn separate(store: &Store, id: &str) -> Result<HashSet<String>> {
+    let links = store.dsp(id)?.setting(LINKS, json!({"links":[]}))?;
+    Ok(links["separate"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|id| id.as_str().map(str::to_owned))
+        .collect())
+}
 
 /// Each Amazon driver the directory knows, with their person's Paycom codes and whether
 /// someone confirmed who they are. None without the directory, or while it is off.
@@ -34,93 +45,6 @@ fn known(store: &Store, id: &str) -> Result<BTreeMap<String, (Vec<String>, bool)
         .into_iter()
         .map(|(driver, link)| (driver, (link.ids, link.confirmed)))
         .collect())
-}
-
-// Exact matches take priority over the more conservative name-variant pass.
-fn match_drivers(drivers: &mut BTreeMap<String, Value>, roster: &[Value], settings: &Value) {
-    if drivers.is_empty() {
-        return;
-    }
-    let saved = settings["links"].as_array().cloned().unwrap_or_default();
-    let separate = settings["separate"].as_array().cloned().unwrap_or_default();
-    let mut reserved: HashSet<String> = saved
-        .iter()
-        .map(|l| s(l, "paycomCode").to_owned())
-        .collect();
-    let mut employees_by_name: BTreeMap<String, Vec<&Value>> = BTreeMap::new();
-    let mut driver_counts: BTreeMap<String, usize> = BTreeMap::new();
-    for employee in roster {
-        employees_by_name
-            .entry(name_key(s(employee, "name")))
-            .or_default()
-            .push(employee);
-    }
-    for driver in drivers.values() {
-        *driver_counts
-            .entry(name_key(s(driver, "name")))
-            .or_default() += 1;
-    }
-    for (id, driver) in drivers.iter_mut() {
-        let key = name_key(s(driver, "name"));
-        let candidates = employees_by_name.get(&key);
-        let (code, kind) = if let Some(link) = saved.iter().find(|l| s(l, "cortexId") == id) {
-            (link["paycomCode"].clone(), "saved")
-        } else if separate.iter().any(|v| v.as_str() == Some(id)) {
-            (Value::Null, "separate")
-        } else if !key.is_empty()
-            && driver_counts[&key] == 1
-            && let Some(matches) = candidates
-            && matches.len() == 1
-            && !reserved.contains(s(matches[0], "code"))
-        {
-            (matches[0]["code"].clone(), "name")
-        } else {
-            (Value::Null, "unmatched")
-        };
-        if let Some(code) = code.as_str() {
-            reserved.insert(code.to_owned());
-        }
-        driver["paycomCode"] = code;
-        driver["matchType"] = json!(kind);
-    }
-
-    let mut employees_by_given: BTreeMap<String, Vec<(&Value, Name)>> = BTreeMap::new();
-    for employee in roster {
-        let name = Name::new(s(employee, "name"));
-        employees_by_given
-            .entry(name.given.clone())
-            .or_default()
-            .push((employee, name));
-    }
-    let mut candidates = BTreeMap::new();
-    let mut claims: BTreeMap<String, usize> = BTreeMap::new();
-    // Count every source identity, even one without punches/meals or with a saved
-    // override. Removing such a person must not make an ambiguous name look unique.
-    for (id, driver) in drivers.iter() {
-        let name = Name::new(s(driver, "name"));
-        let matches: Vec<_> = employees_by_given
-            .get(&name.given)
-            .into_iter()
-            .flatten()
-            .filter(|(_, employee_name)| name.matches(employee_name))
-            .map(|(employee, _)| s(employee, "code").to_owned())
-            .collect();
-        for code in &matches {
-            *claims.entry(code.clone()).or_default() += 1;
-        }
-        candidates.insert(id.clone(), matches);
-    }
-    for (id, driver) in drivers {
-        let matches = &candidates[id];
-        if s(driver, "matchType") == "unmatched"
-            && matches.len() == 1
-            && claims[&matches[0]] == 1
-            && !reserved.contains(&matches[0])
-        {
-            driver["paycomCode"] = json!(matches[0]);
-            driver["matchType"] = json!("name");
-        }
-    }
 }
 
 pub(crate) fn meal_comparison(
@@ -252,7 +176,7 @@ fn comparisons(
     };
     let mut context = ComparisonContext {
         timezone, selected, meals, itineraries, late,
-        links: store.dsp(id)?.setting(LINKS, json!({"revision":0,"links":[]}))?,
+        separate: separate(store, id)?,
         known: known(store, id)?,
         latest_zone: cortex.one(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
@@ -276,7 +200,7 @@ fn comparisons(
 struct ComparisonContext<'a> {
     timezone: &'a str,
     selected: Option<&'a [String]>,
-    links: Value,
+    separate: HashSet<String>,
     known: BTreeMap<String, (Vec<String>, bool)>,
     late: LateRule,
     latest_zone: Option<Value>,
@@ -358,49 +282,29 @@ impl ComparisonContext<'_> {
                     ))
                     .unwrap_or_default();
                 let transporter = s(&itinerary, "transporter_id");
-                // Include meal-free drivers in uniqueness checks so a name shared by
-                // two drivers cannot match just because one did not take a meal.
                 drivers
                     .entry(transporter.to_owned())
                     .or_insert(json!({"id":transporter,"name":itinerary["driver_name"]}));
                 observations.push((p.clone(), itinerary, meals));
             }
         }
-        // Names join the drivers Driver Match has not given a person yet, such as those of
-        // a collection still running; Driver Match decides for every driver it knows.
-        match_drivers(&mut drivers, &roster, &self.links);
-        let known = &self.known;
+        // Driver Match says who each driver is: their employee on today's roster, if any.
         let listed: HashSet<&str> = roster.iter().map(|e| s(e, "code")).collect();
-        let separate: HashSet<&str> = self.links["separate"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect();
-        let mut claimed = HashSet::new();
         for (transporter, driver) in drivers.iter_mut() {
-            let Some((codes, confirmed)) = known.get(transporter) else {
-                continue;
-            };
+            let (codes, confirmed) = self
+                .known
+                .get(transporter)
+                .map_or((&[][..], false), |(codes, confirmed)| {
+                    (codes.as_slice(), *confirmed)
+                });
             let code = codes.iter().find(|c| listed.contains(c.as_str()));
             driver["paycomCode"] = json!(code);
             driver["matchType"] = json!(match code {
-                Some(_) if *confirmed => "saved",
+                Some(_) if confirmed => "saved",
                 Some(_) => "name",
-                None if separate.contains(transporter.as_str()) => "separate",
+                None if self.separate.contains(transporter) => "separate",
                 None => "unmatched",
             });
-            claimed.extend(code.cloned());
-        }
-        for (transporter, driver) in drivers.iter_mut() {
-            if !known.contains_key(transporter)
-                && driver["paycomCode"]
-                    .as_str()
-                    .is_some_and(|code| claimed.contains(code))
-            {
-                driver["paycomCode"] = Value::Null;
-                driver["matchType"] = json!("unmatched");
-            }
         }
         let roster_by_code: HashMap<_, _> = roster
             .iter()
@@ -497,7 +401,3 @@ impl ComparisonContext<'_> {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "../../tests/backend/meals/comparison.rs"]
-mod tests;

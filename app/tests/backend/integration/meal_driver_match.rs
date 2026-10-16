@@ -1,5 +1,4 @@
-//! Timecard's meal breaks join drivers to employees through Driver Match where the DSP has
-//! it on, by name where it hasn't reached a driver yet.
+//! Timecard's meal breaks join drivers to employees through Driver Match alone.
 use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
@@ -86,7 +85,7 @@ fn rows(data: &Value) -> &Vec<Value> {
     data["rows"].as_array().unwrap()
 }
 #[test]
-fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
+fn drivers_join_employees_through_driver_match() {
     dispatch_backend::install();
     let (_root, db, id) = common::bootstrapped();
     let (date, transporter) = seed(&db, &id);
@@ -95,12 +94,20 @@ fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()
     };
-    // Before Driver Match has given anyone a person, a unique name joins the driver.
+    // Until Driver Match has given them a person, as while a collection runs, the driver
+    // has a row of their own.
     let data = compare(&db);
     assert_eq!(data["timezone"], "America/Los_Angeles");
-    assert_eq!(rows(&data).len(), 11);
+    assert_eq!(data["drivers"][0]["matchType"], "unmatched");
+    assert!(data["drivers"][0]["paycomCode"].is_null());
+    assert_eq!(rows(&data).len(), 12);
+    // Driver Match joins them to their employee by name, and its decisions move them.
+    let c = context(&db, &id);
+    db.match_drivers(&id).unwrap();
+    let data = compare(&db);
     assert_eq!(data["drivers"][0]["matchType"], "name");
     assert_eq!(data["drivers"][0]["paycomCode"], "E001");
+    assert_eq!(rows(&data).len(), 11);
     assert!(
         !rows(&data)
             .iter()
@@ -111,10 +118,6 @@ fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
             .iter()
             .any(|r| r["paycom"]["employeeCode"] == "E003")
     );
-    // Driver Match gives the same answer, and its decisions move the driver.
-    let c = context(&db, &id);
-    db.match_drivers(&id).unwrap();
-    assert_eq!(compare(&db)["drivers"][0]["paycomCode"], "E001");
     let demo = person(&db, &id, amazon(), &transporter);
     db.split_driver(&c, &demo, amazon(), &transporter).unwrap();
     let data = compare(&db);
@@ -160,60 +163,4 @@ fn drivers_join_employees_through_driver_match_and_names_cover_the_rest() {
             .unwrap()["n"],
         0
     );
-}
-/// Adds a meal-break driver to the day's publication, as a collection would have.
-fn add_driver(db: &Store, id: &str, transporter: &str, name: &str) {
-    let cortex = db.collector(id, cortex::PROVIDER).unwrap();
-    let itinerary = format!("itinerary-{transporter}");
-    cortex
-        .exec(
-            "INSERT INTO meal_itineraries SELECT publication_id,?1,?2,?3,route_code,observed_at,\
-             route_complete,delivery_coverage,meal_state FROM meal_itineraries LIMIT 1",
-            [itinerary.as_str(), transporter, name],
-        )
-        .unwrap();
-    cortex
-        .exec(
-            "INSERT INTO meal_records SELECT publication_id,?1,meal_id,last_delivery_at,\
-             started_at,ended_at,first_delivery_at,before_status,after_status FROM meal_records \
-             LIMIT 1",
-            [itinerary.as_str()],
-        )
-        .unwrap();
-}
-#[test]
-fn a_driver_driver_match_has_not_reached_never_takes_an_employee_it_gave_someone() {
-    dispatch_backend::install();
-    let (_root, db, id) = common::bootstrapped();
-    let (date, _) = seed(&db, &id);
-    // Driver Match joins "Luis Hernandez" to the employee by a name variant.
-    let mut roster = fixtures::fixture_date("America/Los_Angeles", Some(DEMO_DAY)).unwrap();
-    roster["employees"][2]["name"] = json!("HERNANDEZ ORTIZ, LUIS");
-    db.publish_timecards(&id, &roster).unwrap();
-    add_driver(&db, &id, "luis", "Luis Hernandez");
-    db.match_drivers(&id).unwrap();
-    assert_eq!(
-        person(&db, &id, amazon(), "luis"),
-        person(&db, &id, paycom(), "E003")
-    );
-    // A driver arriving with the employee's exact name before Driver Match runs again
-    // would match by name; the employee is already someone's.
-    add_driver(&db, &id, "late", "Luis Hernandez Ortiz");
-    let data = db
-        .meal_comparison(&id, &date, "UTC")
-        .map(|value| serde_json::to_value(value).unwrap())
-        .unwrap();
-    let driver = |tid: &str| {
-        data["drivers"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["id"] == tid)
-            .cloned()
-            .unwrap()
-    };
-    assert_eq!(driver("luis")["paycomCode"], "E003");
-    assert_eq!(driver("luis")["matchType"], "name");
-    assert_eq!(driver("late")["matchType"], "unmatched");
-    assert!(driver("late")["paycomCode"].is_null());
 }
