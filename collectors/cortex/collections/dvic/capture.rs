@@ -21,6 +21,8 @@ pub const MAX_ROWS: usize = 10_000;
 pub const MAX_CAPTURE_ROWS: usize = 100_000;
 pub const MAX_FILE_BYTES: usize = 8 * 1024 * 1024;
 pub const DATASET: &str = "dsp_station_weekly_supp_reports";
+/// How the name of the pre-trip report DVIC reads ends.
+pub const REPORT_SUFFIX: &str = "_DVIC_PreTrip_u90s-NonDOT_u300s-DOT_last7days.xlsx";
 
 /// A report DVIC already holds, which a collection downloads again only when it changed.
 #[derive(Clone, Deserialize, Serialize)]
@@ -259,7 +261,7 @@ pub fn report_identity(
     let prefix = format!("US_{dsp}_{station}_{year}_week-{number}_");
     let date = name
         .strip_prefix(&prefix)
-        .and_then(|s| s.strip_suffix("_DVIC_PreTrip_u90s-NonDOT_u300s-DOT_last7days.xlsx"))
+        .and_then(|s| s.strip_suffix(REPORT_SUFFIX))
         .ok_or_else(|| Error::new("dvic_report_invalid", 502))?;
     ensure(
         date.len() == 8 && date.bytes().all(|b| b.is_ascii_digit()),
@@ -353,7 +355,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
         let date = saturday + Duration::days(1);
         let (year, number) = weeks::parse_week(week)?;
         let name = format!(
-            "US_{}_{}_{year}_week-{number}_{}_DVIC_PreTrip_u90s-NonDOT_u300s-DOT_last7days.xlsx",
+            "US_{}_{}_{year}_week-{number}_{}{REPORT_SUFFIX}",
             request.dsp_abbreviation,
             request.station,
             date.format("%Y%m%d")

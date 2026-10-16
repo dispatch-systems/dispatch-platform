@@ -5,9 +5,12 @@ use crate::{connection::Driver, discovery::Scope};
 use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result,
-    collection::browser::{
-        Run,
-        http::{FIXTURE, Http, Refusal},
+    collection::{
+        browser::{
+            Run,
+            http::{FIXTURE, Http, Refusal},
+        },
+        metrics::Recorder,
     },
     db::now,
     ensure,
@@ -53,6 +56,7 @@ fn listing(
     dsp: &str,
     station: &str,
     origin: &str,
+    metrics: &Recorder,
 ) -> Result<Vec<Listed>> {
     let invalid = || Error::new("dvic_listing_invalid", 502);
     let tables = value
@@ -81,6 +85,11 @@ fn listing(
             .and_then(Value::as_str)
             .ok_or_else(invalid)?;
         if !name.contains("_DVIC_") {
+            continue;
+        }
+        // Another DVIC report, or the pre-trip one under an older name: neither is read.
+        if !name.ends_with(dvic::REPORT_SUFFIX) {
+            metrics.detail("dvic_report_skipped");
             continue;
         }
         ensure(
@@ -209,6 +218,7 @@ impl Driver {
                 &api.dsp,
                 &request.station,
                 &self.origin,
+                run.metrics,
             )?);
         }
         ensure(

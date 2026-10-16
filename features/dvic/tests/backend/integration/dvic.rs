@@ -415,54 +415,13 @@ fn thresholds_are_strict_and_publication_weeks_follow_iso_including_year_rollove
 }
 
 #[test]
-fn catch_up_prioritizes_unseen_weeks_before_refreshing_older_observations() {
+fn a_schedule_checks_only_the_current_and_previous_publication_weeks() {
     install();
     let (_root, db, id) = ready();
+    // No older week was ever checked, and still none is asked for.
     let latest = dvic::report_week(chrono::Utc::now().date_naive());
-    let weeks = weeks_before(&latest, dvic::MAX_WEEKS - 1).unwrap();
-    let storage = db.dvic_db(&id).unwrap();
-    for week in weeks.iter().skip(2).take(22) {
-        storage.exec(
-            "INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count,scope_verified) \
-             VALUES ('TST1','company-fixture',?,'2020-01-01T00:00:00Z',0,1)",
-            [week],
-        ).unwrap();
-    }
     let jobs = db.dvic_jobs(&id).unwrap();
-    let requested = jobs[0].1["weeks"].as_array().unwrap();
-    assert_eq!(requested[..2], weeks[..2]);
-    assert_eq!(requested[2..], weeks[24..]);
-}
-
-#[test]
-fn older_weeks_checked_this_week_wait_but_the_newest_and_unverified_do_not() {
-    install();
-    let (_root, db, id) = ready();
-    let latest = dvic::report_week(chrono::Utc::now().date_naive());
-    let weeks = weeks_before(&latest, dvic::MAX_WEEKS - 1).unwrap();
-    let (last, checked) = weeks.split_last().unwrap();
-    let storage = db.dvic_db(&id).unwrap();
-    let check = |week: &str, at: &str, verified: i64| {
-        storage
-            .exec(
-                "INSERT INTO dvic_weeks(station,company_id,week,checked_at,report_count,scope_verified) \
-                 VALUES ('TST1','company-fixture',?,?,0,?)",
-                rusqlite::params![week, at, verified],
-            )
-            .unwrap();
-    };
-    // Every week but the oldest was checked just now; the oldest only by an unverified scope.
-    let now = chrono::Utc::now().to_rfc3339();
-    for week in checked {
-        check(week, &now, 1);
-    }
-    check(last, "2099-01-01T00:00:00Z", 0);
-    let jobs = db.dvic_jobs(&id).unwrap();
-    let requested = jobs[0].1["weeks"].as_array().unwrap();
-    assert_eq!(
-        requested[..],
-        [&weeks[0], &weeks[1], last].map(|week| json!(week))
-    );
+    assert_eq!(jobs[0].1["weeks"], json!(weeks_before(&latest, 1).unwrap()));
 }
 
 #[test]
