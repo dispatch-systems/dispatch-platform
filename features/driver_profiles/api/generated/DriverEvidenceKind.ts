@@ -3,4 +3,4 @@
 /**
  * Why two people might be one.
  */
-export type DriverEvidenceKind = "same_last_name" | "same_first_name" | "short_form" | "last_initial" | "worked_days";
+export type DriverEvidenceKind = "same_email" | "same_phone" | "same_last_name" | "same_first_name" | "short_form" | "last_initial" | "worked_days";

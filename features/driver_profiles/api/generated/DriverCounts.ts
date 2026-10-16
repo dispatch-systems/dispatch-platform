@@ -2,22 +2,18 @@
 
 export type DriverCounts = {
 /**
- * Everyone with a code, office staff and those who have left included.
+ * Everyone with a code.
  */
-all: number,
-/**
- * Everyone else.
- */
-drivers: number,
-/**
- * Drivers known to both Paycom and Amazon.
- */
-matched: number,
+people: number,
 /**
  * Pairs that might be one person.
  */
-review: number, paycomOnly: number, amazonOnly: number, office: number,
+review: number,
 /**
- * People only one source knows who have left: off Paycom's roster and unseen lately.
+ * IDs a name variant joined to someone, which nobody has confirmed.
  */
-former: number, };
+unconfirmed: number,
+/**
+ * Drivers and helpers some source the DSP has does not know.
+ */
+missing: number, drivers: number, helpers: number, office: number, former: number, };

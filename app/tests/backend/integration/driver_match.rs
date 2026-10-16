@@ -4,11 +4,12 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    manifest::people::{DriverSource, DriverStatus},
+    manifest::{Collector, people::DriverSource, registry},
 };
-use dispatch_cortex::{discovery::Scope, meals};
+use dispatch_cortex::{associates, discovery::Scope, meals};
 use dispatch_driver_profiles::{
-    DriverEventKind, DriverMatch, DriverMatchStore, DriverStrength, valid_code,
+    Driver, DriverEventKind, DriverLink, DriverMatch, DriverMatchStore, DriverProfilesStore,
+    DriverRole, DriverStrength, valid_code,
 };
 use dispatch_paycom::fixtures;
 use dispatch_timecard::TimecardStore;
@@ -102,13 +103,16 @@ fn code(result: &DriverMatch, source: DriverSource, id: &str) -> String {
         .map(|d| d.code.clone())
         .unwrap_or_else(|| panic!("{id} has no person"))
 }
-fn status(result: &DriverMatch, code: &str) -> DriverStatus {
-    result
-        .drivers
+fn person<'a>(result: &'a DriverMatch, code: &str) -> &'a Driver {
+    result.drivers.iter().find(|d| d.code == code).unwrap()
+}
+/// The sources whose IDs a person holds, in their order.
+fn known_to(result: &DriverMatch, code: &str) -> Vec<&'static str> {
+    person(result, code)
+        .ids
         .iter()
-        .find(|d| d.code == code)
-        .unwrap()
-        .status
+        .map(|i| i.source.as_str())
+        .collect()
 }
 /// The subject the platform's activity log shows for the newest event of `action`.
 fn shown(db: &Store, action: &str) -> String {
@@ -120,8 +124,8 @@ fn shown(db: &Store, action: &str) -> String {
         .and_then(|e| e.target)
         .unwrap_or_else(|| panic!("no {action}"))
 }
-const PAYCOM: DriverSource = DriverSource::Paycom;
-const AMAZON: DriverSource = DriverSource::Amazon;
+const PAYCOM: DriverSource = DriverSource::new(&dispatch_paycom::PEOPLE);
+const AMAZON: DriverSource = DriverSource::new(&dispatch_cortex::PEOPLE);
 
 #[test]
 fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
@@ -140,35 +144,34 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
             .unwrap(),
         15
     );
+    assert_eq!(result.sources, [PAYCOM, AMAZON]);
     let taylor = code(&result, PAYCOM, "E004");
     assert_eq!(taylor, code(&result, AMAZON, "TTAYLOR"));
-    assert_eq!(status(&result, &taylor), DriverStatus::Matched);
+    assert_eq!(person(&result, &taylor).link, DriverLink::Name);
     let luis = code(&result, PAYCOM, "E003");
     assert_eq!(luis, code(&result, AMAZON, "TLUIS"));
-    assert_eq!(status(&result, &luis), DriverStatus::Variant);
+    assert_eq!(person(&result, &luis).link, DriverLink::Variant);
+    assert_eq!(result.counts.unconfirmed, 1);
     // A short form is suggested, never joined by itself.
     let antonio = code(&result, PAYCOM, "E002");
     let tony = code(&result, AMAZON, "TREYES");
     assert_ne!(antonio, tony);
-    assert_eq!(status(&result, &antonio), DriverStatus::Review);
+    assert!(person(&result, &antonio).review);
     // Nobody is office staff until the DSP says which departments drive.
-    assert_eq!(
-        status(&result, &code(&result, PAYCOM, "E001")),
-        DriverStatus::PaycomOnly
-    );
-    assert_eq!(
-        status(&result, &code(&result, AMAZON, "TDMITRI")),
-        DriverStatus::AmazonOnly
-    );
+    let avery = code(&result, PAYCOM, "E001");
+    assert_eq!(known_to(&result, &avery), ["paycom"]);
+    assert_eq!(person(&result, &avery).role, DriverRole::Driver);
+    let dmitri = code(&result, AMAZON, "TDMITRI");
+    assert_eq!(known_to(&result, &dmitri), ["amazon"]);
     assert_eq!(result.counts.review, 2);
     assert_eq!(result.counts.office, 0);
-    assert_eq!(result.counts.amazon_only, 1);
+    // Amazon's drivers merge into Paycom's employees, whose codes they keep.
     let reyes = result
         .review
         .iter()
-        .find(|pair| pair.paycom.code == antonio)
+        .find(|pair| pair.candidate.code == antonio)
         .unwrap();
-    assert_eq!(reyes.amazon.code, tony);
+    assert_eq!(reyes.person.code, tony);
     assert_eq!(reyes.strength, DriverStrength::Strong);
     // The Timecard settings' driver departments set the rest apart as office staff.
     let mut values = db.timecard_preference_values(&id).unwrap()["values"].clone();
@@ -176,12 +179,9 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
     db.save_timecard_preferences(&id, &context.auth.user.id, 0, &values)
         .unwrap();
     let staffed = db.driver_match(&id).unwrap();
-    assert_eq!(
-        status(&staffed, &code(&staffed, PAYCOM, "E001")),
-        DriverStatus::Office
-    );
+    assert_eq!(person(&staffed, &avery).role, DriverRole::Office);
     assert_eq!(staffed.counts.office, 1);
-    assert_eq!(staffed.counts.drivers, staffed.counts.all - 1);
+    assert_eq!(staffed.counts.drivers, staffed.counts.people - 1);
     // Nothing new the second time, and nobody's code changes.
     assert_eq!(db.match_drivers(&id).unwrap(), 0);
     let again = db.driver_match(&id).unwrap();
@@ -201,7 +201,7 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
     );
     let after = db.merge_drivers(&context, &tony, &antonio).unwrap();
     assert_eq!(code(&after, AMAZON, "TREYES"), antonio);
-    assert_eq!(status(&after, &antonio), DriverStatus::Confirmed);
+    assert_eq!(person(&after, &antonio).link, DriverLink::Person);
     assert_eq!(after.counts.review, 1);
     assert_eq!(after.drivers.len(), before.drivers.len() - 1);
     let details = db.driver_details(&id, &tony).unwrap();
@@ -214,7 +214,16 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
         .unwrap();
     assert_eq!(merged.code.as_deref(), Some(tony.as_str()));
     assert_eq!(merged.actor.as_deref(), Some("Platform support"));
-    assert_eq!(details.days.len(), 14);
+    // Fourteen days, as Paycom and Amazon each saw them.
+    assert_eq!(details.dates.len(), 14);
+    assert_eq!(
+        details
+            .days
+            .iter()
+            .map(|d| (d.source, d.worked.len()))
+            .collect::<Vec<_>>(),
+        [(PAYCOM, 14), (AMAZON, 14)]
+    );
     // Merging what is already merged is refused, as the page is out of date.
     let stale = db.merge_drivers(&context, &tony, &antonio).unwrap_err();
     assert_eq!(stale.code, "driver_changed");
@@ -248,7 +257,12 @@ fn people_split_or_kept_apart_are_not_suggested_again() {
         .unwrap();
     let fresh = code(&split, AMAZON, "TREYES");
     assert!(fresh != antonio && fresh != tony && valid_code(&fresh));
-    assert!(split.review.iter().all(|pair| pair.paycom.code != antonio));
+    assert!(
+        split
+            .review
+            .iter()
+            .all(|pair| pair.person.code != antonio && pair.candidate.code != antonio)
+    );
     let refused = db
         .split_driver(&context, &fresh, AMAZON, "TREYES")
         .unwrap_err();
@@ -256,7 +270,8 @@ fn people_split_or_kept_apart_are_not_suggested_again() {
     let (shanice, shay) = (code(&split, PAYCOM, "E005"), code(&split, AMAZON, "TSHAY"));
     let apart = db.keep_drivers_apart(&context, &shay, &shanice).unwrap();
     assert!(apart.review.is_empty());
-    assert_eq!(status(&apart, &shanice), DriverStatus::PaycomOnly);
+    assert_eq!(known_to(&apart, &shanice), ["paycom"]);
+    assert!(!person(&apart, &shanice).review);
     let history = db.driver_details(&id, &shay).unwrap().history;
     assert!(
         history.iter().any(
@@ -292,19 +307,22 @@ fn someone_only_amazon_saw_long_ago_has_left() {
     db.match_drivers(&id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let gone = code(&result, AMAZON, "TGONE");
-    assert_eq!(status(&result, &gone), DriverStatus::Former);
+    assert_eq!(person(&result, &gone).role, DriverRole::Former);
     // Seen lately, Dmitri still waits for someone to find them in Paycom.
     let dmitri = code(&result, AMAZON, "TDMITRI");
-    assert_eq!(status(&result, &dmitri), DriverStatus::AmazonOnly);
+    assert_eq!(person(&result, &dmitri).role, DriverRole::Driver);
     let counts = &result.counts;
     assert_eq!(counts.former, 1);
-    assert_eq!(counts.drivers, counts.all - counts.office - counts.former);
+    assert_eq!(
+        counts.drivers + counts.helpers,
+        counts.people - counts.office - counts.former
+    );
     // Paycom's roster lists everyone else, so nobody else has left.
     assert!(
         result
             .drivers
             .iter()
-            .all(|d| d.code == gone || d.status != DriverStatus::Former)
+            .all(|d| d.code == gone || d.role != DriverRole::Former)
     );
 }
 
@@ -320,11 +338,12 @@ fn links_saved_on_the_meal_break_page_are_kept() {
     let result = db.driver_match(&id).unwrap();
     let antonio = code(&result, PAYCOM, "E002");
     assert_eq!(antonio, code(&result, AMAZON, "TREYES"));
-    assert_eq!(status(&result, &antonio), DriverStatus::Confirmed);
+    assert_eq!(person(&result, &antonio).link, DriverLink::Saved);
     // Kept apart from Paycom, Taylor is neither joined nor suggested.
     let taylor = code(&result, AMAZON, "TTAYLOR");
     assert_ne!(taylor, code(&result, PAYCOM, "E004"));
-    assert_eq!(status(&result, &taylor), DriverStatus::AmazonOnly);
+    assert_eq!(known_to(&result, &taylor), ["amazon"]);
+    assert!(!person(&result, &taylor).review);
 }
 
 #[test]
@@ -335,6 +354,14 @@ fn the_permission_exists_only_while_the_feature_is_on() {
     let context = context(&db, &id);
     db.set_feature(&id, "driver_match", false, &context.auth.user.id)
         .unwrap();
+    // Off, it answers nobody who an ID is.
+    let directory = registry().directory().unwrap();
+    assert!(
+        directory
+            .links(&db, &id, AMAZON, PAYCOM)
+            .unwrap()
+            .is_empty()
+    );
     let refused = db.context(&context.auth, &id, "driver_match.manage").err();
     assert_eq!(
         refused.map(|e| e.code).as_deref(),
@@ -372,4 +399,76 @@ fn the_previous_release_keeps_every_link_after_a_decision() {
         .collect();
     assert_eq!(pairs, [("TREYES", "E002"), ("TGONE", "E007")]);
     assert_eq!(legacy["separate"], json!(["TDMITRI"]));
+}
+
+/// A roster of the DSP's company as Amazon lists it, each as (transporter ID, name, status,
+/// roles), published as the roster's collection would.
+fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
+    db.set_profile(id, json!({"abbreviation":"TST"})).unwrap();
+    let request = json!({"collection":"associates","dspAbbreviation":"TST"});
+    let collected = dispatch_cortex::COLLECTOR.fixture("UTC", &request).unwrap();
+    let mut capture: associates::Capture = serde_json::from_value(collected.data).unwrap();
+    capture.photos.clear();
+    capture.associates = listed
+        .iter()
+        .map(|(transporter, name, status, roles)| {
+            associates::Associate::read(json!({"transporter_id":transporter,"full_name":name,
+                "operational_status":status,"roles":roles}))
+            .unwrap()
+            .unwrap()
+        })
+        .collect();
+    db.publish_roster(id, "job-roster", &capture).unwrap();
+}
+
+#[test]
+fn the_roster_says_who_drives_who_helps_and_who_has_left() {
+    dispatch_backend::install();
+    let (_root, db, id, _) = ready(None);
+    roster(
+        &db,
+        &id,
+        &[
+            ("TCASEY", "Casey Rivera", "ACTIVE", "Helper"),
+            ("TDANA", "Dana Whitfield", "ACTIVE", "Driver, Helper"),
+            ("TPAT", "Pat Quinn", "INACTIVE", "Driver"),
+        ],
+    );
+    db.match_drivers(&id).unwrap();
+    let result = db.driver_match(&id).unwrap();
+    // The roster's name joins Paycom's employee, and says they help.
+    let casey = code(&result, PAYCOM, "E006");
+    assert_eq!(casey, code(&result, AMAZON, "TCASEY"));
+    assert_eq!(person(&result, &casey).role, DriverRole::Helper);
+    // Listed as active, Dana works for the DSP though nothing shows them on a route yet.
+    let dana = code(&result, AMAZON, "TDANA");
+    assert_eq!(person(&result, &dana).role, DriverRole::Driver);
+    // Inactive, unseen and on no other roster, Pat has left.
+    let pat = code(&result, AMAZON, "TPAT");
+    assert_eq!(person(&result, &pat).role, DriverRole::Former);
+}
+
+#[test]
+fn a_feature_switched_off_says_nothing_and_its_ids_wait_for_it() {
+    dispatch_backend::install();
+    let (_root, db, id, context) = ready(None);
+    db.match_drivers(&id).unwrap();
+    let before = db.driver_match(&id).unwrap();
+    let taylor = code(&before, PAYCOM, "E004");
+    db.set_feature(&id, "timecard", false, &context.auth.user.id)
+        .unwrap();
+    // Without Timecard, Paycom names nobody: Taylor is Amazon's driver alone, and nothing
+    // new is matched.
+    assert_eq!(db.match_drivers(&id).unwrap(), 0);
+    let off = db.driver_match(&id).unwrap();
+    assert_eq!(off.sources, [AMAZON]);
+    assert_eq!(known_to(&off, &taylor), ["amazon"]);
+    assert!(off.review.is_empty());
+    // Back on, every link is as it was, with nothing to decide again.
+    db.set_feature(&id, "timecard", true, &context.auth.user.id)
+        .unwrap();
+    let on = db.driver_match(&id).unwrap();
+    assert_eq!(code(&on, PAYCOM, "E004"), taylor);
+    assert_eq!(known_to(&on, &taylor), ["paycom", "amazon"]);
+    assert_eq!(on.counts.review, before.counts.review);
 }

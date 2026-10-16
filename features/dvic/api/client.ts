@@ -1,4 +1,4 @@
-import type { Job, ScheduleInput, SchedulePreview } from '../../../core/collection/api/index.js';
+import type { Job } from '../../../core/collection/api/index.js';
 import { wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import type { DvicSummary, DvicInspectionPage, DvicInspectionDetail } from './index.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
@@ -11,13 +11,6 @@ const api = wordedApi({ dvic_week_not_available: 'That report week is not availa
 
 /** Where its schedules are served, as core's schedule calls take it. */
 export const schedules = '/api/dsp/dvic/schedules';
-/** When a schedule with this timing would run next. */
-export const previewSchedule = (
-  timing: Pick<ScheduleInput, 'cadence' | 'intervalMinutes' | 'localTime'> & {
-    scheduleId?: string;
-  },
-  signal: AbortSignal,
-) => api<SchedulePreview>(`${schedules}/preview`, timing, signal);
 /** Starts collecting the latest weeks and the week of `viewing`, once for `requestId`. */
 export const collectDvic = (requestId: string, viewing: string) =>
   api<Job>('/api/dsp/dvic/collect', { requestId, viewing });

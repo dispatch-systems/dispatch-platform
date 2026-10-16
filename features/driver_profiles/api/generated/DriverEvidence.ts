@@ -2,7 +2,7 @@
 import type { DriverEvidenceKind } from "./DriverEvidenceKind";
 
 /**
- * One reason two people might be one. `short` and `long` name a short form and the
- * name it stands for; `same` of `of` days count days both sides worked.
+ * One reason two people might be one. `short` and `long` name a short form and the name it
+ * stands for; `same` of `of` days count the days both worked.
  */
 export type DriverEvidence = { kind: DriverEvidenceKind, short: string | null, long: string | null, same: number | null, of: number | null, };

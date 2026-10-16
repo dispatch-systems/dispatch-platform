@@ -1,21 +1,44 @@
 use super::*;
+use dispatch_core::manifest::people::SourceData;
+
+static PAYCOM_IDS: SourceData = SourceData {
+    id: "paycom",
+    label: "Paycom",
+    order: 10,
+};
+static AMAZON_IDS: SourceData = SourceData {
+    id: "amazon",
+    label: "Amazon",
+    order: 20,
+};
 
 fn kinds(evidence: &[DriverEvidence]) -> Vec<DriverEvidenceKind> {
     evidence.iter().map(|e| e.kind).collect()
+}
+/// Someone one source knows by a name.
+fn side(source: &'static SourceData, code: &'static str, name: &'static str) -> Side<'static> {
+    Side {
+        code,
+        sources: BTreeSet::from([DriverSource::new(source)]),
+        names: vec![name],
+        emails: BTreeSet::new(),
+        phones: BTreeSet::new(),
+    }
 }
 fn pairs(
     paycom: &[(&'static str, &'static str)],
     amazon: &[(&'static str, &'static str)],
 ) -> Vec<Suggestion> {
-    let side = |list: &[(&'static str, &'static str)]| {
-        list.iter()
-            .map(|&(code, name)| Side {
-                code,
-                names: vec![name],
-            })
-            .collect::<Vec<_>>()
-    };
-    suggest(&side(paycom), &side(amazon), &BTreeSet::new())
+    let people: Vec<Side> = paycom
+        .iter()
+        .map(|&(code, name)| side(&PAYCOM_IDS, code, name))
+        .chain(
+            amazon
+                .iter()
+                .map(|&(code, name)| side(&AMAZON_IDS, code, name)),
+        )
+        .collect();
+    suggest(&people, &BTreeSet::new())
 }
 
 #[test]
@@ -32,7 +55,7 @@ fn preferred_names_and_last_initials_are_suggested_and_strangers_are_not() {
             ("A3", "Devon Carter"),
         ],
     );
-    let between = |p: &str, a: &str| found.iter().find(|s| s.paycom == p && s.amazon == a);
+    let between = |p: &str, a: &str| found.iter().find(|s| s.first == p && s.second == a);
     let reyes = between("P1", "A1").unwrap();
     assert_eq!(
         kinds(&reyes.evidence),
@@ -54,16 +77,49 @@ fn preferred_names_and_last_initials_are_suggested_and_strangers_are_not() {
 }
 #[test]
 fn pairs_kept_apart_are_not_suggested_again() {
-    let paycom = [Side {
-        code: "P1",
-        names: vec!["REYES, ANTONIO"],
-    }];
-    let amazon = [Side {
-        code: "A1",
-        names: vec!["Tony Reyes"],
-    }];
+    let people = [
+        side(&PAYCOM_IDS, "P1", "REYES, ANTONIO"),
+        side(&AMAZON_IDS, "A1", "Tony Reyes"),
+    ];
     let apart = BTreeSet::from([("A1".to_owned(), "P1".to_owned())]);
-    assert!(suggest(&paycom, &amazon, &apart).is_empty());
+    assert!(suggest(&people, &apart).is_empty());
+}
+#[test]
+fn a_contact_only_two_share_pairs_them_even_within_one_source() {
+    let reached = |mut side: Side<'static>, phone: &'static str| {
+        side.phones.insert(phone);
+        side
+    };
+    let people = [
+        // A rehire, under a second transporter ID.
+        reached(side(&AMAZON_IDS, "A1", "Sam Rivera"), "6125550123"),
+        reached(side(&AMAZON_IDS, "A2", "Samuel Rivera"), "6125550123"),
+        // A phone three people carry joins none of them.
+        reached(side(&AMAZON_IDS, "A3", "Lee Park"), "6125550100"),
+        reached(side(&AMAZON_IDS, "A4", "Kim Park"), "6125550100"),
+        reached(side(&PAYCOM_IDS, "P1", "PARK, JO"), "6125550100"),
+    ];
+    let found = suggest(&people, &BTreeSet::new());
+    let rehire = found
+        .iter()
+        .find(|s| s.first == "A1" && s.second == "A2")
+        .unwrap();
+    assert_eq!(
+        kinds(&rehire.evidence),
+        [
+            DriverEvidenceKind::SamePhone,
+            DriverEvidenceKind::SameLastName,
+            DriverEvidenceKind::ShortForm
+        ]
+    );
+    assert_eq!(strength(&rehire.evidence), DriverStrength::Strong);
+    // The Parks are tied by their name across sources, never by the phone.
+    assert!(
+        found.iter().all(
+            |s| !kinds(&s.evidence).contains(&DriverEvidenceKind::SamePhone) || s.first == "A1"
+        )
+    );
+    assert!(!found.iter().any(|s| s.first == "A3" && s.second == "A4"));
 }
 #[test]
 fn days_worked_count_only_where_both_sources_were_collected() {

@@ -12,7 +12,7 @@ fn private() -> tempfile::TempDir {
 fn employee_history_uses_the_code_index() {
     crate::testing::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[&dispatch_driver_profiles::FEATURE, &crate::FEATURE],
+        &[&crate::FEATURE],
     );
     let root = private();
     let file = root.path().join("paycom.sqlite");

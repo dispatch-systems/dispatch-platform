@@ -1,25 +1,153 @@
 //! The people slot: who each feature's data names, for Driver Match, which tells them apart.
 //! A feature reads only its own storage; Driver Match joins what every feature names by ID.
+//! The directory slot answers the other way round: who an ID is, for a feature showing people.
 use crate::{
     Result,
     db::{Db, Store},
     manifest::registry,
-    text_enum,
 };
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, sync::LazyLock};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::LazyLock,
+};
 
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "core/manifest/api/generated/"))]
-    #[derive(PartialOrd, Ord)]
-    /// Where an ID comes from. Every Amazon source (routes, meal breaks, DVIC, the
-    /// scorecard) knows a driver by the same transporter ID.
-    pub enum DriverSource {
-        Paycom => "paycom",
-        Amazon => "amazon",
+/// A source of the IDs people are known by, as the owner of those IDs declares it: Paycom's
+/// employee codes, Amazon's transporter IDs. Each kind of data naming people by its IDs names
+/// it as its source.
+pub struct SourceData {
+    /// Permanent: Driver Match keeps its people's IDs under it.
+    pub id: &'static str,
+    /// How it is named where people's IDs are listed: "Paycom".
+    pub label: &'static str,
+    /// Its place in the one order sources are listed in everywhere.
+    pub order: u16,
+}
+/// Where an ID comes from: compared, hashed, stored, sent and read by its id, and in
+/// TypeScript the union of the declared ids.
+#[derive(Clone, Copy)]
+pub struct DriverSource(&'static SourceData);
+/// Every source the features' people declare, in their order.
+static SOURCES: LazyLock<Vec<DriverSource>> = LazyLock::new(|| {
+    let mut all: Vec<DriverSource> = registry()
+        .people()
+        .iter()
+        .map(|people| people.source())
+        .collect();
+    all.sort();
+    all.dedup();
+    all
+});
+impl DriverSource {
+    pub const fn new(data: &'static SourceData) -> Self {
+        Self(data)
+    }
+    /// Every source, in the order they are listed everywhere.
+    pub fn all() -> impl Iterator<Item = Self> {
+        SOURCES.iter().copied()
+    }
+    /// The declared source `id` names.
+    pub fn parse(id: &str) -> Option<Self> {
+        Self::all().find(|source| source.0.id == id)
+    }
+    pub const fn as_str(self) -> &'static str {
+        self.0.id
+    }
+    pub const fn label(self) -> &'static str {
+        self.0.label
     }
 }
+impl PartialEq for DriverSource {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.id == other.0.id
+    }
+}
+impl Eq for DriverSource {}
+impl std::hash::Hash for DriverSource {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.id.hash(state);
+    }
+}
+impl PartialOrd for DriverSource {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for DriverSource {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.0.order, self.0.id).cmp(&(other.0.order, other.0.id))
+    }
+}
+impl std::fmt::Debug for DriverSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0.id)
+    }
+}
+impl Serialize for DriverSource {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.0.id)
+    }
+}
+impl<'de> Deserialize<'de> for DriverSource {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let id = String::deserialize(deserializer)?;
+        Self::parse(&id).ok_or_else(|| serde::de::Error::custom("unknown source of IDs"))
+    }
+}
+impl ToSql for DriverSource {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(self.0.id.into())
+    }
+}
+/// A source no feature in this build declares any more reads as an error: read it as text
+/// where one may be stored.
+impl FromSql for DriverSource {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        value
+            .as_str()
+            .and_then(|id| Self::parse(id).ok_or(FromSqlError::InvalidType))
+    }
+}
+#[cfg(feature = "ts")]
+impl ts_rs::TS for DriverSource {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    const IS_ENUM: bool = true;
+    fn docs() -> Option<String> {
+        Some("/**\n * Where an ID comes from.\n */\n".to_owned())
+    }
+    fn name(_: &ts_rs::Config) -> String {
+        "DriverSource".to_owned()
+    }
+    // With nothing declared, as in a build without features, nothing is one.
+    fn inline(_: &ts_rs::Config) -> String {
+        let ids: Vec<_> = SOURCES
+            .iter()
+            .map(|source| format!("{:?}", source.0.id))
+            .collect();
+        if ids.is_empty() {
+            "never".to_owned()
+        } else {
+            ids.join(" | ")
+        }
+    }
+    fn decl(cfg: &ts_rs::Config) -> String {
+        format!("type DriverSource = {};", Self::inline(cfg))
+    }
+    fn decl_concrete(cfg: &ts_rs::Config) -> String {
+        Self::decl(cfg)
+    }
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some("core/manifest/api/generated/DriverSource.ts".into())
+    }
+}
+
 /// A kind of collected data a person can appear in, as the feature whose data it is
 /// declares it in its `people`.
 pub struct PeopleData {
@@ -149,23 +277,6 @@ impl ts_rs::TS for DriverData {
         Some("core/manifest/api/generated/DriverData.ts".into())
     }
 }
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "core/manifest/api/generated/"))]
-    /// Where a person stands. `review` is a person who might be someone else listed twice;
-    /// `former` someone only one source knows who has left.
-    pub enum DriverStatus {
-        Matched => "matched",
-        Variant => "variant",
-        Confirmed => "confirmed",
-        Review => "review",
-        PaycomOnly => "paycom_only",
-        AmazonOnly => "amazon_only",
-        Office => "office",
-        Former => "former",
-    }
-}
-
 /// One kind of a feature's data that names people, as Driver Match reads it.
 pub trait People: Sync {
     /// The kind of data it is, as a person's activity lists it.
@@ -206,6 +317,11 @@ pub struct Named {
     pub last_seen: Option<String>,
     /// On its source's current roster.
     pub listed: bool,
+    /// The email addresses and phone numbers it has for them, as written.
+    pub emails: Vec<String>,
+    pub phones: Vec<String>,
+    /// What its source says they do: `Driver`, `Helper`.
+    pub roles: Vec<String>,
 }
 impl Named {
     pub fn new(id: &str) -> Self {
@@ -250,4 +366,28 @@ pub fn first_name(db: &Db, sql: &str, id: &str) -> Result<Option<String>> {
         .filter_map(|(name,)| name)
         .map(|name| name.split_whitespace().collect::<Vec<_>>().join(" "))
         .find(|name| !name.is_empty()))
+}
+
+/// Who an ID is, as the one feature that tells people apart answers, for a feature that shows
+/// people its data names.
+pub trait Directory: Sync {
+    /// Every ID of `from` the DSP's people hold, each with its person: their code, their IDs
+    /// of `to`, and whether someone confirmed who they are. Empty while the feature answering
+    /// is off for the DSP.
+    fn links(
+        &self,
+        store: &Store,
+        dsp: &str,
+        from: DriverSource,
+        to: DriverSource,
+    ) -> Result<BTreeMap<String, Link>>;
+}
+/// One person, as the directory answers for one of their IDs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Link {
+    pub code: String,
+    /// Their IDs of the source asked about.
+    pub ids: Vec<String>,
+    /// Whether someone confirmed who they are, rather than a match.
+    pub confirmed: bool,
 }

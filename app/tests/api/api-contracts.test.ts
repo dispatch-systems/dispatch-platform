@@ -20,14 +20,14 @@ test('recovery-code responses accept the active and previous rollout formats', a
 test('driver badge counts reject malformed responses without exposing their contents', async () => {
   const route = '/api/dsp/driver-match/counts';
   const counts = {
-    all: 12,
-    drivers: 10,
-    matched: 6,
+    people: 12,
     review: 2,
-    paycomOnly: 1,
-    amazonOnly: 1,
+    unconfirmed: 1,
+    missing: 2,
+    drivers: 8,
+    helpers: 1,
     office: 2,
-    former: 0,
+    former: 1,
   };
   assert.deepEqual(await parseApiResponse(route, 'GET', counts), counts);
   for (const review of ['private-invalid-count', -1, 0.5, null])

@@ -5,4 +5,16 @@ import type { DriverLink } from "./DriverLink";
 /**
  * One ID a person is known by, as its source wrote it.
  */
-export type DriverId = { source: DriverSource, id: string, name: string, department: string | null, position: string | null, firstSeen: string | null, lastSeen: string | null, linkedBy: DriverLink, linkedAt: string, };
+export type DriverId = { source: DriverSource, id: string, name: string, department: string | null, position: string | null,
+/**
+ * The email addresses and phone numbers its source has for them.
+ */
+emails: Array<string>, phones: Array<string>,
+/**
+ * What its source says they do: `Driver`, `Helper`.
+ */
+roles: Array<string>,
+/**
+ * On its source's current roster.
+ */
+listed: boolean, firstSeen: string | null, lastSeen: string | null, linkedBy: DriverLink, linkedAt: string, };

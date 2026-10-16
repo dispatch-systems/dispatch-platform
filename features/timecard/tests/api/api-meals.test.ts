@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MealEmployee } from '../../api/index.js';
-import type { Driver, DriverMatch } from '../../../driver_profiles/api/index.js';
 import { checkReply } from '../../../../core/foundation/api/runtime.js';
 import { replies as timecardReplies } from '../../api/runtime.js';
-import { fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { fixture } from '../../../../core/shell/tests/support/support.js';
+import { seedNameVariants, variants } from '../support/name-variants.js';
 
 test('meal API requires DSP context, exposes the punch union to members, and links only through Driver Match', async () => {
   const f = await fixture();
@@ -99,50 +99,7 @@ test('name variants combine existing source records without recollection or losi
   const owner = await f.client();
   const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(dsp.id);
-  const names = [
-    ['REED, JAMIE', 'Jamie Reed Vega'],
-    ['STONE, ALEX', 'Alexander Stone'],
-    ['MOLINA, CASEY', 'Casey Molina Solis'],
-    ['HART, TAYLOR', 'Taylor Hart Jr'],
-  ];
-  const date = f.collector(dsp.id, (db) => {
-    const date = (db.prepare('SELECT max(date) date FROM timecards').get() as { date: string })
-      .date;
-    names.forEach(([paycom], i) => {
-      db.prepare('UPDATE employees SET name=? WHERE code=?').run(paycom!, `E00${i + 1}`);
-    });
-    return date;
-  });
-  const endpoint = `/api/dsp/paycom/meal-breaks?date=${date}`;
-  const before = (await owner.get(endpoint)).value;
-  // Fixture writes bypass the collector's revision notification; restart after seeding.
-  await f.stop();
-  f.database(`dsps/${dsp.id}/data/cortex/cortex.sqlite`, (db) => {
-    db.prepare(
-      `INSERT INTO meal_publications VALUES
-       ('variant-pub','variant-job',?,'DEMO1','area-1','ALL_DRIVERS','UTC',?,?,1,4,5,5,3)`,
-    ).run(date, `${date}T23:00:00Z`, `${date}T23:01:00Z`);
-    names.forEach(([, flex], i) => {
-      db.prepare(
-        `INSERT INTO meal_itineraries VALUES
-         ('variant-pub',?,?,?,'R1',?,1,'complete','recorded')`,
-      ).run(`route-${i}`, `driver-${i}`, flex!, `${date}T23:00:00Z`);
-      for (const meal of i === 0 ? [0, 1] : [0]) {
-        const hour = 12 + meal * 4;
-        db.prepare(
-          `INSERT INTO meal_records VALUES ('variant-pub',?,?,?,?,?,?,'verified','verified')`,
-        ).run(
-          `route-${i}`,
-          `meal-${meal}`,
-          `${date}T${hour - 1}:58:00Z`,
-          `${date}T${hour}:00:00Z`,
-          `${date}T${hour}:30:00Z`,
-          `${date}T${hour}:32:00Z`,
-        );
-      }
-    });
-  });
-  await f.start();
+  const { date, endpoint, before } = await seedNameVariants(f, owner, dsp.id);
   const response = await owner.get(endpoint);
   assert.equal(response.status, 200);
   const combined = response.value;
@@ -154,7 +111,7 @@ test('name variants combine existing source records without recollection or losi
     const row = combined.rows.find((r: MealEmployee) => r.id === previous.id);
     assert.deepEqual(row.paycom, previous.paycom);
   }
-  names.forEach(([, flex], i) => {
+  variants.forEach(([, flex], i) => {
     const row = combined.rows.find((r: MealEmployee) => r.id === `paycom:E00${i + 1}`);
     assert.equal(row.cortex.length, i === 0 ? 2 : 1);
     assert.equal(row.cortex[0].driverName, flex);
@@ -163,25 +120,6 @@ test('name variants combine existing source records without recollection or losi
     assert.equal(row.cortex[0].end, `${date}T12:30:00Z`);
     assert.equal(row.cortex[0].firstDelivery, `${date}T12:32:00Z`);
   });
-  // A decision in Driver Match overrides the automatic rules at once.
-  const holder = async (id: string) => {
-    let found: Driver | undefined;
-    await until(async () => {
-      const people: DriverMatch = await owner.read('/api/dsp/driver-match');
-      found = people.drivers.find((d) => d.ids.some((i) => i.id === id));
-      return Boolean(found);
-    });
-    return found!;
-  };
-  const jamie = await holder('driver-0');
-  assert.equal(jamie.ids.length, 2);
-  const split = { code: jamie.code, source: 'amazon', id: 'driver-0' };
-  assert.equal((await owner.post('/api/dsp/driver-match/split', split)).status, 200);
-  assert.equal((await owner.get(endpoint)).value.rows.length, before.rows.length + 1);
-  const alone = await holder('driver-0');
-  const merge = { code: alone.code, into: jamie.code };
-  assert.equal((await owner.post('/api/dsp/driver-match/merge', merge)).status, 200);
-  assert.equal((await owner.get(endpoint)).value.rows.length, before.rows.length);
 });
 
 test('typed workforce responses carry Rust assessments and reject malformed nested records', async (t) => {

@@ -11,7 +11,7 @@ use dispatch_core::db::{Kind, Migrations};
 use dispatch_core::foundation::config::{Environment, ProviderMode};
 use dispatch_core::manifest::{
     Capability, Collection, Collector,
-    people::{DriverData, DriverSource, DriverStatus},
+    people::{DriverData, DriverSource},
 };
 use dispatch_core::platform_owner::api::types::*;
 use dispatch_core::server::api::types::*;
@@ -35,8 +35,8 @@ const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 /// The kinds of record an audit event names, core's and the features', which the audit
 /// log's reply check accepts.
 const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
-/// The kinds of collected data that name people, in their order, as lists of people show them.
-/// Only those lists import it, with the icons it imports.
+/// The kinds of collected data that name people, and the sources of their IDs, in their
+/// order, as lists of people show them. Only those lists import it, with the icons it imports.
 const DRIVER_DATA: &str = "core/manifest/api/generated/driver-data.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
@@ -74,7 +74,6 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
         OAuthAppChoice,
         Cadence,
         DriverSource,
-        DriverStatus,
         DriverData,
         DspProfile,
         JobMetrics,
@@ -232,9 +231,10 @@ fn driver_data() -> String {
     use std::collections::BTreeSet;
     let quoted = |text: &str| serde_json::to_string(text).unwrap();
     let icons: BTreeSet<_> = DriverData::all().map(DriverData::icon).collect();
-    let mut text = "// Generated from the kinds of data the features' people declare.\n\
+    let mut text =
+        "// Generated from the kinds of data the features' people declare, and their sources.\n\
         // Run `npm run contracts:generate` after changing them.\n"
-        .to_owned();
+            .to_owned();
     if !icons.is_empty() {
         let names: Vec<_> = icons.into_iter().collect();
         text += &format!("import {{ {} }} from 'lucide-react';\n", names.join(", "));
@@ -247,6 +247,14 @@ fn driver_data() -> String {
             quoted(data.label()),
             quoted(data.unit()),
             data.icon()
+        );
+    }
+    text += "] as const;\nexport const driverSources = [\n";
+    for source in DriverSource::all() {
+        text += &format!(
+            "  {{ id: {}, label: {} }},\n",
+            quoted(source.as_str()),
+            quoted(source.label())
         );
     }
     text + "] as const;\n"

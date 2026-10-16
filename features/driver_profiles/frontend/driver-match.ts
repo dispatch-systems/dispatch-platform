@@ -5,54 +5,63 @@ import type {
   DriverEvidence,
   DriverEvent,
   DriverId,
-  DriverStatus,
+  DriverLink,
+  DriverRole,
+  DriverSource,
 } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
-import { driverData } from '../../../core/manifest/api/generated/driver-data.js';
+import { driverData, driverSources } from '../../../core/manifest/api/generated/driver-data.js';
 
-export type DriverFilter = 'all' | 'matched' | 'review' | 'paycom' | 'amazon' | 'office' | 'former';
-export const driverFilters: [DriverFilter, string][] = [
+/** Which people the tab shows: everyone, those of one role, or those a source lacks. */
+export type PeopleFilter = 'all' | DriverRole | 'missing';
+export const peopleFilters: [PeopleFilter, string][] = [
   ['all', 'All'],
-  ['matched', 'Matched'],
-  ['review', 'Needs review'],
-  ['paycom', 'Paycom only'],
-  ['amazon', 'Amazon only'],
-  ['office', 'Office staff'],
+  ['driver', 'Drivers'],
+  ['helper', 'Helpers'],
+  ['office', 'Office'],
   ['former', 'Former'],
+  ['missing', 'Not in every system'],
 ];
-const filterOf: Record<DriverStatus, DriverFilter> = {
-  matched: 'matched',
-  variant: 'matched',
-  confirmed: 'matched',
-  review: 'review',
-  paycom_only: 'paycom',
-  amazon_only: 'amazon',
-  office: 'office',
-  former: 'former',
-};
-export const driverFilter = (driver: Driver): DriverFilter => filterOf[driver.status];
+/** Whether a source has an ID for someone. */
+export const knows = (driver: Driver, source: DriverSource) =>
+  driver.ids.some((id) => id.source === source);
+/** Drivers and helpers belong in every source; anyone else only where they are. */
+export const working = (driver: Driver) => driver.role === 'driver' || driver.role === 'helper';
+/** Whether a person lacks an ID of a source the DSP has. */
+export const missing = (driver: Driver, sources: readonly DriverSource[]) =>
+  working(driver) && sources.some((source) => !knows(driver, source));
 
-export const statusLabels: Record<DriverStatus, string> = {
-  matched: 'Name match',
-  variant: 'Name variant',
-  confirmed: 'Confirmed',
-  review: 'Needs review',
-  paycom_only: 'Paycom only',
-  amazon_only: 'Amazon only',
-  office: 'Office staff',
+export const roleLabels: Record<DriverRole, string> = {
+  driver: 'Driver',
+  helper: 'Helper',
+  office: 'Office',
   former: 'Former',
 };
-/** The colour each status reads in: calm when matched, amber while waiting on a person. */
-export const statusTones: Record<DriverStatus, string> = {
-  matched: 'neutral',
-  variant: 'neutral',
-  confirmed: 'sage',
-  review: 'warning',
-  paycom_only: 'slate',
-  amazon_only: 'slate',
+/** The colour each role reads in. */
+export const roleTones: Record<DriverRole, string> = {
+  driver: 'sage',
+  helper: 'steel',
   office: 'violet',
   former: 'neutral',
 };
+export const linkLabels: Record<DriverLink, string> = {
+  new: 'First ID',
+  variant: 'Name variant',
+  name: 'Same name',
+  phone: 'Same phone',
+  email: 'Same email',
+  saved: 'Linked on Meal Breaks',
+  person: 'Confirmed',
+};
+/** A link a match made, which someone may confirm. */
+export const confirmable = (link: DriverLink) =>
+  link === 'variant' || link === 'name' || link === 'phone' || link === 'email';
+
+/** Every source of IDs, in their order, as their owners declare them. */
+export const sourceKinds: readonly DriverSource[] = driverSources.map((source) => source.id);
+/** How a source is named: "Paycom". */
+export const sourceLabel = (source: DriverSource) =>
+  driverSources.find((s) => s.id === source)?.label ?? source;
 
 /** Every kind of collected data a person can appear in, in their order, as the features declare them. */
 export const dataKinds: readonly DriverData[] = driverData.map((kind) => kind.id);
@@ -66,9 +75,13 @@ export function dataAmount(data: DriverData, count: number) {
   return `${count.toLocaleString('en-US')} ${unit}${count === 1 ? '' : 's'}`;
 }
 
-/** One reason two people might be one, as a short sentence. */
+/** One reason two people might be one, as a short phrase. */
 export function evidenceText(evidence: DriverEvidence) {
   switch (evidence.kind) {
+    case 'same_email':
+      return 'Same email';
+    case 'same_phone':
+      return 'Same phone';
     case 'same_last_name':
       return 'Same last name';
     case 'same_first_name':
@@ -79,8 +92,8 @@ export function evidenceText(evidence: DriverEvidence) {
       return 'Last initial matches';
     case 'worked_days':
       return evidence.same === evidence.of
-        ? `Clocked in on all ${evidence.of} days they drove`
-        : `Clocked in on ${evidence.same} of ${evidence.of} days they drove`;
+        ? `Worked all ${evidence.of} days together`
+        : `Worked ${evidence.same} of ${evidence.of} days together`;
   }
 }
 /** Days that disagree weaken a pair; every other reason supports it. */
@@ -119,45 +132,69 @@ export const initials = (name: string) =>
 export const toneOf = (code: string) => [...code].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 4;
 /** Amazon's transporter IDs run to fourteen characters; the start and end tell them apart. */
 export const shortId = (id: DriverId) =>
-  id.source === 'amazon' && id.id.length > 12 ? `${id.id.slice(0, 4)}…${id.id.slice(-4)}` : id.id;
-export const firstId = (driver: Driver, source: DriverId['source']) =>
-  driver.ids.find((id) => id.source === source);
+  id.id.length > 12 ? `${id.id.slice(0, 4)}…${id.id.slice(-4)}` : id.id;
+/** The address of a person's photo, at the version they have. */
+export const photoUrl = (driver: Pick<Driver, 'code' | 'photo'>) =>
+  driver.photo
+    ? `/api/dsp/driver-match/drivers/${encodeURIComponent(driver.code)}/photo?v=${driver.photo.slice(0, 16)}`
+    : undefined;
 
-/** The first name Amazon knows someone by, when it differs from the name shown. */
+/**
+ * The first name another source knows someone by, when it differs from the name shown, which
+ * their first source's ID gives.
+ */
 export function goesBy(driver: Driver) {
   const shown = driver.name.split(/\s+/)[0]?.toLocaleLowerCase('en-US');
-  const amazon = firstId(driver, 'amazon')?.name.split(/\s+/)[0];
-  return amazon && firstId(driver, 'paycom') && amazon.toLocaleLowerCase('en-US') !== shown
-    ? amazon
-    : undefined;
+  const shownBy = driver.ids[0]?.source;
+  for (const id of driver.ids.filter((id) => id.source !== shownBy)) {
+    const given = id.name.split(/\s+/)[0];
+    if (given && given.toLocaleLowerCase('en-US') !== shown)
+      return { name: given, source: sourceLabel(id.source) };
+  }
+  return undefined;
 }
 
-/** Whether a search finds someone: by any name a source writes, their code or an ID. */
+/** A phone number as it is read in the US, `(612) 555-0103`; any other as written. */
+export function phoneText(phone: string) {
+  const parts = /^(?:\+?1)?(\d{3})(\d{3})(\d{4})$/.exec(phone.replace(/[\s().-]/g, ''));
+  return parts ? `(${parts[1]}) ${parts[2]}-${parts[3]}` : phone;
+}
+
+/** Whether a search finds someone: by any name a source writes, their code, an ID or a contact. */
 export const driverSearchTerms = (driver: Driver) =>
-  [driver.name, driver.code, ...driver.ids.flatMap((id) => [id.id, id.name])].map((text) =>
-    text.toLocaleLowerCase('en-US'),
-  );
+  [
+    driver.name,
+    driver.code,
+    ...driver.ids.flatMap((id) => [
+      id.id,
+      id.name,
+      ...id.emails,
+      ...id.phones.flatMap((phone) => [phone, phoneText(phone)]),
+    ]),
+  ].map((text) => text.toLocaleLowerCase('en-US'));
 export function driverMatches(driver: Driver, query: string) {
   const wanted = query.trim().toLocaleLowerCase('en-US');
   if (!wanted) return true;
   return driverSearchTerms(driver).some((text) => text.includes(wanted));
 }
 
-const sourceName = { paycom: 'Paycom', amazon: 'Amazon' };
+const linkedBy: Partial<Record<DriverLink, string>> = {
+  name: 'joined by the same name',
+  variant: 'joined by a name variant',
+  email: 'joined by the same email',
+  phone: 'joined by the same phone',
+  saved: 'linked on the meal-break page',
+  person: 'confirmed as this person',
+};
 /** One line of a person's history. */
 export function eventText(event: DriverEvent) {
   const other = event.name ? `${event.name} (${event.code})` : event.code;
+  const source = event.source ? sourceLabel(event.source) : 'An';
   switch (event.kind) {
     case 'added':
-      return `Added from ${sourceName[event.source ?? 'paycom']}${event.name ? ` as ${event.name}` : ''}`;
+      return `Added from ${source}${event.name ? ` as ${event.name}` : ''}`;
     case 'linked':
-      return event.link === 'name'
-        ? `${sourceName[event.source ?? 'amazon']} ID joined by the same name`
-        : event.link === 'variant'
-          ? `${sourceName[event.source ?? 'amazon']} ID joined by a name variant`
-          : event.link === 'saved'
-            ? `${sourceName[event.source ?? 'amazon']} ID linked on the meal-break page`
-            : `${sourceName[event.source ?? 'amazon']} ID confirmed as this person`;
+      return `${source} ID ${linkedBy[event.link ?? 'person'] ?? 'linked'}`;
     case 'merged':
       return `${event.code} merged into this person; that code now leads here`;
     case 'split':

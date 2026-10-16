@@ -6,21 +6,21 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    Driver, DriverActivity, DriverCounts, DriverDay, DriverDetails, DriverEvent, DriverEventKind,
-    DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair,
+    Driver, DriverActivity, DriverCounts, DriverDays, DriverDetails, DriverEvent, DriverEventKind,
+    DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair, DriverRole,
     DriverStrength, RosterStatus,
 };
-/// What the app and Timecard, which depends on it, use: the roster's storage and the cache
-/// domain its collections change; Driver Match's storage, the cache domain its decisions
-/// change, the links the meal-break page saved before it, and its codes' shape.
+/// What the app uses: the roster's storage and the cache domain its collections change,
+/// Driver Match's storage and its codes' shape. Other features ask core's directory who an
+/// ID is.
 pub use backend::{
     DOMAIN,
-    driver_match::{DOMAIN as DRIVERS, DriverMatchStore, DriverSources, LINKS, valid_code},
+    driver_match::{DriverMatchStore, DriverSources, valid_code},
     storage::DriverProfilesStore,
 };
 
 use dispatch_core::{
-    db::{Kind, Migration, Migrations, migrations::Apply::Sql},
+    db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
     manifest::{Audit, Feature, feature, optional, perm, sub},
     tenancy::api::audit::AuditArea::Collections,
 };
@@ -28,11 +28,13 @@ use dispatch_core::{
 pub const FEATURE: Feature = Feature {
     place: 70,
     switch: optional("driver_profiles", "Driver Profiles", &["associates"]),
-    // Driver Match's tab is one of Settings', not a page of its own: it matches Paycom's
-    // employees to the drivers the roster, routes and other collections name.
-    subfeatures: &[sub("driver_match", "Driver Match")
-        .permissions(&[perm("driver_match.manage", "Manage Driver Match", 60)])
-        .requires(&["timecards", "routes"])],
+    // Driver Match's tab is one of Settings', not a page of its own: it gives one code to
+    // each person whatever sources the DSP has on name, the roster, Paycom or Slack.
+    subfeatures: &[sub("driver_match", "Driver Match").permissions(&[perm(
+        "driver_match.manage",
+        "Manage Driver Match",
+        60,
+    )])],
     permissions: &[perm(
         "driver_profiles.collect",
         "Collect Driver Profiles",
@@ -75,7 +77,15 @@ pub const FEATURE: Feature = Feature {
             }],
         },
     ],
-    domains: &[backend::DOMAIN, backend::driver_match::DOMAIN],
+    own_migrations: &[OwnMigrations {
+        kind: Kind::DSP,
+        list: &[Migration {
+            id: 1,
+            name: "open_sources",
+            apply: Sql(include_str!("migrations/dsp/0001_open_sources.sql")),
+        }],
+    }],
+    domains: &[backend::DOMAIN],
     maintenance: &[
         backend::maintenance::MAINTENANCE,
         backend::driver_match::maintenance::MAINTENANCE,
@@ -89,6 +99,7 @@ pub const FEATURE: Feature = Feature {
         names: Some(backend::driver_match::name_driver_events),
     },
     people: &[&backend::people::Associates],
+    directory: Some(&backend::driver_match::Directory),
     ..feature("driver_profiles")
 };
 
@@ -102,6 +113,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         DriverStrength,
         DriverEvidenceKind,
         DriverEventKind,
+        DriverRole,
         DriverId,
         Driver,
         DriverCounts,
@@ -109,7 +121,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         DriverPair,
         DriverMatch,
         DriverActivity,
-        DriverDay,
+        DriverDays,
         DriverEvent,
         DriverDetails,
     )

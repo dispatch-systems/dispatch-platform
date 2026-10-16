@@ -162,7 +162,7 @@
       "page": "driver_profiles",
       "tab": false,
       "permissions": ["driver_match.manage"],
-      "requires": ["timecards", "routes"],
+      "requires": [],
       "default": true,
       "mandatory": false
     }

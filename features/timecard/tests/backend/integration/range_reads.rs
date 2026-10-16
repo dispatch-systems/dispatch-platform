@@ -10,10 +10,7 @@ use serde_json::json;
 fn install() {
     common::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[
-            &dispatch_driver_profiles::FEATURE,
-            &dispatch_timecard::FEATURE,
-        ],
+        &[&dispatch_timecard::FEATURE],
     );
 }
 

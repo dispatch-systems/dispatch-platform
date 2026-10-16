@@ -79,9 +79,10 @@ test("the feature map names the app's Cargo features, each with what it declares
     for (const used of declared)
       assert(enables.includes(`"${used}"`), `the app's ${name} feature does not enable ${used}`);
   }
-  // A leaf goes alone; Timecard declares Driver Profiles, so it goes with it.
+  // A leaf goes alone; Timecard asks core's directory who a driver is, so it stays without
+  // Driver Profiles.
   assert.deepEqual(leftOut(features, 'uniforms'), ['uniforms']);
-  assert.deepEqual(leftOut(features, 'driver_profiles'), ['driver_profiles', 'timecard']);
+  assert.deepEqual(leftOut(features, 'driver_profiles'), ['driver_profiles']);
 });
 
 test("the app's manifest loses the left-out features' crates, and no list names them", () => {
@@ -214,11 +215,9 @@ test('a dry run prints the plan and changes nothing', () => {
     { cwd: root, encoding: 'utf8' },
   );
   const lines = printed.trim().split('\n');
-  assert.match(lines[0]!, /^Leaving out driver_profiles, timecard; keeping /);
+  assert.match(lines[0]!, /^Leaving out driver_profiles; keeping /);
   assert.equal(
-    lines.filter((line) =>
-      /^\(moves features\/driver_profiles, features\/timecard aside\)$/.test(line),
-    ).length,
+    lines.filter((line) => /^\(moves features\/driver_profiles aside\)$/.test(line)).length,
     1,
   );
   assert.deepEqual(

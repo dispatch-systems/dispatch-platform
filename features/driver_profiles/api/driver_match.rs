@@ -1,8 +1,8 @@
 //! Driver Match: every person the DSP's collections know, and the decisions that join or
-//! part them. The tab lives in Settings; the feature switch and its one permission gate it.
+//! part them. The tab lives in Settings; its part's switch and its one permission gate it.
 use crate::backend::driver_match::DriverMatchStore;
 use dispatch_core::{
-    Result,
+    Error, Result,
     db::Store,
     foundation::validate as v,
     manifest::people::DriverSource,
@@ -18,9 +18,11 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/driver-match", MANAGE, overview),
         read("/api/dsp/driver-match/counts", MANAGE, counts),
         read("/api/dsp/driver-match/drivers/{code}", MANAGE, details),
+        read("/api/dsp/driver-match/drivers/{code}/photo", MANAGE, photo),
         write("/api/dsp/driver-match/merge", MANAGE, merge),
         write("/api/dsp/driver-match/split", MANAGE, split),
         write("/api/dsp/driver-match/apart", MANAGE, apart),
+        write("/api/dsp/driver-match/confirm", MANAGE, confirm),
     ]
 }
 fn overview(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
@@ -32,6 +34,20 @@ fn counts(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
 fn details(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&db.driver_details(c.dsp_id(), input.param("code"))?)
 }
+/// Their photo from Amazon's roster. The address carries its version, so the browser keeps
+/// it until the photo changes.
+fn photo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let (kind, bytes) = db
+        .driver_photo(c.dsp_id(), input.param("code"))?
+        .ok_or_else(|| Error::new("not_found", 404))?;
+    Ok(Reply::picture(kind, bytes.into()))
+}
+/// The source and ID a decision names, of the sources this build has.
+fn source_id(b: &serde_json::Value) -> Result<(DriverSource, &str)> {
+    let source = DriverSource::parse(v::text(b, "source", 1, 32)?)
+        .ok_or_else(|| Error::new("invalid_input", 400))?;
+    Ok((source, v::text(b, "id", 1, 64)?))
+}
 /// `code`'s IDs move to `into`.
 fn merge(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
@@ -42,14 +58,15 @@ fn merge(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn split(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
     v::fields(b, &["code", "source", "id"])?;
-    let source = DriverSource::parse(v::choice(b, "source", &["paycom", "amazon"])?)
-        .expect("a listed choice");
-    Reply::of(&db.split_driver(
-        c,
-        v::text(b, "code", 6, 6)?,
-        source,
-        v::text(b, "id", 1, 64)?,
-    )?)
+    let (source, id) = source_id(b)?;
+    Reply::of(&db.split_driver(c, v::text(b, "code", 6, 6)?, source, id)?)
+}
+/// One of `code`'s IDs a match joined is confirmed as theirs.
+fn confirm(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let b = &input.body;
+    v::fields(b, &["code", "source", "id"])?;
+    let (source, id) = source_id(b)?;
+    Reply::of(&db.confirm_driver(c, v::text(b, "code", 6, 6)?, source, id)?)
 }
 fn apart(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;

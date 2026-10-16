@@ -233,10 +233,7 @@ export const featureCatalog = [
     "permissions": [
       "driver_match.manage"
     ],
-    "requires": [
-      "timecards",
-      "routes"
-    ],
+    "requires": [],
     "kind": "sub",
     "page": "driver_profiles",
     "tab": false

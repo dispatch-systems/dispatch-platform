@@ -9,12 +9,14 @@ mod agent_tool_checks;
 mod agent_tools;
 mod collection_jobs;
 mod contracts;
-#[cfg(feature = "timecard")]
+#[cfg(all(feature = "timecard", feature = "driver_profiles"))]
 mod driver_match;
 mod http_requests;
 mod http_routes;
 #[cfg(feature = "timecard")]
 mod meal_cache;
+#[cfg(all(feature = "timecard", feature = "driver_profiles"))]
+mod meal_driver_match;
 mod network_policy;
 mod oauth;
 #[cfg(feature = "weekly_scorecard")]

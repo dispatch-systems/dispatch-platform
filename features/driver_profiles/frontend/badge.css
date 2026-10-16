@@ -1,4 +1,4 @@
-/* The count of pairs to decide, beside the tab's name. */
+/* How many questions wait, beside the tab's name. */
 .driver-tab-flag {
   display: inline-flex;
   align-items: center;

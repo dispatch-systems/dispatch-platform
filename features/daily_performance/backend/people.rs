@@ -19,7 +19,7 @@ impl People for Drivers {
         DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
-        DriverSource::Amazon
+        DriverSource::new(&dispatch_cortex::PEOPLE)
     }
     fn order(&self) -> u16 {
         45

@@ -1,0 +1,57 @@
+/* A collection's schedules: the sheet that lists them and the form that edits one. */
+.schedule-settings > p {
+  margin-bottom: 20px;
+  line-height: 1.7;
+  font-size: 13px;
+}
+.schedule-card {
+  border: 1px solid var(--border);
+  padding: 18px;
+  border-radius: var(--radius);
+  margin-top: 16px;
+}
+.schedule-card p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 8px 0;
+}
+.schedule-card > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.schedule-form > fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.schedule-form select {
+  width: 100%;
+}
+.schedule-form .muted {
+  font-size: 12px;
+}
+.schedule-timing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+.schedule-toggle {
+  flex-direction: row;
+  align-items: center;
+}
+.schedule-delete-confirm {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.schedule-delete-confirm p {
+  margin: 0 0 12px;
+}
+.schedule-delete-confirm button + button {
+  margin-left: 8px;
+}

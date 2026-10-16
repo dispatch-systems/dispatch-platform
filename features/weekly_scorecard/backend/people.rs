@@ -29,7 +29,7 @@ impl People for Drivers {
         DriverData::new(&DATA)
     }
     fn source(&self) -> DriverSource {
-        DriverSource::Amazon
+        DriverSource::new(&dispatch_cortex::PEOPLE)
     }
     /// After routes and meal breaks: the scorecard often adds a middle name.
     fn order(&self) -> u16 {
