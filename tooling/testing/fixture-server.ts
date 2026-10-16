@@ -194,14 +194,29 @@ export async function fixture(options: boolean | FixtureOptions = true) {
     // A browser that fails to start, or a request the server failed, says why only in the
     // server's log. Show those lines in the test output as they happen, so a failure on a
     // CI runner explains itself.
-    const keep = (data: Buffer) => {
-      logs += data;
-      for (const line of String(data).split('\n'))
-        if (line.includes('"browser.start_failed"') || /"status":5\d\d\b/.test(line))
-          process.stderr.write(`${line}\n`);
+    const show = (line: string) => {
+      if (line.includes('"browser.start_failed"') || /"status":5\d\d\b/.test(line))
+        process.stderr.write(`${line}\n`);
     };
-    child.stdout?.on('data', keep);
-    child.stderr?.on('data', keep);
+    // Each stream joins the log a whole line at a time: a chunk can end mid-line, and a test
+    // reading the log then, or the other stream's output landing there, would split it.
+    const keep = (stream: NodeJS.ReadableStream | null) => {
+      let partial = '';
+      stream?.on('data', (data: Buffer) => {
+        const text = partial + String(data);
+        const end = text.lastIndexOf('\n') + 1;
+        partial = text.slice(end);
+        logs += text.slice(0, end);
+        for (const line of text.slice(0, end).split('\n')) show(line);
+      });
+      stream?.on('end', () => {
+        if (partial) logs += `${partial}\n`;
+        show(partial);
+        partial = '';
+      });
+    };
+    keep(child.stdout);
+    keep(child.stderr);
     // The port was free when prepare() chose it, but another process can listen on it before
     // this server binds, and would answer the health check in its place. Only this server's
     // own start line, logged once it holds the port, proves the answer is its own.
