@@ -17,3 +17,17 @@ written there with its label, unit and icon too, in their order (`driver-data.ts
 imports the icons from lucide-react by the names the kinds declare), and only the lists of
 people load it. The features whose data names people are listed apart, by their switches
 (`people-features.ts`), small enough for a frontend manifest to ask whether a DSP has one on.
+
+It holds the services slot too (`services`): what a feature offers every other feature through
+a contract core defines, so one feature uses another's work without depending on it or knowing
+which feature does it. Each service is a trait in a module of its own in `backend/services/`,
+named for what it does; a feature offers it in its manifest's `services`, one feature at most
+offers each, and a feature using it asks for it for a DSP (`files::for_dsp`), which answers only
+while the feature offering it is on there. The first is `files`, somewhere to keep a DSP's
+files in folders: its name and the permission that shows its folders, the largest file it
+takes, why it can't keep files yet, browsing its folders, a folder by ID, making a folder,
+and saving a file streamed as it arrives (`Upload::streamed`) with who it came from, a member
+or someone known only by name. The services offered are written to TypeScript too
+(`api/generated/services.ts`): `offered(name, view)` in the frontend's runtime answers a page
+using one whether the DSP has it, what it's called and the permission that shows what it
+keeps, without naming the feature offering it.

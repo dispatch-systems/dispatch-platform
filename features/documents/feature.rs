@@ -16,7 +16,7 @@ use dispatch_core::{
         Kind, Migration, Migrations, OwnMigrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Audit, Feature, feature, optional, perm},
+    manifest::{Audit, Feature, feature, optional, perm, services::Services},
     tenancy::api::audit::AuditArea::Connections,
 };
 
@@ -75,6 +75,11 @@ pub const FEATURE: Feature = Feature {
                 name: "documents_full_access",
                 apply: Code(backend::storage::add_full_access),
             },
+            Migration {
+                id: 3,
+                name: "documents_outside_names",
+                apply: Code(backend::storage::add_outside_names),
+            },
         ],
     }],
     // Google's sign-in client, and its file picker's keys.
@@ -90,6 +95,8 @@ pub const FEATURE: Feature = Feature {
         areas: &[("documents.", Connections)],
         ..Audit::NONE
     },
+    // Somewhere to keep a DSP's files, for any feature bringing files in, as Slack does.
+    services: Services::NONE.with_files(&backend::service::FILES),
     ..feature("documents")
 };
 

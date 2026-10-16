@@ -161,7 +161,18 @@ and weeks, so it's best submitted well before the limit.
   in, so Undo, on the toast that says where it went, takes each back.
 - **Reconnecting** takes the same Google account only: the folder and its files are that
   account's.
-- **Data:** `documents_connection`, `documents_connect_requests`, `documents_files`,
+- **Files for other features:** Documents offers core's `files` service, somewhere for a
+  feature bringing files in, as Slack does, to keep them. It says why it can't yet, in words a member
+  reads: Google Drive isn't connected, or needs reconnecting. It browses the folders, from the main folder down, and finds a
+  folder by its ID, the main folder or one inside it;
+  makes a folder at the top of the main folder, as a member; and streams a file of up to
+  100 MB into a folder inside the main folder only, never elsewhere in the Drive
+  (`files_folder_not_found`). A file saved so is Documents' like any upload, added by the
+  member it came from, or by the name of someone who isn't one, as a Slack member no member
+  matches. The activity log records each as `<file> from <where>` (`documents.saved`), with that
+  member as its actor, or none. Those who see its folders hold `documents.use`.
+- **Data:** `documents_connection`, `documents_connect_requests`, `documents_files` (with the
+  name of whoever added or last changed a file who isn't a member, its own migration 3),
   `documents_people` (who the folder is shared with, and at what address) and
   `documents_shared_files` (the shares Dispatch made of files someone else owns), in each
   DSP's own database; the account's refresh token, encrypted in the DSP's secrets as

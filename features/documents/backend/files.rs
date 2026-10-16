@@ -5,7 +5,7 @@
 //! records anything.
 use super::{
     connection,
-    drive::{self, Download},
+    drive::{self, Download, Item},
     google::{FOLDER, Google, folder_url},
     mirror,
     storage::{Connection, DocumentsStore, Record},
@@ -21,6 +21,7 @@ use dispatch_core::{
     db::Store,
     ensure,
     foundation::observability,
+    manifest::services::files::Author,
     server::http::{route::Dsp, upload::Upload},
 };
 use serde_json::json;
@@ -308,13 +309,7 @@ pub async fn create(
         NewKind::Sheet => drive::SHEET,
         NewKind::Slides => drive::SLIDES,
     };
-    let (connection, made) = on_drive!(state, &dsp, |google, token| google.create(
-        token,
-        &name,
-        mime,
-        Some(&parent)
-    ))?;
-    mirror::of(&dsp).put(&connection.folder_id, made.clone());
+    let (connection, made) = make(state, &dsp, &parent, mime, &name).await?;
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = state
@@ -351,16 +346,7 @@ pub async fn upload(
     let (_, tree) = tree(state, &dsp).await?;
     let parent = parent.unwrap_or_else(|| tree.root().to_owned());
     ensure(tree.is_folder(&parent), "documents_item_not_found", 404)?;
-    let length = upload.length;
-    let (_, session) = on_drive!(state, &dsp, |google, token| google
-        .start_upload(token, &name, &mime, &parent, length))?;
-    // The bytes go once, with the token that just started the upload.
-    let drive = open(state, &dsp, false).await?;
-    let made = drive
-        .google
-        .finish_upload(&drive.access, &session, upload)
-        .await?;
-    mirror::of(&dsp).put(&drive.connection.folder_id, made.clone());
+    let (connection, made) = put(state, &dsp, &parent, &name, &mime, upload).await?;
     let (id, title) = (made.id.clone(), made.name.clone());
     let at = dsp.clone();
     let (records, names) = state
@@ -371,15 +357,56 @@ pub async fn upload(
             known(db, &at, &[id])
         })
         .await?;
-    let empty = Tree::new(&drive.connection.folder_id, Vec::new());
+    let empty = Tree::new(&connection.folder_id, Vec::new());
     Ok(Described {
         dsp: &dsp,
         tree: &empty,
         records: &records,
         names: &names,
-        account: &drive.connection.account.email,
+        account: &connection.account.email,
     }
     .item(&Row::from(made), false))
+}
+
+/// Makes a folder, Doc, Sheet or Slides named `name`, of `mime`, in the folder `parent` of the
+/// DSP's Drive, and puts it in the copy: the connection, and what Google made.
+pub(crate) async fn make(
+    state: &Arc<State>,
+    dsp: &str,
+    parent: &str,
+    mime: &str,
+    name: &str,
+) -> Result<(Connection, Item)> {
+    let (connection, made) = on_drive!(state, dsp, |google, token| google.create(
+        token,
+        name,
+        mime,
+        Some(parent)
+    ))?;
+    mirror::of(dsp).put(&connection.folder_id, made.clone());
+    Ok((connection, made))
+}
+/// Streams `upload`, named `name`, of `mime`, into the folder `parent` of the DSP's Drive, and
+/// puts it in the copy: the connection, and the file Google made.
+pub(crate) async fn put(
+    state: &Arc<State>,
+    dsp: &str,
+    parent: &str,
+    name: &str,
+    mime: &str,
+    upload: Upload,
+) -> Result<(Connection, Item)> {
+    let length = upload.length;
+    let (_, session) = on_drive!(state, dsp, |google, token| google
+        .start_upload(token, name, mime, parent, length))?;
+    // The bytes go once, with the token that just started the upload.
+    let drive = open(state, dsp, false).await?;
+    let made = drive
+        .google
+        .finish_upload(&drive.access, &session, upload)
+        .await?;
+    mirror::of(dsp).put(&drive.connection.folder_id, made.clone());
+    Ok((drive.connection, made))
 }
 
 /// Adds the files and folders `ids`, picked with Google's picker, to the folder `parent`, or the
@@ -699,7 +726,11 @@ fn known(
     records.retain(|id, _| ids.contains(id));
     let people: BTreeSet<&str> = records
         .values()
-        .flat_map(|record| [record.added_by.as_str(), record.changed_by.as_str()])
+        .flat_map(|record| [&record.added_by, &record.changed_by])
+        .filter_map(|by| match by {
+            Author::Member(user) => Some(user.as_str()),
+            Author::Named(_) => None,
+        })
         .collect();
     let mut names = BTreeMap::new();
     for user in people {
@@ -722,7 +753,11 @@ struct Described<'a> {
 impl Described<'_> {
     fn item(&self, row: &Row, located: bool) -> DocumentsItem {
         let record = self.records.get(&*row.id);
-        let named = |user: &String| self.names.get(user).cloned();
+        // A member by their name now; someone else by the name they came with.
+        let named = |by: &Author| match by {
+            Author::Member(user) => self.names.get(user).cloned(),
+            Author::Named(name) => Some(name.clone()),
+        };
         // A shortcut shows the file it stands for: its name, and who changed it last.
         let shown = row.shown();
         let modifier = shown.by.as_deref();

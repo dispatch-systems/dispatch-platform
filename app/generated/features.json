@@ -59,6 +59,7 @@
         "POST /api/dsp/daily-performance/schedules/{key}/enabled",
         "POST /api/dsp/daily-performance/schedules/{key}/remove"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "daily_performance",
@@ -140,6 +141,9 @@
         "GET /api/documents/google/return",
         "GET /api/documents/google/picker"
       ],
+      "services": [
+        "files"
+      ],
       "settings": [
         [
           "GOOGLE_CLIENT_ID",
@@ -215,6 +219,7 @@
         "POST /api/dsp/driver-match/apart",
         "POST /api/dsp/driver-match/confirm"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "driver_match",
@@ -290,6 +295,7 @@
         "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
         "POST /api/dsp/driver-profiles/schedules/{key}/remove"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "driver_profiles",
@@ -377,6 +383,7 @@
         "POST /api/dsp/dvic/schedules/{key}/enabled",
         "POST /api/dsp/dvic/schedules/{key}/remove"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "dvic",
@@ -419,6 +426,7 @@
       "maintenance": [],
       "people": [],
       "routes": [],
+      "services": [],
       "settings": []
     },
     "switch": "home",
@@ -500,6 +508,7 @@
         "POST /api/dsp/routes/schedules/{key}/enabled",
         "POST /api/dsp/routes/schedules/{key}/remove"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "routes",
@@ -550,6 +559,7 @@
       "routes": [
         "POST /api/dsp/profile"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "settings",
@@ -607,6 +617,7 @@
         "POST /slack/events",
         "POST /slack/interactions"
       ],
+      "services": [],
       "settings": [
         [
           "SLACK_CLIENT_ID",
@@ -668,6 +679,7 @@
         "POST /api/dsp/roles/{id}",
         "POST /api/dsp/roles/{id}/remove"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "team",
@@ -781,6 +793,7 @@
         "POST /api/dsp/schedules/{key}/enabled",
         "POST /api/dsp/schedules/{key}/remove"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "timecard",
@@ -857,6 +870,7 @@
         "POST /api/dsp/uniforms/{id}/archive",
         "POST /api/dsp/uniforms/stock/{id}"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "uniforms",
@@ -935,6 +949,7 @@
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
+      "services": [],
       "settings": []
     },
     "switch": "weekly_scorecard",

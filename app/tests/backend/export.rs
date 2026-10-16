@@ -40,6 +40,9 @@ const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
 const DRIVER_DATA: &str = "core/manifest/api/generated/driver-data.ts";
 /// The features whose data names people, which Driver Match's tab shows only while one is on.
 const PEOPLE_FEATURES: &str = "core/manifest/api/generated/people-features.ts";
+/// The services features offer, each with the feature offering it, for a page using one to ask
+/// whether a DSP has it.
+const SERVICES: &str = "core/manifest/api/generated/services.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new().with_out_dir(root);
@@ -154,6 +157,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
     bindings.insert(DRIVER_DATA.into(), driver_data());
     bindings.insert(PEOPLE_FEATURES.into(), people_features());
+    bindings.insert(SERVICES.into(), services());
     bindings
 }
 
@@ -274,6 +278,26 @@ fn people_features() -> String {
     generated(
         "the features whose data names people",
         &[("peopleFeatures", features.into())],
+    )
+}
+
+/// Each service a feature offers, by its name: the feature offering it, by its switch, what
+/// it's called where members see it, and the permission that shows what it keeps.
+fn services() -> String {
+    let mut offered = serde_json::Map::new();
+    if let Some((feature, files)) = dispatch_core::manifest::registry().files() {
+        offered.insert(
+            "files".into(),
+            serde_json::json!({
+                "feature": feature.switch.id,
+                "name": files.name(),
+                "permission": files.permission(),
+            }),
+        );
+    }
+    generated(
+        "the services features offer",
+        &[("services", offered.into())],
     )
 }
 
@@ -604,6 +628,7 @@ fn feature_map(root: &Path) -> String {
             "routes": (feature.routes)().iter()
                 .map(|route| format!("{} {}", route.method, route.path))
                 .collect::<Vec<_>>(),
+            "services": feature.services.offered(),
             "settings": feature.settings,
         });
         let dir = format!("features/{}", feature.name);
