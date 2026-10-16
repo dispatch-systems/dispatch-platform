@@ -4,7 +4,7 @@ use super::matching::{AMAZON, Saved};
 use super::overview::Found;
 use super::review;
 use super::sources::{Days, Identity};
-use crate::api::types::{Driver, DriverEvidence, DriverStrength};
+use crate::api::types::{Driver, DriverEvidence, DriverRole, DriverStrength};
 use dispatch_core::{foundation::names, manifest::people::DriverSource};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -53,9 +53,10 @@ pub(super) fn pairs(
             source.as_str() == AMAZON && saved.separate.contains(&row.external_id)
         })
     };
+    // Nobody asks about someone who has left; back on a roster or a route, they are asked again.
     let sides: Vec<review::Side> = held
         .iter()
-        .filter(|(_, ids)| !kept(ids))
+        .filter(|(code, ids)| !kept(ids) && drivers[**code].role != DriverRole::Former)
         .map(|(code, ids)| {
             let described: Vec<&Identity> = ids
                 .iter()

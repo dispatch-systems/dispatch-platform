@@ -155,9 +155,9 @@ pub struct Driver {
 pub struct DriverCounts {
     /// Everyone with a code.
     pub people: usize,
-    /// Pairs that might be one person.
+    /// Pairs that might be one person, neither of whom has left.
     pub review: usize,
-    /// IDs a name variant joined to someone, which nobody has confirmed.
+    /// IDs a name variant joined to someone who has not left, which nobody has confirmed.
     pub unconfirmed: usize,
     /// Drivers and helpers some source the DSP has does not know.
     pub missing: usize,

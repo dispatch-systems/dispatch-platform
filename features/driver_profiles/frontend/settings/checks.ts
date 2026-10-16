@@ -62,10 +62,12 @@ function variantCheck(driver: Driver, id: DriverId): Check {
   };
 }
 
-/** Every question: the pairs, the strongest first, then the name variants. */
+/** Every question: the pairs, the strongest first, then the name variants of anyone still there. */
 export const checkList = (review: DriverPair[], drivers: Driver[]): Check[] => [
   ...review.map(pairCheck),
-  ...drivers.flatMap((driver) =>
-    driver.ids.filter((id) => id.linkedBy === 'variant').map((id) => variantCheck(driver, id)),
-  ),
+  ...drivers
+    .filter((driver) => driver.role !== 'former')
+    .flatMap((driver) =>
+      driver.ids.filter((id) => id.linkedBy === 'variant').map((id) => variantCheck(driver, id)),
+    ),
 ];

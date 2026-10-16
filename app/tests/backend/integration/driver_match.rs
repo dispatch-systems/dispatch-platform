@@ -286,7 +286,7 @@ fn people_split_or_kept_apart_are_not_suggested_again() {
 }
 
 #[test]
-fn someone_only_amazon_saw_long_ago_has_left() {
+fn someone_only_amazon_saw_long_ago_has_left_and_is_not_asked_about() {
     dispatch_backend::install();
     let (_root, db, id, _) = ready(None);
     let old = Scope {
@@ -301,7 +301,8 @@ fn someone_only_amazon_saw_long_ago_has_left() {
     let gone = &mut capture.itineraries[0];
     gone.id = "itinerary-TGONE".into();
     gone.transporter_id = "TGONE".into();
-    gone.driver = "Morgan Ellis".into();
+    // Paycom's Jamie Collins shares the last name.
+    gone.driver = "Morgan Collins".into();
     db.publish_meals(&id, "job-old-meals", &capture, &old)
         .unwrap();
     db.match_drivers(&id).unwrap();
@@ -311,7 +312,15 @@ fn someone_only_amazon_saw_long_ago_has_left() {
     // Seen lately, Dmitri still waits for someone to find them in Paycom.
     let dmitri = code(&result, AMAZON, "TDMITRI");
     assert_eq!(person(&result, &dmitri).role, DriverRole::Driver);
+    // Nobody asks whether someone who has left is someone else.
+    assert!(
+        result
+            .review
+            .iter()
+            .all(|pair| pair.person.code != gone && pair.candidate.code != gone)
+    );
     let counts = &result.counts;
+    assert_eq!(counts.review, 2);
     assert_eq!(counts.former, 1);
     assert_eq!(
         counts.drivers + counts.helpers,

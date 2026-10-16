@@ -6,11 +6,11 @@ export type DriverCounts = {
  */
 people: number,
 /**
- * Pairs that might be one person.
+ * Pairs that might be one person, neither of whom has left.
  */
 review: number,
 /**
- * IDs a name variant joined to someone, which nobody has confirmed.
+ * IDs a name variant joined to someone who has not left, which nobody has confirmed.
  */
 unconfirmed: number,
 /**
