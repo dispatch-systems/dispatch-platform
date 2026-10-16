@@ -63,3 +63,9 @@ fn native_runner_bounds_output_timeout_and_honors_cwd() {
             .is_err()
     );
 }
+
+// Throwaway: fails the queue run on purpose so the PR never merges.
+#[test]
+fn throwaway_queue_failure() {
+    panic!("deliberate failure: this PR exists to test the merge queue and must never merge");
+}
