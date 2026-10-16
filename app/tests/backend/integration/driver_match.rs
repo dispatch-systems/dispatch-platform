@@ -4,13 +4,14 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    manifest::{Collector, people::DriverSource, registry},
+    manifest::{Collector, people::DriverSource},
 };
 use dispatch_cortex::{associates, discovery::Scope, meals};
-use dispatch_driver_profiles::{
-    Driver, DriverEventKind, DriverLink, DriverMatch, DriverMatchStore, DriverProfilesStore,
-    DriverRole, DriverStrength, valid_code,
+use dispatch_driver_match::{
+    Driver, DriverEventKind, DriverLink, DriverMatch, DriverMatchStore, DriverRole, DriverStrength,
+    valid_code,
 };
+use dispatch_driver_profiles::DriverProfilesStore;
 use dispatch_paycom::fixtures;
 use dispatch_timecard::TimecardStore;
 use serde_json::{Value, json};
@@ -353,29 +354,6 @@ fn links_saved_on_the_meal_break_page_are_kept() {
     assert_ne!(taylor, code(&result, PAYCOM, "E004"));
     assert_eq!(known_to(&result, &taylor), ["amazon"]);
     assert!(!person(&result, &taylor).review);
-}
-
-#[test]
-fn the_permission_exists_only_while_the_feature_is_on() {
-    dispatch_backend::install();
-    let (_root, db, id) = common::bootstrapped();
-    db.enable_all_features(&id).unwrap();
-    let context = context(&db, &id);
-    db.set_feature(&id, "driver_match", false, &context.auth.user.id)
-        .unwrap();
-    // Off, it answers nobody who an ID is.
-    let directory = registry().directory().unwrap();
-    assert!(
-        directory
-            .links(&db, &id, AMAZON, PAYCOM)
-            .unwrap()
-            .is_empty()
-    );
-    let refused = db.context(&context.auth, &id, "driver_match.manage").err();
-    assert_eq!(
-        refused.map(|e| e.code).as_deref(),
-        Some("permission_denied")
-    );
 }
 
 #[test]

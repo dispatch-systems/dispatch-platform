@@ -162,6 +162,72 @@
     },
     "subfeatures": []
   },
+  "driver_match": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {
+      "dsp": [
+        {
+          "id": 7,
+          "name": "driver_match"
+        }
+      ],
+      "platform": [
+        {
+          "id": 10,
+          "name": "driver_codes"
+        }
+      ]
+    },
+    "permissions": [
+      "driver_match.manage"
+    ],
+    "slots": {
+      "after_collection": true,
+      "audit": {
+        "areas": [],
+        "names": true,
+        "subjects": [
+          "driver"
+        ]
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "live": [],
+      "maintenance": [
+        3600
+      ],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/driver-match",
+        "GET /api/dsp/driver-match/counts",
+        "GET /api/dsp/driver-match/drivers/{code}",
+        "GET /api/dsp/driver-match/drivers/{code}/photo",
+        "POST /api/dsp/driver-match/merge",
+        "POST /api/dsp/driver-match/split",
+        "POST /api/dsp/driver-match/apart",
+        "POST /api/dsp/driver-match/confirm"
+      ],
+      "settings": []
+    },
+    "switch": "driver_match",
+    "mandatory": true,
+    "tables": {
+      "dsp": [
+        "people",
+        "people_apart",
+        "person_ids"
+      ],
+      "platform": [
+        "driver_codes"
+      ]
+    },
+    "subfeatures": []
+  },
   "driver_profiles": {
     "collectors": [
       "cortex"
@@ -177,25 +243,13 @@
           "id": 1,
           "name": "baseline"
         }
-      ],
-      "dsp": [
-        {
-          "id": 7,
-          "name": "driver_match"
-        }
-      ],
-      "platform": [
-        {
-          "id": 10,
-          "name": "driver_codes"
-        }
       ]
     },
     "permissions": [
       "driver_profiles.collect"
     ],
     "slots": {
-      "after_collection": true,
+      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -203,10 +257,8 @@
             "collections"
           ]
         ],
-        "names": true,
-        "subjects": [
-          "driver"
-        ]
+        "names": false,
+        "subjects": []
       },
       "cached": [],
       "commands": null,
@@ -218,8 +270,7 @@
         "driver_profiles.collect"
       ],
       "maintenance": [
-        600,
-        3600
+        600
       ],
       "people": [
         "driver_profiles"
@@ -233,15 +284,7 @@
         "POST /api/dsp/driver-profiles/schedules/preview",
         "POST /api/dsp/driver-profiles/schedules/{key}",
         "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
-        "POST /api/dsp/driver-profiles/schedules/{key}/remove",
-        "GET /api/dsp/driver-match",
-        "GET /api/dsp/driver-match/counts",
-        "GET /api/dsp/driver-match/drivers/{code}",
-        "GET /api/dsp/driver-match/drivers/{code}/photo",
-        "POST /api/dsp/driver-match/merge",
-        "POST /api/dsp/driver-match/split",
-        "POST /api/dsp/driver-match/apart",
-        "POST /api/dsp/driver-match/confirm"
+        "POST /api/dsp/driver-profiles/schedules/{key}/remove"
       ],
       "settings": []
     },
@@ -253,19 +296,9 @@
         "photos",
         "roster_runs",
         "settings"
-      ],
-      "dsp": [
-        "people",
-        "people_apart",
-        "person_ids"
-      ],
-      "platform": [
-        "driver_codes"
       ]
     },
-    "subfeatures": [
-      "driver_match"
-    ]
+    "subfeatures": []
   },
   "dvic": {
     "collectors": [

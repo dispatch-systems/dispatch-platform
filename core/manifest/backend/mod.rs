@@ -783,6 +783,9 @@ pub struct Switch {
     pub requires: &'static [&'static str],
     /// Whether every DSP has it, with no switch to turn it off.
     pub mandatory: bool,
+    /// The features it grew from: new to a platform that ran before, it starts on, once, for
+    /// each DSP with one of them on.
+    pub starts_on_with: &'static [&'static str],
 }
 /// A feature the platform owner switches on per DSP: `optional("dvic", "DVIC", &["dvic"])`.
 /// It needs a connection providing each capability it `requires`.
@@ -796,6 +799,7 @@ pub const fn optional(
         label,
         requires,
         mandatory: false,
+        starts_on_with: &[],
     }
 }
 /// A feature every DSP has, with no switch: `mandatory("home", "Home Page")`. It needs no
@@ -806,6 +810,17 @@ pub const fn mandatory(id: &'static str, label: &'static str) -> Switch {
         label,
         requires: &[],
         mandatory: true,
+        starts_on_with: &[],
+    }
+}
+impl Switch {
+    /// Starts on, once, for each DSP with one of `features` on, when it is new to a platform
+    /// that ran before: `optional(..).starts_on_with(&["driver_match"])`.
+    pub const fn starts_on_with(self, features: &'static [&'static str]) -> Self {
+        Self {
+            starts_on_with: features,
+            ..self
+        }
     }
 }
 /// What a manifest that hasn't chosen has; the registry refuses it.
@@ -814,6 +829,7 @@ const UNDECLARED: Switch = Switch {
     label: "",
     requires: &[],
     mandatory: false,
+    starts_on_with: &[],
 };
 /// A part of a feature's page, switched on its own inside the page: one of its tabs, or any
 /// other part, such as uploading files. It exists while it and its page are on, and its

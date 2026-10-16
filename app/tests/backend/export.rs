@@ -38,6 +38,8 @@ const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
 /// The kinds of collected data that name people, and the sources of their IDs, in their
 /// order, as lists of people show them. Only those lists import it, with the icons it imports.
 const DRIVER_DATA: &str = "core/manifest/api/generated/driver-data.ts";
+/// The features whose data names people, which Driver Match's tab shows only while one is on.
+const PEOPLE_FEATURES: &str = "core/manifest/api/generated/people-features.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new().with_out_dir(root);
@@ -151,6 +153,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.insert(COLLECTIONS.into(), collections());
     bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
     bindings.insert(DRIVER_DATA.into(), driver_data());
+    bindings.insert(PEOPLE_FEATURES.into(), people_features());
     bindings
 }
 
@@ -258,6 +261,20 @@ fn driver_data() -> String {
         );
     }
     text + "] as const;\n"
+}
+
+/// Every feature that names people, by its switch, as the DSP's view lists what it has on.
+fn people_features() -> String {
+    let features: Vec<_> = dispatch_core::manifest::registry()
+        .features
+        .iter()
+        .filter(|feature| !feature.people.is_empty())
+        .map(|feature| feature.switch.id)
+        .collect();
+    generated(
+        "the features whose data names people",
+        &[("peopleFeatures", features.into())],
+    )
 }
 
 /// Runtime catalogs, exported from their actual values rather than Rust source formatting.

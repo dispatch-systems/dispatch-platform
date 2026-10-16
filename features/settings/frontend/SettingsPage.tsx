@@ -2,7 +2,11 @@ import { Fragment, Suspense, useEffect, useState, useTransition } from 'react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import { Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
 import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
-import { settingsPieces, type SettingsTab } from '../../../core/shell/frontend/runtime/slots.js';
+import {
+  settingsPieces,
+  type SettingsPiece,
+  type SettingsTab,
+} from '../../../core/shell/frontend/runtime/slots.js';
 import { loadBadge, loadTab, loadedBadge, prefetchSettingsTab, visibleTabs } from './tabs.js';
 
 export function SettingsPage({ session, view }: { session: SessionView; view?: DspView }) {
@@ -26,6 +30,10 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
     };
     // `waiting` names exactly the tabs `missing` holds.
   }, [waiting]);
+  const pieces = settingsPieces(tab.id, view);
+  const drawn = (piece: SettingsPiece) => (
+    <Fragment key={piece.id}>{piece.render({ session, view })}</Fragment>
+  );
   return (
     <>
       <Header title="Settings" />
@@ -49,10 +57,9 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
       />
       <div aria-busy={pending || undefined} inert={pending}>
         <Suspense fallback={<Loading />}>
+          {pieces.filter((piece) => piece.above).map(drawn)}
           {tab.render({ session, view })}
-          {settingsPieces(tab.id, view).map((piece) => (
-            <Fragment key={piece.id}>{piece.render({ session, view })}</Fragment>
-          ))}
+          {pieces.filter((piece) => !piece.above).map(drawn)}
         </Suspense>
       </div>
     </>

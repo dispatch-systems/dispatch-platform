@@ -48,6 +48,8 @@ pub struct Feature {
     /// For a page, whether it adds one of the DSP's own accounts to its DSP Connections, as a
     /// connection does.
     pub connects: bool,
+    /// For a page, the features it grew from: new, it starts on for the DSPs with one on.
+    pub starts_on_with: &'static [&'static str],
 }
 impl Feature {
     /// How the audit log names it: a part with its page, as "Timecard · Meal Breaks".
@@ -80,6 +82,7 @@ fn page(feature: &manifest::Feature) -> Feature {
         tab: false,
         mandatory: switch.mandatory,
         connects: feature.dsp_connection,
+        starts_on_with: switch.starts_on_with,
     }
 }
 /// The parts of each page switched on their own: its tabs, and any other part. A part
@@ -106,6 +109,7 @@ fn page_subs(feature: &manifest::Feature) -> impl Iterator<Item = Feature> {
             tab: sub.tab,
             mandatory: sub.mandatory,
             connects: false,
+            starts_on_with: &[],
         }
     })
 }
@@ -173,6 +177,7 @@ fn connection(provider: Provider) -> Feature {
         tab: false,
         mandatory: false,
         connects: false,
+        starts_on_with: &[],
     }
 }
 /// The catalog: every feature's page, their parts, then every registered connection.
@@ -350,8 +355,9 @@ impl Store {
     /// started, and is optional now, is switched on, once, for every DSP there is, so making
     /// it optional takes it from none of them; a DSP made later starts with it off, as with
     /// any optional feature. A page new since the last start that gathers parts DSPs had on
-    /// before, as when a page becomes another's part, is switched on, once, for each DSP with
-    /// one of those parts on, so they keep it. Then records what is mandatory now.
+    /// before, as when a page becomes another's part, or that grew from another feature, is
+    /// switched on, once, for each DSP with one of those on, so they keep it. Then records
+    /// what is mandatory now.
     pub fn keep_mandatory_features(&self) -> Result<()> {
         self.platform.transaction(|| {
             let recorded: BTreeMap<String, bool> = self
@@ -369,6 +375,7 @@ impl Store {
                     .iter()
                     .filter(|f| f.kind == Kind::Sub(page.id))
                     .map(|f| f.id)
+                    .chain(page.starts_on_with.iter().copied())
                     .collect();
                 if parts.is_empty() {
                     continue;

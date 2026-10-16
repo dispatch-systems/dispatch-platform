@@ -7,7 +7,7 @@ use dispatch_core::{
     manifest::people::DriverSource,
 };
 use dispatch_cortex::{self as cortex, discovery::Scope, meals};
-use dispatch_driver_profiles::DriverMatchStore;
+use dispatch_driver_match::DriverMatchStore;
 use dispatch_paycom::fixtures;
 use dispatch_timecard::TimecardStore;
 use serde_json::{Value, json};

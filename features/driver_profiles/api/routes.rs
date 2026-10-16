@@ -1,6 +1,5 @@
-//! Driver Profiles' endpoints, each registered with its path and access, and Driver Match's
-//! beside them. Its one screen is Driver Match's tab, which shows when the roster was
-//! collected and collects it on demand.
+//! Driver Profiles' endpoints, each registered with its path and access. Its roster bar, on
+//! Driver Match's tab, shows when the roster was collected and collects it on demand.
 use crate::DriverProfilesStore;
 use dispatch_core::{
     Result,
@@ -31,7 +30,6 @@ pub fn routes() -> Vec<Route> {
         COLLECT,
         "associates",
     ));
-    routes.extend(super::driver_match::routes());
     routes
 }
 

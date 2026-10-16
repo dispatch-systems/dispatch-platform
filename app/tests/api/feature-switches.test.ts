@@ -91,8 +91,8 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal(restored.changedBy, 'Platform Owner');
 
   // A connection is its own feature; the pages and parts requiring what it provides go with
-  // it: Timecard stays, without its Meal Breaks tab, which alone needs Cortex. Driver Match
-  // goes with its page, Driver Profiles, and keeps its own switch.
+  // it: Timecard stays, without its Meal Breaks tab, which alone needs Cortex. Driver Match,
+  // which every DSP has, stays.
   result = await platform.post(url, { feature: 'cortex', enabled: false });
   assert.deepEqual(result.value, {
     features: without(
