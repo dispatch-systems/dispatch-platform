@@ -1,14 +1,13 @@
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { Driver, DriverPair } from '../../api/index.js';
-import { phoneText } from '../driver-match.js';
+import { phoneText, roleLabels } from '../driver-match.js';
 import { DriverAvatar } from '../parts/DriverAvatar.js';
-import { RoleTag, SourceMark } from '../parts/Tags.js';
+import { SourceTag } from '../parts/Tags.js';
+import type { CheckSide } from './checks.js';
 
-const unique = (values: string[]) => [...new Set(values)];
-const names = (driver: Driver) => unique(driver.ids.map((id) => id.name).filter(Boolean));
-const emails = (driver: Driver) => unique(driver.ids.flatMap((id) => id.emails));
-const phones = (driver: Driver) => unique(driver.ids.flatMap((id) => id.phones));
+const unique = <T,>(values: T[]) => [...new Set(values)];
+const emails = (side: CheckSide) => unique(side.ids.flatMap((id) => id.emails));
+const phones = (side: CheckSide) => unique(side.ids.flatMap((id) => id.phones));
 /** A phone number's last ten digits, as Driver Match compares them. */
 const digits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 const lower = (text: string) => text.toLocaleLowerCase('en-US');
@@ -16,79 +15,87 @@ const lower = (text: string) => text.toLocaleLowerCase('en-US');
 const shared = (a: string[], b: string[], key: (value: string) => string) =>
   a.some((x) => b.some((y) => key(x) === key(y)));
 
+/** An email address that wraps, when it must, before its `@`. */
+function Email({ address }: { address: string }) {
+  const at = address.lastIndexOf('@');
+  return (
+    <span>
+      {at > 0 ? (
+        <>
+          {address.slice(0, at)}
+          <wbr />
+          {address.slice(at)}
+        </>
+      ) : (
+        address
+      )}
+    </span>
+  );
+}
+const listed = (values: ReactNode[]) =>
+  values.length ? values : <span className="driver-none">—</span>;
+
 function Row({
   label,
-  person,
-  candidate,
+  left,
+  right,
   same = false,
 }: {
   label: string;
-  person: ReactNode;
-  candidate: ReactNode;
+  left: ReactNode;
+  right: ReactNode;
   same?: boolean;
 }) {
-  const tone = same ? ' same' : '';
   return (
-    <>
+    <div className={`driver-compare-row${same ? ' same' : ''}`}>
       <div className="driver-compare-label">{label}</div>
-      <div className={`driver-compare-cell${tone}`}>{person}</div>
-      <div className={`driver-compare-mark${tone}`}>
-        {same && <Check size={14} aria-label="Same" />}
-      </div>
-      <div className={`driver-compare-cell${tone}`}>{candidate}</div>
-    </>
+      <div className="driver-compare-cell">{left}</div>
+      <div className="driver-compare-mark">{same && <Check size={17} aria-label="Same" />}</div>
+      <div className="driver-compare-cell">{right}</div>
+    </div>
   );
 }
-const list = (values: string[]) => (values.length ? values.join(', ') : '—');
 
-/** Both sides of a pair, field by field, with what they share marked. */
-export function Comparison({ pair }: { pair: DriverPair }) {
-  const { person, candidate } = pair;
-  const side = (driver: Driver) => (
-    <>
-      {driver.ids.map((id) => (
-        <SourceMark key={`${id.source}:${id.id}`} source={id.source} small />
-      ))}
-      <b>{driver.name}</b>
-      <span className="driver-code">{driver.code}</span>
-    </>
+function Head({ side }: { side: CheckSide }) {
+  return (
+    <div className="driver-compare-cell">
+      <DriverAvatar driver={side} size="portrait" />
+      <b>{side.name}</b>
+      <span className="driver-sources">
+        {unique(side.ids.map((id) => id.source)).map((source) => (
+          <SourceTag key={source} source={source} />
+        ))}
+      </span>
+    </div>
   );
+}
+
+/** Two people side by side, field by field, with what they share in green. */
+export function Comparison({ sides: [left, right] }: { sides: [CheckSide, CheckSide] }) {
+  const email = (side: CheckSide) => emails(side).map((at) => <Email key={at} address={at} />);
+  const phone = (side: CheckSide) =>
+    phones(side).map((number) => <span key={number}>{phoneText(number)}</span>);
   return (
     <div className="driver-compare">
-      <div className="driver-compare-label" />
-      <div className="driver-compare-cell head">{side(person)}</div>
-      <div className="driver-compare-mark" />
-      <div className="driver-compare-cell head">{side(candidate)}</div>
-      {(person.photo || candidate.photo) && (
-        <Row
-          label="Photo"
-          person={<DriverAvatar driver={person} large />}
-          candidate={<DriverAvatar driver={candidate} large />}
-        />
-      )}
-      <Row
-        label="Name"
-        person={list(names(person))}
-        candidate={list(names(candidate))}
-        same={shared(names(person), names(candidate), lower)}
-      />
+      <div className="driver-compare-row head">
+        <div className="driver-compare-label" />
+        <Head side={left} />
+        <div className="driver-compare-mark" />
+        <Head side={right} />
+      </div>
       <Row
         label="Email"
-        person={list(emails(person))}
-        candidate={list(emails(candidate))}
-        same={shared(emails(person), emails(candidate), lower)}
+        left={listed(email(left))}
+        right={listed(email(right))}
+        same={shared(emails(left), emails(right), lower)}
       />
       <Row
         label="Phone"
-        person={list(phones(person).map(phoneText))}
-        candidate={list(phones(candidate).map(phoneText))}
-        same={shared(phones(person), phones(candidate), digits)}
+        left={listed(phone(left))}
+        right={listed(phone(right))}
+        same={shared(phones(left), phones(right), digits)}
       />
-      <Row
-        label="Role"
-        person={<RoleTag role={person.role} />}
-        candidate={<RoleTag role={candidate.role} />}
-      />
+      <Row label="Role" left={roleLabels[left.role]} right={roleLabels[right.role]} />
     </div>
   );
 }

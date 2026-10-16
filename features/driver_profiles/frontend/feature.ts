@@ -29,7 +29,7 @@ export const feature: FrontendFeature = {
           timezone: view.dsp.timezone,
           canCollect: can(view, 'driver_profiles.collect'),
         }),
-      // The badge counts the pairs to review on every tab; the open tab reads the whole roster.
+      // The badge counts the questions waiting on every tab; the open tab reads the whole roster.
       prefetch: (tab, view) =>
         can(view, 'driver_match.manage')
           ? [tab === 'driver-match' ? '/api/dsp/driver-match' : '/api/dsp/driver-match/counts']

@@ -11,6 +11,6 @@ export const driverData = [
   { id: "daily_performance", label: "Daily Performance", unit: "day", icon: CalendarDays },
 ] as const;
 export const driverSources = [
-  { id: "paycom", label: "Paycom", mark: "PAY" },
-  { id: "amazon", label: "Amazon", mark: "AMZ" },
+  { id: "paycom", label: "Paycom" },
+  { id: "amazon", label: "Amazon" },
 ] as const;

@@ -4,13 +4,11 @@ use dispatch_core::manifest::people::SourceData;
 static PAYCOM_IDS: SourceData = SourceData {
     id: "paycom",
     label: "Paycom",
-    mark: "PAY",
     order: 10,
 };
 static AMAZON_IDS: SourceData = SourceData {
     id: "amazon",
     label: "Amazon",
-    mark: "AMZ",
     order: 20,
 };
 

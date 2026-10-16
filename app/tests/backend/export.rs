@@ -252,10 +252,9 @@ fn driver_data() -> String {
     text += "] as const;\nexport const driverSources = [\n";
     for source in DriverSource::all() {
         text += &format!(
-            "  {{ id: {}, label: {}, mark: {} }},\n",
+            "  {{ id: {}, label: {} }},\n",
             quoted(source.as_str()),
-            quoted(source.label()),
-            quoted(source.mark())
+            quoted(source.label())
         );
     }
     text + "] as const;\n"

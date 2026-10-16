@@ -44,7 +44,6 @@ pub const PROVIDER: Provider = Provider::new("cortex");
 pub const PEOPLE: SourceData = SourceData {
     id: "amazon",
     label: "Amazon",
-    mark: "AMZ",
     order: 20,
 };
 pub static COLLECTOR: Cortex = Cortex;

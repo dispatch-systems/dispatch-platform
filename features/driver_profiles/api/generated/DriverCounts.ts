@@ -10,7 +10,7 @@ people: number,
  */
 review: number,
 /**
- * People joined by a name variant nobody confirmed.
+ * IDs a name variant joined to someone, which nobody has confirmed.
  */
 unconfirmed: number,
 /**

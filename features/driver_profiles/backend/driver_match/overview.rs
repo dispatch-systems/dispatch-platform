@@ -118,7 +118,8 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         review: review.len(),
         unconfirmed: list
             .iter()
-            .filter(|d| d.link == DriverLink::Variant)
+            .flat_map(|d| &d.ids)
+            .filter(|id| id.linked_by == DriverLink::Variant)
             .count(),
         missing: list
             .iter()

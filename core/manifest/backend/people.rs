@@ -21,8 +21,6 @@ pub struct SourceData {
     pub id: &'static str,
     /// How it is named where people's IDs are listed: "Paycom".
     pub label: &'static str,
-    /// Its short mark beside an ID: "PAY".
-    pub mark: &'static str,
     /// Its place in the one order sources are listed in everywhere.
     pub order: u16,
 }
@@ -58,9 +56,6 @@ impl DriverSource {
     }
     pub const fn label(self) -> &'static str {
         self.0.label
-    }
-    pub const fn mark(self) -> &'static str {
-        self.0.mark
     }
 }
 impl PartialEq for DriverSource {

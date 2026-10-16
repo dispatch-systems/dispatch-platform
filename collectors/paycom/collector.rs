@@ -42,7 +42,6 @@ pub const PROVIDER: Provider = Provider::new("paycom");
 pub const PEOPLE: SourceData = SourceData {
     id: "paycom",
     label: "Paycom",
-    mark: "PAY",
     order: 10,
 };
 pub static COLLECTOR: Paycom = Paycom;

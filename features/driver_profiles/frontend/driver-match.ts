@@ -12,26 +12,24 @@ import type {
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { driverData, driverSources } from '../../../core/manifest/api/generated/driver-data.js';
 
-/** Which people the table lists, by how they are matched. */
-export type MatchFilter = 'all' | 'review' | 'missing';
-export const matchFilters: [MatchFilter, string][] = [
+/** Which people the tab shows: everyone, those of one role, or those a source lacks. */
+export type PeopleFilter = 'all' | DriverRole | 'missing';
+export const peopleFilters: [PeopleFilter, string][] = [
   ['all', 'All'],
-  ['review', 'Needs review'],
-  ['missing', 'Missing a source'],
-];
-/** Which people the table lists, by what they do. */
-export type RoleFilter = 'any' | DriverRole;
-export const roleFilters: [RoleFilter, string][] = [
-  ['any', 'Any role'],
   ['driver', 'Drivers'],
   ['helper', 'Helpers'],
   ['office', 'Office'],
   ['former', 'Former'],
+  ['missing', 'Not in every system'],
 ];
+/** Whether a source has an ID for someone. */
+export const knows = (driver: Driver, source: DriverSource) =>
+  driver.ids.some((id) => id.source === source);
+/** Drivers and helpers belong in every source; anyone else only where they are. */
+export const working = (driver: Driver) => driver.role === 'driver' || driver.role === 'helper';
 /** Whether a person lacks an ID of a source the DSP has. */
 export const missing = (driver: Driver, sources: readonly DriverSource[]) =>
-  (driver.role === 'driver' || driver.role === 'helper') &&
-  sources.some((source) => !driver.ids.some((id) => id.source === source));
+  working(driver) && sources.some((source) => !knows(driver, source));
 
 export const roleLabels: Record<DriverRole, string> = {
   driver: 'Driver',
@@ -61,11 +59,9 @@ export const confirmable = (link: DriverLink) =>
 
 /** Every source of IDs, in their order, as their owners declare them. */
 export const sourceKinds: readonly DriverSource[] = driverSources.map((source) => source.id);
-const sourceOf = (source: DriverSource) => driverSources.find((s) => s.id === source);
 /** How a source is named: "Paycom". */
-export const sourceLabel = (source: DriverSource) => sourceOf(source)?.label ?? source;
-/** A source's short mark beside an ID: "PAY". */
-export const sourceMark = (source: DriverSource) => sourceOf(source)?.mark ?? source;
+export const sourceLabel = (source: DriverSource) =>
+  driverSources.find((s) => s.id === source)?.label ?? source;
 
 /** Every kind of collected data a person can appear in, in their order, as the features declare them. */
 export const dataKinds: readonly DriverData[] = driverData.map((kind) => kind.id);

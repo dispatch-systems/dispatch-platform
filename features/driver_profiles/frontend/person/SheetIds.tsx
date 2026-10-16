@@ -4,7 +4,7 @@ import { confirmDriver } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { confirmable, phoneText, seenRange, shortId, sourceLabel } from '../driver-match.js';
-import { LinkTag, SourceMark } from '../parts/Tags.js';
+import { LinkTag, SourceTag } from '../parts/Tags.js';
 
 /**
  * A person's IDs, each with what its source says of them and how it came to them: a link a
@@ -29,11 +29,13 @@ export function SheetIds({
       <ErrorBox message={confirm.error} />
       {driver.ids.map((id) => (
         <div className="driver-id" key={`${id.source}:${id.id}`}>
-          <SourceMark source={id.source} />
           <div>
-            <strong className="driver-source-id" title={id.id}>
-              {shortId(id)}
-            </strong>
+            <div className="driver-id-head">
+              <SourceTag source={id.source} />
+              <strong className="driver-source-id" title={id.id}>
+                {shortId(id)}
+              </strong>
+            </div>
             <small>{[id.name, id.department].filter(Boolean).join(' · ')}</small>
             {id.emails.length + id.phones.length > 0 && (
               <small className="driver-contacts">

@@ -1,6 +1,6 @@
-import { CircleAlert, CircleCheck, Mail, Phone } from 'lucide-react';
+import { CircleCheck, Mail, Phone } from 'lucide-react';
 import type { DriverLink, DriverRole, DriverSource } from '../../api/index.js';
-import { linkLabels, roleLabels, roleTones, sourceKinds, sourceMark } from '../driver-match.js';
+import { linkLabels, roleLabels, roleTones, sourceKinds, sourceLabel } from '../driver-match.js';
 
 /** What a person does for the DSP. */
 export function RoleTag({ role }: { role: DriverRole }) {
@@ -12,15 +12,8 @@ const linkIcons: Partial<Record<DriverLink, typeof Mail>> = {
   phone: Phone,
   person: CircleCheck,
 };
-/** How surely a person's IDs are one person's; waiting for a decision, when they are. */
-export function LinkTag({ link, review = false }: { link: DriverLink; review?: boolean }) {
-  if (review)
-    return (
-      <span className="driver-tag warning">
-        <CircleAlert size={12} aria-hidden="true" />
-        Needs review
-      </span>
-    );
+/** How surely an ID is its person's. */
+export function LinkTag({ link }: { link: DriverLink }) {
   const Icon = linkIcons[link];
   return (
     <span className={`driver-tag${link === 'person' ? ' sage' : ''}`}>
@@ -30,10 +23,8 @@ export function LinkTag({ link, review = false }: { link: DriverLink; review?: b
   );
 }
 
-/** A source's short mark, in its own tone. */
-export function SourceMark({ source, small = false }: { source: DriverSource; small?: boolean }) {
+/** A source, by its name, in its own tone. */
+export function SourceTag({ source }: { source: DriverSource }) {
   const tone = sourceKinds.indexOf(source) % 4;
-  return (
-    <span className={`driver-mark tone-${tone}${small ? ' small' : ''}`}>{sourceMark(source)}</span>
-  );
+  return <span className={`driver-source tone-${tone}`}>{sourceLabel(source)}</span>;
 }

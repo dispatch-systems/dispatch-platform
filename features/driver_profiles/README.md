@@ -47,9 +47,10 @@ only what was decided.
   nothing else, and does nothing while it is off itself. A source no feature on names sits
   idle: its IDs keep their people, shown nowhere, and come back as they were.
 - **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
-- **Its screen** is the Driver Match tab of a DSP's Settings: the roster's last and next
-  collection (for those who hold `driver_profiles.collect`), the pairs to decide, the people
-  joined by a name written another way to confirm, then everyone, by source, role and how surely matched.
+- **Its screen** is the Driver Match tab of a DSP's Settings: the questions waiting, the pairs
+  to decide and the names written another way to confirm, asked one at a time; the roster's
+  last and next collection (for those who hold `driver_profiles.collect`); then everyone as a
+  card with their photo and the sources that have them, by role or a source lacking them.
 - **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on,
   everyone, and the pairs that may be one person), `…/counts`, `…/drivers/{code}` (one
   person's IDs, days and activity), `…/drivers/{code}/photo` (their photo from Amazon's roster),

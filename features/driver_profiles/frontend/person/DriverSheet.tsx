@@ -102,7 +102,7 @@ function SheetTitle({ driver }: { driver: Driver }) {
   const alias = goesBy(driver);
   return (
     <span className="driver-sheet-person">
-      <DriverAvatar driver={driver} large />
+      <DriverAvatar driver={driver} size="large" />
       <span>
         <span className="driver-sheet-name">{driver.name}</span>
         <span className="driver-sheet-meta">

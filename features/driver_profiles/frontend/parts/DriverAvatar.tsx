@@ -5,16 +5,17 @@ import { initials, photoUrl, toneOf } from '../driver-match.js';
 /** A person's photo from Amazon's roster, their initials in their tone until it comes. */
 export function DriverAvatar({
   driver,
-  large = false,
+  size,
 }: {
   driver: Pick<Driver, 'code' | 'name' | 'photo'>;
-  large?: boolean;
+  /** Larger in a sheet's title, largest where a face finds them. */
+  size?: 'large' | 'portrait';
 }) {
   const [box, src, lost] = usePicture<HTMLSpanElement>(photoUrl(driver));
   return (
     <span
       ref={box}
-      className={`driver-avatar tone-${toneOf(driver.code)}${large ? ' large' : ''}`}
+      className={`driver-avatar tone-${toneOf(driver.code)}${size ? ` ${size}` : ''}`}
       aria-hidden="true"
     >
       {src ? <img src={src} alt="" onError={lost} /> : initials(driver.name)}

@@ -1,15 +1,7 @@
-/* Settings → Driver Match: the roster bar, the pairs to decide, name variants, then everyone. */
+/* Settings → Driver Match: who to check, Amazon's roster, then everyone by face. */
 .driver-match {
   max-width: 1080px;
   padding-top: 24px;
-}
-.driver-section-head h2,
-h2.driver-variants-head {
-  margin: 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 600;
-  letter-spacing: -0.15px;
 }
 .driver-match-copy {
   margin: 4px 0 0;
@@ -17,302 +9,94 @@ h2.driver-variants-head {
   font-size: 13px;
   line-height: 1.5;
 }
-.driver-section-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.driver-count {
-  padding: 0 8px;
-  border-radius: 10px;
-  background: var(--muted);
+.driver-none {
   color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 20px;
-  font-variant-numeric: tabular-nums;
-}
-.driver-count.warn {
-  background: var(--warning-surface);
-  color: var(--warning);
 }
 
-/* The bar above everything: two numbers, then Amazon's roster and its controls. */
-.driver-top {
+/* How many questions wait, with some of their faces. */
+.driver-checks {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px 24px;
-  margin-bottom: 28px;
-  padding: 16px 20px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
+  gap: 12px 16px;
+  margin-bottom: 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--warning-border);
+  border-radius: 12px;
+  background: var(--warning-surface);
 }
-.driver-stats {
-  display: flex;
-}
-.driver-stats > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 20px;
-  border-left: 1px solid var(--border);
-}
-.driver-stats > div:first-child {
-  padding-left: 0;
-  border-left: 0;
-}
-.driver-stats strong {
-  font-size: 22px;
-  line-height: 28px;
+.driver-checks strong {
+  flex: 1;
+  min-width: 120px;
+  font-size: 16.5px;
   font-weight: 600;
-  letter-spacing: -0.4px;
-  font-variant-numeric: tabular-nums;
 }
-.driver-stats span {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  white-space: nowrap;
+.driver-checks-faces {
+  display: flex;
 }
-.driver-stats .warn strong {
-  color: var(--warning);
+.driver-checks-faces .driver-avatar {
+  flex-basis: 34px;
+  width: 34px;
+  height: 34px;
+  box-shadow: 0 0 0 2px var(--warning-surface);
 }
+.driver-checks-faces .driver-avatar + .driver-avatar {
+  margin-left: -10px;
+}
+.driver-checks button {
+  min-height: 44px;
+  padding: 0 24px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Amazon's roster and the controls that change it. */
 .driver-roster {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.driver-roster-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.driver-roster-icon.collected {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
 }
 .driver-roster-status {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 2px;
+  min-width: 180px;
 }
 .driver-roster-status b {
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 600;
 }
-.driver-roster-status small {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.driver-roster-status > span {
   color: var(--muted-foreground);
-  font-size: 12px;
-}
-.driver-roster-status small svg {
-  color: var(--success);
+  font-size: 13.5px;
 }
 .driver-roster > button {
   gap: 7px;
-  min-height: 34px;
+  min-height: 36px;
   padding: 0 14px;
-  font-size: 13px;
 }
 
-/* The pairs to decide. */
-.driver-review {
-  margin-bottom: 28px;
-}
-.driver-review > .text-button {
-  margin-top: 4px;
-}
-.driver-pair {
-  margin-bottom: 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-}
-button.driver-pair-sides {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  min-height: 0;
-  padding: 16px 18px 12px;
-  border: 0;
-  border-radius: 10px 10px 0 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  font: inherit;
-}
-button.driver-pair-sides:hover {
-  background: var(--accent);
-}
-.driver-pair-sides > svg {
-  color: var(--muted-foreground);
-}
-.driver-pair-open {
-  transition: transform var(--motion-duration);
-}
-.driver-pair-sides[aria-expanded='true'] .driver-pair-open {
-  transform: rotate(180deg);
-}
-.driver-pair-side {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.driver-pair-side > span:last-child {
-  min-width: 0;
-}
-.driver-pair-side b {
-  display: block;
-  overflow: hidden;
-  font-size: 14px;
-  font-weight: 550;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.driver-pair-side small {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 3px;
-  color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-}
-.driver-pair-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-  margin: 0 18px;
-  padding: 12px 0 14px;
-  border-top: 1px dashed var(--border);
-}
-.driver-pair-actions {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-}
-.driver-pair-actions button,
-.driver-pair-more button,
-.driver-sheet-actions button {
-  gap: 7px;
-  min-height: 34px;
-  padding: 0 14px;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.driver-evidence {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.driver-evidence li {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12.5px;
-}
-.driver-evidence li svg {
-  color: var(--success);
-}
-.driver-evidence li.against svg {
-  color: var(--warning);
-}
-.driver-pair-more {
-  display: flex;
-  margin: 0 18px;
-  padding-bottom: 16px;
-}
-
-/* Two people side by side, field by field. */
-.driver-compare {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 28px minmax(0, 1fr);
-  margin: 0 18px 12px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 13px;
-}
-.driver-compare > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  overflow-wrap: anywhere;
-}
-.driver-compare > div:nth-child(-n + 4) {
-  border-top: 0;
-  background: var(--surface);
-}
-.driver-compare-label {
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.driver-compare .driver-compare-mark {
-  justify-content: center;
-  padding: 0;
-  color: var(--success);
-}
-.driver-compare .same {
-  background: color-mix(in srgb, var(--success) 8%, transparent);
-}
-
-/* Name variants to confirm, folded until opened. */
-.driver-variants {
-  margin-bottom: 28px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-}
-h2.driver-variants-head {
-  font-size: 14px;
-}
-.driver-variants-head > button {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  width: 100%;
-  min-height: 0;
-  padding: 12px 18px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-}
-.driver-variants-head svg {
-  color: var(--muted-foreground);
-  transition: transform var(--motion-duration);
-}
-.driver-variants-head [aria-expanded='false'] > svg {
-  transform: rotate(-90deg);
-}
-.driver-variant {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-top: 1px solid var(--border);
-}
-.driver-variant .driver-person {
-  flex: 1;
-}
-.driver-variant > button:not(.driver-person) {
-  min-height: 30px;
-  padding: 0 12px;
-  font-size: 12.5px;
-}
-
-/* Everyone. */
+/* Everyone, a card each, shown by what they do or a source lacking them. */
 .driver-tools {
   display: flex;
   flex-wrap: wrap;
@@ -321,113 +105,275 @@ h2.driver-variants-head {
   margin-bottom: 14px;
 }
 .driver-tools .search {
-  width: 260px;
+  width: 240px;
   margin-left: auto;
 }
 .driver-filters {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
 }
 .driver-filters button {
   gap: 6px;
-  min-height: 28px;
-  padding: 0 10px;
+  min-height: 32px;
+  padding: 0 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 500;
 }
 .driver-filters button span {
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
 .driver-filters button[aria-pressed='true'] {
   background: var(--card);
-  box-shadow: 0 1px 2px var(--shadow-color);
+  box-shadow: 0 1px 3px var(--shadow-color);
   color: var(--foreground);
+  font-weight: 600;
 }
-.driver-table {
-  overflow: hidden;
+.driver-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.driver-card {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--card);
 }
-.driver-table .table-wrap {
-  /* Positioned, so the visually hidden column heading scrolls with the table instead of
-     widening the page. */
-  position: relative;
-  overflow-x: auto;
+.driver-card.queued {
+  border-color: var(--warning-border);
+  box-shadow: 0 0 0 1px var(--warning-border);
 }
-.driver-table table {
-  font-size: 13px;
-}
-.driver-table th {
-  padding-left: 14px;
-  background: var(--surface);
-  color: var(--muted-foreground);
-}
-.driver-table td {
-  padding: 10px 8px 10px 14px;
-}
-.driver-table .driver-source-cell {
-  text-align: center;
-}
-.driver-known {
-  display: inline-flex;
-  color: var(--success);
-}
-.driver-maybe {
-  display: inline-flex;
-  color: var(--warning);
-}
-.driver-table .driver-seen,
-.driver-table .driver-none,
-.driver-none {
-  color: var(--muted-foreground);
-  white-space: nowrap;
-}
-.driver-table-foot {
+button.driver-card-person {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.driver-table-foot .pagination {
-  margin: 0;
-}
-
-/* A person, wherever they are named. */
-button.driver-person {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+  gap: 0;
   min-height: 0;
-  padding: 0;
+  padding: 16px 12px 0;
   border: 0;
-  border-radius: 0;
+  border-radius: 14px 14px 0 0;
   background: transparent;
   color: inherit;
-  text-align: left;
+  text-align: center;
   font: inherit;
-  cursor: pointer;
 }
-button.driver-person:hover {
+button.driver-card-person:hover {
   background: transparent;
 }
-button.driver-person:hover strong {
+button.driver-card-person:hover strong {
   text-decoration: underline;
 }
+.driver-card-person strong {
+  margin-top: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.driver-card-person > span:last-child {
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+}
+.driver-card-sources {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  margin: 12px 12px 0;
+  padding: 10px 4px 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  font-size: 13.5px;
+}
+.driver-card-sources li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.driver-card-sources svg {
+  color: var(--success);
+}
+.driver-card-sources .missing {
+  color: var(--warning);
+  font-weight: 600;
+}
+.driver-card-sources .missing svg {
+  color: var(--warning);
+}
+button.driver-card-check {
+  min-height: 36px;
+  margin: 10px 12px 0;
+}
+button.driver-more {
+  display: flex;
+  margin: 16px auto 0;
+}
+
+/* The questions, one at a time. */
+.modal:has(.driver-check) {
+  width: 680px;
+}
+.driver-check-count {
+  margin-left: 10px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.driver-check-why {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.driver-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.driver-verdict.likely {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+.driver-verdict.unsure {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+.driver-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.driver-reasons li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.driver-reasons svg {
+  color: var(--success);
+}
+.driver-reasons .against svg {
+  color: var(--warning);
+}
+.driver-check-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+.driver-check-actions button {
+  min-height: 46px;
+  padding: 0 22px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.driver-check-actions button.driver-check-skip {
+  margin-right: auto;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+/* Two people side by side, field by field, what they share in green. */
+.driver-compare {
+  display: flex;
+  flex-direction: column;
+  font-size: 14.5px;
+}
+.driver-compare-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 30px minmax(0, 1fr);
+  align-items: center;
+  border-radius: 9px;
+}
+.driver-compare-row > div {
+  min-width: 0;
+  padding: 9px 8px;
+  overflow-wrap: break-word;
+}
+.driver-compare-label {
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+}
+.driver-compare-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.driver-compare-mark {
+  display: grid;
+  place-items: center;
+  color: var(--success);
+}
+.driver-compare-row.same {
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+}
+.driver-compare-row.same .driver-compare-cell {
+  font-weight: 600;
+}
+.driver-compare-row + .driver-compare-row:not(.same) {
+  box-shadow: inset 0 1px var(--border);
+}
+.driver-compare-row.same + .driver-compare-row:not(.same) {
+  box-shadow: none;
+}
+.driver-compare-row.same + .driver-compare-row.same {
+  margin-top: 4px;
+}
+.driver-compare-row.head {
+  align-items: start;
+}
+.driver-compare-row.head > div {
+  padding-bottom: 14px;
+}
+.driver-compare-row.head .driver-compare-cell {
+  gap: 6px;
+}
+.driver-compare-row.head b {
+  font-size: 17px;
+  line-height: 23px;
+}
+.driver-sources {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* A person, as the merge dialog names them. */
 .driver-person > span:last-child {
   min-width: 0;
 }
@@ -472,6 +418,12 @@ button.driver-person:hover strong {
   width: 48px;
   height: 48px;
   font-size: 14px;
+}
+.driver-avatar.portrait {
+  flex-basis: 72px;
+  width: 72px;
+  height: 72px;
+  font-size: 24px;
 }
 .driver-avatar.tone-1 {
   --identity-ink: var(--sage);
@@ -533,37 +485,29 @@ button.driver-person:hover strong {
   background: var(--violet-surface);
   color: var(--violet);
 }
-/* A source's mark, in its tone. */
-.driver-mark {
+/* A source by its name, in its tone. */
+.driver-source {
   display: inline-flex;
   flex: none;
   align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 30px;
-  border-radius: 7px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
   background: var(--slate-surface);
   color: var(--slate);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.driver-mark.small {
-  width: auto;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 3px;
-  font-size: 8.5px;
-}
-.driver-mark.tone-1 {
+.driver-source.tone-1 {
   background: var(--steel-surface);
   color: var(--steel);
 }
-.driver-mark.tone-2 {
+.driver-source.tone-2 {
   background: var(--violet-surface);
   color: var(--violet);
 }
-.driver-mark.tone-3 {
+.driver-source.tone-3 {
   background: var(--sage-surface);
   color: var(--sage);
 }
@@ -609,7 +553,7 @@ button.driver-person:hover strong {
 }
 .driver-id {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 12px;
   padding: 12px 14px;
@@ -619,6 +563,12 @@ button.driver-person:hover strong {
 }
 .driver-id + .driver-id {
   margin-top: 8px;
+}
+.driver-id-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 .driver-id strong {
   display: block;
@@ -643,7 +593,7 @@ button.driver-person:hover strong {
 }
 .driver-id-actions {
   display: flex;
-  grid-column: 2 / -1;
+  grid-column: 1 / -1;
   flex-wrap: wrap;
   gap: 6px;
 }
@@ -789,6 +739,12 @@ button.driver-person:hover strong {
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
+.driver-sheet-actions button {
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
 
 /* Choosing who to merge with. */
 .driver-merge-note {
@@ -823,27 +779,30 @@ button.driver-person:hover strong {
 }
 
 @media (max-width: 860px) {
-  button.driver-pair-sides {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .driver-pair-side {
-    grid-column: 1;
-  }
-  .driver-pair-open {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  .driver-pair-sides > svg:not(.driver-pair-open) {
-    display: none;
-  }
-  .driver-pair-actions {
-    margin-left: 0;
-  }
-  .driver-compare {
-    grid-template-columns: 56px minmax(0, 1fr) 20px minmax(0, 1fr);
-  }
   .driver-tools .search {
     width: 100%;
     margin-left: 0;
+  }
+}
+@media (max-width: 560px) {
+  .driver-cards {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .driver-compare-row {
+    grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr);
+  }
+  .driver-compare-label {
+    display: none;
+  }
+  .driver-compare-row > div {
+    padding: 8px 4px;
+  }
+  .driver-check-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .driver-check-actions button.driver-check-skip {
+    margin-right: 0;
   }
 }

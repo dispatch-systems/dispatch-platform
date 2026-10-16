@@ -4,9 +4,9 @@ type App = Awaited<ReturnType<typeof fixture>>;
 
 /**
  * Northline's people as Paycom and Amazon write them differently: two preferred names, a
- * driver Amazon lists by a last initial, one Paycom has never heard of and one who drove
- * only long ago. The server restarts around the edit, so its first Driver Match pass
- * reads it.
+ * second surname Paycom leaves off, a driver Amazon lists by a last initial, one Paycom has
+ * never heard of and one who drove only long ago. The server restarts around the edit, so its
+ * first Driver Match pass reads it.
  */
 export async function seedDriverMatch(app: App) {
   const owner = await app.client();
@@ -28,6 +28,7 @@ export async function seedDriverMatch(app: App) {
     ['match-sam', 'Sam Mitchell'],
     ['match-drew', 'Drew S.'],
     ['match-dmitri', 'Dmitri Volkov'],
+    ['match-quinn', 'Quinn Foster Lane'],
   ];
   app.database(`dsps/${dsp.id}/data/cortex/cortex.sqlite`, (db) => {
     db.prepare(
