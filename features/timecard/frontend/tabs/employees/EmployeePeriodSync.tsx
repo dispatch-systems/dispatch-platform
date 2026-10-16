@@ -6,7 +6,7 @@ import type {
   EmployeeTimecardPeriod,
 } from '../../../api/index.js';
 import { syncEmployeePeriod } from '../../../api/client.js';
-import { useData } from '../../../../../core/shell/frontend/runtime/api.js';
+import { useCachedData } from '../../../../../core/shell/frontend/runtime/api.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { dataCache } from '../../../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../../../core/shell/frontend/runtime/data-policy.js';
@@ -86,7 +86,9 @@ export function EmployeePeriodSync({
     ? new URLSearchParams({ from: selected.from, to: selected.to })
     : undefined;
   if (query && batch && samePeriod(batch.period, selected)) query.set('requestId', batch.id);
-  const status = useData<EmployeeSyncStatus>(
+  // Cached, so each job's end, announced to the page, refreshes the batch; while one runs its
+  // progress is still read every few seconds, since progress isn't announced.
+  const status = useCachedData<EmployeeSyncStatus>(
     query ? `/api/dsp/jobs/employees?${query}` : '',
     collecting ? performancePolicy.activeCollectionPollMs : performancePolicy.recoveryPollMs,
     key,
