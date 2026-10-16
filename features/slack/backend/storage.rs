@@ -1,5 +1,5 @@
-//! Slack's storage: in each DSP's own database, its workspaces, the installs started for them
-//! and its install link; each workspace's tokens, encrypted in the DSP's secrets; and in the
+//! Slack's storage: in each DSP's own database, its workspaces, their members, the installs
+//! started for them and its install link; each workspace's tokens, encrypted in the DSP's secrets; and in the
 //! platform's database, which DSP each workspace belongs to. Only this crate writes SQL against
 //! its tables.
 use super::slack::Tokens;
@@ -109,6 +109,67 @@ impl FromRow for Requested {
     }
 }
 
+/// A member of a workspace, as Slack describes them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Member {
+    pub user: String,
+    pub name: String,
+    /// The name they go by in Slack, when it isn't `name`.
+    pub display_name: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    /// Whether their account is active: one deactivated in Slack is kept, inactive.
+    pub active: bool,
+    pub guest: bool,
+}
+impl FromRow for Member {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            user: row.get("user_id")?,
+            name: row.get("name")?,
+            display_name: row.get("display_name")?,
+            email: row.get("email")?,
+            phone: row.get("phone")?,
+            active: row.get("active")?,
+            guest: row.get("guest")?,
+        })
+    }
+}
+/// A member with the workspace they're in, as `slack_members` reads them.
+struct InWorkspace(String, Member);
+impl FromRow for InWorkspace {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self(row.get("team_id")?, Member::from_row(row)?))
+    }
+}
+/// Keeps one member, as Slack describes them now: whether they're new or changed.
+fn keep_member(db: &Db, team: &str, member: &Member) -> Result<bool> {
+    let kept: Vec<Member> = db.query_as(
+        "SELECT * FROM slack_members WHERE team_id=? AND user_id=?",
+        [team, &member.user],
+    )?;
+    if kept.first() == Some(member) {
+        return Ok(false);
+    }
+    db.exec(
+        "INSERT INTO slack_members(team_id,user_id,name,display_name,email,phone,active,guest) \
+         VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(team_id,user_id) DO UPDATE SET \
+         name=excluded.name,display_name=excluded.display_name,email=excluded.email,\
+         phone=excluded.phone,active=excluded.active,guest=excluded.guest",
+        params![
+            team,
+            member.user,
+            member.name,
+            member.display_name,
+            member.email,
+            member.phone,
+            member.active,
+            member.guest
+        ],
+    )?;
+    Ok(true)
+}
+
 /// The DSP's install link, as stored: never the link itself, only its hash.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Link {
@@ -149,8 +210,18 @@ pub trait SlackStore {
     ) -> Result<Option<Workspace>>;
     /// Marks the workspace broken, once: whether it was working until now.
     fn break_slack_workspace(&self, dsp: &str, team: &str) -> Result<bool>;
-    /// Forgets the workspace and its tokens, and frees it for any DSP: what was forgotten.
+    /// Forgets the workspace, its members and its tokens, and frees it for any DSP: what was
+    /// forgotten.
     fn remove_slack_workspace(&self, dsp: &str, team: &str) -> Result<Option<Workspace>>;
+    /// Every member of the DSP's workspaces, with their workspace, those of the workspace
+    /// connected first first.
+    fn slack_members(&self, dsp: &str) -> Result<Vec<(String, Member)>>;
+    /// Keeps the workspace's members, all of them as Slack lists them now: whether any was
+    /// new, changed or gone.
+    fn keep_slack_members(&self, dsp: &str, team: &str, members: &[Member]) -> Result<bool>;
+    /// Keeps one member of the workspace, as Slack describes them now: whether they're new or
+    /// changed.
+    fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool>;
     fn slack_link(&self, dsp: &str) -> Result<Option<Link>>;
     /// Keeps a new install link for the DSP, by its hash, in place of any it had, with the
     /// name the workspace it adds is to have.
@@ -335,13 +406,53 @@ impl SlackStore for Store {
         if path.exists() {
             std::fs::remove_file(path)?;
         }
-        self.dsp(dsp)?
-            .exec("DELETE FROM slack_workspaces WHERE team_id=?", [team])?;
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            db.exec("DELETE FROM slack_members WHERE team_id=?", [team])?;
+            db.exec("DELETE FROM slack_workspaces WHERE team_id=?", [team])
+        })?;
+        drop(db);
         self.platform.exec(
             "DELETE FROM slack_teams WHERE team_id=? AND dsp_id=?",
             [team, dsp],
         )?;
         Ok(found)
+    }
+    fn slack_members(&self, dsp: &str) -> Result<Vec<(String, Member)>> {
+        let rows: Vec<InWorkspace> = self.dsp(dsp)?.query_as(
+            "SELECT m.* FROM slack_members m JOIN slack_workspaces w ON w.team_id=m.team_id \
+             ORDER BY w.connected_at,m.team_id,m.user_id",
+            [],
+        )?;
+        Ok(rows
+            .into_iter()
+            .map(|InWorkspace(team, member)| (team, member))
+            .collect())
+    }
+    fn keep_slack_members(&self, dsp: &str, team: &str, members: &[Member]) -> Result<bool> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let mut changed = false;
+            for member in members {
+                changed |= keep_member(&db, team, member)?;
+            }
+            let listed = serde_json::to_string(
+                &members
+                    .iter()
+                    .map(|member| &member.user)
+                    .collect::<Vec<_>>(),
+            )?;
+            let gone = db.exec(
+                "DELETE FROM slack_members WHERE team_id=? \
+                 AND user_id NOT IN (SELECT value FROM json_each(?))",
+                [team, &listed],
+            )?;
+            Ok(changed || gone > 0)
+        })
+    }
+    fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool> {
+        let db = self.dsp(dsp)?;
+        keep_member(&db, team, member)
     }
     fn slack_link(&self, dsp: &str) -> Result<Option<Link>> {
         let found: Option<(String, String, i64, Option<String>)> = self.dsp(dsp)?.one_as(

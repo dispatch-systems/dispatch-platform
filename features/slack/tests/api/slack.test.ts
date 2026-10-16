@@ -1,18 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
 import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { connect, event, fromSlack, install } from '../support/slack.js';
 
-type Fixture = Awaited<ReturnType<typeof fixture>>;
-type Client = Awaited<ReturnType<Fixture['client']>>;
-
-// Fixture mode stands in for Slack: installing sends the browser straight back with a code
-// naming the workspace, `fixture:<team>`, and it signs with a secret tests sign with too.
-const SIGNING_SECRET = 'fixture-signing-secret';
-const install = (url: string) => {
-  const sent = new URL(url).searchParams;
-  return { state: sent.get('state')!, code: sent.get('code')! };
-};
 /** Where an address sends the browser, without following it. */
 const goes = async (url: string) => {
   const answer = await fetch(url, { redirect: 'manual' });
@@ -26,16 +16,6 @@ const returnedTo = async (url: string) => {
   for (const field of ['slackState', 'slackCode', 'slackError']) kept.delete(field);
   return kept.size ? `${page}?${kept}` : page;
 };
-/** Adds Dispatch to fixture workspace `team`, or the next free one, for the DSP open. */
-async function connect(client: Client, team?: string) {
-  const started = await client.post('/api/dsp/slack/connect');
-  assert.equal(started.status, 200, started.body);
-  const { state, code } = install(started.value.url);
-  return client.post('/api/dsp/slack/connect/finish', {
-    state,
-    code: team ? `fixture:${team}` : code,
-  });
-}
 const names = (account: { workspaces: { name: string }[] }) =>
   account.workspaces.map((workspace) => workspace.name);
 /** The name in Dispatch of the workspace `team`. */
@@ -43,29 +23,6 @@ const labelOf = (
   account: { workspaces: { teamId: string; label: string | null }[] },
   team: string,
 ) => account.workspaces.find((workspace) => workspace.teamId === team)?.label;
-/** Sends `body` to Slack's address `path` as Slack would, signed `at` seconds since 1970. */
-const fromSlack = (
-  f: Fixture,
-  path: string,
-  body: string,
-  { at = Math.floor(Date.now() / 1000), secret = SIGNING_SECRET } = {},
-) =>
-  fetch(`${f.env.DISPATCH_ORIGIN}${path}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-slack-request-timestamp': String(at),
-      'x-slack-signature': `v0=${createHmac('sha256', secret).update(`v0:${at}:${body}`).digest('hex')}`,
-    },
-    body,
-  });
-const event = (team: string, kind: Record<string, unknown>) =>
-  JSON.stringify({
-    type: 'event_callback',
-    team_id: team,
-    event_id: `Ev${Math.random().toString(36).slice(2)}`,
-    event: kind,
-  });
 
 test('an owner adds Dispatch to several workspaces, reconnects one and disconnects one', async (t) => {
   const f = await fixture();

@@ -2,7 +2,8 @@
 //! straight back with a code naming the workspace, `fixture:<team>`; its tokens name their
 //! workspace too, and one whose ID holds `GONE` is refused, as a workspace that removed the app
 //! is. Each workspace has the same channels, the bot in `general` and in the private
-//! `managers`, and what it joins and leaves is kept for the server's run. Requests it sends
+//! `managers`, and what it joins and leaves is kept for the server's run. Its members are the
+//! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated. Requests it sends
 //! are signed with a secret the tests share.
 use super::slack::{Installed, Tokens};
 use super::{app::SCOPES, storage::SlackStore};
@@ -37,6 +38,116 @@ const CHANNELS: &[(&str, &str, bool, bool)] = &[
     ("C0FIXRANDOM", "random", false, false),
     ("G0FIXMANAGERS", "managers", true, true),
 ];
+/// What a fixture member is beside a person.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Person,
+    Guest,
+    Deactivated,
+    Bot,
+}
+/// One of its members: the workspaces they're in, by their names there, their ID, name, the
+/// name they go by when it's another, email address, phone number and what they are.
+struct User {
+    teams: &'static [&'static str],
+    id: &'static str,
+    name: &'static str,
+    goes_by: &'static str,
+    email: &'static str,
+    phone: &'static str,
+    kind: Kind,
+}
+const EVERY: &[&str] = &["Operations", "Drivers", "Managers"];
+/// A person of the demo's in `teams`, by their name and email address.
+const fn person(
+    teams: &'static [&'static str],
+    id: &'static str,
+    name: &'static str,
+    email: &'static str,
+) -> User {
+    User {
+        teams,
+        id,
+        name,
+        goes_by: "",
+        email,
+        phone: "",
+        kind: Kind::Person,
+    }
+}
+const USERS: &[User] = &[
+    User {
+        kind: Kind::Person,
+        ..person(EVERY, "USLACKBOT", "Slackbot", "")
+    },
+    User {
+        kind: Kind::Bot,
+        ..person(EVERY, "U0FIXTUREBOT", "Dispatch Dev", "")
+    },
+    User {
+        goes_by: "Morgan",
+        ..person(
+            &["Operations", "Managers"],
+            "U0FIXOWNER",
+            "Morgan Lane",
+            "morgan.lane@example.com",
+        )
+    },
+    person(
+        &["Operations", "Drivers"],
+        "U0FIXJORDAN",
+        "Jordan Ellis",
+        "jordan.ellis@example.com",
+    ),
+    User {
+        goes_by: "Cam",
+        ..person(
+            &["Drivers"],
+            "U0FIXCAM",
+            "Cameron Hayes",
+            "cam.hayes@example.com",
+        )
+    },
+    User {
+        phone: "(612) 555-0104",
+        ..person(&["Drivers"], "U0FIXCASEY", "Casey Rivera", "")
+    },
+    User {
+        kind: Kind::Guest,
+        ..person(
+            &["Drivers"],
+            "U0FIXDREW",
+            "Drew Sullivan",
+            "drew.sullivan@example.com",
+        )
+    },
+    User {
+        kind: Kind::Deactivated,
+        ..person(
+            &["Drivers"],
+            "U0FIXGONE",
+            "Jesse Kline",
+            "jesse.kline@example.com",
+        )
+    },
+];
+/// The members of the workspace named `workspace`, as `users.list` describes them.
+fn users(workspace: &str) -> Vec<Value> {
+    USERS
+        .iter()
+        .filter(|user| user.teams.contains(&workspace))
+        .map(|user| {
+            json!({
+                "id": user.id,
+                "deleted": user.kind == Kind::Deactivated,
+                "is_bot": user.kind == Kind::Bot,
+                "is_restricted": user.kind == Kind::Guest,
+                "profile": {"real_name": user.name, "display_name": user.goes_by,
+                    "email": user.email, "phone": user.phone},
+            })
+        })
+        .collect()
+}
 /// How long its tokens last, as Slack's rotating tokens do.
 const LASTS_MS: i64 = 12 * 60 * 60 * 1000;
 
@@ -72,13 +183,19 @@ pub fn install(code: &str) -> Result<Installed> {
 pub fn refresh(refresh: &str) -> Result<Tokens> {
     Ok(tokens(workspace(refresh, "fixture-refresh:")?))
 }
-/// Slack's answer to a call with `args`: the workspace for `team.info`; the channels the bot
-/// sees, joins, leaves or is asked of for `conversations.*`; and `ok` to anything else.
+/// Slack's answer to a call with `args`: the workspace for `team.info`; its members, on one
+/// page, for `users.list`; the channels the bot sees, joins, leaves or is asked of for
+/// `conversations.*`; and `ok` to anything else.
 pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
     let team = workspace(token, "fixture-access:")?;
     let asked = args["channel"].as_str().unwrap_or("");
     Ok(match method {
         "team.info" => json!({"ok": true, "team": {"id": team, "name": name(team)}}),
+        "users.list" => json!({
+            "ok": true,
+            "members": users(&name(team)),
+            "response_metadata": {"next_cursor": ""},
+        }),
         "conversations.list" => {
             let seen: Vec<Value> = CHANNELS
                 .iter()

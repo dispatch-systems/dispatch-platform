@@ -4,6 +4,7 @@
 use super::{
     app::INSTALL_PATH,
     connection::{self, Started},
+    members,
     slack::Slack,
     storage::{Install, SlackStore, Starter},
 };
@@ -89,6 +90,7 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
         .await?;
     let opened = (installed.team.clone(), installed.app.clone());
     let made = (installed.team.clone(), installed.tokens.access.clone());
+    let at = dsp.clone();
     let kept = state
         .run(move |db| {
             // The link may have been cancelled, or used, while Slack asked.
@@ -101,6 +103,8 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
         .await;
     if kept.is_err() {
         connection::undo(state, made).await;
+        return kept.map(|()| opened);
     }
+    members::read_soon(state, &at, &opened.0);
     kept.map(|()| opened)
 }

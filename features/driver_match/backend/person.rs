@@ -61,20 +61,28 @@ pub(super) struct Context<'a> {
     pub recent: &'a str,
 }
 
-/// What a person does for the DSP: no source lists them and nothing has seen them lately,
-/// they have left; none of their sources shows them driving and the departments the DSP
-/// counts as drivers leave them out, they work in the office; else Amazon's roster says
-/// whether they drive or only help.
+/// What a person does for the DSP: no roster lists them and nothing has seen them lately,
+/// they have left, unless only lists of people the DSP can reach know them, and one still
+/// does, as the owner in the DSP's Slack, who works in the office; none of their sources shows
+/// them driving and the departments the DSP counts as drivers leave them out, they work in
+/// the office; else Amazon's roster says whether they drive or only help.
 fn role(
     keys: &[Key],
     described: &[&Identity],
     last_seen: Option<&str>,
     context: &Context,
 ) -> DriverRole {
-    let gone =
-        !described.iter().any(|x| x.listed) && last_seen.is_none_or(|last| last < context.recent);
-    if gone {
-        return DriverRole::Former;
+    // A list of people the DSP can reach says nothing of who still works for it.
+    let employed = described.iter().any(|x| x.listed && !x.contacts_only);
+    if !employed && last_seen.is_none_or(|last| last < context.recent) {
+        let reached = !described.is_empty()
+            && described.iter().all(|x| x.contacts_only)
+            && described.iter().any(|x| x.listed);
+        return if reached {
+            DriverRole::Office
+        } else {
+            DriverRole::Former
+        };
     }
     // Driving shows in a source that says what they do, or in data no department setting
     // speaks for: routes, meal breaks, inspections.

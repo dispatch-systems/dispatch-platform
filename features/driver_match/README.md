@@ -10,7 +10,9 @@ only what was decided.
   needs no connection: it matches whatever the DSP's features name.
 - **Only what is on takes part.** It reads the people of the features the DSP has on and
   nothing else. A source no feature on names sits idle: its IDs keep their people, shown
-  nowhere, and come back as they were.
+  nowhere, and come back as they were. A source is one of the DSP's systems once it has named
+  someone, so no card says "Not in Slack" while a workspace waits for its admin to let
+  Dispatch read its members.
 - **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
 - **Its screen** is the Driver Match tab of a DSP's Settings, shown while the DSP has a feature
   on whose data names people: the questions waiting, the pairs to decide and the names written
@@ -39,9 +41,12 @@ only what was decided.
   owner matches names.
 - **Names:** a person is shown by the name their first source writes, in the sources' order,
   so a payroll's legal name comes before Amazon's.
-- **Roles:** Amazon's roster says who drives or only helps. Someone no source lists and
-  nothing has seen for 21 days before the newest data has left. People no source shows driving,
-  outside the departments a source's settings count as drivers, work in the office.
+- **Roles:** Amazon's roster says who drives or only helps. Someone no roster lists and
+  nothing has seen for 21 days before the newest data has left. A list of people the DSP can
+  reach, as Slack's members, says nothing of who still works for it: someone only such lists
+  know works in the office while one lists them, and has left once none does. People no
+  source shows driving, outside the departments a source's settings count as drivers, work in
+  the office.
 - **Review:** two people no source knows both of, whose names tie them, or any two sharing a
   contact only they have, with how many days they worked together. The one holding fewer
   IDs joins the other, whose code both keep.
@@ -107,6 +112,13 @@ people: &[&backend::people::PEOPLE],
   with its version in `read`.
 - **Shortened names** (`.initials()`): it may write a last name as an initial, so its
   spellings are read after every other kind's.
+- **People it can reach, not employs** (`.contacts_only()`): being on its list never keeps
+  someone from having left, and someone only such lists know works in the office, as Slack's
+  members.
+
+A feature whose people change outside a collection, as Slack's members do, calls
+`people::changed(state, dsp)` once they're kept, and they're told apart at once rather than
+within the hour.
 
 Nothing else changes: Driver Match reads the kind while its feature is on, every ID it names
 gets a person, its Settings tab shows while one such feature is on, and the kind joins the

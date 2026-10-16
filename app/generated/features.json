@@ -578,7 +578,9 @@
       "maintenance": [
         3600
       ],
-      "people": [],
+      "people": [
+        "slack"
+      ],
       "routes": [
         "GET /api/dsp/slack/account",
         "GET /api/dsp/slack/workspaces/{team}/channels",
@@ -609,6 +611,7 @@
       "dsp": [
         "slack_connect_requests",
         "slack_install_links",
+        "slack_members",
         "slack_workspaces"
       ],
       "platform": [

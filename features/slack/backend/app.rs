@@ -9,7 +9,8 @@ use serde_json::{Value, json};
 /// Dispatch uses. The hourly check reads the workspace's name with `team:read`. Its settings'
 /// Channels list the public channels and the private ones the bot was invited to
 /// (`channels:read`, `groups:read`), join public ones (`channels:join`) and leave either
-/// (`channels:manage`, `groups:write`). A permission added here shows Update on each
+/// (`channels:manage`, `groups:write`). Driver Match reads its members, with their email
+/// addresses (`users:read`, `users:read.email`). A permission added here shows Update on each
 /// workspace's card until its admin approves it.
 pub const SCOPES: &[&str] = &[
     "team:read",
@@ -18,10 +19,18 @@ pub const SCOPES: &[&str] = &[
     "channels:join",
     "channels:manage",
     "groups:write",
+    "users:read",
+    "users:read.email",
 ];
-/// What Slack tells the app of: its Home tab opened, and its being removed from a workspace or
-/// losing its tokens there.
-pub const EVENTS: &[&str] = &["app_home_opened", "app_uninstalled", "tokens_revoked"];
+/// What Slack tells the app of: its Home tab opened, someone joining the workspace or changing
+/// their profile, and its being removed from a workspace or losing its tokens there.
+pub const EVENTS: &[&str] = &[
+    "app_home_opened",
+    "team_join",
+    "user_change",
+    "app_uninstalled",
+    "tokens_revoked",
+];
 
 /// Where Slack sends the browser back after installing, on the admin's address.
 pub const RETURN_PATH: &str = "/api/slack/return";

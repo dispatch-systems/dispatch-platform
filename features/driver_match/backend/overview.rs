@@ -25,7 +25,6 @@ pub(crate) struct Overview {
 
 pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
     let people = sources::people(store, dsp)?;
-    let active = sources::active(&people);
     let found = sources::found(&people, store, dsp)?;
     let activity = sources::activity(&people, store, dsp)?;
     let days = sources::days(&people, store, dsp)?;
@@ -46,13 +45,14 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
         .unwrap_or_default();
     let db = store.dsp(dsp)?;
+    let every: Vec<IdRow> = db.query_as::<IdRow>(
+        "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
+         WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
+        [],
+    )?;
+    let active = sources::active(&people, &found, every.iter().filter_map(IdRow::source));
     // IDs of a source no feature on names sit idle: kept, and shown nowhere.
-    let rows: Vec<IdRow> = db
-        .query_as::<IdRow>(
-            "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
-             WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
-            [],
-        )?
+    let rows: Vec<IdRow> = every
         .into_iter()
         .filter(|row| row.source().is_some_and(|source| active.contains(&source)))
         .collect();

@@ -389,7 +389,8 @@ fn the_previous_release_keeps_every_link_after_a_decision() {
 }
 
 /// A roster of the DSP's company as Amazon lists it, each as (transporter ID, name, status,
-/// roles), published as the roster's collection would.
+/// roles), with an email address made of their name, published as the roster's collection
+/// would.
 fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
     db.set_profile(id, json!({"abbreviation":"TST"})).unwrap();
     let request = json!({"collection":"associates","dspAbbreviation":"TST"});
@@ -399,8 +400,9 @@ fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
     capture.associates = listed
         .iter()
         .map(|(transporter, name, status, roles)| {
+            let email = format!("{}@example.com", name.to_lowercase().replace(' ', "."));
             associates::Associate::read(json!({"transporter_id":transporter,"full_name":name,
-                "operational_status":status,"roles":roles}))
+                "email_address":email,"operational_status":status,"roles":roles}))
             .unwrap()
             .unwrap()
         })
@@ -458,4 +460,89 @@ fn a_feature_switched_off_says_nothing_and_its_ids_wait_for_it() {
     assert_eq!(code(&on, PAYCOM, "E004"), taylor);
     assert_eq!(known_to(&on, &taylor), ["paycom", "amazon"]);
     assert_eq!(on.counts.review, before.counts.review);
+}
+
+/// The DSP's Slack workspace `team`, its members each as (member ID, name, email address,
+/// whether their account is active), as reading them keeps them.
+#[cfg(feature = "slack")]
+fn slack(db: &Store, team: &str, id: &str, members: &[(&str, &str, Option<&str>, bool)]) {
+    let dsp = db.dsp(id).unwrap();
+    dsp.exec(
+        "INSERT INTO slack_workspaces(team_id,name,status,scopes,bot_user_id,app_id,connected_at) \
+         VALUES (?,'Operations','connected','users:read users:read.email','U0BOT','A0APP',?)",
+        [team, "2026-01-01T00:00:00Z"],
+    )
+    .unwrap();
+    for (user, name, email, active) in members {
+        dsp.exec(
+            "INSERT INTO slack_members(team_id,user_id,name,email,active,guest) \
+             VALUES (?,?,?,?,?,0)",
+            rusqlite::params![team, user, name, email, active],
+        )
+        .unwrap();
+    }
+}
+
+#[cfg(feature = "slack")]
+#[test]
+fn slack_members_join_by_email_and_whom_only_slack_knows_works_in_the_office() {
+    dispatch_backend::install();
+    let (_root, db, id, _) = ready(None);
+    roster(
+        &db,
+        &id,
+        &[
+            ("TJORDAN", "Jordan Ellis", "ACTIVE", "Driver"),
+            ("TPAT", "Pat Quinn", "INACTIVE", "Driver"),
+        ],
+    );
+    // Slack is none of the DSP's systems until it names someone: no card says "Not in Slack"
+    // while a workspace waits for its admin to let Dispatch read its members.
+    let slack_ids = DriverSource::parse("slack").unwrap();
+    assert!(!db.driver_match(&id).unwrap().sources.contains(&slack_ids));
+    slack(
+        &db,
+        "T0OPS",
+        &id,
+        &[
+            (
+                "U0JORDAN",
+                "Jordan R Ellis",
+                Some("Jordan.Ellis@example.com"),
+                true,
+            ),
+            (
+                "U0MORGAN",
+                "Morgan Lane",
+                Some("morgan.lane@example.com"),
+                true,
+            ),
+            ("U0JESSE", "Jesse Kline", None, false),
+            ("U0PAT", "Pat Quinn", Some("pat.quinn@example.com"), true),
+        ],
+    );
+    db.match_drivers(&id).unwrap();
+    let result = db.driver_match(&id).unwrap();
+    let slack = slack_ids;
+    assert!(result.sources.contains(&slack));
+    // The roster's email address joins the member to the driver.
+    let jordan = code(&result, AMAZON, "TJORDAN");
+    assert_eq!(code(&result, slack, "T0OPS:U0JORDAN"), jordan);
+    assert_eq!(person(&result, &jordan).role, DriverRole::Driver);
+    let member = person(&result, &jordan)
+        .ids
+        .iter()
+        .find(|i| i.source == slack)
+        .unwrap();
+    assert_eq!(member.linked_by, DriverLink::Email);
+    // Someone only Slack knows works in the office while their account is active.
+    let morgan = code(&result, slack, "T0OPS:U0MORGAN");
+    assert_eq!(known_to(&result, &morgan), ["slack"]);
+    assert_eq!(person(&result, &morgan).role, DriverRole::Office);
+    let jesse = code(&result, slack, "T0OPS:U0JESSE");
+    assert_eq!(person(&result, &jesse).role, DriverRole::Former);
+    // Slack keeps nobody working: Pat left Amazon's roster, whatever Slack says.
+    let pat = code(&result, AMAZON, "TPAT");
+    assert_eq!(code(&result, slack, "T0OPS:U0PAT"), pat);
+    assert_eq!(person(&result, &pat).role, DriverRole::Former);
 }
