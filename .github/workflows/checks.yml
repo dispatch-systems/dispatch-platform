@@ -318,6 +318,8 @@ jobs:
       - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
+  # `cargo audit`, denying every warning but the yanked versions `cargo-audit.py` allows, each
+  # with its reason.
   rust-advisories:
     if: contains('all core', inputs.suite || 'all')
     runs-on: ubuntu-24.04
@@ -335,7 +337,7 @@ jobs:
       - name: Install audit tool
         if: steps.audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
-      - run: cargo audit --deny warnings
+      - run: python3 tooling/ci/cargo-audit.py
   # Builds the tools and fixture this ref's inputs lack, off the critical path, and saves
   # them to this ref's cache: the jobs that start later restore them instead of compiling.
   # `main`'s copies come from caches.yml. Every other job builds with Cargo when a tool is
