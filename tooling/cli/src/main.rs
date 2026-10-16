@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, check, finish, logs, observation, pr, preview, scaffold,
-    ship, start, status, test, workspace::Workspace,
+    Native, Result, Runner, api, build, check, ci, finish, logs, observation, pr, preview,
+    scaffold, ship, start, status, test, workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -26,6 +26,10 @@ A change, from start to finish:
         [--allow-concurrent]       clippy, which passes again without running on Rust inputs
                                    it passed on; the merge queue runs the tests. --plan only
                                    names them.
+  ci <name>                        The full checks on GitHub on its committed branch, while
+                                   its preview is tried: push it, run them without the gate,
+                                   and follow them to the first failure. ship stops on a
+                                   head they failed and cancels them if still running.
   pr <name> --title <title>        Check the title and body, push the branch, and open the
      --body <file>                 PR or update it.
   ship <PR number> [--review]      Queue the PR as soon as GitHub admits it and wait until it
@@ -286,6 +290,19 @@ fn run() -> Result<()> {
                 &mut |text| println!("{text}"),
             )?;
             println!("#{number} merged as {merge}");
+            Ok(())
+        }
+        "ci" => {
+            line.only(&[], 1)?;
+            let name = line.name("ci <name>")?;
+            let verdict = ci::run(
+                &line.workspace()?,
+                name,
+                &Native,
+                &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
+                &mut |text| println!("{text}"),
+            )?;
+            println!("{verdict}");
             Ok(())
         }
         "finish" => {
