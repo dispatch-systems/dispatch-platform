@@ -30,10 +30,12 @@ impl People for Associates {
     }
     /// Listed while the roster lists them as active, with the email address and personal
     /// phone number Amazon has: a work phone may be the DSP's, passed from driver to driver.
+    /// Whoever it still lists has their photo, by its digest.
     fn named(&self, store: &Store, dsp: &str) -> Result<Vec<Named>> {
         let rows = store.driver_profiles_db(dsp)?.all(
-            "SELECT transporter_id id,name,listed=1 AND status='ACTIVE' current,email,\
-             personal_phone phone,roles FROM associates",
+            "SELECT a.transporter_id id,a.name,a.listed=1 AND a.status='ACTIVE' current,a.email,\
+             a.personal_phone phone,a.roles,p.sha256 photo FROM associates a \
+             LEFT JOIN photos p ON p.address=a.photo_address AND a.listed=1",
             [],
         )?;
         Ok(rows
@@ -52,6 +54,7 @@ impl People for Associates {
                     .into_iter()
                     .collect(),
                 roles: serde_json::from_str(s(row, "roles")).unwrap_or_default(),
+                photo: row["photo"].as_str().map(str::to_owned),
                 ..Named::new(s(row, "id"))
             })
             .collect())
@@ -66,5 +69,13 @@ impl People for Associates {
     /// None: being listed is not something anyone did.
     fn appearances(&self, _: &Store, _dsp: &str) -> Result<Vec<Appearances>> {
         Ok(vec![])
+    }
+    fn photo(
+        &self,
+        store: &Store,
+        dsp: &str,
+        ids: &[String],
+    ) -> Result<Option<(&'static str, Vec<u8>)>> {
+        store.photo(dsp, ids)
     }
 }

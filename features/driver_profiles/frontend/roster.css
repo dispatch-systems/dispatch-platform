@@ -1,0 +1,47 @@
+/* Driver Match's tab: Amazon's roster, above the tab's own panel, and the controls that change
+   it. */
+.driver-roster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  max-width: 1080px;
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.driver-roster-icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.driver-roster-icon.collected {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+.driver-roster-status {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 180px;
+}
+.driver-roster-status b {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.driver-roster-status > span {
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+}
+.driver-roster > button {
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 14px;
+}

@@ -14,6 +14,7 @@ fn feature(id: &'static str, kind: Kind, permissions: &'static [&'static str]) -
         tab: false,
         mandatory: false,
         connects: false,
+        starts_on_with: &[],
     }
 }
 

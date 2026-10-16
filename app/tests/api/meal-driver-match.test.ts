@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Driver, DriverMatch } from '../../../features/driver_profiles/api/index.js';
+import type { Driver, DriverMatch } from '../../../features/driver_match/api/index.js';
 import { seedNameVariants } from '../../../features/timecard/tests/support/name-variants.js';
 import { fixture, until } from '../../../core/shell/tests/support/support.js';
 

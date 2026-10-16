@@ -9,13 +9,17 @@ mod agent_tool_checks;
 mod agent_tools;
 mod collection_jobs;
 mod contracts;
-#[cfg(all(feature = "timecard", feature = "driver_profiles"))]
+#[cfg(all(
+    feature = "timecard",
+    feature = "driver_match",
+    feature = "driver_profiles"
+))]
 mod driver_match;
 mod http_requests;
 mod http_routes;
 #[cfg(feature = "timecard")]
 mod meal_cache;
-#[cfg(all(feature = "timecard", feature = "driver_profiles"))]
+#[cfg(all(feature = "timecard", feature = "driver_match"))]
 mod meal_driver_match;
 mod network_policy;
 mod oauth;

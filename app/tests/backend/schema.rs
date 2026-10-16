@@ -151,7 +151,7 @@ fn a_database_an_older_binary_made_ends_like_a_new_one() {
     }
 }
 
-#[cfg(feature = "driver_profiles")]
+#[cfg(feature = "driver_match")]
 #[test]
 fn platform_databases_from_before_each_added_column_gain_it() {
     crate::install();
@@ -207,7 +207,7 @@ fn platform_databases_from_before_each_added_column_gain_it() {
 /// The column the agent tools migration adds to agent_keys, as the recorded schema ends it.
 const ALL_TOOLS: &str = ", all_tools INTEGER NOT NULL DEFAULT 1 CHECK(all_tools IN (0,1))";
 
-#[cfg(feature = "driver_profiles")]
+#[cfg(feature = "driver_match")]
 #[test]
 fn agent_keys_from_before_tools_use_every_tool_that_reads() {
     crate::install();
@@ -246,7 +246,7 @@ fn agent_keys_from_before_tools_use_every_tool_that_reads() {
     );
 }
 
-#[cfg(feature = "driver_profiles")]
+#[cfg(feature = "driver_match")]
 #[test]
 fn agent_keys_from_before_connected_apps_stay_keys() {
     crate::install();
@@ -292,7 +292,7 @@ fn agent_keys_from_before_connected_apps_stay_keys() {
     );
 }
 
-#[cfg(feature = "driver_profiles")]
+#[cfg(feature = "driver_match")]
 #[test]
 fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
     crate::install();

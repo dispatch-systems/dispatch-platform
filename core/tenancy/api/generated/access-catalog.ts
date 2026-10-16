@@ -8,6 +8,7 @@ export const pages = [
   "dvic",
   "weekly_scorecard",
   "driver_profiles",
+  "driver_match",
   "daily_performance",
   "documents",
   "team",
@@ -19,8 +20,7 @@ export const subfeatures = [
   "timecard.meal_breaks",
   "timecard.employees",
   "dvic.day",
-  "dvic.week",
-  "driver_match"
+  "dvic.week"
 ] as const;
 export const connections = [
   "paycom",
@@ -34,6 +34,7 @@ export const features = [
   "dvic",
   "weekly_scorecard",
   "driver_profiles",
+  "driver_match",
   "daily_performance",
   "documents",
   "team",
@@ -44,7 +45,6 @@ export const features = [
   "timecard.employees",
   "dvic.day",
   "dvic.week",
-  "driver_match",
   "paycom",
   "cortex"
 ] as const;
@@ -130,6 +130,16 @@ export const featureCatalog = [
       "associates"
     ],
     "kind": "page"
+  },
+  {
+    "id": "driver_match",
+    "label": "Driver Match",
+    "permissions": [
+      "driver_match.manage"
+    ],
+    "requires": [],
+    "kind": "page",
+    "mandatory": true
   },
   {
     "id": "daily_performance",
@@ -226,17 +236,6 @@ export const featureCatalog = [
     "kind": "sub",
     "page": "dvic",
     "tab": true
-  },
-  {
-    "id": "driver_match",
-    "label": "Driver Match",
-    "permissions": [
-      "driver_match.manage"
-    ],
-    "requires": [],
-    "kind": "sub",
-    "page": "driver_profiles",
-    "tab": false
   },
   {
     "id": "paycom",
@@ -370,7 +369,7 @@ export const permissionGroups = [
     ]
   ],
   [
-    "Driver Profiles · Driver Match",
+    "Driver Match",
     [
       "driver_match.manage"
     ]

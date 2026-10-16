@@ -302,6 +302,16 @@ pub trait People: Sync {
     fn driver_departments(&self, _: &Store, _dsp: &str) -> Result<Option<BTreeSet<String>>> {
         Ok(None)
     }
+    /// The photo it holds of the first of `ids` it has one of: its kind and its bytes. Each
+    /// is named with its version in `named`.
+    fn photo(
+        &self,
+        _: &Store,
+        _dsp: &str,
+        _ids: &[String],
+    ) -> Result<Option<(&'static str, Vec<u8>)>> {
+        Ok(None)
+    }
 }
 
 /// An ID as one kind of data names it.
@@ -322,6 +332,9 @@ pub struct Named {
     pub phones: Vec<String>,
     /// What its source says they do: `Driver`, `Helper`.
     pub roles: Vec<String>,
+    /// The version of the photo it holds of them, which changes when the photo does: `photo`
+    /// serves it.
+    pub photo: Option<String>,
 }
 impl Named {
     pub fn new(id: &str) -> Self {

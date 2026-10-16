@@ -116,6 +116,8 @@ export type SettingsPiece = {
   id: string;
   /** Where it sits among the tab's pieces, lowest first. */
   order: number;
+  /** Drawn above the tab's own panel rather than under it. */
+  above?: boolean;
   /** Who sees it; omitted means everyone who sees the tab. */
   visible?: (view?: DspView) => boolean;
   /** The part of its owner's feature it belongs to: it goes with the part. */

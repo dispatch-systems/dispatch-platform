@@ -9,4 +9,5 @@ of collected data that name them and where a person stands, which Driver Match a
 features that name people share, written to TypeScript in `api/generated/`. Each kind is
 written there with its label, unit and icon too, in their order (`driver-data.ts`, which
 imports the icons from lucide-react by the names the kinds declare), and only the lists of
-people load it.
+people load it. The features whose data names people are listed apart, by their switches
+(`people-features.ts`), small enough for a frontend manifest to ask whether a DSP has one on.
