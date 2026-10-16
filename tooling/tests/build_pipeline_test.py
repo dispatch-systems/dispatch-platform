@@ -21,9 +21,42 @@ def module(name, path):
 
 
 collectors = module("browseros_check", "tooling/ci/browseros-check.py")
+audit = module("cargo_audit", "tooling/ci/cargo-audit.py")
+
+
+def audit_report(*warnings, vulnerabilities=()):
+    """cargo audit's JSON report with `(kind, crate, version)` warnings and vulnerabilities."""
+    grouped = {}
+    for kind, name, version in warnings:
+        advisory = None if kind == "yanked" else {"id": "RUSTSEC-2026-0001"}
+        grouped.setdefault(kind, []).append(
+            {"kind": kind, "package": {"name": name, "version": version}, "advisory": advisory}
+        )
+    listed = [
+        {"advisory": {"id": id}, "package": {"name": name, "version": version}}
+        for id, name, version in vulnerabilities
+    ]
+    return {"vulnerabilities": {"found": bool(listed), "count": len(listed), "list": listed},
+            "warnings": grouped}
 
 
 class PipelineTests(unittest.TestCase):
+    def test_the_audit_allows_only_the_listed_yanked_versions_and_drops_stale_ones(self):
+        allowed = {("zip", "8.6.0"): "why"}
+        self.assertEqual(audit.problems(audit_report(("yanked", "zip", "8.6.0")), allowed), [])
+        # Another yanked version, any other warning and any vulnerability still fail it.
+        for report in [
+            audit_report(("yanked", "zip", "8.6.0"), ("yanked", "flate2", "1.0.0")),
+            audit_report(("yanked", "zip", "8.6.0"), ("unmaintained", "zip", "8.6.0")),
+            audit_report(("yanked", "zip", "8.6.0"), vulnerabilities=[("RUSTSEC-2026-0002", "zip", "8.6.0")]),
+        ]:
+            self.assertEqual(len(audit.problems(report, allowed)), 1, report)
+        # Once the lockfile moves on, its entry has to go with it.
+        self.assertEqual(
+            audit.problems(audit_report(), allowed),
+            ["zip 8.6.0 is allowed yanked but no longer found: remove it from ALLOWED_YANKED"],
+        )
+
     def test_setup_launchers_use_trusted_host_and_preserve_paths_and_owner_names(self):
         args = ["--root", "/private path/dev", "--first-name", "Two Names"]
         for environment in ["dev", "production"]:

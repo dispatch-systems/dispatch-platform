@@ -18,7 +18,7 @@ suite in sequence:
 | core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.       |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                       |
 | collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
-| rust-advisories |                                            | `cargo audit`.                                                                |
+| rust-advisories |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.       |
 | platform        |                                            | The gate: the one required check.                                             |
 
 The gate passes only when every job passed. It then verifies the package's inventory and
