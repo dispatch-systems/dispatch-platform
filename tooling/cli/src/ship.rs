@@ -399,7 +399,7 @@ pub fn run(
             if !failed.is_empty() {
                 if queued.as_ref() == Some(head) {
                     return Err(format!(
-                        "#{number} failed its queue run, and GitHub takes it out of the queue once the run ends. Fix it, push and ship it again; shipping waits for it to leave the queue first. Failed jobs so far:\n- {}",
+                        "#{number} failed its queue run, and GitHub takes it out of the queue at once, or once the run ends if another PR is queued ahead of it. Fix it, push and ship it again; shipping waits for it to leave the queue first. Failed jobs so far:\n- {}",
                         failed.join("\n- ")
                     )
                     .into());
