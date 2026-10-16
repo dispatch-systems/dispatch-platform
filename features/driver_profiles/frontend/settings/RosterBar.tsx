@@ -23,7 +23,8 @@ function said(status: RosterStatus | undefined, running: Job | undefined, timezo
 
 /** Amazon's roster: when it was collected and is collected next, and the controls that change it. */
 export function RosterBar({ timezone }: { timezone: string }) {
-  // A collection's status isn't announced: it is read every few seconds while one runs.
+  // A collection's end is announced to the page, but not its progress, which is read every few
+  // seconds while one runs.
   const [watching, setWatching] = useState(false);
   const status = useRosterStatus(watching ? POLL_MS : 0);
   const [scheduling, setScheduling] = useState(false);
