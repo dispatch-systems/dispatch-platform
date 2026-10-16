@@ -86,7 +86,7 @@ test(
         entries: [
           '../../features/settings/frontend/index.ts',
           '../../core/accounts/frontend/settings/ProfileBadge.tsx',
-          '../../features/driver_profiles/frontend/badge.ts',
+          '../../features/driver_match/frontend/badge.ts',
         ],
         raw: 440_000,
         transferred: 130_000,

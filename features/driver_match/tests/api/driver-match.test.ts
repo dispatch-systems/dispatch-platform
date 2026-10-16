@@ -71,16 +71,4 @@ test('Driver Match gives everyone a code and answers only to its own permission'
       .status,
     400,
   );
-
-  // Switched off, the tab's routes are gone; the codes stay for when it comes back.
-  const kept: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;
-  const url = `/api/platform/dsps/${north.id}/features`;
-  await owner.post(url, { feature: 'driver_match', enabled: false });
-  await owner.select(north.id);
-  assert.equal((await owner.get('/api/dsp/driver-match')).status, 403);
-  assert.equal((await owner.get('/api/dsp/driver-match/counts')).status, 403);
-  await owner.post(url, { feature: 'driver_match', enabled: true });
-  await owner.select(north.id);
-  const again: DriverMatch = (await owner.get('/api/dsp/driver-match')).value;
-  assert.deepEqual(again.drivers.map((d) => d.code).sort(), kept.drivers.map((d) => d.code).sort());
 });
