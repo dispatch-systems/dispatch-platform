@@ -1,8 +1,8 @@
 //! Who might be one person listed twice: two people no source knows both of, whose names
 //! come close without matching, or any two who alone share an email address or phone
 //! number. A person decides; this only gathers the reasons.
+use super::names::{Name, capitalized, short_form};
 use crate::api::types::{DriverEvidence, DriverEvidenceKind, DriverStrength};
-use dispatch_core::foundation::names::{Name, capitalized, short_form};
 use dispatch_core::manifest::people::DriverSource;
 use std::collections::{BTreeMap, BTreeSet};
 

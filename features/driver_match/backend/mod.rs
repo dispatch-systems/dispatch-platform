@@ -5,6 +5,7 @@
 //! features the DSP has on. It is private to the crate: `feature.rs` re-exports what the app
 //! uses.
 mod assign;
+mod audit;
 mod contacts;
 mod decisions;
 mod details;
@@ -19,8 +20,8 @@ mod person;
 mod review;
 mod sources;
 
+pub(crate) use audit::name_driver_events;
 pub(crate) use directory::Directory;
-pub(crate) use names::name_driver_events;
 
 use crate::api::types::{DriverCounts, DriverDetails, DriverLink, DriverMatch};
 use dispatch_core::{

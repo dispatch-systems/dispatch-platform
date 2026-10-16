@@ -2,9 +2,9 @@
 //! the decisions. Only certain answers link an ID to someone: an email address or phone
 //! number only the two of them have, with names that agree, or a name nobody else carries.
 //! Anything less gives the ID a person of its own, for a person to review.
+use super::names::{Name, name_key};
 use super::sources::{Identity, Key};
 use crate::api::types::DriverLink;
-use dispatch_core::foundation::names::{Name, name_key};
 use dispatch_core::manifest::people::DriverSource;
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -1,6 +1,6 @@
 //! One person in full, for the details panel: what they appear in, their last fourteen days,
 //! every decision about them, and their photo, from whichever feature holds one.
-use super::names::actor_name;
+use super::audit::actor_name;
 use super::overview::overview;
 use super::sources::{self, Key};
 use super::{IdRow, surviving, valid_code};

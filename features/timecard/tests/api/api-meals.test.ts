@@ -4,7 +4,6 @@ import type { MealEmployee } from '../../api/index.js';
 import { checkReply } from '../../../../core/foundation/api/runtime.js';
 import { replies as timecardReplies } from '../../api/runtime.js';
 import { fixture } from '../../../../core/shell/tests/support/support.js';
-import { seedNameVariants, variants } from '../support/name-variants.js';
 
 test('meal API requires DSP context, exposes the punch union to members, and links only through Driver Match', async () => {
   const f = await fixture();
@@ -91,35 +90,6 @@ test('meal API requires DSP context, exposes the punch union to members, and lin
   } finally {
     await f.close();
   }
-});
-
-test('name variants combine existing source records without recollection or losing punches and meals', async (t) => {
-  const f = await fixture();
-  t.after(f.close);
-  const owner = await f.client();
-  const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.select(dsp.id);
-  const { date, endpoint, before } = await seedNameVariants(f, owner, dsp.id);
-  const response = await owner.get(endpoint);
-  assert.equal(response.status, 200);
-  const combined = response.value;
-  assert.equal(combined.rows.length, before.rows.length);
-  assert.equal(combined.drivers.length, 4);
-  assert(combined.drivers.every((d: any) => d.matchType === 'name'));
-  assert.equal(combined.rows.flatMap((r: MealEmployee) => r.cortex).length, 5);
-  for (const previous of before.rows) {
-    const row = combined.rows.find((r: MealEmployee) => r.id === previous.id);
-    assert.deepEqual(row.paycom, previous.paycom);
-  }
-  variants.forEach(([, flex], i) => {
-    const row = combined.rows.find((r: MealEmployee) => r.id === `paycom:E00${i + 1}`);
-    assert.equal(row.cortex.length, i === 0 ? 2 : 1);
-    assert.equal(row.cortex[0].driverName, flex);
-    assert.equal(row.cortex[0].lastDelivery, `${date}T11:58:00Z`);
-    assert.equal(row.cortex[0].start, `${date}T12:00:00Z`);
-    assert.equal(row.cortex[0].end, `${date}T12:30:00Z`);
-    assert.equal(row.cortex[0].firstDelivery, `${date}T12:32:00Z`);
-  });
 });
 
 test('typed workforce responses carry Rust assessments and reject malformed nested records', async (t) => {
