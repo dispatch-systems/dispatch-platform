@@ -548,6 +548,9 @@
       "people": [],
       "routes": [
         "GET /api/dsp/slack/account",
+        "GET /api/dsp/slack/workspaces/{team}/channels",
+        "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/join",
+        "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/leave",
         "POST /api/dsp/slack/connect",
         "POST /api/dsp/slack/connect/finish",
         "POST /api/dsp/slack/workspaces/{team}/rename",

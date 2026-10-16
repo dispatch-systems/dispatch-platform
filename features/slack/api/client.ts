@@ -1,17 +1,21 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import type { SlackAccount } from './generated/SlackAccount.js';
+import type { SlackChannel } from './generated/SlackChannel.js';
+import type { SlackChannels } from './generated/SlackChannels.js';
 import type { SlackInstall } from './generated/SlackInstall.js';
 import type { SlackNewLink } from './generated/SlackNewLink.js';
 
 export type { SlackAccount } from './generated/SlackAccount.js';
+export type { SlackChannel } from './generated/SlackChannel.js';
 export type { SlackWorkspace } from './generated/SlackWorkspace.js';
 export type { SlackLink } from './generated/SlackLink.js';
 export type { SlackNewLink } from './generated/SlackNewLink.js';
 
-// Slack's endpoints, as its cards on Settings' Connections and New there call them.
+// Slack's endpoints, as its cards on Settings' Connections, New there and its workspaces'
+// settings call them.
 
-/** What its error codes say. Only its cards and New make the calls that raise them. */
+/** What its error codes say. Only its cards, New and its settings make the calls that raise them. */
 const wording: Record<string, string> = {
   slack_unavailable: "Slack isn't set up for Dispatch yet.",
   slack_unreachable: "Slack didn't answer. Try again in a minute.",
@@ -24,6 +28,7 @@ const wording: Record<string, string> = {
   slack_workspace_not_found: "That workspace isn't connected. Refresh the page.",
   slack_organization_install: 'Add Dispatch to one workspace at a time.',
   slack_connection_broken: 'Slack stopped accepting the connection. Reconnect the workspace.',
+  slack_needs_update: 'This workspace needs updating first.',
 };
 const call = wordedApi(wording);
 
@@ -68,6 +73,22 @@ export const renameSlack = (team: string, label: string) =>
 /** Takes Dispatch out of the workspace `team`. */
 export const disconnectSlack = (team: string) =>
   call<SlackAccount>(`/api/dsp/slack/workspaces/${encodeURIComponent(team)}/disconnect`, {});
+const workspaceUrl = (team: string) => `/api/dsp/slack/workspaces/${encodeURIComponent(team)}`;
+/** The channels of the workspace `team` Dispatch may be in, with whether it's in each. */
+export function useSlackChannels(team: string) {
+  const url = `${workspaceUrl(team)}/channels`;
+  const read = useCallback(
+    (signal: AbortSignal) => call<SlackChannels>(url, undefined, signal),
+    [url],
+  );
+  return useData<SlackChannels>(url, 0, undefined, undefined, false, read);
+}
+/** Has Dispatch join the workspace `team`'s channel `channel`, or leave it: the channel after. */
+export const setSlackChannel = (team: string, channel: string, member: boolean) =>
+  call<SlackChannel>(
+    `${workspaceUrl(team)}/channels/${encodeURIComponent(channel)}/${member ? 'join' : 'leave'}`,
+    {},
+  );
 /**
  * A new install link, in place of any the DSP had, for a workspace to have the name `label` in
  * Dispatch: shown this once.

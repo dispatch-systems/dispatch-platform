@@ -4,6 +4,7 @@
 //! outside `/api/`, each checked against Slack's signature before anything else.
 use crate::backend::{
     app::{EVENTS_PATH, INSTALL_PATH, INTERACTIONS_PATH, RETURN_PATH},
+    channels,
     connection::{self, Started},
     inbound, link, pages, storage,
 };
@@ -19,7 +20,7 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, optional, optional_text},
-        route::{Dsp, Grant, Member, Route, async_post, protocol, read, write},
+        route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, read, write},
     },
 };
 use serde_json::Value;
@@ -28,10 +29,29 @@ use std::sync::Arc;
 /// Adding the DSP's workspaces and taking them out, as its other accounts on Settings' DSP
 /// Connections are.
 const CONNECTIONS: Dsp = Dsp("connections.manage");
+/// What Dispatch does in each of them, on its settings.
+const SETTINGS: Dsp = Dsp("slack.manage");
+/// The workspaces themselves, for either.
+const WORKSPACES: Dsp = Dsp("connections.manage|slack.manage");
 
 pub fn routes() -> Vec<Route> {
     vec![
-        read("/api/dsp/slack/account", CONNECTIONS, account),
+        read("/api/dsp/slack/account", WORKSPACES, account),
+        async_get(
+            "/api/dsp/slack/workspaces/{team}/channels",
+            SETTINGS,
+            list_channels,
+        ),
+        async_post(
+            "/api/dsp/slack/workspaces/{team}/channels/{channel}/join",
+            SETTINGS,
+            join_channel,
+        ),
+        async_post(
+            "/api/dsp/slack/workspaces/{team}/channels/{channel}/leave",
+            SETTINGS,
+            leave_channel,
+        ),
         write("/api/dsp/slack/connect", CONNECTIONS, connect),
         async_post("/api/dsp/slack/connect/finish", CONNECTIONS, finish),
         write(
@@ -64,6 +84,11 @@ pub fn routes() -> Vec<Route> {
 /// A Slack workspace's ID, as Slack writes them.
 fn team(id: &str) -> Result<String> {
     ensure(storage::team_id(id), "invalid_input", 400)?;
+    Ok(id.to_owned())
+}
+/// A Slack channel's ID, as Slack writes them.
+fn channel(id: &str) -> Result<String> {
+    ensure(channels::channel_id(id), "invalid_input", 400)?;
     Ok(id.to_owned())
 }
 /// A workspace's name in Dispatch, as `body` gives it: left out or blank, it has none.
@@ -105,6 +130,27 @@ async fn disconnect(state: Arc<State>, input: Input, access: Dsp) -> Result<Repl
     v::fields(&input.body, &[])?;
     let team = team(input.param("team"))?;
     Reply::of(&connection::disconnect(&state, c, access, team).await?)
+}
+async fn list_channels(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &[])?;
+    let team = team(input.param("team"))?;
+    Reply::of(&channels::list(&state, &c, &team).await?)
+}
+async fn join_channel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &[])?;
+    let (team, channel) = (team(input.param("team"))?, channel(input.param("channel"))?);
+    Reply::of(&channels::join(&state, c, access, team, channel).await?)
+}
+async fn leave_channel(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.run(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &[])?;
+    let (team, channel) = (team(input.param("team"))?, channel(input.param("channel"))?);
+    Reply::of(&channels::leave(&state, c, access, team, channel).await?)
 }
 fn create_link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["label"])?;

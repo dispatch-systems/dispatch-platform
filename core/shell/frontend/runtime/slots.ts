@@ -138,6 +138,11 @@ export type ConnectionPiece = {
   order: number;
   /** Who sees it; omitted means everyone who sees the section. */
   visible?: (view?: DspView) => boolean;
+  /**
+   * Who else sees it in the `dsp` section, beyond those who manage the DSP's connections, as
+   * those who hold a permission of its own; the card shows each only what they may do.
+   */
+  others?: (view?: DspView) => boolean;
   /** The part of its owner's feature it belongs to: it goes with the part. */
   part?: Feature;
   /** The reads it shows, warmed while the Connections tab is about to open. */
@@ -156,6 +161,28 @@ export type NewConnection = {
   icon: () => ReactNode;
   /** What choosing it opens, which calls `close` once it's done or dismissed. */
   render: (context: SettingsContext & { close: () => void }) => ReactNode;
+};
+
+/**
+ * A section one owner adds to the settings of a connection, which the connection's owner draws
+ * among its own, one at a time: a feature's settings for each of the DSP's Slack workspaces, say.
+ */
+export type ConnectionSection = {
+  /** The connection whose settings it's a section of, as that connection's owner names it. */
+  connection: string;
+  /** Its own id among the connection's sections. */
+  id: string;
+  label: string;
+  /** Its mark beside the label where the sections are listed. */
+  icon?: LucideIcon;
+  /** Where it sits among the connection's sections, lowest first. */
+  order: number;
+  /** Who sees it; omitted means everyone who sees the connection's settings. */
+  visible?: (view?: DspView) => boolean;
+  /** The part of its owner's feature it belongs to: it goes with the part. */
+  part?: Feature;
+  /** Draws it for the connection's account `account`, as its owner names that. */
+  render: (context: SettingsContext & { account: string }) => ReactNode;
 };
 
 /**
@@ -301,6 +328,8 @@ export type FrontendFeature = {
   connectionCard?: ConnectionCard;
   /** Its cards on a DSP's Connections tab. */
   connectionPieces?: readonly ConnectionPiece[];
+  /** Its sections of a connection's settings, its own or another owner's. */
+  connectionSections?: readonly ConnectionSection[];
   /** How the response cache treats its reads. */
   cache?: CacheRules;
   /** Its reads that wait for a change before they answer, by path prefix. */
@@ -404,6 +433,12 @@ export const connectionPieces = (section: ConnectionPiece['section'], view?: Dsp
     : installed.flatMap((feature) => feature.connectionPieces ?? [])
   )
     .filter((piece) => piece.section === section)
+    .sort((a, b) => a.order - b.order);
+/** The sections of the settings of `connection` the view has and sees, in their order. */
+export const connectionSections = (connection: string, view: DspView) =>
+  present(view, (feature) => feature.connectionSections)
+    .filter((section) => section.connection === connection)
+    .filter((section) => !section.visible || section.visible(view))
     .sort((a, b) => a.order - b.order);
 /** The card of a connection. */
 export const connectionCard = (provider: string) =>

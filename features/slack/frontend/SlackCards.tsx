@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { DspView } from '../../../core/accounts/api/index.js';
+import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
+import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { Badge, ConfirmDialog, DataState } from '../../../core/shell/frontend/ui/index.js';
 import {
@@ -15,11 +17,14 @@ import { SlackCard } from './SlackCard.js';
 import { useSlackReturn } from './slackReturn.js';
 import { WorkspaceCard } from './WorkspaceCard.js';
 
-// Slack's cards on Settings' DSP Connections: one for each of the DSP's workspaces, one for its
-// install link while it works, and one for an install Slack just sent the browser back from.
-// New there adds a workspace.
+// Slack's cards on Settings' DSP Connections: one for each of the DSP's workspaces, and for
+// those who manage the DSP's connections, one for its install link while it works and one for an
+// install Slack just sent the browser back from. New there adds a workspace. Those who manage
+// Slack, alone, see the workspaces' cards with their settings, each a page of its own.
 
 export function SlackCards({ view }: { view: DspView }) {
+  const manages = can(view, 'connections.manage');
+  const configures = can(view, 'slack.manage');
   const account = useSlackAccount();
   const timeZone = view.dsp.timezone;
   const returned = useSlackReturn(async (state, code) => {
@@ -62,13 +67,16 @@ export function SlackCards({ view }: { view: DspView }) {
                 key={workspace.teamId}
                 workspace={workspace}
                 timeZone={timeZone}
+                manages={manages}
+                configures={configures}
                 busy={install.busy || returned.busy}
+                settings={dspHash(view.dsp.id, 'slack', { workspace: workspace.teamId })}
                 install={(team) => void install.run(team)}
                 rename={setRenaming}
                 disconnect={setLeaving}
               />
             ))}
-            {data.link && <LinkCard link={data.link} timeZone={timeZone} />}
+            {manages && data.link && <LinkCard link={data.link} timeZone={timeZone} />}
           </>
         )}
       </DataState>

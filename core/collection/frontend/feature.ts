@@ -8,6 +8,7 @@ import {
   connectionPieces,
   type FrontendFeature,
 } from '../../shell/frontend/runtime/slots.js';
+import { dspPieces } from './dspPieces.js';
 
 // The tab loads with every collector's card and every card features add, so it opens whole.
 const load = () =>
@@ -18,11 +19,13 @@ const load = () =>
     ...connectionPieces('personal').map((piece) => piece.load()),
   ]).then(([module]) => module);
 /**
- * Whether the member has anything on the tab: the DSP's accounts, which they manage, or one of
- * their own.
+ * Whether the member has anything on the tab: the DSP's accounts, which they manage or a card
+ * shows them, or one of their own.
  */
 const anything = (view?: DspView) =>
-  can(view, 'connections.manage') || connectionPieces('personal', view).length > 0;
+  can(view, 'connections.manage') ||
+  dspPieces(view).length > 0 ||
+  connectionPieces('personal', view).length > 0;
 const ConnectionsTab = lazy(() => load().then((module) => ({ default: module.ConnectionsTab })));
 
 export const feature: FrontendFeature = {
@@ -44,7 +47,7 @@ export const feature: FrontendFeature = {
                 (connection) => connectionCard(connection.id)?.read ?? [],
               )
             : []),
-          ...(manages ? connectionPieces('dsp', view) : []).flatMap((piece) => piece.reads),
+          ...dspPieces(view).flatMap((piece) => piece.reads),
           ...connectionPieces('personal', view).flatMap((piece) => piece.reads),
         ];
       },

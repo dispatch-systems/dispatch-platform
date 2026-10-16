@@ -80,3 +80,27 @@ pub struct SlackNewLink {
 pub struct SlackInstall {
     pub url: String,
 }
+
+/// `GET /api/dsp/slack/workspaces/{team}/channels`: the workspace's channels Dispatch may be in,
+/// by name.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/slack/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct SlackChannels {
+    pub channels: Vec<SlackChannel>,
+}
+
+/// A channel of one of the DSP's workspaces: any public one, or a private one the bot was invited
+/// to. Joining or leaving one answers with it.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/slack/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct SlackChannel {
+    pub id: String,
+    pub name: String,
+    pub private: bool,
+    /// Whether the bot is in it.
+    pub member: bool,
+}

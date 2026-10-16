@@ -6,9 +6,19 @@ use dispatch_core::{Result, ensure, foundation::config::Config};
 use serde_json::{Value, json};
 
 /// What the bot may do in a workspace, which whoever installs it there approves: only what
-/// Dispatch uses. The hourly check reads the workspace's name with `team:read`. A permission
-/// added here shows Update on each workspace's card until its admin approves it.
-pub const SCOPES: &[&str] = &["team:read"];
+/// Dispatch uses. The hourly check reads the workspace's name with `team:read`. Its settings'
+/// Channels list the public channels and the private ones the bot was invited to
+/// (`channels:read`, `groups:read`), join public ones (`channels:join`) and leave either
+/// (`channels:manage`, `groups:write`). A permission added here shows Update on each
+/// workspace's card until its admin approves it.
+pub const SCOPES: &[&str] = &[
+    "team:read",
+    "channels:read",
+    "groups:read",
+    "channels:join",
+    "channels:manage",
+    "groups:write",
+];
 /// What Slack tells the app of: its Home tab opened, and its being removed from a workspace or
 /// losing its tokens there.
 pub const EVENTS: &[&str] = &["app_home_opened", "app_uninstalled", "tokens_revoked"];
