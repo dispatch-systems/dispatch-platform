@@ -1,7 +1,7 @@
 use super::*;
 use crate::api::types::{DvicCoverage, DvicInspection, DvicInspections, DvicStatus};
 use dispatch_core::{
-    db::{DspLease, Store, at, now, s},
+    db::{DspLease, Store, at, s},
     manifest::Keeper,
 };
 use dispatch_cortex as cortex;
