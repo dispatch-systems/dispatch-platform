@@ -250,14 +250,16 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       # The base's package: the one its queue run published once it passed, or else that run's
-      # build. Without one, as for a base still building, the budgets alone judge.
+      # build. A manual run's base is where its branch left `main`. Without one, as for a base
+      # still building, the budgets alone judge.
       - name: Fetch the base's build
-        if: github.event_name == 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE: ${{ github.event.merge_group.base_sha }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           api() { gh api "repos/$GITHUB_REPOSITORY/$1" "${@:2}"; }
+          BASE=${QUEUE_BASE:-$(api "compare/main...$GITHUB_SHA" --jq .merge_base_commit.sha || true)}
+          [ -n "$BASE" ] || { echo "No base found: the budgets alone judge."; exit 0; }
           runs=$(api "actions/workflows/checks.yml/runs?event=merge_group&head_sha=$BASE&per_page=20" \
             --jq '.workflow_runs[] | select(.head_branch | startswith("gh-readonly-queue/main/")) | .id' || true)
           for run in $runs; do
