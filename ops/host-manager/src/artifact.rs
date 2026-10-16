@@ -353,7 +353,7 @@ pub fn unpack_actions(
     require(zip.len() == 1, "Unexpected artifact package")?;
     let entry = zip.by_index(0)?;
     require(
-        entry.name() == "dispatch-dev.tar.gz",
+        entry.name().is_ok_and(|name| name == "dispatch-dev.tar.gz"),
         "Unexpected artifact package",
     )?;
     let size = entry.size();

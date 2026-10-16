@@ -43,18 +43,37 @@ def audit_report(*warnings, vulnerabilities=()):
 class PipelineTests(unittest.TestCase):
     def test_the_audit_allows_only_the_listed_yanked_versions_and_drops_stale_ones(self):
         allowed = {("zip", "8.6.0"): "why"}
-        self.assertEqual(audit.problems(audit_report(("yanked", "zip", "8.6.0")), allowed), [])
+        self.assertEqual(audit.problems(audit_report(("yanked", "zip", "8.6.0")), allowed, {}), [])
         # Another yanked version, any other warning and any vulnerability still fail it.
         for report in [
             audit_report(("yanked", "zip", "8.6.0"), ("yanked", "flate2", "1.0.0")),
             audit_report(("yanked", "zip", "8.6.0"), ("unmaintained", "zip", "8.6.0")),
             audit_report(("yanked", "zip", "8.6.0"), vulnerabilities=[("RUSTSEC-2026-0002", "zip", "8.6.0")]),
         ]:
-            self.assertEqual(len(audit.problems(report, allowed)), 1, report)
+            self.assertEqual(len(audit.problems(report, allowed, {})), 1, report)
         # Once the lockfile moves on, its entry has to go with it.
         self.assertEqual(
-            audit.problems(audit_report(), allowed),
+            audit.problems(audit_report(), allowed, {}),
             ["zip 8.6.0 is allowed yanked but no longer found: remove it from ALLOWED_YANKED"],
+        )
+
+    def test_the_audit_allows_only_the_listed_advisories_on_their_versions_and_drops_stale_ones(self):
+        advisories = {("RUSTSEC-2026-0367", "zip", "8.6.0"): "why"}
+        listed = ("RUSTSEC-2026-0367", "zip", "8.6.0")
+        self.assertEqual(audit.problems(audit_report(vulnerabilities=[listed]), {}, advisories), [])
+        # The same advisory on another version, another advisory on that version, and a
+        # warning still fail it.
+        for report in [
+            audit_report(vulnerabilities=[listed, ("RUSTSEC-2026-0367", "zip", "9.0.4")]),
+            audit_report(vulnerabilities=[listed, ("RUSTSEC-2026-0002", "zip", "8.6.0")]),
+            audit_report(("unmaintained", "zip", "8.6.0"), vulnerabilities=[listed]),
+        ]:
+            self.assertEqual(len(audit.problems(report, {}, advisories)), 1, report)
+        # Once the lockfile moves on, its entry has to go with it.
+        self.assertEqual(
+            audit.problems(audit_report(), {}, advisories),
+            ["RUSTSEC-2026-0367 on zip 8.6.0 is allowed but no longer found: remove it from "
+             "ALLOWED_ADVISORIES"],
         )
 
     def test_setup_launchers_use_trusted_host_and_preserve_paths_and_owner_names(self):
