@@ -379,6 +379,39 @@ impl Http {
         let text = Self::body_within(response, "application/json", limit).await?;
         serde_json::from_str(&text).map_err(|_| Refusal::Unreadable("http_not_json"))
     }
+    /// Where `url` redirects, as a tab following it would go next: for an address the
+    /// provider answers with the place a file is served from. The redirect itself is not
+    /// followed; its target is the caller's to check.
+    pub async fn location(&self, url: &str, referer: &str) -> std::result::Result<Url, Refusal> {
+        let target = self.target(url)?;
+        let response = self
+            .client
+            .get(target.clone())
+            .timeout(Duration::from_secs(30))
+            .header("Accept", "image/avif,image/webp,image/*,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Referer", referer)
+            .send()
+            .await
+            .map_err(|_| Refusal::Unavailable)?;
+        let status = response.status();
+        if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+            return Err(Refusal::Unavailable);
+        }
+        if [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN].contains(&status) {
+            return Err(Refusal::Unreadable("http_signed_out"));
+        }
+        if !status.is_redirection() {
+            return Err(Refusal::Unreadable("http_not_redirected"));
+        }
+        response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| value.len() <= 4096)
+            .and_then(|value| target.join(value).ok())
+            .ok_or(Refusal::Unreadable("http_location_invalid"))
+    }
     /// One timecard page's HTML, as a tab's `fetch` of it would receive.
     pub async fn page(&self, url: &str, referer: &str) -> std::result::Result<String, Refusal> {
         let target = self.target(url)?;

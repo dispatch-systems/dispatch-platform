@@ -167,6 +167,9 @@ fn storage_survives_backup_and_restore() {
         pulse.join("dispatch-server-runtime"),
     )
     .unwrap();
+    // What an owner can collect again stays out of the backup, and so out of the restore.
+    let cache = db::private_dir(&store.area(&id, db::CACHE).unwrap().join("owner")).unwrap();
+    db::write_private(&cache.join("photo.jpg"), b"collected again after a restore").unwrap();
     let external = tempfile::tempdir().unwrap();
     let backup = external.path().join("backup");
     operations::backup(&store.config, &backup).unwrap();
@@ -180,6 +183,8 @@ fn storage_survives_backup_and_restore() {
             .symlink_metadata()
             .is_err()
     );
+    assert!(!backup.join("dsps").join(&id).join(db::CACHE).exists());
+    assert!(!restored.join("dsps").join(&id).join(db::CACHE).exists());
     // Unknown symlinks still fail closed; only known browser runtime links skip.
     symlink("/tmp/not-profile-data", pulse.join("unexpected-link")).unwrap();
     assert!(operations::backup(&store.config, &external.path().join("unsafe-backup")).is_err());

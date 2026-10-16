@@ -13,7 +13,7 @@ use dispatch_core::{
     foundation::names::{self, Name, name_key},
 };
 use dispatch_cortex as cortex;
-use dispatch_driver_match::{self as driver_match, DriverMatchStore};
+use dispatch_driver_profiles::{self as driver_match, DriverMatchStore};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 

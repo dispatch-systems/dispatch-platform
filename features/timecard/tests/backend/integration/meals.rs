@@ -109,7 +109,10 @@ fn bundled_scope_publication_is_atomic_replayable_and_keeps_the_real_job_identit
 fn install() {
     common::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[&dispatch_driver_match::FEATURE, &dispatch_timecard::FEATURE],
+        &[
+            &dispatch_driver_profiles::FEATURE,
+            &dispatch_timecard::FEATURE,
+        ],
     );
 }
 

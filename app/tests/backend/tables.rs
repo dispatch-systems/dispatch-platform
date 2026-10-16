@@ -76,7 +76,7 @@ fn every_table_has_exactly_one_declared_owner() {
 }
 
 #[test]
-#[should_panic(expected = "dsp/people is declared by driver_match and twice")]
+#[should_panic(expected = "dsp/people is declared by driver_profiles and twice")]
 fn a_registry_where_two_owners_declare_one_table_is_refused() {
     static TWICE: Feature = Feature {
         switch: optional("twice", "Twice", &[]),

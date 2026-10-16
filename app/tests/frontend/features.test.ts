@@ -19,13 +19,13 @@ test('a switch brings its dependencies along, as the backend does', () => {
   // What every DSP has has no switch.
   assert.deepEqual(previewSwitch(all, 'home', false), []);
   // Disabling a provider disables the pages and parts left without one: Timecard keeps all
-  // but its Meal Breaks tab, which alone needs Cortex.
+  // but its Meal Breaks tab, which alone needs Cortex. Driver Match goes with its page.
   assert.deepEqual(previewSwitch(all, 'cortex', false), [
     { feature: 'cortex', enabled: false },
     { feature: 'routes', enabled: false },
     { feature: 'dvic', enabled: false },
     { feature: 'weekly_scorecard', enabled: false },
-    { feature: 'driver_match', enabled: false },
+    { feature: 'driver_profiles', enabled: false },
     { feature: 'daily_performance', enabled: false },
     { feature: 'timecard.meal_breaks', enabled: false },
   ]);

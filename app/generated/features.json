@@ -162,12 +162,22 @@
     },
     "subfeatures": []
   },
-  "driver_match": {
-    "collectors": [],
+  "driver_profiles": {
+    "collectors": [
+      "cortex"
+    ],
     "depends_on": [],
     "frontend": true,
-    "keeps": [],
+    "keeps": [
+      "cortex.associates.collect"
+    ],
     "migrations": {
+      "driver_profiles": [
+        {
+          "id": 1,
+          "name": "baseline"
+        }
+      ],
       "dsp": [
         {
           "id": 7,
@@ -182,12 +192,17 @@
       ]
     },
     "permissions": [
-      "driver_match.manage"
+      "driver_profiles.collect"
     ],
     "slots": {
       "after_collection": true,
       "audit": {
-        "areas": [],
+        "areas": [
+          [
+            "driver_profiles.",
+            "collections"
+          ]
+        ],
         "names": true,
         "subjects": [
           "driver"
@@ -197,14 +212,29 @@
       "commands": null,
       "demo": false,
       "domains": [
+        "driver_profiles",
         "drivers"
       ],
-      "live": [],
+      "live": [
+        "driver_profiles.collect"
+      ],
       "maintenance": [
+        600,
         3600
       ],
-      "people": [],
+      "people": [
+        "driver_profiles"
+      ],
       "routes": [
+        "GET /api/dsp/driver-profiles/status",
+        "POST /api/dsp/driver-profiles/collect",
+        "POST /api/dsp/driver-profiles/jobs/{id}/cancel",
+        "GET /api/dsp/driver-profiles/schedules",
+        "POST /api/dsp/driver-profiles/schedules",
+        "POST /api/dsp/driver-profiles/schedules/preview",
+        "POST /api/dsp/driver-profiles/schedules/{key}",
+        "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
+        "POST /api/dsp/driver-profiles/schedules/{key}/remove",
         "GET /api/dsp/driver-match",
         "GET /api/dsp/driver-match/counts",
         "GET /api/dsp/driver-match/drivers/{code}",
@@ -214,9 +244,15 @@
       ],
       "settings": []
     },
-    "switch": "driver_match",
+    "switch": "driver_profiles",
     "mandatory": false,
     "tables": {
+      "driver_profiles": [
+        "associates",
+        "photos",
+        "roster_runs",
+        "settings"
+      ],
       "dsp": [
         "people",
         "people_apart",
@@ -226,7 +262,9 @@
         "driver_codes"
       ]
     },
-    "subfeatures": []
+    "subfeatures": [
+      "driver_match"
+    ]
   },
   "dvic": {
     "collectors": [
@@ -590,7 +628,7 @@
       "paycom"
     ],
     "depends_on": [
-      "driver_match"
+      "driver_profiles"
     ],
     "frontend": true,
     "keeps": [

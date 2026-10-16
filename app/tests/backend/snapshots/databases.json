@@ -127,5 +127,13 @@
       [2, "hidden_drivers", "ddd0114315e99a2a"],
       [3, "verified_scope", "code"]
     ]
+  },
+  {
+    "name": "driver_profiles",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "21aa6c8f3431a72b"]
+    ]
   }
 ]

@@ -51,7 +51,7 @@ pub fn area_permission(path: &str, post: bool) -> &'static str {
         ("weekly-scorecard", _, true) => "weekly_scorecard.collect",
         #[cfg(feature = "weekly_scorecard")]
         ("weekly-scorecard", ..) => "weekly_scorecard.view",
-        #[cfg(feature = "driver_match")]
+        #[cfg(feature = "driver_profiles")]
         ("driver-match", ..) => "driver_match.manage",
         _ => NOBODY,
     }

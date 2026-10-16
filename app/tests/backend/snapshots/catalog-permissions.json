@@ -15,6 +15,7 @@
     ["weekly_scorecard.view", "View Weekly Scorecard"],
     ["weekly_scorecard.collect", "Collect Weekly Scorecard"],
     ["weekly_scorecard.manage", "Manage Weekly Scorecard"],
+    ["driver_profiles.collect", "Collect Driver Profiles"],
     ["driver_match.manage", "Manage Driver Match"],
     ["members.invite", "Invite Members"],
     ["members.manage", "Manage Members"],

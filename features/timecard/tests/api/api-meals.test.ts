@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MealEmployee } from '../../api/index.js';
-import type { Driver, DriverMatch } from '../../../driver_match/api/index.js';
+import type { Driver, DriverMatch } from '../../../driver_profiles/api/index.js';
 import { checkReply } from '../../../../core/foundation/api/runtime.js';
 import { replies as timecardReplies } from '../../api/runtime.js';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';

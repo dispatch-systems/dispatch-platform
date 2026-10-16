@@ -9,7 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 fn a_scoped_publication_rejects_other_employees_periods_and_incomplete_captures() -> Result<()> {
     crate::testing::install(
         &[&dispatch_paycom::COLLECTOR, &dispatch_cortex::COLLECTOR],
-        &[&dispatch_driver_match::FEATURE, &crate::FEATURE],
+        &[&dispatch_driver_profiles::FEATURE, &crate::FEATURE],
     );
     let root = tempfile::tempdir()?;
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;

@@ -605,7 +605,7 @@ dependencies = [
  "dispatch-cortex",
  "dispatch-daily-performance",
  "dispatch-documents",
- "dispatch-driver-match",
+ "dispatch-driver-profiles",
  "dispatch-dvic",
  "dispatch-home",
  "dispatch-host",
@@ -716,15 +716,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "dispatch-driver-match"
+name = "dispatch-driver-profiles"
 version = "0.0.0"
 dependencies = [
  "chrono",
  "chrono-tz",
  "dispatch-core",
+ "dispatch-cortex",
  "rusqlite",
  "serde",
  "serde_json",
+ "tokio",
  "ts-rs",
 ]
 
@@ -896,7 +898,7 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
- "dispatch-driver-match",
+ "dispatch-driver-profiles",
  "dispatch-paycom",
  "rusqlite",
  "serde",

@@ -17,7 +17,7 @@ fn table() -> Vec<Route> {
     dispatch_core::server::http::table()
 }
 
-const LIVE: &str = "timecard.view|collections.run|dvic.view";
+const LIVE: &str = "timecard.view|collections.run|dvic.view|driver_profiles.collect";
 const WAKES_SCHEDULER: bool = true;
 
 type Row = (&'static str, &'static str, Access, Work, bool);
