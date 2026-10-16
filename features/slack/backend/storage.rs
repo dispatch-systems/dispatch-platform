@@ -417,6 +417,8 @@ impl SlackStore for Store {
         db.transaction(|| {
             db.exec("DELETE FROM slack_members WHERE team_id=?", [team])?;
             db.exec("DELETE FROM slack_integrations WHERE team_id=?", [team])?;
+            db.exec("DELETE FROM slack_import_links WHERE team_id=?", [team])?;
+            db.exec("DELETE FROM slack_imports WHERE team_id=?", [team])?;
             db.exec("DELETE FROM slack_workspaces WHERE team_id=?", [team])
         })?;
         drop(db);

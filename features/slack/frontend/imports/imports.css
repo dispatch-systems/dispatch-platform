@@ -1,0 +1,276 @@
+/* Import Files' section of a workspace's settings. */
+.slack-section {
+  position: relative;
+}
+.slack-section-actions {
+  position: absolute;
+  top: 16px;
+  right: 22px;
+}
+.slack-imports {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.slack-imports-unready {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: 10px;
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 500;
+}
+.slack-imports-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 16px;
+  border: 1px dashed var(--input);
+  border-radius: 10px;
+  text-align: center;
+}
+.slack-imports-empty > span {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--steel-surface);
+  color: var(--steel);
+}
+.slack-import-links,
+.slack-import-files {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  list-style: none;
+}
+.slack-import-links li,
+.slack-import-files li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+}
+.slack-import-links li + li,
+.slack-import-files li + li {
+  border-top: 1px solid var(--border);
+}
+.slack-import-what {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.slack-import-what b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.slack-import-what b svg,
+.slack-import-arrow {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.slack-import-what span,
+.slack-import-when {
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+.slack-import-when {
+  white-space: nowrap;
+}
+.slack-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 200px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slack-folder svg {
+  flex-shrink: 0;
+  color: var(--steel);
+}
+.slack-folder.missing {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+.slack-folder.missing svg {
+  color: var(--warning);
+}
+.slack-import-kind {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.slack-import-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.slack-import-status.saved {
+  color: var(--success);
+}
+.slack-import-status.left {
+  color: var(--warning);
+}
+.slack-import-status.waiting {
+  color: var(--muted-foreground);
+}
+.slack-import-open {
+  color: var(--primary);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* Linking a channel, and choosing a folder. */
+.slack-link-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.slack-link-channel fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.slack-link-channel legend {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.slack-choices,
+.slack-folder-list {
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  list-style: none;
+}
+.slack-choices li + li,
+.slack-folder-list li + li {
+  border-top: 1px solid var(--border);
+}
+.slack-choices li {
+  display: flex;
+  align-items: center;
+}
+.slack-choices li:has(input:checked) {
+  background: var(--selection);
+}
+.slack-choices label {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.slack-choices label.taken {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+.slack-choices label svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.slack-choices label > span {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.slack-choices .slack-chosen {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.slack-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.slack-folder-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.slack-folder-path > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.slack-folder-path b {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.slack-folder-list button {
+  justify-content: flex-start;
+  width: 100%;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13.5px;
+}
+.slack-folder-list button:hover {
+  background: var(--accent);
+}
+.slack-folder-list button svg:last-child {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.slack-folder-list button svg:first-child {
+  color: var(--steel);
+}
+
+@media (max-width: 760px) {
+  .slack-section-actions {
+    position: static;
+  }
+  .slack-import-links li,
+  .slack-import-files li {
+    flex-wrap: wrap;
+  }
+  .slack-import-arrow {
+    display: none;
+  }
+}

@@ -5,7 +5,8 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    SlackAccount, SlackChannel, SlackChannels, SlackInstall, SlackLink, SlackNewLink,
+    SlackAccount, SlackChannel, SlackChannels, SlackFolder, SlackFolders, SlackImportLink,
+    SlackImportStatus, SlackImportedFile, SlackImports, SlackInstall, SlackLink, SlackNewLink,
     SlackWorkspace, WorkspaceStatus,
 };
 
@@ -35,6 +36,8 @@ pub const FEATURE: Feature = Feature {
                 "slack_workspaces",
                 "slack_members",
                 "slack_integrations",
+                "slack_import_links",
+                "slack_imports",
                 "slack_connect_requests",
                 "slack_install_links",
             ],
@@ -73,6 +76,11 @@ pub const FEATURE: Feature = Feature {
                     name: "slack_integrations",
                     apply: Sql(include_str!("migrations/dsp/0004_slack_integrations.sql")),
                 },
+                Migration {
+                    id: 5,
+                    name: "slack_imports",
+                    apply: Sql(include_str!("migrations/dsp/0005_slack_imports.sql")),
+                },
             ],
         },
     ],
@@ -82,7 +90,14 @@ pub const FEATURE: Feature = Feature {
         "SLACK_CLIENT_SECRET",
         "SLACK_SIGNING_SECRET",
     ]],
-    maintenance: &[backend::maintenance::MAINTENANCE],
+    // The hourly check; and Import Files' minute's saving and hourly catching up.
+    maintenance: &[
+        backend::maintenance::MAINTENANCE,
+        backend::imports::queue::MAINTENANCE,
+        backend::imports::catch_up::MAINTENANCE,
+    ],
+    // Its own: Import Files, switched on in each workspace's Integrations.
+    integrations: &[backend::imports::INTEGRATION],
     audit: Audit {
         areas: &[("slack.", Connections)],
         ..Audit::NONE
@@ -109,5 +124,11 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         SlackInstall,
         SlackChannels,
         SlackChannel,
+        SlackImports,
+        SlackImportLink,
+        SlackImportedFile,
+        SlackImportStatus,
+        SlackFolder,
+        SlackFolders,
     )
 }

@@ -22,6 +22,8 @@ CREATE TABLE session_security ( session_hash TEXT PRIMARY KEY REFERENCES session
 CREATE TABLE sessions ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), user_version INTEGER NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE slack_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT, link_hash TEXT, expires_at INTEGER NOT NULL, team_id TEXT, label TEXT, CHECK ((user_id IS NULL) <> (link_hash IS NULL)) );
+CREATE TABLE slack_import_links ( team_id TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT NOT NULL, private INTEGER NOT NULL CHECK (private IN (0, 1)), folder_id TEXT NOT NULL, folder_name TEXT NOT NULL, linked_by TEXT NOT NULL, linked_at INTEGER NOT NULL, PRIMARY KEY (team_id, channel_id) );
+CREATE TABLE slack_imports ( team_id TEXT NOT NULL, file_id TEXT NOT NULL, channel_id TEXT NOT NULL, name TEXT, mime TEXT, size INTEGER, posted_by TEXT, posted_name TEXT, status TEXT NOT NULL CHECK (status IN ('waiting', 'saved', 'too_large', 'skipped', 'gone', 'failed')), reason TEXT, attempts INTEGER NOT NULL DEFAULT 0, due_at INTEGER NOT NULL, saved_id TEXT, saved_link TEXT, noticed_at INTEGER NOT NULL, done_at INTEGER, PRIMARY KEY (team_id, file_id) );
 CREATE TABLE slack_install_links ( id INTEGER PRIMARY KEY CHECK (id = 1), link_hash TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL , label TEXT);
 CREATE TABLE slack_integrations ( team_id TEXT NOT NULL, integration TEXT NOT NULL, turned_on_by TEXT NOT NULL, turned_on_at TEXT NOT NULL, PRIMARY KEY (team_id, integration) );
 CREATE TABLE slack_members ( team_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, display_name TEXT, email TEXT, phone TEXT, active INTEGER NOT NULL CHECK (active IN (0, 1)), guest INTEGER NOT NULL CHECK (guest IN (0, 1)), PRIMARY KEY (team_id, user_id) );
@@ -43,6 +45,8 @@ CREATE INDEX recovery_codes_user ON recovery_codes(user_id);
 CREATE INDEX resets_expiry ON resets(expires_at);
 CREATE UNIQUE INDEX roles_owner ON roles(dsp_id) WHERE system=1;
 CREATE INDEX session_expiry ON sessions(expires_at);
+CREATE INDEX slack_imports_due ON slack_imports (status, due_at);
+CREATE INDEX slack_imports_recent ON slack_imports (team_id, noticed_at);
 CREATE UNIQUE INDEX uniform_variants_size ON uniform_variants (uniform_id, fit, size COLLATE NOCASE) WHERE archived = 0;
 CREATE INDEX uniform_variants_uniform ON uniform_variants (uniform_id, archived, position);
 CREATE UNIQUE INDEX uniforms_name ON uniforms (name COLLATE NOCASE) WHERE archived = 0;

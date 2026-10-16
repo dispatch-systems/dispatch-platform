@@ -1,17 +1,21 @@
-//! Slack, as Dispatch talks to it: installing the app in a workspace, and calling Slack's API
-//! there as the app's bot. Fixture mode's Slack answers in-process instead.
+//! Slack, as Dispatch talks to it: installing the app in a workspace, calling Slack's API there
+//! as the app's bot, and downloading the files it may read. Fixture mode's Slack answers
+//! in-process instead.
 use super::{
     app::{RETURN_PATH, scopes},
     fixture,
 };
+use axum::body::Bytes;
 use dispatch_core::{
     Error, Result,
     db::now,
     foundation::{config::Config, observability},
 };
+use futures_util::{Stream, TryStreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    pin::Pin,
     sync::{LazyLock, OnceLock},
     time::{Duration, Instant},
 };
@@ -25,6 +29,20 @@ static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .build()
         .expect("the TLS backend is built in")
 });
+
+/// Downloads a file's bytes for as long as they take: only connecting is timed, as how long a
+/// file takes depends on its size, and whatever the bytes feed gives up once they stall.
+static DOWNLOADS: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .build()
+        .expect("the TLS backend is built in")
+});
+/// Where Slack keeps the files its API names: a download from anywhere else is refused.
+const FILES_HOST: &str = "https://files.slack.com/";
+
+/// A file's bytes as they arrive from Slack.
+pub type Bytestream = Pin<Box<dyn Stream<Item = std::io::Result<Bytes>> + Send>>;
 
 /// The platform's Slack app: its ID, the secret only the server holds, and the secret Slack
 /// signs its requests with.
@@ -234,6 +252,40 @@ impl Slack {
         }
         unreachable!("the loop returns")
     }
+    /// Downloads the file of type `mime` Slack keeps at `url`, its `url_private_download`, as
+    /// the bot whose token this is: its bytes as they arrive. Slack answers a token that may
+    /// not read the file with its sign-in page, which is refused as a permission the workspace
+    /// hasn't approved yet.
+    pub async fn download(&self, token: &str, url: &str, mime: &str) -> Result<Bytestream> {
+        if let Self::Fixture = self {
+            return fixture::download(url);
+        }
+        if !url.starts_with(FILES_HOST) {
+            return Err(Error::new("slack_refused", 502));
+        }
+        let response = timed("files.download", DOWNLOADS.get(url).bearer_auth(token))
+            .await
+            .map_err(unreachable)?;
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(Error::new("slack_file_gone", 404));
+        }
+        if !status.is_success() {
+            return Err(Error::new("slack_unreachable", 502));
+        }
+        let signing_in = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|kind| kind.to_str().ok())
+            .is_some_and(|kind| kind.starts_with("text/html"))
+            && !mime.starts_with("text/html");
+        if signing_in {
+            return Err(Error::new("slack_needs_update", 409));
+        }
+        Ok(Box::pin(
+            response.bytes_stream().map_err(std::io::Error::other),
+        ))
+    }
     /// Removes the app from the workspace whose token this is. Best effort: Dispatch forgets
     /// the workspace whatever Slack answers.
     pub async fn uninstall(&self, token: &str) {
@@ -336,6 +388,7 @@ fn refusal(reason: &str) -> Error {
         "token_expired" => Error::new("slack_token_expired", 409),
         "missing_scope" => Error::new("slack_needs_update", 409),
         "ratelimited" => Error::new("slack_rate_limited", 503),
+        "file_not_found" | "file_deleted" => Error::new("slack_file_gone", 404),
         _ => Error::new("slack_refused", 502),
     }
 }

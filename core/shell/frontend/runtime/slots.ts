@@ -215,6 +215,11 @@ export type ConnectionIntegration = {
   icon: LucideIcon;
   /** What it does, in a sentence or two. */
   description: string;
+  /**
+   * The line under its name, for the view: where it saves, say. Without one, the card names the
+   * feature it's part of.
+   */
+  byline?: (view: DspView) => string | undefined;
   /** How it's used, step by step. */
   steps: readonly string[];
   /** What Dispatch sees through the connection while it's on. */
