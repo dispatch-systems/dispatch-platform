@@ -10,7 +10,7 @@ suite in sequence:
 
 | Job             | `npm run check:ci -- …`                    | What it proves                                                                |
 | --------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| build           | `build`                                    | The runtime packages: the release backend and the dashboard.                  |
+| build           | `build`                                    | The runtime packages: the release backend and worker, and the dashboard.      |
 | checks          | `checks`                                   | Source privacy/secrets, types, formatting, bundle budget and dashboard logic. |
 | browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                               |
 | smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                   |
@@ -46,7 +46,8 @@ invalid merge commit.
 it. A change goes from `start` (its worktree, branch and scratch folder) through `preview`
 (its link), `api` (signed-in calls to the preview), `check`, `pr` and `ship` to `finish`, which
 removes what it made and waits for Dev; `status` shows the workspace. `dispatchdev build`
-builds the backend through a cache keyed by its exact inputs and the compiler's fingerprint.
+builds the package's two executables, the backend and the support worker, in one Cargo pass,
+through a cache keyed by their exact inputs and the compiler's fingerprint.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
 API tests, one at a time, a line each. Each run builds in a folder of its own under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
@@ -65,8 +66,8 @@ leaves the queue unmerged, with GitHub's reason and the failed jobs of its own q
 has not merged after 90 minutes.
 
 Caches: only `main`'s reach every branch, since the queue's branches are deleted after each
-run. `caches.yml` refreshes them on every push to `main`: the release backend keyed by its
-inputs, the CI and host tools, the assessment fixture, the Playwright browser and the
+run. `caches.yml` refreshes them on every push to `main`: the release executables keyed by
+their inputs, the CI and host tools, the assessment fixture, the Playwright browser and the
 BrowserOS package. A run's own `tools` job builds what its inputs lack for the jobs that start
 later in that run. `tooling/cli/dispatchdev` runs a restored copy only on CI and only from the
 workspace's own `.ci-tools` directory. Anywhere else it builds the binary once for each

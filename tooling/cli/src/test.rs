@@ -188,7 +188,7 @@ impl Run {
         log: &Path,
         env: &[(&str, &OsStr)],
     ) -> Result<(bool, std::time::Duration)> {
-        let fixture = crate::build::built(&self.build, &crate::build::FIXTURE);
+        let fixture = &crate::build::built(&self.build, &crate::build::FIXTURE)[0];
         // A checkout from before the debug package packages the release build in the checkout
         // itself, where the build cache serves it.
         let (command, isolated) = match step.command.as_str() {

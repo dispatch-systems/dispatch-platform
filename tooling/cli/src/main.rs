@@ -46,8 +46,8 @@ A change, from start to finish:
                                    that change something. Who may use it is chosen per key and
                                    app on the Agents page: Off, Read, or Read and change.
 
-  build [--release | --fixture]    Build the backend, or the browser tests' assessment
-        [--cache-key]              fixture, reusing a build of identical inputs.
+  build [--release | --fixture]    Build the backend and support worker, or the browser tests'
+        [--cache-key]              assessment fixture, reusing a build of identical inputs.
   help                             Show this.
 
 test, check, build and new work on the checkout the current directory is in, or on --root
