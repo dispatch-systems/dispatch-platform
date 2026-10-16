@@ -1,7 +1,8 @@
 # CI tooling
 
-One run per change, in the merge queue, on the exact squash commit the queue will push. Every
-standard suite runs every time; nothing runs on the PR itself. The one real wall-clock
+Each change is checked in the merge queue, on the exact squash commit the queue will push, and
+before that on its branch while its preview is tried (`dispatchdev ci`, below). Every standard
+suite runs every time; nothing runs on the PR itself. The one real wall-clock
 native timeout sentinel runs separately each week and on manual dispatch through
 `.github/workflows/native-timeouts.yml`, which fails if that case is absent or skipped.
 `.github/workflows/checks.yml` is the

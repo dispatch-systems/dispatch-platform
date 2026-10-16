@@ -1,13 +1,47 @@
 //! `dispatchdev status`: the workspace at a glance: each worktree with its branch, state,
-//! build and preview, the open PRs, what Dev runs, and the free disk space.
+//! build, preview and newest `dispatchdev ci` run, the open PRs, what Dev runs, and the free
+//! disk space.
 use crate::{
     REPOSITORY, Result, Runner,
     workspace::{self, Workspace},
 };
 use serde_json::Value;
 
+/// The recent runs of the checks outside the queue, newest first; none when GitHub doesn't
+/// answer.
+fn branch_runs(runner: &dyn Runner) -> Vec<Value> {
+    let endpoint = format!(
+        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=workflow_dispatch&per_page=100"
+    );
+    workspace::text(runner, &["gh", "api", &endpoint], None)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|runs| runs["workflow_runs"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// Where the newest of `branch`'s runs stands, and whether it checked `head`.
+fn ci_note(runs: &[Value], branch: &str, head: &str) -> Option<String> {
+    let run = runs
+        .iter()
+        .filter(|run| run["head_branch"] == branch)
+        .max_by_key(|run| run["id"].as_u64().unwrap_or(0))?;
+    let state = match (run["status"].as_str(), run["conclusion"].as_str()) {
+        (Some("completed"), Some("success")) => "passed",
+        (Some("completed"), Some("cancelled")) => "cancelled",
+        (Some("completed"), _) => "failed",
+        _ => "running",
+    };
+    Some(if run["head_sha"] == head {
+        format!("ci {state}")
+    } else {
+        format!("ci {state} on an older commit")
+    })
+}
+
 pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
     let previews = crate::preview::running(runner).unwrap_or_default();
+    let runs = branch_runs(runner);
     println!("Worktrees:");
     let names = ws.worktrees()?;
     if names.is_empty() {
@@ -30,6 +64,11 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
         {
             let commits = if ahead == "1" { "commit" } else { "commits" };
             notes.push(format!("{ahead} {commits} ahead of main"));
+        }
+        if let Ok(head) = git(&["rev-parse", "HEAD"])
+            && let Some(note) = ci_note(&runs, &branch, &head)
+        {
+            notes.push(note);
         }
         if let Some(bytes) = workspace::size(runner, &path.join("target")) {
             notes.push(format!("build {}", workspace::human(bytes)));
@@ -114,4 +153,26 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
         workspace::human(workspace::free_bytes(&ws.root)?)
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_worktree_shows_its_branch_newest_run_and_whether_it_checked_the_head() {
+        let runs = [
+            json!({"id": 1, "head_branch": "a", "head_sha": "old", "status": "completed", "conclusion": "failure"}),
+            json!({"id": 2, "head_branch": "a", "head_sha": "new", "status": "completed", "conclusion": "success"}),
+            json!({"id": 3, "head_branch": "b", "head_sha": "x", "status": "in_progress", "conclusion": null}),
+        ];
+        assert_eq!(ci_note(&runs, "a", "new").as_deref(), Some("ci passed"));
+        assert_eq!(
+            ci_note(&runs, "a", "newer").as_deref(),
+            Some("ci passed on an older commit")
+        );
+        assert_eq!(ci_note(&runs, "b", "x").as_deref(), Some("ci running"));
+        assert_eq!(ci_note(&runs, "c", "y"), None);
+    }
 }

@@ -24,8 +24,8 @@ A change, from start to finish:
                                    its own, deleted when it ends unless --keep.
   check [--plan] [--keep]          Before a push: what stops the branch, the rule checks and
         [--allow-concurrent]       clippy, which passes again without running on Rust inputs
-                                   it passed on; the merge queue runs the tests. --plan only
-                                   names them.
+                                   it passed on; ci and the merge queue run the tests.
+                                   --plan only names them.
   ci <name>                        The full checks on GitHub on its committed branch, while
                                    its preview is tried: push it, run them without the gate,
                                    and follow them to the first failure. ship stops on a
