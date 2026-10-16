@@ -13,12 +13,25 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   and taking it out, and making and cancelling the install link, are for those who hold
   `connections.manage` (Manage DSP Connections), which exists while Slack is on, as they are
   for Paycom's, Cortex's and Google Drive's. `slack.manage` (Manage Slack) is for what Dispatch
-  does in each workspace, apart from its connection. Like every permission, each starts off
-  for every role; the DSP's owner turns it on.
+  does in each workspace, apart from its connection: its settings. Those who hold it alone see
+  the workspaces' cards under DSP Connections too, with Settings and nothing else. Like every
+  permission, each starts off for every role; the DSP's owner turns it on.
 - **Cards:** under DSP Connections on Settings' Connections, each workspace has a card of its
   own, under its name: whether it works, its name in Slack, who connected it and when, and what
   can be done to it. The install link has one while it works, and an install Slack just sent
   the browser back from has one while it finishes. A DSP with none has no Slack card at all.
+- **Settings:** each workspace's Settings opens its settings, a page of their own (`slack`,
+  with the workspace and the section open in its address, outside the sidebar, Settings lit
+  while it's open): the workspace at the top, and its sections down the side, one shown at a
+  time. They're Slack's own, Channels, and those other features add for each workspace through
+  the `connectionSections` slot under the connection `slack`, each drawn for the workspace's
+  ID. A feature switched off for the DSP takes its sections with it.
+- **Channels:** the workspace's public channels and the private ones someone invited Dispatch to
+  in Slack, by name, those Dispatch joined apart from the rest; Slack shows the bot only the
+  channels it's in, so being in one is all the access Dispatch has there. Join has Dispatch join
+  a public channel, and Leave, leave any channel; a private one it left goes from the list until
+  someone invites it back. Up to 2,000 channels are read, 200 at a time, each time the
+  section opens. The activity log records each, as `#<channel> in <workspace>`.
 - **Names:** a workspace's name in Dispatch is the one it was added with, if it was given one,
   else its name in Slack, which follows Slack's. Rename on its card changes it, and blank, has
   it go by its name in Slack again. Up to 60 characters.
@@ -88,11 +101,16 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   of its own, like `home.rs`, reached from its line in `inbound.rs`'s routing tables:
   `on_event` for events, `on_interaction` for buttons, forms and shortcuts. Then
   `dispatch-backend slack-manifest` prints the app to paste into Slack. The app asks for
-  `team:read` alone today, to keep each workspace's name as Slack has it.
+  `team:read`, to keep each workspace's name as Slack has it, and for the channels' settings
+  `channels:read` and `groups:read`, to list them, `channels:join`, to join public ones, and
+  `channels:manage` and `groups:write`, to leave them.
 - **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
   install link; `POST /api/dsp/slack/connect` (with `team`, to reconnect or update one),
   `…/connect/finish`, `…/workspaces/{team}/rename`, `…/workspaces/{team}/disconnect`, `…/link`
-  and `…/link/cancel`; `…/connect` and `…/link` take the workspace's `label`. Public:
+  and `…/link/cancel`; `…/connect` and `…/link` take the workspace's `label`. The account is
+  read behind `slack.manage` too. Behind `slack.manage`: `GET …/workspaces/{team}/channels`,
+  and `POST …/workspaces/{team}/channels/{channel}/join` and `…/leave`, each answering with the
+  channel. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
 - **Data:** `slack_workspaces` (each with its name in Dispatch, `label`),
@@ -107,7 +125,10 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
 - **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as
   the code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet,
   or the one being reconnected. Its tokens name their workspace; one whose ID holds `GONE` is
-  refused. It signs with `fixture-signing-secret`, so tests send requests as Slack would.
+  refused. Each workspace has the same channels, `general`, `dispatch`, `photos`, `random` and
+  the private `managers`, the bot in `general` and `managers` to start, and what it joins and
+  leaves is kept for the server's run. It signs with `fixture-signing-secret`, so tests send
+  requests as Slack would.
 
 ## Slack's app
 

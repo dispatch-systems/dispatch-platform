@@ -1,22 +1,33 @@
+import { Settings2 } from 'lucide-react';
 import type { SlackWorkspace } from '../api/client.js';
 import { Badge } from '../../../core/shell/frontend/ui/index.js';
 import { day } from './day.js';
 import { SlackCard } from './SlackCard.js';
 
-// One of the DSP's workspaces, on its own card, with what can be done to it.
+// One of the DSP's workspaces, on its own card, with what the member may do to it: its settings,
+// for those who manage Slack, and the rest for those who manage the DSP's connections.
 
 export function WorkspaceCard({
   workspace,
   timeZone,
+  manages,
+  configures,
   busy,
+  settings,
   install,
   rename,
   disconnect,
 }: {
   workspace: SlackWorkspace;
   timeZone: string;
+  /** Whether the member manages the DSP's connections. */
+  manages: boolean;
+  /** Whether the member manages Slack, and so its settings. */
+  configures: boolean;
   /** Whether an install is under way, which a reconnect or update waits for. */
   busy: boolean;
+  /** Where its settings are, for those who manage Slack. */
+  settings: string;
   /** Reconnects or updates the workspace `team`. */
   install: (team: string) => void;
   rename: (workspace: SlackWorkspace) => void;
@@ -28,17 +39,27 @@ export function WorkspaceCard({
       title={workspace.label ?? workspace.name}
       actions={
         <>
-          {(broken || workspace.needsUpdate) && (
+          {manages && (broken || workspace.needsUpdate) && (
             <button className="primary" disabled={busy} onClick={() => install(workspace.teamId)}>
               {broken ? 'Reconnect' : 'Update'}
             </button>
           )}
-          <button className="text-button" onClick={() => rename(workspace)}>
-            Rename
-          </button>
-          <button className="text-button" onClick={() => disconnect(workspace)}>
-            Disconnect
-          </button>
+          {configures && (
+            <a className="slack-link-button" href={settings}>
+              <Settings2 size={16} />
+              Settings
+            </a>
+          )}
+          {manages && (
+            <>
+              <button className="text-button" onClick={() => rename(workspace)}>
+                Rename
+              </button>
+              <button className="text-button" onClick={() => disconnect(workspace)}>
+                Disconnect
+              </button>
+            </>
+          )}
         </>
       }
     >

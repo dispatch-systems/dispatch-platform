@@ -199,7 +199,7 @@ impl Slack {
     /// Slack says, up to half a minute, and tries again, twice at most.
     pub async fn call(&self, token: &str, method: &str, args: &Value) -> Result<Value> {
         if let Self::Fixture = self {
-            return fixture::call(token, method);
+            return fixture::call(token, method, args);
         }
         let fields: Vec<(String, String)> = args
             .as_object()

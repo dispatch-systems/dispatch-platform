@@ -1,6 +1,7 @@
 import type { AuditPhrases, AuditWording } from '../../../core/shell/frontend/runtime/slots.js';
 
-// How Slack's events read in the platform owner's audit log: the workspace each was about.
+// How Slack's events read in the platform owner's audit log: the workspace each was about, or
+// the channel, `#<channel> in <workspace>`.
 
 const phrases: AuditPhrases = {
   'slack.connected': (e, { strong }) => ['connected Slack workspace ', strong(e.detail)],
@@ -21,6 +22,11 @@ const phrases: AuditPhrases = {
     'found that Slack stopped accepting the connection to ',
     strong(e.detail),
   ],
+  'slack.channel_joined': (e, { strong }) => ['added Dispatch to Slack channel ', strong(e.detail)],
+  'slack.channel_left': (e, { strong }) => [
+    'took Dispatch out of Slack channel ',
+    strong(e.detail),
+  ],
   'slack.link_created': () => ['made a Slack install link'],
   'slack.link_cancelled': () => ['cancelled the Slack install link'],
 };
@@ -32,6 +38,8 @@ export const wording: AuditWording = {
     'slack.reconnected',
     'slack.renamed',
     'slack.disconnected',
+    'slack.channel_joined',
+    'slack.channel_left',
     'slack.link_created',
     'slack.link_cancelled',
   ],

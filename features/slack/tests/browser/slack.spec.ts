@@ -30,6 +30,16 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await expect(page).toHaveURL(/tab=connections/);
   expect(page.url()).not.toContain('slackCode');
 
+  // Its settings, on a page of their own: Dispatch joins a channel there.
+  await named.getByRole('link', { name: 'Settings' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Dispatch Ops' })).toBeVisible();
+  await page.getByRole('button', { name: 'Join photos' }).click();
+  await expect(page.getByRole('list', { name: 'Joined', exact: true })).toContainText('photos');
+  await page
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'Connections' })
+    .click();
+
   // Without a name, it goes by its name in Slack.
   await add();
   await expect(workspaces.getByRole('heading', { name: 'Drivers' })).toBeVisible();

@@ -181,6 +181,58 @@ test('a workspace belongs to one DSP, and a member connecting at its address com
   assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), [workspace.name]);
 });
 
+test("those who manage Slack alone have Dispatch join and leave a workspace's channels", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const member = await f.client(demo.member);
+  const north = member.session.dsps[0] as { id: string; name: string };
+  await owner.select(north.id);
+  const [workspace] = (await connect(owner)).value.workspaces;
+  // Every permission starts off, so the owner lets the member's role manage Slack, and nothing
+  // of the DSP's connections.
+  const roles: { id: string; name: string; permissions: string[] }[] = (
+    await owner.get('/api/dsp/roles')
+  ).value;
+  const role = roles.find((each) => each.name === 'Member')!;
+  await owner.post(`/api/dsp/roles/${role.id}`, {
+    name: role.name,
+    permissions: [...role.permissions, 'slack.manage'],
+  });
+  await member.select(north.id);
+  assert.deepEqual(names(await member.read('/api/dsp/slack/account')), [workspace.name]);
+
+  const channels = `/api/dsp/slack/workspaces/${workspace.teamId}/channels`;
+  type Channel = { id: string; name: string; private: boolean; member: boolean };
+  const listed: Channel[] = (await member.read(channels)).channels;
+  assert.deepEqual(
+    listed.map((channel) => [channel.name, channel.private, channel.member]),
+    [
+      ['dispatch', false, false],
+      ['general', false, true],
+      ['managers', true, true],
+      ['photos', false, false],
+      ['random', false, false],
+    ],
+  );
+  const id = (name: string) => listed.find((channel) => channel.name === name)!.id;
+  // It joins a public channel, and leaves a private one, which then goes from the list.
+  const joined = await member.post(`${channels}/${id('photos')}/join`);
+  assert.equal(joined.status, 200, joined.body);
+  assert.equal(joined.value.member, true);
+  const left = await member.post(`${channels}/${id('managers')}/leave`);
+  assert.equal(left.value.member, false);
+  const now: Channel[] = (await member.read(channels)).channels;
+  assert.deepEqual(
+    now.filter((channel) => channel.member).map((channel) => channel.name),
+    ['general', 'photos'],
+  );
+  assert.equal(
+    now.some((channel) => channel.name === 'managers'),
+    false,
+  );
+});
+
 test('the install link adds one workspace, once, for whoever opens it', async (t) => {
   const f = await fixture();
   t.after(f.close);

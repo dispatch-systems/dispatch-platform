@@ -5,11 +5,13 @@
 //! - `slack`: talking to Slack, and `fixture`, fixture mode's stand-in for it.
 //! - `bot`: the app's bot in one DSP's workspace, through which everything acts in Slack.
 //! - `connection` and `link`: adding the app to a DSP's workspaces, and taking it out.
+//! - `channels`: the channels of a workspace Dispatch is in, on its settings.
 //! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`.
 //! - `storage`, `maintenance` and `pages`: what's kept, the hourly check, and the install
 //!   link's own page.
 pub(crate) mod app;
 pub(crate) mod bot;
+pub(crate) mod channels;
 pub(crate) mod connection;
 pub(crate) mod fixture;
 pub(crate) mod home;
