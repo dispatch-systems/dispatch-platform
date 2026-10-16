@@ -1,9 +1,11 @@
 //! `dispatchdev`: developing Dispatch from this machine and in CI. It takes a change from its
 //! worktree and preview through its checks and PR to Dev, builds the backend and support worker
-//! through an exact-input cache, and ships PRs through the merge queue.
+//! through an exact-input cache, runs the checks on a change's branch, and ships PRs through
+//! the merge queue.
 pub mod api;
 pub mod build;
 pub mod check;
+pub mod ci;
 pub mod finish;
 pub mod logs;
 pub mod observation;

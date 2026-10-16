@@ -4,7 +4,9 @@ name: Platform checks
 # Nothing runs on the PR itself. The gate publishes the tested build, which Dev installs and a
 # release stamps. A job that fails the gate tells the queue at once (fail-queue-entry), so the
 # PR leaves it without waiting for the rest of the run. Manual runs check a branch, or one
-# suite of it, on GitHub instead of on the machine that serves Dev.
+# suite of it, on GitHub instead of on the machine that serves Dev. `dispatchdev ci` runs one
+# on a change's branch while its preview is tried, without the gate: so it publishes nothing,
+# and its PR's head carries no `platform` check but the one queue admission reads.
 on:
   merge_group:
     types: [checks_requested]
@@ -19,6 +21,10 @@ on:
         description: 'Browser suite only: spec files or a test name to run alone, as for npm run test:ui'
         type: string
         default: ''
+      gate:
+        description: Attest the build and judge the run with the gate, which publishes it. A change's branch run has neither.
+        type: boolean
+        default: true
 permissions:
   contents: read
   actions: read
@@ -71,6 +77,7 @@ jobs:
           tar -czf dispatch-dev.tar.gz -C .build .
           echo "name=dispatch-candidate-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - name: Attest the runtime package
+        if: github.event_name != 'workflow_dispatch' || inputs.gate
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
         with:
           subject-path: dispatch-dev.tar.gz
@@ -420,8 +427,10 @@ jobs:
   # verified build under the commit's name: Dev installs it and a release stamps it. A
   # manual run of one suite has no gate, so nothing partial is ever published.
   platform:
+    # Named apart in a run without the gate, since even skipped it would report a check.
+    name: ${{ (github.event_name != 'workflow_dispatch' || (inputs.gate && inputs.suite == 'all')) && 'platform' || 'no gate' }}
     needs: [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories]
-    if: always() && (inputs.suite || 'all') == 'all'
+    if: always() && (inputs.suite || 'all') == 'all' && (github.event_name != 'workflow_dispatch' || inputs.gate)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

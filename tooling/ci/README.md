@@ -58,10 +58,16 @@ weight, a soft memory ceiling and a high out-of-memory score, so Dev keeps prior
 clippy the same way. A clippy pass is kept, in the repository's shared Git folder, for the
 Rust inputs it ran on, so clippy passes again without running until one of them changes;
 `--plan` only names them.
+`dispatchdev ci <name>` runs the same checks earlier, on a change's committed branch while its
+preview is tried, so the queue run is rarely the first to fail. It pushes the branch and starts
+`checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed so it
+reports no `platform` check on the PR's head, is skipped. It follows the run every 10 seconds
+and stops at the first failed job; a newer run of the branch replaces it.
 `dispatchdev ship <number>` reads the PR from GitHub's API every 10 seconds, adds it to the
 merge queue once its admission check passed and GitHub knows it merges cleanly, and waits
 until GitHub merges it, printing the squash commit. A newer push is queued
-in its turn. It stops with the reason when the PR conflicts with `main`, is a draft, closes,
+in its turn. A head whose branch run failed isn't queued, and a branch run still going is
+cancelled when the PR is, since the queue runs the checks again. It stops with the reason when the PR conflicts with `main`, is a draft, closes,
 leaves the queue unmerged, with GitHub's reason and the failed jobs of its own queue run, or
 has not merged after 90 minutes.
 

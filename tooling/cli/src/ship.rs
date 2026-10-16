@@ -1,6 +1,8 @@
 //! `dispatchdev ship <number>`: add a PR to the merge queue as soon as GitHub admits it and
 //! wait until GitHub merges it. The queue runs the checks on the exact squash commit it will
-//! push, so nothing but the admission check runs on the PR itself. Everything is read from
+//! push, so nothing but the admission check runs on the PR itself. A head that failed the
+//! checks `dispatchdev ci` ran on its branch is not queued, and those still running are
+//! cancelled when it is. Everything is read from
 //! GitHub's API, never from a command's text: a newer push is queued in its turn, and the wait
 //! stops with the reason when the PR closes or leaves the queue unmerged, naming the failed
 //! jobs of its queue run. A PR labelled `ai-review` is queued only once CodeRabbit reviewed it
@@ -9,7 +11,7 @@ use crate::{REPOSITORY, Result, Runner};
 use serde_json::Value;
 
 /// Seconds between looks at the PR.
-const PAUSE: u64 = 10;
+pub(crate) const PAUSE: u64 = 10;
 /// The looks that fit in `seconds`.
 const fn looks(seconds: u64) -> u32 {
     (seconds / PAUSE) as u32
@@ -18,7 +20,7 @@ const fn looks(seconds: u64) -> u32 {
 const LOOKS: u32 = looks(90 * 60);
 /// Consecutive failed API calls, or refused additions to the queue, before giving up: about
 /// a minute and a half.
-const ATTEMPTS: u32 = looks(100);
+pub(crate) const ATTEMPTS: u32 = looks(100);
 /// Looks spent waiting for CodeRabbit before giving up: 20 minutes in all, and 5 while it has
 /// not started.
 const REVIEW_LOOKS: u32 = looks(20 * 60);
@@ -58,7 +60,7 @@ fn graphql(runner: &dyn Runner, query: &str, variables: &[String]) -> Result<Val
     Ok(reply["data"].clone())
 }
 
-fn rest(runner: &dyn Runner, endpoint: &str) -> Result<Value> {
+pub(crate) fn rest(runner: &dyn Runner, endpoint: &str) -> Result<Value> {
     let endpoint = format!("repos/{REPOSITORY}/{endpoint}");
     Ok(serde_json::from_slice(&runner.command(
         &["gh", "api", &endpoint],
@@ -254,13 +256,30 @@ fn queue_run(runner: &dyn Runner, number: u64) -> Option<Value> {
         .cloned()
 }
 
+/// The newest run of the checks on `head` outside the queue: the one `dispatchdev ci` started
+/// on the PR's branch. Any API trouble here only costs the look, never the verdict.
+fn branch_run(runner: &dyn Runner, head: &str) -> Option<Value> {
+    let runs = rest(
+        runner,
+        &format!(
+            "actions/workflows/checks.yml/runs?event=workflow_dispatch&head_sha={head}&per_page=20"
+        ),
+    )
+    .ok()?;
+    runs["workflow_runs"]
+        .as_array()?
+        .iter()
+        .max_by_key(|run| run["id"].as_u64().unwrap_or(0))
+        .cloned()
+}
+
 /// Jobs of `checks.yml` that may fail without failing the gate, its `continue-on-error` jobs;
 /// `tooling/tests/build_pipeline_test.py` holds this list to the workflow.
 const ADVISORY: &[&str] = &["tools"];
 
 /// The failed jobs of `run`, as "name: conclusion link" lines. With `gating`, only the
 /// failures that already fail the gate, while the rest of the run is still going.
-fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec<String> {
+pub(crate) fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec<String> {
     let Ok(jobs) = rest(
         runner,
         &format!("actions/runs/{}/jobs?per_page=100", run["id"]),
@@ -356,6 +375,8 @@ pub fn run(
     let mut outside = 0;
     // The newest queue run of this PR before this run queued it: only a later run is its own.
     let mut earlier: Option<u64> = None;
+    // The head whose checks on the branch were last looked at.
+    let mut looked: Option<String> = None;
     let (mut seen, mut unanswered, mut refused) = (false, 0, 0);
     // Looks spent waiting for CodeRabbit: in all, since it last reported a running review, and
     // on its answers to our replies.
@@ -596,6 +617,40 @@ pub fn run(
         }
         let id = pr["id"].as_str().unwrap_or("");
         let head = head.as_str().unwrap_or("");
+        // The checks `dispatchdev ci` ran on this head: a failure stops it before it costs a
+        // queue run, and a run still going gives way to the queue's.
+        if looked.as_deref() != Some(head) {
+            looked = Some(head.into());
+            if let Some(run) = branch_run(runner, head) {
+                let done = run["status"] == "completed";
+                let failed = if done && run["conclusion"] != "failure" {
+                    vec![]
+                } else {
+                    failed_jobs(runner, &run, !done)
+                };
+                if !failed.is_empty() {
+                    return Err(format!(
+                        "The checks on the branch failed on {} of #{number}. Fix them, push and ship it again. Failed jobs{}:\n- {}",
+                        &head[..head.len().min(7)],
+                        if done { "" } else { " so far" },
+                        failed.join("\n- ")
+                    )
+                    .into());
+                }
+                if !done {
+                    let cancel = format!("repos/{REPOSITORY}/actions/runs/{}/cancel", run["id"]);
+                    if runner
+                        .command(&["gh", "api", "-X", "POST", &cancel], None, 60)
+                        .is_ok()
+                    {
+                        note(format!(
+                            "Cancelled the checks still running on the branch at {}; the queue runs them on its squash commit",
+                            &head[..head.len().min(7)]
+                        ));
+                    }
+                }
+            }
+        }
         match graphql(
             runner,
             ENQUEUE,
@@ -679,11 +734,16 @@ mod tests {
         queued: RefCell<Vec<String>>,
         rest: RefCell<BTreeMap<String, VecDeque<Value>>>,
         notices: RefCell<Option<Value>>,
+        cancelled: RefCell<Vec<String>>,
     }
     impl Runner for GitHub {
         fn command(&self, args: &[&str], _cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
             assert_eq!(&args[..2], ["gh", "api"]);
             assert_eq!(timeout, 60);
+            if args.get(2..4) == Some(&["-X", "POST"][..]) {
+                self.cancelled.borrow_mut().push(args[4].into());
+                return Ok(vec![]);
+            }
             if let Some(endpoint) = args[2].strip_prefix(&format!("repos/{REPOSITORY}/")) {
                 assert_eq!(args.len(), 3);
                 let mut rest = self.rest.borrow_mut();
@@ -866,6 +926,54 @@ mod tests {
                 "Added #7 to the merge queue at 1111111; the queue runs the checks on its squash commit",
                 "#7 is in the merge queue at position 1: awaiting_checks",
             ]
+        );
+    }
+
+    #[test]
+    fn a_head_that_failed_its_branch_checks_is_not_queued_and_running_ones_give_way() {
+        let branch = format!(
+            "actions/workflows/checks.yml/runs?event=workflow_dispatch&head_sha={OLD}&per_page=20"
+        );
+        // Failed on the branch: it stops before costing a queue run, naming the failures.
+        let failed = github(vec![open(OLD)]);
+        failed.rest.borrow_mut().extend([
+            (
+                branch.clone(),
+                VecDeque::from([json!({"workflow_runs":[
+                    {"id":4,"status":"completed","conclusion":"success"},
+                    {"id":5,"status":"completed","conclusion":"failure"}]})]),
+            ),
+            (
+                "actions/runs/5/jobs?per_page=100".into(),
+                VecDeque::from([jobs()]),
+            ),
+        ]);
+        let error = ship(&failed).0.unwrap_err().to_string();
+        assert!(
+            error.starts_with("The checks on the branch failed on 1111111 of #7.")
+                && error.contains("core: failure https://github.com/job/2"),
+            "{error}"
+        );
+        assert!(failed.queued.borrow().is_empty());
+        // Still running with nothing failed: queued, and the branch run cancelled.
+        let running_run = github(vec![open(OLD), in_queue(OLD), merged(OLD)]);
+        running_run.rest.borrow_mut().extend([
+            (
+                branch,
+                VecDeque::from([
+                    json!({"workflow_runs":[{"id":6,"status":"in_progress","conclusion":null}]}),
+                ]),
+            ),
+            (
+                "actions/runs/6/jobs?per_page=100".into(),
+                VecDeque::from([running()]),
+            ),
+        ]);
+        assert_eq!(ship(&running_run).0.unwrap(), "3333333");
+        assert_eq!(*running_run.queued.borrow(), [format!("head={OLD}")]);
+        assert_eq!(
+            *running_run.cancelled.borrow(),
+            [format!("repos/{REPOSITORY}/actions/runs/6/cancel")]
         );
     }
 
