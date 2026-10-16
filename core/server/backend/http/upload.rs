@@ -43,6 +43,25 @@ impl Upload {
             .map_err(|_| Error::new("uploads_busy", 503))?;
         Ok(Self { length, body, turn })
     }
+    /// A file's bytes from elsewhere than a request, as a feature bringing files in downloads
+    /// them: `length` bytes from `bytes`, at most `limit`. It waits its turn among the server's
+    /// uploads rather than being refused, as nobody waits on it.
+    pub async fn streamed(
+        length: u64,
+        limit: u64,
+        bytes: impl Stream<Item = std::io::Result<Bytes>> + Send + 'static,
+    ) -> Result<Self> {
+        ensure(length <= limit, "upload_too_large", 413)?;
+        let turn = UPLOADS
+            .acquire()
+            .await
+            .map_err(|_| Error::new("uploads_busy", 503))?;
+        Ok(Self {
+            length,
+            body: Body::from_stream(bytes),
+            turn,
+        })
+    }
     /// The bytes as they arrive. The stream fails if they stall for a minute or don't come
     /// to the length the client stated, so whatever it feeds never keeps a partial file.
     pub fn stream(self) -> impl Stream<Item = std::io::Result<Bytes>> + Send + 'static {

@@ -3,6 +3,7 @@
 pub mod integrations;
 pub mod people;
 pub(crate) mod retirement;
+pub mod services;
 
 use crate::{
     Code, Result, State,
@@ -22,6 +23,7 @@ use crate::{
 use integrations::Integration;
 use people::{Directory, People};
 use serde_json::Value;
+use services::Services;
 use std::{
     any::Any,
     future::Future,
@@ -309,8 +311,8 @@ impl Registry {
     /// numbered from 1 without a gap or a repeat, every table is declared once, every
     /// domain is declared once and before it is named, every audit prefix is a dotted name
     /// listed under an area other than settings, each kind of data that names people has a
-    /// place of its own, every integration is as its slot asks, and the agents' piece's own
-    /// declarations are as it asks.
+    /// place of its own, every integration is as its slot asks, each service is offered by one
+    /// feature at most, and the agents' piece's own declarations are as it asks.
     pub fn check(&self) {
         let mut named = std::collections::BTreeSet::new();
         for feature in self.features {
@@ -426,6 +428,7 @@ impl Registry {
             }
         }
         integrations::check(self.features);
+        services::check(self.features);
         let answering = self
             .features
             .iter()
@@ -669,6 +672,9 @@ pub struct Feature {
     /// What it does through other features' connections, which their settings switch on and
     /// off for each account: `integrations::Integration` says how to declare one.
     pub integrations: &'static [Integration],
+    /// What it offers every other feature, each through a contract in `services`: one feature
+    /// at most offers each.
+    pub services: Services,
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -702,6 +708,7 @@ pub const fn feature(name: &'static str) -> Feature {
         people: &[],
         directory: None,
         integrations: &[],
+        services: Services::NONE,
     }
 }
 

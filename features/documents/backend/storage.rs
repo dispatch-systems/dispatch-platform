@@ -6,6 +6,7 @@ use dispatch_core::{
     Error, Result,
     db::{self, Db, FromRow, Row, Store, iso, migrations::add_column, now},
     foundation::crypto,
+    manifest::services::files::Author,
 };
 use rusqlite::params;
 use serde_json::json;
@@ -25,6 +26,13 @@ pub(crate) fn add_full_access(db: &Db) -> Result<()> {
         "full_access",
         "INTEGER NOT NULL DEFAULT 0",
     )
+}
+
+/// Documents' migration 3: the name of who added a file, or last changed it, when it came from
+/// someone who isn't a member, as a Slack member no member matches, whose user ID is then blank.
+pub(crate) fn add_outside_names(db: &Db) -> Result<()> {
+    add_column(db, "documents_files", "added_name", "TEXT")?;
+    add_column(db, "documents_files", "changed_name", "TEXT")
 }
 
 /// The DSP's Google connection, as stored.
@@ -57,11 +65,39 @@ impl FromRow for Connection {
     }
 }
 
-/// Who added a file through Dispatch, and who last changed it there, by their user IDs.
+/// Who added a file through Dispatch, and who last changed it there.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Record {
-    pub added_by: String,
-    pub changed_by: String,
+    pub added_by: Author,
+    pub changed_by: Author,
+}
+impl FromRow for Record {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        let author = |id: &str, name: &str| -> Result<Author> {
+            Ok(match row.get::<Option<String>>(name)? {
+                Some(name) => Author::Named(name),
+                None => Author::Member(row.get(id)?),
+            })
+        };
+        Ok(Self {
+            added_by: author("added_by", "added_name")?,
+            changed_by: author("changed_by", "changed_name")?,
+        })
+    }
+}
+/// A file's record, with the file's ID.
+struct Recorded(String, Record);
+impl FromRow for Recorded {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self(row.get("file_id")?, Record::from_row(row)?))
+    }
+}
+/// How a record keeps who: a member's user ID, or else a blank one and their name.
+fn columns(by: &Author) -> (&str, Option<&str>) {
+    match by {
+        Author::Member(user) => (user, None),
+        Author::Named(name) => ("", Some(name)),
+    }
 }
 
 /// How sharing the main folder with a member went.
@@ -132,8 +168,12 @@ pub trait DocumentsStore {
     fn remove_documents_connection(&self, dsp: &str) -> Result<()>;
     /// What Dispatch recorded of each file it made or changed, by file.
     fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>>;
-    /// Records that `user` added the file, or changed it if it was added before.
-    fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()>;
+    /// Records that the member `user` added the file, or changed it if it was added before.
+    fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()> {
+        self.record_documents_change_by(dsp, file, &Author::Member(user.to_owned()))
+    }
+    /// Records that `by` added the file, or changed it if it was added before.
+    fn record_documents_change_by(&self, dsp: &str, file: &str, by: &Author) -> Result<()>;
     /// Every member Documents shares with, or tried to.
     fn documents_people(&self, dsp: &str) -> Result<Vec<Person>>;
     /// Keeps how sharing with a member went.
@@ -285,22 +325,13 @@ impl DocumentsStore for Store {
         Ok(())
     }
     fn documents_records(&self, dsp: &str) -> Result<BTreeMap<String, Record>> {
-        let db = self.dsp(dsp)?;
-        let rows: Vec<(String, String, String)> = db.query_as(
-            "SELECT file_id,added_by,changed_by FROM documents_files",
+        let rows: Vec<Recorded> = self.dsp(dsp)?.query_as(
+            "SELECT file_id,added_by,added_name,changed_by,changed_name FROM documents_files",
             [],
         )?;
         Ok(rows
             .into_iter()
-            .map(|(file, added_by, changed_by)| {
-                (
-                    file,
-                    Record {
-                        added_by,
-                        changed_by,
-                    },
-                )
-            })
+            .map(|Recorded(file, record)| (file, record))
             .collect())
     }
     fn documents_people(&self, dsp: &str) -> Result<Vec<Person>> {
@@ -364,14 +395,16 @@ impl DocumentsStore for Store {
         )?;
         Ok(())
     }
-    fn record_documents_change(&self, dsp: &str, file: &str, user: &str) -> Result<()> {
+    fn record_documents_change_by(&self, dsp: &str, file: &str, by: &Author) -> Result<()> {
         let db = self.dsp(dsp)?;
-        let at = iso();
+        let (user, name) = columns(by);
         db.exec(
-            "INSERT INTO documents_files (file_id,added_by,added_at,changed_by,changed_at) \
-             VALUES (?1,?2,?3,?2,?3) ON CONFLICT(file_id) DO UPDATE SET \
-             changed_by=excluded.changed_by,changed_at=excluded.changed_at",
-            params![file, user, at],
+            "INSERT INTO documents_files \
+             (file_id,added_by,added_name,added_at,changed_by,changed_name,changed_at) \
+             VALUES (?1,?2,?3,?4,?2,?3,?4) ON CONFLICT(file_id) DO UPDATE SET \
+             changed_by=excluded.changed_by,changed_name=excluded.changed_name,\
+             changed_at=excluded.changed_at",
+            params![file, user, name, iso()],
         )?;
         Ok(())
     }
