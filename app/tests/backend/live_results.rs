@@ -212,11 +212,12 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
             let comparison = db
                 .meal_comparison(&tenant, "2026-01-19", "UTC")
                 .map(|value| serde_json::to_value(value).unwrap())?;
+            // Nothing published yet names the driver to Driver Match, so they stand alone.
             let row = comparison["rows"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .find(|r| r["id"] == "paycom:E001")
+                .find(|r| r["id"] == "cortex:fixture-driver")
                 .unwrap();
             assert_eq!(row["cortex"].as_array().unwrap().len(), 1);
             assert!(
