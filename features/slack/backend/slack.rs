@@ -1,7 +1,7 @@
 //! Slack, as Dispatch talks to it: installing the app in a workspace, and calling Slack's API
 //! there as the app's bot. Fixture mode's Slack answers in-process instead.
 use super::{
-    app::{RETURN_PATH, SCOPES},
+    app::{RETURN_PATH, scopes},
     fixture,
 };
 use dispatch_core::{
@@ -109,7 +109,7 @@ impl Slack {
                 AUTHORIZE,
                 [
                     ("client_id", client.id.clone()),
-                    ("scope", SCOPES.join(",")),
+                    ("scope", scopes().join(",")),
                     ("redirect_uri", back.clone()),
                     ("state", state.to_owned()),
                 ]

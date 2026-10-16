@@ -16,6 +16,7 @@ import {
   cacheRules,
   connectionCard,
   connectionCards,
+  connectionIntegrations,
   connectionPieces,
   connectionSections,
   errorLabelOf,
@@ -30,6 +31,7 @@ import {
   loadPlatformSlots,
   switchIcon,
   type ConnectionCard,
+  type ConnectionIntegration,
   type ConnectionPiece,
   type ConnectionSection,
   type DspRoute,
@@ -335,6 +337,23 @@ test("what a feature adds to another's page goes with it, and a part's with the 
     render: () => id,
     ...extra,
   });
+  const integration = (
+    id: string,
+    order: number,
+    extra: Partial<ConnectionIntegration> = {},
+  ): ConnectionIntegration => ({
+    connection: 'chat',
+    id,
+    label: id,
+    icon: Award,
+    description: id,
+    steps: [],
+    sees: [],
+    turningOn: [],
+    turningOff: [],
+    order,
+    ...extra,
+  });
   installFeatures([
     {
       name: 'core-owner',
@@ -366,6 +385,13 @@ test("what a feature adds to another's page goes with it, and a part's with the 
         section('elsewhere', 1, { connection: 'mail' }),
         section('unseen', 1, { visible: () => false }),
       ],
+      connectionIntegrations: [
+        integration('late', 30),
+        integration('early', 10),
+        integration('of-part', 20, { part: part.id }),
+        integration('elsewhere', 1, { connection: 'mail' }),
+        integration('unseen', 1, { visible: () => false }),
+      ],
     },
   ]);
   const ids = (each: readonly { id: string }[]) => each.map(({ id }) => id);
@@ -385,6 +411,11 @@ test("what a feature adds to another's page goes with it, and a part's with the 
     'late',
     'core',
   ]);
+  const integrations = connectionIntegrations('chat', view(owner, part.id));
+  assert.deepEqual(ids(integrations), ['early', 'of-part', 'late']);
+  // Each says which feature it's part of, by the name the feature goes by.
+  const named = featureCatalog.find((f) => f.id === owner)?.label;
+  assert.ok(named && integrations.every(({ from }) => from === named));
   assert.deepEqual(ids(connectionPieces('dsp', view(owner))), ['account', 'account-late']);
   assert.deepEqual(ids(connectionPieces('personal', view(owner))), ['mine']);
   // Every card loads with the Connections tab, whoever sees it.
@@ -394,10 +425,12 @@ test("what a feature adds to another's page goes with it, and a part's with the 
   assert.deepEqual(ids(settingsPieces('general', view(owner))), ['early', 'late', 'core']);
   assert.deepEqual(ids(pageTabs('team', view(owner))), ['own']);
   assert.deepEqual(ids(connectionSections('chat', view(owner))), ['early', 'late', 'core']);
+  assert.deepEqual(ids(connectionIntegrations('chat', view(owner))), ['early', 'late']);
   assert.deepEqual(ids(settingsTabs(view(part.id))), ['general']);
   assert.deepEqual(ids(settingsPieces('general', view(part.id))), ['core']);
   assert.deepEqual(pageTabs('team', view()), []);
   assert.deepEqual(connectionPieces('dsp', view(part.id)), []);
   assert.deepEqual(ids(connectionSections('chat', view(part.id))), ['core']);
+  assert.deepEqual(connectionIntegrations('chat', view(part.id)), []);
   assert.deepEqual(ids(settingsPieces('general', undefined)), ['core']);
 });

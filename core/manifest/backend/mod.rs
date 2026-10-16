@@ -1,5 +1,6 @@
 //! What collectors and features declare, and the one registry the app builds from them.
 //! Core reaches collectors and features through `registry()`, never by name.
+pub mod integrations;
 pub mod people;
 pub(crate) mod retirement;
 
@@ -18,6 +19,7 @@ use crate::{
     },
     tenancy::api::audit::AuditArea,
 };
+use integrations::Integration;
 use people::{Directory, People};
 use serde_json::Value;
 use std::{
@@ -120,6 +122,20 @@ impl Registry {
             .iter()
             .copied()
             .find(|feature| feature.keeps.iter().any(|keeper| keeper.keeps() == kind))
+    }
+    /// Every feature's integrations through the connection `connection`, each with the
+    /// feature it's of, in the registry's order.
+    pub fn integrations(
+        &self,
+        connection: &str,
+    ) -> impl Iterator<Item = (&'static Feature, &'static Integration)> {
+        self.features.iter().flat_map(move |feature| {
+            feature
+                .integrations
+                .iter()
+                .filter(move |integration| integration.connection == connection)
+                .map(move |integration| (*feature, integration))
+        })
     }
     /// The keeper of the collection a job of `kind` collects.
     pub fn keeper(&self, kind: &str) -> &'static dyn Keeper {
@@ -293,7 +309,8 @@ impl Registry {
     /// numbered from 1 without a gap or a repeat, every table is declared once, every
     /// domain is declared once and before it is named, every audit prefix is a dotted name
     /// listed under an area other than settings, each kind of data that names people has a
-    /// place of its own, and the agents' piece's own declarations are as it asks.
+    /// place of its own, every integration is as its slot asks, and the agents' piece's own
+    /// declarations are as it asks.
     pub fn check(&self) {
         let mut named = std::collections::BTreeSet::new();
         for feature in self.features {
@@ -408,6 +425,7 @@ impl Registry {
                 );
             }
         }
+        integrations::check(self.features);
         let answering = self
             .features
             .iter()
@@ -648,6 +666,9 @@ pub struct Feature {
     /// Who each ID its people name is, if it is the feature that tells them apart: one
     /// feature at most answers.
     pub directory: Option<&'static dyn Directory>,
+    /// What it does through other features' connections, which their settings switch on and
+    /// off for each account: `integrations::Integration` says how to declare one.
+    pub integrations: &'static [Integration],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -680,6 +701,7 @@ pub const fn feature(name: &'static str) -> Feature {
         commands: None,
         people: &[],
         directory: None,
+        integrations: &[],
     }
 }
 

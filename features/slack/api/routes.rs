@@ -6,7 +6,7 @@ use crate::backend::{
     app::{EVENTS_PATH, INSTALL_PATH, INTERACTIONS_PATH, RETURN_PATH},
     channels,
     connection::{self, Started},
-    inbound, link, pages, storage,
+    inbound, integrations, link, pages, storage,
 };
 use axum::{
     extract::Request,
@@ -52,6 +52,11 @@ pub fn routes() -> Vec<Route> {
             SETTINGS,
             leave_channel,
         ),
+        write(
+            "/api/dsp/slack/workspaces/{team}/integrations/{integration}",
+            SETTINGS,
+            switch_integration,
+        ),
         write("/api/dsp/slack/connect", CONNECTIONS, connect),
         async_post("/api/dsp/slack/connect/finish", CONNECTIONS, finish),
         write(
@@ -89,6 +94,19 @@ fn team(id: &str) -> Result<String> {
 /// A Slack channel's ID, as Slack writes them.
 fn channel(id: &str) -> Result<String> {
     ensure(channels::channel_id(id), "invalid_input", 400)?;
+    Ok(id.to_owned())
+}
+/// An integration's ID, as features declare them: `<feature>.<what>`.
+fn integration(id: &str) -> Result<String> {
+    ensure(
+        (3..=64).contains(&id.len())
+            && id.contains('.')
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.'),
+        "invalid_input",
+        400,
+    )?;
     Ok(id.to_owned())
 }
 /// A workspace's name in Dispatch, as `body` gives it: left out or blank, it has none.
@@ -151,6 +169,14 @@ async fn leave_channel(state: Arc<State>, input: Input, access: Dsp) -> Result<R
     v::fields(&input.body, &[])?;
     let (team, channel) = (team(input.param("team"))?, channel(input.param("channel"))?);
     Reply::of(&channels::leave(&state, c, access, team, channel).await?)
+}
+/// Switches one of the integrations through Slack on or off in the workspace `team`.
+fn switch_integration(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["on"])?;
+    let team = team(input.param("team"))?;
+    let id = integration(input.param("integration"))?;
+    let on = v::boolean(&input.body, "on")?;
+    Reply::of(&integrations::switch(db, c, &team, &id, on)?)
 }
 fn create_link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["label"])?;

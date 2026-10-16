@@ -6,7 +6,7 @@
 //! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated. Requests it sends
 //! are signed with a secret the tests share.
 use super::slack::{Installed, Tokens};
-use super::{app::SCOPES, storage::SlackStore};
+use super::{app::scopes, storage::SlackStore};
 use dispatch_core::{
     Error, Result,
     db::{Store, now},
@@ -176,7 +176,7 @@ pub fn install(code: &str) -> Result<Installed> {
         name: name(team),
         bot_user: "U0FIXTUREBOT".into(),
         app: "A0FIXTURE".into(),
-        scopes: SCOPES.iter().map(|scope| (*scope).to_owned()).collect(),
+        scopes: scopes().iter().map(|scope| (*scope).to_owned()).collect(),
         tokens: tokens(team),
     })
 }

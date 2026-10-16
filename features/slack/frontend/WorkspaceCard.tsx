@@ -5,7 +5,8 @@ import { day } from './day.js';
 import { SlackCard } from './SlackCard.js';
 
 // One of the DSP's workspaces, on its own card, with what the member may do to it: its settings,
-// for those who manage Slack, and the rest for those who manage the DSP's connections.
+// for those who manage Slack, where it's renamed too, and the rest for those who manage the DSP's
+// connections.
 
 export function WorkspaceCard({
   workspace,
@@ -15,7 +16,6 @@ export function WorkspaceCard({
   busy,
   settings,
   install,
-  rename,
   disconnect,
 }: {
   workspace: SlackWorkspace;
@@ -30,7 +30,6 @@ export function WorkspaceCard({
   settings: string;
   /** Reconnects or updates the workspace `team`. */
   install: (team: string) => void;
-  rename: (workspace: SlackWorkspace) => void;
   disconnect: (workspace: SlackWorkspace) => void;
 }) {
   const broken = workspace.status === 'broken';
@@ -51,14 +50,9 @@ export function WorkspaceCard({
             </a>
           )}
           {manages && (
-            <>
-              <button className="text-button" onClick={() => rename(workspace)}>
-                Rename
-              </button>
-              <button className="text-button" onClick={() => disconnect(workspace)}>
-                Disconnect
-              </button>
-            </>
+            <button className="text-button" onClick={() => disconnect(workspace)}>
+              Disconnect
+            </button>
           )}
         </>
       }

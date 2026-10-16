@@ -23,9 +23,23 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
 - **Settings:** each workspace's Settings opens its settings, a page of their own (`slack`,
   with the workspace and the section open in its address, outside the sidebar, Settings lit
   while it's open): the workspace at the top, and its sections down the side, one shown at a
-  time. They're Slack's own, Channels, and those other features add for each workspace through
-  the `connectionSections` slot under the connection `slack`, each drawn for the workspace's
-  ID. A feature switched off for the DSP takes its sections with it.
+  time. They're Slack's own, Channels and Integrations, and those other features add for each
+  workspace through the `connectionSections` slot under the connection `slack`, each drawn for
+  the workspace's ID. A section that names an `integration` is listed under Integrations, and
+  only while that's on in the workspace. A feature switched off for the DSP takes its sections
+  with it.
+- **Integrations:** what other features do through Slack, each declared once in its own feature:
+  in its backend manifest's `integrations` (core's `Integration`, with `connection: "slack"`,
+  the permissions it `needs`, the events it `hears` and what it does with each, `heard`), and in
+  its frontend's `connectionIntegrations`, under the same id, which says for members who don't
+  know what it does, how it's used, what Dispatch sees, and what switching it on or off means.
+  The feature depends on Slack; Slack names none of them. Integrations, shown while a feature
+  the DSP has declares one, has a card for each with its switch, which asks before it switches;
+  each starts off in every workspace. The app asks for what every integration needs beside its
+  own, whether it's on or not, and Slack hands each event an integration hears of to it once
+  Slack's own handling is done, while it's on in the workspace and its feature is on for the
+  DSP. Switched off, it hears of nothing, and is never told of what it missed. The activity log
+  records each switch, as `<integration> in <workspace>`. A workspace's go with it.
 - **Channels:** the workspace's public channels and the private ones someone invited Dispatch to
   in Slack, by name, those Dispatch joined apart from the rest; Slack shows the bot only the
   channels it's in, so being in one is all the access Dispatch has there. Join has Dispatch join
@@ -33,8 +47,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   someone invites it back. Up to 2,000 channels are read, 200 at a time, each time the
   section opens. The activity log records each, as `#<channel> in <workspace>`.
 - **Names:** a workspace's name in Dispatch is the one it was added with, if it was given one,
-  else its name in Slack, which follows Slack's. Rename on its card changes it, and blank, has
-  it go by its name in Slack again. Up to 60 characters.
+  else its name in Slack, which follows Slack's. The pencil by its name at the top of its
+  settings changes it, for those who manage the DSP's connections, and blank, has it go by its
+  name in Slack again. Up to 60 characters.
 - **Connecting:** New on DSP Connections lists Slack, which asks for an optional name and opens
   Connect Slack and Copy install link. Connect Slack sends the browser to Slack, which asks which workspace and for
   the app's permissions, and sends it back to Settings' Connections at the address it started
@@ -82,7 +97,7 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   they go by in Slack, listed while their account is active. Slack lists whom the DSP can
   reach, not whom it employs (`contacts_only`): it never keeps someone from having left, and
   someone only Slack knows works in the office while their account is active.
-- **Disconnecting** a workspace forgets it, its members and its tokens, frees it for any DSP, and then has
+- **Disconnecting** a workspace forgets it, its members, its integrations and its tokens, frees it for any DSP, and then has
   Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
   disconnecting, making and cancelling the install link, and, with no member as their actor,
   a workspace connected by the link, the app removed from a workspace in Slack, and Slack
@@ -112,9 +127,11 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   says, up to half a minute, and tries again, twice at most. Every call is logged by its method
   and how long Slack took (`slack.api`), and each refusal with Slack's reason (`slack.refused`),
   never what was sent.
-- **Adding to what the app does:** `backend/app.rs` is the app as Slack knows it. A capability
-  that needs a permission adds it to `SCOPES`, and each workspace then shows Update until its
-  admin approves it; one that listens for an event adds it to `EVENTS`. Its handler is a module
+- **Adding to what the app does:** another feature adds what it does through Slack as an
+  integration (above). For Slack itself, `backend/app.rs` is the app as Slack knows it. A
+  capability that needs a permission adds it to `SCOPES`, and each workspace then shows Update
+  until its admin approves it, as for an integration's; one that listens for an event adds it to
+  `EVENTS`. Its handler is a module
   of its own, like `home.rs`, reached from its line in `inbound.rs`'s routing tables:
   `on_event` for events, `on_interaction` for buttons, forms and shortcuts. Then
   `dispatch-backend slack-manifest` prints the app to paste into Slack. The app asks for
@@ -126,13 +143,16 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   install link; `POST /api/dsp/slack/connect` (with `team`, to reconnect or update one),
   `…/connect/finish`, `…/workspaces/{team}/rename`, `…/workspaces/{team}/disconnect`, `…/link`
   and `…/link/cancel`; `…/connect` and `…/link` take the workspace's `label`. The account is
-  read behind `slack.manage` too. Behind `slack.manage`: `GET …/workspaces/{team}/channels`,
-  and `POST …/workspaces/{team}/channels/{channel}/join` and `…/leave`, each answering with the
-  channel. Public:
+  read behind `slack.manage` too, with the integrations on in each workspace. Behind
+  `slack.manage`: `GET …/workspaces/{team}/channels`, and
+  `POST …/workspaces/{team}/channels/{channel}/join` and `…/leave`, each answering with the
+  channel; and `POST …/workspaces/{team}/integrations/{integration}`, with `on`, answering with
+  the account. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
 - **Data:** `slack_workspaces` (each with its name in Dispatch, `label`), `slack_members` (its
-  own migration 3),
+  own migration 3), `slack_integrations` (migration 4: those on in each workspace, with who
+  switched each on and when),
   `slack_connect_requests` (each with the workspace it named to Slack, to reconnect or update,
   and the name the workspace it adds is to have) and `slack_install_links`, in each DSP's own
   database; `slack_teams`, which DSP each workspace belongs to, in the platform's;

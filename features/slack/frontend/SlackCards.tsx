@@ -12,7 +12,6 @@ import {
   type SlackWorkspace,
 } from '../api/client.js';
 import { LinkCard } from './InstallLink.js';
-import { RenameWorkspace } from './RenameWorkspace.js';
 import { SlackCard } from './SlackCard.js';
 import { useSlackReturn } from './slackReturn.js';
 import { WorkspaceCard } from './WorkspaceCard.js';
@@ -40,7 +39,6 @@ export function SlackCards({ view }: { view: DspView }) {
     const { url } = await connectSlack({ team });
     window.location.assign(url);
   });
-  const [renaming, setRenaming] = useState<SlackWorkspace>();
   const [leaving, setLeaving] = useState<SlackWorkspace>();
   const disconnect = useAction(
     async (team: string) => {
@@ -72,7 +70,6 @@ export function SlackCards({ view }: { view: DspView }) {
                 busy={install.busy || returned.busy}
                 settings={dspHash(view.dsp.id, 'slack', { workspace: workspace.teamId })}
                 install={(team) => void install.run(team)}
-                rename={setRenaming}
                 disconnect={setLeaving}
               />
             ))}
@@ -80,16 +77,6 @@ export function SlackCards({ view }: { view: DspView }) {
           </>
         )}
       </DataState>
-      {renaming && (
-        <RenameWorkspace
-          workspace={renaming}
-          done={() => {
-            account.refresh();
-            setRenaming(undefined);
-          }}
-          close={() => setRenaming(undefined)}
-        />
-      )}
       {leaving && (
         <ConfirmDialog
           title={`Disconnect ${leaving.label ?? leaving.name}?`}
