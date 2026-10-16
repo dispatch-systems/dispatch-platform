@@ -1,6 +1,8 @@
-//! Exact-input build cache for the backend and the browser tests' assessment fixture. Schema 4
-//! excluded binaries built before path remapping; schema 6 keeps test code and the development
-//! CLI out of the backend's key.
+//! Exact-input build cache for the executables the package ships, the backend and the support
+//! worker, and for the browser tests' assessment fixture. Schema 4 excluded binaries built before
+//! path remapping; schema 6 keeps test code out of the key; schema 7 adds the worker to the
+//! backend's entry and the CLI library it links to the key, so no entry of the backend alone is
+//! used.
 mod key;
 mod store;
 #[cfg(test)]
@@ -19,24 +21,46 @@ pub fn ci_enabled(root: &Path, env: &Environment) -> bool {
             .is_some_and(|v| Path::new(v) == root.join(".ci-rust-cache"))
 }
 /// What a build makes: the name its cache key and messages use, Cargo's arguments, and where
-/// Cargo puts it in the target folder.
+/// Cargo puts each executable in the target folder. One cache entry holds them all.
 pub struct Artifact {
     profile: &'static str,
     name: &'static str,
     args: &'static [&'static str],
-    path: &'static str,
+    paths: &'static [&'static str],
 }
+/// The package's two executables in one Cargo pass: their dependencies resolve and compile once
+/// for both, with only the features these two ask for.
 pub const RELEASE: Artifact = Artifact {
     profile: "release",
-    name: "release backend",
-    args: &["cargo", "build", "--locked", "--release"],
-    path: "release/dispatch-backend",
+    name: "release backend and support worker",
+    args: &[
+        "cargo",
+        "build",
+        "--locked",
+        "--release",
+        "-p",
+        "dispatch-backend",
+        "-p",
+        "dispatch-support-worker",
+    ],
+    paths: &[
+        "release/dispatch-backend",
+        "release/dispatch-support-worker",
+    ],
 };
 pub const DEBUG: Artifact = Artifact {
     profile: "debug",
-    name: "debug backend",
-    args: &["cargo", "build", "--locked"],
-    path: "debug/dispatch-backend",
+    name: "debug backend and support worker",
+    args: &[
+        "cargo",
+        "build",
+        "--locked",
+        "-p",
+        "dispatch-backend",
+        "-p",
+        "dispatch-support-worker",
+    ],
+    paths: &["debug/dispatch-backend", "debug/dispatch-support-worker"],
 };
 /// The Timecard assessment companion some browser tests run, built like the debug backend.
 pub const FIXTURE: Artifact = Artifact {
@@ -49,11 +73,15 @@ pub const FIXTURE: Artifact = Artifact {
         "--example",
         "assessment-fixture",
     ],
-    path: "debug/examples/assessment-fixture",
+    paths: &["debug/examples/assessment-fixture"],
 };
-/// Where `artifact` is once built in the target folder `target`.
-pub fn built(target: &Path, artifact: &Artifact) -> PathBuf {
-    target.join(artifact.path)
+/// Where `artifact`'s executables are once built in the target folder `target`.
+pub fn built(target: &Path, artifact: &Artifact) -> Vec<PathBuf> {
+    artifact
+        .paths
+        .iter()
+        .map(|path| target.join(path))
+        .collect()
 }
 /// Where a debug build of `root` goes, and the environment its key reads. A test run's own build
 /// folder inside the checkout (`crate::test::Run`) changes where Cargo builds, not what, so its
@@ -127,10 +155,12 @@ fn build_with_limit(
     };
     store::directory(&cache)?;
     let entry = cache.join(&key);
-    let target = built(&folder, artifact);
+    let targets = built(&folder, artifact);
     let _lock = store::Lock::acquire(&cache, &key, true)?.ok_or("Cache lock unavailable")?;
-    if let Some(binary) = store::cached_binary(&entry) {
-        store::copy_binary(&binary, &target)?;
+    if let Some(binaries) = store::cached_binaries(&entry, &targets) {
+        for (binary, target) in binaries.iter().zip(&targets) {
+            store::copy_binary(binary, target)?;
+        }
         println!("Reused {name} for identical Rust inputs.");
     } else {
         println!("Building {name} with Cargo.");
@@ -139,7 +169,7 @@ fn build_with_limit(
             fingerprint(root, profile, &compiler, env)? == key,
             "Rust inputs changed during the build; run it again before packaging",
         )?;
-        store::save(&entry, &target)?;
+        store::save(&entry, &targets)?;
         println!("Cached {name} for identical inputs.");
     }
     if !ci {
@@ -148,23 +178,4 @@ fn build_with_limit(
         store::prune(&cache, keep, &key)?;
     }
     Ok(())
-}
-/// Called only after the host verifier has accepted the promoted artifact.
-pub fn seed(
-    root: &Path,
-    source: &Path,
-    expected: &str,
-    env: &Environment,
-    runner: &dyn Runner,
-) -> Result<()> {
-    if !crate::hex(expected, 64)
-        || !eligible(root, env, true)?
-        || key(root, "release", env, runner)? != expected
-    {
-        return Ok(());
-    }
-    let cache = root.join(".ci-rust-cache");
-    store::directory(&cache)?;
-    let _lock = store::Lock::acquire(&cache, expected, true)?.ok_or("Cache lock unavailable")?;
-    store::save(&cache.join(expected), source)
 }

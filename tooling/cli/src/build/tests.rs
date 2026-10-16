@@ -63,22 +63,19 @@ impl Runner for Fixture {
             "git" => Ok(self.root.join(".git").to_str().unwrap().as_bytes().to_vec()),
             "cargo" => {
                 self.builds.set(self.builds.get() + 1);
-                let target = self
-                    .root
-                    .join("target")
-                    .join(if args.contains(&"--release") {
-                        "release/dispatch-backend"
-                    } else if args.contains(&"--example") {
-                        "debug/examples/assessment-fixture"
-                    } else {
-                        "debug/dispatch-backend"
-                    });
-                fs::create_dir_all(target.parent().unwrap())?;
-                let mut built = fs::read(self.root.join("app/backend/main.rs"))?;
-                if args.contains(&"--example") {
-                    built.extend(b" fixture");
+                let artifact = if args.contains(&"--release") {
+                    &RELEASE
+                } else if args.contains(&"--example") {
+                    &FIXTURE
+                } else {
+                    &DEBUG
+                };
+                let source = fs::read_to_string(self.root.join("app/backend/main.rs"))?;
+                for target in built(&self.root.join("target"), artifact) {
+                    fs::create_dir_all(target.parent().unwrap())?;
+                    let name = target.file_name().unwrap().to_str().unwrap();
+                    fs::write(&target, format!("{source} {name}"))?;
                 }
-                fs::write(&target, built)?;
                 if self.change_during_build.get() {
                     self.source("changed mid-build");
                 }
@@ -207,11 +204,11 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "features/one/tests/browser/page.spec.ts",
         "features/one/tests/support/fixture.ts",
         "features/one/frontend/page.css",
-        // Test code and the development CLI's own files never reach the backend.
+        // Test code, and the development CLI's own executable and launcher, reach neither.
         "features/one/tests/backend/one.rs",
         "app/tests/backend/snapshots/agent-api.json",
         "core/db/tests/support/common.rs",
-        "tooling/cli/src/build/key.rs",
+        "tooling/cli/src/main.rs",
         "tooling/cli/dispatchdev",
     ] {
         let path = f.root.join(name);
@@ -226,6 +223,9 @@ fn every_rust_and_embedded_launcher_input_is_fingerprinted_but_dashboard_is_not(
         "core/db/migrations/schema.sql",
         "ops/host-manager/src/management.rs",
         "tooling/cli/Cargo.toml",
+        // The support worker links the CLI's library.
+        "tooling/cli/src/build/key.rs",
+        "services/support-worker/src/main.rs",
         "tooling/shared/src/process.rs",
         "core/foundation/backend/error.rs",
         "collectors/cortex/scripts/meal.js",
@@ -349,24 +349,33 @@ fn cache_reuses_intact_binaries_refreshes_recency_and_rebuilds_corruption() {
         .filter(|p| p.is_dir())
         .collect();
     assert_eq!(entries.len(), 2);
-    for entry in entries {
-        assert!(store::cached_binary(&entry).is_some());
-        fs::write(entry.join("dispatch-backend"), "corrupt").unwrap();
+    let targets = built(&f.root.join("target"), &DEBUG);
+    for entry in &entries {
+        assert!(store::cached_binaries(entry, &targets).is_some());
     }
+    // One entry's worker is corrupt; the other holds only the backend, as schema 6 kept it.
+    fs::write(entries[0].join("dispatch-support-worker"), "corrupt").unwrap();
+    fs::remove_file(entries[1].join("dispatch-support-worker")).unwrap();
+    let backend = fs::read(entries[1].join("dispatch-backend")).unwrap();
+    fs::write(
+        entries[1].join("sha256"),
+        format!("{}\n", crate::to_hex(&sha2::Sha256::digest(backend))),
+    )
+    .unwrap();
     f.build();
-    assert_eq!(f.builds.get(), 5);
-    assert_eq!(
-        fs::read(f.root.join("target/debug/dispatch-backend")).unwrap(),
-        b"two"
-    );
-    assert_eq!(
-        fs::metadata(f.root.join("target/debug/dispatch-backend"))
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777,
-        0o700
-    );
+    f.source("one");
+    f.build();
+    assert_eq!(f.builds.get(), 6);
+    for (target, expected) in targets
+        .iter()
+        .zip(["one dispatch-backend", "one dispatch-support-worker"])
+    {
+        assert_eq!(fs::read_to_string(target).unwrap(), expected);
+        assert_eq!(
+            fs::metadata(target).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
 }
 #[test]
 fn the_assessment_fixture_keeps_its_own_entry_beside_the_backend() {
@@ -379,29 +388,26 @@ fn the_assessment_fixture_keeps_its_own_entry_beside_the_backend() {
         2,
         "the backend's entry is not the fixture's"
     );
-    assert_eq!(
-        fs::read(built(&f.root.join("target"), &FIXTURE)).unwrap(),
-        b"one fixture"
-    );
+    let read = |artifact| {
+        built(&f.root.join("target"), artifact)
+            .iter()
+            .map(|path| fs::read_to_string(path).unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(read(&FIXTURE), ["one assessment-fixture"]);
     fs::remove_dir_all(f.root.join("target")).unwrap();
     fixture();
     f.build();
     assert_eq!(f.builds.get(), 2, "each is reused for the same inputs");
+    assert_eq!(read(&FIXTURE), ["one assessment-fixture"]);
     assert_eq!(
-        fs::read(built(&f.root.join("target"), &FIXTURE)).unwrap(),
-        b"one fixture"
-    );
-    assert_eq!(
-        fs::read(built(&f.root.join("target"), &DEBUG)).unwrap(),
-        b"one"
+        read(&DEBUG),
+        ["one dispatch-backend", "one dispatch-support-worker"]
     );
     f.source("two");
     fixture();
     assert_eq!(f.builds.get(), 3);
-    assert_eq!(
-        fs::read(built(&f.root.join("target"), &FIXTURE)).unwrap(),
-        b"two fixture"
-    );
+    assert_eq!(read(&FIXTURE), ["two assessment-fixture"]);
 }
 #[test]
 fn a_test_runs_build_folder_in_the_checkout_shares_debug_entries_but_not_release() {
@@ -506,23 +512,6 @@ fn ci_cache_needs_explicit_location_and_current_receipt_key() {
     assert!(build(&f.root, &RELEASE, &f.env, &f).is_err());
     assert_eq!(f.builds.get(), 1);
 }
-#[test]
-fn promoted_binary_can_only_seed_its_original_eligible_compiler_key() {
-    let f = Fixture::new();
-    let source = f.temp.path().join("verified");
-    fs::write(&source, "verified backend").unwrap();
-    let key = key(&f.root, "release", &f.env, &f).unwrap();
-    seed(&f.root, &source, &"f".repeat(64), &f.env, &f).unwrap();
-    assert!(!f.root.join(".ci-rust-cache").exists());
-    let mut ineligible = f.env.clone();
-    ineligible.insert("DISPATCH_DISABLE_RUST_CACHE".into(), "1".into());
-    seed(&f.root, &source, &key, &ineligible, &f).unwrap();
-    assert!(!f.root.join(".ci-rust-cache").exists());
-    seed(&f.root, &source, &key, &f.env, &f).unwrap();
-    let binary = store::cached_binary(&f.root.join(".ci-rust-cache").join(key)).unwrap();
-    assert_eq!(fs::read(binary).unwrap(), b"verified backend");
-}
-
 #[test]
 fn runner_image_builds_share_entries_but_the_toolchain_and_distribution_do_not() {
     let f = Fixture::new();

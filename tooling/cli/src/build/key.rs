@@ -33,13 +33,15 @@ pub const SOURCE_ROOTS: &[&str] = &[
     "tooling/cli",
     "tooling/shared",
 ];
-/// Whether a file in the checkout can change what the backend's builds compile. `cargo build`
-/// builds every member but compiles no test target, and every test module is mounted for tests
-/// only, so neither test code nor the development CLI's own files reach the backend. A
-/// manifest does, the CLI's too: any member's features reach the whole build.
-fn reaches_backend(file: &Path) -> bool {
+/// Whether a file in the checkout can change what the package's builds compile: the backend and
+/// the support worker. They compile no test target, and every test module is mounted for tests
+/// only, so test code never reaches them. The worker links the development CLI's library, so
+/// its sources do, but not the `dispatchdev` executable's own entry point or its launcher.
+fn reaches_package(file: &Path) -> bool {
     !file.components().any(|part| part.as_os_str() == "tests")
-        && (!file.starts_with("tooling/cli") || file == Path::new("tooling/cli/Cargo.toml"))
+        && !["tooling/cli/src/main.rs", "tooling/cli/dispatchdev"]
+            .iter()
+            .any(|name| file == Path::new(name))
 }
 /// Frontend code shares the owners' directories with Rust but never compiles into it: a
 /// `frontend/` folder, or a TypeScript or CSS file. The structure rules forbid Rust from
@@ -116,10 +118,10 @@ pub fn fingerprint(
     env: &Environment,
 ) -> Result<String> {
     // The assessment fixture is a test target, so only its key reads test code.
-    let backend = matches!(profile, "release" | "debug");
+    let packaged = matches!(profile, "release" | "debug");
     let mut digest = Sha256::new();
     digest.update(serde_json::to_vec(&(
-        6,
+        7,
         profile,
         compiler,
         std::env::consts::OS,
@@ -134,7 +136,7 @@ pub fn fingerprint(
     files.extend(configs(root, env)?);
     for file in files {
         let inside = file.strip_prefix(root).ok();
-        if backend && inside.is_some_and(|inside| !reaches_backend(inside)) {
+        if packaged && inside.is_some_and(|inside| !reaches_package(inside)) {
             continue;
         }
         if file.is_file() {

@@ -16,6 +16,7 @@ if (fs.existsSync(path.join(root, '.runtime')))
     'Build in an isolated checkout; the installed runtime is managed by the updater.',
   );
 const manifest = await replaceBuild(out, async (staging) => {
+  // The backend and the support worker, from one Cargo build or the cache that keeps them together.
   execFileSync('tooling/cli/dispatchdev', debug ? ['build'] : ['build', '--release'], {
     stdio: 'inherit',
   });
@@ -25,23 +26,16 @@ const manifest = await replaceBuild(out, async (staging) => {
     }),
   );
   fs.mkdirSync(path.join(staging, 'services/rust'), { recursive: true });
-  const backend = path.join(staging, 'services/rust/dispatch-backend');
-  const built = debug ? 'debug/dispatch-backend' : 'release/dispatch-backend';
-  fs.copyFileSync(path.join(metadata.target_directory, built), backend);
-  const worker = path.join(staging, 'services/rust/dispatch-support-worker');
-  execFileSync(
-    'cargo',
-    ['build', '--locked', '-p', 'dispatch-support-worker', ...(debug ? [] : ['--release'])],
-    { stdio: 'inherit' },
-  );
-  fs.copyFileSync(
-    path.join(
-      metadata.target_directory,
-      debug ? 'debug/dispatch-support-worker' : 'release/dispatch-support-worker',
-    ),
-    worker,
-  );
-  if (debug) execFileSync('strip', [worker], { stdio: 'inherit' });
+  const packaged = (name: string) => {
+    const binary = path.join(staging, 'services/rust', name);
+    fs.copyFileSync(
+      path.join(metadata.target_directory, debug ? 'debug' : 'release', name),
+      binary,
+    );
+    return binary;
+  };
+  const backend = packaged('dispatch-backend'),
+    worker = packaged('dispatch-support-worker');
   const support = path.join(staging, 'services/support-worker');
   fs.mkdirSync(support, { recursive: true });
   fs.cpSync(path.join(root, 'services/support-worker/hermes'), path.join(support, 'hermes'), {
@@ -62,7 +56,7 @@ const manifest = await replaceBuild(out, async (staging) => {
   );
   // Stripped as the release profile strips its own: a debug build's debug information names this
   // machine's compiler.
-  if (debug) execFileSync('strip', [backend], { stdio: 'inherit' });
+  if (debug) execFileSync('strip', [backend, worker], { stdio: 'inherit' });
   execFileSync('python3', ['tooling/security/check-build-paths.py', backend, worker], {
     stdio: 'inherit',
   });

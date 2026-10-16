@@ -63,7 +63,7 @@ fn native_build_shares_verified_copies_across_worktrees_and_rebuilds_changed_inp
     executable(&bin.join("ld"), "#!/bin/sh\necho pinned-ld\n");
     executable(
         &bin.join("cargo"),
-        "#!/bin/sh\nset -eu\nprintf x >> \"$BUILDS\"\nmkdir -p target/release\ncp app/backend/main.rs target/release/dispatch-backend\n",
+        "#!/bin/sh\nset -eu\nprintf x >> \"$BUILDS\"\nmkdir -p target/release\nfor binary in dispatch-backend dispatch-support-worker; do cp app/backend/main.rs target/release/$binary; done\n",
     );
     let builds = temp.path().join("build-count");
     let run = |root: &Path| {

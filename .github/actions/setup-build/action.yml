@@ -8,14 +8,14 @@ inputs:
     description: Allow this job to maintain the cache on main.
     default: 'true'
   reuse-binary:
-    description: Restore the exact release binary instead of compiling it.
+    description: Restore the exact release binaries instead of compiling them.
     default: 'true'
 outputs:
   binary-key:
-    description: Exact Rust input key for the release binary.
+    description: Exact Rust input key for the release binaries.
     value: ${{ steps.binary-key.outputs.key }}
   binary-hit:
-    description: Whether the exact release binary cache was restored.
+    description: Whether the exact release binaries were restored.
     value: ${{ steps.binary-cache.outputs.cache-hit }}
 runs:
   using: composite
@@ -28,7 +28,7 @@ runs:
       shell: bash
     - run: rustup show active-toolchain
       shell: bash
-    - name: Identify reusable release binary
+    - name: Identify reusable release binaries
       id: binary-key
       if: inputs.profile == 'release'
       shell: bash
@@ -41,7 +41,7 @@ runs:
       env:
         BINARY_KEY: ${{ steps.binary-key.outputs.key }}
       run: echo "DISPATCH_CI_RUST_KEY=$BINARY_KEY" >> "$GITHUB_ENV"
-    - name: Restore exact release binary
+    - name: Restore exact release binaries
       id: binary-cache
       if: steps.binary-key.outputs.key != '' && inputs.reuse-binary == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9

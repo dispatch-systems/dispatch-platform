@@ -33,9 +33,9 @@ env:
   # Empty for the queue, so every job runs. A manual run names one suite or all.
   SUITE: ${{ inputs.suite || 'all' }}
 jobs:
-  # Packages the runtime: the release backend from the exact-input cache when its sources
-  # are unchanged, the dashboard from Vite. Everything that tests the runtime downloads
-  # this package instead of building again.
+  # Packages the runtime: the release backend and support worker, built together or from the
+  # exact-input cache when their sources are unchanged, and the dashboard from Vite.
+  # Everything that tests the runtime downloads this package instead of building again.
   build:
     if: contains('all build checks browser benchmark smoke', inputs.suite || 'all')
     permissions:

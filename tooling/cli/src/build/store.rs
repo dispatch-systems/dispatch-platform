@@ -47,26 +47,50 @@ pub(super) fn copy_binary(source: &Path, destination: &Path) -> Result<()> {
     temp.persist(destination)?;
     Ok(())
 }
-pub(super) fn cached_binary(entry: &Path) -> Option<PathBuf> {
-    if entry.is_symlink() {
+/// An entry's receipt: a `<sha256>  <name>` line for each executable it holds, written last.
+const RECEIPT: &str = "sha256";
+/// The entry's copies of the executables at `targets`, by file name, when its receipt lists
+/// exactly those, in that order, and each copy still has its hash.
+pub(super) fn cached_binaries(entry: &Path, targets: &[PathBuf]) -> Option<Vec<PathBuf>> {
+    let receipt = entry.join(RECEIPT);
+    if entry.is_symlink() || receipt.is_symlink() {
         return None;
     }
-    let binary = entry.join("dispatch-backend");
-    let receipt = entry.join("sha256");
-    if binary.is_symlink() || receipt.is_symlink() {
+    let receipt = fs::read_to_string(receipt).ok()?;
+    let listed: Vec<_> = receipt.lines().collect();
+    if listed.len() != targets.len() {
         return None;
     }
-    let expected = fs::read_to_string(receipt).ok()?;
-    (hex(expected.trim(), 64) && hash(&binary).ok()? == expected.trim()).then_some(binary)
+    targets
+        .iter()
+        .zip(listed)
+        .map(|(target, line)| {
+            let name = target.file_name()?.to_str()?;
+            let (expected, listed) = line.split_once("  ")?;
+            let binary = entry.join(name);
+            (listed == name
+                && hex(expected, 64)
+                && !binary.is_symlink()
+                && hash(&binary).ok()? == expected)
+                .then_some(binary)
+        })
+        .collect()
 }
-pub(super) fn save(entry: &Path, source: &Path) -> Result<()> {
+/// Saves the executables at `sources` in `entry`, with the receipt that makes them reusable.
+pub(super) fn save(entry: &Path, sources: &[PathBuf]) -> Result<()> {
     directory(entry)?;
-    let binary = entry.join("dispatch-backend");
-    copy_binary(source, &binary)?;
     let mut receipt = tempfile::NamedTempFile::new_in(entry)?;
-    writeln!(receipt, "{}", hash(&binary)?)?;
+    for source in sources {
+        let name = source
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("Binary name required")?;
+        let binary = entry.join(name);
+        copy_binary(source, &binary)?;
+        writeln!(receipt, "{}  {name}", hash(&binary)?)?;
+    }
     receipt.as_file().sync_all()?;
-    receipt.persist(entry.join("sha256"))?;
+    receipt.persist(entry.join(RECEIPT))?;
     File::open(entry)?.sync_all()?;
     Ok(())
 }
