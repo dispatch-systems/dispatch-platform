@@ -1,10 +1,11 @@
 name: Flaky tests
 # A job that failed and then passed on the same code is a flake, or a runner problem, and
-# either costs a merge. This lists them weekly in the run's summary: reruns of one run, and
-# queue entries that failed and then merged with the PR's head unchanged, since a PR queued
-# again gets a new run on a new squash commit, unless the entry ahead of it failed the same
-# job. A week with any is also posted to the open `flaky-tests` issue, which it opens when
-# there is none. It changes nothing else.
+# either costs a merge. This lists them weekly in the run's summary: reruns of one run, queue
+# entries that failed and then merged with the PR's head unchanged, since a PR queued again
+# gets a new run on a new squash commit, unless the entry ahead of it failed the same job, and
+# branch runs (`dispatchdev ci`) whose job failed and later passed on the same commit. A week
+# with any is also posted to the open `flaky-tests` issue, which it opens when there is none.
+# It changes nothing else.
 on:
   schedule:
     - cron: '17 6 * * 1'
@@ -112,6 +113,39 @@ jobs:
                       if job != "platform" and job not in ahead_jobs:
                           rows += 1
                           print(f"| #{number} | [{failed['id']}]({failed['html_url']}) | {job} "
+                                f"| [{passed['id']}]({passed['html_url']}) |")
+          if not rows:
+              print("| none | | | |")
+
+          # A branch run is run again on the same commit only after a failure, the whole suite or
+          # the failed one alone: a job that passes there later failed for no reason of the code.
+          branch = api(f"repos/{repo}/actions/workflows/checks.yml/runs"
+                       f"?event=workflow_dispatch&created=>={since}&per_page=100", f".workflow_runs[] | {fields}")
+          commits = defaultdict(list)
+          for run in sorted(branch, key=lambda run: run["created_at"]):
+              commits[run["head_sha"]].append(run)
+          passed_jobs = {}
+
+          def passing(run):
+              if run["id"] not in passed_jobs:
+                  passed_jobs[run["id"]] = {job["name"] for job in api(
+                      f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100",
+                      '.jobs[] | select(.conclusion == "success") | {name}')}
+              return passed_jobs[run["id"]]
+
+          print(f"\n## Branch runs whose job failed, then passed on the same commit, since {since}\n")
+          print("| Failed run | Job | Branch | Passed run |")
+          print("| --- | --- | --- | --- |")
+          rows = 0
+          for runs in commits.values():
+              for index, failed in enumerate(runs):
+                  if failed["conclusion"] != "failure":
+                      continue
+                  for job in failed_jobs(failed):
+                      passed = next((run for run in runs[index + 1:] if job in passing(run)), None)
+                      if job != "platform" and passed:
+                          rows += 1
+                          print(f"| [{failed['id']}]({failed['html_url']}) | {job} | {failed['head_branch']} "
                                 f"| [{passed['id']}]({passed['html_url']}) |")
           if not rows:
               print("| none | | | |")
