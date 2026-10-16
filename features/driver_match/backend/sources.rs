@@ -6,29 +6,33 @@ use super::contacts;
 use dispatch_core::{
     Result,
     db::Store,
-    manifest::people::{DriverData, DriverSource, People},
-    manifest::{people::Workdays, registry},
+    manifest::{
+        people::{DriverData, DriverSource, People, Workdays},
+        registry,
+    },
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An ID as one source knows it.
 pub(crate) type Key = (DriverSource, String);
+/// Every ID the DSP's data holds now, as its sources describe it.
+pub(crate) type Found = BTreeMap<Key, Identity>;
 
 /// Every kind of data that names people of the features the DSP has on, in the order their
 /// spellings are read.
-pub(crate) fn people(store: &Store, dsp: &str) -> Result<Vec<&'static dyn People>> {
+pub(crate) fn people(store: &Store, dsp: &str) -> Result<Vec<&'static People>> {
     let on = store.features(dsp)?;
-    let mut people: Vec<&'static dyn People> = registry()
+    let mut people: Vec<&'static People> = registry()
         .features
         .iter()
         .filter(|feature| on.iter().any(|id| id == feature.switch.id))
         .flat_map(|feature| feature.people.iter().copied())
         .collect();
-    people.sort_by_key(|people| people.order());
+    people.sort_by_key(|people| people.reading_order());
     Ok(people)
 }
 /// The sources of the features the DSP has on, in their order.
-pub(crate) fn active(people: &[&'static dyn People]) -> Vec<DriverSource> {
+pub(crate) fn active(people: &[&'static People]) -> Vec<DriverSource> {
     let set: BTreeSet<DriverSource> = people.iter().map(|people| people.source()).collect();
     set.into_iter().collect()
 }
@@ -114,14 +118,14 @@ impl Identity {
 /// data's names read in its place, routes before the scorecard, which often adds a middle
 /// name, and DVIC, which sometimes writes only a last initial.
 pub(crate) fn identities(
-    people: &[&'static dyn People],
+    people: &[&'static People],
     store: &Store,
     dsp: &str,
 ) -> Result<Vec<Identity>> {
-    let mut found: BTreeMap<Key, Identity> = BTreeMap::new();
+    let mut found: Found = BTreeMap::new();
     for people in people {
         let source = people.source();
-        for named in people.named(store, dsp)? {
+        for named in (people.read)(store, dsp)? {
             let id = named.id.trim();
             if id.is_empty() {
                 continue;
@@ -162,21 +166,12 @@ pub(crate) fn identities(
         .collect())
 }
 
-/// The name one ID's sources write now, of `people`, as `identities` would read it first.
-pub(crate) fn name_of(
-    people: &[&'static dyn People],
-    store: &Store,
-    dsp: &str,
-    (source, id): &Key,
-) -> Result<Option<String>> {
-    for people in people {
-        if people.source() == *source
-            && let Some(name) = people.name(store, dsp, id)?
-        {
-            return Ok(Some(name));
-        }
-    }
-    Ok(None)
+/// Every ID the DSP's data holds now, by its key, as `identities` reads them.
+pub(crate) fn found(people: &[&'static People], store: &Store, dsp: &str) -> Result<Found> {
+    Ok(identities(people, store, dsp)?
+        .into_iter()
+        .map(|x| ((x.source, x.id.clone()), x))
+        .collect())
 }
 
 /// How much a source has of one ID, and the last day it has.
@@ -187,13 +182,16 @@ pub(crate) struct Seen {
 }
 /// Everything each ID appears in. Only current publications count, as every page reads.
 pub(crate) fn activity(
-    people: &[&'static dyn People],
+    people: &[&'static People],
     store: &Store,
     dsp: &str,
 ) -> Result<BTreeMap<Key, BTreeMap<DriverData, Seen>>> {
     let mut out: BTreeMap<Key, BTreeMap<DriverData, Seen>> = BTreeMap::new();
     for people in people {
-        for row in people.appearances(store, dsp)? {
+        let Some(records) = people.records else {
+            continue;
+        };
+        for row in records(store, dsp)? {
             out.entry((people.source(), row.id)).or_default().insert(
                 people.data(),
                 Seen {
@@ -220,11 +218,14 @@ impl Days {
 }
 /// When each source shows people at work: Paycom's hours; Amazon's routes, meal breaks and
 /// inspections.
-pub(crate) fn days(people: &[&'static dyn People], store: &Store, dsp: &str) -> Result<Days> {
+pub(crate) fn days(people: &[&'static People], store: &Store, dsp: &str) -> Result<Days> {
     let mut out = Days::default();
     for people in people {
+        let Some(workdays) = people.workdays else {
+            continue;
+        };
         let source = people.source();
-        let Workdays { worked, collected } = people.workdays(store, dsp)?;
+        let Workdays { worked, collected } = workdays(store, dsp)?;
         out.collected.entry(source).or_default().extend(collected);
         for (id, day) in worked {
             out.worked.entry((source, id)).or_default().insert(day);
@@ -239,13 +240,15 @@ pub(crate) fn days(people: &[&'static dyn People], store: &Store, dsp: &str) -> 
 /// the setting, nobody is.
 pub(crate) type DriverDepartments = BTreeMap<DriverSource, BTreeSet<String>>;
 pub(crate) fn driver_departments(
-    people: &[&'static dyn People],
+    people: &[&'static People],
     store: &Store,
     dsp: &str,
 ) -> Result<DriverDepartments> {
     let mut out = DriverDepartments::new();
     for people in people {
-        if let Some(list) = people.driver_departments(store, dsp)? {
+        if let Some(departments) = people.driver_departments
+            && let Some(list) = departments(store, dsp)?
+        {
             out.insert(people.source(), list);
         }
     }

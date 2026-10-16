@@ -1,7 +1,7 @@
 //! What the tab and the details panel read: everyone with a code, as the sources the DSP has
 //! on describe them, and the pairs that may be one person, gathered once.
 use super::legacy::saved_links;
-use super::sources::{self, Days, Identity, Key, Seen};
+use super::sources::{self, Days, Found, Key, Seen};
 use super::{CHECKED, FORMER_AFTER_DAYS, IdRow, pairs, person};
 use crate::api::types::{Driver, DriverCounts, DriverLink, DriverMatch, DriverPair, DriverRole};
 use dispatch_core::{
@@ -12,9 +12,6 @@ use dispatch_core::{
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
-
-/// Every ID the collections hold now, as they describe it.
-pub(crate) type Found = BTreeMap<Key, Identity>;
 
 /// Everything the tab and the details panel read, gathered once.
 pub(crate) struct Overview {
@@ -29,10 +26,7 @@ pub(crate) struct Overview {
 pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
     let people = sources::people(store, dsp)?;
     let active = sources::active(&people);
-    let found: Found = sources::identities(&people, store, dsp)?
-        .into_iter()
-        .map(|x| ((x.source, x.id.clone()), x))
-        .collect();
+    let found = sources::found(&people, store, dsp)?;
     let activity = sources::activity(&people, store, dsp)?;
     let days = sources::days(&people, store, dsp)?;
     let saved = saved_links(store, dsp)?;

@@ -233,6 +233,25 @@ export function nextPermissionOrder(root: string) {
       highest = Math.max(highest, Number(match[1]));
   return (Math.floor(highest / 10) + 1) * 10;
 }
+/** The next free tens in the one order the kinds of data that name people follow. */
+export function nextPeopleOrder(root: string) {
+  let highest = 0;
+  for (const file of rustSources(root))
+    for (const match of read(root, file).matchAll(/\bPeopleData \{[^}]*?\border:\s*(\d+),/g))
+      highest = Math.max(highest, Number(match[1]));
+  return (Math.floor(highest / 10) + 1) * 10;
+}
+/**
+ * The sources of the IDs people are known by, each with the collector that declares it, as
+ * its `PEOPLE`: Amazon's transporter IDs are Cortex's.
+ */
+export function peopleSources(root: string) {
+  return collectors(root).flatMap((site) => {
+    const source = read(root, `collectors/${site}/collector.rs`);
+    const id = /\bPEOPLE: SourceData = SourceData \{\s*id: "([^"]+)"/.exec(source)?.[1];
+    return id ? [{ id, site }] : [];
+  });
+}
 /** The collections a collector reads: one directory each under `collections/`. */
 export const collectionsOf = (root: string, site: string) =>
   directories(root, `collectors/${site}/collections`);

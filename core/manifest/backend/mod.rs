@@ -261,14 +261,15 @@ impl Registry {
         });
         CORE_PERMISSIONS.iter().copied().chain(features)
     }
-    /// Every kind of data that names people, in the order their spellings are read.
-    pub fn people(&self) -> Vec<&'static dyn People> {
-        let mut people: Vec<&'static dyn People> = self
+    /// Every kind of data that names people, in the order their spellings are read: by
+    /// their order, those that shorten names last.
+    pub fn people(&self) -> Vec<&'static People> {
+        let mut people: Vec<&'static People> = self
             .features
             .iter()
             .flat_map(|feature| feature.people.iter().copied())
             .collect();
-        people.sort_by_key(|people| people.order());
+        people.sort_by_key(|people| people.reading_order());
         people
     }
     /// Who each ID is, as the one feature that tells people apart answers, if this build has
@@ -560,9 +561,10 @@ impl Registry {
             assert!(
                 people[..index]
                     .iter()
-                    .all(|other| other.data() != kind.data() && other.order() != kind.order()),
+                    .all(|other| other.kind.id != kind.kind.id
+                        && other.kind.order != kind.kind.order),
                 "{} names people twice, or in another's place",
-                kind.data().as_str()
+                kind.kind.id
             );
         }
         if let Some(agents) = self.agents {
@@ -640,8 +642,9 @@ pub struct Feature {
     pub demo: Option<Demo>,
     /// Operator commands of the binary it answers for.
     pub commands: Option<Commands>,
-    /// Who its data names, for Driver Match to tell apart.
-    pub people: &'static [&'static dyn People],
+    /// Who its data names, for the feature that tells people apart: `people::People` says how to
+    /// connect one kind of data.
+    pub people: &'static [&'static People],
     /// Who each ID its people name is, if it is the feature that tells them apart: one
     /// feature at most answers.
     pub directory: Option<&'static dyn Directory>,
@@ -815,7 +818,7 @@ pub const fn mandatory(id: &'static str, label: &'static str) -> Switch {
 }
 impl Switch {
     /// Starts on, once, for each DSP with one of `features` on, when it is new to a platform
-    /// that ran before: `optional(..).starts_on_with(&["driver_match"])`.
+    /// that ran before: `optional(..).starts_on_with(&["older_feature"])`.
     pub const fn starts_on_with(self, features: &'static [&'static str]) -> Self {
         Self {
             starts_on_with: features,

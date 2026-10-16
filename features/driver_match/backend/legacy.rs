@@ -1,17 +1,28 @@
 //! The links the meal-break page saved before Driver Match: read as decisions, and written
 //! back as Driver Match decides, so the previous release still sees them after a rollback.
 //! Remove once that release can no longer be rolled back to.
-use super::matching::Saved;
 use dispatch_core::{
     Result,
     db::{Db, Store},
     foundation::crypto,
 };
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Where the meal-break page kept its links.
 const LINKS: &str = "employees.provider_links";
+/// The sources the meal-break page's links name: they are the one place Driver Match names
+/// a source.
+pub(super) const PAYCOM: &str = "paycom";
+pub(super) const AMAZON: &str = "amazon";
+
+/// Links saved on the meal-break page before Driver Match: an Amazon ID with the Paycom
+/// code someone linked it to, and Amazon IDs someone kept apart from Paycom.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Saved {
+    pub links: BTreeMap<String, String>,
+    pub separate: BTreeSet<String>,
+}
 
 /// The links saved on the meal-break page before Driver Match, read as decisions.
 pub(super) fn saved_links(store: &Store, dsp: &str) -> Result<Saved> {

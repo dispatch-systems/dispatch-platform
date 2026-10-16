@@ -115,7 +115,7 @@ pub const FEATURE: Feature = Feature {
         areas: &[("weekly_scorecard.", Collections)],
         ..Audit::NONE
     },
-    people: &[&backend::people::Drivers],
+    people: &[&backend::people::PEOPLE],
     ..feature("weekly_scorecard")
 };
 

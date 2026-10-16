@@ -1,0 +1,33 @@
+//! Who {{label}}'s data names, as Driver Match reads them, by their {{peopleSource}} IDs.
+//! Each query is a start: write it for what the feature really keeps. Driver Match's README
+//! says what else a connection can tell it.
+{{#ownDatabase}}
+use super::storage::STORAGE;
+{{/ownDatabase}}
+use dispatch_core::manifest::people::{self, People, PeopleData};
+
+/// Everyone `{{table}}` names, counted in records.
+pub const PEOPLE: People = People::new(
+    PeopleData {
+        id: "{{name}}",
+        order: {{peopleOrder}},
+        label: "{{label}}",
+        unit: "record",
+        icon: "Users",
+    },
+    &{{peopleIdent}}::PEOPLE,
+    |store, dsp| {
+        people::named(
+            &*{{readPeople}},
+            "SELECT id,name,min(substr(created_at,1,10)) first,max(substr(created_at,1,10)) last \
+             FROM {{table}} GROUP BY id,name ORDER BY last DESC",
+        )
+    },
+)
+.records(|store, dsp| {
+    people::records(
+        &*{{readPeople}},
+        "SELECT id,count(*) count,max(substr(created_at,1,10)) last \
+         FROM {{table}} GROUP BY id",
+    )
+});

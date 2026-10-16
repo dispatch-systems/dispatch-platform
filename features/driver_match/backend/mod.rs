@@ -28,10 +28,10 @@ use dispatch_core::{
     Error, Result,
     accounts::Context,
     db::{Db, FromRow, Row, Store},
-    manifest::people::DriverSource,
+    manifest::people::{DriverSource, Photo},
     server::cache::DataDomain,
 };
-use matching::Saved;
+use legacy::Saved;
 use sources::Key;
 
 /// Driver codes, the decisions about them and the IDs they lead to: core's own domain, as
@@ -101,7 +101,7 @@ pub trait DriverMatchStore {
     fn driver_counts(&self, dsp: &str) -> Result<DriverCounts>;
     fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails>;
     /// The photo of `code`'s person, from whichever feature holds one: its kind and its bytes.
-    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<(&'static str, Vec<u8>)>>;
+    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>>;
     fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch>;
     fn split_driver(
         &self,
@@ -144,7 +144,7 @@ impl DriverMatchStore for Store {
     fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails> {
         details::details(self, dsp, code)
     }
-    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<(&'static str, Vec<u8>)>> {
+    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>> {
         details::photo(self, dsp, code)
     }
     fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch> {

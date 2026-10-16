@@ -1,6 +1,6 @@
-//! The people slot: who each feature's data names, for Driver Match, which tells them apart.
-//! A feature reads only its own storage; Driver Match joins what every feature names by ID.
-//! The directory slot answers the other way round: who an ID is, for a feature showing people.
+//! The people slot: who each feature's data names, for the one feature that tells them apart.
+//! A feature reads only its own storage; that feature joins what every feature names by ID.
+//! The directory answers the other way round: who an ID is, for a feature showing people.
 use crate::{
     Result,
     db::{Db, Store},
@@ -8,6 +8,7 @@ use crate::{
 };
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::LazyLock,
@@ -17,7 +18,7 @@ use std::{
 /// employee codes, Amazon's transporter IDs. Each kind of data naming people by its IDs names
 /// it as its source.
 pub struct SourceData {
-    /// Permanent: Driver Match keeps its people's IDs under it.
+    /// Permanent: people's IDs are kept under it.
     pub id: &'static str,
     /// How it is named where people's IDs are listed: "Paycom".
     pub label: &'static str,
@@ -151,7 +152,7 @@ impl ts_rs::TS for DriverSource {
 /// A kind of collected data a person can appear in, as the feature whose data it is
 /// declares it in its `people`.
 pub struct PeopleData {
-    /// Permanent: Driver Match's answers name it.
+    /// Permanent: answers about people name it.
     pub id: &'static str,
     /// Its place in the one order the kinds are listed in everywhere.
     pub order: u16,
@@ -277,44 +278,128 @@ impl ts_rs::TS for DriverData {
         Some("core/manifest/api/generated/DriverData.ts".into())
     }
 }
-/// One kind of a feature's data that names people, as Driver Match reads it.
-pub trait People: Sync {
+/// How one kind of a feature's data names people, for the feature that tells them apart: what
+/// it is, whose IDs it names them by, and who it names. A feature connects by declaring one in its manifest's
+/// `people`, most often with one query:
+///
+/// ```ignore
+/// pub const PEOPLE: People = People::new(
+///     PeopleData { id: "dvic", order: 40, label: "DVIC", unit: "inspection", icon: "ClipboardCheck" },
+///     &dispatch_cortex::PEOPLE,
+///     |store, dsp| {
+///         people::named(
+///             &*store.dvic_db(dsp)?,
+///             "SELECT transporter_id id,transporter_name name,min(start_date) first,\
+///              max(start_date) last FROM dvic_inspections GROUP BY 1,2 ORDER BY last DESC",
+///         )
+///     },
+/// );
+/// ```
+///
+/// It is read while the feature is on, and every ID it names gets a person.
+/// The rest is for what the data knows besides: how much it holds of each ID (`records`),
+/// the days each worked (`workdays`), which departments drive (`driver_departments`), their
+/// photos (`photos`), and whether it shortens names (`initials`).
+pub struct People {
+    /// What it is, as each person's sheet lists it.
+    pub kind: PeopleData,
+    /// The IDs it names people by: a collector's, as `&dispatch_cortex::PEOPLE` for Amazon's
+    /// transporter IDs, or a source of its own.
+    pub ids: &'static SourceData,
+    /// Everyone it names, once for each way it writes a name, the newest first. `named` reads
+    /// them from a query.
+    pub read: Reader<Vec<Named>>,
+    /// How much it holds of each ID, in its unit: the person's sheet counts it, and data
+    /// showing someone at work tells a driver from office staff. `records` reads it from a
+    /// query.
+    pub records: Option<Reader<Vec<Records>>>,
+    /// The days it saw each ID at work, and the days it was collected for: two people who
+    /// never worked the same days are less likely one.
+    pub workdays: Option<Reader<Workdays>>,
+    /// The departments the DSP counts as drivers, as the feature's settings say: anyone it
+    /// names outside them works in the office. `None` while they say nothing.
+    pub driver_departments: Option<Reader<Option<BTreeSet<String>>>>,
+    /// Serves the photos it names in `read`, each with its version.
+    pub photos: Option<Photos>,
+    /// Whether it may write a last name as a bare initial, as "Jordan K.": its spellings are
+    /// read after every other kind's.
+    pub initials: bool,
+}
+/// Reads what one kind of data holds for a DSP.
+pub type Reader<T> = fn(&Store, &str) -> Result<T>;
+/// A photo: its kind, as `image/png`, and its bytes.
+pub type Photo = (&'static str, Vec<u8>);
+/// Serves the photo it holds of the first of some IDs it has one of.
+pub type Photos = fn(&Store, &str, &[String]) -> Result<Option<Photo>>;
+
+impl People {
+    /// A kind of data that names people by `ids`, as `read` reads them, and says nothing more.
+    pub const fn new(kind: PeopleData, ids: &'static SourceData, read: Reader<Vec<Named>>) -> Self {
+        Self {
+            kind,
+            ids,
+            read,
+            records: None,
+            workdays: None,
+            driver_departments: None,
+            photos: None,
+            initials: false,
+        }
+    }
+    /// Counts how much it holds of each ID.
+    pub const fn records(self, records: Reader<Vec<Records>>) -> Self {
+        Self {
+            records: Some(records),
+            ..self
+        }
+    }
+    /// Says when each ID worked.
+    pub const fn workdays(self, workdays: Reader<Workdays>) -> Self {
+        Self {
+            workdays: Some(workdays),
+            ..self
+        }
+    }
+    /// Says which departments drive.
+    pub const fn driver_departments(self, departments: Reader<Option<BTreeSet<String>>>) -> Self {
+        Self {
+            driver_departments: Some(departments),
+            ..self
+        }
+    }
+    /// Serves the photos it names.
+    pub const fn photos(self, photos: Photos) -> Self {
+        Self {
+            photos: Some(photos),
+            ..self
+        }
+    }
+    /// Reads its spellings after every other kind's, as it may shorten a last name.
+    pub const fn initials(self) -> Self {
+        Self {
+            initials: true,
+            ..self
+        }
+    }
     /// The kind of data it is, as a person's activity lists it.
-    fn data(&self) -> DriverData;
+    pub const fn data(&'static self) -> DriverData {
+        DriverData::new(&self.kind)
+    }
     /// The source whose IDs it names people by.
-    fn source(&self) -> DriverSource;
-    /// Where its spelling stands among every kind's that names the same ID: the lowest
-    /// first. Amazon's sources each write a driver's name their own way.
-    fn order(&self) -> u16;
-    /// Every ID it names, once for each way it writes the name, in the order its names
-    /// should be read.
-    fn named(&self, store: &Store, dsp: &str) -> Result<Vec<Named>>;
-    /// The name it writes for one ID now, if any.
-    fn name(&self, store: &Store, dsp: &str, id: &str) -> Result<Option<String>>;
-    /// How much it holds of each ID it names.
-    fn appearances(&self, store: &Store, dsp: &str) -> Result<Vec<Appearances>>;
-    /// The days it says each ID worked, and the days it was collected for.
-    fn workdays(&self, _: &Store, _dsp: &str) -> Result<Workdays> {
-        Ok(Workdays::default())
+    pub const fn source(&self) -> DriverSource {
+        DriverSource::new(self.ids)
     }
-    /// The departments whose people the DSP counts as drivers, as its feature's settings
-    /// say: anyone it names outside them works in the office. `None` when they say nothing.
-    fn driver_departments(&self, _: &Store, _dsp: &str) -> Result<Option<BTreeSet<String>>> {
-        Ok(None)
-    }
-    /// The photo it holds of the first of `ids` it has one of: its kind and its bytes. Each
-    /// is named with its version in `named`.
-    fn photo(
-        &self,
-        _: &Store,
-        _dsp: &str,
-        _ids: &[String],
-    ) -> Result<Option<(&'static str, Vec<u8>)>> {
-        Ok(None)
+    /// Where its spellings are read among every kind's: by its order, after every other kind
+    /// if it shortens names.
+    pub const fn reading_order(&self) -> (bool, u16) {
+        (self.initials, self.kind.order)
     }
 }
 
-/// An ID as one kind of data names it.
+/// An ID as one kind of data names it. `named` reads one from each row of a query by its
+/// columns' names: `id` and `name`, and any of `first` and `last` (the days it saw them),
+/// `listed` (on its source's current roster, 1), `email`, `phone`, `roles` (a JSON list),
+/// `department`, `position` and `photo` (its version).
 #[derive(Clone, Debug, Default)]
 pub struct Named {
     pub id: String,
@@ -332,8 +417,7 @@ pub struct Named {
     pub phones: Vec<String>,
     /// What its source says they do: `Driver`, `Helper`.
     pub roles: Vec<String>,
-    /// The version of the photo it holds of them, which changes when the photo does: `photo`
-    /// serves it.
+    /// The version of the photo it holds of them, which changes when the photo does.
     pub photo: Option<String>,
 }
 impl Named {
@@ -341,6 +425,31 @@ impl Named {
         Self {
             id: id.to_owned(),
             ..Self::default()
+        }
+    }
+    /// One row of a query, by its columns' names.
+    pub fn from_row(row: &Value) -> Self {
+        let text = |key: &str| {
+            row[key]
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        };
+        Self {
+            id: text("id").unwrap_or_default(),
+            name: text("name").unwrap_or_default(),
+            department: text("department"),
+            position: text("position"),
+            first_seen: text("first"),
+            last_seen: text("last"),
+            listed: row["listed"].as_i64() == Some(1) || row["listed"] == true,
+            emails: text("email").into_iter().collect(),
+            phones: text("phone").into_iter().collect(),
+            roles: text("roles")
+                .and_then(|roles| serde_json::from_str(&roles).ok())
+                .unwrap_or_default(),
+            photo: text("photo"),
         }
     }
     /// Extends the days it saw them by a first and last day; an empty one says nothing.
@@ -353,13 +462,29 @@ impl Named {
         }
     }
 }
+/// Everyone a query names, a row each, as `Named` reads them.
+pub fn named(db: &Db, sql: &str) -> Result<Vec<Named>> {
+    Ok(db.all(sql, [])?.iter().map(Named::from_row).collect())
+}
 
-/// How much one kind of data holds of an ID: on how many days or weeks, and the last.
+/// How much one kind of data holds of an ID, in its unit, and the last day it has.
 #[derive(Clone, Debug)]
-pub struct Appearances {
+pub struct Records {
     pub id: String,
     pub count: usize,
     pub last: String,
+}
+/// How much a query counts of each ID, from its columns `id`, `count` and `last`.
+pub fn records(db: &Db, sql: &str) -> Result<Vec<Records>> {
+    Ok(db
+        .all(sql, [])?
+        .iter()
+        .map(|row| Records {
+            id: crate::db::s(row, "id").to_owned(),
+            count: crate::db::n(row, "count").max(0) as usize,
+            last: crate::db::s(row, "last").to_owned(),
+        })
+        .collect())
 }
 
 /// When one kind of data saw people at work.
@@ -367,40 +492,50 @@ pub struct Appearances {
 pub struct Workdays {
     /// Each ID with a day it worked.
     pub worked: Vec<(String, String)>,
-    /// The days it was collected for, so that a day outside them says nothing either way.
+    /// The days it was collected for, so that a day outside them says nothing.
     pub collected: Vec<String>,
 }
-
-/// The first name `sql` finds for `id` that is more than spaces, its spaces made single.
-pub fn first_name(db: &Db, sql: &str, id: &str) -> Result<Option<String>> {
-    Ok(db
-        .query_as::<(Option<String>,)>(sql, [id])?
-        .into_iter()
-        .filter_map(|(name,)| name)
-        .map(|name| name.split_whitespace().collect::<Vec<_>>().join(" "))
-        .find(|name| !name.is_empty()))
+impl Workdays {
+    /// Data collected for each day it holds, as a day's routes are: whoever it names on a
+    /// day worked it, and every day it holds was collected.
+    pub fn daily(worked: Vec<(String, String)>) -> Self {
+        let collected = worked.iter().map(|(_, day)| day.clone()).collect();
+        Self { worked, collected }
+    }
 }
 
 /// Who an ID is, as the one feature that tells people apart answers, for a feature that shows
 /// people its data names.
 pub trait Directory: Sync {
-    /// Every ID of `from` the DSP's people hold, each with its person: their code, their IDs
-    /// of `to`, and whether someone confirmed who they are. Empty while the feature answering
-    /// is off for the DSP.
-    fn links(
+    /// Everyone holding an ID of `source`, by that ID: their code, every ID they hold and
+    /// whether someone confirmed who they are.
+    fn people(
         &self,
         store: &Store,
         dsp: &str,
-        from: DriverSource,
-        to: DriverSource,
-    ) -> Result<BTreeMap<String, Link>>;
+        source: DriverSource,
+    ) -> Result<BTreeMap<String, Person>>;
 }
 /// One person, as the directory answers for one of their IDs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Link {
+pub struct Person {
     pub code: String,
-    /// Their IDs of the source asked about.
-    pub ids: Vec<String>,
+    /// Every ID they hold, by its source.
+    pub ids: BTreeMap<DriverSource, Vec<String>>,
     /// Whether someone confirmed who they are, rather than a match.
     pub confirmed: bool,
+}
+impl Person {
+    /// Their IDs of `source`, the first linked first.
+    pub fn ids_of(&self, source: DriverSource) -> &[String] {
+        self.ids.get(&source).map_or(&[], Vec::as_slice)
+    }
+}
+/// Who holds each ID of `source` the DSP's people have, as the directory answers; nobody in a
+/// build without one.
+pub fn who(store: &Store, dsp: &str, source: DriverSource) -> Result<BTreeMap<String, Person>> {
+    registry().directory().map_or_else(
+        || Ok(BTreeMap::new()),
+        |directory| directory.people(store, dsp, source),
+    )
 }

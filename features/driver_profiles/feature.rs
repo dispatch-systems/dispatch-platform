@@ -46,7 +46,7 @@ pub const FEATURE: Feature = Feature {
         areas: &[("driver_profiles.", Collections)],
         ..Audit::NONE
     },
-    people: &[&backend::people::Associates],
+    people: &[&backend::people::PEOPLE],
     ..feature("driver_profiles")
 };
 

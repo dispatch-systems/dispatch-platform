@@ -1,12 +1,8 @@
 //! What the registry refuses of what features declare about one another.
-use dispatch_core::{
-    Result,
-    db::Store,
-    manifest::{
-        Feature, Registry, ScheduleAlias, feature, optional,
-        people::{Appearances, DriverData, DriverSource, Named, People, PeopleData},
-        perm, sub,
-    },
+use dispatch_core::manifest::{
+    Feature, Registry, ScheduleAlias, feature, optional,
+    people::{People, PeopleData},
+    perm, sub,
 };
 
 /// The app's registry with one more feature, as `install` would check it.
@@ -88,41 +84,24 @@ fn a_schedule_alias_of_a_collection_its_feature_does_not_keep_is_refused() {
 }
 
 /// Routes' drivers, named a second time.
-struct Again;
-const AGAIN: PeopleData = PeopleData {
-    id: "routes",
-    order: 99,
-    label: "Routes",
-    unit: "day",
-    icon: "Route",
-};
-impl People for Again {
-    fn data(&self) -> DriverData {
-        DriverData::new(&AGAIN)
-    }
-    fn source(&self) -> DriverSource {
-        DriverSource::new(&dispatch_cortex::PEOPLE)
-    }
-    fn order(&self) -> u16 {
-        99
-    }
-    fn named(&self, _: &Store, _: &str) -> Result<Vec<Named>> {
-        Ok(vec![])
-    }
-    fn name(&self, _: &Store, _: &str, _: &str) -> Result<Option<String>> {
-        Ok(None)
-    }
-    fn appearances(&self, _: &Store, _: &str) -> Result<Vec<Appearances>> {
-        Ok(vec![])
-    }
-}
+const AGAIN: People = People::new(
+    PeopleData {
+        id: "routes",
+        order: 99,
+        label: "Routes",
+        unit: "day",
+        icon: "Route",
+    },
+    &dispatch_cortex::PEOPLE,
+    |_, _| Ok(vec![]),
+);
 
 #[test]
 #[should_panic(expected = "routes names people twice, or in another's place")]
 fn a_kind_of_data_that_names_people_twice_is_refused() {
     static TWICE: Feature = Feature {
         switch: optional("twice", "Twice", &[]),
-        people: &[&Again],
+        people: &[&AGAIN],
         ..feature("twice")
     };
     crate::install();

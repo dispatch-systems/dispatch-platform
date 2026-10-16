@@ -186,7 +186,7 @@ pub const FEATURE: Feature = Feature {
         ..Audit::NONE
     },
     demo: Some(punches::demo),
-    people: &[&punches::people::Employees, &meals::people::MealDrivers],
+    people: &[&punches::people::PEOPLE, &meals::people::PEOPLE],
     ..feature("timecard")
 };
 
