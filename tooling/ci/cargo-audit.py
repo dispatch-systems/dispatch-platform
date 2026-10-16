@@ -8,13 +8,7 @@ import subprocess
 import sys
 
 # Yanked versions the lockfile may hold, each with why it is safe and when it goes.
-ALLOWED_YANKED = {
-    ("zip", "8.6.0"): (
-        "calamine 0.36, which reads Cortex's .xlsx exports, requires zip ^8.6, and every zip "
-        "before 9.0.3 was yanked after advisories about extracting archives to disk, which "
-        "calamine never does. Remove it once calamine moves to zip 9."
-    ),
-}
+ALLOWED_YANKED = {}
 
 
 def problems(report, allowed=ALLOWED_YANKED):
