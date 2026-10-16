@@ -1,9 +1,10 @@
 name: Platform checks
 # One run per change, in the merge queue, on the exact squash commit the queue will push:
 # every regular suite, every time; the real timeout sentinel has its own weekly/manual lane.
-# Nothing runs on the PR itself. The gate publishes the tested
-# build, which Dev installs and a release stamps. Manual runs check a branch, or one suite
-# of it, on GitHub instead of on the machine that serves Dev.
+# Nothing runs on the PR itself. The gate publishes the tested build, which Dev installs and a
+# release stamps. A job that fails the gate tells the queue at once (fail-queue-entry), so the
+# PR leaves it without waiting for the rest of the run. Manual runs check a branch, or one
+# suite of it, on GitHub instead of on the machine that serves Dev.
 on:
   merge_group:
     types: [checks_requested]
@@ -21,6 +22,8 @@ on:
 permissions:
   contents: read
   actions: read
+  # A failed job reports the failed gate to the merge queue at once.
+  checks: write
 concurrency:
   # Every queue commit keeps its own run: it publishes the build Dev installs. Manual runs of
   # one branch replace each other.
@@ -42,6 +45,7 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+      checks: write
     outputs:
       rust-key: ${{ steps.tools.outputs.binary-key }}
       # Named by the attempt that built it. Rerunning only failed jobs keeps this job's
@@ -76,6 +80,8 @@ jobs:
           path: dispatch-dev.tar.gz
           if-no-files-found: error
           retention-days: 2
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # Types, formatting, the bundle budget and the dashboard logic tests, against the package.
   # The bundle test verifies the package through the host tool, which setup-tools restores.
   checks:
@@ -98,6 +104,8 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- checks
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # The browser suite in six shards of about equal time, three workers each, every test with
   # its own server, port, database and mail. Failed shards upload their traces.
   browser:
@@ -187,6 +195,8 @@ jobs:
           path: test-results/**/attachments/documents-performance*.json
           if-no-files-found: ignore
           retention-days: 30
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # The packaged runtime starts, signs in and serves: what a release's smoke test asks of the
   # same bytes, so a release never finds out first. It speaks HTTP only, so it needs no browser.
   smoke:
@@ -209,6 +219,8 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- smoke
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # The workload regression measures the packaged build on a runner of its own. In the merge
   # queue a build that breaks a budget is judged again beside the base's build on the same
   # runner, so a runner that can't hold the budget for the base doesn't fail it.
@@ -265,6 +277,8 @@ jobs:
             /tmp/dispatch-rust-benchmark-base.json
           if-no-files-found: ignore
           retention-days: 30
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # Rust formatting, lints and tests.
   core:
     if: contains('all core', inputs.suite || 'all')
@@ -281,6 +295,8 @@ jobs:
           profile: debug
           save: 'false'
       - run: npm run check:ci -- core
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # The API tests against a debug backend, the Python tooling tests and the npm audit.
   api:
     if: contains('all api', inputs.suite || 'all')
@@ -297,6 +313,8 @@ jobs:
           profile: debug
           save: 'false'
       - run: npm run check:ci -- api
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
     if: contains('all collectors', inputs.suite || 'all')
@@ -318,6 +336,8 @@ jobs:
       - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   rust-advisories:
     if: contains('all core', inputs.suite || 'all')
     runs-on: ubuntu-24.04
@@ -336,6 +356,8 @@ jobs:
         if: steps.audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
       - run: cargo audit --deny warnings
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # Builds the tools and fixture this ref's inputs lack, off the critical path, and saves
   # them to this ref's cache: the jobs that start later restore them instead of compiling.
   # `main`'s copies come from caches.yml. Every other job builds with Cargo when a tool is

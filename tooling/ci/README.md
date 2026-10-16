@@ -27,11 +27,15 @@ source commit (`ci-verify.py`, which runs `dispatch-host ci verify`) and publish
 its version into it. A manual run of one suite has no gate, so nothing partial is published;
 the release tool accepts only runs whose `core` and `platform` jobs succeeded.
 
-When a queue run fails, GitHub removes the PR with a one-line timeline event and nothing that
-leads to the run. The Dispatch bot, the `dispatch-systems` GitHub App in its own repository,
-keeps one comment per queue entry on the PR: its position, the squash commit, the jobs as
-they run, and at the end the merge, the removal's reason, or the failed jobs with their logs
-and the first failure's output.
+When a job the gate needs fails in the queue, `fail-queue-entry` reports the `platform` check
+failed on the queue's commit at once, so GitHub removes the PR without waiting for the rest of
+the run, which goes on. Behind another entry, the run also tests that entry's change, which
+may be what failed, so there the gate judges at the end. GitHub's removal is a one-line
+timeline event with nothing that leads to the run. The Dispatch bot, the `dispatch-systems`
+GitHub App in its own repository, keeps one comment per queue entry on the PR: its position,
+the squash commit, the jobs as they run, and at the end the merge, the removal's reason, or
+the failed jobs with their logs and the first failure's output, kept current until the run
+ends.
 
 The ruleset expects the `platform` check on a PR head before the queue admits it, so
 `queue-admission.yml` reports one on every PR head, usually within a minute. It proves
