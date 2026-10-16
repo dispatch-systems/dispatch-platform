@@ -1,5 +1,5 @@
 import type { Job } from '../../../core/collection/api/index.js';
-import { useCachedData, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import type { DriverDetails, DriverMatch, DriverSource, RosterStatus } from './index.js';
 
 // Driver Match's endpoints, and the roster's, as Driver Match's tab calls them.
@@ -27,9 +27,10 @@ export const confirmDriver = (code: string, source: DriverSource, id: string) =>
 export const keepDriversApart = (code: string, other: string) =>
   api<DriverMatch>(`${driverMatch}/apart`, { code, other });
 
-/** When the roster was collected, what it holds, and when it is collected next. */
+/** When the roster was collected, what it holds, and when it is collected next. Cached, so a
+ * finished collection announced to the page refreshes it, wherever it was started. */
 export const useRosterStatus = (poll = 0) =>
-  useData<RosterStatus>('/api/dsp/driver-profiles/status', poll);
+  useCachedData<RosterStatus>('/api/dsp/driver-profiles/status', poll);
 /** Starts collecting the roster, once for `requestId`. */
 export const collectRoster = (requestId: string) =>
   api<Job>('/api/dsp/driver-profiles/collect', { requestId });
