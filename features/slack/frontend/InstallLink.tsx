@@ -1,10 +1,18 @@
 import { useState } from 'react';
 import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { cancelSlackLink, createSlackLink, type SlackLink } from '../api/client.js';
+import { Badge } from '../../../core/shell/frontend/ui/index.js';
+import {
+  cancelSlackLink,
+  createSlackLink,
+  slackAccountChanged,
+  type SlackLink,
+} from '../api/client.js';
 import { day } from './day.js';
+import { SlackCard } from './SlackCard.js';
 
-// The DSP's install link on its Slack card, for whoever runs its Slack.
+// The DSP's install link, for whoever runs its Slack: made from New, and on a card of its own
+// while it works.
 
 /**
  * Puts the new install link on the clipboard. The link is still being made, so the clipboard
@@ -17,62 +25,62 @@ async function toClipboard(link: Promise<string>) {
   } else await navigator.clipboard.writeText(await link);
 }
 
-/** Making the link and cancelling it, after which the card reads its account again. */
-export function useInstallLink(refresh: () => void) {
+/**
+ * Making the link, in place of any before, for a workspace to have the name it's given: `copied`
+ * runs once it's on the clipboard.
+ */
+export function useInstallLink(copied: () => void) {
   const { notify } = useFeedback();
-  // The link made here, shown once: Dispatch keeps only its hash.
+  // The link made here, for a browser that kept it from the clipboard: shown this once, as
+  // Dispatch keeps only its hash.
   const [made, setMade] = useState('');
-  const copy = useAction(async () => {
-    const link = createSlackLink().then((created) => created.url);
-    const copied = await toClipboard(link).then(
+  const copy = useAction(async (label: string) => {
+    const link = createSlackLink(label).then((created) => created.url);
+    const onClipboard = await toClipboard(link).then(
       () => true,
       () => false,
     );
-    // Shown on the card too, for a browser that kept it from the clipboard.
-    setMade(await link);
-    refresh();
-    if (copied) notify('Install link copied');
+    const url = await link;
+    slackAccountChanged();
+    if (onClipboard) {
+      notify('Install link copied');
+      copied();
+    } else setMade(url);
   });
+  return { made, copy };
+}
+
+/** The link's card while it works: when it expires, and cancelling it. */
+export function LinkCard({ link, timeZone }: { link: SlackLink; timeZone: string }) {
   const cancel = useAction(
     async () => {
       await cancelSlackLink();
-      setMade('');
-      refresh();
+      slackAccountChanged();
     },
     { success: 'Install link cancelled' },
   );
-  return { made, copy, cancel };
-}
-
-/** The link while it works: the one just made, when expires, and cancelling it. */
-export function InstallLink({
-  link,
-  made,
-  timeZone,
-  cancel,
-}: {
-  link: SlackLink | null;
-  made: string;
-  timeZone: string;
-  cancel: ReturnType<typeof useInstallLink>['cancel'];
-}) {
-  if (!link && !made) return null;
   return (
-    <div className="slack-link">
-      {made && (
-        <input
-          readOnly
-          aria-label="Install link"
-          value={made}
-          onFocus={(event) => event.currentTarget.select()}
-        />
-      )}
-      <div className="slack-link-row">
-        {link && <small>Install link · expires {day(link.expiresAt, timeZone)}</small>}
+    <SlackCard
+      title={link.label ?? 'Slack'}
+      actions={
         <button className="text-button" disabled={cancel.busy} onClick={() => void cancel.run()}>
           Cancel link
         </button>
+      }
+    >
+      <div role="status">
+        <Badge value="invited">Pending</Badge>
       </div>
-    </div>
+      <dl className="slack-details">
+        <dt>Install link</dt>
+        <dd>Expires {day(link.expiresAt, timeZone)}</dd>
+        {link.createdBy && (
+          <>
+            <dt>Made by</dt>
+            <dd>{link.createdBy}</dd>
+          </>
+        )}
+      </dl>
+    </SlackCard>
   );
 }

@@ -9,40 +9,52 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   or for a DSP that isn't active, the app stays in its workspaces and does nothing: Dispatch
   ignores what Slack sends for it, but for the app being removed or losing its tokens, and the
   hourly check passes it by. Switched on again, it carries on.
-- **Permissions:** `slack.manage` (Manage Slack), to add Dispatch to the DSP's workspaces and
-  take it out, and to make and cancel the install link: apart from managing the DSP's other
-  connections. Like every permission, it starts off for every role; the DSP's owner turns it
-  on. Its workspaces are among the DSP's own accounts, so its card sits under DSP Connections
-  on Settings' Connections, beside Paycom's, Cortex's and Google Drive's, which that section
-  shows to those who hold `connections.manage` (Manage DSP Connections) as well: it exists
-  while Slack is on.
-- **Connecting:** Connect Slack, or Add workspace once there's one, sends the browser to Slack,
-  which asks which workspace and for the app's permissions, and sends it back to Settings'
-  Connections at the address it started at: the admin's, or the DSP's own. The card finishes
-  the install as the member who started it, in the session that started it. Each install is
-  used once, by its starter, within ten minutes. A workspace's Reconnect, when Slack stopped
-  honouring its tokens, and Update, when the app asks for permissions its admin hasn't approved
-  yet, name the workspace to Slack, which then doesn't ask which. Whoever connected a workspace
-  last shows as having connected it. A workspace another DSP has is refused
-  (`slack_workspace_taken`), and stays that DSP's: Dispatch keeps nothing of the install and
-  never takes the app out of it, though Slack, having installed it again, may stop honouring
-  that DSP's tokens, which the hourly check then finds. An install Dispatch refuses for any
+- **Permissions:** its workspaces are among the DSP's own accounts, so adding Dispatch to them
+  and taking it out, and making and cancelling the install link, are for those who hold
+  `connections.manage` (Manage DSP Connections), which exists while Slack is on, as they are
+  for Paycom's, Cortex's and Google Drive's. `slack.manage` (Manage Slack) is for what Dispatch
+  does in each workspace, apart from its connection. Like every permission, each starts off
+  for every role; the DSP's owner turns it on.
+- **Cards:** under DSP Connections on Settings' Connections, each workspace has a card of its
+  own, under its name: whether it works, its name in Slack, who connected it and when, and what
+  can be done to it. The install link has one while it works, and an install Slack just sent
+  the browser back from has one while it finishes. A DSP with none has no Slack card at all.
+- **Names:** a workspace's name in Dispatch is the one it was added with, if it was given one,
+  else its name in Slack, which follows Slack's. Rename on its card changes it, and blank, has
+  it go by its name in Slack again. Up to 60 characters.
+- **Connecting:** New on DSP Connections lists Slack, which asks for an optional name and opens
+  Connect Slack and Copy install link. Connect Slack sends the browser to Slack, which asks which workspace and for
+  the app's permissions, and sends it back to Settings' Connections at the address it started
+  at: the admin's, or the DSP's own. The cards finish the install as the member who started it,
+  in the session that started it, and why one didn't finish shows at the top of the page. Each
+  install is used once, by its starter, within ten minutes. A workspace's Reconnect, when Slack
+  stopped honouring its tokens, and Update, when the app asks for permissions its admin hasn't
+  approved yet, name the workspace to Slack, which then doesn't ask which. Whoever connected a
+  workspace last shows as having connected it, and a workspace the DSP had keeps its name.
+  Adding a workspace the DSP has already is refused (`slack_workspace_connected`), as Slack
+  can't be asked to leave it out of its choice: Slack installed the app there again, so
+  Dispatch keeps the new tokens, and the activity log records it reconnected. A workspace another DSP has is refused (`slack_workspace_taken`), and
+  stays that DSP's: Dispatch keeps nothing of the install and never takes the app out of it,
+  though Slack, having installed it again, may stop honouring that DSP's tokens, which the
+  hourly check then finds. An install Dispatch refuses for any
   other reason after Slack made it, as when the link was cancelled meanwhile, is taken back
   out, so the app is never left in a workspace no DSP holds. One refused while reconnecting a
   workspace the DSP already holds stays installed with the tokens Dispatch had, which the
   hourly check finds if Slack, having installed it again, stopped honouring them. Installing
   across a whole Enterprise Grid organization is refused, and the app taken back out.
 - **The install link:** for whoever runs the DSP's Slack, who needn't be in Dispatch. Copy
-  install link makes one, in place of any before, puts it on the clipboard and shows it on the
-  card; Dispatch keeps only its hash. It works once, for seven days, until it's cancelled, and
-  only while the DSP is active with Slack on. Whoever opens it goes on to Slack and, once they
-  allow it, to Dispatch in Slack, in the workspace they chose. An install the link started
-  finishes as Slack sends the browser back, with no session: the link is all it needs. The
-  card then lists the workspace as connected by install link. A link that no longer works, a
+  install link makes one, in place of any before, with the name given for the workspace it
+  adds, and puts it on the clipboard, or shows it there once for a browser that keeps it from
+  the clipboard; Dispatch keeps only its hash. It
+  works once, for seven days, until it's cancelled, and only while the DSP is active with Slack
+  on. Whoever opens it goes on to Slack and, once they allow it, to Dispatch in Slack, in the
+  workspace they chose. An install the link started finishes as Slack sends the browser back,
+  with no session: the link is all it needs. The workspace's card then shows it connected by
+  install link. A link that no longer works, a
   workspace another DSP has, or an install cancelled at Slack ends on a page of its own, which
   says so in a line.
 - **Disconnecting** a workspace forgets it and its tokens, frees it for any DSP, and then has
-  Slack remove the app from it. The activity log records connecting, reconnecting,
+  Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
   disconnecting, making and cancelling the install link, and, with no member as their actor,
   a workspace connected by the link, the app removed from a workspace in Slack, and Slack
   refusing a workspace's tokens.
@@ -77,17 +89,20 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   `on_event` for events, `on_interaction` for buttons, forms and shortcuts. Then
   `dispatch-backend slack-manifest` prints the app to paste into Slack. The app asks for
   `team:read` alone today, to keep each workspace's name as Slack has it.
-- **API:** behind `slack.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
+- **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
   install link; `POST /api/dsp/slack/connect` (with `team`, to reconnect or update one),
-  `…/connect/finish`, `…/workspaces/{team}/disconnect`, `…/link` and `…/link/cancel`. Public:
+  `…/connect/finish`, `…/workspaces/{team}/rename`, `…/workspaces/{team}/disconnect`, `…/link`
+  and `…/link/cancel`; `…/connect` and `…/link` take the workspace's `label`. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
-- **Data:** `slack_workspaces`, `slack_connect_requests` and `slack_install_links`, in each
-  DSP's own database; `slack_teams`, which DSP each workspace belongs to, in the platform's;
+- **Data:** `slack_workspaces` (each with its name in Dispatch, `label`),
+  `slack_connect_requests` (each with the workspace it named to Slack, to reconnect or update,
+  and the name the workspace it adds is to have) and `slack_install_links`, in each DSP's own
+  database; `slack_teams`, which DSP each workspace belongs to, in the platform's;
   each workspace's tokens, encrypted in the DSP's secrets as `slack-<team>.enc`.
 - **Upkeep:** hourly, each working workspace of each active DSP with Slack on is asked for, as
   the bot: that renews its token as it nears its end, keeps the workspace's name as Slack has
-  it, and marks it broken if Slack no longer honours its tokens, so the card offers to
+  it, and marks it broken if Slack no longer honours its tokens, so its card offers to
   reconnect it.
 - **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as
   the code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet,
@@ -103,7 +118,7 @@ Marketplace.
 
 The server reads its settings, a group it needs whole: `DISPATCH_DEV_SLACK_CLIENT_ID`,
 `…_SLACK_CLIENT_SECRET` and `…_SLACK_SIGNING_SECRET` on Dev and its previews, or
-`DISPATCH_PRODUCTION_…` on Production. Without them, the card says Slack is unavailable; with
+`DISPATCH_PRODUCTION_…` on Production. Without them, Slack in New says it's unavailable; with
 only some, the server refuses to start.
 
 `dispatch-backend slack-manifest` prints the server's app as Slack's manifest: its name, its

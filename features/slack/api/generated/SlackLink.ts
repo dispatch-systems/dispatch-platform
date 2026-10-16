@@ -5,6 +5,10 @@
  */
 export type SlackLink = { createdBy: string | null,
 /**
+ * The name the workspace it adds is to have.
+ */
+label: string | null,
+/**
  * When it stops working, in milliseconds.
  */
 expiresAt: number, };

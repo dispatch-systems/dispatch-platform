@@ -144,7 +144,18 @@ export type ConnectionPiece = {
   reads: readonly string[];
   /** Loads its code; the tab loads every card's before it opens. */
   load: () => Promise<unknown>;
+  /** Its cards: as many as the DSP has of its accounts, or none. */
   render: (context: SettingsContext) => ReactNode;
+  /** Its entry in New on DSP Connections, for an account the DSP may have several of. */
+  adds?: NewConnection;
+};
+/** A kind of account New on DSP Connections adds, for those who manage the DSP's connections. */
+export type NewConnection = {
+  label: string;
+  /** Its mark beside the label, drawn from its card's code. */
+  icon: () => ReactNode;
+  /** What choosing it opens, which calls `close` once it's done or dismissed. */
+  render: (context: SettingsContext & { close: () => void }) => ReactNode;
 };
 
 /**

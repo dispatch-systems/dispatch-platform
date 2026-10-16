@@ -30,6 +30,23 @@
 .connections-view > header p {
   margin-top: 6px;
 }
+.connections-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.connections-new summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 500;
+}
 .connections-view + .connections-view {
   margin-top: 16px;
 }

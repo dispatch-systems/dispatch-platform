@@ -66,7 +66,8 @@
       ["driver_profiles", 1, "open_sources", "02b0e6057d57f3fb"],
       ["documents", 1, "documents_shared_files", "2f535ad4e09b9f2d"],
       ["documents", 2, "documents_full_access", "code"],
-      ["slack", 1, "slack", "8ca8fd50f814a724"]
+      ["slack", 1, "slack", "8ca8fd50f814a724"],
+      ["slack", 2, "slack_new_connections", "code"]
     ]
   },
   {

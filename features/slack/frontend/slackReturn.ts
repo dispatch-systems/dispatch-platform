@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
 import { hashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 
 // What Slack sent the browser back with, after an install started on Settings' Connections,
-// and finishing it there.
+// and finishing it there. Why one didn't finish shows at the top of the page: a workspace being
+// added has no card yet to show it on.
 
 type SlackReturn = { state: string; code: string; error: string };
 /** What Slack sent back, until the card starts finishing it. */
@@ -38,22 +40,21 @@ const cancelled = (error: string) =>
 
 /**
  * Finishes the install Slack sent the browser back from with `finish`: once, as soon as the
- * card is drawn. Whether it's finishing, and why it didn't, if it didn't.
+ * cards are drawn. Whether it's finishing.
  */
 export function useSlackReturn(finish: (state: string, code: string) => Promise<void>) {
   const [returned] = useState(takeSlackReturn);
-  const finishing = useAction(finish, { success: 'Slack connected', inline: true });
+  const { fail } = useFeedback();
+  const finishing = useAction(finish, { success: 'Slack connected' });
   const started = useRef(false);
   useEffect(() => {
     if (!returned) return;
     // A later visit doesn't find it.
     if (returned === pending) pending = undefined;
-    if (!returned.code || started.current) return;
+    if (started.current) return;
     started.current = true;
-    void finishing.run(returned.state, returned.code);
-  }, [returned, finishing]);
-  return {
-    busy: finishing.busy,
-    notice: (returned?.error && cancelled(returned.error)) || finishing.error,
-  };
+    if (returned.code) void finishing.run(returned.state, returned.code);
+    else fail(cancelled(returned.error));
+  }, [returned, finishing, fail]);
+  return { busy: finishing.busy };
 }
