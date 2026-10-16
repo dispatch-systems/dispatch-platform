@@ -38,6 +38,11 @@ async function connect(client: Client, team?: string) {
 }
 const names = (account: { workspaces: { name: string }[] }) =>
   account.workspaces.map((workspace) => workspace.name);
+/** The name in Dispatch of the workspace `team`. */
+const labelOf = (
+  account: { workspaces: { teamId: string; label: string | null }[] },
+  team: string,
+) => account.workspaces.find((workspace) => workspace.teamId === team)?.label;
 /** Sends `body` to Slack's address `path` as Slack would, signed `at` seconds since 1970. */
 const fromSlack = (
   f: Fixture,
@@ -76,7 +81,8 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
     link: null,
   });
 
-  const started = await owner.post('/api/dsp/slack/connect');
+  // Added with a name it goes by in Dispatch.
+  const started = await owner.post('/api/dsp/slack/connect', { label: ' Operations Team ' });
   assert.equal(started.status, 200, started.body);
   // Started at the admin's address, Slack sends the browser back to the DSP's Connections there.
   assert.equal(
@@ -93,6 +99,7 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
   assert.equal(finished.status, 200, finished.body);
   const [operations] = finished.value.workspaces;
   assert.equal(operations.name, 'Operations');
+  assert.equal(operations.label, 'Operations Team');
   assert.equal(operations.status, 'connected');
   assert.equal(operations.needsUpdate, false);
   assert.equal(operations.byLink, false);
@@ -111,6 +118,16 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
     install(reconnect.value.url),
   );
   assert.deepEqual(names(reconnected.value), ['Drivers', 'Operations']);
+  assert.equal(labelOf(reconnected.value, operations.teamId), 'Operations Team');
+  // Renamed blank, it goes by its name in Slack.
+  const rename = (label: string) =>
+    owner.post(`/api/dsp/slack/workspaces/${operations.teamId}/rename`, { label });
+  assert.equal(labelOf((await rename('Ops')).value, operations.teamId), 'Ops');
+  assert.equal(labelOf((await rename(' ')).value, operations.teamId), null);
+  // Adding one the DSP has already is refused, and it stays one of two.
+  const twice = await connect(owner, operations.teamId);
+  assert.equal(twice.value.error, 'slack_workspace_connected');
+  assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), ['Drivers', 'Operations']);
   // Only one of the DSP's own workspaces is reconnected or disconnected.
   const unknown = await owner.post('/api/dsp/slack/connect', { team: 'T0SOMEONEELSE' });
   assert.equal(unknown.value.error, 'slack_workspace_not_found');
@@ -130,7 +147,8 @@ test('a workspace belongs to one DSP, and a member connecting at its address com
   const dsps = owner.session.dsps as { id: string; name: string }[];
   const north = member.session.dsps[0] as { id: string; name: string };
   const summit = dsps.find((d) => d.id !== north.id && d.name === 'Summit Delivery')!;
-  // Every permission starts off, so the owner lets the member's role manage Slack.
+  // Every permission starts off, so the owner lets the member's role manage the DSP's
+  // connections, Slack's workspaces among them.
   await owner.select(north.id);
   const roles: { id: string; name: string; permissions: string[] }[] = (
     await owner.get('/api/dsp/roles')
@@ -138,7 +156,7 @@ test('a workspace belongs to one DSP, and a member connecting at its address com
   const role = roles.find((each) => each.name === 'Member')!;
   const saved = await owner.post(`/api/dsp/roles/${role.id}`, {
     name: role.name,
-    permissions: [...role.permissions, 'slack.manage'],
+    permissions: [...role.permissions, 'connections.manage'],
   });
   assert.equal(saved.status, 200, saved.body);
   await member.select(north.id);
@@ -172,11 +190,11 @@ test('the install link adds one workspace, once, for whoever opens it', async (t
   )!;
   await owner.select(north.id);
   const first = (await owner.post('/api/dsp/slack/link')).value;
-  // A new link takes the place of the last.
-  const made = await owner.post('/api/dsp/slack/link');
+  // A new link takes the place of the last, and gives the workspace it adds its name.
+  const made = await owner.post('/api/dsp/slack/link', { label: 'Front Office' });
   assert.equal(made.status, 200, made.body);
   const link = made.value.url as string;
-  assert.ok((await owner.read('/api/dsp/slack/account')).link);
+  assert.equal((await owner.read('/api/dsp/slack/account')).link.label, 'Front Office');
   assert.equal((await goes(first.url)).status, 404);
 
   // Opened without signing in: on to Slack, and back to Dispatch in Slack.
@@ -189,8 +207,12 @@ test('the install link adds one workspace, once, for whoever opens it', async (t
   const account = await owner.read('/api/dsp/slack/account');
   assert.equal(account.link, null);
   assert.deepEqual(
-    account.workspaces.map((each: { name: string; byLink: boolean }) => [each.name, each.byLink]),
-    [['Operations', true]],
+    account.workspaces.map((each: { name: string; label: string; byLink: boolean }) => [
+      each.name,
+      each.label,
+      each.byLink,
+    ]),
+    [['Operations', 'Front Office', true]],
   );
   assert.equal(opened.searchParams.get('team'), account.workspaces[0].teamId);
   // Used once.

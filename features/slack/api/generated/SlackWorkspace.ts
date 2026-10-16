@@ -4,7 +4,15 @@ import type { WorkspaceStatus } from "./WorkspaceStatus";
 /**
  * A workspace the DSP added Dispatch to.
  */
-export type SlackWorkspace = { teamId: string, name: string, status: WorkspaceStatus,
+export type SlackWorkspace = { teamId: string,
+/**
+ * Its name in Slack.
+ */
+name: string,
+/**
+ * Its name in Dispatch, if whoever added or renamed it gave it one.
+ */
+label: string | null, status: WorkspaceStatus,
 /**
  * Whether the bot needs permissions its admin hasn't approved yet: updating asks for them.
  */

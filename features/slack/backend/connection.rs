@@ -8,11 +8,11 @@ use super::{
     bot::Bot,
     fixture,
     slack::{Installed, Slack},
-    storage::{SlackStore, Starter, Workspace},
+    storage::{Install, SlackStore, Starter, Workspace},
 };
 use crate::api::types::{SlackAccount, SlackInstall, SlackLink, SlackWorkspace, WorkspaceStatus};
 use dispatch_core::{
-    Result, State,
+    Error, Result, State,
     accounts::Context,
     db::{Store, identifier, iso},
     ensure,
@@ -77,6 +77,7 @@ pub fn account(db: &Store, dsp: &str) -> Result<SlackAccount> {
         Some(link) => Some(SlackLink {
             created_by: db.actor_name(dsp, &link.created_by)?,
             expires_at: link.expires_at,
+            label: link.label,
         }),
         None => None,
     };
@@ -104,13 +105,20 @@ fn described(db: &Store, dsp: &str, workspace: Workspace) -> Result<SlackWorkspa
         connected_at: workspace.connected_at,
         team_id: workspace.team,
         name: workspace.name,
+        label: workspace.label,
     })
 }
 
 /// Starts installing Dispatch in a workspace for the member, from the address `site` they're
-/// at. `team` names one of the DSP's workspaces to reconnect or update, which Slack then
-/// doesn't ask them to choose.
-pub fn start(db: &Store, c: &Context, site: &Site, team: Option<String>) -> Result<SlackInstall> {
+/// at: a new one, to have the name `label` in Dispatch, or one of the DSP's, `team`, to
+/// reconnect or update, which Slack then doesn't ask them to choose.
+pub fn start(
+    db: &Store,
+    c: &Context,
+    site: &Site,
+    team: Option<String>,
+    label: Option<String>,
+) -> Result<SlackInstall> {
     let slack = Slack::of(&db.config)?;
     if let Some(team) = &team {
         ensure(
@@ -124,14 +132,21 @@ pub fn start(db: &Store, c: &Context, site: &Site, team: Option<String>) -> Resu
         _ => Started::Admin,
     };
     let state = new_state(&c.dsp.id, at)?;
-    db.start_slack_install(&c.dsp.id, &state, &Starter::Member(c.actor().to_owned()))?;
+    let install = Install {
+        starter: Starter::Member(c.actor().to_owned()),
+        team: team.clone(),
+        label,
+    };
+    db.start_slack_install(&c.dsp.id, &state, &install)?;
     Ok(SlackInstall {
         url: install_url(db, &slack, &state, team)?,
     })
 }
 
 /// Finishes the install the member started with `sign_in`, now that Slack sent them back with
-/// `code`: keeps the workspace, which becomes the DSP's.
+/// `code`: keeps the workspace, which becomes the DSP's. One started to add a workspace that
+/// comes back with one the DSP has already is refused (`slack_workspace_connected`), after
+/// keeping its new tokens: Slack installed the app there again, and may stop honouring the old.
 pub async fn finish(
     state: &Arc<State>,
     c: Context,
@@ -142,11 +157,11 @@ pub async fn finish(
     let ours = started(&sign_in).is_some_and(|(dsp, at)| dsp == c.dsp.id && at != Started::Link);
     ensure(ours, "slack_connect_expired", 409)?;
     let (dsp, actor) = (c.dsp.id.clone(), c.actor().to_owned());
-    let starter = state
+    let install = state
         .run(move |db| db.finish_slack_install(&dsp, &sign_in))
         .await?;
     ensure(
-        starter == Starter::Member(actor.clone()),
+        install.starter == Starter::Member(actor.clone()),
         "slack_connect_expired",
         409,
     )?;
@@ -155,17 +170,20 @@ pub async fn finish(
         .await?;
     let made = (installed.team.clone(), installed.tokens.access.clone());
     let id = c.dsp.id.clone();
+    let (named, label) = (install.team, install.label);
     let kept = state
         .run(move |db| {
             let c = access.revalidate(db, &c)?;
-            let (action, name) = keep(db, &c.dsp.id, installed, Some(&actor))?;
-            c.audit(db, action, &name)
+            let (action, name) = keep(db, &c.dsp.id, installed, Some(&actor), label)?;
+            c.audit(db, action, &name)?;
+            Ok(action)
         })
         .await;
     if kept.is_err() {
         undo(state, made).await;
     }
-    kept?;
+    let again = kept? == RECONNECTED && named.is_none();
+    ensure(!again, "slack_workspace_connected", 409)?;
     state.read(move |db| account(db, &id)).await
 }
 
@@ -179,17 +197,26 @@ pub(super) async fn undo(state: &Arc<State>, (team, token): (String, String)) {
     }
 }
 
+/// What the activity log records for an install that gave the DSP a workspace it had already.
+const RECONNECTED: &str = "slack.reconnected";
+
 /// Keeps a workspace an install gave the DSP, connected by `by`, or by the install link, who
 /// then shows as having connected it, reconnected or not: the action the activity log records,
-/// and the workspace's name. A workspace another DSP has is refused, and stays that DSP's.
+/// and the workspace's name. A workspace new to the DSP takes the name `label` in Dispatch; one
+/// it had keeps its own. A workspace another DSP has is refused, and stays that DSP's.
 pub(super) fn keep(
     db: &Store,
     dsp: &str,
     installed: Installed,
     by: Option<&str>,
+    label: Option<String>,
 ) -> Result<(&'static str, String)> {
     let existing = db.slack_workspace(dsp, &installed.team)?;
     let workspace = Workspace {
+        label: match &existing {
+            Some(had) => had.label.clone(),
+            None => label,
+        },
         team: installed.team,
         name: installed.name,
         broken: false,
@@ -201,11 +228,24 @@ pub(super) fn keep(
     };
     db.save_slack_workspace(dsp, &workspace, &installed.tokens)?;
     let action = match (existing, by) {
-        (Some(_), _) => "slack.reconnected",
+        (Some(_), _) => RECONNECTED,
         (None, Some(_)) => "slack.connected",
         (None, None) => "slack.connected_by_link",
     };
     Ok((action, workspace.name))
+}
+
+/// Names the DSP's workspace `team` in Dispatch, `label`, or with none, has it known by its
+/// name in Slack.
+pub fn rename(db: &Store, c: &Context, team: &str, label: Option<String>) -> Result<SlackAccount> {
+    let workspace = db.label_slack_workspace(&c.dsp.id, team, label.as_deref())?;
+    let workspace = workspace.ok_or_else(|| Error::new("slack_workspace_not_found", 404))?;
+    c.audit(
+        db,
+        "slack.renamed",
+        label.as_deref().unwrap_or(&workspace.name),
+    )?;
+    account(db, &c.dsp.id)
 }
 
 /// Takes Dispatch out of the DSP's workspace `team`: Dispatch forgets it, then Slack removes

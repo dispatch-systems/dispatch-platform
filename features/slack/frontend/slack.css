@@ -1,4 +1,4 @@
-/* Slack's card on Settings' Connections. */
+/* Slack's cards on Settings' Connections, and its entry in New there. */
 .slack-logo {
   flex-shrink: 0;
 }
@@ -7,61 +7,83 @@
   align-items: center;
   gap: 8px;
 }
-.slack-workspaces {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.slack-workspaces li {
+.slack-details {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 12px;
-  padding-block: 12px;
-  border-top: 1px solid var(--border);
+  grid-template-columns: max-content 1fr;
+  gap: 10px 20px;
+  margin: 0;
+  font-size: 14px;
 }
-.slack-workspaces li:first-child {
-  padding-top: 0;
-  border-top: 0;
+.slack-details dt {
+  color: var(--muted-foreground);
 }
-.slack-workspace-name {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+.slack-details dd {
   min-width: 0;
+  margin: 0;
   overflow-wrap: anywhere;
 }
-.slack-workspaces small,
-.slack-link small {
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.slack-workspaces small {
-  grid-column: 1;
-}
-.slack-workspace-actions {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.slack-link {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.slack-link input {
+.slack-install-link {
   width: 100%;
   font-size: 13px;
 }
-.slack-link-row {
+.slack-new-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.slack-mark {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--muted);
+}
+.slack-new {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.slack-ways {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.slack-way {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 16px;
+  border-radius: 10px;
+  background: var(--card);
+  font-weight: 600;
+  text-align: left;
+  transition:
+    background-color var(--motion-duration),
+    border-color var(--motion-duration);
+}
+.slack-way:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+.slack-way-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  color: var(--muted-foreground);
+}
+.slack-way-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--foreground);
+}
+@media (max-width: 520px) {
+  .slack-ways {
+    grid-template-columns: 1fr;
+  }
 }

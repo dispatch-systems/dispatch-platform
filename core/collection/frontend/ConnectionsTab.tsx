@@ -10,13 +10,15 @@ import { ConnectionsPage } from './ConnectionsPage.js';
  */
 export function ConnectionsTab({ session, view }: { session: SessionView; view: DspView }) {
   const manages = can(view, 'connections.manage');
+  const dsp = manages ? connectionPieces('dsp', view) : [];
   return (
     <div className="settings-connections">
       <ConnectionsPage
         development={session.providerMode === 'fixture'}
         timezone={view.dsp.timezone}
         providers={manages ? connectionFeatures(view.features).map((f) => f.id) : []}
-        dsp={manages ? connectionPieces('dsp', view) : []}
+        dsp={dsp}
+        adds={dsp.filter((piece) => piece.adds)}
         personal={connectionPieces('personal', view)}
         context={{ session, view }}
       />

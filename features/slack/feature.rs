@@ -17,8 +17,8 @@ use dispatch_core::{
 pub const FEATURE: Feature = Feature {
     place: 120,
     switch: optional("slack", "Slack", &[]),
-    // Adding Dispatch to the DSP's workspaces, and taking it out: apart from managing the DSP's
-    // other connections, as what Slack shows a workspace is for those who manage Slack to say.
+    // What Dispatch does in each of the DSP's workspaces, apart from adding them and taking them
+    // out, which those who manage the DSP's connections do.
     permissions: &[perm("slack.manage", "Manage Slack", 120)],
     // Its workspaces are among the DSP's own accounts, on Settings' DSP Connections.
     dsp_connection: true,
@@ -46,11 +46,20 @@ pub const FEATURE: Feature = Feature {
         },
         OwnMigrations {
             kind: Kind::DSP,
-            list: &[Migration {
-                id: 1,
-                name: "slack",
-                apply: Sql(include_str!("migrations/dsp/0001_slack.sql")),
-            }],
+            list: &[
+                Migration {
+                    id: 1,
+                    name: "slack",
+                    apply: Sql(include_str!("migrations/dsp/0001_slack.sql")),
+                },
+                Migration {
+                    id: 2,
+                    name: "slack_new_connections",
+                    apply: Sql(include_str!(
+                        "migrations/dsp/0002_slack_new_connections.sql"
+                    )),
+                },
+            ],
         },
     ],
     // Slack's app: its ID and secret, and the secret Slack signs its requests with.

@@ -5,7 +5,7 @@ use super::{
     app::INSTALL_PATH,
     connection::{self, Started},
     slack::Slack,
-    storage::{SlackStore, Starter},
+    storage::{Install, SlackStore, Starter},
 };
 use crate::api::types::{SlackAccount, SlackNewLink};
 use dispatch_core::{
@@ -17,11 +17,13 @@ use dispatch_core::{
 };
 use std::sync::Arc;
 
-/// Makes the DSP's install link, in place of any it had: shown this once.
-pub fn create(db: &Store, c: &Context) -> Result<SlackNewLink> {
+/// Makes the DSP's install link, in place of any it had, for a workspace to have the name
+/// `label` in Dispatch: shown this once.
+pub fn create(db: &Store, c: &Context, label: Option<String>) -> Result<SlackNewLink> {
     Slack::of(&db.config)?;
     let link = format!("{}.{}", c.dsp.id, crypto::token()?);
-    let kept = db.save_slack_link(&c.dsp.id, &crypto::sha(&link), c.actor())?;
+    let hash = crypto::sha(&link);
+    let kept = db.save_slack_link(&c.dsp.id, &hash, c.actor(), label.as_deref())?;
     c.audit(db, "slack.link_created", "")?;
     let query = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("link", &link)
@@ -57,7 +59,13 @@ pub fn start(db: &Store, link: &str) -> Result<String> {
     let (dsp, hash) = opened(db, link)?;
     let slack = Slack::of(&db.config)?;
     let state = connection::new_state(&dsp, Started::Link)?;
-    db.start_slack_install(&dsp, &state, &Starter::Link(hash))?;
+    let label = db.slack_link(&dsp)?.and_then(|link| link.label);
+    let install = Install {
+        starter: Starter::Link(hash),
+        team: None,
+        label,
+    };
+    db.start_slack_install(&dsp, &state, &install)?;
     connection::install_url(db, &slack, &state, None)
 }
 
@@ -70,7 +78,7 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
         _ => return Err(Error::new("slack_connect_expired", 409)),
     };
     let at = dsp.clone();
-    let starter = state
+    let Install { starter, label, .. } = state
         .run(move |db| db.finish_slack_install(&at, &sign_in))
         .await?;
     let Starter::Link(hash) = starter else {
@@ -86,7 +94,7 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
             // The link may have been cancelled, or used, while Slack asked.
             let works = db.slack_link_works(&dsp, &hash)? && connection::open(db, &dsp)?;
             ensure(works, "slack_link_expired", 404)?;
-            let (action, name) = connection::keep(db, &dsp, installed, None)?;
+            let (action, name) = connection::keep(db, &dsp, installed, None, label)?;
             db.end_slack_link(&dsp, Some(&hash))?;
             db.audit(None, Some(&dsp), action, &name)
         })

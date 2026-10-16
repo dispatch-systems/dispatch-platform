@@ -18,27 +18,34 @@ use dispatch_core::{
     ensure,
     foundation::validate as v,
     server::http::{
-        input::optional,
-        input::{Input, Reply},
+        input::{Input, Reply, optional, optional_text},
         route::{Dsp, Grant, Member, Route, async_post, protocol, read, write},
     },
 };
+use serde_json::Value;
 use std::sync::Arc;
 
-const MANAGE: Dsp = Dsp("slack.manage");
+/// Adding the DSP's workspaces and taking them out, as its other accounts on Settings' DSP
+/// Connections are.
+const CONNECTIONS: Dsp = Dsp("connections.manage");
 
 pub fn routes() -> Vec<Route> {
     vec![
-        read("/api/dsp/slack/account", MANAGE, account),
-        write("/api/dsp/slack/connect", MANAGE, connect),
-        async_post("/api/dsp/slack/connect/finish", MANAGE, finish),
+        read("/api/dsp/slack/account", CONNECTIONS, account),
+        write("/api/dsp/slack/connect", CONNECTIONS, connect),
+        async_post("/api/dsp/slack/connect/finish", CONNECTIONS, finish),
+        write(
+            "/api/dsp/slack/workspaces/{team}/rename",
+            CONNECTIONS,
+            rename,
+        ),
         async_post(
             "/api/dsp/slack/workspaces/{team}/disconnect",
-            MANAGE,
+            CONNECTIONS,
             disconnect,
         ),
-        write("/api/dsp/slack/link", MANAGE, create_link),
-        write("/api/dsp/slack/link/cancel", MANAGE, cancel_link),
+        write("/api/dsp/slack/link", CONNECTIONS, create_link),
+        write("/api/dsp/slack/link/cancel", CONNECTIONS, cancel_link),
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
         }),
@@ -59,19 +66,25 @@ fn team(id: &str) -> Result<String> {
     ensure(storage::team_id(id), "invalid_input", 400)?;
     Ok(id.to_owned())
 }
+/// A workspace's name in Dispatch, as `body` gives it: left out or blank, it has none.
+fn label(body: &Value) -> Result<Option<String>> {
+    let label = optional_text(body, "label", 60)?.trim();
+    Ok((!label.is_empty()).then(|| label.to_owned()))
+}
 
 fn account(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     Reply::of(&connection::account(db, c.dsp_id())?)
 }
-/// Starts installing Dispatch in a workspace: a new one, or with `team`, one of the DSP's to
-/// reconnect or update.
+/// Starts installing Dispatch in a workspace: a new one, with the name `label` in Dispatch, or
+/// with `team`, one of the DSP's to reconnect or update.
 fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &["team"])?;
+    v::fields(&input.body, &["team", "label"])?;
     let asked = optional(&input.body, "team", |body, key| {
         team(v::text(body, key, 2, 32)?)
     })?;
-    Reply::of(&connection::start(db, c, &input.site, asked)?)
+    let label = label(&input.body)?;
+    Reply::of(&connection::start(db, c, &input.site, asked, label)?)
 }
 async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -81,6 +94,11 @@ async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let code = v::text(&input.body, "code", 1, 2048)?.to_owned();
     Reply::of(&connection::finish(&state, c, access, sign_in, code).await?)
 }
+fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["label"])?;
+    let team = team(input.param("team"))?;
+    Reply::of(&connection::rename(db, c, &team, label(&input.body)?)?)
+}
 async fn disconnect(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.run(move |db| access.authorize(db, &asked)).await?;
@@ -89,8 +107,8 @@ async fn disconnect(state: Arc<State>, input: Input, access: Dsp) -> Result<Repl
     Reply::of(&connection::disconnect(&state, c, access, team).await?)
 }
 fn create_link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &[])?;
-    Reply::of(&link::create(db, c)?)
+    v::fields(&input.body, &["label"])?;
+    Reply::of(&link::create(db, c, label(&input.body)?)?)
 }
 fn cancel_link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;

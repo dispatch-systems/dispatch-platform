@@ -10,6 +10,7 @@ const phrases: AuditPhrases = {
     ' was connected with the install link',
   ],
   'slack.reconnected': (e, { strong }) => ['reconnected Slack workspace ', strong(e.detail)],
+  'slack.renamed': (e, { strong }) => ['renamed a Slack connection ', strong(e.detail)],
   'slack.disconnected': (e, { strong }) => ['disconnected Slack workspace ', strong(e.detail)],
   'slack.removed_in_slack': (e, { strong }) => [
     'Dispatch was removed from Slack workspace ',
@@ -29,6 +30,7 @@ export const wording: AuditWording = {
   spoken: [
     'slack.connected',
     'slack.reconnected',
+    'slack.renamed',
     'slack.disconnected',
     'slack.link_created',
     'slack.link_cancelled',

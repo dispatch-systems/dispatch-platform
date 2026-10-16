@@ -23,7 +23,10 @@ pub struct SlackAccount {
 #[serde(rename_all = "camelCase")]
 pub struct SlackWorkspace {
     pub team_id: String,
+    /// Its name in Slack.
     pub name: String,
+    /// Its name in Dispatch, if whoever added or renamed it gave it one.
+    pub label: Option<String>,
     pub status: WorkspaceStatus,
     /// Whether the bot needs permissions its admin hasn't approved yet: updating asks for them.
     pub needs_update: bool,
@@ -51,6 +54,8 @@ pub enum WorkspaceStatus {
 #[serde(rename_all = "camelCase")]
 pub struct SlackLink {
     pub created_by: Option<String>,
+    /// The name the workspace it adds is to have.
+    pub label: Option<String>,
     /// When it stops working, in milliseconds.
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub expires_at: i64,

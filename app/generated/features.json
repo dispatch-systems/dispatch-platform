@@ -550,6 +550,7 @@
         "GET /api/dsp/slack/account",
         "POST /api/dsp/slack/connect",
         "POST /api/dsp/slack/connect/finish",
+        "POST /api/dsp/slack/workspaces/{team}/rename",
         "POST /api/dsp/slack/workspaces/{team}/disconnect",
         "POST /api/dsp/slack/link",
         "POST /api/dsp/slack/link/cancel",

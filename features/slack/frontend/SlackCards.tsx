@@ -1,0 +1,99 @@
+import { useState } from 'react';
+import type { DspView } from '../../../core/accounts/api/index.js';
+import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { Badge, ConfirmDialog, DataState } from '../../../core/shell/frontend/ui/index.js';
+import {
+  connectSlack,
+  disconnectSlack,
+  finishSlack,
+  useSlackAccount,
+  type SlackWorkspace,
+} from '../api/client.js';
+import { LinkCard } from './InstallLink.js';
+import { RenameWorkspace } from './RenameWorkspace.js';
+import { SlackCard } from './SlackCard.js';
+import { useSlackReturn } from './slackReturn.js';
+import { WorkspaceCard } from './WorkspaceCard.js';
+
+// Slack's cards on Settings' DSP Connections: one for each of the DSP's workspaces, one for its
+// install link while it works, and one for an install Slack just sent the browser back from.
+// New there adds a workspace.
+
+export function SlackCards({ view }: { view: DspView }) {
+  const account = useSlackAccount();
+  const timeZone = view.dsp.timezone;
+  const returned = useSlackReturn(async (state, code) => {
+    // One refused may still have changed: a workspace added again keeps its new tokens.
+    try {
+      await finishSlack(state, code);
+    } finally {
+      account.refresh();
+    }
+  });
+  // To Slack, to reconnect or update the workspace `team`.
+  const install = useAction(async (team: string) => {
+    const { url } = await connectSlack({ team });
+    window.location.assign(url);
+  });
+  const [renaming, setRenaming] = useState<SlackWorkspace>();
+  const [leaving, setLeaving] = useState<SlackWorkspace>();
+  const disconnect = useAction(
+    async (team: string) => {
+      await disconnectSlack(team);
+      account.refresh();
+      setLeaving(undefined);
+    },
+    { success: 'Slack disconnected' },
+  );
+  return (
+    <>
+      <DataState data={account.data} error={account.error} retry={account.refresh}>
+        {(data) => (
+          <>
+            {returned.busy && (
+              <SlackCard title="Slack">
+                <div role="status">
+                  <Badge value="signing_in">Connecting</Badge>
+                </div>
+              </SlackCard>
+            )}
+            {data.workspaces.map((workspace) => (
+              <WorkspaceCard
+                key={workspace.teamId}
+                workspace={workspace}
+                timeZone={timeZone}
+                busy={install.busy || returned.busy}
+                install={(team) => void install.run(team)}
+                rename={setRenaming}
+                disconnect={setLeaving}
+              />
+            ))}
+            {data.link && <LinkCard link={data.link} timeZone={timeZone} />}
+          </>
+        )}
+      </DataState>
+      {renaming && (
+        <RenameWorkspace
+          workspace={renaming}
+          done={() => {
+            account.refresh();
+            setRenaming(undefined);
+          }}
+          close={() => setRenaming(undefined)}
+        />
+      )}
+      {leaving && (
+        <ConfirmDialog
+          title={`Disconnect ${leaving.label ?? leaving.name}?`}
+          confirm="Disconnect"
+          tone="danger"
+          busy={disconnect.busy}
+          onConfirm={() => void disconnect.run(leaving.teamId)}
+          onCancel={() => setLeaving(undefined)}
+        >
+          Dispatch is removed from {leaving.name} in Slack.
+        </ConfirmDialog>
+      )}
+    </>
+  );
+}

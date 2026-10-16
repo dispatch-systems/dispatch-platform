@@ -21,9 +21,9 @@ CREATE TABLE session_metadata ( session_hash TEXT PRIMARY KEY REFERENCES session
 CREATE TABLE session_security ( session_hash TEXT PRIMARY KEY REFERENCES sessions(hash) ON DELETE CASCADE, verified_at INTEGER NOT NULL DEFAULT 0, password_verified_at INTEGER NOT NULL DEFAULT 0 );
 CREATE TABLE sessions ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), user_version INTEGER NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE slack_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT, link_hash TEXT, expires_at INTEGER NOT NULL, CHECK ((user_id IS NULL) <> (link_hash IS NULL)) );
-CREATE TABLE slack_install_links ( id INTEGER PRIMARY KEY CHECK (id = 1), link_hash TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL );
-CREATE TABLE slack_workspaces ( team_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), scopes TEXT NOT NULL, bot_user_id TEXT NOT NULL, app_id TEXT NOT NULL, connected_by TEXT, connected_at TEXT NOT NULL, broken_at TEXT );
+CREATE TABLE slack_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT, link_hash TEXT, expires_at INTEGER NOT NULL, team_id TEXT, label TEXT, CHECK ((user_id IS NULL) <> (link_hash IS NULL)) );
+CREATE TABLE slack_install_links ( id INTEGER PRIMARY KEY CHECK (id = 1), link_hash TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL , label TEXT);
+CREATE TABLE slack_workspaces ( team_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), scopes TEXT NOT NULL, bot_user_id TEXT NOT NULL, app_id TEXT NOT NULL, connected_by TEXT, connected_at TEXT NOT NULL, broken_at TEXT , label TEXT);
 CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );
 CREATE TABLE uniform_events ( revision INTEGER PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('initialized', 'created', 'updated', 'archived', 'adjusted')), uniform_id TEXT, uniform_name TEXT NOT NULL, variant_id TEXT, fit TEXT, size TEXT, delta INTEGER, quantity INTEGER, actor_id TEXT NOT NULL, actor_name TEXT NOT NULL, request_id TEXT UNIQUE, at TEXT NOT NULL );
 CREATE TABLE uniform_inventory ( id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL DEFAULT 0 );

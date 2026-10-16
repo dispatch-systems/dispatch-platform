@@ -6,6 +6,7 @@ import {
   type ConnectionPiece,
   type SettingsContext,
 } from '../../shell/frontend/runtime/slots.js';
+import { NewConnection } from './NewConnection.js';
 
 /**
  * A DSP's Connections: its own accounts, for those who manage them, which are the collectors'
@@ -16,6 +17,7 @@ export function ConnectionsPage({
   timezone,
   providers,
   dsp,
+  adds,
   personal,
   context,
 }: {
@@ -25,6 +27,8 @@ export function ConnectionsPage({
   providers: readonly Connection['provider'][];
   /** The DSP's accounts features add, after the collectors'. */
   dsp: readonly ConnectionPiece[];
+  /** Those of them New adds another of, for those who manage the DSP's connections. */
+  adds: readonly ConnectionPiece[];
   /** The member's own accounts. */
   personal: readonly ConnectionPiece[];
   context: SettingsContext;
@@ -33,9 +37,12 @@ export function ConnectionsPage({
     <>
       {providers.length + dsp.length > 0 && (
         <section className="connections-view" aria-labelledby="dsp-connections-heading">
-          <header>
-            <h2 id="dsp-connections-heading">DSP Connections</h2>
-            <p className="muted">Accounts Dispatch uses for the whole DSP.</p>
+          <header className="connections-heading">
+            <div>
+              <h2 id="dsp-connections-heading">DSP Connections</h2>
+              <p className="muted">Accounts Dispatch uses for the whole DSP.</p>
+            </div>
+            {adds.length > 0 && <NewConnection pieces={adds} context={context} />}
           </header>
           <div className="connection-cards">
             {providers.map((provider) => (
