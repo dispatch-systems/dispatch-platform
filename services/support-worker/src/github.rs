@@ -330,11 +330,18 @@ pub fn admitted(status: &Value) -> bool {
         })
 }
 
-pub async fn failure(
-    config: &Config,
-    tree: &Worktree,
-    number: u64,
-) -> Result<Option<(u64, String)>> {
+/// Where the PR's newest queue run stands.
+pub enum QueueRun {
+    /// None yet, or one that ended without failing.
+    Clear,
+    /// Still going. GitHub takes a PR out on its run's first failure, so a PR out of the queue
+    /// may have one still failing.
+    Going,
+    /// Failed: the run, and the end of its failed jobs' logs.
+    Failed(u64, String),
+}
+
+pub async fn queue_run(config: &Config, tree: &Worktree, number: u64) -> Result<QueueRun> {
     let output = command(
         &tree.path,
         "gh",
@@ -359,8 +366,11 @@ pub async fn failure(
             .as_str()
             .is_some_and(|branch| branch.starts_with(&prefix))
     }) else {
-        return Ok(None);
+        return Ok(QueueRun::Clear);
     };
+    if run["status"] != "completed" {
+        return Ok(QueueRun::Going);
+    }
     if run["conclusion"] == "failure" {
         let id = run["databaseId"].as_u64().ok_or("Queue run id missing")?;
         let logs = command(
@@ -376,7 +386,7 @@ pub async fn failure(
             ],
         )
         .await?;
-        return Ok(Some((
+        return Ok(QueueRun::Failed(
             id,
             logs.chars()
                 .rev()
@@ -385,7 +395,7 @@ pub async fn failure(
                 .chars()
                 .rev()
                 .collect(),
-        )));
+        ));
     }
-    Ok(None)
+    Ok(QueueRun::Clear)
 }
