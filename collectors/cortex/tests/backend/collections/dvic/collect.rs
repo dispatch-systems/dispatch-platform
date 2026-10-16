@@ -23,6 +23,7 @@ fn listings_use_publication_dates_and_reject_foreign_hosts_paths_and_duplicate_o
         "downloadUrl":format!("https://{}{}?temporary=signature",REPORT_HOST,report.source_key),
         "creationDate":[2026,9,27,14,4,0]});
     let wrap = |rows: Value| json!({"tableData":{dvic::DATASET:{"rows":rows}}});
+    let metrics = Recorder::new(&json!({}));
     let read = |value| {
         listing(
             value,
@@ -30,6 +31,7 @@ fn listings_use_publication_dates_and_reject_foreign_hosts_paths_and_duplicate_o
             "FXTR",
             "TST1",
             "https://logistics.amazon.com",
+            &metrics,
         )
     };
     let parsed = read(wrap(json!([row]))).unwrap();
@@ -37,6 +39,22 @@ fn listings_use_publication_dates_and_reject_foreign_hosts_paths_and_duplicate_o
     assert!(!parsed[0].path.contains('?'));
     assert_eq!(read(wrap(json!([row.to_string()]))).unwrap().len(), 1);
     assert!(read(wrap(json!([row, row]))).is_err());
+    // A DVIC report under another name, such as an older one, is skipped and noted.
+    let older = report
+        .name
+        .replace(dvic::REPORT_SUFFIX, "_DVIC_PreTrip_u90s_last7days.xlsx");
+    let mut skipped = row.clone();
+    skipped["name"] = json!(older);
+    skipped["downloadUrl"] = json!(format!(
+        "https://{}{}",
+        REPORT_HOST,
+        report.source_key.replace(&report.name, &older)
+    ));
+    assert_eq!(read(wrap(json!([skipped, row]))).unwrap().len(), 1);
+    assert_eq!(
+        serde_json::to_value(metrics.snapshot()).unwrap()["detail"],
+        "dvic_report_skipped"
+    );
     for target in [
         format!("https://evil.example{}", report.source_key),
         format!(

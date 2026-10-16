@@ -89,28 +89,14 @@ impl DvicStore for Store {
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
-    /// Recheck the current and previous publication weeks each run, and catch up
-    /// two older weeks per run. One browser session handles the entire batch.
+    /// Check the current and previous publication weeks, as a manual sync does; a schedule
+    /// never reaches back for older ones.
     fn dvic_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
         let latest = report_week(chrono::Utc::now().date_naive());
-        let station = self.profile(id)?.station_code;
-        let db = self.dvic_db(id)?;
-        let checked: HashMap<String, i64> = db.all(
-            "SELECT week,max(checked_at) checked_at FROM dvic_weeks WHERE station=? AND scope_verified=1 GROUP BY week",
-            [&station],
-        )?.into_iter().filter_map(|row| {
-            chrono::DateTime::parse_from_rfc3339(s(&row, "checked_at")).ok()
-                .map(|at| (s(&row, "week").to_owned(), at.timestamp_millis()))
-        }).collect();
-        let mut weeks = weeks_ending(&latest, MAX_WEEKS)?;
-        let mut older = weeks.split_off(2);
-        let cutoff = now() - 7 * 86400 * 1000;
-        older.retain(|week| checked.get(week).is_none_or(|time| *time <= cutoff));
-        // Unseen weeks first, then least recently checked: daily runs must not
-        // starve the older backlog by repeatedly refreshing the newest old weeks.
-        older.sort_by_key(|week| checked.get(week).copied().unwrap_or(i64::MIN));
-        weeks.extend(older.into_iter().take(2));
-        Ok(vec![("dvic".into(), dvic_request(self, id, weeks)?)])
+        Ok(vec![(
+            "dvic".into(),
+            dvic_request(self, id, weeks_ending(&latest, 2)?)?,
+        )])
     }
 
     /// Validate the complete batch before committing any report, revision, or row.
