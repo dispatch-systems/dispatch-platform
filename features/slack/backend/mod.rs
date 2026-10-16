@@ -6,6 +6,7 @@
 //! - `bot`: the app's bot in one DSP's workspace, through which everything acts in Slack.
 //! - `connection` and `link`: adding the app to a DSP's workspaces, and taking it out.
 //! - `channels`: the channels of a workspace Dispatch is in, on its settings.
+//! - `members` and `people`: the members of its workspaces, and how Driver Match reads them.
 //! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`.
 //! - `storage`, `maintenance` and `pages`: what's kept, the hourly check, and the install
 //!   link's own page.
@@ -18,6 +19,8 @@ pub(crate) mod home;
 pub(crate) mod inbound;
 pub(crate) mod link;
 pub(crate) mod maintenance;
+pub(crate) mod members;
 pub(crate) mod pages;
+pub(crate) mod people;
 pub(crate) mod slack;
 pub(crate) mod storage;

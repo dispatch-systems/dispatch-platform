@@ -31,9 +31,24 @@ pub(crate) fn people(store: &Store, dsp: &str) -> Result<Vec<&'static People>> {
     people.sort_by_key(|people| people.reading_order());
     Ok(people)
 }
-/// The sources of the features the DSP has on, in their order.
-pub(crate) fn active(people: &[&'static People]) -> Vec<DriverSource> {
-    let set: BTreeSet<DriverSource> = people.iter().map(|people| people.source()).collect();
+/// The DSP's systems, in their order: the sources of the features it has on that name someone
+/// now, or that someone holds an ID of. One that has named nobody yet, as a workspace whose
+/// admin hasn't let Dispatch read its members, is none of its systems.
+pub(crate) fn active(
+    people: &[&'static People],
+    found: &Found,
+    held: impl IntoIterator<Item = DriverSource>,
+) -> Vec<DriverSource> {
+    let named: BTreeSet<DriverSource> = found
+        .keys()
+        .map(|(source, _)| *source)
+        .chain(held)
+        .collect();
+    let set: BTreeSet<DriverSource> = people
+        .iter()
+        .map(|people| people.source())
+        .filter(|source| named.contains(source))
+        .collect();
     set.into_iter().collect()
 }
 
@@ -58,6 +73,9 @@ pub(crate) struct Identity {
     pub written_phones: Vec<String>,
     /// What its source says they do.
     pub roles: Vec<String>,
+    /// Whether only lists of people the DSP can reach name it, as Slack's members: on one, it
+    /// says nothing of whether they still work for the DSP.
+    pub contacts_only: bool,
     /// The version of the photo held of them.
     pub photo: Option<String>,
 }
@@ -77,6 +95,7 @@ impl Identity {
             written_emails: vec![],
             written_phones: vec![],
             roles: vec![],
+            contacts_only: true,
             photo: None,
         }
     }
@@ -138,6 +157,7 @@ pub(crate) fn identities(
             entry.position = entry.position.take().or(named.position);
             entry.seen(named.first_seen, named.last_seen);
             entry.listed |= named.listed;
+            entry.contacts_only &= people.contacts_only;
             entry.photo = entry.photo.take().or(named.photo);
             for email in &named.emails {
                 if let Some(written) = contacts::email(email)

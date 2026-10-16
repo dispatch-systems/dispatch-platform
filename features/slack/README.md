@@ -66,7 +66,23 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   install link. A link that no longer works, a
   workspace another DSP has, or an install cancelled at Slack ends on a page of its own, which
   says so in a line.
-- **Disconnecting** a workspace forgets it and its tokens, frees it for any DSP, and then has
+- **Members:** for Driver Match, each workspace's members are read whole once it's connected,
+  or its admin approves reading them (`users:read`, `users:read.email`), and hourly; and one at
+  a time as Slack tells of someone joining (`team_join`) or changing their profile
+  (`user_change`). Each keeps their name, the name they go by in Slack when it's another, the
+  email address and phone number on their profile, whether their account is active and
+  whether they're a guest. Bots and Slackbot aren't kept; guests are, and a member Slack
+  deactivates stays, inactive. Up to 10,000 are read, 200 at a time; a list longer than that
+  is refused whole (`slack_members_too_many`). When any member is new, changed or gone, Driver
+  Match tells people apart at once. A workspace whose admin hasn't approved reading them is
+  passed by, and keeps working otherwise.
+- **People:** Driver Match reads the members as its `slack` kind of data, by Slack's own IDs,
+  `<workspace>:<member>`: one person for each email address, whichever of the DSP's workspaces
+  they're in, under the member ID of the workspace connected first, by their name and the one
+  they go by in Slack, listed while their account is active. Slack lists whom the DSP can
+  reach, not whom it employs (`contacts_only`): it never keeps someone from having left, and
+  someone only Slack knows works in the office while their account is active.
+- **Disconnecting** a workspace forgets it, its members and its tokens, frees it for any DSP, and then has
   Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
   disconnecting, making and cancelling the install link, and, with no member as their actor,
   a workspace connected by the link, the app removed from a workspace in Slack, and Slack
@@ -79,8 +95,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   again is handled once. The app's removal from a workspace, or its tokens' revocation there, is
   kept before Dispatch answers, and a failure is answered as one, so Slack sends it again. A
   request may be up to 64 KiB, as any request to the server may. The app is told when its Home
-  tab is opened, which shows the DSP's name; when it's removed from a workspace, which Dispatch
-  then forgets; and when its tokens there are revoked, which breaks the workspace until it's
+  tab is opened, which shows the DSP's name; when someone joins a workspace or changes their
+  profile, which its members keep; when it's removed from a workspace, which Dispatch
+  then forgets, with its members; and when its tokens there are revoked, which breaks the workspace until it's
   reconnected. The app has no buttons or forms yet, so interactions are only answered for now:
   a feature's buttons, forms and shortcuts are handled there, for their workspace's DSP, as
   events are.
@@ -103,7 +120,8 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   `dispatch-backend slack-manifest` prints the app to paste into Slack. The app asks for
   `team:read`, to keep each workspace's name as Slack has it, and for the channels' settings
   `channels:read` and `groups:read`, to list them, `channels:join`, to join public ones, and
-  `channels:manage` and `groups:write`, to leave them.
+  `channels:manage` and `groups:write`, to leave them; and for Driver Match `users:read` and
+  `users:read.email`, to read its members with their email addresses.
 - **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
   install link; `POST /api/dsp/slack/connect` (with `team`, to reconnect or update one),
   `…/connect/finish`, `…/workspaces/{team}/rename`, `…/workspaces/{team}/disconnect`, `…/link`
@@ -113,21 +131,25 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   channel. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
-- **Data:** `slack_workspaces` (each with its name in Dispatch, `label`),
+- **Data:** `slack_workspaces` (each with its name in Dispatch, `label`), `slack_members` (its
+  own migration 3),
   `slack_connect_requests` (each with the workspace it named to Slack, to reconnect or update,
   and the name the workspace it adds is to have) and `slack_install_links`, in each DSP's own
   database; `slack_teams`, which DSP each workspace belongs to, in the platform's;
   each workspace's tokens, encrypted in the DSP's secrets as `slack-<team>.enc`.
 - **Upkeep:** hourly, each working workspace of each active DSP with Slack on is asked for, as
   the bot: that renews its token as it nears its end, keeps the workspace's name as Slack has
-  it, and marks it broken if Slack no longer honours its tokens, so its card offers to
+  it, reads its members, and marks it broken if Slack no longer honours its tokens, so its card offers to
   reconnect it.
 - **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as
   the code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet,
   or the one being reconnected. Its tokens name their workspace; one whose ID holds `GONE` is
   refused. Each workspace has the same channels, `general`, `dispatch`, `photos`, `random` and
   the private `managers`, the bot in `general` and `managers` to start, and what it joins and
-  leaves is kept for the server's run. It signs with `fixture-signing-secret`, so tests send
+  leaves is kept for the server's run. Its members are some of the demo's people, by
+  example.com addresses: Jordan Ellis in Operations and Drivers, the owner Morgan Lane in
+  Operations and Managers, and in Drivers Cameron Hayes, Casey Rivera by phone, the guest Drew
+  Sullivan and the deactivated Jesse Kline, with Slackbot and a bot everywhere. It signs with `fixture-signing-secret`, so tests send
   requests as Slack would.
 
 ## Slack's app

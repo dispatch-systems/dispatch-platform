@@ -2,16 +2,16 @@
 //! A feature reads only its own storage; that feature joins what every feature names by ID.
 //! The directory answers the other way round: who an ID is, for a feature showing people.
 use crate::{
-    Result,
+    Result, State,
     db::{Db, Store},
-    manifest::registry,
+    manifest::{Upkeep, registry},
 };
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
 };
 
 /// A source of the IDs people are known by, as the owner of those IDs declares it: Paycom's
@@ -299,7 +299,8 @@ impl ts_rs::TS for DriverData {
 /// It is read while the feature is on, and every ID it names gets a person.
 /// The rest is for what the data knows besides: how much it holds of each ID (`records`),
 /// the days each worked (`workdays`), which departments drive (`driver_departments`), their
-/// photos (`photos`), and whether it shortens names (`initials`).
+/// photos (`photos`), whether it shortens names (`initials`), and whether its list is only of
+/// people the DSP can reach (`contacts_only`).
 pub struct People {
     /// What it is, as each person's sheet lists it.
     pub kind: PeopleData,
@@ -324,6 +325,10 @@ pub struct People {
     /// Whether it may write a last name as a bare initial, as "Jordan K.": its spellings are
     /// read after every other kind's.
     pub initials: bool,
+    /// Whether its list is of people the DSP can reach, as a chat workspace's members, not of
+    /// whom it employs: being on it never says someone still works for the DSP, and someone
+    /// only such lists name works in the office while one lists them.
+    pub contacts_only: bool,
 }
 /// Reads what one kind of data holds for a DSP.
 pub type Reader<T> = fn(&Store, &str) -> Result<T>;
@@ -344,6 +349,7 @@ impl People {
             driver_departments: None,
             photos: None,
             initials: false,
+            contacts_only: false,
         }
     }
     /// Counts how much it holds of each ID.
@@ -378,6 +384,13 @@ impl People {
     pub const fn initials(self) -> Self {
         Self {
             initials: true,
+            ..self
+        }
+    }
+    /// Lists people the DSP can reach, not whom it employs.
+    pub const fn contacts_only(self) -> Self {
+        Self {
+            contacts_only: true,
             ..self
         }
     }
@@ -515,6 +528,8 @@ pub trait Directory: Sync {
         dsp: &str,
         source: DriverSource,
     ) -> Result<BTreeMap<String, Person>>;
+    /// Tells people apart again now, as a feature's people changed outside a collection.
+    fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep;
 }
 /// One person, as the directory answers for one of their IDs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -538,4 +553,11 @@ pub fn who(store: &Store, dsp: &str, source: DriverSource) -> Result<BTreeMap<St
         || Ok(BTreeMap::new()),
         |directory| directory.people(store, dsp, source),
     )
+}
+/// Has the DSP's people told apart again now, as a feature's people changed outside a
+/// collection, as when a workspace's members are read: a collection's are after it ends.
+pub async fn changed(state: Arc<State>, dsp: String) {
+    if let Some(directory) = registry().directory() {
+        directory.changed(state, dsp).await;
+    }
 }

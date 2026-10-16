@@ -3,11 +3,14 @@
 use super::IdRow;
 use crate::api::types::DriverLink;
 use dispatch_core::{
-    Result,
+    Result, State,
     db::Store,
-    manifest::people::{self, DriverSource, Person},
+    manifest::{
+        Upkeep,
+        people::{self, DriverSource, Person},
+    },
 };
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 /// Who each ID is, for the features that show people: Timecard's meal breaks name each
 /// driver's Paycom employee by it.
@@ -51,5 +54,9 @@ impl people::Directory for Directory {
             }
         }
         Ok(out)
+    }
+    /// The same pass as after a collection.
+    fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep {
+        super::maintenance::after_collection(state, dsp)
     }
 }

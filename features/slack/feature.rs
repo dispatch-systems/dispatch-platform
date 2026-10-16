@@ -33,6 +33,7 @@ pub const FEATURE: Feature = Feature {
             "dsp",
             &[
                 "slack_workspaces",
+                "slack_members",
                 "slack_connect_requests",
                 "slack_install_links",
             ],
@@ -61,6 +62,11 @@ pub const FEATURE: Feature = Feature {
                     name: "slack_new_connections",
                     apply: Code(backend::storage::add_new_connections),
                 },
+                Migration {
+                    id: 3,
+                    name: "slack_members",
+                    apply: Sql(include_str!("migrations/dsp/0003_slack_members.sql")),
+                },
             ],
         },
     ],
@@ -79,6 +85,8 @@ pub const FEATURE: Feature = Feature {
         prefix: "slack-",
         run: backend::app::run,
     }),
+    // Its workspaces' members, for Driver Match: whom the DSP can reach, not whom it employs.
+    people: &[&backend::people::PEOPLE],
     ..feature("slack")
 };
 

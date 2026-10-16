@@ -6,5 +6,6 @@ export const peopleFeatures = [
   "dvic",
   "weekly_scorecard",
   "driver_profiles",
-  "daily_performance"
+  "daily_performance",
+  "slack"
 ] as const;

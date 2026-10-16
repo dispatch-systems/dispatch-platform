@@ -3,4 +3,4 @@
 /**
  * Where an ID comes from.
  */
-export type DriverSource = "paycom" | "amazon";
+export type DriverSource = "paycom" | "amazon" | "slack";

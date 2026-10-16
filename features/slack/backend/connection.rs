@@ -6,7 +6,7 @@
 use super::{
     app::SCOPES,
     bot::Bot,
-    fixture,
+    fixture, members,
     slack::{Installed, Slack},
     storage::{Install, SlackStore, Starter, Workspace},
 };
@@ -169,6 +169,7 @@ pub async fn finish(
         .exchange(&state.config.origin, &code)
         .await?;
     let made = (installed.team.clone(), installed.tokens.access.clone());
+    let team = installed.team.clone();
     let id = c.dsp.id.clone();
     let (named, label) = (install.team, install.label);
     let kept = state
@@ -182,7 +183,10 @@ pub async fn finish(
     if kept.is_err() {
         undo(state, made).await;
     }
-    let again = kept? == RECONNECTED && named.is_none();
+    let action = kept?;
+    // Whatever its admin approved now, its members are read as it allows.
+    members::read_soon(state, &id, &team);
+    let again = action == RECONNECTED && named.is_none();
     ensure(!again, "slack_workspace_connected", 409)?;
     state.read(move |db| account(db, &id)).await
 }

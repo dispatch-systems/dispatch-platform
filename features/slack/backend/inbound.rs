@@ -12,7 +12,7 @@
 use super::{
     app::{EVENTS_PATH, INTERACTIONS_PATH},
     bot::Bot,
-    connection, home,
+    connection, home, members,
     slack::Slack,
     storage::SlackStore,
 };
@@ -41,6 +41,7 @@ use std::{
 async fn on_event(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
     match kind {
         "app_home_opened" => home::opened(bot, event).await,
+        "team_join" | "user_change" => members::told(bot, event).await,
         _ => Ok(()),
     }
 }
