@@ -380,13 +380,13 @@ fn next_step(plan: &Plan) -> &'static str {
     if plan.running {
         "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
     } else {
-        "Push the final head, open the PR and ship it: dispatchdev ship <n> queues it at once."
+        "Next, dispatchdev ci <name> runs the full checks on GitHub while the change is tried. Open the PR and ship it only once told to: dispatchdev ship <n> queues it at once."
     }
 }
 /// `dispatchdev check --plan`: what to run, without running it.
 pub fn print(plan: &Plan) {
     println!(
-        "Run npm run check:rules{} before pushing. The merge queue runs the tests on the squash commit; nothing runs on the PR itself.",
+        "Run npm run check:rules{} before pushing. dispatchdev ci runs the tests on the branch, and the merge queue on the squash commit; nothing runs on the PR itself.",
         plan.commands
             .iter()
             .map(|command| format!(" and {command}"))
