@@ -53,7 +53,10 @@ export interface TableRead {
 export const budgets = {
   startupMs: 5000,
   idleRssBytes: 64 * 1024 ** 2,
-  peakRssBytes: 256 * 1024 ** 2,
+  // Main's own builds peaked at 239-335 MB in October 2026's queue runs, and a build measured
+  // first on a runner reads higher than the same build after it: this leaves them room, so
+  // only growth fails it.
+  peakRssBytes: 384 * 1024 ** 2,
   p95Ms: 2000,
   requestsPerSecond: 10,
   dailyPageBytes: 200 * 1024,
