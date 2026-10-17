@@ -57,8 +57,8 @@ impl Name {
             .map(name_key)
             .filter(|word| !word.is_empty())
             .collect();
-        // A suffix closes a name, though the scorecard sometimes writes it before the last
-        // name, as "Enrique Henry Jr Cortez". The first word is always the first name.
+        // A suffix closes a name, though a source may write it before the last name, as
+        // "Enrique Henry Jr Cortez". The first word is always the first name.
         let mut suffix = None;
         let mut index = 1;
         while index < words.len() {
