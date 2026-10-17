@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ChevronRight, Eye, EyeOff, Plug, Sparkles } from 'lucide-react';
 import type { DspSummary } from '../../../accounts/api/index.js';
+import type { DspFeatureReport, DspFeatures } from '../../api/index.js';
 import {
   setDspFeature,
   showDspAiSupport,
@@ -38,10 +39,18 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
   // As the switch last answered, until the DSP's profile is read again.
   const [support, setSupport] = useState<{ dsp: string; shown: boolean }>();
   const supportShown = support?.dsp === dsp.id ? support.shown : !dsp.profile.aiSupportHidden;
+  // What the last switch answered is on, until the DSP's features are read again: a switch made
+  // before that reading lands goes by the answer, not by the reading before it.
+  const [answered, setAnswered] = useState<{ read?: DspFeatureReport; features: string[] }>();
+  const latest = useRef(data);
+  latest.current = data;
   // What is switched on, parts of a feature that is off included, so they come back as they were.
-  const enabled = data
-    ? data.features.filter((state) => state.enabled).map((state) => state.feature)
-    : dsp.features;
+  const enabled =
+    answered && answered.read === data
+      ? answered.features
+      : data
+        ? data.features.filter((state) => state.enabled).map((state) => state.feature)
+        : dsp.features;
   const switched = (id: string) => enabled.includes(id);
   const hidden = (feature: FeatureEntry) =>
     data?.features.some((state) => state.feature === feature.id && !state.shown) ?? false;
@@ -52,10 +61,13 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
     refresh();
     changed();
   };
+  const switchedTo = (answer: DspFeatures) => {
+    setAnswered({ read: latest.current, features: answer.features });
+    done();
+  };
   const direct = useAction(
     async (feature: FeatureEntry, on: boolean) => {
-      await setDspFeature(dsp.id, feature.id, on);
-      done();
+      switchedTo(await setDspFeature(dsp.id, feature.id, on));
     },
     { success: (feature, on) => `${switchLabel(feature)} switched ${on ? 'on' : 'off'}` },
   );
@@ -236,9 +248,9 @@ export function DspFeaturesTab({ dsp, changed }: { dsp: DspSummary; changed: () 
           on={pending.on}
           enabled={enabled}
           onClose={() => setPending(undefined)}
-          onDone={() => {
+          onDone={(answer) => {
             setPending(undefined);
-            done();
+            switchedTo(answer);
           }}
         />
       )}

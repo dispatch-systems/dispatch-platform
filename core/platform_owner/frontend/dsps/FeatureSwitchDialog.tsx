@@ -1,5 +1,6 @@
 import type { DspSummary } from '../../../accounts/api/index.js';
 import { setDspFeature } from '../../api/client.js';
+import type { DspFeatures } from '../../api/index.js';
 import {
   featureCatalog,
   featureLabel,
@@ -25,7 +26,8 @@ export function FeatureSwitchDialog({
   on: boolean;
   enabled: readonly string[];
   onClose: () => void;
-  onDone: () => void;
+  /** Called with the switch's answer: every feature now on. */
+  onDone: (answer: DspFeatures) => void;
 }) {
   const preview = previewSwitch(enabled, feature.id, on);
   const entry = (id: string) => featureCatalog.find((f) => f.id === id)!;
@@ -64,8 +66,7 @@ export function FeatureSwitchDialog({
   };
   const save = useAction(
     async () => {
-      await setDspFeature(dsp.id, feature.id, on);
-      onDone();
+      onDone(await setDspFeature(dsp.id, feature.id, on));
     },
     { success: `${switchLabel(feature)} switched ${on ? 'on' : 'off'}` },
   );
