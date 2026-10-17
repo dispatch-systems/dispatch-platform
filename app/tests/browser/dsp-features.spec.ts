@@ -154,12 +154,20 @@ test('a feature switched back on brings its parts as they were, and a part the c
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(tab('Employee Search')).not.toBeChecked();
   await expect(row('Timecard')).toContainText('2 of 3 parts');
+  // The next switch goes by what the last one answered, before the DSP's features are read
+  // again, so the last tab on still asks first.
+  const reading = `**/api/platform/dsps/${north.id}/features`;
+  await page.route(reading, async (route) => {
+    if (route.request().method() === 'GET') await new Promise((done) => setTimeout(done, 1500));
+    await route.continue();
+  });
   await tab('Timecard').click();
   await tab('Meal Breaks').click();
   const last = page.getByRole('dialog', { name: 'Switch off Meal Breaks tab?' });
   await expect(last.getByRole('listitem')).toHaveText(['Timecardhas no other tab on']);
   await last.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(tab('Meal Breaks')).toBeChecked();
+  await page.unroute(reading);
   await tab('Timecard').click();
   await expect(tab('Timecard')).toBeChecked();
   // The member's next request finds their view expired and reopens it with the page back,
