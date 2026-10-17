@@ -2,7 +2,7 @@ use crate::{
     api::meals::{MealComparison, MealPeriod, MealPeriodGaps, PeriodMealGap},
     backend::TimecardStore,
 };
-use dispatch_core::{Result, db::Store, ensure};
+use dispatch_core::{Result, db::Store, ensure, manifest::people::Everyone};
 use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 use std::collections::BTreeMap;
 
@@ -13,6 +13,7 @@ pub(crate) fn meal_period(
     date: Option<&str>,
     requested: Option<&EmployeeTimecardPeriod>,
     timezone: &str,
+    people: &Everyone,
 ) -> Result<MealPeriod> {
     let code = source.strip_prefix("paycom:");
     ensure(
@@ -26,7 +27,14 @@ pub(crate) fn meal_period(
     let period = store.timecard_period(id, code, date, requested)?;
     let selected = [source.to_owned()];
     let days: Vec<_> = store
-        .meal_comparisons(id, &period.from, &period.to, timezone, Some(&selected))?
+        .meal_comparisons(
+            id,
+            &period.from,
+            &period.to,
+            timezone,
+            Some(&selected),
+            people,
+        )?
         .into_values()
         .collect();
     let gaps: Vec<_> = days
@@ -51,8 +59,9 @@ pub(crate) fn meal_period_gaps(
     id: &str,
     date: &str,
     timezone: &str,
+    people: &Everyone,
 ) -> Result<MealPeriodGaps> {
-    gaps_for(store, id, gap_period(store, id, date)?, timezone)
+    gaps_for(store, id, gap_period(store, id, date)?, timezone, people)
 }
 pub(crate) fn gap_period(
     store: &Store,
@@ -77,6 +86,7 @@ pub(crate) fn gaps_for(
     id: &str,
     period: Option<EmployeeTimecardPeriod>,
     timezone: &str,
+    people: &Everyone,
 ) -> Result<MealPeriodGaps> {
     let mut counts = BTreeMap::new();
     let Some(period) = period else {
@@ -85,9 +95,9 @@ pub(crate) fn gaps_for(
             counts,
         });
     };
-    for day in
-        super::comparison::gap_comparisons(store, id, &period.from, &period.to, timezone)?.values()
-    {
+    let days =
+        super::comparison::gap_comparisons(store, id, &period.from, &period.to, timezone, people)?;
+    for day in days.values() {
         for (row, _) in verified_gaps(day) {
             *counts.entry(row.to_owned()).or_default() += 1;
         }

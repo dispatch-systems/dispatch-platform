@@ -5,7 +5,10 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    manifest::{Collector, people::Source},
+    manifest::{
+        Collector,
+        people::{self, Source},
+    },
 };
 use dispatch_cortex::{associates, discovery::Scope, meals};
 use dispatch_driver_match::{
@@ -263,6 +266,21 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
     assert_eq!(after.people.len(), before.people.len() - 1);
     let details = db.person_details(&id, &tony).unwrap();
     assert_eq!(details.person.code, antonio);
+    // The directory finds them by either code, as the tab lists them, with every ID and the
+    // way each source writes their name.
+    let everyone = people::read(&db, &id).unwrap();
+    let theirs = everyone.person(&tony).unwrap();
+    assert_eq!(
+        (theirs.code.as_str(), theirs.role),
+        (antonio.as_str(), person(&after, &antonio).role)
+    );
+    assert_eq!(
+        (theirs.ids_of(PAYCOM), theirs.ids_of(AMAZON)),
+        (&["E002".to_owned()][..], &["TREYES".to_owned()][..])
+    );
+    assert_eq!(theirs.names, ["Antonio Reyes", "Tony Reyes"]);
+    assert!(theirs.confirmed);
+    assert_eq!(everyone.iter().count(), after.people.len());
     let merged = details
         .history
         .iter()

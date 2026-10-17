@@ -19,7 +19,7 @@
       "type": "object",
       "properties": {
         "drivers": {
-          "description": "Drivers, each by name, part of a name, or Amazon transporter ID; none for everyone.",
+          "description": "Drivers, each by name, part of one, an ID, email address or phone number; none for everyone.",
           "type": ["array", "null"],
           "items": {"type": "string"}
         },

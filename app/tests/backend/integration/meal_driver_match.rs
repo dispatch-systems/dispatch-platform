@@ -4,7 +4,7 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    manifest::people::Source,
+    manifest::people::{self, Source},
 };
 use dispatch_cortex::{self as cortex, discovery::Scope, meals};
 use dispatch_driver_match::DriverMatchStore;
@@ -91,7 +91,7 @@ fn drivers_join_employees_through_driver_match() {
     let (_root, db, id) = common::bootstrapped();
     let (date, transporter) = seed(&db, &id);
     let compare = |db: &Store| {
-        db.meal_comparison(&id, &date, "UTC")
+        db.meal_comparison(&id, &date, "UTC", &people::read(db, &id).unwrap())
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()
     };
@@ -135,13 +135,13 @@ fn drivers_join_employees_through_driver_match() {
     assert_eq!(linked["cortex"].as_array().unwrap().len(), 1);
     assert!(linked["cortex"][0]["lastDelivery"].is_string());
     assert_eq!(
-        db.meal_comparison(&id, "2020-01-01", "UTC")
+        db.meal_comparison(&id, "2020-01-01", "UTC", &people::read(&db, &id).unwrap())
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["rows"],
         json!([])
     );
     assert!(
-        db.meal_comparison(&id, "not-a-date", "UTC")
+        db.meal_comparison(&id, "not-a-date", "UTC", &people::read(&db, &id).unwrap())
             .map(|value| serde_json::to_value(value).unwrap())
             .is_err()
     );

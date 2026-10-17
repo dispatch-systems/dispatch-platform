@@ -83,7 +83,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Strength,
         EvidenceKind,
         PersonEventKind,
-        PersonRole,
         PersonId,
         Person,
         MatchCounts,

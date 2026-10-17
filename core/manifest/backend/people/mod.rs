@@ -1,11 +1,11 @@
 //! The people slot: who each feature's data names, for the feature that tells them apart.
 //! A feature reads only its own storage; that feature joins what every feature names by ID.
-//! The directory answers the other way round: who an ID is, for a feature showing people.
-//! The README's "People" section is the guide to connecting a feature.
+//! The directory answers the other way round: everyone, told apart, for any feature that shows
+//! people or uses what is known of them. The README's "People" section is the guide.
 mod ids;
 mod rows;
 
-pub use crate::manifest::services::directory::{Directory, Person};
+pub use crate::manifest::services::directory::{Directory, Everyone, Person, PersonRole};
 pub use ids::{Kind, KindInfo, Source, SourceInfo};
 pub use rows::{Named, Records, Workdays, named, records, worked};
 
@@ -13,10 +13,11 @@ use crate::{
     Result, State,
     db::Store,
     manifest::{Feature, Registry, registry},
+    server::cache::{self, Scope},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    collections::BTreeSet,
+    sync::{Arc, atomic::Ordering},
 };
 
 /// How one kind of a feature's data names people, for the feature that tells them apart: what
@@ -152,20 +153,37 @@ impl People {
     }
 }
 
-/// Who holds each ID of `source` the DSP's people have, as the directory answers; nobody in a
-/// build without one.
-pub fn who(store: &Store, dsp: &str, source: Source) -> Result<BTreeMap<String, Person>> {
-    registry().directory().map_or_else(
-        || Ok(BTreeMap::new()),
-        |directory| directory.who(store, dsp, source),
+/// Everyone the DSP's features name, told apart, as the directory answers: kept until who is
+/// who, or what any feature's data says of them, changes. Nobody in a build without one.
+///
+/// ```ignore
+/// let people = people::everyone(db, c.state, c.dsp_id())?;
+/// let person = people.person(code);                       // by their code
+/// let theirs = people.holding(dispatch_paycom::SOURCE, id); // by any source's ID
+/// let found = people.find("cam hayes");                  // by name, ID, email or phone
+/// ```
+pub fn everyone(store: &Store, state: &State, dsp: &str) -> Result<Arc<Everyone>> {
+    state.read_cache.shared(
+        Scope::tenant(cache::PEOPLE, dsp),
+        "everyone".to_owned(),
+        state.data_revision.load(Ordering::Relaxed),
+        || read(store, dsp),
     )
 }
-/// The photo of whoever holds `id` of `source`, as the directory finds it; none in a build
-/// without one. A feature serves it from a route of its own, behind its own permission.
-pub fn photo(store: &Store, dsp: &str, source: Source, id: &str) -> Result<Option<Photo>> {
-    registry().directory().map_or(Ok(None), |directory| {
-        directory.photo(store, dsp, source, id)
-    })
+/// Everyone, read afresh, for work without the server's state at hand, as an agent's tool or a
+/// test: `everyone` keeps what this reads.
+pub fn read(store: &Store, dsp: &str) -> Result<Everyone> {
+    registry().directory().map_or_else(
+        || Ok(Everyone::default()),
+        |directory| directory.everyone(store, dsp),
+    )
+}
+/// The photo of the person `code` names, the one their `Person` names the version of; none in
+/// a build without the directory.
+pub fn photo(store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
+    registry()
+        .directory()
+        .map_or(Ok(None), |directory| directory.photo(store, dsp, code))
 }
 /// Has the DSP's people told apart again now, as new IDs may be there outside a collection,
 /// as when a workspace's members are read: a collection's are after it ends.
@@ -221,5 +239,5 @@ pub(crate) fn check(registry: &Registry) {
 /// The sources and kinds of data that name people, which the app's export writes to TypeScript.
 #[cfg(feature = "ts")]
 pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
-    crate::typescript!(cfg, Source, Kind)
+    crate::typescript!(cfg, Source, Kind, PersonRole, Person)
 }

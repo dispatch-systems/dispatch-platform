@@ -1,5 +1,6 @@
 //! Range reads keep historical selection, overlays and complete identity context.
 use dispatch_core::db::s;
+use dispatch_core::manifest::people;
 use dispatch_core::testing as common;
 use dispatch_cortex::{discovery::Scope, meals};
 use dispatch_paycom::{self as paycom, fixtures};
@@ -182,7 +183,14 @@ fn meal_ranges_keep_full_name_context_and_newest_observation_per_day() {
         .unwrap();
     let selected = ["paycom:E002".to_owned(), "cortex:driver-1".to_owned()];
     let range = db
-        .meal_comparisons(&id, "2026-09-04", "2026-09-06", "UTC", Some(&selected))
+        .meal_comparisons(
+            &id,
+            "2026-09-04",
+            "2026-09-06",
+            "UTC",
+            Some(&selected),
+            &people::read(&db, &id).unwrap(),
+        )
         .unwrap();
     assert_eq!(range.len(), 3);
     let first = &range["2026-09-04"];

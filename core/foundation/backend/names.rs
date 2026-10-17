@@ -46,6 +46,34 @@ pub fn display_name(name: &str, order: &str) -> String {
         name.into()
     }
 }
+/// A name's words, lowercase, without punctuation.
+fn words(name: &str) -> Vec<String> {
+    name.split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+/// Whether `a` and `b` are one name, written alike but for case and punctuation.
+pub fn same(a: &str, b: &str) -> bool {
+    let a = words(a);
+    !a.is_empty() && a == words(b)
+}
+/// Whether `asked` names `name`: each of its words is the start of one of the name's, or one
+/// of the name's is the start of it, as an initial is, or it is within one, as a joined
+/// surname holds both.
+pub fn matches(asked: &str, name: &str) -> bool {
+    let asked = words(asked);
+    let mut name = words(name);
+    !asked.is_empty()
+        && asked.iter().all(|word| {
+            let at = name.iter().position(|part| {
+                part.starts_with(word.as_str())
+                    || word.starts_with(part.as_str())
+                    || (word.len() >= 3 && part.contains(word.as_str()))
+            });
+            at.map(|at| name.remove(at)).is_some()
+        })
+}
 pub fn compare(a: &str, b: &str) -> Ordering {
     static COLLATOR: std::sync::OnceLock<icu_collator::CollatorBorrowed<'static>> =
         std::sync::OnceLock::new();

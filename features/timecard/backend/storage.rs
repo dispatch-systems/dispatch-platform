@@ -6,7 +6,7 @@ use crate::api::{
     meals::{MealComparison, MealPeriod, MealPeriodGaps},
     types::{DailyTimecards, EmployeeTimecardResponse, EmployeesResponse},
 };
-use dispatch_core::{Result, db::Store};
+use dispatch_core::{Result, db::Store, manifest::people::Everyone};
 use dispatch_cortex::{discovery::Scope, meals::Capture};
 use dispatch_paycom::timecards::EmployeeTimecardPeriod;
 use serde_json::Value;
@@ -40,8 +40,15 @@ pub trait TimecardStore {
         date: Option<&str>,
         requested: Option<&EmployeeTimecardPeriod>,
         timezone: &str,
+        people: &Everyone,
     ) -> Result<MealPeriod>;
-    fn meal_period_gaps(&self, id: &str, date: &str, timezone: &str) -> Result<MealPeriodGaps>;
+    fn meal_period_gaps(
+        &self,
+        id: &str,
+        date: &str,
+        timezone: &str,
+        people: &Everyone,
+    ) -> Result<MealPeriodGaps>;
     fn daily_timecards_source(
         &self,
         id: &str,
@@ -104,7 +111,14 @@ pub trait TimecardStore {
         code: &str,
         requested: Option<&EmployeeTimecardPeriod>,
     ) -> Result<EmployeeTimecardResponse>;
-    fn meal_comparison(&self, id: &str, date: &str, timezone: &str) -> Result<MealComparison>;
+    /// A day's meal breaks, each driver joined to their employee as `people` finds them.
+    fn meal_comparison(
+        &self,
+        id: &str,
+        date: &str,
+        timezone: &str,
+        people: &Everyone,
+    ) -> Result<MealComparison>;
     fn meal_comparisons(
         &self,
         id: &str,
@@ -112,6 +126,7 @@ pub trait TimecardStore {
         to: &str,
         timezone: &str,
         selected: Option<&[String]>,
+        people: &Everyone,
     ) -> Result<BTreeMap<String, MealComparison>>;
     fn publish_meals(
         &self,
@@ -165,11 +180,18 @@ impl TimecardStore for Store {
         date: Option<&str>,
         requested: Option<&EmployeeTimecardPeriod>,
         timezone: &str,
+        people: &Everyone,
     ) -> Result<MealPeriod> {
-        super::meals::period::meal_period(self, id, source, date, requested, timezone)
+        super::meals::period::meal_period(self, id, source, date, requested, timezone, people)
     }
-    fn meal_period_gaps(&self, id: &str, date: &str, timezone: &str) -> Result<MealPeriodGaps> {
-        super::meals::period::meal_period_gaps(self, id, date, timezone)
+    fn meal_period_gaps(
+        &self,
+        id: &str,
+        date: &str,
+        timezone: &str,
+        people: &Everyone,
+    ) -> Result<MealPeriodGaps> {
+        super::meals::period::meal_period_gaps(self, id, date, timezone, people)
     }
     fn daily_timecards_source(
         &self,
@@ -257,8 +279,14 @@ impl TimecardStore for Store {
     ) -> Result<EmployeeTimecardResponse> {
         super::punches::timecards::employee_timecard(self, id, code, requested)
     }
-    fn meal_comparison(&self, id: &str, date: &str, timezone: &str) -> Result<MealComparison> {
-        super::meals::comparison::meal_comparison(self, id, date, timezone)
+    fn meal_comparison(
+        &self,
+        id: &str,
+        date: &str,
+        timezone: &str,
+        people: &Everyone,
+    ) -> Result<MealComparison> {
+        super::meals::comparison::meal_comparison(self, id, date, timezone, people)
     }
     fn meal_comparisons(
         &self,
@@ -267,8 +295,9 @@ impl TimecardStore for Store {
         to: &str,
         timezone: &str,
         selected: Option<&[String]>,
+        people: &Everyone,
     ) -> Result<BTreeMap<String, MealComparison>> {
-        super::meals::comparison::meal_comparisons(self, id, from, to, timezone, selected)
+        super::meals::comparison::meal_comparisons(self, id, from, to, timezone, selected, people)
     }
     fn publish_meals(
         &self,

@@ -27,7 +27,9 @@ pub struct Employee {
     pub position: String,
     pub station: String,
     pub active: bool,
-    /// The version of their photo, from whoever Driver Match finds they are; none without one.
+    /// The code of the person the directory finds they are, and the version of that person's
+    /// photo; none before anyone is.
+    pub person: Option<String>,
     pub photo: Option<String>,
 }
 

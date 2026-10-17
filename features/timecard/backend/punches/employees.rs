@@ -4,13 +4,12 @@ use dispatch_core::{
     Result,
     db::{Store, boolean, s},
     foundation::names::{compare, display},
-    manifest::people,
+    manifest::people::Everyone,
 };
 use dispatch_paycom as paycom;
 use rusqlite::params;
 use serde::Serialize;
 use serde_json::json;
-use std::collections::BTreeMap;
 pub(crate) fn timecard_employees(
     store: &Store,
     id: &str,
@@ -56,10 +55,6 @@ pub(crate) fn roster(store: &Store, id: &str) -> Result<Roster> {
         row["name"] = json!(display(s(row, "name")));
     }
     let mut employees: Vec<Employee> = serde_json::from_value(json!(rows))?;
-    let mut photos = photos(store, id)?;
-    for employee in &mut employees {
-        employee.photo = photos.remove(&employee.code);
-    }
     employees.sort_by(|a, b| compare(&a.name, &b.name).then_with(|| compare(&a.code, &b.code)));
     let search = employees
         .iter()
@@ -108,10 +103,9 @@ impl Roster {
     }
 }
 
-/// The version of each employee's photo, by their code, of those whose person has one.
-pub(super) fn photos(store: &Store, dsp: &str) -> Result<BTreeMap<String, String>> {
-    Ok(people::who(store, dsp, dispatch_paycom::SOURCE)?
-        .into_iter()
-        .filter_map(|(code, person)| Some((code, person.photo?)))
-        .collect())
+/// Who an employee is, as the directory finds them: their person's code and photo.
+pub(crate) fn identify(employee: &mut Employee, people: &Everyone) {
+    let person = people.holding(paycom::SOURCE, &employee.code);
+    employee.person = person.map(|person| person.code.clone());
+    employee.photo = person.and_then(|person| person.photo.clone());
 }

@@ -11,7 +11,7 @@ export type { PersonDetails } from './generated/PersonDetails.js';
 export type { PersonEvent } from './generated/PersonEvent.js';
 export type { PersonEventKind } from './generated/PersonEventKind.js';
 export type { PersonId } from './generated/PersonId.js';
-export type { PersonRole } from './generated/PersonRole.js';
+export type { PersonRole } from '../../../core/manifest/api/generated/PersonRole.js';
 export type { Question } from './generated/Question.js';
 export type { SourceDays } from './generated/SourceDays.js';
 export type { Strength } from './generated/Strength.js';

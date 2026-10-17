@@ -1,6 +1,6 @@
 import { PersonAvatar } from '../../../../core/shell/frontend/runtime/PersonAvatar.js';
 import type { Person } from '../../api/index.js';
-import { photoUrl, toneOf } from '../driver-match.js';
+import { toneOf } from '../driver-match.js';
 
 /** A person's photo, from whichever feature holds one, their initials in their tone until it comes. */
 export function Face({
@@ -14,7 +14,8 @@ export function Face({
   return (
     <PersonAvatar
       name={person.name}
-      photo={photoUrl(person)}
+      code={person.code}
+      photo={person.photo}
       className={`driver-avatar tone-${toneOf(person.code)}${size ? ` ${size}` : ''}`}
     />
   );

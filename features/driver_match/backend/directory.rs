@@ -1,67 +1,94 @@
-//! Who each ID is, for the features that show people: core's directory, answered from the
-//! codes Driver Match keeps.
-use super::{IdRow, current_ids, photos};
+//! Everyone, told apart, for the features that show people or use what is known of them:
+//! core's directory, answered from the codes Driver Match keeps and what the DSP's features
+//! say of each ID, as the tab lists them.
+use super::contacts::Contact;
+use super::gather::{Gathered, gather};
+use super::{IdRow, photos};
 use dispatch_core::{
     Result, State,
     db::Store,
+    foundation::names,
     manifest::{
         Upkeep,
-        people::{self, Person, Photo, Source},
+        people::{self, Everyone, Person, Photo, Source},
     },
 };
-use rusqlite::params;
 use std::{collections::BTreeMap, sync::Arc};
 
-/// Who each ID is, for the features that show people: Timecard's meal breaks name each
-/// driver's Paycom employee by it, and its employees show each one's photo.
+/// Everyone, for the features that show people: Timecard's employees and meal breaks name
+/// each by their code and show their photos.
 pub(crate) struct Directory;
 impl people::Directory for Directory {
-    fn who(&self, store: &Store, dsp: &str, source: Source) -> Result<BTreeMap<String, Person>> {
-        let rows = current_ids(&*store.dsp(dsp)?)?;
-        let mut held: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
-        for row in &rows {
-            held.entry(&row.code).or_default().push(row);
-        }
-        let versions = photos::versions(store, dsp)?;
-        let mut out = BTreeMap::new();
-        for ids in held.into_values() {
-            let mut person = Person {
-                confirmed: ids.iter().any(|i| i.linked_by.decided()),
-                ..Person::default()
-            };
-            for id in &ids {
-                if let Some(kind) = id.source() {
-                    person
-                        .ids
-                        .entry(kind)
-                        .or_default()
-                        .push(id.external_id.clone());
-                }
-            }
-            // Their IDs in the sources' order, then as they came, as the tab shows their photo.
-            let mut keys: Vec<(&IdRow, _)> =
-                ids.iter().filter_map(|i| Some((*i, i.key()?))).collect();
-            keys.sort_by_key(|(row, key)| (key.0, row.linked_at.clone()));
-            person.photo = keys.iter().find_map(|(_, key)| versions.get(key).cloned());
-            for id in person.ids_of(source).to_vec() {
-                out.insert(id, person.clone());
-            }
-        }
-        Ok(out)
+    fn everyone(&self, store: &Store, dsp: &str) -> Result<Everyone> {
+        let gathered = gather(store, dsp)?;
+        let people = gathered
+            .held()
+            .iter()
+            .map(|(code, ids)| person(&gathered, code, ids))
+            .collect();
+        let merged = store
+            .dsp(dsp)?
+            .query_as::<(String, String)>(
+                "SELECT code,merged_into FROM people WHERE merged_into IS NOT NULL",
+                [],
+            )?
+            .into_iter()
+            .collect();
+        Ok(Everyone::new(people, merged))
     }
-    fn photo(&self, store: &Store, dsp: &str, source: Source, id: &str) -> Result<Option<Photo>> {
-        let code = store.dsp(dsp)?.query_as::<(String,)>(
-            "SELECT i.code FROM person_ids i JOIN people p ON p.code=i.code \
-             WHERE p.merged_into IS NULL AND i.source=? AND i.external_id=?",
-            params![source, id],
-        )?;
-        match code.into_iter().next() {
-            Some((code,)) => photos::photo_of(store, dsp, &code),
-            None => Ok(None),
-        }
+    fn photo(&self, store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
+        photos::photo_of(store, dsp, code)
     }
     /// The same pass as after a collection.
     fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep {
         super::maintenance::after_collection(state, dsp)
+    }
+}
+
+/// A person as the tab lists them, with every name and contact their IDs' sources have, from
+/// their IDs in the sources' order.
+fn person(gathered: &Gathered, code: &str, ids: &[(&IdRow, Source)]) -> Person {
+    let listed = gathered.person(code, ids);
+    let mut person = Person {
+        code: listed.code,
+        names: vec![listed.name.clone()],
+        name: listed.name,
+        role: listed.role,
+        ids: BTreeMap::new(),
+        emails: vec![],
+        phones: vec![],
+        confirmed: ids.iter().any(|(row, _)| row.linked_by.decided()),
+        photo: listed.photo,
+    };
+    for (row, source) in ids {
+        person
+            .ids
+            .entry(*source)
+            .or_default()
+            .push(row.external_id.clone());
+        let Some(x) = gathered.found.get(&(*source, row.external_id.clone())) else {
+            continue;
+        };
+        once(
+            &mut person.names,
+            x.names.iter().map(|name| names::display(name)),
+        );
+        once(
+            &mut person.emails,
+            x.contacts.written(Contact::Email).iter().cloned(),
+        );
+        once(
+            &mut person.phones,
+            x.contacts.written(Contact::Phone).iter().cloned(),
+        );
+    }
+    person
+}
+/// Adds each of `more` not already in `list`.
+fn once(list: &mut Vec<String>, more: impl Iterator<Item = String>) {
+    for item in more {
+        if !list.contains(&item) {
+            list.push(item);
+        }
     }
 }

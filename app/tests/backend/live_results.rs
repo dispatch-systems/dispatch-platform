@@ -1,7 +1,7 @@
 //! Live results from both collectors, overlaid on Timecard's views before they publish.
 use dispatch_core::{
     Result, State, collection::registry::Provider, db::s, foundation::config::Config,
-    server::operations,
+    manifest::people, server::operations,
 };
 use dispatch_cortex::{self as cortex, discovery::Scope, meals::Writer};
 use dispatch_paycom::{self as paycom, fixtures, timecards::Checkpoint};
@@ -106,7 +106,7 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
                 assert_eq!(range[day][0].1.len(), 1);
             }
             let comparison = db
-                .meal_comparison(&tenant, "2026-01-19", "UTC")
+                .meal_comparison(&tenant, "2026-01-19", "UTC", &people::read(db, &tenant)?)
                 .map(|value| serde_json::to_value(value).unwrap())?;
             let row = comparison["rows"]
                 .as_array()
@@ -146,7 +146,7 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
     state
         .run(move |db| {
             let comparison = db
-                .meal_comparison(&tenant, "2026-01-19", "UTC")
+                .meal_comparison(&tenant, "2026-01-19", "UTC", &people::read(db, &tenant)?)
                 .map(|value| serde_json::to_value(value).unwrap())?;
             assert!(
                 comparison["rows"]
@@ -210,7 +210,7 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
     state
         .read(move |db| {
             let comparison = db
-                .meal_comparison(&tenant, "2026-01-19", "UTC")
+                .meal_comparison(&tenant, "2026-01-19", "UTC", &people::read(db, &tenant)?)
                 .map(|value| serde_json::to_value(value).unwrap())?;
             // Nothing published yet names the driver to Driver Match, so they stand alone.
             let row = comparison["rows"]
@@ -244,7 +244,7 @@ async fn driver_results_overlay_both_views_without_publishing_and_revert_on_fail
     state
         .run(move |db| {
             let comparison = db
-                .meal_comparison(&dsp, "2026-01-19", "UTC")
+                .meal_comparison(&dsp, "2026-01-19", "UTC", &people::read(db, &dsp)?)
                 .map(|value| serde_json::to_value(value).unwrap())?;
             assert!(
                 comparison["rows"]

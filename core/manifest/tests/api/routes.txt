@@ -1,0 +1,6 @@
+# Every route manifest registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/people Dsp("access") Read
+GET /api/dsp/people/{code} Dsp("access") Read
+GET /api/dsp/people/{code}/photo Dsp("access") Read

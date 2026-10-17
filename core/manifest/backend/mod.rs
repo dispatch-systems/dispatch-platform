@@ -7,6 +7,8 @@
 //! field in `Feature` with its empty value in `feature()`, its names in the `pub use` below,
 //! and its `check` in `Registry::check`.
 pub mod agents;
+#[path = "../api/mod.rs"]
+pub mod api;
 pub mod audit;
 pub mod caching;
 pub mod collectors;

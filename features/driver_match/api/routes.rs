@@ -19,7 +19,6 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/driver-match", MANAGE, overview),
         read("/api/dsp/driver-match/counts", MANAGE, counts),
         read("/api/dsp/driver-match/people/{code}", MANAGE, details),
-        read("/api/dsp/driver-match/people/{code}/photo", MANAGE, photo),
         write("/api/dsp/driver-match/merge", MANAGE, merge),
         write("/api/dsp/driver-match/split", MANAGE, split),
         write("/api/dsp/driver-match/apart", MANAGE, apart),
@@ -34,14 +33,6 @@ fn counts(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
 }
 fn details(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&db.person_details(c.dsp_id(), input.param("code"))?)
-}
-/// Their photo, from whichever feature holds one. The address carries its version, so the browser keeps
-/// it until the photo changes.
-fn photo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    let (kind, bytes) = db
-        .person_photo(c.dsp_id(), input.param("code"))?
-        .ok_or_else(|| Error::new("not_found", 404))?;
-    Ok(Reply::picture(kind, bytes.into()))
 }
 /// The source and ID a decision names, of the sources this build has.
 fn source_id(b: &serde_json::Value) -> Result<(Source, &str)> {

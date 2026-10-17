@@ -1,35 +1,74 @@
-//! The directory: who an ID is, for a feature that shows the people its data names. The
-//! feature that tells people apart offers it; `people::who`, `people::photo` and
-//! `people::changed` ask it, and answer nothing in a build without one.
+//! The directory: everyone a DSP's features name, each told apart under a code of their own,
+//! for any feature that shows people or uses what is known of them. The feature that tells
+//! people apart offers it; `people::everyone`, `people::photo` and `people::changed` ask it,
+//! and answer nothing in a build without one.
 use crate::{
     Result, State,
     db::Store,
+    foundation::names,
     manifest::{
         Upkeep,
         people::{Photo, Source},
     },
+    text_enum,
 };
+use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc};
 
-/// Who each ID is, as the feature that tells people apart answers.
+/// Who everyone is, as the feature that tells people apart answers.
 pub trait Directory: Sync {
-    /// Everyone holding an ID of `source`, by that ID: every ID they hold, whether someone
-    /// confirmed who they are and the version of their photo.
-    fn who(&self, store: &Store, dsp: &str, source: Source) -> Result<BTreeMap<String, Person>>;
-    /// The photo of whoever holds `id` of `source`: the one their `Person` names the version
-    /// of.
-    fn photo(&self, store: &Store, dsp: &str, source: Source, id: &str) -> Result<Option<Photo>>;
+    /// Everyone the DSP's features name, read afresh: `people::everyone` keeps it.
+    fn everyone(&self, store: &Store, dsp: &str) -> Result<Everyone>;
+    /// The photo of the person `code` names: the one their `Person` names the version of. A
+    /// merged person's code answers for whoever kept their IDs.
+    fn photo(&self, store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>>;
     /// Tells people apart again now, as a feature's people changed outside a collection.
     fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep;
 }
-/// One person, as the directory answers for one of their IDs.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/manifest/api/generated/"))]
+    /// What a person does for the DSP: a driver or a helper, as their sources' roles say or
+    /// their records show; office staff, outside the departments the DSP counts as drivers;
+    /// or someone who has left, whom no source lists and nothing has seen lately.
+    pub enum PersonRole {
+        Driver => "driver",
+        Helper => "helper",
+        Office => "office",
+        Former => "former",
+    }
+}
+impl PersonRole {
+    /// Whether they have left.
+    pub fn left(self) -> bool {
+        self == Self::Former
+    }
+}
+
+/// One person, as the directory knows them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/manifest/api/generated/"))]
+#[serde(rename_all = "camelCase")]
 pub struct Person {
-    /// Every ID they hold, by its source.
+    /// Theirs for good and the same in every feature: what a feature keeps to name them. A
+    /// merged person's code still finds whoever kept their IDs.
+    pub code: String,
+    /// The name they are shown by, as the first source that knows them writes it.
+    pub name: String,
+    /// Every way their sources write their name, the one shown first.
+    pub names: Vec<String>,
+    pub role: PersonRole,
+    /// Every ID they hold, by its source, the first linked first.
     pub ids: BTreeMap<Source, Vec<String>>,
+    /// The email addresses and phone numbers their sources have for them, as written.
+    pub emails: Vec<String>,
+    pub phones: Vec<String>,
     /// Whether someone confirmed who they are, rather than a match.
     pub confirmed: bool,
-    /// The version of their photo, which changes when the photo does: `photo` serves it.
+    /// The version of their photo, which changes when the photo does: `people::photo` serves
+    /// it.
     pub photo: Option<String>,
 }
 impl Person {
@@ -38,3 +77,118 @@ impl Person {
         self.ids.get(&source).map_or(&[], Vec::as_slice)
     }
 }
+
+/// Everyone the DSP's features name, by name, and the ways to find each.
+#[derive(Debug, Default, Serialize)]
+pub struct Everyone {
+    people: Vec<Person>,
+    /// Each code, merged ones too, with whoever holds it now, by their place in `people`.
+    #[serde(skip)]
+    codes: BTreeMap<String, usize>,
+    /// Each ID, with whoever holds it.
+    #[serde(skip)]
+    held: BTreeMap<(Source, String), usize>,
+}
+impl Everyone {
+    /// Everyone, from each person and each code merged into another, with the code it went to.
+    pub fn new(mut people: Vec<Person>, merged: BTreeMap<String, String>) -> Self {
+        people.sort_by(|a, b| names::compare(&a.name, &b.name).then_with(|| a.code.cmp(&b.code)));
+        let mut codes: BTreeMap<String, usize> = people
+            .iter()
+            .enumerate()
+            .map(|(at, person)| (person.code.clone(), at))
+            .collect();
+        for gone in merged.keys() {
+            // A merge into someone since merged goes on to whoever kept their IDs.
+            let mut to = gone;
+            for _ in 0..32 {
+                match merged.get(to) {
+                    Some(next) => to = next,
+                    None => break,
+                }
+            }
+            if let Some(&at) = codes.get(to) {
+                codes.insert(gone.clone(), at);
+            }
+        }
+        let held = people
+            .iter()
+            .enumerate()
+            .flat_map(|(at, person)| {
+                person.ids.iter().flat_map(move |(source, ids)| {
+                    ids.iter().map(move |id| ((*source, id.clone()), at))
+                })
+            })
+            .collect();
+        Self {
+            people,
+            codes,
+            held,
+        }
+    }
+    /// Everyone, by name.
+    pub fn iter(&self) -> std::slice::Iter<'_, Person> {
+        self.people.iter()
+    }
+    /// The person `code` names; a merged person's code finds whoever kept their IDs.
+    pub fn person(&self, code: &str) -> Option<&Person> {
+        self.codes.get(code).map(|&at| &self.people[at])
+    }
+    /// Whoever holds `id` of `source`.
+    pub fn holding(&self, source: Source, id: &str) -> Option<&Person> {
+        self.held
+            .get(&(source, id.to_owned()))
+            .map(|&at| &self.people[at])
+    }
+    /// Whoever `text` names, by name: by one of their IDs, their email address or phone
+    /// number, or else any way their sources write their name, in part or by an initial
+    /// (`names::matches`). A name exactly as someone's sources write it is them alone, beside
+    /// others it is part of. By name.
+    pub fn find(&self, text: &str) -> Vec<&Person> {
+        let text = text.trim();
+        let by = |found: &dyn Fn(&Person) -> bool| -> Vec<&Person> {
+            self.people.iter().filter(|person| found(person)).collect()
+        };
+        if text.is_empty() {
+            return vec![];
+        }
+        let ids = by(&|person| {
+            person
+                .ids
+                .values()
+                .flatten()
+                .any(|id| id.eq_ignore_ascii_case(text))
+        });
+        if !ids.is_empty() {
+            return ids;
+        }
+        if text.contains('@') {
+            return by(&|person| {
+                person
+                    .emails
+                    .iter()
+                    .any(|email| email.eq_ignore_ascii_case(text))
+            });
+        }
+        let dialed = digits(text);
+        if dialed.len() >= 7 && !text.chars().any(char::is_alphabetic) {
+            return by(&|person| person.phones.iter().any(|phone| digits(phone) == dialed));
+        }
+        let named = by(&|person| person.names.iter().any(|name| names::matches(text, name)));
+        let exact: Vec<&Person> = named
+            .iter()
+            .copied()
+            .filter(|person| person.names.iter().any(|name| names::same(text, name)))
+            .collect();
+        if exact.len() == 1 { exact } else { named }
+    }
+}
+/// A phone number's last ten digits, without its country code or punctuation.
+fn digits(phone: &str) -> String {
+    let all: Vec<char> = phone.chars().filter(char::is_ascii_digit).collect();
+    all[all.len().saturating_sub(10)..].iter().collect()
+}
+
+#[cfg(test)]
+#[path = "../../tests/backend/directory.rs"]
+mod tests;

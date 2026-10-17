@@ -59,6 +59,7 @@ test('cached names cannot cross DSPs, even when an older request finishes late',
     position: 'Driver',
     station: '',
     active: true,
+    person: null,
     photo: null,
   });
   await page.route('**/api/dsp/paycom/status', async (route) => {

@@ -1,4 +1,5 @@
 use dispatch_core::db::{now, s};
+use dispatch_core::manifest::people;
 use dispatch_core::testing as common;
 use dispatch_cortex::{
     self as cortex,
@@ -205,9 +206,14 @@ fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
     let mut c = meals::fixture(&scope);
     db.publish_meals(&id, "job-unlinked", &c, &scope).unwrap();
     let meal = |db: &dispatch_core::db::Store| {
-        db.meal_comparison(&id, &scope.date, &scope.timezone)
-            .map(|value| serde_json::to_value(value).unwrap())
-            .unwrap()["rows"][0]["cortex"][0]
+        db.meal_comparison(
+            &id,
+            &scope.date,
+            &scope.timezone,
+            &people::read(&db, &id).unwrap(),
+        )
+        .map(|value| serde_json::to_value(value).unwrap())
+        .unwrap()["rows"][0]["cortex"][0]
             .clone()
     };
     // Publications from before links were retained return none.
@@ -254,9 +260,14 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
     );
     c.itineraries[0].source_url = Some(url.clone());
     let meal = |db: &dispatch_core::db::Store| {
-        db.meal_comparison(&id, &scope.date, &scope.timezone)
-            .map(|value| serde_json::to_value(value).unwrap())
-            .unwrap()["rows"][0]["cortex"][0]
+        db.meal_comparison(
+            &id,
+            &scope.date,
+            &scope.timezone,
+            &people::read(&db, &id).unwrap(),
+        )
+        .map(|value| serde_json::to_value(value).unwrap())
+        .unwrap()["rows"][0]["cortex"][0]
             .clone()
     };
     // A stop only names where a delivery was, within the 2,000 stops a route is read with.
