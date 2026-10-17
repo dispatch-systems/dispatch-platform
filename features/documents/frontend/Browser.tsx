@@ -433,7 +433,8 @@ export function Browser({
         if (undoing) notify('Move undone');
         else notify(`Moved to ${to.name}`, { label: 'Undo', run: () => undo(moved, to) });
       }
-      if (failed) throw failed instanceof Error ? failed : new Error(String(failed));
+      if (failed instanceof Error) throw failed;
+      if (failed) throw new Error('The move did not finish.');
     });
   };
   const undo = (moved: Moved[], to: Place) => {

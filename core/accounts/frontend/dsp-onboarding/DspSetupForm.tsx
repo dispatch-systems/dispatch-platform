@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { ErrorBox } from '../../../shell/frontend/ui/index.js';
+import { field } from '../../../shell/frontend/lib/form.js';
 
 export type DspSetup = {
   name: string;
@@ -77,10 +78,10 @@ export function DspSetupForm({
         if (taken) return;
         const form = new FormData(event.currentTarget);
         onSubmit({
-          name: String(form.get('name')).trim(),
-          abbreviation: String(form.get('abbreviation')).trim(),
-          stationCode: String(form.get('stationCode')).toUpperCase(),
-          timezone: String(form.get('timezone')),
+          name: field(form, 'name').trim(),
+          abbreviation: field(form, 'abbreviation').trim(),
+          stationCode: field(form, 'stationCode').toUpperCase(),
+          timezone: field(form, 'timezone'),
         });
       }}
     >

@@ -29,8 +29,6 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'always' }],
       // An empty catch says the failure is nothing to act on.
       'no-empty': ['error', { allowEmptyCatch: true }],
-      // Control characters in a pattern are what the pattern is for, where it has them.
-      'no-control-regex': 'off',
     },
   },
   {
@@ -41,8 +39,6 @@ export default tseslint.config(
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
     rules: {
-      // A form's entries are strings here, and a `FormData.get` reads as one.
-      '@typescript-eslint/no-base-to-string': 'off',
       // An async handler on an element is how React takes one; the promise is the handler's.
       '@typescript-eslint/no-misused-promises': [
         'error',
@@ -64,7 +60,12 @@ export default tseslint.config(
     files: ['**/frontend/**/*.ts', '**/frontend/**/*.tsx'],
     extends: [reactHooks.configs.flat['recommended-latest']],
     rules: {
-      // The React Compiler's rules, which the code doesn't run under.
+      // The React Compiler's rules, which the code doesn't run under, each flagging a pattern
+      // the code uses on purpose: setting state in an effect that follows a read; keeping a ref
+      // current during render, as `useDataTable` keeps the latest columns for its callbacks and
+      // the onboarding layouts keep their steps; and reading the clock during render, as the
+      // audit log names today and a dialog counts down. Under the compiler each would need its
+      // own shape; without it they are React as written.
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/refs': 'off',
       'react-hooks/purity': 'off',

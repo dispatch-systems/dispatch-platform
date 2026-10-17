@@ -5,8 +5,11 @@
  */
 export const csvCell = (value: string | number | null | undefined) => {
   const text = String(value ?? '');
-  const safe =
-    /^[=+\-@]/.test(text.trimStart()) || /^[\u0000-\u001f\u007f]/.test(text) ? `'${text}` : text;
+  // A cell starting with a formula's sign or a control character is quoted, so a spreadsheet
+  // opening the file runs nothing.
+  // eslint-disable-next-line no-control-regex -- the control characters are what's quoted
+  const unsafe = /^[=+\-@]/.test(text.trimStart()) || /^[\u0000-\u001f\u007f]/.test(text);
+  const safe = unsafe ? `'${text}` : text;
   return `"${safe.replaceAll('"', '""')}"`;
 };
 

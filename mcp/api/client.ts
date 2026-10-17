@@ -89,7 +89,8 @@ export async function agentWhoami(
     const value = (await response.json().catch(() => undefined)) as
       (AgentWhoami & { error?: undefined }) | { error?: unknown } | undefined;
     if (response.ok && value) return { ok: true, value: value as AgentWhoami };
-    return { ok: false, error: value?.error ? String(value.error) : `http_${response.status}` };
+    const error = value?.error;
+    return { ok: false, error: typeof error === 'string' ? error : `http_${response.status}` };
   } catch {
     return { ok: false, error: 'network_error' };
   }

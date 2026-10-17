@@ -52,11 +52,14 @@ const redact = (text: string) =>
     .replace(/([?&#](?:code|access_token|refresh_token)=)[^&\s"']+/g, '$1[redacted]');
 /** A terminal's output as text: no colours, cursor moves or carriage returns. */
 const plain = (text: string) =>
+  // The terminal's escape sequences are what's stripped: the control characters are the point.
+  /* eslint-disable no-control-regex */
   text
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
     .replace(/\x1b\[[0-9;?<>=]*[ -/]*[@-~]/g, '')
     .replace(/\x1b[()][0-9A-Za-z]|\x1b[=>78DEHM]/g, '')
     .replace(/\r/g, '');
+/* eslint-enable no-control-regex */
 const quote = (arg: string) => `'${arg.replaceAll("'", `'\\''`)}'`;
 const tail = (text: string, lines = 12) => redact(text.trim().split('\n').slice(-lines).join('\n'));
 

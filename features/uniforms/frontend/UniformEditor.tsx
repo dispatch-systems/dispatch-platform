@@ -10,6 +10,7 @@ import {
 import { saveUniform } from '../api/client.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';
+import { field } from '../../../core/shell/frontend/lib/form.js';
 
 type Size = UniformInput['variants'][number];
 const splitSizes = (value: string) =>
@@ -63,8 +64,8 @@ export function UniformEditor({
       let submitted = variants.filter((v) => fits.includes(v.fit));
       for (const fit of fits) submitted = mergeSizes(submitted, fit, splitSizes(drafts[fit]));
       const result = await saveUniform(uniform?.id, {
-        name: String(form.get('name')).trim(),
-        category: String(form.get('category')).trim(),
+        name: field(form, 'name').trim(),
+        category: field(form, 'category').trim(),
         ...(uniform ? { revision: uniform.revision } : {}),
         variants: submitted,
       });

@@ -1,9 +1,9 @@
 import { ConnectionCard } from '../../../core/collection/frontend/index.js';
 import type { ConnectionCardContext } from '../../../core/shell/frontend/runtime/slots.js';
+import { field } from '../../../core/shell/frontend/lib/form.js';
 
 const pins = [1, 2, 3, 4, 5];
-const securityAnswers = (form: FormData) =>
-  pins.map((number) => String(form.get(`pin${number}`) ?? ''));
+const securityAnswers = (form: FormData) => pins.map((number) => field(form, `pin${number}`));
 
 /** Paycom signs in with the DSP's client code, a username and password, and five security PINs. */
 export function PaycomCard({ read, ...context }: ConnectionCardContext & { read: string }) {
