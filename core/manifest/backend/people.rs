@@ -4,7 +4,7 @@
 use crate::{
     Result, State,
     db::{Db, Store},
-    manifest::{Upkeep, registry},
+    manifest::{Registry, Upkeep, registry},
 };
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
@@ -581,5 +581,48 @@ pub fn photo(store: &Store, dsp: &str, source: DriverSource, id: &str) -> Result
 pub async fn changed(state: Arc<State>, dsp: String) {
     if let Some(directory) = registry().directory() {
         directory.changed(state, dsp).await;
+    }
+}
+
+impl Registry {
+    /// Every kind of data that names people, in the order their spellings are read: by
+    /// their order, those that shorten names last.
+    pub fn people(&self) -> Vec<&'static People> {
+        let mut people: Vec<&'static People> = self
+            .features
+            .iter()
+            .flat_map(|feature| feature.people.iter().copied())
+            .collect();
+        people.sort_by_key(|people| people.reading_order());
+        people
+    }
+    /// Who each ID is, as the one feature that tells people apart answers, if this build has
+    /// it.
+    pub fn directory(&self) -> Option<&'static dyn Directory> {
+        self.features.iter().find_map(|feature| feature.directory)
+    }
+}
+
+/// Panics unless each kind of data that names people has a place of its own, and one feature
+/// at most answers who each ID is.
+pub(crate) fn check(registry: &Registry) {
+    let answering = registry
+        .features
+        .iter()
+        .filter(|f| f.directory.is_some())
+        .count();
+    assert!(
+        answering <= 1,
+        "{answering} features answer who each ID is; one at most may"
+    );
+    let people = registry.people();
+    for (index, kind) in people.iter().enumerate() {
+        assert!(
+            people[..index]
+                .iter()
+                .all(|other| other.kind.id != kind.kind.id && other.kind.order != kind.kind.order),
+            "{} names people twice, or in another's place",
+            kind.kind.id
+        );
     }
 }
