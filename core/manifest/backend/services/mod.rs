@@ -11,6 +11,7 @@
 //! Adding a service: its trait in a module here, a field for it in `Services` with a line in
 //! `Services::NONE`, a `with_` to offer it and a line in `Services::offered`, and a lookup in
 //! `Registry`, as `files` has.
+pub mod directory;
 pub mod files;
 
 use crate::{
@@ -29,22 +30,35 @@ pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub struct Services {
     /// Somewhere to keep a DSP's files, in folders.
     pub files: Option<&'static dyn files::Files>,
+    /// Who each ID is, for features that show the people their data names.
+    pub directory: Option<&'static dyn directory::Directory>,
 }
 impl Services {
     /// A feature that offers none. One that offers some names each:
     /// `services: Services::NONE.with_files(&backend::service::FILES)`.
-    pub const NONE: Self = Self { files: None };
+    pub const NONE: Self = Self {
+        files: None,
+        directory: None,
+    };
     /// These, with somewhere to keep a DSP's files too.
     pub const fn with_files(mut self, files: &'static dyn files::Files) -> Self {
         self.files = Some(files);
         self
     }
+    /// These, with the directory too.
+    pub const fn with_directory(mut self, directory: &'static dyn directory::Directory) -> Self {
+        self.directory = Some(directory);
+        self
+    }
     /// The names of the services offered, as the feature map lists them.
     pub fn offered(&self) -> Vec<&'static str> {
-        [("files", self.files.is_some())]
-            .into_iter()
-            .filter_map(|(name, offered)| offered.then_some(name))
-            .collect()
+        [
+            ("files", self.files.is_some()),
+            ("directory", self.directory.is_some()),
+        ]
+        .into_iter()
+        .filter_map(|(name, offered)| offered.then_some(name))
+        .collect()
     }
 }
 
@@ -52,6 +66,11 @@ impl Registry {
     /// The feature that keeps a DSP's files, and its service, if this build has one.
     pub fn files(&self) -> Option<(&'static Feature, &'static dyn files::Files)> {
         offered(self, |services| services.files)
+    }
+    /// The directory, if this build has a feature that tells people apart. It answers for
+    /// every DSP: that feature is one every DSP has.
+    pub fn directory(&self) -> Option<&'static dyn directory::Directory> {
+        offered(self, |services| services.directory).map(|(_, directory)| directory)
     }
 }
 

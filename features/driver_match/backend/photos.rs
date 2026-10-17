@@ -23,7 +23,7 @@ pub(super) fn versions(store: &Store, dsp: &str) -> Result<BTreeMap<Key, String>
         }
         for named in (kind.read)(store, dsp)? {
             if let Some(photo) = named.photo {
-                out.entry((kind.source(), named.id)).or_insert(photo);
+                out.entry((kind.source, named.id)).or_insert(photo);
             }
         }
     }
@@ -40,7 +40,7 @@ pub(super) fn photo_of(store: &Store, dsp: &str, code: &str) -> Result<Option<Ph
     held.sort_by_key(|row| (row.source(), row.linked_at.clone()));
     let kinds = sources::kinds(store, dsp)?;
     for (source, id) in held.iter().filter_map(IdRow::key) {
-        for kind in kinds.iter().filter(|kind| kind.source() == source) {
+        for kind in kinds.iter().filter(|kind| kind.source == source) {
             if let Some(photos) = kind.photos
                 && let Some(photo) = photos(store, dsp, std::slice::from_ref(&id))?
             {

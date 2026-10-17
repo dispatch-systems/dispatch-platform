@@ -93,39 +93,8 @@ of rule already is:
 ## Connecting a feature
 
 Driver Match names no feature: a feature whose data names people connects itself, in its own
-folder, with one declaration in its manifest's `people` (`dispatch_core::manifest::people`).
-`dispatchdev new feature <name> --tables dsp --people amazon` writes one to start from.
-
-```rust
-// backend/people.rs
-pub const PEOPLE: People = People::new(
-    PeopleData { id: "fuel", order: 80, label: "Fuel", unit: "fill-up", icon: "Fuel" },
-    &dispatch_cortex::PEOPLE,
-    |store, dsp| {
-        people::named(
-            &*store.fuel_db(dsp)?,
-            "SELECT transporter_id id,driver_name name,min(day) first,max(day) last \
-             FROM fill_ups GROUP BY 1,2 ORDER BY last DESC",
-        )
-    },
-)
-.records(|store, dsp| {
-    people::records(
-        &*store.fuel_db(dsp)?,
-        "SELECT transporter_id id,count(*) count,max(day) last FROM fill_ups GROUP BY 1",
-    )
-});
-
-// feature.rs
-people: &[&backend::people::PEOPLE],
-```
-
-- **What it is** (`PeopleData`): its id, its place among the kinds (`order`, unique: the next
-  free tens, which `--people` picks), its label, what one record is (`unit`) and its icon, by
-  the name lucide-react exports it as. Each person's sheet lists it so.
-- **Whose IDs** (`SourceData`): the source its people are named by, declared by whoever owns
-  those IDs: `&dispatch_cortex::PEOPLE` for Amazon's transporter IDs, `&dispatch_paycom::PEOPLE`
-  for Paycom's employee codes, or a source of its own.
+folder, with one declaration in its manifest's `people`. Core's manifest README ("People") is
+the guide: what to declare, and what each part tells Driver Match.
 
 ### Orders
 
@@ -140,59 +109,25 @@ place here with its reason.
 
 A person is shown by the first source's name, and listed with their sources in this order.
 
-| Kind                                    | Order | Why there                                                                                                 |
-| --------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------- |
-| Timecards (`timecards`)                 | 10    | Paycom's roster, its name as payroll has it.                                                              |
-| Roster (`driver_profiles`)              | 15    | The name Amazon has on file: read first among Amazon's.                                                   |
-| Routes (`routes`)                       | 20    | Routes spell names most plainly.                                                                          |
-| Meal breaks (`meal_breaks`)             | 30    | After routes.                                                                                             |
-| DVIC (`dvic`)                           | 40    | Sometimes writes only a last initial (`.initials()`), so its spellings are read after every other kind's. |
-| Weekly Scorecard (`weekly_scorecard`)   | 50    | Often adds a middle name.                                                                                 |
-| Daily Performance (`daily_performance`) | 60    |                                                                                                           |
-| Slack (`slack`)                         | 70    |                                                                                                           |
+| Kind                                    | Order | Why there                                                                                 |
+| --------------------------------------- | ----- | ----------------------------------------------------------------------------------------- |
+| Timecards (`timecards`)                 | 10    | Paycom's roster, its name as payroll has it.                                              |
+| Roster (`driver_profiles`)              | 15    | The name Amazon has on file: read first among Amazon's.                                   |
+| Routes (`routes`)                       | 20    | Routes spell names most plainly.                                                          |
+| Meal breaks (`meal_breaks`)             | 30    | After routes.                                                                             |
+| Weekly Scorecard (`weekly_scorecard`)   | 50    | Often adds a middle name.                                                                 |
+| Daily Performance (`daily_performance`) | 60    |                                                                                           |
+| Slack (`slack`)                         | 70    |                                                                                           |
+| DVIC (`dvic`)                           | 90    | Sometimes writes only a last initial, so its spellings are read after every other kind's. |
 
 An ID's spellings are read kind by kind in this order, and the first is the one it is shown
 by; its department, position and photo come from the first kind that has them. Each person's
 sheet lists their kinds in this order.
 
-- **Who it names** (`read`): one `Named` for each ID and each way it writes their name, the
-  newest first. `people::named` reads them from a query by its columns' names: `id` and `name`,
-  and any of `first` and `last` (the days it saw them), `listed` (1 while its source's roster
-  lists them), `email`, `phone`, `roles` (a JSON list, as `["Driver"]`), `department`,
-  `position` and `photo` (the photo's version); a query naming any other column is refused
-  (`people_columns`), so a misspelt one fails the app's people test. Someone a source knows by
-  several IDs, as an
-  account in each of several workspaces, is named by each, with the others in `same_as`: every
-  one goes to the same person, whichever came first.
-- **How much it holds** (`.records`): `id`, `count` and `last` for each ID, counted in its
-  unit. Without it the kind is listed for nobody, and its data shows no one at work.
-- **When they worked** (`.workdays`): each ID with each day it worked, and the days the data
-  was collected for (`Workdays::daily` when every day it holds was collected), so two people
-  who never worked the same days are less likely one.
-- **Which departments drive** (`.driver_departments`): from the feature's settings; anyone it
-  names outside them works in the office.
-- **Photos** (`.photos`): serves the photo of the first of some IDs it holds one of, each named
-  with its version in `read`.
-- **Shortened names** (`.initials()`): it may write a last name as an initial, so its
-  spellings are read after every other kind's.
-- **People it can reach, not employs** (`.contacts_only()`): being on its list never keeps
-  someone from having left, and someone only such lists know works in the office, as Slack's
-  members. One person may hold several of its IDs, and one it no longer names sits idle.
-
-A feature whose people change outside a collection, as Slack's members do, calls
-`people::changed(state, dsp)` once they're kept, and they're told apart at once rather than
-within the hour.
-
-Nothing else changes: Driver Match reads the kind while its feature is on, every ID it names
-gets a person, its Settings tab shows while one such feature is on, and the kind joins the
-generated `driver-data.ts` and `people-features.ts` with `npm run contracts:generate`. The app's
-people test (`app/tests/backend/people.rs`) runs every connection's queries against a new DSP,
-so a connection is tried without a test of its own; the registry refuses two kinds with one id
-or one order.
-
 ## Asking who someone is
 
-A feature that shows people asks core, never Driver Match: `people::who(store, dsp, source)`
-answers, for each ID of `source` someone holds, their code, every ID they hold by source, and
-whether someone confirmed who they are, and nobody in a build without Driver Match. Timecard's
-meal breaks find each driver's employee so (`person.ids_of(PAYCOM)`).
+A feature that shows people asks core's directory, never Driver Match, which offers it as a
+service: `people::who(store, dsp, source)` answers, for each ID of `source` someone holds, every
+ID they hold by source, whether someone confirmed who they are and the version of their photo,
+and nobody in a build without Driver Match. Timecard's meal breaks find each driver's employee
+so (`person.ids_of(dispatch_paycom::SOURCE)`).

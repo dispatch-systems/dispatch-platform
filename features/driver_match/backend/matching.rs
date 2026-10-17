@@ -5,7 +5,7 @@ use super::contacts::Contact;
 use super::names::{agree, exact, variant};
 use super::sources::{Identity, Key};
 use crate::api::types::IdLink;
-use dispatch_core::manifest::people::DriverSource;
+use dispatch_core::manifest::people::Source;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Whom an ID goes to: someone who holds IDs already, by their code, or a new person, the
@@ -26,7 +26,7 @@ pub(crate) struct Decision {
 /// The people of each source who carry each contact, by the person their source says each ID
 /// is, among every ID held or new: a contact two people of one source share says nothing of
 /// either.
-type Carried = BTreeMap<(Contact, DriverSource, String), BTreeSet<String>>;
+type Carried = BTreeMap<(Contact, Source, String), BTreeSet<String>>;
 fn carried(all: &[Identity]) -> Carried {
     let mut out = Carried::new();
     for x in all {
@@ -97,7 +97,7 @@ impl Plan {
         agree(&self.names(person), &x.names).then(|| person.clone())
     }
     /// Whether `value` is a contact of `kind` on exactly one person of `source`.
-    fn alone(&self, kind: Contact, source: DriverSource, value: &str) -> bool {
+    fn alone(&self, kind: Contact, source: Source, value: &str) -> bool {
         self.carried
             .get(&(kind, source, value.to_owned()))
             .is_some_and(|people| people.len() == 1)

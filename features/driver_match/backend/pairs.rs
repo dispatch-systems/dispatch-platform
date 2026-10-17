@@ -3,7 +3,7 @@ use super::IdRow;
 use super::review::{self, Side, Suggestion};
 use super::sources::{Days, Found, Identity};
 use crate::api::types::{Evidence, Person, Strength};
-use dispatch_core::{foundation::names, manifest::people::DriverSource};
+use dispatch_core::{foundation::names, manifest::people::Source};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How many pairs any one person is asked about at once.
@@ -18,7 +18,7 @@ pub(super) struct Pair {
 }
 
 /// Each person's IDs, by their code, with each ID's source, in the sources' order.
-type Held<'a> = BTreeMap<&'a str, Vec<(&'a IdRow, DriverSource)>>;
+type Held<'a> = BTreeMap<&'a str, Vec<(&'a IdRow, Source)>>;
 
 /// The pairs that may be one person, the strongest first, and no more than
 /// `MOST_PER_PERSON` choices for any one person. Nobody is asked about someone who has left;
@@ -42,12 +42,7 @@ pub(super) fn pairs(
 }
 
 /// One person as review compares them.
-fn side<'a>(
-    code: &'a str,
-    ids: &[(&IdRow, DriverSource)],
-    found: &'a Found,
-    asked: bool,
-) -> Side<'a> {
+fn side<'a>(code: &'a str, ids: &[(&IdRow, Source)], found: &'a Found, asked: bool) -> Side<'a> {
     let described: Vec<&Identity> = ids
         .iter()
         .filter_map(|(row, source)| found.get(&(*source, row.external_id.clone())))
@@ -107,10 +102,7 @@ fn pair(mut suggestion: Suggestion, held: &Held, days: &Days) -> Pair {
 
 /// The days a person worked, and the days the sources that know them were collected for:
 /// none while no source says when they worked.
-fn worked(
-    ids: &[(&IdRow, DriverSource)],
-    days: &Days,
-) -> Option<(BTreeSet<String>, BTreeSet<String>)> {
+fn worked(ids: &[(&IdRow, Source)], days: &Days) -> Option<(BTreeSet<String>, BTreeSet<String>)> {
     let mut worked = BTreeSet::new();
     let mut collected = BTreeSet::new();
     let mut any = false;

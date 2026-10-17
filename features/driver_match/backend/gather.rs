@@ -7,20 +7,21 @@ use crate::api::types::Person;
 use dispatch_core::{
     Result,
     db::Store,
-    manifest::people::{DriverData, DriverSource},
+    manifest::people::{Kind, Source},
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Everything read for one answer.
 pub(super) struct Gathered {
     pub found: Found,
-    pub activity: BTreeMap<Key, BTreeMap<DriverData, Seen>>,
+    pub activity: BTreeMap<Key, BTreeMap<Kind, Seen>>,
     pub days: Days,
     departments: DriverDepartments,
+    driving: BTreeSet<Kind>,
     /// The first day that still counts as recent.
     recent: String,
     /// The DSP's systems, in their order.
-    pub sources: Vec<DriverSource>,
+    pub sources: Vec<Source>,
     /// Every ID that counts, of the DSP's systems, as they came.
     pub rows: Vec<IdRow>,
 }
@@ -34,6 +35,7 @@ pub(super) fn gather(store: &Store, dsp: &str) -> Result<Gathered> {
     let activity = sources::activity(&kinds, store, dsp)?;
     let days = sources::days(&kinds, store, dsp)?;
     let departments = sources::driver_departments(&kinds, store, dsp)?;
+    let driving = sources::driving(&kinds);
     // Counted from what was collected, not from today, so a DSP whose collections pause
     // does not see everyone leave.
     let recent = found
@@ -66,6 +68,7 @@ pub(super) fn gather(store: &Store, dsp: &str) -> Result<Gathered> {
         activity,
         days,
         departments,
+        driving,
         recent,
         sources,
         rows,
@@ -74,8 +77,8 @@ pub(super) fn gather(store: &Store, dsp: &str) -> Result<Gathered> {
 
 impl Gathered {
     /// Each person's IDs, by their code, in their sources' order, then as they came.
-    pub fn held(&self) -> BTreeMap<&str, Vec<(&IdRow, DriverSource)>> {
-        let mut held: BTreeMap<&str, Vec<(&IdRow, DriverSource)>> = BTreeMap::new();
+    pub fn held(&self) -> BTreeMap<&str, Vec<(&IdRow, Source)>> {
+        let mut held: BTreeMap<&str, Vec<(&IdRow, Source)>> = BTreeMap::new();
         for row in &self.rows {
             if let Some(source) = row.source() {
                 held.entry(&row.code).or_default().push((row, source));
@@ -87,11 +90,12 @@ impl Gathered {
         held
     }
     /// One person as the tab lists them, from their IDs.
-    pub fn person(&self, code: &str, ids: &[(&IdRow, DriverSource)]) -> Person {
+    pub fn person(&self, code: &str, ids: &[(&IdRow, Source)]) -> Person {
         let context = Context {
             found: &self.found,
             activity: &self.activity,
             departments: &self.departments,
+            driving: &self.driving,
             recent: &self.recent,
         };
         person::person(code, ids, &context)

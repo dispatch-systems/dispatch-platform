@@ -1,27 +1,27 @@
 use super::*;
-use dispatch_core::manifest::people::SourceData;
+use dispatch_core::manifest::people::SourceInfo;
 
 /// The sources these plans name, as their owners declare them.
-static PAYCOM_IDS: SourceData = SourceData {
+static PAYCOM_IDS: SourceInfo = SourceInfo {
     id: "paycom",
     label: "Paycom",
     order: 10,
 };
-static AMAZON_IDS: SourceData = SourceData {
+static AMAZON_IDS: SourceInfo = SourceInfo {
     id: "amazon",
     label: "Amazon",
     order: 20,
 };
-static SLACK_IDS: SourceData = SourceData {
+static SLACK_IDS: SourceInfo = SourceInfo {
     id: "slack",
     label: "Slack",
     order: 30,
 };
-const PAYCOM_SOURCE: DriverSource = DriverSource::new(&PAYCOM_IDS);
-const AMAZON_SOURCE: DriverSource = DriverSource::new(&AMAZON_IDS);
-const SLACK_SOURCE: DriverSource = DriverSource::new(&SLACK_IDS);
+const PAYCOM_SOURCE: Source = Source::new(&PAYCOM_IDS);
+const AMAZON_SOURCE: Source = Source::new(&AMAZON_IDS);
+const SLACK_SOURCE: Source = Source::new(&SLACK_IDS);
 
-fn id(source: DriverSource, id: &str, names: &[&str]) -> Identity {
+fn id(source: Source, id: &str, names: &[&str]) -> Identity {
     Identity {
         names: names.iter().map(|n| (*n).to_owned()).collect(),
         ..Identity::new(source, id)

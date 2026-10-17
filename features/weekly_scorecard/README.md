@@ -35,3 +35,8 @@ Conflicting archives stop before the new marker is committed and retain both dir
 Historical shipped SQL files remain unchanged for migration evidence. Automatic rollback to a binary
 that only understands retired identifiers is not supported after this transition; recovery
 requires restoring a consistent pre-transition snapshot of the platform, jobs and DSP data.
+
+## People
+
+Its scorecards' drivers are Driver Match's `weekly_scorecard` kind of data, counted in the
+weeks they were scored, each showing them driving.

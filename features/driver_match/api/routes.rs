@@ -6,7 +6,7 @@ use dispatch_core::{
     Error, Result,
     db::Store,
     foundation::validate as v,
-    manifest::people::DriverSource,
+    manifest::people::Source,
     server::http::{
         input::{Input, Reply},
         route::{Dsp, Member, Route, read, write},
@@ -44,8 +44,8 @@ fn photo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Ok(Reply::picture(kind, bytes.into()))
 }
 /// The source and ID a decision names, of the sources this build has.
-fn source_id(b: &serde_json::Value) -> Result<(DriverSource, &str)> {
-    let source = DriverSource::parse(v::text(b, "source", 1, 32)?)
+fn source_id(b: &serde_json::Value) -> Result<(Source, &str)> {
+    let source = Source::parse(v::text(b, "source", 1, 32)?)
         .ok_or_else(|| Error::new("invalid_input", 400))?;
     Ok((source, v::text(b, "id", 1, 64)?))
 }

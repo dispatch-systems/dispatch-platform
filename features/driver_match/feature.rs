@@ -14,7 +14,7 @@ pub use backend::{Collected, DriverMatchStore};
 
 use dispatch_core::{
     db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
-    manifest::{Audit, Feature, feature, mandatory, perm},
+    manifest::{Audit, Feature, feature, mandatory, perm, services::Services},
 };
 
 pub const FEATURE: Feature = Feature {
@@ -69,7 +69,8 @@ pub const FEATURE: Feature = Feature {
         names: Some(backend::name_driver_events),
         ..Audit::NONE
     },
-    directory: Some(&backend::Directory),
+    // Other features ask it who an ID is, through core's directory.
+    services: Services::NONE.with_directory(&backend::Directory),
     ..feature("driver_match")
 };
 

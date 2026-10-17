@@ -5,7 +5,7 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    manifest::{Collector, people::DriverSource},
+    manifest::{Collector, people::Source},
 };
 use dispatch_cortex::{associates, discovery::Scope, meals};
 use dispatch_driver_match::{
@@ -91,7 +91,7 @@ fn context(db: &Store, id: &str) -> Context {
 }
 
 /// The code holding an ID, in a Driver Match answer.
-fn code(result: &DriverMatch, source: DriverSource, id: &str) -> String {
+fn code(result: &DriverMatch, source: Source, id: &str) -> String {
     result
         .people
         .iter()
@@ -111,7 +111,7 @@ fn known_to(result: &DriverMatch, code: &str) -> Vec<&'static str> {
         .collect()
 }
 /// How the ID `id` of `source` came to its person.
-fn link(result: &DriverMatch, source: DriverSource, id: &str) -> IdLink {
+fn link(result: &DriverMatch, source: Source, id: &str) -> IdLink {
     let holder = code(result, source, id);
     person(result, &holder)
         .ids
@@ -172,8 +172,8 @@ fn shown(db: &Store, action: &str) -> String {
         .and_then(|e| e.target)
         .unwrap_or_else(|| panic!("no {action}"))
 }
-const PAYCOM: DriverSource = DriverSource::new(&dispatch_paycom::PEOPLE);
-const AMAZON: DriverSource = DriverSource::new(&dispatch_cortex::PEOPLE);
+const PAYCOM: Source = dispatch_paycom::SOURCE;
+const AMAZON: Source = dispatch_cortex::SOURCE;
 
 #[test]
 fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
@@ -231,6 +231,13 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
         with_role(&staffed, PersonRole::Driver),
         staffed.people.len() - 1
     );
+    // Whoever the meal breaks show driving drives, whatever department Paycom has them in.
+    values["driver_departments"] = json!(["Warehouse"]);
+    db.save_timecard_preferences(&id, &context.auth.user.id, 1, &values)
+        .unwrap();
+    let warehouse = db.driver_match(&id).unwrap();
+    assert_eq!(person(&warehouse, &luis).role, PersonRole::Driver);
+    assert_eq!(person(&warehouse, &avery).role, PersonRole::Office);
     // Nothing new the second time, and nobody's code changes.
     assert_eq!(pass(&db, &id).unwrap(), 0);
     let again = db.driver_match(&id).unwrap();
@@ -468,6 +475,23 @@ fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
     db.publish_roster(id, "job-roster", &capture).unwrap();
 }
 
+/// A person is shown by the first source's name in the sources' order, and an ID by the first
+/// spelling in the kinds' order: Amazon's roster before its meal breaks, Paycom before Amazon.
+#[test]
+fn the_first_source_and_kind_in_order_name_a_person() {
+    dispatch_backend::install();
+    let (_root, db, id, context) = ready();
+    roster(&db, &id, &[("TREYES", "Anthony Reyes", "ACTIVE", "Driver")]);
+    pass(&db, &id).unwrap();
+    let before = db.driver_match(&id).unwrap();
+    let tony = code(&before, AMAZON, "TREYES");
+    assert_eq!(person(&before, &tony).name, "Anthony Reyes");
+    let antonio = code(&before, PAYCOM, "E002");
+    db.merge_people(&context, &tony, &antonio).unwrap();
+    let after = db.driver_match(&id).unwrap();
+    assert_eq!(person(&after, &antonio).name, "Antonio Reyes");
+}
+
 #[test]
 fn the_roster_says_who_drives_who_helps_and_who_has_left() {
     dispatch_backend::install();
@@ -566,7 +590,7 @@ fn slack_members_join_by_email_and_whom_only_slack_knows_works_in_the_office() {
     );
     // Slack is none of the DSP's systems until it names someone: no card says "Not in Slack"
     // while a workspace waits for its admin to let Dispatch read its members.
-    let slack_ids = DriverSource::parse("slack").unwrap();
+    let slack_ids = Source::parse("slack").unwrap();
     assert!(!db.driver_match(&id).unwrap().sources.contains(&slack_ids));
     slack(
         &db,
@@ -623,7 +647,7 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
     dispatch_backend::install();
     let (_root, db, id, _) = ready();
     roster(&db, &id, &[("TJORDAN", "Jordan Ellis", "ACTIVE", "Driver")]);
-    let members = DriverSource::parse("slack").unwrap();
+    let members = Source::parse("slack").unwrap();
     let operations: &[(&str, &str, Option<&str>, bool)] = &[
         (
             "U0JORDAN",
@@ -746,11 +770,7 @@ fn an_account_under_another_address_is_asked_about() {
     pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let jordan = code(&result, AMAZON, "TJORDAN");
-    let other = code(
-        &result,
-        DriverSource::parse("slack").unwrap(),
-        "T0YARD:U0JE",
-    );
+    let other = code(&result, Source::parse("slack").unwrap(), "T0YARD:U0JE");
     assert_ne!(other, jordan);
     assert!(
         pairs(&result)
@@ -783,7 +803,7 @@ fn a_phone_number_nobody_is_matched_by_is_still_shown() {
         .unwrap();
     pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
-    let members = DriverSource::parse("slack").unwrap();
+    let members = Source::parse("slack").unwrap();
     let morgan = code(&result, members, "T0OPS:U0MORGAN");
     let shown: Vec<&str> = person(&result, &morgan)
         .ids

@@ -27,7 +27,10 @@ use dispatch_core::{
     db::{self, Db, Kind, Migration, Migrations, Store, migrations::Apply::Sql, s},
     ensure,
     foundation::{crypto, validate as v},
-    manifest::{Capability, Collection, Collector, Tables, people::SourceData},
+    manifest::{
+        Capability, Collection, Collector, Tables,
+        people::{Source, SourceInfo},
+    },
 };
 use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
@@ -39,11 +42,11 @@ use dispatch_core::testing;
 
 pub const PROVIDER: Provider = Provider::new("paycom");
 /// Its employee codes, as the IDs people are known by.
-pub const PEOPLE: SourceData = SourceData {
+pub const SOURCE: Source = Source::new(&SourceInfo {
     id: "paycom",
     label: "Paycom",
     order: 10,
-};
+});
 pub static COLLECTOR: Paycom = Paycom;
 
 /// What its browser may open: Paycom's own hosts, and the fonts and reCAPTCHA its

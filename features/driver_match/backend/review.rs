@@ -4,7 +4,7 @@
 use super::contacts::Contact;
 use super::names::{Name, capitalized, short_form};
 use crate::api::types::{Evidence, EvidenceKind, Strength};
-use dispatch_core::manifest::people::DriverSource;
+use dispatch_core::manifest::people::Source;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How many days two people must have worked together, every one, for their names alone to
@@ -15,7 +15,7 @@ const SURE_AFTER_DAYS: usize = 3;
 /// two people apart, and every name and contact their IDs carry.
 pub(crate) struct Side<'a> {
     pub code: &'a str,
-    pub sources: BTreeSet<DriverSource>,
+    pub sources: BTreeSet<Source>,
     pub names: Vec<&'a str>,
     pub contacts: BTreeSet<(Contact, &'a str)>,
     /// Whether they're asked about: someone who has left counts among those carrying a

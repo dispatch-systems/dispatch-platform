@@ -30,3 +30,8 @@ Daily feedback contains response counts, not individual package reviews. RTS fie
 daily coaching and exemptions. Assessed and live safety datasets stay separate because
 Amazon can report the same event ID in both. Contacts were empty during source inspection;
 their field contract is not invented. Raw provider fields are retained for later validation.
+
+## People
+
+Its drivers are Driver Match's `daily_performance` kind of data, counted in the days their
+quality was reported, each showing them driving.

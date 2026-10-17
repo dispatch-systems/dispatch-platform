@@ -44,7 +44,7 @@ export const usage = `Usage: npm run new:feature -- <name> [options]
                                     feature's own name with --keeps for a database of its own
   --keeps <collector>.<collection>  the keeper of a collector's collection
   --people <source>                 who its table names, connected to Driver Match by their
-                                    IDs of a source: amazon or paycom; needs --tables
+                                    IDs of a collector's source, as amazon; needs --tables
   --page                            a page in a DSP's sidebar
   --tab-of <feature>                a tab of another feature's page
   --settings                        a tab on a DSP's Settings page

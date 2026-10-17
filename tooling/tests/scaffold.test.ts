@@ -314,7 +314,7 @@ test('--people connects its table to Driver Match by the IDs of a source, and ne
   const plan = await feature('fuel', '--tables', 'dsp', '--people', 'amazon');
   const people = file(plan, 'features/fuel/backend/people.rs');
   assert.match(people, /^pub const PEOPLE: People = People::new\($/m);
-  assert.match(people, /^\s+&dispatch_cortex::PEOPLE,$/m);
+  assert.match(people, /^\s+dispatch_cortex::SOURCE,$/m);
   assert.match(people, /&\*store\.dsp\(dsp\)\?,/);
   assert.match(file(plan, 'features/fuel/feature.rs'), /people: &\[&backend::people::PEOPLE\],/);
   assert.match(file(plan, 'features/fuel/backend/mod.rs'), /^pub\(crate\) mod people;$/m);

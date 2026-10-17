@@ -3,7 +3,7 @@
 use super::gather::{Gathered, gather};
 use super::{CHECKED, IdRow, pairs};
 use crate::api::types::{DriverMatch, IdLink, MatchCounts, Person, Question};
-use dispatch_core::{Result, db::Store, foundation::names, manifest::people::DriverSource};
+use dispatch_core::{Result, db::Store, foundation::names, manifest::people::Source};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -41,7 +41,7 @@ pub(super) fn counts(store: &Store, dsp: &str) -> Result<MatchCounts> {
 /// Everyone with a code, by it.
 fn people(
     gathered: &Gathered,
-    held: &BTreeMap<&str, Vec<(&IdRow, DriverSource)>>,
+    held: &BTreeMap<&str, Vec<(&IdRow, Source)>>,
 ) -> BTreeMap<String, Person> {
     held.iter()
         .map(|(code, ids)| ((*code).to_owned(), gathered.person(code, ids)))
@@ -55,7 +55,7 @@ fn questions(
     store: &Store,
     dsp: &str,
     gathered: &Gathered,
-    held: &BTreeMap<&str, Vec<(&IdRow, DriverSource)>>,
+    held: &BTreeMap<&str, Vec<(&IdRow, Source)>>,
     people: &BTreeMap<String, Person>,
 ) -> Result<Vec<Question>> {
     let apart: BTreeSet<(String, String)> = store

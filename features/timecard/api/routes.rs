@@ -1,9 +1,6 @@
 //! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
 //! preferences, and the jobs and schedules that collect them.
-use crate::{
-    api::settings::PaycomSettings,
-    backend::{TimecardStore, punches::people::PAYCOM},
-};
+use crate::{api::settings::PaycomSettings, backend::TimecardStore};
 use dispatch_core::{
     Error, Result,
     accounts::api::requests::CollectionRequest,
@@ -204,8 +201,9 @@ fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// version, so the browser keeps it until the photo changes.
 fn employee_photo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     tab(c, EMPLOYEES)?;
-    let (kind, bytes) = people::photo(db, c.dsp_id(), PAYCOM, input.param("code"))?
-        .ok_or_else(|| Error::new("not_found", 404))?;
+    let (kind, bytes) =
+        people::photo(db, c.dsp_id(), dispatch_paycom::SOURCE, input.param("code"))?
+            .ok_or_else(|| Error::new("not_found", 404))?;
     Ok(Reply::picture(kind, bytes.into()))
 }
 

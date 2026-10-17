@@ -7,14 +7,14 @@ use dispatch_core::{
     Result,
     db::Store,
     manifest::{
-        people::{DriverData, DriverSource, People, Workdays},
+        people::{Kind, People, Source, Workdays},
         registry,
     },
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 /// An ID as one source knows it.
-pub(crate) type Key = (DriverSource, String);
+pub(crate) type Key = (Source, String);
 /// Every ID the DSP's data holds now, as its sources describe it.
 pub(crate) type Found = BTreeMap<Key, Identity>;
 
@@ -22,27 +22,28 @@ pub(crate) type Found = BTreeMap<Key, Identity>;
 /// spellings are read.
 pub(crate) fn kinds(store: &Store, dsp: &str) -> Result<Vec<&'static People>> {
     let on = store.features(dsp)?;
-    let mut kinds: Vec<&'static People> = registry()
-        .features
+    Ok(registry().people_of(|feature| on.iter().any(|id| id == feature.switch.id)))
+}
+/// The kinds whose records show someone driving (`.driving()`).
+pub(crate) fn driving(kinds: &[&'static People]) -> BTreeSet<Kind> {
+    kinds
         .iter()
-        .filter(|feature| on.iter().any(|id| id == feature.switch.id))
-        .flat_map(|feature| feature.people.iter().copied())
-        .collect();
-    kinds.sort_by_key(|kind| kind.reading_order());
-    Ok(kinds)
+        .filter(|kind| kind.driving)
+        .map(|kind| kind.kind())
+        .collect()
 }
 /// The sources only lists of people the DSP can reach name, as Slack's members. An ID such a
 /// source no longer names went with its list, as a workspace disconnected: it sits idle, shown
 /// nowhere and keeping nobody from another, and comes back with its list.
-pub(crate) fn contacts_only(kinds: &[&'static People]) -> BTreeSet<DriverSource> {
-    let employs: BTreeSet<DriverSource> = kinds
+pub(crate) fn contacts_only(kinds: &[&'static People]) -> BTreeSet<Source> {
+    let employs: BTreeSet<Source> = kinds
         .iter()
         .filter(|kind| !kind.contacts_only)
-        .map(|kind| kind.source())
+        .map(|kind| kind.source)
         .collect();
     kinds
         .iter()
-        .map(|kind| kind.source())
+        .map(|kind| kind.source)
         .filter(|source| !employs.contains(source))
         .collect()
 }
@@ -52,16 +53,16 @@ pub(crate) fn contacts_only(kinds: &[&'static People]) -> BTreeSet<DriverSource>
 pub(crate) fn active(
     kinds: &[&'static People],
     found: &Found,
-    held: impl IntoIterator<Item = DriverSource>,
-) -> Vec<DriverSource> {
-    let named: BTreeSet<DriverSource> = found
+    held: impl IntoIterator<Item = Source>,
+) -> Vec<Source> {
+    let named: BTreeSet<Source> = found
         .keys()
         .map(|(source, _)| *source)
         .chain(held)
         .collect();
-    let set: BTreeSet<DriverSource> = kinds
+    let set: BTreeSet<Source> = kinds
         .iter()
-        .map(|kind| kind.source())
+        .map(|kind| kind.source)
         .filter(|source| named.contains(source))
         .collect();
     set.into_iter().collect()
@@ -71,7 +72,7 @@ pub(crate) fn active(
 /// keeps every spelling once, the most readable first.
 #[derive(Clone, Debug)]
 pub(crate) struct Identity {
-    pub source: DriverSource,
+    pub source: Source,
     pub id: String,
     pub names: Vec<String>,
     pub department: Option<String>,
@@ -93,7 +94,7 @@ pub(crate) struct Identity {
     pub same_as: BTreeSet<String>,
 }
 impl Identity {
-    pub fn new(source: DriverSource, id: &str) -> Self {
+    pub fn new(source: Source, id: &str) -> Self {
         Self {
             source,
             id: id.to_owned(),
@@ -160,7 +161,7 @@ pub(crate) fn found(kinds: &[&'static People], store: &Store, dsp: &str) -> Resu
     let contacts_only = contacts_only(kinds);
     let mut found: Found = BTreeMap::new();
     for kind in kinds {
-        let source = kind.source();
+        let source = kind.source;
         for named in (kind.read)(store, dsp)? {
             let id = named.id.trim();
             if id.is_empty() {
@@ -177,7 +178,10 @@ pub(crate) fn found(kinds: &[&'static People], store: &Store, dsp: &str) -> Resu
             entry.position = entry.position.take().or(named.position);
             entry.seen(named.first_seen, named.last_seen);
             entry.listed |= named.listed;
-            entry.photo = entry.photo.take().or(named.photo);
+            // A photo counts from a kind that serves its photos.
+            if kind.photos.is_some() {
+                entry.photo = entry.photo.take().or(named.photo);
+            }
             entry
                 .same_as
                 .extend(named.same_as.into_iter().filter(|other| other != id));
@@ -209,15 +213,15 @@ pub(crate) fn activity(
     kinds: &[&'static People],
     store: &Store,
     dsp: &str,
-) -> Result<BTreeMap<Key, BTreeMap<DriverData, Seen>>> {
-    let mut out: BTreeMap<Key, BTreeMap<DriverData, Seen>> = BTreeMap::new();
+) -> Result<BTreeMap<Key, BTreeMap<Kind, Seen>>> {
+    let mut out: BTreeMap<Key, BTreeMap<Kind, Seen>> = BTreeMap::new();
     for kind in kinds {
-        let Some(records) = kind.records else {
+        let Some((_, records)) = kind.records else {
             continue;
         };
         for row in records(store, dsp)? {
-            out.entry((kind.source(), row.id)).or_default().insert(
-                kind.data(),
+            out.entry((kind.source, row.id)).or_default().insert(
+                kind.kind(),
                 Seen {
                     count: row.count,
                     last: Some(row.last),
@@ -233,7 +237,7 @@ pub(crate) fn activity(
 #[derive(Debug, Default)]
 pub(crate) struct Days {
     pub worked: BTreeMap<Key, BTreeSet<String>>,
-    pub collected: BTreeMap<DriverSource, BTreeSet<String>>,
+    pub collected: BTreeMap<Source, BTreeSet<String>>,
 }
 impl Days {
     pub fn of(&self, key: &Key) -> Option<&BTreeSet<String>> {
@@ -247,7 +251,7 @@ pub(crate) fn days(kinds: &[&'static People], store: &Store, dsp: &str) -> Resul
         let Some(workdays) = kind.workdays else {
             continue;
         };
-        let source = kind.source();
+        let source = kind.source;
         let Workdays { worked, collected } = workdays(store, dsp)?;
         out.collected.entry(source).or_default().extend(collected);
         for (id, day) in worked {
@@ -260,7 +264,7 @@ pub(crate) fn days(kinds: &[&'static People], store: &Store, dsp: &str) -> Resul
 
 /// The departments each source's settings count as drivers (`.driver_departments`). Everyone
 /// only such sources know outside them is office staff; without the setting, nobody is.
-pub(crate) type DriverDepartments = BTreeMap<DriverSource, BTreeSet<String>>;
+pub(crate) type DriverDepartments = BTreeMap<Source, BTreeSet<String>>;
 pub(crate) fn driver_departments(
     kinds: &[&'static People],
     store: &Store,
@@ -271,7 +275,7 @@ pub(crate) fn driver_departments(
         if let Some(departments) = kind.driver_departments
             && let Some(list) = departments(store, dsp)?
         {
-            out.insert(kind.source(), list);
+            out.insert(kind.source, list);
         }
     }
     Ok(out)

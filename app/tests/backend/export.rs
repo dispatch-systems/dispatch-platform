@@ -6,10 +6,7 @@ use dispatch_core::collection::{
     registry::Provider,
 };
 use dispatch_core::db::{Kind, Migrations};
-use dispatch_core::manifest::{
-    Capability, Collection, Collector,
-    people::{DriverData, DriverSource},
-};
+use dispatch_core::manifest::{Capability, Collection, Collector, people::Source};
 use dispatch_core::tenancy::api::audit::*;
 use std::{
     collections::BTreeMap,
@@ -29,7 +26,7 @@ const COLLECTIONS: &str = "core/collection/api/generated/collections.ts";
 const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
 /// The kinds of collected data that name people, and the sources of their IDs, in their
 /// order, as lists of people show them. Only those lists import it, with the icons it imports.
-const DRIVER_DATA: &str = "core/manifest/api/generated/driver-data.ts";
+const PEOPLE_DATA: &str = "core/manifest/api/generated/people-data.ts";
 /// The features whose data names people, which Driver Match's tab shows only while one is on.
 const PEOPLE_FEATURES: &str = "core/manifest/api/generated/people-features.ts";
 /// The services features offer, each with the feature offering it, for a page using one to ask
@@ -48,7 +45,7 @@ fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     bindings.insert(CAPABILITIES.into(), capabilities());
     bindings.insert(COLLECTIONS.into(), collections());
     bindings.insert(AUDIT_SUBJECTS.into(), audit_subjects());
-    bindings.insert(DRIVER_DATA.into(), driver_data());
+    bindings.insert(PEOPLE_DATA.into(), people_data());
     bindings.insert(PEOPLE_FEATURES.into(), people_features());
     bindings.insert(SERVICES.into(), services());
     bindings
@@ -126,11 +123,13 @@ fn audit_subjects() -> String {
 }
 
 /// Every kind of collected data the features' people declare, in their order, with how it is
-/// named, what one of its records is and its icon, imported from lucide-react by its name.
-fn driver_data() -> String {
+/// named, what one of its records is when it counts them, and its icon, imported from
+/// lucide-react by its name; then every source of IDs, in its order.
+fn people_data() -> String {
     use std::collections::BTreeSet;
     let quoted = |text: &str| serde_json::to_string(text).unwrap();
-    let icons: BTreeSet<_> = DriverData::all().map(DriverData::icon).collect();
+    let kinds = dispatch_core::manifest::registry().people();
+    let icons: BTreeSet<_> = kinds.iter().map(|kind| kind.kind.icon).collect();
     let mut text =
         "// Generated from the kinds of data the features' people declare, and their sources.\n\
         // Run `npm run contracts:generate` after changing them.\n"
@@ -139,18 +138,18 @@ fn driver_data() -> String {
         let names: Vec<_> = icons.into_iter().collect();
         text += &format!("import {{ {} }} from 'lucide-react';\n", names.join(", "));
     }
-    text += "export const driverData = [\n";
-    for data in DriverData::all() {
+    text += "export const peopleKinds = [\n";
+    for kind in &kinds {
+        let unit = kind.unit().map_or("null".to_owned(), quoted);
         text += &format!(
-            "  {{ id: {}, label: {}, unit: {}, icon: {} }},\n",
-            quoted(data.as_str()),
-            quoted(data.label()),
-            quoted(data.unit()),
-            data.icon()
+            "  {{ id: {}, label: {}, unit: {unit}, icon: {} }},\n",
+            quoted(kind.kind.id),
+            quoted(kind.kind.label),
+            kind.kind.icon
         );
     }
-    text += "] as const;\nexport const driverSources = [\n";
-    for source in DriverSource::all() {
+    text += "] as const;\nexport const peopleSources = [\n";
+    for source in Source::all() {
         text += &format!(
             "  {{ id: {}, label: {} }},\n",
             quoted(source.as_str()),
@@ -519,7 +518,7 @@ fn feature_map(root: &Path) -> String {
             "live": feature.live,
             "maintenance": feature.maintenance.iter().map(|task| task.every.as_secs())
                 .collect::<Vec<_>>(),
-            "people": feature.people.iter().map(|people| people.data().as_str())
+            "people": feature.people.iter().map(|people| people.kind.id)
                 .collect::<Vec<_>>(),
             "routes": (feature.routes)().iter()
                 .map(|route| format!("{} {}", route.method, route.path))

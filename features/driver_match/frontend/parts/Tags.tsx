@@ -1,5 +1,5 @@
 import { CircleCheck, Mail, Phone } from 'lucide-react';
-import type { DriverSource, IdLink, PersonRole } from '../../api/index.js';
+import type { PeopleSource, IdLink, PersonRole } from '../../api/index.js';
 import { links, roles, sourceKinds, sourceLabel } from '../driver-match.js';
 
 /** What a person does for the DSP. */
@@ -24,7 +24,7 @@ export function LinkTag({ link }: { link: IdLink }) {
 }
 
 /** A source, by its name, in its own tone. */
-export function SourceTag({ source }: { source: DriverSource }) {
+export function SourceTag({ source }: { source: PeopleSource }) {
   const tone = sourceKinds.indexOf(source) % 4;
   return <span className={`driver-source tone-${tone}`}>{sourceLabel(source)}</span>;
 }
