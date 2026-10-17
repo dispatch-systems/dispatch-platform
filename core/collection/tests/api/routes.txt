@@ -1,0 +1,14 @@
+# Every route collection registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/connections Dsp("connections.manage") Read
+GET /api/dsp/connections/{provider} Dsp("connections.manage") Async
+GET /api/dsp/connections/{provider}/screenshot Dsp("connections.manage") Async
+GET /api/platform/jobs PlatformOwner Read
+POST /api/dsp/connections/{provider} Dsp("connections.manage") Async
+POST /api/dsp/connections/{provider}/assist Dsp("connections.manage") Async
+POST /api/dsp/connections/{provider}/check Dsp("connections.manage") Async
+POST /api/dsp/connections/{provider}/disable Dsp("connections.manage") Async
+POST /api/dsp/connections/{provider}/save Dsp("connections.manage") Async
+POST /api/dsp/connections/{provider}/submit Dsp("connections.manage") Async
+POST /api/dsp/connections/{provider}/verify Dsp("connections.manage") Async

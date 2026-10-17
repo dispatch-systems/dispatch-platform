@@ -1,0 +1,30 @@
+# Every route accounts registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/auth/security/passkeys Session Read
+GET /api/auth/security/sessions Session Read
+GET /api/auth/security/status Session Read
+GET /api/invitations/{token} Public Write
+GET /api/invitations/{token}/short-code Public Write
+POST /api/auth/forgot-password Public Async
+POST /api/auth/login Public Async
+POST /api/auth/logout Session Write
+POST /api/auth/observation Public Async
+POST /api/auth/password Session Async
+POST /api/auth/reset-password Public Async
+POST /api/auth/security/authenticator/register/finish Session Write
+POST /api/auth/security/authenticator/register/start Session Write
+POST /api/auth/security/authenticator/remove Session Write
+POST /api/auth/security/authenticator/verify Session Write
+POST /api/auth/security/passkeys/register/finish Session Write
+POST /api/auth/security/passkeys/register/start Session Write
+POST /api/auth/security/passkeys/verify/finish Session Write
+POST /api/auth/security/passkeys/verify/start Session Write
+POST /api/auth/security/passkeys/{id}/remove Session Write
+POST /api/auth/security/reauthenticate Session Async
+POST /api/auth/security/recover Session Write
+POST /api/auth/security/recovery-codes Session Write
+POST /api/auth/security/sessions/revoke-all Session Write
+POST /api/auth/security/sessions/revoke-others Session Write
+POST /api/auth/security/sessions/{id}/revoke Session Write
+POST /api/invitations/{token}/accept Public Async

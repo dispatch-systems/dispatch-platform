@@ -1,0 +1,6 @@
+# Every route tenancy registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/session Session Read
+GET /api/site Public Read
+POST /api/session/dsp Session Write

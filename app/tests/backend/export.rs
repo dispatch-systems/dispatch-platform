@@ -1,24 +1,16 @@
 //! The TypeScript the owners' API types are written to, each in its owner's api/generated/,
 //! and the catalogs': the access catalog and the capabilities' labels in tenancy's and the
 //! collections' labels in collection's, checked against the files committed there.
-use dispatch_core::accounts::api::types::*;
-use dispatch_core::collection::api::{jobs::*, metrics::*, types::*};
 use dispatch_core::collection::{
     browser::{self, Collected, Pending, browseros},
     registry::Provider,
 };
 use dispatch_core::db::{Kind, Migrations};
-use dispatch_core::foundation::config::{Environment, ProviderMode};
 use dispatch_core::manifest::{
     Capability, Collection, Collector,
     people::{DriverData, DriverSource},
 };
-use dispatch_core::platform_owner::api::types::*;
-use dispatch_core::server::api::types::*;
-use dispatch_core::support::api::types::*;
-use dispatch_core::tenancy::api::{audit::*, types::*};
-use dispatch_mcp::api::types::*;
-use dispatch_paycom::timecards::EmployeeTimecardPeriod;
+use dispatch_core::tenancy::api::audit::*;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -46,109 +38,10 @@ const SERVICES: &str = "core/manifest/api/generated/services.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
     let cfg = ts_rs::Config::new().with_out_dir(root);
-    let mut bindings = dispatch_core::typescript!(
-        &cfg,
-        AgentAccess,
-        AgentKeyKind,
-        AgentAppStatus,
-        AgentClient,
-        AgentKey,
-        AgentDsp,
-        AgentKeys,
-        AgentTool,
-        AgentKeyCreated,
-        AgentKeyRequest,
-        AgentKeysRevoked,
-        AgentWhoami,
-        AgentWhoamiKey,
-        AgentWhoamiDsp,
-        AgentActivityKey,
-        AgentActivity,
-        AgentActivityPage,
-        ToolLevel,
-        OAuthApproval,
-        OAuthRequest,
-        OAuthApp,
-        OAuthReplaced,
-        OAuthRedirect,
-        OAuthPairing,
-        OAuthPairingOpened,
-        OAuthAppId,
-        OAuthAllowedApp,
-        OAuthAllowedApps,
-        OAuthAppChoice,
-        Cadence,
-        DriverSource,
-        DriverData,
-        DspProfile,
-        JobMetrics,
-        JobPhase,
-        JobOutcome,
-        PageRead,
-        PageReads,
-        PageStage,
-        DocumentState,
-        AuditArea,
-        AuditSubject,
-        AuditReference,
-        AuditChange,
-        AuditEvent,
-        AuditName,
-        AuditPage,
-        AuditCount,
-        BrowserAdmission,
-        BrowserHealth,
-        TransportHealth,
-        MailHealth,
-        PlatformHealth,
-        CollectionChange,
-        CollectionUpdates,
-        CollectionSchedule,
-        CollectionSchedules,
-        Connection,
-        ConnectionStatus,
-        Dsp,
-        DspStatus,
-        SiteKind,
-        SiteInfo,
-        SiteDsp,
-        DspFeatureReport,
-        DspFeatures,
-        DspHidden,
-        DspSummary,
-        DspView,
-        FeatureChange,
-        FeatureState,
-        EmployeeTimecardPeriod,
-        Environment,
-        JobStatus,
-        MailMessage,
-        Member,
-        OwnerStatus,
-        Presence,
-        ProviderMode,
-        PublicJob,
-        PublicUser,
-        Role,
-        RoleSummary,
-        RuntimeSource,
-        ScheduleCollection,
-        SchedulePreview,
-        SessionResponse,
-        SecurityStatus,
-        PasskeySummary,
-        AuthenticatorSetup,
-        AccountSession,
-        SupportTicket,
-        SupportMessage,
-        SupportAttachment,
-        SupportProposal,
-        SupportEvidence,
-        SupportIntake,
-        SupportIntakeOutcome,
-        SupportDetail,
-        SupportNotification,
-    );
+    // Core's, as each part lists them; the agents' piece's; and the collectors'.
+    let mut bindings = dispatch_core::typescript(&cfg);
+    bindings.extend(dispatch_mcp::typescript(&cfg));
+    bindings.extend(dispatch_paycom::typescript(&cfg));
     // Each feature's, as it lists them, when the build has it.
     bindings.extend(crate::features::typescript(&cfg));
     bindings.insert(ACCESS_CATALOG.into(), access_catalog());

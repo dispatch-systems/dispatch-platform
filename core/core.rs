@@ -48,3 +48,18 @@ macro_rules! typescript {
         )),*])
     };
 }
+
+/// Every API type of core's in TypeScript, as each part lists its own.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> Typescript {
+    let mut all = Typescript::new();
+    all.extend(accounts::api::typescript(cfg));
+    all.extend(collection::api::typescript(cfg));
+    all.extend(foundation::config::typescript(cfg));
+    all.extend(manifest::people::typescript(cfg));
+    all.extend(platform_owner::api::typescript(cfg));
+    all.extend(server::api::typescript(cfg));
+    all.extend(support::api::typescript(cfg));
+    all.extend(tenancy::api::typescript(cfg));
+    all
+}

@@ -273,3 +273,9 @@ pub(crate) mod codes {
     pub const TIMECARD_EXTRACTION_FAILED: Code = Code::new("timecard_extraction_failed");
     pub const INVALID_TIMECARD_HOURS: Code = Code::new("invalid_timecard_hours");
 }
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    dispatch_core::typescript!(cfg, timecards::EmployeeTimecardPeriod)
+}

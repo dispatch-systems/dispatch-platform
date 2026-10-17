@@ -1,0 +1,30 @@
+# Every route support registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/platform/support/tickets PlatformOwner Read
+GET /api/support/attachments/{id} Session Read
+GET /api/support/notifications Session Read
+GET /api/support/notifications/unread Session Read
+GET /api/support/tickets Session Read
+GET /api/support/tickets/{id} Session Read
+GET /api/v1/support/worker/jobs/{id}/attachments/{image} Agent("support worker") Read
+GET /api/v1/support/worker/jobs/{id}/diagnostics Agent("support worker") Read
+GET /api/v1/support/worker/jobs/{id}/status Agent("support worker") Read
+POST /api/platform/support/tickets/{id}/decision PlatformOwner Write
+POST /api/platform/support/tickets/{id}/resume PlatformOwner Write
+POST /api/support/attachments Session Upload
+POST /api/support/notifications/read Session Write
+POST /api/support/tickets Session Write
+POST /api/support/tickets/{id}/messages Session Write
+POST /api/support/tickets/{id}/reopen Session Write
+POST /api/v1/support/worker/claim Agent("support worker") Bookkeeping
+POST /api/v1/support/worker/github/events Agent("support github") Write
+POST /api/v1/support/worker/jobs/{id}/attachments Agent("support worker") Upload
+POST /api/v1/support/worker/jobs/{id}/browser Agent("support worker") Write
+POST /api/v1/support/worker/jobs/{id}/complete Agent("support worker") Write
+POST /api/v1/support/worker/jobs/{id}/evidence Agent("support worker") Write
+POST /api/v1/support/worker/jobs/{id}/github Agent("support worker") Write
+POST /api/v1/support/worker/jobs/{id}/heartbeat Agent("support worker") Bookkeeping
+POST /api/v1/support/worker/jobs/{id}/progress Agent("support worker") Write
+POST /api/v1/support/worker/jobs/{id}/proposal Agent("support worker") Write
+POST /api/v1/support/worker/jobs/{id}/wait Agent("support worker") Write
