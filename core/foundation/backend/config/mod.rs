@@ -464,3 +464,9 @@ fn source(
 #[cfg(test)]
 #[path = "../../tests/backend/config/mod.rs"]
 mod tests;
+
+/// Its settings' kinds, which the app's export writes to TypeScript.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
+    crate::typescript!(cfg, Environment, ProviderMode)
+}

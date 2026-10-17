@@ -626,3 +626,9 @@ pub(crate) fn check(registry: &Registry) {
         );
     }
 }
+
+/// The sources and kinds of data that name people, which the app's export writes to TypeScript.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
+    crate::typescript!(cfg, DriverSource, DriverData)
+}

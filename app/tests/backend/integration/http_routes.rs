@@ -3,9 +3,9 @@
 #![cfg_attr(not(feature = "default"), allow(dead_code, unused_imports))]
 use dispatch_core::{
     server::http::{
-        Access::{self, Agent, Dsp, PlatformOwner, Public, Session},
+        Access::{self, Agent, Dsp, Public},
         Route,
-        Work::{self, Async, Bookkeeping, Memory, Read, Upload, Write},
+        Work::{self, Async, Read, Write},
     },
     tenancy::roles,
 };
@@ -16,9 +16,6 @@ fn table() -> Vec<Route> {
     dispatch_backend::install();
     dispatch_core::server::http::table()
 }
-
-const LIVE: &str = "timecard.view|collections.run|dvic.view|driver_profiles.collect";
-const WAKES_SCHEDULER: bool = true;
 
 type Row = (&'static str, &'static str, Access, Work, bool);
 
@@ -39,135 +36,40 @@ const OUTSIDE_THE_API: &[&str] = &[
     "/slack/interactions",
 ];
 
-// Every endpoint of core and the collectors: who may call it, which database access its
-// work runs under, and whether it wakes the scheduler. The list was written from the
-// dispatcher this table replaced, so it is the proof that no route changed its permission.
-// Each feature lists its own the same way, in its `tests/api/routes.txt`.
-//
-// Adding an endpoint? Add its row here, or its line to its feature's list. A reviewer then
-// sees, in one line, who can reach it, and a permission changed by accident fails a test.
-#[rustfmt::skip]
-const INVENTORY: &[Row] = &[
-    ("GET", "/api/support/tickets", Session, Read, false),
-    ("POST", "/api/support/tickets", Session, Write, false),
-    ("GET", "/api/support/tickets/{id}", Session, Read, false),
-    ("POST", "/api/support/tickets/{id}/messages", Session, Write, false),
-    ("POST", "/api/support/tickets/{id}/reopen", Session, Write, false),
-    ("POST", "/api/support/attachments", Session, Upload, false),
-    ("GET", "/api/support/attachments/{id}", Session, Read, false),
-    ("GET", "/api/support/notifications", Session, Read, false),
-    ("GET", "/api/support/notifications/unread", Session, Read, false),
-    ("POST", "/api/support/notifications/read", Session, Write, false),
-    ("GET", "/api/platform/support/tickets", PlatformOwner, Read, false),
-    ("POST", "/api/platform/support/tickets/{id}/decision", PlatformOwner, Write, false),
-    ("POST", "/api/platform/support/tickets/{id}/resume", PlatformOwner, Write, false),
-    ("POST", "/api/v1/support/worker/claim", Agent("support worker"), Bookkeeping, false),
-    ("GET", "/api/v1/support/worker/jobs/{id}/status", Agent("support worker"), Read, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/heartbeat", Agent("support worker"), Bookkeeping, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/progress", Agent("support worker"), Write, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/proposal", Agent("support worker"), Write, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/evidence", Agent("support worker"), Write, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/github", Agent("support worker"), Write, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/complete", Agent("support worker"), Write, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/wait", Agent("support worker"), Write, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/browser", Agent("support worker"), Write, false),
-    ("GET", "/api/v1/support/worker/jobs/{id}/diagnostics", Agent("support worker"), Read, false),
-    ("POST", "/api/v1/support/worker/jobs/{id}/attachments", Agent("support worker"), Upload, false),
-    ("GET", "/api/v1/support/worker/jobs/{id}/attachments/{image}", Agent("support worker"), Read, false),
-    ("POST", "/api/v1/support/worker/github/events", Agent("support github"), Write, false),
-    ("GET", "/api/health", Public, Memory, false),
-    ("GET", "/api/browser-update", Public, Memory, false),
-    ("POST", "/api/auth/login", Public, Async, false),
-    ("POST", "/api/auth/observation", Public, Async, false),
-    ("POST", "/api/auth/logout", Session, Write, false),
-    ("POST", "/api/auth/password", Session, Async, false),
-    ("POST", "/api/auth/forgot-password", Public, Async, false),
-    ("POST", "/api/auth/reset-password", Public, Async, false),
-    ("GET", "/api/invitations/{token}", Public, Write, false),
-    ("GET", "/api/invitations/{token}/short-code", Public, Write, false),
-    ("POST", "/api/invitations/{token}/accept", Public, Async, false),
-    ("GET", "/api/auth/security/status", Session, Read, false),
-    ("GET", "/api/auth/security/passkeys", Session, Read, false),
-    ("POST", "/api/auth/security/passkeys/register/start", Session, Write, false),
-    ("POST", "/api/auth/security/passkeys/register/finish", Session, Write, false),
-    ("POST", "/api/auth/security/passkeys/verify/start", Session, Write, false),
-    ("POST", "/api/auth/security/passkeys/verify/finish", Session, Write, false),
-    ("POST", "/api/auth/security/passkeys/{id}/remove", Session, Write, false),
-    ("POST", "/api/auth/security/authenticator/register/start", Session, Write, false),
-    ("POST", "/api/auth/security/authenticator/register/finish", Session, Write, false),
-    ("POST", "/api/auth/security/authenticator/verify", Session, Write, false),
-    ("POST", "/api/auth/security/authenticator/remove", Session, Write, false),
-    ("POST", "/api/auth/security/recover", Session, Write, false),
-    ("POST", "/api/auth/security/recovery-codes", Session, Write, false),
-    ("GET", "/api/auth/security/sessions", Session, Read, false),
-    ("POST", "/api/auth/security/sessions/{id}/revoke", Session, Write, false),
-    ("POST", "/api/auth/security/sessions/revoke-others", Session, Write, false),
-    ("POST", "/api/auth/security/sessions/revoke-all", Session, Write, false),
-    ("POST", "/api/auth/security/reauthenticate", Session, Async, false),
-    ("GET", "/api/site", Public, Read, false),
-    ("GET", "/api/session", Session, Read, false),
-    ("POST", "/api/session/dsp", Session, Write, false),
-
-    ("GET", "/api/platform/agents", PlatformOwner, Read, false),
-    ("POST", "/api/platform/agents/keys", PlatformOwner, Write, false),
-    ("POST", "/api/platform/agents/keys/{id}", PlatformOwner, Write, false),
-    ("POST", "/api/platform/agents/keys/{id}/revoke", PlatformOwner, Write, false),
-    ("POST", "/api/platform/agents/revoke-all", PlatformOwner, Write, false),
-    ("GET", "/api/platform/agents/activity", PlatformOwner, Read, false),
-    ("GET", "/.well-known/oauth-protected-resource", Public, Memory, false),
-    ("GET", "/.well-known/oauth-protected-resource/api/v1/mcp", Public, Memory, false),
-    ("GET", "/.well-known/oauth-authorization-server", Public, Memory, false),
-    ("GET", "/.well-known/oauth-authorization-server/api/v1/mcp", Public, Memory, false),
-    ("GET", "/oauth/authorize", Public, Async, false),
-    ("POST", "/oauth/token", Public, Async, false),
-    ("POST", "/oauth/register", Public, Async, false),
-    ("POST", "/oauth/revoke", Public, Async, false),
-    ("GET", "/api/platform/oauth/requests/{id}", PlatformOwner, Read, false),
-    ("POST", "/api/platform/oauth/requests/{id}/approve", PlatformOwner, Write, false),
-    ("POST", "/api/platform/oauth/requests/{id}/deny", PlatformOwner, Write, false),
-    ("GET", "/api/platform/oauth/pairing", PlatformOwner, Read, false),
-    ("POST", "/api/platform/oauth/pairing", PlatformOwner, Write, false),
-    ("GET", "/api/platform/oauth/apps", PlatformOwner, Read, false),
-    ("POST", "/api/platform/oauth/apps", PlatformOwner, Write, false),
-    ("GET", "/api/v1/whoami", Agent("read"), Read, false),
-    ("POST", "/api/v1/mcp", Agent("read"), Async, false),
-    ("GET", "/api/v1/mcp", Agent("read"), Async, false),
-
-    ("GET", "/api/platform/dsps", PlatformOwner, Read, false),
-    ("POST", "/api/platform/dsps", PlatformOwner, Write, WAKES_SCHEDULER),
-    ("POST", "/api/platform/dsps/{id}/retry", PlatformOwner, Write, WAKES_SCHEDULER),
-    ("POST", "/api/platform/dsps/{id}/status", PlatformOwner, Async, false),
-    ("POST", "/api/platform/dsps/{id}/support-visibility", PlatformOwner, Async, false),
-    ("POST", "/api/platform/dsps/{id}/code", PlatformOwner, Async, false),
-    ("GET", "/api/platform/dsps/{id}/features", PlatformOwner, Read, false),
-    ("POST", "/api/platform/dsps/{id}/features", PlatformOwner, Async, false),
-    ("POST", "/api/platform/dsps/{id}/features/shown", PlatformOwner, Write, false),
-    ("POST", "/api/platform/dsps/{id}/ai-support", PlatformOwner, Write, false),
-    ("POST", "/api/platform/dsps/{id}/remove", PlatformOwner, Async, false),
-    ("POST", "/api/platform/dsps/{id}/restore", PlatformOwner, Async, false),
-    ("GET", "/api/platform/jobs", PlatformOwner, Read, false),
-    ("GET", "/api/platform/audit", PlatformOwner, Read, false),
-    ("POST", "/api/platform/audit/export", PlatformOwner, Write, false),
-    ("GET", "/api/platform/health", PlatformOwner, Read, false),
-    ("GET", "/api/platform/mail", PlatformOwner, Read, false),
-    ("POST", "/api/platform/mail/{id}/retry", PlatformOwner, Write, false),
-    ("POST", "/api/platform/mail/{id}/discard", PlatformOwner, Write, false),
-    ("GET", "/api/platform/diagnostics", PlatformOwner, Read, false),
-    ("POST", "/api/platform/diagnostics", PlatformOwner, Write, false),
-
-    ("GET", "/api/dsp/collection-updates", Dsp(LIVE), Async, false),
-    ("POST", "/api/dsp/presence", Dsp("access"), Async, false),
-    ("GET", "/api/dsp/connections", Dsp("connections.manage"), Read, false),
-    ("GET", "/api/dsp/connections/{provider}", Dsp("connections.manage"), Async, false),
-    ("POST", "/api/dsp/connections/{provider}", Dsp("connections.manage"), Async, false),
-    ("POST", "/api/dsp/connections/{provider}/save", Dsp("connections.manage"), Async, false),
-    ("POST", "/api/dsp/connections/{provider}/check", Dsp("connections.manage"), Async, false),
-    ("POST", "/api/dsp/connections/{provider}/disable", Dsp("connections.manage"), Async, false),
-    ("POST", "/api/dsp/connections/{provider}/verify", Dsp("connections.manage"), Async, false),
-    ("GET", "/api/dsp/connections/{provider}/screenshot", Dsp("connections.manage"), Async, false),
-    ("POST", "/api/dsp/connections/{provider}/assist", Dsp("connections.manage"), Async, false),
-    ("POST", "/api/dsp/connections/{provider}/submit", Dsp("connections.manage"), Async, false),
-];
+/// Every owner that registers routes, with the folder its `tests/api/routes.txt` is in: each
+/// core part, the agents' piece, and each feature. The list is the proof that no route changed
+/// its access unseen: a line each, as `describe` writes it, reviewed with the owner.
+///
+/// Adding an endpoint? Add its line to its owner's list. A reviewer then sees, in one line,
+/// who can reach it, and a permission changed by accident fails a test.
+fn owners() -> Vec<(String, Vec<Route>)> {
+    use dispatch_core::{accounts, collection, platform_owner, server, support, tenancy};
+    dispatch_backend::install();
+    let registry = dispatch_core::manifest::registry();
+    let mut owners = vec![
+        ("core/accounts".to_owned(), accounts::api::routes()),
+        ("core/collection".to_owned(), collection::api::routes()),
+        (
+            "core/platform_owner".to_owned(),
+            platform_owner::api::routes(),
+        ),
+        ("core/server".to_owned(), server::api::routes()),
+        ("core/support".to_owned(), support::api::routes()),
+        ("core/tenancy".to_owned(), tenancy::api::routes()),
+    ];
+    owners.extend(
+        registry
+            .agents
+            .map(|agents| ("mcp".to_owned(), (agents.routes)())),
+    );
+    owners.extend(
+        registry
+            .features
+            .iter()
+            .map(|feature| (format!("features/{}", feature.name), (feature.routes)())),
+    );
+    owners
+}
 
 fn describe(rows: impl IntoIterator<Item = Row>) -> BTreeSet<String> {
     rows.into_iter()
@@ -186,20 +88,19 @@ fn described<'a>(routes: impl IntoIterator<Item = &'a Route>) -> BTreeSet<String
         (method, route.path, route.access, route.work, wakes)
     }))
 }
-/// Where each feature lists its own routes, a line each as `describe` writes it, so who can
-/// reach them is reviewed with the feature.
-fn listing(feature: &str) -> std::path::PathBuf {
+/// Where an owner lists its own routes, a line each as `describe` writes it, so who can reach
+/// them is reviewed with the owner.
+fn listing(owner: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .find(|dir| dir.join("Cargo.lock").is_file())
         .expect("repository root")
-        .join("features")
-        .join(feature)
+        .join(owner)
         .join("tests/api/routes.txt")
 }
-/// The routes a feature lists, without its comments.
-fn listed(feature: &str) -> BTreeSet<String> {
-    std::fs::read_to_string(listing(feature))
+/// The routes an owner lists, without its comments.
+fn listed(owner: &str) -> BTreeSet<String> {
+    std::fs::read_to_string(listing(owner))
         .unwrap_or_default()
         .lines()
         .map(str::trim)
@@ -209,36 +110,33 @@ fn listed(feature: &str) -> BTreeSet<String> {
 }
 
 #[test]
-fn each_feature_lists_exactly_the_routes_it_registers() {
-    for feature in dispatch_core::manifest::registry().features {
-        let registered = described((feature.routes)().iter());
-        let expected = listed(feature.name);
+fn each_owner_lists_exactly_the_routes_it_registers() {
+    for (owner, routes) in owners() {
+        let registered = described(routes.iter());
+        let expected = listed(&owner);
         let missing: Vec<_> = expected.difference(&registered).collect();
         let unlisted: Vec<_> = registered.difference(&expected).collect();
         assert!(
             missing.is_empty() && unlisted.is_empty(),
-            "{}: in features/{}/tests/api/routes.txt but not registered: {missing:#?}\n\
-             registered but not listed there: {unlisted:#?}",
-            feature.name,
-            feature.name
+            "{owner}: in {owner}/tests/api/routes.txt but not registered: {missing:#?}\n\
+             registered but not listed there: {unlisted:#?}"
         );
     }
 }
 
 #[cfg(feature = "default")]
 #[test]
-fn the_route_table_is_exactly_the_inventory() {
+fn the_route_table_is_exactly_what_the_owners_list() {
     let registered = described(&table());
-    // Core's routes, and the collectors', here; each feature's in its own folder.
-    let mut expected = describe(INVENTORY.iter().copied());
-    for feature in dispatch_core::manifest::registry().features {
-        expected.extend(listed(feature.name));
-    }
+    let expected: BTreeSet<String> = owners()
+        .into_iter()
+        .flat_map(|(owner, _)| listed(&owner))
+        .collect();
     let missing: Vec<_> = expected.difference(&registered).collect();
     let unlisted: Vec<_> = registered.difference(&expected).collect();
     assert!(
         missing.is_empty() && unlisted.is_empty(),
-        "in the inventory but not registered: {missing:#?}\nregistered but not in the inventory: {unlisted:#?}"
+        "listed but not registered: {missing:#?}\nregistered but no owner lists it: {unlisted:#?}"
     );
 }
 

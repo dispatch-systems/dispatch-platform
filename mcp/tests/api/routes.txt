@@ -1,0 +1,27 @@
+# Every route mcp registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /.well-known/oauth-authorization-server Public Memory
+GET /.well-known/oauth-authorization-server/api/v1/mcp Public Memory
+GET /.well-known/oauth-protected-resource Public Memory
+GET /.well-known/oauth-protected-resource/api/v1/mcp Public Memory
+GET /api/platform/agents PlatformOwner Read
+GET /api/platform/agents/activity PlatformOwner Read
+GET /api/platform/oauth/apps PlatformOwner Read
+GET /api/platform/oauth/pairing PlatformOwner Read
+GET /api/platform/oauth/requests/{id} PlatformOwner Read
+GET /api/v1/mcp Agent("read") Async
+GET /api/v1/whoami Agent("read") Read
+GET /oauth/authorize Public Async
+POST /api/platform/agents/keys PlatformOwner Write
+POST /api/platform/agents/keys/{id} PlatformOwner Write
+POST /api/platform/agents/keys/{id}/revoke PlatformOwner Write
+POST /api/platform/agents/revoke-all PlatformOwner Write
+POST /api/platform/oauth/apps PlatformOwner Write
+POST /api/platform/oauth/pairing PlatformOwner Write
+POST /api/platform/oauth/requests/{id}/approve PlatformOwner Write
+POST /api/platform/oauth/requests/{id}/deny PlatformOwner Write
+POST /api/v1/mcp Agent("read") Async
+POST /oauth/register Public Async
+POST /oauth/revoke Public Async
+POST /oauth/token Public Async

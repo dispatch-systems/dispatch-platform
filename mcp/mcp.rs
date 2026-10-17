@@ -38,3 +38,41 @@ pub use keys::{Caller, KeyStore, client_label};
 pub use oauth::{OAuthStore, clients::ClientStore, guard::GuardStore};
 pub use piece::{AGENTS, Agent};
 pub use usage::{LastUse, PER_MINUTE, Usage};
+
+/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
+#[cfg(feature = "ts")]
+pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
+    use api::types::*;
+    dispatch_core::typescript!(
+        cfg,
+        AgentAccess,
+        AgentActivity,
+        AgentActivityKey,
+        AgentActivityPage,
+        AgentAppStatus,
+        AgentClient,
+        AgentDsp,
+        AgentKey,
+        AgentKeyCreated,
+        AgentKeyKind,
+        AgentKeyRequest,
+        AgentKeys,
+        AgentKeysRevoked,
+        AgentTool,
+        AgentWhoami,
+        AgentWhoamiDsp,
+        AgentWhoamiKey,
+        OAuthAllowedApp,
+        OAuthAllowedApps,
+        OAuthApp,
+        OAuthAppChoice,
+        OAuthAppId,
+        OAuthApproval,
+        OAuthPairing,
+        OAuthPairingOpened,
+        OAuthRedirect,
+        OAuthReplaced,
+        OAuthRequest,
+        ToolLevel,
+    )
+}

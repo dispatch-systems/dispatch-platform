@@ -1,0 +1,23 @@
+# Every route platform_owner registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/platform/audit PlatformOwner Read
+GET /api/platform/diagnostics PlatformOwner Read
+GET /api/platform/dsps PlatformOwner Read
+GET /api/platform/dsps/{id}/features PlatformOwner Read
+GET /api/platform/health PlatformOwner Read
+GET /api/platform/mail PlatformOwner Read
+POST /api/platform/audit/export PlatformOwner Write
+POST /api/platform/diagnostics PlatformOwner Write
+POST /api/platform/dsps PlatformOwner Write wakes-scheduler
+POST /api/platform/dsps/{id}/ai-support PlatformOwner Write
+POST /api/platform/dsps/{id}/code PlatformOwner Async
+POST /api/platform/dsps/{id}/features PlatformOwner Async
+POST /api/platform/dsps/{id}/features/shown PlatformOwner Write
+POST /api/platform/dsps/{id}/remove PlatformOwner Async
+POST /api/platform/dsps/{id}/restore PlatformOwner Async
+POST /api/platform/dsps/{id}/retry PlatformOwner Write wakes-scheduler
+POST /api/platform/dsps/{id}/status PlatformOwner Async
+POST /api/platform/dsps/{id}/support-visibility PlatformOwner Async
+POST /api/platform/mail/{id}/discard PlatformOwner Write
+POST /api/platform/mail/{id}/retry PlatformOwner Write
