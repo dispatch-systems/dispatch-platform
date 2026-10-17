@@ -13,6 +13,11 @@ export const time = (value: string | null | undefined, timeZone: string, empty =
         timeZone,
       }).format(new Date(value))
     : empty;
+/** "Oct 14": the day `value` falls on in `timeZone`. */
+export const monthDay = (value: string | number, timeZone: string) =>
+  dateFormatter('en-US', { month: 'short', day: 'numeric', timeZone }).format(new Date(value));
+/** "Oct 14": a `YYYY-MM-DD` day as the calendar names it, wherever the viewer is. */
+export const calendarMonthDay = (day: string) => monthDay(`${day}T00:00:00Z`, 'UTC');
 /** "Oct 2, 2026", in the viewer's own time, as platform pages show a day. */
 export const calendarDay = (value: string) =>
   dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(

@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
+import { localDate } from '../../../shell/frontend/lib/day.js';
 import type { AuditArea, AuditChange, AuditEvent } from '../../api/index.js';
 import { useAuditPage, exportAudit } from '../../api/client.js';
 import { DataState, Empty, ErrorBox, SearchInput } from '../../../shell/frontend/ui/index.js';
@@ -147,7 +148,6 @@ export function AuditLog() {
   const busy = pending && !paused && !error;
 
   const clock = (at: string) => timeOfDay(at, timeZone);
-  const dayKey = dateFormatter('en-CA', { timeZone });
   const exact = dateFormatter('en-US', {
     weekday: 'short',
     month: 'short',
@@ -160,14 +160,14 @@ export function AuditLog() {
     timeZone,
   });
   const dayLabel = (at: string) => {
-    const key = dayKey.format(new Date(at));
-    if (key === dayKey.format(new Date())) return 'Today';
-    if (key === dayKey.format(new Date(Date.now() - 86_400_000))) return 'Yesterday';
+    const key = localDate(timeZone, new Date(at));
+    if (key === localDate(timeZone)) return 'Today';
+    if (key === localDate(timeZone, new Date(Date.now() - 86_400_000))) return 'Yesterday';
     return dateFormatter('en-US', {
       weekday: 'long',
       month: 'short',
       day: 'numeric',
-      ...(key.slice(0, 4) === dayKey.format(new Date()).slice(0, 4) ? {} : { year: 'numeric' }),
+      ...(key.slice(0, 4) === localDate(timeZone).slice(0, 4) ? {} : { year: 'numeric' }),
       timeZone,
     }).format(new Date(at));
   };
@@ -215,7 +215,7 @@ export function AuditLog() {
         event.action,
       ]);
       const header = ['Time', 'Person', 'DSP', 'Area', 'Event', 'Details', 'Action'];
-      downloadCsv(`audit-log-${dayKey.format(new Date())}.csv`, header, rows);
+      downloadCsv(`audit-log-${localDate(timeZone)}.csv`, header, rows);
     },
     { inline: true },
   );

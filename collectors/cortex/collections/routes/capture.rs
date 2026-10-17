@@ -2,7 +2,7 @@
 //! page's list and every itinerary, each kept as Amazon sent it.
 use crate::discovery::{CollectionRequest, Discovery, Scope};
 use chrono::NaiveDate;
-use dispatch_core::{Error, Result, db::now, ensure};
+use dispatch_core::{Error, Result, db::now, ensure, text_enum};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -31,27 +31,13 @@ pub enum Collection {
     #[serde(rename = "routes")]
     Routes,
 }
-/// How a day is read: a completed day once, or today as it stands.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Mode {
-    #[default]
-    Final,
-    Snapshot,
-}
-impl Mode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Final => "final",
-            Self::Snapshot => "snapshot",
-        }
-    }
-    pub fn parse(value: &str) -> Result<Self> {
-        match value {
-            "final" => Ok(Self::Final),
-            "snapshot" => Ok(Self::Snapshot),
-            _ => Err(Error::new("invalid_input", 400)),
-        }
+text_enum! {
+    /// How a day is read: a completed day once, or today as it stands.
+    #[derive(Default)]
+    pub enum Mode {
+        #[default]
+        Final => "final",
+        Snapshot => "snapshot",
     }
 }
 /// One day of one station's routes, as a job asks for it. The station, names and

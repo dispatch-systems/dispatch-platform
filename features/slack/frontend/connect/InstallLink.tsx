@@ -8,7 +8,7 @@ import {
   slackAccountChanged,
   type SlackLink,
 } from '../../api/client.js';
-import { day } from '../day.js';
+import { monthDay } from '../../../../core/shell/frontend/lib/format.js';
 import { SlackCard } from './SlackCard.js';
 
 // The DSP's install link, for whoever runs its Slack: made from New, and on a card of its own
@@ -73,7 +73,7 @@ export function LinkCard({ link, timeZone }: { link: SlackLink; timeZone: string
       </div>
       <dl className="slack-details">
         <dt>Install link</dt>
-        <dd>Expires {day(link.expiresAt, timeZone)}</dd>
+        <dd>Expires {monthDay(link.expiresAt, timeZone)}</dd>
         {link.createdBy && (
           <>
             <dt>Made by</dt>

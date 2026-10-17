@@ -41,6 +41,7 @@ export {
 // Timecard's endpoints, as its pages call them. Only its own screens raise these, so their
 // words load with them.
 const api = wordedApi({
+  invalid_period: 'Choose a period by its first and last day, or one day, not both.',
   meal_sync_paycom_required: 'Connect Paycom before syncing meal breaks.',
   meal_sync_flex_required: 'Connect Cortex in Settings → Connections before syncing Flex.',
   meal_sync_scope_required: 'Complete your DSP profile with a station code to sync Flex.',

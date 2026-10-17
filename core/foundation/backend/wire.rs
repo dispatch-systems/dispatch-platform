@@ -17,16 +17,17 @@ pub fn invalid_record() -> Error {
 }
 
 /// A closed set of strings stored in a column and sent as JSON: one enum with its SQL
-/// text, `FromSql`/`ToSql`, and serde, so no caller compares the text.
+/// text, `FromSql`/`ToSql`, and serde, so no caller compares the text. An attribute before a
+/// variant is kept, as `#[default]` with `#[derive(Default)]` on the enum.
 #[macro_export]
 macro_rules! text_enum {
-    ($(#[$meta:meta])* $vis:vis enum $name:ident { $($variant:ident => $text:literal,)* }) => {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident { $($(#[$vmeta:meta])* $variant:ident => $text:literal,)* }) => {
         #[derive(
             Clone, Copy, Debug, PartialEq, Eq, Hash,
             $crate::foundation::wire::serde::Serialize, $crate::foundation::wire::serde::Deserialize,
         )]
         $(#[$meta])*
-        $vis enum $name { $(#[serde(rename = $text)] $variant,)* }
+        $vis enum $name { $($(#[$vmeta])* #[serde(rename = $text)] $variant,)* }
         impl $name {
             pub const fn as_str(self) -> &'static str {
                 match self { $(Self::$variant => $text,)* }

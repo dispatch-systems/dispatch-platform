@@ -4,6 +4,7 @@ import type { RouteRetention } from '../../api/index.js';
 import { setRouteRetention, useRouteRetention } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
+import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { ConfirmDialog, DataState, ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import './routes-settings.css';
 
@@ -31,7 +32,7 @@ const longDay = (value: string) =>
   }).format(new Date(`${value}T00:00:00Z`));
 // The first day a window keeps, as the backend counts it: back from today where the DSP is.
 function firstKept(days: number, timeZone: string) {
-  const today = dateFormatter('en-CA', { timeZone }).format(new Date());
+  const today = localDate(timeZone);
   const start = new Date(`${today}T00:00:00Z`);
   start.setUTCDate(start.getUTCDate() - days);
   return start.toISOString().slice(0, 10);

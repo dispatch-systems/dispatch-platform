@@ -2,47 +2,23 @@
 //! channel, with how saving it went; its links are `linked`'s. Only this module runs SQL on its
 //! table; a workspace's rows go with it, in `storage::remove_slack_workspace`.
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::{Db, FromRow, Row, Store},
+    text_enum,
 };
 use rusqlite::params;
 
-/// How saving a file went.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Status {
-    /// Not yet: it's tried again at its `due_at`.
-    Waiting,
-    Saved,
-    /// Larger than where it goes takes.
-    TooLarge,
-    /// Not a file Slack hosts, as a canvas or a link to elsewhere is.
-    Skipped,
-    /// Deleted in Slack before it was saved.
-    Gone,
-    /// Tried as often as it's tried, or its folder is gone.
-    Failed,
-}
-impl Status {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Waiting => "waiting",
-            Self::Saved => "saved",
-            Self::TooLarge => "too_large",
-            Self::Skipped => "skipped",
-            Self::Gone => "gone",
-            Self::Failed => "failed",
-        }
-    }
-    fn parse(text: &str) -> Result<Self> {
-        Ok(match text {
-            "waiting" => Self::Waiting,
-            "saved" => Self::Saved,
-            "too_large" => Self::TooLarge,
-            "skipped" => Self::Skipped,
-            "gone" => Self::Gone,
-            "failed" => Self::Failed,
-            _ => return Err(Error::new("slack_import_unreadable", 500)),
-        })
+text_enum! {
+    /// How saving a file went: not yet, and tried again at its `due_at`; saved; larger than
+    /// where it goes takes; not a file Slack hosts, as a canvas or a link to elsewhere is;
+    /// deleted in Slack before it was saved; or tried as often as it's tried, or its folder gone.
+    pub enum Status {
+        Waiting => "waiting",
+        Saved => "saved",
+        TooLarge => "too_large",
+        Skipped => "skipped",
+        Gone => "gone",
+        Failed => "failed",
     }
 }
 
@@ -81,7 +57,7 @@ impl FromRow for Import {
                 }),
                 None => None,
             },
-            status: Status::parse(&row.get::<String>("status")?)?,
+            status: row.get("status")?,
             reason: row.get("reason")?,
             attempts: row.get("attempts")?,
             due_at: row.get("due_at")?,
