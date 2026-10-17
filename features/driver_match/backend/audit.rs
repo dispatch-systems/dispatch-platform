@@ -38,8 +38,8 @@ pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
             continue;
         }
         let found = described.entry(dsp.to_owned()).or_insert_with(|| {
-            sources::people(store, dsp)
-                .and_then(|people| sources::found(&people, store, dsp))
+            sources::kinds(store, dsp)
+                .and_then(|kinds| sources::found(&kinds, store, dsp))
                 .unwrap_or_default()
         });
         let mut named: Vec<String> = vec![];

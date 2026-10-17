@@ -23,11 +23,11 @@ pub(crate) struct Overview {
 }
 
 pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
-    let people = sources::people(store, dsp)?;
-    let found = sources::found(&people, store, dsp)?;
-    let activity = sources::activity(&people, store, dsp)?;
-    let days = sources::days(&people, store, dsp)?;
-    let departments = sources::driver_departments(&people, store, dsp)?;
+    let kinds = sources::kinds(store, dsp)?;
+    let found = sources::found(&kinds, store, dsp)?;
+    let activity = sources::activity(&kinds, store, dsp)?;
+    let days = sources::days(&kinds, store, dsp)?;
+    let departments = sources::driver_departments(&kinds, store, dsp)?;
     // Counted from what was collected, not from today, so a DSP whose collections pause
     // does not see everyone leave.
     let recent = found
@@ -43,7 +43,7 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
         .unwrap_or_default();
     let db = store.dsp(dsp)?;
-    let contacts_only = sources::contacts_only(&people);
+    let contacts_only = sources::contacts_only(&kinds);
     let every: Vec<IdRow> = db
         .query_as::<IdRow>(
             "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
@@ -56,7 +56,7 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
                 .is_none_or(|key| !contacts_only.contains(&key.0) || found.contains_key(&key))
         })
         .collect();
-    let active = sources::active(&people, &found, every.iter().filter_map(IdRow::source));
+    let active = sources::active(&kinds, &found, every.iter().filter_map(IdRow::source));
     // IDs of a source no feature on names sit idle: kept, and shown nowhere.
     let rows: Vec<IdRow> = every
         .into_iter()

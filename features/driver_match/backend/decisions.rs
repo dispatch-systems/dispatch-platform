@@ -1,6 +1,6 @@
 //! The decisions a person makes about who is whom: two people are one, an ID belongs to
 //! someone else, two people are different, or a match was right. Each is audited by codes.
-use super::assign::new_person;
+use super::codes::new_person;
 use super::{DriverMatchStore, valid_code};
 use crate::api::types::{DriverLink, DriverMatch};
 use dispatch_core::{

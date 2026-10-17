@@ -9,9 +9,10 @@ use serde::Serialize;
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
-    /// How an ID came to its person, surest last: as its first ID, by a name variant, a
-    /// unique name, a phone number or an email address only they share, as another account
-    /// its source says is theirs, or someone's decision.
+    /// How an ID came to its person, surest last, as they are ordered: as its first ID, by a
+    /// name variant, a unique name, a phone number or an email address only they share, as
+    /// another account its source says is theirs, or someone's decision.
+    #[derive(PartialOrd, Ord)]
     pub enum DriverLink {
         New => "new",
         Variant => "variant",

@@ -88,15 +88,15 @@ impl people::Directory for Directory {
 /// `details::photo` looks through them: the version of the photo it serves.
 fn photos(store: &Store, dsp: &str) -> Result<Vec<(DriverSource, BTreeMap<String, String>)>> {
     let mut out = vec![];
-    for people in sources::people(store, dsp)? {
-        if people.photos.is_none() {
+    for kind in sources::kinds(store, dsp)? {
+        if kind.photos.is_none() {
             continue;
         }
-        let versions = (people.read)(store, dsp)?
+        let versions = (kind.read)(store, dsp)?
             .into_iter()
             .filter_map(|named| Some((named.id, named.photo?)))
             .collect();
-        out.push((people.source(), versions));
+        out.push((kind.source(), versions));
     }
     Ok(out)
 }

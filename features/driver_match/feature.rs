@@ -11,7 +11,7 @@ pub use api::types::{
 };
 /// What the app uses: its storage, what one pass reads, and its codes' shape. Other features
 /// ask core's directory who an ID is.
-pub use backend::{DriverMatchStore, DriverSources, valid_code};
+pub use backend::{Collected, DriverMatchStore, valid_code};
 
 use dispatch_core::{
     db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
