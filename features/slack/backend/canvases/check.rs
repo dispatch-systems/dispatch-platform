@@ -4,7 +4,7 @@
 //! is synced; one edited a moment ago waits a while, as whoever's typing may not have stopped.
 use super::{
     ID, LINKING, queue,
-    storage::{CanvasStore, Outcome, Status},
+    storage::{CanvasStore, Outcome, Pick, Status},
 };
 use crate::backend::{
     bot::Bot, channel_links::storage::LinkStore, connection, storage::SlackStore,
@@ -152,42 +152,68 @@ pub(super) async fn check(state: &Arc<State>, dsp: &str) -> Result<()> {
             .iter()
             .chain(picks.iter().map(|pick| &pick.channel))
             .collect();
+        // Each channel, and each canvas chosen, on its own: one Slack refuses, as a channel
+        // archived or left, is logged and the rest are still noted.
         let mut seen = BTreeSet::new();
         for channel in channels {
-            for listed in canvases_in(&bot, channel).await? {
-                let picked = picks.iter().any(|pick| pick.canvas == listed.id);
-                if linked.contains(channel) || picked {
-                    seen.insert(listed.id.clone());
-                    let (at, team, channel) = (dsp.to_owned(), team.clone(), channel.clone());
-                    state
-                        .run(move |db| note(db, &at, &team, &channel, &listed))
-                        .await?;
-                }
+            let covers = |listed: &Listed| {
+                linked.contains(channel) || picks.iter().any(|pick| pick.canvas == listed.id)
+            };
+            match in_channel(state, &bot, channel, covers).await {
+                Ok(noted) => seen.extend(noted),
+                Err(error) => failed(&error),
             }
         }
-        // A canvas chosen on its own that its channel no longer lists, as Slack has it now.
         for pick in picks.iter().filter(|pick| !seen.contains(&pick.canvas)) {
-            let found = match bot.call("files.info", &json!({"file": pick.canvas})).await {
-                Err(error) if error.code == "slack_file_gone" => None,
-                answer => listed(&answer?["file"]),
-            };
-            let (at, team, pick) = (dsp.to_owned(), team.clone(), pick.clone());
-            state
-                .run(move |db| match found {
-                    Some(listed) => note(db, &at, &team, &pick.channel, &listed).map(drop),
-                    None => {
-                        let gone = Outcome::Left {
-                            status: Status::Gone,
-                            reason: "slack_file_gone".into(),
-                        };
-                        db.finish_slack_canvas(&at, &team, &pick.canvas, &gone, now())
-                    }
-                })
-                .await?;
+            if let Err(error) = unlisted(state, &bot, pick).await {
+                failed(&error);
+            }
         }
     }
     queue::sync_due(state, dsp).await;
     Ok(())
+}
+
+/// Notes the canvases in `channel` that `covers` says are kept: the IDs of those noted.
+async fn in_channel(
+    state: &Arc<State>,
+    bot: &Bot,
+    channel: &str,
+    covers: impl Fn(&Listed) -> bool,
+) -> Result<Vec<String>> {
+    let mut noted = Vec::new();
+    for listed in canvases_in(bot, channel).await? {
+        if covers(&listed) {
+            noted.push(listed.id.clone());
+            let (at, team, channel) = (bot.dsp.clone(), bot.team.clone(), channel.to_owned());
+            state
+                .run(move |db| note(db, &at, &team, &channel, &listed))
+                .await?;
+        }
+    }
+    Ok(noted)
+}
+
+/// Notes the canvas `pick`, chosen on its own, that its channel no longer lists, as Slack has
+/// it now: gone, once Slack has it no more.
+async fn unlisted(state: &Arc<State>, bot: &Bot, pick: &Pick) -> Result<()> {
+    let found = match bot.call("files.info", &json!({"file": pick.canvas})).await {
+        Err(error) if error.code == "slack_file_gone" => None,
+        answer => listed(&answer?["file"]),
+    };
+    let (at, team, pick) = (bot.dsp.clone(), bot.team.clone(), pick.clone());
+    state
+        .run(move |db| match found {
+            Some(listed) => note(db, &at, &team, &pick.channel, &listed).map(drop),
+            None => {
+                let gone = Outcome::Left {
+                    status: Status::Gone,
+                    reason: "slack_file_gone".into(),
+                };
+                db.finish_slack_canvas(&at, &team, &pick.canvas, &gone, now())
+            }
+        })
+        .await
 }
 
 fn failed(error: &dispatch_core::Error) {

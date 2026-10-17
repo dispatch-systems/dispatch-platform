@@ -324,3 +324,74 @@ async fn a_change_slack_tells_of_waits_for_the_changes_to_stop_and_one_mid_sync_
     assert_eq!(after.written_edit, Some(700_000));
     assert_eq!(after.due_at, 750_000 + QUIET_MS);
 }
+
+#[tokio::test]
+async fn a_canvas_left_comes_back_when_slack_shows_it_or_its_edit_and_follows_its_channel() {
+    let (_root, state, dsp, _) = syncing(TEAM).await;
+    link(&state, &dsp, TEAM, PHOTOS, "write-ups").await;
+    let at = dsp.clone();
+    let after = state
+        .run(move |db| {
+            let left = |canvas: &str, status: Status| -> dispatch_core::Result<()> {
+                db.claim_slack_canvas(&at, TEAM, canvas, 1_000, 9_000)?;
+                let outcome = Outcome::Left {
+                    status,
+                    reason: "test".into(),
+                };
+                db.finish_slack_canvas(&at, TEAM, canvas, &outcome, 1_100)
+            };
+            let status = |canvas: &str| -> dispatch_core::Result<String> {
+                let found: Option<(String,)> = db.dsp(&at)?.one_as(
+                    "SELECT status FROM slack_canvases WHERE team_id=? AND canvas_id=?",
+                    [TEAM, canvas],
+                )?;
+                Ok(found.map(|(status,)| status).unwrap_or_default())
+            };
+            // Left as gone, as Slack answers for a canvas the bot can't see, it's back as soon
+            // as Slack lists it again, or tells of a change to it.
+            db.note_slack_canvas(&at, TEAM, "F0FIXSEEN", PHOTOS, "Seen", 500, 1_000, 1_000)?;
+            left("F0FIXSEEN", Status::Gone)?;
+            db.note_slack_canvas(&at, TEAM, "F0FIXSEEN", PHOTOS, "Seen", 500, 2_000, 2_000)?;
+            let relisted = status("F0FIXSEEN")?;
+            db.note_slack_canvas(&at, TEAM, "F0FIXTOLD", PHOTOS, "Told", 500, 1_000, 1_000)?;
+            left("F0FIXTOLD", Status::Gone)?;
+            db.heard_slack_canvas(&at, TEAM, "F0FIXTOLD", 2_000, 3_000, 600_000)?;
+            let told = status("F0FIXTOLD")?;
+            // Given up before it had a document, it isn't tried again until it's edited.
+            db.note_slack_canvas(&at, TEAM, "F0FIXFAIL", PHOTOS, "Fail", 500, 1_000, 1_000)?;
+            left("F0FIXFAIL", Status::Failed)?;
+            db.note_slack_canvas(&at, TEAM, "F0FIXFAIL", PHOTOS, "Fail", 500, 2_000, 2_000)?;
+            let unedited = status("F0FIXFAIL")?;
+            db.note_slack_canvas(&at, TEAM, "F0FIXFAIL", PHOTOS, "Fail", 600, 3_000, 3_000)?;
+            let edited = status("F0FIXFAIL")?;
+            // Found first in a channel nobody linked, then in a linked one, it's kept there.
+            db.note_slack_canvas(
+                &at,
+                TEAM,
+                "F0FIXMOVED",
+                DISPATCH,
+                "Moved",
+                500,
+                1_000,
+                1_000,
+            )?;
+            db.note_slack_canvas(&at, TEAM, "F0FIXMOVED", PHOTOS, "Moved", 500, 2_000, 2_000)?;
+            Ok([relisted, told, unedited, edited])
+        })
+        .await
+        .unwrap();
+    assert_eq!(after, ["waiting", "waiting", "failed", "waiting"]);
+    let moved = kept(&state, &dsp, TEAM, "F0FIXMOVED").await;
+    assert_eq!(moved.map(|canvas| canvas.channel), Some(PHOTOS.to_owned()));
+}
+
+#[tokio::test]
+async fn a_channel_slack_refuses_to_list_leaves_the_check_to_the_others() {
+    let (_root, state, dsp, _) = syncing(TEAM).await;
+    // A linked channel Slack has no more, as one deleted since, listed before #photos.
+    link(&state, &dsp, TEAM, "C0FIXARCHIVED", "archived").await;
+    link(&state, &dsp, TEAM, PHOTOS, "write-ups").await;
+    check::check(&state, &dsp).await.unwrap();
+    let synced = kept(&state, &dsp, TEAM, CANVAS).await;
+    assert_eq!(synced.map(|canvas| canvas.status), Some(Status::Synced));
+}

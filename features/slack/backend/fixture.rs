@@ -391,6 +391,7 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
             json!({"ok": true, "file": found})
         }
         "files.list" => {
+            seen(team, asked)?;
             let listed: Vec<Value> = FILES
                 .iter()
                 .filter(|file| file.channel == asked)

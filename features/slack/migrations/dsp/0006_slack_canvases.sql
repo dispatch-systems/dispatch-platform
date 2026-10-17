@@ -32,8 +32,9 @@ CREATE TABLE IF NOT EXISTS slack_canvas_picks (
     PRIMARY KEY (team_id, canvas_id)
 );
 
--- Each canvas a link or a pick covers, once, by Slack's ID, with the channel it was found in:
--- when Slack last said it was edited, and the edit its document holds, in milliseconds; when
+-- Each canvas a link or a pick covers, once, by Slack's ID, with the channel it was last found
+-- in: when Slack last said it was edited, the edit its document holds, and the edit it was last
+-- left at, gone or failed, in milliseconds; when
 -- Slack last told of a change, and when the try under way began and ends; and how syncing it
 -- goes: waiting, with when it's next tried and since when, unless a try under way began
 -- since; synced, with its document; or left, gone from Slack or failed until it's edited
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS slack_canvases (
     claimed_until INTEGER,
     edited_at INTEGER,
     written_edit INTEGER,
+    tried_edit INTEGER,
     doc_id TEXT,
     doc_link TEXT,
     noticed_at INTEGER NOT NULL,

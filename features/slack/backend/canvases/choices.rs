@@ -85,6 +85,16 @@ pub async fn choose(
         );
     }
     ensure(!chosen.is_empty(), "invalid_input", 400)?;
+    // Those chosen already stay where they were chosen for, and a folder is made only for
+    // those new.
+    let (at, of) = (dsp.clone(), team.to_owned());
+    let picks = state
+        .read(move |db| db.slack_canvas_picks(&at, &of))
+        .await?;
+    chosen.retain(|listed| !picks.iter().any(|pick| pick.canvas == listed.id));
+    if chosen.is_empty() {
+        return Ok(());
+    }
     let folder = channel_links::folder_for(state, files, c, folder, &seen.name).await?;
     let (asked, at) = (c.clone(), team.to_owned());
     state

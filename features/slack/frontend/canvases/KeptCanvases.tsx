@@ -94,9 +94,9 @@ export function KeptCanvases({
   );
 }
 
-/** How syncing the canvas goes, in words. */
+/** How syncing the canvas goes, in words: a folder gone matters only while it has no document. */
 function status(canvas: SlackCanvas): ReactNode {
-  if (canvas.folderMissing)
+  if (canvas.folderMissing && !canvas.link)
     return (
       <span className="slack-kept-status left">
         <AlertCircle size={14} aria-hidden="true" />

@@ -1,5 +1,6 @@
 //! The channels each integration that links them to folders keeps, in its own table of each
-//! DSP's database. Only this module runs SQL on those tables; a workspace's rows go with it, in
+//! DSP's database. Only this module writes those tables, and an integration's own storage may
+//! read its own in its queries; a workspace's rows go with it, in
 //! `storage::remove_slack_workspace`.
 use super::Linking;
 use dispatch_core::{

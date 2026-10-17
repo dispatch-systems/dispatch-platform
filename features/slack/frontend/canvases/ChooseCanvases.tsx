@@ -42,7 +42,7 @@ export function ChooseCanvases({
       await chooseSlackCanvases(team, channel, [...canvases], folder?.id);
       close();
     },
-    { inline: true, success: canvases.size === 1 ? 'Canvas synced' : 'Canvases synced' },
+    { inline: true, success: canvases.size === 1 ? 'Canvas added' : 'Canvases added' },
   );
   if (browsing)
     return (

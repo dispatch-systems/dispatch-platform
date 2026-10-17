@@ -43,6 +43,9 @@ const CANVAS_LIMIT: usize = 5 * 1024 * 1024;
 const ORIGINAL_LIMIT: u64 = 2 * 1024 * 1024;
 /// The most of one picture read, in bytes.
 const PICTURE_LIMIT: usize = 8 * 1024 * 1024;
+/// The most of a canvas's pictures read, in bytes: once in a page, a third more, just under the
+/// most Google turns into a Doc. A canvas whose pictures take more is too large.
+const PICTURES_LIMIT: usize = 36 * 1024 * 1024;
 /// The kinds of picture a document shows as they are.
 const SHOWN: [&str; 3] = ["image/png", "image/jpeg", "image/gif"];
 /// Slack's previews of a picture, the largest first.
@@ -98,23 +101,24 @@ async fn attempt(state: &Arc<State>, dsp: &str, canvas: &Canvas, folder: &str) -
         CANVAS_LIMIT,
     )
     .await?;
-    let html = String::from_utf8_lossy(&html).into_owned();
+    let source = String::from_utf8_lossy(&html).into_owned();
     // A token that may not read files is answered with Slack's sign-in page, a whole one.
-    if html.contains("<html") {
+    if source.contains("<html") {
         return Err(Error::new("slack_needs_update", 409));
     }
     let mut pictures = BTreeMap::new();
-    for id in page::pictures(&html) {
-        if let Some(picture) = picture(&bot, &slack, &token, &id).await? {
+    let mut room = PICTURES_LIMIT;
+    for id in page::pictures(&source) {
+        if let Some(picture) = picture(&bot, &slack, &token, &id, room).await? {
+            room -= picture.bytes.len();
             pictures.insert(id, picture);
         }
     }
     let mut names = BTreeMap::new();
-    for user in page::mentioned(&html) {
+    for user in page::mentioned(&source) {
         let (_, shown) = author::of(&bot, Some(&user)).await?;
         names.insert(user, shown);
     }
-    let html = page::page(&html, &pictures, &names);
     if let Some((id, _)) = &canvas.doc {
         // Written over as Slack changed it, by whoever Slack says changed it last.
         let changed = match file["last_editor"].as_str() {
@@ -123,7 +127,7 @@ async fn attempt(state: &Arc<State>, dsp: &str, canvas: &Canvas, folder: &str) -
         };
         let page = Page {
             name: title.clone(),
-            html: html.clone(),
+            html: page::page(&source, &pictures, &names),
             by: changed,
             from: FROM,
         };
@@ -137,7 +141,7 @@ async fn attempt(state: &Arc<State>, dsp: &str, canvas: &Canvas, folder: &str) -
     let (made_by, _) = author::of(&bot, file["user"].as_str()).await?;
     let page = Page {
         name: title.clone(),
-        html,
+        html: page::page(&source, &pictures, &names),
         by: made_by,
         from: FROM,
     };
@@ -163,10 +167,16 @@ fn written(answer: Result<Outcome>) -> Result<Outcome> {
     }
 }
 
-/// The picture the Slack file `id` is, as a page shows it: itself while it's small and of a
-/// kind a document shows, or else Slack's largest preview of it; none for one Slack no longer
-/// has, or has no picture of.
-async fn picture(bot: &Bot, slack: &Slack, token: &str, id: &str) -> Result<Option<Picture>> {
+/// The picture the Slack file `id` is, as a page shows it: itself while it's small, fits in
+/// `room` bytes and is of a kind a document shows, or else Slack's largest preview of it; none
+/// for one Slack no longer has, or has no picture of. One that doesn't fit is too large.
+async fn picture(
+    bot: &Bot,
+    slack: &Slack,
+    token: &str,
+    id: &str,
+    room: usize,
+) -> Result<Option<Picture>> {
     let info = match bot.call("files.info", &json!({"file": id})).await {
         Err(error) if error.code == "slack_file_gone" => return Ok(None),
         answer => answer?,
@@ -178,7 +188,8 @@ async fn picture(bot: &Bot, slack: &Slack, token: &str, id: &str) -> Result<Opti
         let pixels = |side: &str| file[format!("{key}_{side}")].as_u64().map(|n| n as u32);
         (pixels("w"), pixels("h"))
     };
-    let chosen = if SHOWN.contains(&mime) && size <= ORIGINAL_LIMIT {
+    let fits = size <= ORIGINAL_LIMIT && size <= room as u64;
+    let chosen = if SHOWN.contains(&mime) && fits {
         file["url_private_download"]
             .as_str()
             .map(|url| (url, size_of("original")))
@@ -190,7 +201,8 @@ async fn picture(bot: &Bot, slack: &Slack, token: &str, id: &str) -> Result<Opti
     let Some((url, (width, height))) = chosen else {
         return Ok(None);
     };
-    let bytes = read(slack.download(token, url, "image/*").await?, PICTURE_LIMIT).await?;
+    let limit = PICTURE_LIMIT.min(room);
+    let bytes = read(slack.download(token, url, "image/*").await?, limit).await?;
     Ok(kind(&bytes).map(|mime| Picture {
         mime: mime.to_owned(),
         bytes,
@@ -249,10 +261,14 @@ fn left(status: Status, reason: &str) -> Outcome {
     }
 }
 /// What `error` makes of trying `canvas`: it waits uncounted for an approval or the workspace
-/// to work again, is tried again later each time, or is given up until it's edited again.
+/// to work again, is tried again later each time, or is given up until it's edited again, as
+/// one too large is at once.
 fn failure(canvas: &Canvas, error: &Error) -> Outcome {
     if ["slack_needs_update", "slack_connection_broken"].contains(&error.code.as_str()) {
         return wait(&error.code);
+    }
+    if error.code == "upload_too_large" {
+        return left(Status::Failed, &error.code);
     }
     match RETRIES_MS.get(canvas.attempts.max(0) as usize) {
         Some(after) => Outcome::Later {

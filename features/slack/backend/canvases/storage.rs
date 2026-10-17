@@ -154,8 +154,9 @@ pub trait CanvasStore {
     /// Takes the choice away: whether there was one.
     fn remove_slack_canvas_pick(&self, dsp: &str, team: &str, canvas: &str) -> Result<bool>;
     /// Notes that Slack has the canvas `canvas`, found in `channel`, titled `title` and last
-    /// edited at `edited`, in milliseconds, at `at`: one new to it, or edited since its document
-    /// was written, is synced at `due`. Whether it's to be synced.
+    /// edited at `edited`, in milliseconds, at `at`: one new to it, edited since its document
+    /// was written or it was last left, or left as gone, is synced at `due`. Whether it's to be
+    /// synced.
     #[allow(clippy::too_many_arguments)]
     fn note_slack_canvas(
         &self,
@@ -207,7 +208,8 @@ pub trait CanvasStore {
     fn slack_canvases(&self, dsp: &str, team: &str) -> Result<Vec<Canvas>>;
 }
 
-/// Whether the canvas `c` is covered: chosen on its own, or found in a linked channel.
+/// Whether the canvas `c` is covered: chosen on its own, or found in a linked channel, as
+/// `channel_links` keeps its links in `slack_canvas_links`, which this reads and never writes.
 const COVERED: &str = "(EXISTS (SELECT 1 FROM slack_canvas_picks p WHERE p.team_id=c.team_id \
      AND p.canvas_id=c.canvas_id) OR EXISTS (SELECT 1 FROM slack_canvas_links l \
      WHERE l.team_id=c.team_id AND l.channel_id=c.channel_id))";
@@ -270,14 +272,17 @@ impl CanvasStore for Store {
                  waiting_since,edited_at,noticed_at) \
                  VALUES (?1,?2,?3,?4,'waiting',?5,?6,?7,?6) \
                  ON CONFLICT(team_id,canvas_id) DO UPDATE SET title=excluded.title,\
+                 channel_id=excluded.channel_id,\
                  edited_at=max(coalesce(edited_at,0),excluded.edited_at)",
                 params![team, canvas, channel, title, due, at, edited],
             )?;
-            // Edited since its document was written, it's synced again.
+            // Edited since its document was written, or since it was last left, it's synced
+            // again; and one left as gone is there after all, as Slack lists it.
             db.exec(
                 "UPDATE slack_canvases SET status='waiting',reason=NULL,attempts=0,due_at=?,\
-                 waiting_since=? WHERE team_id=? AND canvas_id=? \
-                 AND status IN ('synced','failed') AND edited_at>coalesce(written_edit,-1)",
+                 waiting_since=? WHERE team_id=? AND canvas_id=? AND (status='gone' \
+                 OR status IN ('synced','failed') AND edited_at>max(coalesce(written_edit,-1),\
+                 coalesce(tried_edit,-1)))",
                 params![due, at, team, canvas],
             )?;
             let waiting: Option<(String,)> = db.one_as(
@@ -305,7 +310,7 @@ impl CanvasStore for Store {
             db.exec(
                 "UPDATE slack_canvases SET status='waiting',reason=NULL,attempts=0,due_at=?,\
                  waiting_since=? WHERE team_id=? AND canvas_id=? \
-                 AND status IN ('synced','failed')",
+                 AND status IN ('synced','failed','gone')",
                 params![due, at, team, canvas],
             )?;
             // Waiting already, and not for a failure, it waits for the edits to stop: since
@@ -368,9 +373,10 @@ impl CanvasStore for Store {
                  claimed_until=NULL WHERE team_id=? AND canvas_id=?",
                 params![doc, link, title, edit, edit, at, team, canvas],
             )?,
+            // Left at the edit it was tried at, so it's tried again only once it's edited.
             Outcome::Left { status, reason } => db.exec(
-                "UPDATE slack_canvases SET status=?,reason=?,claimed_until=NULL \
-                 WHERE team_id=? AND canvas_id=?",
+                "UPDATE slack_canvases SET status=?,reason=?,tried_edit=edited_at,\
+                 claimed_until=NULL WHERE team_id=? AND canvas_id=?",
                 params![status.as_str(), reason, team, canvas],
             )?,
             Outcome::Later {

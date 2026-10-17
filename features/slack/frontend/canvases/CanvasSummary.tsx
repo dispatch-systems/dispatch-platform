@@ -4,7 +4,7 @@ import { offered } from '../../../../core/shell/frontend/runtime/services.js';
 import { useSlackCanvases } from '../../api/client.js';
 
 // What Sync Canvases is doing in a workspace, on its card while it's on: how many channels are
-// linked and how many canvases are kept. Only for those who see where files are kept.
+// linked and how many canvases have a document. Only for those who see where files are kept.
 
 export function CanvasSummary({ view, team }: { view: DspView; team: string }) {
   const kept = offered('files', view);
@@ -16,7 +16,7 @@ function Counts({ team }: { team: string }) {
   const { data } = useSlackCanvases(team);
   if (!data) return null;
   const channels = data.links.length;
-  const canvases = data.canvases.length;
+  const canvases = data.canvases.filter((canvas) => canvas.link).length;
   return (
     <>
       {channels} {channels === 1 ? 'channel' : 'channels'} · {canvases}{' '}
