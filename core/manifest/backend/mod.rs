@@ -302,6 +302,15 @@ impl Registry {
             .find(|permission| permission.invites)
             .map(|permission| permission.id)
     }
+    /// The role name the memberships' legacy column records for a role holding the
+    /// permissions `held`, if a feature declares one for any of them.
+    pub fn legacy_role(&self, held: &[String]) -> Option<&'static str> {
+        self.permissions()
+            .find(|permission| {
+                permission.legacy_role.is_some() && held.iter().any(|id| id == permission.id)
+            })
+            .and_then(|permission| permission.legacy_role)
+    }
     /// Panics unless every collection has exactly one keeper, every keeper keeps a
     /// registered collection, every schedule alias has a name
     /// of its own and runs only collections its feature keeps, only a page has sub-features,
@@ -443,6 +452,14 @@ impl Registry {
         assert!(
             inviting <= 1,
             "{inviting} permissions let members invite; one at most may"
+        );
+        let legacy = permissions
+            .iter()
+            .filter(|p| p.legacy_role.is_some())
+            .count();
+        assert!(
+            legacy <= 1,
+            "{legacy} permissions name a legacy role; one at most may"
         );
         for (index, permission) in permissions.iter().enumerate() {
             assert!(
@@ -946,9 +963,13 @@ pub struct Permission {
     /// Whether it lets its holder invite members. One permission at most does, and a member's
     /// invitations are good only while they hold it.
     pub invites: bool,
+    /// The role name the memberships' legacy column records for a role holding it, from before
+    /// roles held permissions, so a runtime from then still tells its managers apart. One
+    /// permission at most declares it, and a new one never does.
+    pub legacy_role: Option<&'static str>,
 }
 /// A permission in its own place in the order, implying nothing, held by no demo role and
-/// owned by its feature's page: `perm("dvic.collect", "Collect DVIC", 41).implies(…)`.
+/// owned by its feature's page: `perm("x.collect", "Collect X", 41).implies(…)`.
 pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permission {
     Permission {
         id,
@@ -960,6 +981,7 @@ pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permissi
         group: None,
         recently_verified: false,
         invites: false,
+        legacy_role: None,
     }
 }
 impl Permission {
@@ -991,6 +1013,12 @@ impl Permission {
     pub const fn invites(self) -> Self {
         Self {
             invites: true,
+            ..self
+        }
+    }
+    pub const fn legacy_role(self, role: &'static str) -> Self {
+        Self {
+            legacy_role: Some(role),
             ..self
         }
     }

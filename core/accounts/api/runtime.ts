@@ -63,7 +63,6 @@ const dspSummary = z.looseObject({
   profile,
   ownerEmail: z.nullable(text),
   ownerStatus: z.enum(['active', 'invited', 'missing']),
-  paycom: connectionStatus,
   connections: z.record(text, connectionStatus),
   lastCollection: z.nullable(text),
   nextCollection: z.nullable(text),

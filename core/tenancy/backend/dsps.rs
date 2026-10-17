@@ -293,7 +293,6 @@ impl Store {
                 profile: profile_default(),
                 owner_email: owner.or(invite).map(str::to_owned),
                 owner_status,
-                paycom: ConnectionStatus::NotConnected,
                 connections: std::collections::BTreeMap::new(),
                 last_collection: None,
                 next_collection: None,
@@ -317,13 +316,6 @@ impl Store {
                     if let Some((status,)) = status {
                         summary.connections.insert(provider.id().to_owned(), status);
                     }
-                }
-                // `paycom` is the original provider's connection, as clients from before
-                // `connections` read it.
-                if let Some(status) =
-                    Provider::original().and_then(|original| summary.connections.get(original.id()))
-                {
-                    summary.paycom = *status;
                 }
                 // The latest collection any keeper knows of.
                 for keeper in registry().keepers() {
