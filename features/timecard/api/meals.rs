@@ -1,5 +1,4 @@
 use crate::api::{assessment::MealAssessment, types::Punch};
-use dispatch_core::text_enum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -100,20 +99,15 @@ pub struct MealEmployee {
     pub assessment: MealAssessment,
 }
 
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
-    pub enum MatchType { Name => "name", Saved => "saved", Separate => "separate", Unmatched => "unmatched", }
-}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/timecard/api/generated/"))]
 #[serde(rename_all = "camelCase")]
+/// A driver the meal breaks name, with the employee Driver Match joined them to, if any.
 pub struct MealDriver {
     pub id: String,
     pub name: String,
     pub paycom_code: Option<String>,
-    pub match_type: MatchType,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

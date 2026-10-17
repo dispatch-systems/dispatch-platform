@@ -10,9 +10,9 @@ pub use api::{
     },
     employee_sync::{EmployeeSyncSource, EmployeeSyncStatus},
     meals::{
-        CortexMeal, CortexPublication, CortexUnreadable, MatchType, MealComparison,
-        MealComparisonPage, MealCounts, MealDriver, MealEmployee, MealPaycom, MealPeriod,
-        MealPeriodGaps, MealSource, PeriodMealGap,
+        CortexMeal, CortexPublication, CortexUnreadable, MealComparison, MealComparisonPage,
+        MealCounts, MealDriver, MealEmployee, MealPaycom, MealPeriod, MealPeriodGaps, MealSource,
+        PeriodMealGap,
     },
     settings::{
         DepartmentOption, NameOrder, PaycomColumn, PaycomOptions, PaycomPage, PaycomPreferences,
@@ -234,7 +234,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         MealPaycom,
         MealSource,
         MealEmployee,
-        MatchType,
         MealDriver,
         CortexPublication,
         MealComparison,

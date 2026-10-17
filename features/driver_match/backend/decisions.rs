@@ -1,7 +1,6 @@
 //! The decisions a person makes about who is whom: two people are one, an ID belongs to
 //! someone else, two people are different, or a match was right. Each is audited by codes.
 use super::assign::new_person;
-use super::legacy::mirror_links;
 use super::{DriverMatchStore, valid_code};
 use crate::api::types::{DriverLink, DriverMatch};
 use dispatch_core::{
@@ -54,7 +53,7 @@ pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Resul
                 params![a, b, at, by],
             )?;
         }
-        mirror_links(&db)
+        Ok(())
     })?;
     drop(db);
     // Codes, not names: what a collection says about someone stays in its database.
@@ -113,7 +112,6 @@ pub(super) fn split(
             "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
             params![a, b, now, c.actor()],
         )?;
-        mirror_links(&db)?;
         Ok(fresh)
     })?;
     drop(db);
@@ -195,7 +193,7 @@ pub(super) fn confirm(
              WHERE code=?3 AND source=?4 AND external_id=?5",
             params![iso(), c.actor(), code, source, id],
         )?;
-        mirror_links(&db)
+        Ok(())
     })?;
     drop(db);
     store.audit_ref(

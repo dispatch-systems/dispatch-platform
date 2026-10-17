@@ -3,6 +3,6 @@
 /**
  * How an ID came to its person, surest last: as its first ID, by a name variant, a
  * unique name, a phone number or an email address only they share, as another account
- * its source says is theirs, a link saved on the meal-break page, or someone's decision.
+ * its source says is theirs, or someone's decision.
  */
-export type DriverLink = "new" | "variant" | "name" | "phone" | "email" | "account" | "saved" | "person";
+export type DriverLink = "new" | "variant" | "name" | "phone" | "email" | "account" | "person";

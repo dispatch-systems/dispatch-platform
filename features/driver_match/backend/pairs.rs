@@ -1,6 +1,5 @@
 //! The pairs that may be one person: who they are, why, and which keeps their code.
 use super::IdRow;
-use super::legacy::{AMAZON, Saved};
 use super::review;
 use super::sources::{Days, Found, Identity};
 use crate::api::types::{Driver, DriverEvidence, DriverRole, DriverStrength};
@@ -43,19 +42,12 @@ pub(super) fn pairs(
     drivers: &BTreeMap<String, Driver>,
     found: &Found,
     days: &Days,
-    saved: &Saved,
     apart: &BTreeSet<(String, String)>,
 ) -> Vec<Pair> {
-    // Someone kept apart from Paycom on the meal-break page; that decision stands.
-    let kept = |ids: &[(&IdRow, DriverSource)]| {
-        ids.iter().any(|(row, source)| {
-            source.as_str() == AMAZON && saved.separate.contains(&row.external_id)
-        })
-    };
     // Nobody asks about someone who has left; back on a roster or a route, they are asked again.
     let sides: Vec<review::Side> = held
         .iter()
-        .filter(|(code, ids)| !kept(ids) && drivers[**code].role != DriverRole::Former)
+        .filter(|(code, _)| drivers[**code].role != DriverRole::Former)
         .map(|(code, ids)| {
             let described: Vec<&Identity> = ids
                 .iter()

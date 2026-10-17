@@ -11,7 +11,7 @@ text_enum! {
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
     /// How an ID came to its person, surest last: as its first ID, by a name variant, a
     /// unique name, a phone number or an email address only they share, as another account
-    /// its source says is theirs, a link saved on the meal-break page, or someone's decision.
+    /// its source says is theirs, or someone's decision.
     pub enum DriverLink {
         New => "new",
         Variant => "variant",
@@ -19,7 +19,6 @@ text_enum! {
         Phone => "phone",
         Email => "email",
         Account => "account",
-        Saved => "saved",
         Person => "person",
     }
 }

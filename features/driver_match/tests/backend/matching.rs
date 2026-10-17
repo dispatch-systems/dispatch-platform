@@ -56,8 +56,8 @@ fn member(source: DriverSource, id: &str, name: &str) -> Member {
     }
 }
 /// Plans from nobody, and answers who each ID ends up with, by how.
-fn run(incoming: &[Identity], saved: &Saved) -> BTreeMap<String, (String, DriverLink)> {
-    plan(BTreeMap::new(), incoming, saved)
+fn run(incoming: &[Identity]) -> BTreeMap<String, (String, DriverLink)> {
+    plan(BTreeMap::new(), incoming)
         .into_iter()
         .map(|(i, person, link)| (incoming[i].id.clone(), (person, link)))
         .collect()
@@ -68,17 +68,14 @@ fn together(result: &BTreeMap<String, (String, DriverLink)>, a: &str, b: &str) -
 
 #[test]
 fn unique_names_join_across_formats_and_variants_need_the_whole_surname() {
-    let result = run(
-        &[
-            paycom("A001", "REYES, ANTONIO"),
-            paycom("A002", "HERNANDEZ ORTIZ, LUIS"),
-            paycom("A003", "WHITFIELD, JAMES"),
-            amazon("T1", &["Antonio Reyes"]),
-            amazon("T2", &["Luis Hernandez"]),
-            amazon("T3", &["James Whitfield Jr"]),
-        ],
-        &Saved::default(),
-    );
+    let result = run(&[
+        paycom("A001", "REYES, ANTONIO"),
+        paycom("A002", "HERNANDEZ ORTIZ, LUIS"),
+        paycom("A003", "WHITFIELD, JAMES"),
+        amazon("T1", &["Antonio Reyes"]),
+        amazon("T2", &["Luis Hernandez"]),
+        amazon("T3", &["James Whitfield Jr"]),
+    ]);
     assert!(together(&result, "A001", "T1"));
     assert_eq!(result["T1"].1, DriverLink::Name);
     assert!(together(&result, "A002", "T2"));
@@ -88,19 +85,16 @@ fn unique_names_join_across_formats_and_variants_need_the_whole_surname() {
 }
 #[test]
 fn any_spelling_amazon_knows_can_match_and_middle_names_are_looked_past() {
-    let result = run(
-        &[
-            paycom("A001", "OKAFOR, DANIEL"),
-            // The scorecard adds a middle name; the routes name is plain.
-            amazon("T1", &["Daniel Okafor", "Daniel Chukwuma Okafor"]),
-            paycom("A002", "BELL, MARCUS"),
-            amazon("T2", &["Marcus Andre Bell"]),
-            // Paycom lists the middle name they go by.
-            paycom("A003", "MORGAN, RUBEN"),
-            amazon("T3", &["Martin Morgan", "Martin Ruben Morgan"]),
-        ],
-        &Saved::default(),
-    );
+    let result = run(&[
+        paycom("A001", "OKAFOR, DANIEL"),
+        // The scorecard adds a middle name; the routes name is plain.
+        amazon("T1", &["Daniel Okafor", "Daniel Chukwuma Okafor"]),
+        paycom("A002", "BELL, MARCUS"),
+        amazon("T2", &["Marcus Andre Bell"]),
+        // Paycom lists the middle name they go by.
+        paycom("A003", "MORGAN, RUBEN"),
+        amazon("T3", &["Martin Morgan", "Martin Ruben Morgan"]),
+    ]);
     assert!(together(&result, "A001", "T1"));
     assert!(together(&result, "A002", "T2"));
     assert_eq!(result["T2"].1, DriverLink::Variant);
@@ -109,31 +103,25 @@ fn any_spelling_amazon_knows_can_match_and_middle_names_are_looked_past() {
 }
 #[test]
 fn a_middle_name_two_people_could_go_by_is_never_guessed() {
-    let result = run(
-        &[
-            paycom("A001", "GARCIA, JOSE"),
-            paycom("A002", "GARCIA, JUAN"),
-            amazon("T1", &["Juan Jose Garcia"]),
-        ],
-        &Saved::default(),
-    );
+    let result = run(&[
+        paycom("A001", "GARCIA, JOSE"),
+        paycom("A002", "GARCIA, JUAN"),
+        amazon("T1", &["Juan Jose Garcia"]),
+    ]);
     assert_eq!(result["T1"].1, DriverLink::New);
 }
 #[test]
 fn shared_names_and_different_first_names_are_never_guessed() {
-    let result = run(
-        &[
-            paycom("A001", "SMITH, JOHN"),
-            paycom("A002", "SMITH, JOHN"),
-            amazon("T1", &["John Smith"]),
-            paycom("A003", "LEE, MARIA"),
-            amazon("T2", &["Maria Lee"]),
-            amazon("T3", &["Maria Lee"]),
-            paycom("A004", "REYES, ANTONIO"),
-            amazon("T4", &["Tony Reyes"]),
-        ],
-        &Saved::default(),
-    );
+    let result = run(&[
+        paycom("A001", "SMITH, JOHN"),
+        paycom("A002", "SMITH, JOHN"),
+        amazon("T1", &["John Smith"]),
+        paycom("A003", "LEE, MARIA"),
+        amazon("T2", &["Maria Lee"]),
+        amazon("T3", &["Maria Lee"]),
+        paycom("A004", "REYES, ANTONIO"),
+        amazon("T4", &["Tony Reyes"]),
+    ]);
     for (a, b) in [
         ("A001", "T1"),
         ("A002", "T1"),
@@ -156,7 +144,7 @@ fn a_person_who_has_an_amazon_id_takes_no_second_by_name() {
         ],
     );
     let incoming = [amazon("T9", &["Devon Carter"])];
-    let decided = plan(people, &incoming, &Saved::default());
+    let decided = plan(people, &incoming);
     assert_eq!(decided[0].1, "+0");
     assert_eq!(decided[0].2, DriverLink::New);
 }
@@ -168,69 +156,29 @@ fn amazon_seen_first_is_joined_by_paycom_later() {
         vec![member(AMAZON_SOURCE, "T1", "Priya Natarajan")],
     );
     let incoming = [paycom("A001", "NATARAJAN, PRIYA")];
-    let decided = plan(people, &incoming, &Saved::default());
+    let decided = plan(people, &incoming);
     assert_eq!(
         (decided[0].1.as_str(), decided[0].2),
         ("W5HC2K", DriverLink::Name)
     );
 }
 #[test]
-fn a_driver_kept_apart_from_paycom_stays_apart_when_paycom_lists_them_later() {
-    let saved = Saved {
-        separate: BTreeSet::from(["T5".to_owned()]),
-        ..Saved::default()
-    };
-    let mut people = BTreeMap::new();
-    people.insert(
-        "W5HC2K".to_owned(),
-        vec![member(AMAZON_SOURCE, "T5", "Maria Lee")],
-    );
-    let incoming = [paycom("A005", "LEE, MARIA")];
-    let decided = plan(people, &incoming, &saved);
-    assert_eq!(
-        (decided[0].1.as_str(), decided[0].2),
-        ("+0", DriverLink::New)
-    );
-}
-#[test]
-fn links_saved_on_the_meal_break_page_decide_first() {
-    let saved = Saved {
-        links: BTreeMap::from([("T4".to_owned(), "A004".to_owned())]),
-        separate: BTreeSet::from(["T5".to_owned()]),
-    };
-    let result = run(
-        &[
-            paycom("A004", "REYES, ANTONIO"),
-            amazon("T4", &["Tony Reyes"]),
-            paycom("A005", "LEE, MARIA"),
-            amazon("T5", &["Maria Lee"]),
-        ],
-        &saved,
-    );
-    assert!(together(&result, "A004", "T4"));
-    assert_eq!(result["T4"].1, DriverLink::Saved);
-    assert!(!together(&result, "A005", "T5"));
-}
-#[test]
 fn a_contact_only_two_people_share_joins_them_when_their_names_agree() {
-    let result = run(
-        &[
-            paycom("A001", "HOLLOWAY, ANDRE"),
-            reached(
-                amazon("T1", &["Andre Holloway"]),
-                "dre@example.com",
-                "6125550148",
-            ),
-            // Slack's own name for them: a nickname the matcher doesn't know.
-            reached(slack("U1", "Dre Holloway"), "dre@example.com", ""),
-            // The same phone, but a name that isn't theirs.
-            reached(slack("U2", "Front Desk"), "", "6125550148"),
-            // Its phone is Amazon's too, but nobody shares the name: still Slack's own.
-            reached(amazon("T2", &["Priya Natarajan"]), "", "6125550199"),
-            reached(slack("U3", "P N"), "", "6125550199"),
-        ],
-        &Saved::default(),
-    );
+    let result = run(&[
+        paycom("A001", "HOLLOWAY, ANDRE"),
+        reached(
+            amazon("T1", &["Andre Holloway"]),
+            "dre@example.com",
+            "6125550148",
+        ),
+        // Slack's own name for them: a nickname the matcher doesn't know.
+        reached(slack("U1", "Dre Holloway"), "dre@example.com", ""),
+        // The same phone, but a name that isn't theirs.
+        reached(slack("U2", "Front Desk"), "", "6125550148"),
+        // Its phone is Amazon's too, but nobody shares the name: still Slack's own.
+        reached(amazon("T2", &["Priya Natarajan"]), "", "6125550199"),
+        reached(slack("U3", "P N"), "", "6125550199"),
+    ]);
     assert!(together(&result, "A001", "T1"));
     assert!(together(&result, "T1", "U1"));
     assert_eq!(result["U1"].1, DriverLink::Email);
@@ -240,15 +188,12 @@ fn a_contact_only_two_people_share_joins_them_when_their_names_agree() {
 }
 #[test]
 fn a_contact_two_ids_of_one_source_share_says_nothing() {
-    let result = run(
-        &[
-            // A family's phone, on two of Amazon's associates.
-            reached(amazon("T1", &["Sam Rivera"]), "", "6125550123"),
-            reached(amazon("T2", &["Alex Rivera"]), "", "6125550123"),
-            reached(slack("U1", "Sam Rivera"), "", "6125550123"),
-        ],
-        &Saved::default(),
-    );
+    let result = run(&[
+        // A family's phone, on two of Amazon's associates.
+        reached(amazon("T1", &["Sam Rivera"]), "", "6125550123"),
+        reached(amazon("T2", &["Alex Rivera"]), "", "6125550123"),
+        reached(slack("U1", "Sam Rivera"), "", "6125550123"),
+    ]);
     // Not by the phone; by the one name nobody else carries.
     assert!(together(&result, "T1", "U1"));
     assert_eq!(result["U1"].1, DriverLink::Name);
@@ -278,7 +223,7 @@ fn another_account_joins_only_its_one_holder_whose_names_agree() {
         same_as(slack("T3:U1", "Devon Carter"), &["T1:U1", "T2:U2"]),
         same_as(slack("T3:U3", "Priya Natarajan"), &["T1:U3"]),
     ];
-    let decided = plan(people, &incoming, &Saved::default());
+    let decided = plan(people, &incoming);
     // A person decides both.
     let links: Vec<DriverLink> = decided.iter().map(|(_, _, link)| *link).collect();
     assert_eq!(links, [DriverLink::New, DriverLink::New]);

@@ -37,9 +37,7 @@ impl people::Directory for Directory {
         for (code, ids) in held {
             let mut person = Person {
                 code: code.to_owned(),
-                confirmed: ids
-                    .iter()
-                    .any(|i| matches!(i.linked_by, DriverLink::Person | DriverLink::Saved)),
+                confirmed: ids.iter().any(|i| i.linked_by == DriverLink::Person),
                 ..Person::default()
             };
             for id in &ids {

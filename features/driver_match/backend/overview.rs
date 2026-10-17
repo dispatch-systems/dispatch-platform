@@ -1,6 +1,5 @@
 //! What the tab and the details panel read: everyone with a code, as the sources the DSP has
 //! on describe them, and the pairs that may be one person, gathered once.
-use super::legacy::saved_links;
 use super::sources::{self, Days, Found, Key, Seen};
 use super::{CHECKED, FORMER_AFTER_DAYS, IdRow, pairs, person};
 use crate::api::types::{Driver, DriverCounts, DriverLink, DriverMatch, DriverPair, DriverRole};
@@ -28,7 +27,6 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
     let found = sources::found(&people, store, dsp)?;
     let activity = sources::activity(&people, store, dsp)?;
     let days = sources::days(&people, store, dsp)?;
-    let saved = saved_links(store, dsp)?;
     let departments = sources::driver_departments(&people, store, dsp)?;
     // Counted from what was collected, not from today, so a DSP whose collections pause
     // does not see everyone leave.
@@ -93,7 +91,7 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         .iter()
         .map(|(code, ids)| ((*code).to_owned(), person::driver(code, ids, &context)))
         .collect();
-    let pairs = pairs::pairs(&held, &drivers, &found, &days, &saved, &apart);
+    let pairs = pairs::pairs(&held, &drivers, &found, &days, &apart);
     for pair in &pairs {
         for code in [&pair.person, &pair.candidate] {
             drivers.get_mut(code).unwrap().review = true;

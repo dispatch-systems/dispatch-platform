@@ -18,20 +18,6 @@ use dispatch_cortex as cortex;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-/// The links the meal-break page saved before Driver Match, which reads them as decisions:
-/// the drivers kept apart from Paycom there show as separate.
-const LINKS: &str = "employees.provider_links";
-/// The drivers the meal-break page kept apart from Paycom, by transporter ID.
-fn separate(store: &Store, id: &str) -> Result<HashSet<String>> {
-    let links = store.dsp(id)?.setting(LINKS, json!({"links":[]}))?;
-    Ok(links["separate"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|id| id.as_str().map(str::to_owned))
-        .collect())
-}
-
 /// The source of each driver's ID, and of each employee's.
 const AMAZON: DriverSource = DriverSource::new(&cortex::PEOPLE);
 const PAYCOM: DriverSource = DriverSource::new(&dispatch_paycom::PEOPLE);
@@ -165,7 +151,6 @@ fn comparisons(
     };
     let mut context = ComparisonContext {
         timezone, selected, meals, itineraries, late,
-        separate: separate(store, id)?,
         known: people::who(store, id, AMAZON)?,
         latest_zone: cortex.one(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
@@ -189,7 +174,6 @@ fn comparisons(
 struct ComparisonContext<'a> {
     timezone: &'a str,
     selected: Option<&'a [String]>,
-    separate: HashSet<String>,
     /// Who each driver is, by their transporter ID.
     known: BTreeMap<String, Person>,
     late: LateRule,
@@ -287,12 +271,6 @@ impl ComparisonContext<'_> {
                 .iter()
                 .find(|c| listed.contains(c.as_str()));
             driver["paycomCode"] = json!(code);
-            driver["matchType"] = json!(match code {
-                Some(_) if person.is_some_and(|person| person.confirmed) => "saved",
-                Some(_) => "name",
-                None if self.separate.contains(transporter) => "separate",
-                None => "unmatched",
-            });
         }
         let roster_by_code: HashMap<_, _> = roster
             .iter()
