@@ -116,7 +116,7 @@ async fn driver_match_reads_each_member_with_their_accounts_in_other_workspaces(
         assert_eq!(jordan.name, "Jordan Ellis");
         assert!(jordan.listed);
         assert_eq!(jordan.emails, ["jordan.ellis@example.com"]);
-        assert_eq!(jordan.same_as, [other.clone()]);
+        assert_eq!(jordan.same_as, [other.as_str()]);
     }
     // The name someone goes by in Slack is another way it writes theirs.
     let morgan: Vec<&str> = named
