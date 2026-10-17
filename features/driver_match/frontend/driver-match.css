@@ -691,12 +691,6 @@ button.driver-more {
 }
 
 /* Choosing who to merge with. */
-.driver-merge-note {
-  margin: 0 0 16px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 1.5;
-}
 .driver-merge-list {
   display: grid;
   gap: 6px;

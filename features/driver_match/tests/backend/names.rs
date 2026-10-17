@@ -30,8 +30,9 @@ fn a_first_or_middle_name_with_the_same_last_name_matches() {
     assert!(same("MORGAN, RUBEN", "Martin Ruben Morgan"));
     assert!(same("BELL, MARCUS", "Marcus Andre Bell"));
     assert!(same("CORTEZ, HENRY", "Enrique Henry Jr Cortez"));
-    assert!(same("SALAZAR, ALEX", "Alexander Raymond Salazar"));
     assert!(same("HERNANDEZ ORTIZ, LUIS", "Luis Hernandez"));
+    // A short form is a question, never a match: Alex could be Alexander or Alexandra.
+    assert!(!same("SALAZAR, ALEX", "Alexander Raymond Salazar"));
     // A middle name alone never stands in for a last name, an initial or a suffix.
     assert!(!same("CORTEZ, HENRY", "Henry Vincent Flores"));
     assert!(!same("MORGAN, RUBEN", "Ruben Martin"));

@@ -54,12 +54,6 @@ export function MergeDialog({
         ))}
         {!options.length && <p className="muted">No one else matches that search.</p>}
       </div>
-      {other && (
-        <p className="driver-merge-note">
-          {other.name}’s IDs move to {driver.name}, who keeps code {driver.code}; {other.code} leads
-          here from then on.
-        </p>
-      )}
       <ErrorBox message={merge.error} />
       <div className="form-actions">
         <button onClick={onClose}>Cancel</button>

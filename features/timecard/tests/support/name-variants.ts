@@ -6,7 +6,7 @@ type Client = Awaited<ReturnType<App['client']>>;
 /** Paycom's name for four of the demo's employees, and Amazon's for the same drivers. */
 export const variants = [
   ['REED, JAMIE', 'Jamie Reed Vega'],
-  ['STONE, ALEX', 'Alexander Stone'],
+  ['STONE, ALEXANDER', 'Alexander James Stone'],
   ['MOLINA, CASEY', 'Casey Molina Solis'],
   ['HART, TAYLOR', 'Taylor Hart Jr'],
 ] as const;

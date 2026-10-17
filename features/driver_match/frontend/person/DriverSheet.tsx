@@ -87,8 +87,7 @@ export function DriverSheet({
                 }}
               >
                 {sourceLabel(splitting.source)} ID {splitting.id}
-                {splitting.name && ` (${splitting.name})`} moves to a new person with a new code.
-                The two are kept apart from then on.
+                {splitting.name && ` (${splitting.name})`}
               </ConfirmDialog>
             )}
           </>

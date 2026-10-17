@@ -7,8 +7,7 @@ use dispatch_core::{
     manifest::people::{self, Named, People, PeopleData, Records},
 };
 
-/// Every driver a verified scorecard names, counted in weeks. After routes and meal breaks:
-/// the scorecard often adds a middle name.
+/// Every driver a verified scorecard names, counted in weeks.
 pub const PEOPLE: People = People::new(
     PeopleData {
         id: "weekly_scorecard",

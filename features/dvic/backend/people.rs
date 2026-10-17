@@ -2,8 +2,8 @@
 use crate::backend::DvicStore;
 use dispatch_core::manifest::people::{self, People, PeopleData, Workdays};
 
-/// Every driver a verified inspection names, counted in inspections. DVIC sometimes writes
-/// only a last initial, so every other kind's spelling is read first.
+/// Every driver a verified inspection names, counted in inspections. It sometimes writes only
+/// a last initial, so its spellings are read after every other kind's.
 pub const PEOPLE: People = People::new(
     PeopleData {
         id: "dvic",
