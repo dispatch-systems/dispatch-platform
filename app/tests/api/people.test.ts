@@ -53,6 +53,8 @@ test("every member of a DSP sees its people, their contacts and photos, and no o
   );
   const saved = await owner.post(`/api/dsp/roles/${role.id}`, { name: 'Member', permissions: [] });
   assert.equal(saved.status, 200, saved.body);
+  // Changing a role ends the views signed before it.
+  await owner.select(north.id);
   let everyone: DirectoryPerson[] = [];
   await until(async () => {
     everyone = await owner.read('/api/dsp/people');
