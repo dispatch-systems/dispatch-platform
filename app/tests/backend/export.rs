@@ -564,6 +564,9 @@ fn a_capability_is_named_by_the_first_collector_listed_that_supplies_it() {
 const FEATURE_MAP: &str = "app/generated/features.json";
 /// The frontend's list of every owner's manifest.
 const FRONTEND_LIST: &str = "app/frontend/features.ts";
+/// Where the backend answers: the first part of each route's path, which a preview's server
+/// hands to the backend rather than serving the frontend.
+const BACKEND_PATHS: &str = "app/generated/backend-paths.json";
 
 /// Each feature this build has, by name, with what it declares: its ids, the features and
 /// collectors it uses, the collections it keeps and their collectors, its tables, its
@@ -650,6 +653,23 @@ fn feature_map(root: &Path) -> String {
     serde_json::to_string_pretty(&map).unwrap() + "\n"
 }
 
+/// The first part of every route's path, as `/api`: each is the backend's, never a page's.
+fn backend_paths() -> String {
+    let firsts: std::collections::BTreeSet<String> = dispatch_core::server::http::table()
+        .iter()
+        .map(|route| {
+            let first = route
+                .path
+                .trim_start_matches('/')
+                .split('/')
+                .next()
+                .unwrap();
+            format!("/{first}")
+        })
+        .collect();
+    serde_json::to_string_pretty(&firsts).unwrap() + "\n"
+}
+
 /// The frontend's list: an import of each owner's `frontend/feature.ts` this build has, in
 /// the order the frontend installs them: the features in their places, the collectors, core's
 /// parts, then the MCP. It is the sidebar's order, and the order in which Settings tabs warm
@@ -711,7 +731,7 @@ fn frontend_list(root: &Path) -> String {
 }
 
 #[test]
-fn the_feature_map_and_the_frontend_list_are_the_registrys() {
+fn the_feature_map_the_frontend_list_and_the_backend_paths_are_the_registrys() {
     crate::install();
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -720,6 +740,7 @@ fn the_feature_map_and_the_frontend_list_are_the_registrys() {
     for (file, text) in [
         (FEATURE_MAP, feature_map(root)),
         (FRONTEND_LIST, frontend_list(root)),
+        (BACKEND_PATHS, backend_paths()),
     ] {
         let path = root.join(file);
         if std::env::var_os("DISPATCH_UPDATE_CONTRACTS").is_some() {

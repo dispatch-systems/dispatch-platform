@@ -1,0 +1,6 @@
+[
+  "/.well-known",
+  "/api",
+  "/oauth",
+  "/slack"
+]
