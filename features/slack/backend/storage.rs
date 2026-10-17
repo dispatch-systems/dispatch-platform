@@ -213,8 +213,7 @@ pub trait SlackStore {
     /// Forgets the workspace, its members and its tokens, and frees it for any DSP: what was
     /// forgotten.
     fn remove_slack_workspace(&self, dsp: &str, team: &str) -> Result<Option<Workspace>>;
-    /// Every member of the DSP's workspaces, with their workspace, those of the workspace
-    /// connected first first.
+    /// Every member of the DSP's workspaces, with their workspace.
     fn slack_members(&self, dsp: &str) -> Result<Vec<(String, Member)>>;
     /// Keeps the workspace's members, all of them as Slack lists them now: whether any was
     /// new, changed or gone.
@@ -432,11 +431,9 @@ impl SlackStore for Store {
         Ok(found)
     }
     fn slack_members(&self, dsp: &str) -> Result<Vec<(String, Member)>> {
-        let rows: Vec<InWorkspace> = self.dsp(dsp)?.query_as(
-            "SELECT m.* FROM slack_members m JOIN slack_workspaces w ON w.team_id=m.team_id \
-             ORDER BY w.connected_at,m.team_id,m.user_id",
-            [],
-        )?;
+        let rows: Vec<InWorkspace> = self
+            .dsp(dsp)?
+            .query_as("SELECT * FROM slack_members ORDER BY team_id,user_id", [])?;
         Ok(rows
             .into_iter()
             .map(|InWorkspace(team, member)| (team, member))

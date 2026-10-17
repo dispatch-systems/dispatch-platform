@@ -46,11 +46,8 @@ fn reached(mut x: Identity, email: &str, phone: &str) -> Identity {
 }
 fn member(source: DriverSource, id: &str, name: &str) -> Member {
     Member {
-        source,
-        id: id.into(),
         names: vec![name.into()],
-        emails: BTreeSet::new(),
-        phones: BTreeSet::new(),
+        ..Member::gone((source, id.into()))
     }
 }
 /// Plans from nobody, and answers who each ID ends up with, by how.

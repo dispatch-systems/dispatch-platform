@@ -1,7 +1,8 @@
 //! Who a new ID belongs to. Pure: it reads what is known and decides, and the store writes
-//! the decisions. Only certain answers link an ID to someone: an email address or phone
-//! number only the two of them have, with names that agree, or a name nobody else carries.
-//! Anything less gives the ID a person of its own, for a person to review.
+//! the decisions. Only certain answers link an ID to someone: another ID its source says is
+//! the same person's, an email address or phone number only the two of them have, with names
+//! that agree, or a name nobody else carries. Anything less gives the ID a person of its own,
+//! for a person to review.
 use super::legacy::{AMAZON, PAYCOM, Saved};
 use super::names::{Name, name_key};
 use super::sources::{Identity, Key};
@@ -17,6 +18,7 @@ pub(crate) struct Member {
     pub names: Vec<String>,
     pub emails: BTreeSet<String>,
     pub phones: BTreeSet<String>,
+    pub same_as: BTreeSet<String>,
 }
 impl Member {
     pub fn of(x: &Identity) -> Self {
@@ -26,7 +28,28 @@ impl Member {
             names: x.names.clone(),
             emails: x.emails.clone(),
             phones: x.phones.clone(),
+            same_as: x.same_as.clone(),
         }
+    }
+    /// An ID no source holds any more, which has nothing to match by.
+    pub fn gone((source, id): Key) -> Self {
+        Self {
+            source,
+            id,
+            names: vec![],
+            emails: BTreeSet::new(),
+            phones: BTreeSet::new(),
+            same_as: BTreeSet::new(),
+        }
+    }
+    /// The person its source says it is: the first of its IDs for them.
+    fn one(&self) -> &str {
+        self.same_as
+            .iter()
+            .map(String::as_str)
+            .chain([self.id.as_str()])
+            .min()
+            .unwrap_or_default()
     }
 }
 /// Where a new ID goes: to a person by code, or to a new person, `+0`, `+1` and on, that
@@ -89,15 +112,17 @@ impl Contact {
         }
     }
 }
-/// How many IDs of each source carry each contact, among every ID held or new: a contact two
-/// IDs of one source share says nothing of either.
-type Carried = BTreeMap<(Contact, DriverSource, String), usize>;
+/// The people of each source who carry each contact, among every ID held or new: a contact
+/// two people of one source share says nothing of either.
+type Carried = BTreeMap<(Contact, DriverSource, String), BTreeSet<String>>;
 fn carried(all: &[Member]) -> Carried {
     let mut out = Carried::new();
     for m in all {
         for contact in Contact::ALL {
             for value in contact.pick(&m.emails, &m.phones) {
-                *out.entry((contact, m.source, value.clone())).or_default() += 1;
+                out.entry((contact, m.source, value.clone()))
+                    .or_default()
+                    .insert(m.one().to_owned());
             }
         }
     }
@@ -115,6 +140,13 @@ struct Plan<'a> {
 impl Plan<'_> {
     fn holds(&self, person: &str, source: DriverSource) -> bool {
         self.people[person].iter().any(|m| m.source == source)
+    }
+    /// The person holding another of `x`'s source's IDs for the same person.
+    fn same(&self, x: &Identity) -> Option<String> {
+        x.same_as
+            .iter()
+            .find_map(|id| self.owner.get(&(x.source, id.clone())))
+            .cloned()
     }
     /// The one person a saved link joins this ID to.
     fn saved(&self, x: &Identity) -> Option<String> {
@@ -140,9 +172,11 @@ impl Plan<'_> {
             _ => None,
         }
     }
-    /// Whether `value` is on exactly one ID of `source`.
+    /// Whether `value` is on exactly one person of `source`.
     fn alone(&self, contact: Contact, source: DriverSource, value: &str) -> bool {
-        self.carried.get(&(contact, source, value.to_owned())) == Some(&1)
+        self.carried
+            .get(&(contact, source, value.to_owned()))
+            .is_some_and(|people| people.len() == 1)
     }
     /// The one person `x` shares a contact of one kind with that no other ID of either
     /// source has, when their names agree and they lack an ID of `x`'s source.
@@ -202,11 +236,17 @@ impl Plan<'_> {
             .filter(|m| m.source != x.source)
             .collect();
         let rival = self.all.iter().any(|m| {
-            m.source == x.source && m.id != x.id && theirs.iter().any(|t| same(&m.names, &t.names))
+            m.source == x.source
+                && m.id != x.id
+                && !x.same_as.contains(&m.id)
+                && theirs.iter().any(|t| same(&m.names, &t.names))
         });
         (!rival).then_some(person)
     }
     fn decide(&self, x: &Identity) -> Option<(String, DriverLink)> {
+        if let Some(person) = self.same(x) {
+            return Some((person, DriverLink::Account));
+        }
         if x.source.as_str() == AMAZON && self.saved.separate.contains(&x.id) {
             return None;
         }

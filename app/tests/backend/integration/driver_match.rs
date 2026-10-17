@@ -546,3 +546,71 @@ fn slack_members_join_by_email_and_whom_only_slack_knows_works_in_the_office() {
     assert_eq!(code(&result, slack, "T0OPS:U0PAT"), pat);
     assert_eq!(person(&result, &pat).role, DriverRole::Former);
 }
+
+/// Someone in two of the DSP's workspaces is one person, holding each workspace's member ID,
+/// whichever workspace was connected first and however the workspaces come and go.
+#[cfg(feature = "slack")]
+#[test]
+fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go() {
+    dispatch_backend::install();
+    let (_root, db, id, _) = ready(None);
+    roster(&db, &id, &[("TJORDAN", "Jordan Ellis", "ACTIVE", "Driver")]);
+    let members = DriverSource::parse("slack").unwrap();
+    let operations: &[(&str, &str, Option<&str>, bool)] = &[
+        (
+            "U0JORDAN",
+            "Jordan Ellis",
+            Some("jordan.ellis@example.com"),
+            true,
+        ),
+        ("U0LUIS", "Luis Hernandez", Some("luis@example.com"), true),
+    ];
+    slack(&db, "T0OPS", &id, operations);
+    // Their accounts in the other workspace share their email addresses, so neither
+    // address nor name is theirs alone among Slack's IDs, but both are among its people.
+    slack(
+        &db,
+        "T0YARD",
+        &id,
+        &[
+            (
+                "U0JE",
+                "Jordan Ellis",
+                Some("Jordan.Ellis@example.com"),
+                true,
+            ),
+            ("U0LH", "Luis Hernandez", Some("luis@example.com"), true),
+        ],
+    );
+    db.match_drivers(&id).unwrap();
+    let result = db.driver_match(&id).unwrap();
+    let jordan = code(&result, AMAZON, "TJORDAN");
+    let luis = code(&result, AMAZON, "TLUIS");
+    let accounts = |result: &DriverMatch| {
+        [
+            ["T0OPS:U0JORDAN", "T0YARD:U0JE"].map(|member| code(result, members, member)),
+            ["T0OPS:U0LUIS", "T0YARD:U0LH"].map(|member| code(result, members, member)),
+        ]
+    };
+    let together = [[jordan.clone(), jordan.clone()], [luis.clone(), luis]];
+    assert_eq!(accounts(&result), together);
+    let links: Vec<DriverLink> = person(&result, &jordan)
+        .ids
+        .iter()
+        .filter(|i| i.source == members)
+        .map(|i| i.linked_by)
+        .collect();
+    assert_eq!(links, [DriverLink::Email, DriverLink::Account]);
+
+    // Removing the workspace connected first and connecting it again changes nobody.
+    let dsp = db.dsp(&id).unwrap();
+    for table in ["slack_members", "slack_workspaces"] {
+        dsp.exec(&format!("DELETE FROM {table} WHERE team_id='T0OPS'"), [])
+            .unwrap();
+    }
+    db.match_drivers(&id).unwrap();
+    assert_eq!(accounts(&db.driver_match(&id).unwrap()), together);
+    slack(&db, "T0OPS", &id, operations);
+    db.match_drivers(&id).unwrap();
+    assert_eq!(accounts(&db.driver_match(&id).unwrap()), together);
+}
