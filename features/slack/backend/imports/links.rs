@@ -39,7 +39,7 @@ pub async fn overview(state: &Arc<State>, c: &Context, team: &str) -> Result<Sla
     let mut shown = Vec::new();
     for link in &links {
         let (folder, folder_missing) =
-            channel_links::folder_now(state, files, &dsp, unready.is_none(), link).await?;
+            channel_links::folder_now(state, files, &dsp, unready.is_none(), link.folder()).await?;
         let (saved, last) = totals.get(&link.channel).copied().unwrap_or((0, None));
         shown.push(SlackImportLink {
             channel_id: link.channel.clone(),

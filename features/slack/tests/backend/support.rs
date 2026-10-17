@@ -20,7 +20,10 @@ use dispatch_core::{
 use futures_util::TryStreamExt;
 use std::{
     collections::BTreeSet,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 /// The stand-in's integration: it needs to read files, and hears of files shared.
@@ -158,8 +161,8 @@ impl Files for Keeping {
         page: Page,
     ) -> Answer<'a, Saved> {
         Box::pin(async move {
+            let id = format!("doc-{}", WRITTEN.fetch_add(1, Ordering::Relaxed) + 1);
             let mut pages = PAGES.lock().unwrap();
-            let id = format!("doc-{}", pages.len() + 1);
             pages.push(KeptPage {
                 dsp: dsp.to_owned(),
                 folder: folder.to_owned(),
@@ -215,8 +218,9 @@ pub struct KeptPage {
     pub by: Author,
     pub writes: usize,
 }
-/// The pages the stand-in keeps, in every test.
+/// The pages the stand-in keeps, in every test, and how many it ever wrote.
 static PAGES: Mutex<Vec<KeptPage>> = Mutex::new(Vec::new());
+static WRITTEN: AtomicUsize = AtomicUsize::new(0);
 /// The pages the stand-in keeps for the DSP `dsp`.
 pub fn pages(dsp: &str) -> Vec<KeptPage> {
     PAGES

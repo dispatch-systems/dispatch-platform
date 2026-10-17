@@ -2,13 +2,13 @@
 //! folders, and browsing folders to choose one. Each is for those who manage Slack, and the
 //! handlers check they see the folders where the DSP keeps its files; each waits outside the
 //! database, as it asks where the files are kept, and checks the member again before it writes.
-use super::routes::{SETTINGS, channel, team};
+use super::routes::{SETTINGS, channel, folder, team};
 use crate::backend::{
     channel_links,
     imports::{LINKING, links},
 };
 use dispatch_core::{
-    Result, State, ensure,
+    Result, State,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, optional},
@@ -45,19 +45,6 @@ pub fn routes() -> Vec<Route> {
             unlink,
         ),
     ]
-}
-
-/// A folder's ID where the DSP keeps its files, as Google Drive writes them.
-fn folder(id: &str) -> Result<String> {
-    ensure(
-        (1..=128).contains(&id.len())
-            && id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
-        "invalid_input",
-        400,
-    )?;
-    Ok(id.to_owned())
 }
 
 async fn overview(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {

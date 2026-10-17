@@ -4,10 +4,10 @@
 //! yet waits: while nothing keeps the DSP's files, or what keeps them isn't ready, or the
 //! workspace's admin hasn't approved reading files. A failure is tried again, later each time.
 use super::{
-    LINKING, author,
+    LINKING,
     storage::{Described, Import, ImportStore, Outcome, Status},
 };
-use crate::backend::{bot::Bot, channel_links::storage::LinkStore, slack::Slack};
+use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore, slack::Slack};
 use dispatch_core::{
     Error, Result, State,
     db::now,

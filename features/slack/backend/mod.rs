@@ -9,13 +9,15 @@
 //! - `integrations`: what features do through Slack, switched on in each workspace's settings;
 //!   Slack's own, `imports` (Import Files) and `canvases` (Sync Canvases), each keeping what's in
 //!   the channels `channel_links` links to folders.
-//! - `members` and `people`: the members of its workspaces, and how Driver Match reads them.
+//! - `members` and `people`: the members of its workspaces, and how Driver Match reads them;
+//!   `author`, who one is to the DSP.
 //! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`.
 //! - `storage`, `maintenance` and `pages`: what's kept, the hourly check, and the install
 //!   link's own page.
 pub(crate) mod app;
+pub(crate) mod author;
 pub(crate) mod bot;
-
+pub(crate) mod canvases;
 pub(crate) mod channel_links;
 pub(crate) mod channels;
 pub(crate) mod connection;

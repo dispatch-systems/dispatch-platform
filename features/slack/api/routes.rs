@@ -2,7 +2,7 @@
 //! and the permission before a handler runs; the handlers that call Slack wait outside the
 //! database and check again before they write. Slack's own requests come to public addresses
 //! outside `/api/`, each checked against Slack's signature before anything else.
-use super::imports;
+use super::{canvases, imports};
 use crate::backend::{
     app::{EVENTS_PATH, INSTALL_PATH, INTERACTIONS_PATH, RETURN_PATH},
     channels,
@@ -85,11 +85,24 @@ pub fn routes() -> Vec<Route> {
             Box::pin(inbound::interactions(state, request))
         }),
     ];
-    // Import Files' own, in a module of their own.
+    // Import Files' own and Sync Canvases', each in a module of their own.
     routes.extend(imports::routes());
+    routes.extend(canvases::routes());
     routes
 }
 
+/// A folder's ID where the DSP keeps its files, as Google Drive writes them.
+pub(super) fn folder(id: &str) -> Result<String> {
+    ensure(
+        (1..=128).contains(&id.len())
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
+        "invalid_input",
+        400,
+    )?;
+    Ok(id.to_owned())
+}
 /// A Slack workspace's ID, as Slack writes them.
 pub(super) fn team(id: &str) -> Result<String> {
     ensure(storage::team_id(id), "invalid_input", 400)?;

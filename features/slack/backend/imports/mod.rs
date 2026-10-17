@@ -8,10 +8,9 @@
 //!   `channel_links` links to folders as it does Sync Canvases', and what's been saved.
 //! - `queue`: each file noticed, kept until it's saved, and the minute's pass that saves what's
 //!   due.
-//! - `save`: saving one file, and `author`, who posted it.
+//! - `save`: saving one file, and who posted it, as `author` says.
 //! - `catch_up`: the hourly pass that notices the files Slack didn't tell of.
 //! - `storage`: what's kept.
-mod author;
 pub mod catch_up;
 pub mod links;
 pub mod queue;

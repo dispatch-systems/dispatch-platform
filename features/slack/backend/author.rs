@@ -1,7 +1,8 @@
-//! Who posted a file, as where it's saved names them: the DSP's member whose email address their
-//! Slack profile has, or else the name Slack shows them by. A member of the workspace is read
-//! from what Slack keeps of its members, or asked of Slack when they're not there yet.
-use crate::backend::{
+//! Who a member of a workspace is, as what Dispatch keeps from Slack names them: who posted a
+//! file, made a canvas or is mentioned in one. The DSP's member whose email address their Slack
+//! profile has, or else the name Slack shows them by. A member of the workspace is read from
+//! what Slack keeps of its members, or asked of Slack when they're not there yet.
+use super::{
     bot::Bot,
     members,
     storage::{Member, SlackStore},
@@ -9,9 +10,9 @@ use crate::backend::{
 use dispatch_core::{Result, manifest::services::files::Author};
 use serde_json::json;
 
-/// Who the workspace's member `user` is to the DSP, and the name they're shown by: none for a
-/// file Slack names nobody for.
-pub(super) async fn of(bot: &Bot, user: Option<&str>) -> Result<(Author, String)> {
+/// Who the workspace's member `user` is to the DSP, and the name they're shown by: Slack itself
+/// for what Slack names nobody for.
+pub(crate) async fn of(bot: &Bot, user: Option<&str>) -> Result<(Author, String)> {
     let Some(user) = user else {
         return Ok((Author::Named("Slack".into()), "Slack".into()));
     };

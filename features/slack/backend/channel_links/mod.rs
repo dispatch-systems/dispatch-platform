@@ -11,7 +11,7 @@
 pub mod storage;
 
 use super::{bot::Bot, channels, storage::SlackStore};
-use crate::api::types::{SlackFolder, SlackFolders};
+use crate::api::types::{SlackChannel, SlackFolder, SlackFolders};
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
@@ -87,20 +87,8 @@ pub async fn link(
         "slack_files_unready",
         409,
     )?;
-    let bot = Bot::new(state, &dsp, team);
-    let info = bot
-        .call("conversations.info", &json!({"channel": channel}))
-        .await?;
-    let seen =
-        channels::described(&info["channel"]).ok_or_else(|| Error::new("slack_refused", 502))?;
-    ensure(seen.member, "slack_channel_not_joined", 409)?;
-    let folder = match folder {
-        Some(id) => chosen(state, files, &dsp, &id).await?,
-        None => {
-            let by = Author::Member(c.actor().to_owned());
-            files.create_folder(state, &dsp, &seen.name, &by).await?
-        }
-    };
+    let seen = joined(&Bot::new(state, &dsp, team), channel).await?;
+    let folder = folder_for(state, files, c, folder, &seen.name).await?;
     let link = Link {
         team: team.to_owned(),
         channel: seen.id,
@@ -192,27 +180,56 @@ pub async fn browse(
     })
 }
 
-/// The folder `link` keeps its channel's things in, as it is now once they can be kept, and as
-/// it was last seen until then: none once it's gone.
+/// The folder `id`, last seen named `named`, as it is now once what keeps the DSP's files is
+/// `ready`, and as it was last seen until then; and whether it's gone.
 pub async fn folder_now(
     state: &Arc<State>,
     files: &'static dyn Files,
     dsp: &str,
     ready: bool,
-    link: &Link,
+    (id, named): (&str, &str),
 ) -> Result<(SlackFolder, bool)> {
     let now_is = match ready {
-        true => Some(files.folder(state, dsp, &link.folder).await?),
+        true => Some(files.folder(state, dsp, id).await?),
         false => None,
     };
     let folder = SlackFolder {
-        id: link.folder.clone(),
+        id: id.to_owned(),
         name: now_is
             .clone()
             .flatten()
-            .map_or_else(|| link.folder_name.clone(), |folder| folder.name),
+            .map_or_else(|| named.to_owned(), |folder| folder.name),
     };
     Ok((folder, matches!(now_is, Some(None))))
+}
+
+/// The channel `channel`, as Slack describes it now, while Dispatch is in it.
+pub async fn joined(bot: &Bot, channel: &str) -> Result<SlackChannel> {
+    let info = bot
+        .call("conversations.info", &json!({"channel": channel}))
+        .await?;
+    let seen =
+        channels::described(&info["channel"]).ok_or_else(|| Error::new("slack_refused", 502))?;
+    ensure(seen.member, "slack_channel_not_joined", 409)?;
+    Ok(seen)
+}
+
+/// The folder `chosen`, for the member `c`; or else a new one, made as theirs and named
+/// `named`, as after a channel.
+pub async fn folder_for(
+    state: &Arc<State>,
+    files: &'static dyn Files,
+    c: &Context,
+    chosen: Option<String>,
+    named: &str,
+) -> Result<Folder> {
+    match chosen {
+        Some(id) => self::chosen(state, files, &c.dsp.id, &id).await,
+        None => {
+            let by = Author::Member(c.actor().to_owned());
+            files.create_folder(state, &c.dsp.id, named, &by).await
+        }
+    }
 }
 
 /// The folder `id`, chosen for a channel: one where the DSP keeps its files.
@@ -231,13 +248,18 @@ async fn chosen(
 /// Records a change to the link `link` in the activity log, once the member is checked again:
 /// `#<channel> to <folder> in <workspace>`.
 fn record(db: &Store, c: &Context, action: &str, link: &Link) -> Result<()> {
-    let workspace = db
-        .slack_workspace(&c.dsp.id, &link.team)?
-        .map(|workspace| workspace.label.unwrap_or(workspace.name))
-        .unwrap_or_default();
     let detail = format!(
-        "#{} to {} in {workspace}",
-        link.channel_name, link.folder_name
+        "#{} to {} in {}",
+        link.channel_name,
+        link.folder_name,
+        workspace(db, &c.dsp.id, &link.team)?
     );
     c.audit(db, action, &detail)
+}
+/// The DSP's workspace `team`, by the name members know it by.
+pub fn workspace(db: &Store, dsp: &str, team: &str) -> Result<String> {
+    Ok(db
+        .slack_workspace(dsp, team)?
+        .map(|workspace| workspace.label.unwrap_or(workspace.name))
+        .unwrap_or_default())
 }

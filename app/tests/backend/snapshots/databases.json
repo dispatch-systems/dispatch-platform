@@ -71,7 +71,8 @@
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],
       ["slack", 4, "slack_integrations", "2ba12c6e03d85946"],
-      ["slack", 5, "slack_imports", "3f8237e6e4e91cc6"]
+      ["slack", 5, "slack_imports", "3f8237e6e4e91cc6"],
+      ["slack", 6, "slack_canvases", "5f76fa0564828e3d"]
     ]
   },
   {

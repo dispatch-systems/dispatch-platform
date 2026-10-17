@@ -22,6 +22,12 @@ pub struct Link {
     /// When it was linked, in milliseconds.
     pub linked_at: i64,
 }
+impl Link {
+    /// The folder it keeps its channel's things in, and its name as last seen.
+    pub fn folder(&self) -> (&str, &str) {
+        (&self.folder, &self.folder_name)
+    }
+}
 impl FromRow for Link {
     fn from_row(row: &Row<'_>) -> Result<Self> {
         Ok(Self {
