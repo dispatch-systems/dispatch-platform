@@ -7,6 +7,7 @@ use dispatch_core::{
     collection::registry::AddedStorage,
     db::{Db, DspLease, Kind, Store, at, now},
     ensure,
+    manifest::people::Photo,
 };
 use dispatch_cortex::{
     self as cortex,
@@ -70,7 +71,7 @@ pub trait DriverProfilesStore {
     fn roster_status(&self, dsp: &str) -> Result<RosterStatus>;
     /// The photo of the first of `transporters` the roster lists with one: its kind and its
     /// bytes.
-    fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<(&'static str, Vec<u8>)>>;
+    fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<Photo>>;
 }
 impl DriverProfilesStore for Store {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>> {
@@ -224,7 +225,7 @@ impl DriverProfilesStore for Store {
             ..status
         })
     }
-    fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<(&'static str, Vec<u8>)>> {
+    fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<Photo>> {
         let rows = self
             .driver_profiles_db(dsp)?
             .query_as::<(String, String, String)>(

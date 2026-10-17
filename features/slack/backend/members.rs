@@ -60,9 +60,9 @@ async fn readable(bot: &Bot) -> Result<bool> {
     }))
 }
 
-/// Reads the workspace's members whole and keeps them; when any is new, changed or gone,
-/// Driver Match tells them apart at once. A member Slack tells of meanwhile is kept after it,
-/// so the list read before doesn't undo them.
+/// Reads the workspace's members whole and keeps them; when any is new, Driver Match gives them
+/// a person at once. A member Slack tells of meanwhile is kept after it, so the list read
+/// before doesn't undo them.
 pub async fn read(bot: &Bot) -> Result<()> {
     let lock = bot::lock("members", &bot.dsp, &bot.team);
     let _keeping = lock.lock().await;
@@ -91,11 +91,11 @@ pub async fn read(bot: &Bot) -> Result<()> {
         return Err(Error::new("slack_members_too_many", 502));
     }
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
-    let changed = bot
+    let new = bot
         .state
         .run(move |db| db.keep_slack_members(&dsp, &team, &members))
         .await?;
-    if changed {
+    if new {
         people::changed(bot.state.clone(), bot.dsp.clone()).await;
     }
     Ok(())
@@ -113,7 +113,7 @@ pub fn read_soon(state: &Arc<State>, dsp: &str, team: &str) {
 }
 
 /// Keeps the member Slack told of, who joined the workspace or changed their profile; when
-/// anything Driver Match reads changed, it tells them apart at once.
+/// they're new, Driver Match gives them a person at once.
 pub async fn told(bot: &Bot, event: &Value) -> Result<()> {
     let Some(member) = member(&event["user"]) else {
         return Ok(());
@@ -124,11 +124,11 @@ pub async fn told(bot: &Bot, event: &Value) -> Result<()> {
         return Ok(());
     }
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
-    let changed = bot
+    let new = bot
         .state
         .run(move |db| db.keep_slack_member(&dsp, &team, &member))
         .await?;
-    if changed {
+    if new {
         people::changed(bot.state.clone(), bot.dsp.clone()).await;
     }
     Ok(())
