@@ -4,8 +4,10 @@
 //! is. Each workspace has the same channels, the bot in `general` and in the private
 //! `managers`, and what it joins and leaves is kept for the server's run. Its members are the
 //! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated.
-//! Its channels hold a few files, one too large to keep and a canvas, which download as bytes
-//! made up to their size. Requests it sends are signed with a secret the tests share.
+//! Its channels hold a few files, one too large to keep, which download as bytes made up to
+//! their size, and a canvas, which downloads as Slack's HTML of it, holding a photo that
+//! downloads as a picture; a test edits a workspace's canvas with `edit_canvas`. Requests it
+//! sends are signed with a secret the tests share.
 use super::slack::{Bytestream, Installed, Tokens};
 use super::{app::scopes, storage::SlackStore};
 use axum::body::Bytes;
@@ -83,41 +85,113 @@ const FILES: &[File] = &[
         mode: "hosted",
     },
     File {
-        id: "F0FIXCANVAS",
+        id: CANVAS,
         channel: "C0FIXPHOTOS",
         user: "U0FIXOWNER",
         name: "Write-ups",
         mime: "application/vnd.slack-docs",
         size: 0,
-        mode: "canvas",
+        mode: "quip",
+    },
+    // The photo in the canvas, in no channel of its own.
+    File {
+        id: CANVAS_PHOTO,
+        channel: "",
+        user: "U0FIXOWNER",
+        name: "Write-up.png",
+        mime: "image/png",
+        size: PHOTO.len() as u64,
+        mode: "hosted",
     },
 ];
-/// Where a fixture file downloads from.
+/// Its canvas, and the photo in it.
+pub const CANVAS: &str = "F0FIXCANVAS";
+const CANVAS_PHOTO: &str = "F0FIXCANVASPHOTO";
+/// The photo: a picture a pixel square.
+const PHOTO: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0xF8, 0xCF, 0xC0, 0xF0,
+    0x1F, 0x00, 0x05, 0x00, 0x01, 0xFF, 0x89, 0x99, 0x3D, 0x1D, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+    0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+/// The canvas as Slack's HTML has it, until a test edits it.
+const WRITE_UPS: &str = concat!(
+    r#"<div class="quip-canvas-content"><h1 id="temp:C:FIX1">Write-ups</h1>"#,
+    r#"<p id="temp:C:FIX2" class="line">Verbal warnings for week 41, signed by "#,
+    r#"<a>@U0FIXOWNER</a></p><div class='flexbox'><div class='flexbox-column'>"#,
+    r#"<div data-section-style="11" class=''><img src='/collab-slack-blob/FIX9/F0FIXCANVASPHOTO"#,
+    r#"?size_name=thumb_1024' id='temp:C:FIX3' alt="_SLACK_FILE_ALT_PLACEHOLDER_F0FIXCANVASPHOTO" "#,
+    r#"width='64' height='50'>"#,
+    "\u{200B}",
+    r#"</img></div></div></div></div>"#,
+);
+/// Each workspace's canvas as a test edited it last, with when, in seconds.
+static EDITED: LazyLock<Mutex<HashMap<String, (String, i64)>>> = LazyLock::new(Default::default);
+/// When the canvas was last edited before a test edits it, in seconds: an hour before fixture
+/// mode's Slack started.
+static MADE: LazyLock<i64> = LazyLock::new(|| now() / 1000 - 60 * 60);
+/// The workspace's canvas as Slack has it now, and when it was last edited, in seconds.
+fn canvas(team: &str) -> (String, i64) {
+    let edited = EDITED.lock().unwrap_or_else(|poison| poison.into_inner());
+    edited
+        .get(team)
+        .cloned()
+        .unwrap_or_else(|| (WRITE_UPS.to_owned(), *MADE))
+}
+/// Edits the workspace's canvas, as someone in Slack would, so it holds `html` from now on.
+#[cfg(test)]
+pub fn edit_canvas(team: &str, html: &str) {
+    let mut edited = EDITED.lock().unwrap_or_else(|poison| poison.into_inner());
+    let last = edited.get(team).map_or(*MADE, |(_, at)| *at);
+    // Slack keeps edits to the second: each is a second after the last, at least.
+    let at = (now() / 1000).max(last + 1);
+    edited.insert(team.to_owned(), (html.to_owned(), at));
+}
+/// Where a fixture file downloads from: `fixture-file:<team>/<file>`.
 const DOWNLOAD: &str = "fixture-file:";
-/// The file `id`, as `files.info` and `files.list` describe it, posted now.
-fn file(id: &str) -> Option<Value> {
+/// The file `id`, as `files.info` and `files.list` describe it, posted now: a canvas with when
+/// it was last edited, a picture with its size in pixels.
+fn file(team: &str, id: &str) -> Option<Value> {
     let file = FILES.iter().find(|file| file.id == id)?;
-    Some(json!({
+    let mut described = json!({
         "id": file.id,
         "name": file.name,
         "title": file.name,
         "mimetype": file.mime,
+        "filetype": if file.mode == "quip" { "quip" } else { "" },
         "size": file.size,
         "mode": file.mode,
         "user": file.user,
         "created": now() / 1000,
         "channels": [file.channel],
-        "url_private_download": format!("{DOWNLOAD}{}", file.id),
-    }))
+        "url_private_download": format!("{DOWNLOAD}{team}/{}", file.id),
+    });
+    if file.mode == "quip" {
+        described["updated"] = json!(canvas(team).1);
+    }
+    if file.mime.starts_with("image/") {
+        described["original_w"] = json!(1);
+        described["original_h"] = json!(1);
+    }
+    Some(described)
 }
-/// The bytes of the file `url` names, made up to its size.
+/// The bytes of the file `url` names: Slack's HTML of a canvas, the photo's own, or any other's
+/// made up to its size.
 pub fn download(url: &str) -> Result<Bytestream> {
-    let id = url.strip_prefix(DOWNLOAD).unwrap_or("");
+    let (team, id) = url
+        .strip_prefix(DOWNLOAD)
+        .and_then(|named| named.split_once('/'))
+        .unwrap_or_default();
     let file = FILES
         .iter()
         .find(|file| file.id == id)
         .ok_or_else(|| Error::new("slack_file_gone", 404))?;
-    let bytes = Bytes::from(vec![b'x'; file.size as usize]);
+    let bytes = match file.id {
+        CANVAS => Bytes::from(canvas(team).0),
+        CANVAS_PHOTO => Bytes::from_static(PHOTO),
+        _ => Bytes::from(vec![b'x'; file.size as usize]),
+    };
     Ok(Box::pin(stream::iter([Ok(bytes)])))
 }
 
@@ -313,14 +387,15 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
         }
         "files.info" => {
             let asked = args["file"].as_str().unwrap_or("");
-            let found = file(asked).ok_or_else(|| Error::new("slack_file_gone", 404))?;
+            let found = file(team, asked).ok_or_else(|| Error::new("slack_file_gone", 404))?;
             json!({"ok": true, "file": found})
         }
         "files.list" => {
+            seen(team, asked)?;
             let listed: Vec<Value> = FILES
                 .iter()
                 .filter(|file| file.channel == asked)
-                .filter_map(|listed| file(listed.id))
+                .filter_map(|listed| file(team, listed.id))
                 .collect();
             json!({"ok": true, "files": listed, "paging": {"pages": 1}})
         }

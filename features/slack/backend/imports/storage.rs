@@ -1,40 +1,11 @@
-//! What Import Files keeps in each DSP's own database: the channels linked to folders, and each
-//! file Slack told of in one, with how saving it went. Only this module runs SQL on its tables;
-//! a workspace's rows go with it, in `storage::remove_slack_workspace`.
+//! What Import Files keeps in each DSP's own database: each file Slack told of in a linked
+//! channel, with how saving it went; its links are `linked`'s. Only this module runs SQL on its
+//! table; a workspace's rows go with it, in `storage::remove_slack_workspace`.
 use dispatch_core::{
     Error, Result,
-    db::{FromRow, Row, Store},
+    db::{Db, FromRow, Row, Store},
 };
 use rusqlite::params;
-
-/// A channel linked to the folder its files are saved to.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Link {
-    pub team: String,
-    pub channel: String,
-    /// The channel's name, and the folder's, as they were last seen.
-    pub channel_name: String,
-    pub private: bool,
-    pub folder: String,
-    pub folder_name: String,
-    pub linked_by: String,
-    /// When it was linked, in milliseconds: files posted before aren't saved.
-    pub linked_at: i64,
-}
-impl FromRow for Link {
-    fn from_row(row: &Row<'_>) -> Result<Self> {
-        Ok(Self {
-            team: row.get("team_id")?,
-            channel: row.get("channel_id")?,
-            channel_name: row.get("channel_name")?,
-            private: row.get::<i64>("private")? == 1,
-            folder: row.get("folder_id")?,
-            folder_name: row.get("folder_name")?,
-            linked_by: row.get("linked_by")?,
-            linked_at: row.get("linked_at")?,
-        })
-    }
-}
 
 /// How saving a file went.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -153,15 +124,8 @@ pub enum Outcome {
     },
 }
 
-/// The channels linked, saved and listed, in each DSP's database.
+/// The files noticed, saved and listed, in each DSP's database.
 pub trait ImportStore {
-    /// The workspace `team`'s linked channels, by name.
-    fn slack_import_links(&self, dsp: &str, team: &str) -> Result<Vec<Link>>;
-    fn slack_import_link(&self, dsp: &str, team: &str, channel: &str) -> Result<Option<Link>>;
-    /// Keeps the link, in place of any the channel had.
-    fn save_slack_import_link(&self, dsp: &str, link: &Link) -> Result<()>;
-    /// Takes the link away, and what was waiting from the channel with it: whether there was one.
-    fn remove_slack_import_link(&self, dsp: &str, team: &str, channel: &str) -> Result<bool>;
     /// When the integration was last switched on in the workspace, in milliseconds.
     fn slack_import_on_since(&self, dsp: &str, team: &str, id: &str) -> Result<Option<i64>>;
     /// Notices the file `file` in `channel`, due at `at`: whether it's new, as each file is
@@ -211,49 +175,6 @@ pub trait ImportStore {
 }
 
 impl ImportStore for Store {
-    fn slack_import_links(&self, dsp: &str, team: &str) -> Result<Vec<Link>> {
-        self.dsp(dsp)?.query_as(
-            "SELECT * FROM slack_import_links WHERE team_id=? ORDER BY channel_name,channel_id",
-            [team],
-        )
-    }
-    fn slack_import_link(&self, dsp: &str, team: &str, channel: &str) -> Result<Option<Link>> {
-        self.dsp(dsp)?.one_as(
-            "SELECT * FROM slack_import_links WHERE team_id=? AND channel_id=?",
-            [team, channel],
-        )
-    }
-    fn save_slack_import_link(&self, dsp: &str, link: &Link) -> Result<()> {
-        self.dsp(dsp)?.exec(
-            "INSERT OR REPLACE INTO slack_import_links (team_id,channel_id,channel_name,private,\
-             folder_id,folder_name,linked_by,linked_at) VALUES (?,?,?,?,?,?,?,?)",
-            params![
-                link.team,
-                link.channel,
-                link.channel_name,
-                link.private,
-                link.folder,
-                link.folder_name,
-                link.linked_by,
-                link.linked_at
-            ],
-        )?;
-        Ok(())
-    }
-    fn remove_slack_import_link(&self, dsp: &str, team: &str, channel: &str) -> Result<bool> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            db.exec(
-                "DELETE FROM slack_imports WHERE team_id=? AND channel_id=? AND status='waiting'",
-                [team, channel],
-            )?;
-            let removed = db.exec(
-                "DELETE FROM slack_import_links WHERE team_id=? AND channel_id=?",
-                [team, channel],
-            )?;
-            Ok(removed > 0)
-        })
-    }
     fn slack_import_on_since(&self, dsp: &str, team: &str, id: &str) -> Result<Option<i64>> {
         let found: Option<(i64,)> = self.dsp(dsp)?.one_as(
             "SELECT CAST((julianday(turned_on_at) - 2440587.5) * 86400000 AS INTEGER) \
@@ -370,4 +291,13 @@ impl ImportStore for Store {
             [team],
         )
     }
+}
+
+/// Forgets what was waiting from the workspace `team`'s channel `channel`, as it's unlinked.
+pub(super) fn forget_waiting(db: &Db, team: &str, channel: &str) -> Result<()> {
+    db.exec(
+        "DELETE FROM slack_imports WHERE team_id=? AND channel_id=? AND status='waiting'",
+        [team, channel],
+    )?;
+    Ok(())
 }

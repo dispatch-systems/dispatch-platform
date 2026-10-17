@@ -2,8 +2,8 @@
 //! none is lost to a restart or a failure: a file is noticed once, by Slack's ID, and saved once.
 //! One is tried as soon as it's noticed, and every minute the files due are tried again; one
 //! that failed waits longer each time, and is given up after a day.
-use super::{ID, save, storage::ImportStore};
-use crate::backend::connection;
+use super::{ID, LINKING, save, storage::ImportStore};
+use crate::backend::{channel_links::storage::LinkStore, connection};
 use dispatch_core::{
     Result, State,
     db::now,
@@ -69,7 +69,7 @@ pub(super) fn notice(
     channel: &str,
     posted: i64,
 ) -> Result<bool> {
-    let Some(link) = db.slack_import_link(dsp, team, channel)? else {
+    let Some(link) = db.slack_channel_link(dsp, &LINKING, team, channel)? else {
         return Ok(false);
     };
     let Some(on_since) = db.slack_import_on_since(dsp, team, ID)? else {

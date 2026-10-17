@@ -445,6 +445,66 @@ impl Google {
         )
         .await
     }
+    /// Makes a Doc named `name` in the folder `parent`, written from the page `html`: Google
+    /// turns the page, with the pictures in it, into the Doc. As with what Dispatch makes, its
+    /// editors can't share it on.
+    pub async fn write(&self, access: &str, name: &str, parent: &str, html: &str) -> Result<Item> {
+        if let Self::Fixture = self {
+            let made = self.create(access, name, DOC, Some(parent)).await?;
+            return fixture(access, |drive| {
+                drive
+                    .contents
+                    .insert(made.id.clone(), html.as_bytes().to_vec());
+                Ok(made)
+            });
+        }
+        let metadata = json!({
+            "name": name,
+            "mimeType": DOC,
+            "parents": [parent],
+            "writersCanShare": false,
+        });
+        let (kind, body) = page(&metadata, html)?;
+        send(
+            TRANSFER
+                .post(UPLOADS)
+                .bearer_auth(access)
+                .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
+                .header(reqwest::header::CONTENT_TYPE, kind)
+                .body(body),
+        )
+        .await
+    }
+    /// Writes the page `html` over the Doc `id`, named `name`, where it is.
+    pub async fn rewrite(&self, access: &str, id: &str, name: &str, html: &str) -> Result<Item> {
+        if let Self::Fixture = self {
+            return fixture(access, |drive| {
+                let item = drive
+                    .files
+                    .get_mut(id)
+                    .filter(|item| item.mime_type == DOC)
+                    .ok_or_else(missing)?;
+                item.name = name.to_owned();
+                item.modified_time = iso();
+                let item = described(item);
+                drive
+                    .contents
+                    .insert(id.to_owned(), html.as_bytes().to_vec());
+                drive.touch(id);
+                Ok(item)
+            });
+        }
+        let (kind, body) = page(&json!({"name": name}), html)?;
+        send(
+            TRANSFER
+                .patch(format!("{UPLOADS}/{id}"))
+                .bearer_auth(access)
+                .query(&[("uploadType", "multipart"), ("fields", FIELDS), ALL_DRIVES])
+                .header(reqwest::header::CONTENT_TYPE, kind)
+                .body(body),
+        )
+        .await
+    }
     /// Gives a file another name.
     pub async fn rename(&self, access: &str, id: &str, name: &str) -> Result<Item> {
         if let Self::Fixture = self {
@@ -968,6 +1028,21 @@ fn upload_start(
             "parents": [parent],
             "writersCanShare": false,
         }))
+}
+
+/// A request carrying a file's description `metadata` and the page `html` it's written from,
+/// as Google takes both at once: its content type, and its body, the two parted by a boundary
+/// the page can't hold.
+fn page(metadata: &serde_json::Value, html: &str) -> Result<(String, Vec<u8>)> {
+    let boundary = format!("page-{}", crypto::hex(&crypto::random::<16>()?));
+    let mut body = format!(
+        "--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{metadata}\r\n\
+         --{boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(html.as_bytes());
+    body.extend_from_slice(format!("\r\n--{boundary}--").as_bytes());
+    Ok((format!("multipart/related; boundary={boundary}"), body))
 }
 
 /// A picture of what a file holds, as Google sent it.

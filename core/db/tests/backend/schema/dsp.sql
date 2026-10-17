@@ -21,6 +21,9 @@ CREATE TABLE session_metadata ( session_hash TEXT PRIMARY KEY REFERENCES session
 CREATE TABLE session_security ( session_hash TEXT PRIMARY KEY REFERENCES sessions(hash) ON DELETE CASCADE, verified_at INTEGER NOT NULL DEFAULT 0, password_verified_at INTEGER NOT NULL DEFAULT 0 );
 CREATE TABLE sessions ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), user_version INTEGER NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE slack_canvas_links ( team_id TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT NOT NULL, private INTEGER NOT NULL CHECK (private IN (0, 1)), folder_id TEXT NOT NULL, folder_name TEXT NOT NULL, linked_by TEXT NOT NULL, linked_at INTEGER NOT NULL, PRIMARY KEY (team_id, channel_id) );
+CREATE TABLE slack_canvas_picks ( team_id TEXT NOT NULL, canvas_id TEXT NOT NULL, title TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT NOT NULL, private INTEGER NOT NULL CHECK (private IN (0, 1)), folder_id TEXT NOT NULL, folder_name TEXT NOT NULL, picked_by TEXT NOT NULL, picked_at INTEGER NOT NULL, PRIMARY KEY (team_id, canvas_id) );
+CREATE TABLE slack_canvases ( team_id TEXT NOT NULL, canvas_id TEXT NOT NULL, channel_id TEXT NOT NULL, title TEXT, status TEXT NOT NULL CHECK (status IN ('waiting', 'synced', 'gone', 'failed')), reason TEXT, attempts INTEGER NOT NULL DEFAULT 0, due_at INTEGER NOT NULL, waiting_since INTEGER, heard_at INTEGER, claimed_at INTEGER, claimed_until INTEGER, edited_at INTEGER, written_edit INTEGER, tried_edit INTEGER, doc_id TEXT, doc_link TEXT, noticed_at INTEGER NOT NULL, synced_at INTEGER, PRIMARY KEY (team_id, canvas_id) );
 CREATE TABLE slack_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT, link_hash TEXT, expires_at INTEGER NOT NULL, team_id TEXT, label TEXT, CHECK ((user_id IS NULL) <> (link_hash IS NULL)) );
 CREATE TABLE slack_import_links ( team_id TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT NOT NULL, private INTEGER NOT NULL CHECK (private IN (0, 1)), folder_id TEXT NOT NULL, folder_name TEXT NOT NULL, linked_by TEXT NOT NULL, linked_at INTEGER NOT NULL, PRIMARY KEY (team_id, channel_id) );
 CREATE TABLE slack_imports ( team_id TEXT NOT NULL, file_id TEXT NOT NULL, channel_id TEXT NOT NULL, name TEXT, mime TEXT, size INTEGER, posted_by TEXT, posted_name TEXT, status TEXT NOT NULL CHECK (status IN ('waiting', 'saved', 'too_large', 'skipped', 'gone', 'failed')), reason TEXT, attempts INTEGER NOT NULL DEFAULT 0, due_at INTEGER NOT NULL, saved_id TEXT, saved_link TEXT, noticed_at INTEGER NOT NULL, done_at INTEGER, PRIMARY KEY (team_id, file_id) );
@@ -45,6 +48,7 @@ CREATE INDEX recovery_codes_user ON recovery_codes(user_id);
 CREATE INDEX resets_expiry ON resets(expires_at);
 CREATE UNIQUE INDEX roles_owner ON roles(dsp_id) WHERE system=1;
 CREATE INDEX session_expiry ON sessions(expires_at);
+CREATE INDEX slack_canvases_due ON slack_canvases (status, due_at);
 CREATE INDEX slack_imports_due ON slack_imports (status, due_at);
 CREATE INDEX slack_imports_recent ON slack_imports (team_id, noticed_at);
 CREATE UNIQUE INDEX uniform_variants_size ON uniform_variants (uniform_id, fit, size COLLATE NOCASE) WHERE archived = 0;

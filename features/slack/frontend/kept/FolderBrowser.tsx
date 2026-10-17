@@ -2,32 +2,30 @@ import { useCallback, useState } from 'react';
 import { ChevronRight, Folder } from 'lucide-react';
 import { useData } from '../../../../core/shell/frontend/runtime/api.js';
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
-import {
-  browseSlackFolders,
-  slackFoldersUrl,
-  type SlackFolder,
-  type SlackFolders,
-} from '../../api/client.js';
+import type { SlackFolder, SlackFolders } from '../../api/client.js';
+import type { Linking } from './linking.js';
 
 // Choosing a folder where the DSP keeps its files: the folder open, with where it is above it and
 // the folders it holds below, each opened by a click; then Use, for the one open.
 
 export function FolderBrowser({
   team,
+  linking,
   choose,
   back,
 }: {
   team: string;
+  linking: Linking;
   /** Once a folder is chosen. */
   choose: (folder: SlackFolder) => void;
   /** Goes back without choosing. */
   back: () => void;
 }) {
   const [open, setOpen] = useState<string>();
-  const url = slackFoldersUrl(team, open);
+  const url = linking.foldersUrl(team, open);
   const read = useCallback(
-    (signal: AbortSignal) => browseSlackFolders(team, open, signal),
-    [team, open],
+    (signal: AbortSignal) => linking.browse(team, open, signal),
+    [linking, team, open],
   );
   const folders = useData<SlackFolders>(url, 0, undefined, undefined, false, read);
   return (

@@ -2,6 +2,9 @@
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
 GET /api/dsp/slack/account Dsp("connections.manage|slack.manage") Read
+GET /api/dsp/slack/workspaces/{team}/canvases Dsp("slack.manage") Async
+GET /api/dsp/slack/workspaces/{team}/canvases/channels/{channel} Dsp("slack.manage") Async
+GET /api/dsp/slack/workspaces/{team}/canvases/folders Dsp("slack.manage") Async
 GET /api/dsp/slack/workspaces/{team}/channels Dsp("slack.manage") Async
 GET /api/dsp/slack/workspaces/{team}/imports Dsp("slack.manage") Async
 GET /api/dsp/slack/workspaces/{team}/imports/folders Dsp("slack.manage") Async
@@ -11,6 +14,11 @@ POST /api/dsp/slack/connect Dsp("connections.manage") Write
 POST /api/dsp/slack/connect/finish Dsp("connections.manage") Async
 POST /api/dsp/slack/link Dsp("connections.manage") Write
 POST /api/dsp/slack/link/cancel Dsp("connections.manage") Write
+POST /api/dsp/slack/workspaces/{team}/canvases/chosen Dsp("slack.manage") Async
+POST /api/dsp/slack/workspaces/{team}/canvases/chosen/{canvas}/remove Dsp("slack.manage") Async
+POST /api/dsp/slack/workspaces/{team}/canvases/links Dsp("slack.manage") Async
+POST /api/dsp/slack/workspaces/{team}/canvases/links/{channel}/folder Dsp("slack.manage") Async
+POST /api/dsp/slack/workspaces/{team}/canvases/links/{channel}/remove Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/channels/{channel}/join Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/channels/{channel}/leave Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/disconnect Dsp("connections.manage") Async

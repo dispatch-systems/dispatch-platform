@@ -16,11 +16,11 @@ export function RecentImports({
   return (
     <div className="slack-channel-group">
       <h3>Recent files</h3>
-      <ul className="slack-import-files" aria-label="Recent files">
+      <ul className="slack-kept-list" aria-label="Recent files">
         {files.map((file) => (
           <li key={file.fileId}>
-            <span className="slack-import-kind">{kind(file.mime)}</span>
-            <div className="slack-import-what">
+            <span className="slack-kept-kind">{kind(file.mime)}</span>
+            <div className="slack-kept-what">
               <b>{file.name ?? 'File'}</b>
               <span>
                 {[file.postedBy, file.channelName && `#${file.channelName}`]
@@ -28,7 +28,7 @@ export function RecentImports({
                   .join(' · ')}
               </span>
             </div>
-            <span className="slack-import-when">{time(file.noticedAt, timeZone)}</span>
+            <span className="slack-kept-when">{time(file.noticedAt, timeZone)}</span>
             {status(file)}
           </li>
         ))}
@@ -50,12 +50,12 @@ function status(file: SlackImportedFile): ReactNode {
     case 'saved':
       return (
         <>
-          <span className="slack-import-status saved">
+          <span className="slack-kept-status saved">
             <Check size={14} aria-hidden="true" />
             Saved
           </span>
           {file.link && (
-            <a className="slack-import-open" href={file.link} target="_blank" rel="noreferrer">
+            <a className="slack-kept-open" href={file.link} target="_blank" rel="noreferrer">
               Open
             </a>
           )}
@@ -63,28 +63,28 @@ function status(file: SlackImportedFile): ReactNode {
       );
     case 'waiting':
       return (
-        <span className="slack-import-status waiting">
+        <span className="slack-kept-status waiting">
           <Clock size={14} aria-hidden="true" />
           {file.retrying ? 'Retrying' : 'Saving'}
         </span>
       );
     case 'too_large':
       return (
-        <span className="slack-import-status left">
+        <span className="slack-kept-status left">
           <AlertCircle size={14} aria-hidden="true" />
           Over 100 MB
         </span>
       );
     case 'gone':
       return (
-        <span className="slack-import-status waiting">
+        <span className="slack-kept-status waiting">
           <Trash2 size={14} aria-hidden="true" />
           Deleted in Slack
         </span>
       );
     case 'failed':
       return (
-        <span className="slack-import-status left">
+        <span className="slack-kept-status left">
           <AlertCircle size={14} aria-hidden="true" />
           Couldn't save
         </span>

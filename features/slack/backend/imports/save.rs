@@ -4,10 +4,10 @@
 //! yet waits: while nothing keeps the DSP's files, or what keeps them isn't ready, or the
 //! workspace's admin hasn't approved reading files. A failure is tried again, later each time.
 use super::{
-    author,
+    LINKING,
     storage::{Described, Import, ImportStore, Outcome, Status},
 };
-use crate::backend::{bot::Bot, slack::Slack};
+use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore, slack::Slack};
 use dispatch_core::{
     Error, Result, State,
     db::now,
@@ -50,7 +50,7 @@ async fn attempt(state: &Arc<State>, dsp: &str, import: &Import) -> Result<Outco
     }
     let (at, team, channel) = (dsp.to_owned(), import.team.clone(), import.channel.clone());
     let link = state
-        .read(move |db| db.slack_import_link(&at, &team, &channel))
+        .read(move |db| db.slack_channel_link(&at, &LINKING, &team, &channel))
         .await?;
     let Some(link) = link else {
         return Ok(left(Status::Skipped, "slack_import_unlinked"));

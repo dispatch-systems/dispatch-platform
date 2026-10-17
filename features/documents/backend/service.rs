@@ -1,18 +1,19 @@
 //! What Documents offers every other feature: somewhere to keep a DSP's files (core's
 //! `services::files`), in its Google Drive, as Slack keeps the files posted in a channel. A file
 //! saved through it is Documents' like any other, shown, opened and moved as an upload is, with
-//! who it came from as who added it. Every call works only inside the DSP's own folder.
+//! who it came from as who added it. A page is written as a Google Doc, and over it as the page
+//! changes. Every call works only inside the DSP's own folder.
 use super::{
     files::{self, make, put},
     google::FOLDER,
     storage::DocumentsStore,
-    tree::Row,
+    tree::{Mime, Row},
 };
 use dispatch_core::{
     Result, State, ensure,
     manifest::services::{
         Answer,
-        files::{Author, Browsed, Files, Folder, Incoming, Saved},
+        files::{Author, Browsed, Files, Folder, Incoming, Page, Saved},
     },
     server::http::upload::UPLOAD_LIMIT,
 };
@@ -20,6 +21,8 @@ use std::sync::Arc;
 
 /// How the service refuses a folder that isn't one of the DSP's.
 const FOLDER_NOT_FOUND: &str = "files_folder_not_found";
+/// The largest page Google turns into a Doc, in bytes.
+const PAGE_LIMIT: usize = 50 * 1024 * 1024;
 
 /// Documents, as the feature keeping a DSP's files.
 pub(crate) struct DocumentsFiles;
@@ -147,6 +150,57 @@ impl Files for DocumentsFiles {
                 name: made.name,
                 link: made.web_view_link,
             })
+        })
+    }
+    fn write<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        folder: &'a str,
+        page: Page,
+    ) -> Answer<'a, Saved> {
+        Box::pin(async move {
+            ensure(page.html.len() <= PAGE_LIMIT, "upload_too_large", 413)?;
+            let (_, tree) = files::tree(state, dsp).await?;
+            ensure(tree.is_folder(folder), FOLDER_NOT_FOUND, 404)?;
+            let made = files::write(state, dsp, folder, &page.name, &page.html).await?;
+            let detail = format!("{} from {}", made.name, page.from);
+            record(state, dsp, &made.id, &page.by, "documents.saved", &detail).await?;
+            Ok(Saved {
+                id: made.id,
+                name: made.name,
+                link: made.web_view_link,
+            })
+        })
+    }
+    fn rewrite<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        page: Page,
+    ) -> Answer<'a, Option<Saved>> {
+        Box::pin(async move {
+            ensure(page.html.len() <= PAGE_LIMIT, "upload_too_large", 413)?;
+            let (_, tree) = files::tree(state, dsp).await?;
+            if !tree.get(id).is_some_and(|row| row.mime == Mime::Doc) {
+                return Ok(None);
+            }
+            let written = match files::rewrite(state, dsp, id, &page.name, &page.html).await {
+                Err(error) if error.code == "documents_item_not_found" => return Ok(None),
+                written => written?,
+            };
+            // Changed as a member changes a file in Drive: shown as theirs, not logged.
+            let (at, by) = (dsp.to_owned(), page.by);
+            let changed = written.id.clone();
+            state
+                .run(move |db| db.record_documents_change_by(&at, &changed, &by))
+                .await?;
+            Ok(Some(Saved {
+                id: written.id,
+                name: written.name,
+                link: written.web_view_link,
+            }))
         })
     }
 }

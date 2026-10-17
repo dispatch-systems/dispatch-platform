@@ -1,7 +1,7 @@
 //! What every Slack backend test installs. A test binary holds one registry, so each installs
 //! the same: Slack; a stand-in feature with an integration through it, which hears of Slack's
 //! events as an integration would and keeps what it heard; and a stand-in for where a DSP keeps
-//! its files, which keeps what's saved there in memory.
+//! its files, which keeps what's saved and written there in memory.
 use crate::FEATURE;
 use dispatch_core::{
     State,
@@ -11,7 +11,7 @@ use dispatch_core::{
         optional,
         services::{
             Answer, Services,
-            files::{Author, Browsed, Files, Folder, Incoming, Saved},
+            files::{Author, Browsed, Files, Folder, Incoming, Page, Saved},
         },
     },
     server::http::upload::UPLOAD_LIMIT,
@@ -20,7 +20,10 @@ use dispatch_core::{
 use futures_util::TryStreamExt;
 use std::{
     collections::BTreeSet,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 /// The stand-in's integration: it needs to read files, and hears of files shared.
@@ -150,6 +153,90 @@ impl Files for Keeping {
             })
         })
     }
+    fn write<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        dsp: &'a str,
+        folder: &'a str,
+        page: Page,
+    ) -> Answer<'a, Saved> {
+        Box::pin(async move {
+            let id = format!("doc-{}", WRITTEN.fetch_add(1, Ordering::Relaxed) + 1);
+            let mut pages = PAGES.lock().unwrap();
+            pages.push(KeptPage {
+                dsp: dsp.to_owned(),
+                folder: folder.to_owned(),
+                id: id.clone(),
+                name: page.name.clone(),
+                html: page.html,
+                by: page.by,
+                writes: 1,
+            });
+            Ok(Saved {
+                link: format!("https://example.test/{id}"),
+                id,
+                name: page.name,
+            })
+        })
+    }
+    fn rewrite<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        page: Page,
+    ) -> Answer<'a, Option<Saved>> {
+        Box::pin(async move {
+            let mut pages = PAGES.lock().unwrap();
+            let Some(kept) = pages
+                .iter_mut()
+                .find(|kept| kept.dsp == dsp && kept.id == id)
+            else {
+                return Ok(None);
+            };
+            kept.name = page.name;
+            kept.html = page.html;
+            kept.by = page.by;
+            kept.writes += 1;
+            Ok(Some(Saved {
+                id: id.to_owned(),
+                name: kept.name.clone(),
+                link: format!("https://example.test/{id}"),
+            }))
+        })
+    }
+}
+/// A page the stand-in keeps as a document: where, as what, who wrote it last, and how often
+/// it was written.
+#[derive(Clone, Debug)]
+pub struct KeptPage {
+    pub dsp: String,
+    pub folder: String,
+    pub id: String,
+    pub name: String,
+    pub html: String,
+    pub by: Author,
+    pub writes: usize,
+}
+/// The pages the stand-in keeps, in every test, and how many it ever wrote.
+static PAGES: Mutex<Vec<KeptPage>> = Mutex::new(Vec::new());
+static WRITTEN: AtomicUsize = AtomicUsize::new(0);
+/// The pages the stand-in keeps for the DSP `dsp`.
+pub fn pages(dsp: &str) -> Vec<KeptPage> {
+    PAGES
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|kept| kept.dsp == dsp)
+        .cloned()
+        .collect()
+}
+/// Takes the DSP's document `id` away, as a member deleting it would.
+pub fn delete_page(dsp: &str, id: &str) {
+    PAGES
+        .lock()
+        .unwrap()
+        .retain(|kept| !(kept.dsp == dsp && kept.id == id));
 }
 /// What the stand-in kept for the DSP `dsp`.
 pub fn kept(dsp: &str) -> Vec<KeptFile> {

@@ -5,9 +5,10 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    SlackAccount, SlackChannel, SlackChannels, SlackFolder, SlackFolders, SlackImportLink,
-    SlackImportStatus, SlackImportedFile, SlackImports, SlackInstall, SlackLink, SlackNewLink,
-    SlackWorkspace, WorkspaceStatus,
+    SlackAccount, SlackCanvas, SlackCanvasLink, SlackCanvasStatus, SlackCanvases, SlackChannel,
+    SlackChannelCanvas, SlackChannelCanvases, SlackChannels, SlackFolder, SlackFolders,
+    SlackImportLink, SlackImportStatus, SlackImportedFile, SlackImports, SlackInstall, SlackLink,
+    SlackNewLink, SlackWorkspace, WorkspaceStatus,
 };
 
 use dispatch_core::{
@@ -38,6 +39,9 @@ pub const FEATURE: Feature = Feature {
                 "slack_integrations",
                 "slack_import_links",
                 "slack_imports",
+                "slack_canvas_links",
+                "slack_canvas_picks",
+                "slack_canvases",
                 "slack_connect_requests",
                 "slack_install_links",
             ],
@@ -81,6 +85,11 @@ pub const FEATURE: Feature = Feature {
                     name: "slack_imports",
                     apply: Sql(include_str!("migrations/dsp/0005_slack_imports.sql")),
                 },
+                Migration {
+                    id: 6,
+                    name: "slack_canvases",
+                    apply: Sql(include_str!("migrations/dsp/0006_slack_canvases.sql")),
+                },
             ],
         },
     ],
@@ -90,14 +99,20 @@ pub const FEATURE: Feature = Feature {
         "SLACK_CLIENT_SECRET",
         "SLACK_SIGNING_SECRET",
     ]],
-    // The hourly check; and Import Files' minute's saving and hourly catching up.
+    // The hourly check; Import Files' minute's saving and hourly catching up; and Sync
+    // Canvases' minute's syncing and its check every ten minutes.
     maintenance: &[
         backend::maintenance::MAINTENANCE,
         backend::imports::queue::MAINTENANCE,
         backend::imports::catch_up::MAINTENANCE,
+        backend::canvases::queue::MAINTENANCE,
+        backend::canvases::check::MAINTENANCE,
     ],
-    // Its own: Import Files, switched on in each workspace's Integrations.
-    integrations: &[backend::imports::INTEGRATION],
+    // Its own: Import Files and Sync Canvases, switched on in each workspace's Integrations.
+    integrations: &[
+        backend::imports::INTEGRATION,
+        backend::canvases::INTEGRATION,
+    ],
     audit: Audit {
         areas: &[("slack.", Connections)],
         ..Audit::NONE
@@ -130,5 +145,11 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         SlackImportStatus,
         SlackFolder,
         SlackFolders,
+        SlackCanvases,
+        SlackCanvasLink,
+        SlackCanvas,
+        SlackCanvasStatus,
+        SlackChannelCanvases,
+        SlackChannelCanvas,
     )
 }

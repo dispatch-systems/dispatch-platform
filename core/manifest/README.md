@@ -26,8 +26,9 @@ offers each, and a feature using it asks for it for a DSP (`files::for_dsp`), wh
 while the feature offering it is on there. The first is `files`, somewhere to keep a DSP's
 files in folders: its name and the permission that shows its folders, the largest file it
 takes, why it can't keep files yet, browsing its folders, a folder by ID, making a folder,
-and saving a file streamed as it arrives (`Upload::streamed`) with who it came from, a member
-or someone known only by name. The services offered are written to TypeScript too
+saving a file streamed as it arrives (`Upload::streamed`) with who it came from, a member
+or someone known only by name, and writing a page of HTML as a document members open and edit,
+then over it as the page changes. The services offered are written to TypeScript too
 (`api/generated/services.ts`): `offered(name, view)` in the frontend's runtime answers a page
 using one whether the DSP has it, what it's called and the permission that shows what it
 keeps, without naming the feature offering it.

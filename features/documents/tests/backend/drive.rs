@@ -1,6 +1,6 @@
 //! How Documents uploads to Google: Google describes the file an upload made with the fields
 //! the upload's start asked for, or with only its kind, id, name and type when it asked for
-//! none, whatever the request carrying the bytes asks.
+//! none, whatever the request carrying the bytes asks; and how a page goes up to be a Doc.
 use super::*;
 
 /// Google's answer at the end of an upload started with `start`: the file it made, with the
@@ -118,4 +118,26 @@ fn a_picture_is_asked_of_google_at_the_size_the_page_asked_for_and_only_of_googl
         Some("https://lh3.googleusercontent.com/drive-storage/AJQWtB=s600")
     );
     assert_eq!(sized("https://example.com/picture=s220", 300), None);
+}
+
+#[test]
+fn a_page_goes_to_google_with_its_description_first_parted_from_it_by_a_boundary_it_lacks() {
+    let html = "<p>--page- runs through a canvas</p>";
+    let (kind, body) = page(&json!({"name": "Write-ups"}), html).unwrap();
+    let boundary = kind
+        .strip_prefix("multipart/related; boundary=")
+        .expect("Google reads both parts at once");
+    assert!(!html.contains(boundary));
+    let body = String::from_utf8(body).unwrap();
+    let parts: Vec<&str> = body.split(&format!("--{boundary}")).collect();
+    assert_eq!(parts.len(), 4, "the description, the page, and the end");
+    assert_eq!(
+        parts[1],
+        "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{\"name\":\"Write-ups\"}\r\n"
+    );
+    assert_eq!(
+        parts[2],
+        format!("\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{html}\r\n")
+    );
+    assert_eq!(parts[3], "--");
 }

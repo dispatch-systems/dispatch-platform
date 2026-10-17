@@ -47,6 +47,25 @@ pub trait Files: Send + Sync {
         folder: &'a str,
         file: Incoming,
     ) -> Answer<'a, Saved>;
+    /// Keeps `page` in the folder `folder` as a document members open and edit as one of their
+    /// own, written from its HTML with its pictures in it. One too large to write is refused as
+    /// `upload_too_large`.
+    fn write<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        folder: &'a str,
+        page: Page,
+    ) -> Answer<'a, Saved>;
+    /// Writes `page` over the document `id` that `write` kept, wherever it's been moved among
+    /// the DSP's files, named as the page is: none once it's gone from them.
+    fn rewrite<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        page: Page,
+    ) -> Answer<'a, Option<Saved>>;
 }
 
 /// The feature keeping the DSP's files, while it's on for the DSP.
@@ -76,6 +95,17 @@ pub struct Incoming {
     pub mime: String,
     pub bytes: Upload,
     /// Who it's from.
+    pub by: Author,
+    /// Where it came from, by the name members know that by.
+    pub from: &'static str,
+}
+
+/// A page kept as a document: its name, and its HTML, a whole page whose pictures are in it as
+/// `data:` addresses.
+pub struct Page {
+    pub name: String,
+    pub html: String,
+    /// Who wrote it: for a page written over a document, who changed it last.
     pub by: Author,
     /// Where it came from, by the name members know that by.
     pub from: &'static str,

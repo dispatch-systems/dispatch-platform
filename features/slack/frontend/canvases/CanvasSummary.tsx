@@ -1,0 +1,26 @@
+import type { DspView } from '../../../../core/accounts/api/index.js';
+import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
+import { offered } from '../../../../core/shell/frontend/runtime/services.js';
+import { useSlackCanvases } from '../../api/client.js';
+
+// What Sync Canvases is doing in a workspace, on its card while it's on: how many channels are
+// linked and how many canvases have a document. Only for those who see where files are kept.
+
+export function CanvasSummary({ view, team }: { view: DspView; team: string }) {
+  const kept = offered('files', view);
+  if (!kept || !can(view, kept.permission)) return null;
+  return <Counts team={team} />;
+}
+
+function Counts({ team }: { team: string }) {
+  const { data } = useSlackCanvases(team);
+  if (!data) return null;
+  const channels = data.links.length;
+  const canvases = data.canvases.filter((canvas) => canvas.link).length;
+  return (
+    <>
+      {channels} {channels === 1 ? 'channel' : 'channels'} · {canvases}{' '}
+      {canvases === 1 ? 'canvas' : 'canvases'} synced
+    </>
+  );
+}

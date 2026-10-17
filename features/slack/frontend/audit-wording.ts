@@ -1,8 +1,9 @@
 import type { AuditPhrases, AuditWording } from '../../../core/shell/frontend/runtime/slots.js';
 
 // How Slack's events read in the platform owner's audit log: the workspace each was about, the
-// channel, `#<channel> in <workspace>`, the integration, `<integration> in <workspace>`, or a
-// channel Import Files links, `#<channel> to <folder> in <workspace>`.
+// channel, `#<channel> in <workspace>`, the integration, `<integration> in <workspace>`, a
+// channel Import Files or Sync Canvases links, `#<channel> to <folder> in <workspace>`, or a
+// canvas chosen on its own, `<canvas> in #<channel> to <folder> in <workspace>`.
 
 const phrases: AuditPhrases = {
   'slack.connected': (e, { strong }) => ['connected Slack workspace ', strong(e.detail)],
@@ -40,6 +41,21 @@ const phrases: AuditPhrases = {
     'stopped importing Slack channel ',
     strong(e.detail),
   ],
+  'slack.canvases_linked': (e, { strong }) => [
+    'synced the canvases of Slack channel ',
+    strong(e.detail),
+  ],
+  'slack.canvases_moved': (e, { strong }) => [
+    'moved where the canvases of Slack channel ',
+    strong(e.detail),
+    ' are kept',
+  ],
+  'slack.canvases_unlinked': (e, { strong }) => [
+    'stopped syncing the canvases of Slack channel ',
+    strong(e.detail),
+  ],
+  'slack.canvas_chosen': (e, { strong }) => ['synced Slack canvas ', strong(e.detail)],
+  'slack.canvas_unchosen': (e, { strong }) => ['stopped syncing Slack canvas ', strong(e.detail)],
   'slack.link_created': () => ['made a Slack install link'],
   'slack.link_cancelled': () => ['cancelled the Slack install link'],
 };
@@ -58,6 +74,11 @@ export const wording: AuditWording = {
     'slack.import_linked',
     'slack.import_moved',
     'slack.import_unlinked',
+    'slack.canvases_linked',
+    'slack.canvases_moved',
+    'slack.canvases_unlinked',
+    'slack.canvas_chosen',
+    'slack.canvas_unchosen',
     'slack.link_created',
     'slack.link_cancelled',
   ],

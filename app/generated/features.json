@@ -596,13 +596,19 @@
         [
           "slack.import_files",
           "slack"
+        ],
+        [
+          "slack.sync_canvases",
+          "slack"
         ]
       ],
       "live": [],
       "maintenance": [
         3600,
         60,
-        3600
+        3600,
+        60,
+        600
       ],
       "people": [
         "slack"
@@ -627,7 +633,15 @@
         "GET /api/dsp/slack/workspaces/{team}/imports/folders",
         "POST /api/dsp/slack/workspaces/{team}/imports/links",
         "POST /api/dsp/slack/workspaces/{team}/imports/links/{channel}/folder",
-        "POST /api/dsp/slack/workspaces/{team}/imports/links/{channel}/remove"
+        "POST /api/dsp/slack/workspaces/{team}/imports/links/{channel}/remove",
+        "GET /api/dsp/slack/workspaces/{team}/canvases",
+        "GET /api/dsp/slack/workspaces/{team}/canvases/folders",
+        "GET /api/dsp/slack/workspaces/{team}/canvases/channels/{channel}",
+        "POST /api/dsp/slack/workspaces/{team}/canvases/links",
+        "POST /api/dsp/slack/workspaces/{team}/canvases/links/{channel}/folder",
+        "POST /api/dsp/slack/workspaces/{team}/canvases/links/{channel}/remove",
+        "POST /api/dsp/slack/workspaces/{team}/canvases/chosen",
+        "POST /api/dsp/slack/workspaces/{team}/canvases/chosen/{canvas}/remove"
       ],
       "services": [],
       "settings": [
@@ -642,6 +656,9 @@
     "mandatory": false,
     "tables": {
       "dsp": [
+        "slack_canvas_links",
+        "slack_canvas_picks",
+        "slack_canvases",
         "slack_connect_requests",
         "slack_import_links",
         "slack_imports",

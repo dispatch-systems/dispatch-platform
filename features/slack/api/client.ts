@@ -1,7 +1,10 @@
 import { useCallback, useEffect } from 'react';
 import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import type { Linking } from '../frontend/kept/linking.js';
 import type { SlackAccount } from './generated/SlackAccount.js';
+import type { SlackCanvases } from './generated/SlackCanvases.js';
 import type { SlackChannel } from './generated/SlackChannel.js';
+import type { SlackChannelCanvases } from './generated/SlackChannelCanvases.js';
 import type { SlackChannels } from './generated/SlackChannels.js';
 import type { SlackFolders } from './generated/SlackFolders.js';
 import type { SlackImports } from './generated/SlackImports.js';
@@ -9,7 +12,12 @@ import type { SlackInstall } from './generated/SlackInstall.js';
 import type { SlackNewLink } from './generated/SlackNewLink.js';
 
 export type { SlackAccount } from './generated/SlackAccount.js';
+export type { SlackCanvas } from './generated/SlackCanvas.js';
+export type { SlackCanvases } from './generated/SlackCanvases.js';
+export type { SlackCanvasLink } from './generated/SlackCanvasLink.js';
 export type { SlackChannel } from './generated/SlackChannel.js';
+export type { SlackChannelCanvas } from './generated/SlackChannelCanvas.js';
+export type { SlackChannelCanvases } from './generated/SlackChannelCanvases.js';
 export type { SlackFolder } from './generated/SlackFolder.js';
 export type { SlackFolders } from './generated/SlackFolders.js';
 export type { SlackImportedFile } from './generated/SlackImportedFile.js';
@@ -38,6 +46,9 @@ const wording: Record<string, string> = {
   slack_needs_update: 'This workspace needs updating first.',
   slack_integration_not_found: "That integration isn't available. Refresh the page.",
   slack_import_off: 'Import Files is off in this workspace.',
+  slack_canvases_off: 'Sync Canvases is off in this workspace.',
+  slack_canvas_not_found: "That canvas isn't in the channel anymore. Refresh the list.",
+  slack_canvas_not_chosen: "That canvas isn't synced. Refresh the page.",
   slack_files_unavailable: "There's nowhere to save files. Refresh the page.",
   slack_files_forbidden: "You don't have access to where files are saved.",
   slack_files_unready: "Files can't be saved yet.",
@@ -130,28 +141,76 @@ const importsChanged = <T>(answer: T) => {
   for (const read of importReaders) read();
   return answer;
 };
-/** Where the folder `folder`, or the top of where files are kept, is browsed. */
-export const slackFoldersUrl = (team: string, folder?: string) =>
-  `${workspaceUrl(team)}/imports/folders${folder ? `?folder=${encodeURIComponent(folder)}` : ''}`;
-/** The folder `folder`, or the top of where files are kept, as choosing one browses it. */
-export const browseSlackFolders = (team: string, folder?: string, signal?: AbortSignal) =>
-  call<SlackFolders>(slackFoldersUrl(team, folder), undefined, signal);
-/** Links the channel `channel` to the folder `folder`, or to a new one named after it. */
-export const linkSlackChannel = (team: string, channel: string, folder?: string) =>
-  call<SlackImports>(`${workspaceUrl(team)}/imports/links`, { channel, folder }).then(
-    importsChanged,
+/**
+ * How the integration whose endpoints are under `path` links channels to folders: browsing the
+ * folders, and linking, moving and unlinking a channel, each change read again by `changed`.
+ */
+const linking = <T>(path: string, changed: (answer: T) => T): Linking => {
+  const foldersUrl = (team: string, folder?: string) =>
+    `${workspaceUrl(team)}/${path}/folders${folder ? `?folder=${encodeURIComponent(folder)}` : ''}`;
+  const links = (team: string) => `${workspaceUrl(team)}/${path}/links`;
+  return {
+    foldersUrl,
+    browse: (team, folder, signal) =>
+      call<SlackFolders>(foldersUrl(team, folder), undefined, signal),
+    link: (team, channel, folder) => call<T>(links(team), { channel, folder }).then(changed),
+    move: (team, channel, folder) =>
+      call<T>(`${links(team)}/${encodeURIComponent(channel)}/folder`, { folder }).then(changed),
+    unlink: (team, channel) =>
+      call<T>(`${links(team)}/${encodeURIComponent(channel)}/remove`, {}).then(changed),
+  };
+};
+/** Import Files' channels: their files from now on saved to their folders. */
+export const importLinking = linking<SlackImports>('imports', importsChanged);
+/** Sync Canvases in the workspace `team`: where documents go, the channels linked, and each canvas kept. */
+const canvasReaders = new Set<() => void>();
+export function useSlackCanvases(team: string) {
+  const url = `${workspaceUrl(team)}/canvases`;
+  const read = useCallback(
+    (signal: AbortSignal) => call<SlackCanvases>(url, undefined, signal),
+    [url],
   );
-/** Saves the linked channel `channel`'s files to the folder `folder` from now on. */
-export const moveSlackLink = (team: string, channel: string, folder: string) =>
-  call<SlackImports>(`${workspaceUrl(team)}/imports/links/${encodeURIComponent(channel)}/folder`, {
-    folder,
-  }).then(importsChanged);
-/** Stops importing the channel `channel`. */
-export const unlinkSlackChannel = (team: string, channel: string) =>
-  call<SlackImports>(
-    `${workspaceUrl(team)}/imports/links/${encodeURIComponent(channel)}/remove`,
+  // Canvases are written as Slack tells of them, so an open section reads them again every 10 seconds.
+  const canvases = useData<SlackCanvases>(url, 10000, undefined, undefined, false, read);
+  const { refresh } = canvases;
+  useEffect(() => {
+    canvasReaders.add(refresh);
+    return () => void canvasReaders.delete(refresh);
+  }, [refresh]);
+  return canvases;
+}
+/** Has every reading of Sync Canvases read it again, after a change. */
+const canvasesChanged = <T>(answer: T) => {
+  for (const read of canvasReaders) read();
+  return answer;
+};
+/** Sync Canvases' channels: every canvas in each kept in its folder. */
+export const canvasLinking = linking<SlackCanvases>('canvases', canvasesChanged);
+/** The canvases in the workspace `team`'s channel `channel`, to choose from. */
+export function useSlackChannelCanvases(team: string, channel: string) {
+  const url = `${workspaceUrl(team)}/canvases/channels/${encodeURIComponent(channel)}`;
+  const read = useCallback(
+    (signal: AbortSignal) => call<SlackChannelCanvases>(url, undefined, signal),
+    [url],
+  );
+  return useData<SlackChannelCanvases>(url, 0, undefined, undefined, false, read);
+}
+/** Chooses the canvases `canvases` of the channel `channel`, for the folder `folder` or a new one named after it. */
+export const chooseSlackCanvases = (
+  team: string,
+  channel: string,
+  canvases: readonly string[],
+  folder?: string,
+) =>
+  call<SlackCanvases>(`${workspaceUrl(team)}/canvases/chosen`, { channel, canvases, folder }).then(
+    canvasesChanged,
+  );
+/** Stops syncing the canvas `canvas`, chosen on its own. */
+export const unchooseSlackCanvas = (team: string, canvas: string) =>
+  call<SlackCanvases>(
+    `${workspaceUrl(team)}/canvases/chosen/${encodeURIComponent(canvas)}/remove`,
     {},
-  ).then(importsChanged);
+  ).then(canvasesChanged);
 /**
  * A new install link, in place of any the DSP had, for a workspace to have the name `label` in
  * Dispatch: shown this once.
