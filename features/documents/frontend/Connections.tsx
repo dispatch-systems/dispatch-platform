@@ -1,4 +1,4 @@
-import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
+import { monthDay } from '../../../core/shell/frontend/lib/format.js';
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, FolderOpen, LoaderCircle, TriangleAlert } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
@@ -79,9 +79,6 @@ function Storage({ storage }: { storage: DriveStorage }) {
     </div>
   );
 }
-
-const time = (at: string, timeZone: string) =>
-  dateFormatter('en-US', { timeZone, month: 'short', day: 'numeric' }).format(new Date(at));
 
 /** The DSP's Google account, which holds its Documents. */
 export function GoogleDriveCard({ view }: { view: DspView }) {
@@ -202,7 +199,7 @@ export function GoogleDriveCard({ view }: { view: DspView }) {
                   )}
                   <dt>Connected</dt>
                   <dd>
-                    {time(connection.connectedAt, view.dsp.timezone)}
+                    {monthDay(connection.connectedAt, view.dsp.timezone)}
                     {connection.connectedBy ? `, by ${connection.connectedBy}` : ''}
                   </dd>
                 </dl>

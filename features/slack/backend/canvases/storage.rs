@@ -4,8 +4,9 @@
 //! on its tables; a workspace's rows go with it, in `storage::remove_slack_workspace`.
 use super::ID;
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::{FromRow, Row, Store},
+    text_enum,
 };
 use rusqlite::params;
 
@@ -41,35 +42,15 @@ impl FromRow for Pick {
     }
 }
 
-/// How syncing a canvas goes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Status {
-    /// To be synced: it's tried at its `due_at`.
-    Waiting,
-    /// Its document holds it as it was last edited.
-    Synced,
-    /// Deleted in Slack: its document stays as it was.
-    Gone,
-    /// Tried as often as it's tried, or refused where it goes: tried again once it's edited.
-    Failed,
-}
-impl Status {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Waiting => "waiting",
-            Self::Synced => "synced",
-            Self::Gone => "gone",
-            Self::Failed => "failed",
-        }
-    }
-    fn parse(text: &str) -> Result<Self> {
-        Ok(match text {
-            "waiting" => Self::Waiting,
-            "synced" => Self::Synced,
-            "gone" => Self::Gone,
-            "failed" => Self::Failed,
-            _ => return Err(Error::new("slack_canvas_unreadable", 500)),
-        })
+text_enum! {
+    /// How syncing a canvas goes: to be synced, and tried at its `due_at`; its document holding it
+    /// as it was last edited; deleted in Slack, its document staying as it was; or tried as often
+    /// as it's tried, or refused where it goes, and tried again once it's edited.
+    pub enum Status {
+        Waiting => "waiting",
+        Synced => "synced",
+        Gone => "gone",
+        Failed => "failed",
     }
 }
 
@@ -103,7 +84,7 @@ impl FromRow for Canvas {
             canvas: row.get("canvas_id")?,
             channel: row.get("channel_id")?,
             title: row.get("title")?,
-            status: Status::parse(&row.get::<String>("status")?)?,
+            status: row.get("status")?,
             reason: row.get("reason")?,
             attempts: row.get("attempts")?,
             due_at: row.get("due_at")?,

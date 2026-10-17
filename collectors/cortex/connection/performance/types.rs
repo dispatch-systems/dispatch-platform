@@ -1,20 +1,15 @@
 //! Shared performance API datasets and raw replies.
+use dispatch_core::text_enum;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const MAX_ROWS: usize = 50_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TimeFrame {
-    Weekly,
-    Daily,
-}
-impl TimeFrame {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Weekly => "Weekly",
-            Self::Daily => "Daily",
-        }
+text_enum! {
+    /// How often a dataset's rows come, as the performance API names it.
+    pub enum TimeFrame {
+        Weekly => "Weekly",
+        Daily => "Daily",
     }
 }
 /// One dataset of the performance API and the table that holds its rows.

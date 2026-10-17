@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useCollectionUpdates } from '../../../../core/collection/frontend/live-collection.js';
-import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
+import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
 import type { DriverMatch } from '../../api/index.js';
 import { useDriverMatch } from '../../api/client.js';
@@ -36,7 +36,7 @@ function DriverMatchTab({ data, timezone }: { data: DriverMatch; timezone: strin
     [checks],
   );
   const onClose = useCallback(() => setChecking(null), []);
-  const today = dateFormatter('en-CA', { timeZone: timezone }).format(new Date());
+  const today = localDate(timezone);
   return (
     <>
       <CheckBanner checks={checks} onStart={() => setChecking(0)} />

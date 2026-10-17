@@ -3,7 +3,7 @@ import type { Job } from '../../../core/collection/api/index.js';
 import { Badge } from '../../../core/shell/frontend/ui/index.js';
 import { time, timeOfDay, title } from '../../../core/shell/frontend/lib/format.js';
 import { localDate } from '../../../core/shell/frontend/lib/day.js';
-import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
+import { calendarMonthDay } from '../../../core/shell/frontend/lib/format.js';
 
 export type SyncSource = {
   enabled: boolean;
@@ -27,9 +27,7 @@ export function SourceSyncStatus({
   const status = source?.job?.status;
   const target = source?.active
     ? source.jobDate
-      ? dateFormatter('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(
-          new Date(`${source.jobDate}T00:00:00Z`),
-        )
+      ? calendarMonthDay(source.jobDate)
       : name === 'Paycom'
         ? 'current pay period'
         : null

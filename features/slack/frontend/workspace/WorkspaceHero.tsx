@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { Badge } from '../../../../core/shell/frontend/ui/index.js';
 import { slackAccountChanged, type SlackWorkspace } from '../../api/client.js';
-import { day } from '../day.js';
+import { monthDay } from '../../../../core/shell/frontend/lib/format.js';
 import { RenameWorkspace } from './RenameWorkspace.js';
 import { SlackLogo } from '../SlackLogo.js';
 
@@ -48,7 +48,7 @@ export function WorkspaceHero({
           <div>
             <dt>Connected</dt>
             <dd>
-              {day(workspace.connectedAt, timeZone)}
+              {monthDay(workspace.connectedAt, timeZone)}
               {workspace.byLink
                 ? ', by install link'
                 : workspace.connectedBy

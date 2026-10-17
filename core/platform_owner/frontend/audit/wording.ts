@@ -1,8 +1,13 @@
-import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
 import type { AuditChange, AuditEvent } from '../../api/index.js';
 import type { Permission } from '../../../accounts/api/index.js';
 import { errorLabel } from '../../../shell/frontend/runtime/api.js';
-import { elapsed, timeOfDay, title } from '../../../shell/frontend/lib/format.js';
+import {
+  calendarDay,
+  calendarMonthDay,
+  elapsed,
+  timeOfDay,
+  title,
+} from '../../../shell/frontend/lib/format.js';
 import { permissionLabels } from '../../../shell/frontend/runtime/permissions.js';
 import { featureCatalog, featureLabel } from '../../../shell/frontend/runtime/features.js';
 import { collections } from '../../../collection/api/generated/collections.js';
@@ -26,11 +31,7 @@ export function installWording(wording: readonly AuditWording[]) {
 type Part = AuditPart;
 const strong = (value: string): Part => ({ strong: value });
 const day = (value: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(value)
-    ? dateFormatter('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(
-        new Date(`${value}T00:00:00Z`),
-      )
-    : value;
+  /^\d{4}-\d{2}-\d{2}$/.test(value) ? calendarMonthDay(value) : value;
 // Earlier schedule events stored the schedule's id where its name belongs.
 const named = (kind: string, name: string | null | undefined): Part[] =>
   name && !/^schedule_[0-9a-f]+$/.test(name) ? [`the ${kind} `, strong(name)] : [`a ${kind}`];
@@ -285,10 +286,7 @@ export function changeValue(field: string, value: string) {
   const read = ownerValue(field, value);
   if (read !== undefined) return read;
   if (field === 'time' && /^\d{2}:\d{2}$/.test(value)) return clockTime(value);
-  if (field === 'expires' && value !== 'never')
-    return dateFormatter('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
-      new Date(value),
-    );
+  if (field === 'expires' && value !== 'never') return calendarDay(value);
   return value;
 }
 export function changeText(change: AuditChange) {

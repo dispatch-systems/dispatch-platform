@@ -129,7 +129,7 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         None
     };
     let mode = if b.get("mode").is_some() {
-        Mode::parse(v::choice(b, "mode", &["final", "snapshot"])?)?
+        Mode::parse(v::choice(b, "mode", &["final", "snapshot"])?).unwrap_or_default()
     } else {
         Mode::Final
     };

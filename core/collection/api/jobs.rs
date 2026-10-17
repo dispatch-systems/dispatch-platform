@@ -107,17 +107,11 @@ impl rusqlite::types::FromSql for JobKind {
         Self::parse(value.as_str()?).map_err(|_| rusqlite::types::FromSqlError::InvalidType)
     }
 }
-// A progress update may only move a claimed job between these active states.
-pub enum ActiveJobStatus {
-    Running,
-    WaitingVerification,
-}
-impl ActiveJobStatus {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Running => "running",
-            Self::WaitingVerification => "waiting_verification",
-        }
+text_enum! {
+    /// The states a progress update may move a claimed job between.
+    pub enum ActiveJobStatus {
+        Running => "running",
+        WaitingVerification => "waiting_verification",
     }
 }
 /// A row of `jobs`, as the queue and the workers read it.

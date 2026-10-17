@@ -1,6 +1,6 @@
 //! What a tool answers: its data, with words and pictures beside it where they help; or why
 //! there is no answer, which the agent can fix or which is a failure of ours.
-use dispatch_core::Error;
+use dispatch_core::{Error, text_enum};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -54,20 +54,12 @@ pub struct Image {
     pub mime: ImageType,
     pub bytes: Vec<u8>,
 }
-/// The kinds of picture every MCP host shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ImageType {
-    Png,
-    Jpeg,
-    Webp,
-}
-impl ImageType {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Png => "image/png",
-            Self::Jpeg => "image/jpeg",
-            Self::Webp => "image/webp",
-        }
+text_enum! {
+    /// The kinds of picture every MCP host shows, by their media types.
+    pub enum ImageType {
+        Png => "image/png",
+        Jpeg => "image/jpeg",
+        Webp => "image/webp",
     }
 }
 
