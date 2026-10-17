@@ -42,7 +42,18 @@ fn a_people_query_with_a_misspelt_column_is_refused() {
     let (_root, db, id) = common::bootstrapped();
     let dsp = db.dsp(&id).unwrap();
     let read = |sql: &str| people::named(&dsp, sql).map_err(|e| e.code);
-    assert_eq!(read("SELECT 'T1' id,'Jordan Ellis' name,'2026-09-01' last").unwrap().len(), 1);
-    assert_eq!(read("SELECT 'T1' id,'Jordan Ellis' name,'2026-09-01' fist").unwrap_err(), "people_columns");
-    assert_eq!(read("SELECT 'T1' id,'2026-09-01' last").unwrap_err(), "people_columns");
+    assert_eq!(
+        read("SELECT 'T1' id,'Jordan Ellis' name,'2026-09-01' last")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        read("SELECT 'T1' id,'Jordan Ellis' name,'2026-09-01' fist").unwrap_err(),
+        "people_columns"
+    );
+    assert_eq!(
+        read("SELECT 'T1' id,'2026-09-01' last").unwrap_err(),
+        "people_columns"
+    );
 }

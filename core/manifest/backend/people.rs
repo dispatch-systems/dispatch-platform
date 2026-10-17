@@ -502,14 +502,18 @@ const RECORDS: &[&str] = &["id", "count", "last"];
 fn columns(db: &Db, sql: &str, known: &[&str], needed: usize) -> Result<()> {
     let columns = db.columns(sql)?;
     let fits = columns.iter().all(|c| known.contains(&c.as_str()))
-        && known[..needed].iter().all(|k| columns.iter().any(|c| c == k));
+        && known[..needed]
+            .iter()
+            .all(|k| columns.iter().any(|c| c == k));
     if fits {
         return Ok(());
     }
     Err(Error::caused(
         "people_columns",
         500,
-        format!("a people query answers {columns:?}; it reads {known:?}, the first {needed} always"),
+        format!(
+            "a people query answers {columns:?}; it reads {known:?}, the first {needed} always"
+        ),
     ))
 }
 /// Everyone a query names, a row each, as `Named` reads them.
