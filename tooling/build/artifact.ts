@@ -21,7 +21,9 @@ function host<T>(...args: string[]): T {
     ) as T;
   } catch (error) {
     const failure = error as { stderr?: string | Buffer };
-    throw new Error(failure.stderr?.toString().trim() || 'Artifact verification failed');
+    throw new Error(failure.stderr?.toString().trim() || 'Artifact verification failed', {
+      cause: error,
+    });
   }
 }
 export const writeManifest = (root: string, version: string): Artifact =>

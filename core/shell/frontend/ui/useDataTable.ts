@@ -147,6 +147,7 @@ export function useDataTable<T extends RowData>({
         sortFn: (a: Row<Features, T>, b: Row<Features, T>, id: string) =>
           compare(a.getValue(id), b.getValue(id)),
       })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shape` is the key: the definitions change only with it, and read the latest columns through the ref
     [shape],
   );
   const count = total ?? rows.length;
@@ -194,6 +195,7 @@ export function useDataTable<T extends RowData>({
           toggle: () => row.toggleExpanded(),
         },
       })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `expanded` is a key: a row's context reads the table's expansion, which changes with it
     [visible, expanded],
   );
   return {

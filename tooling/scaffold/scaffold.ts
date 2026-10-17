@@ -314,8 +314,10 @@ function listItems(inside: string) {
   for (const char of inside) {
     if ('[{('.includes(char)) depth++;
     if (']})'.includes(char)) depth--;
-    if (char === ',' && depth === 0) (out.push(item.trim()), (item = ''));
-    else item += char;
+    if (char === ',' && depth === 0) {
+      out.push(item.trim());
+      item = '';
+    } else item += char;
   }
   return [...out, item.trim()].filter(Boolean);
 }

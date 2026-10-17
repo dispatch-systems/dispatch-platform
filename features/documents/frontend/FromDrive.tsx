@@ -98,6 +98,7 @@ export function useFromDrive(
     if (!ready) return;
     const files = takePicked();
     if (files) void adding.run(files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `adding` is made anew each render; the picker's return is what runs it, once
   }, [ready]);
   // A Google link pasted anywhere but a field adds what it names.
   const opener = useRef(open);

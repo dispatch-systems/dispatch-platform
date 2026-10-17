@@ -19,9 +19,7 @@ export type Offered = {
   permission: Permission;
 };
 
-const all: Partial<Record<ServiceName, Offered>> = services as Partial<
-  Record<ServiceName, Offered>
->;
+const all: Partial<Record<ServiceName, Offered>> = services;
 
 /** The service `name` the DSP's view has: only while the feature offering it is on there. */
 export function offered(name: ServiceName, view: DspView | undefined): Offered | undefined {

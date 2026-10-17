@@ -9,18 +9,18 @@ native timeout sentinel runs separately each week and on manual dispatch through
 whole pipeline, and `tooling/ci/checks.ts` runs one of its jobs by name, or locally the whole
 suite in sequence:
 
-| Job             | `npm run check:ci -- …`                    | What it proves                                                                |
-| --------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| build           | `build`                                    | The runtime packages: the release backend and worker, and the dashboard.      |
-| checks          | `checks`                                   | Source privacy/secrets, types, formatting, bundle budget and dashboard logic. |
-| browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                               |
-| smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                   |
-| benchmark       | `benchmark`                                | The Rust workload budget; in the queue a break is rechecked beside the base.  |
-| core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.       |
-| api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                       |
-| collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                    |
-| rust-advisories |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.       |
-| platform        |                                            | The gate: the one required check.                                             |
+| Job             | `npm run check:ci -- …`                    | What it proves                                                                            |
+| --------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| build           | `build`                                    | The runtime packages: the release backend and worker, and the dashboard.                  |
+| checks          | `checks`                                   | Source privacy/secrets, types, formatting, the linter, bundle budget and dashboard logic. |
+| browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
+| smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                               |
+| benchmark       | `benchmark`                                | The Rust workload budget; in the queue a break is rechecked beside the base.              |
+| core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
+| api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
+| collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
+| rust-advisories |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
+| platform        |                                            | The gate: the one required check.                                                         |
 
 The gate passes only when every job passed. It then verifies the package's inventory and
 source commit (`ci-verify.py`, which runs `dispatch-host ci verify`) and publishes it as

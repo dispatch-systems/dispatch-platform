@@ -22,7 +22,9 @@ export function downloadCsv(
   rows: (string | number | null | undefined)[][],
 ) {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([`﻿${csvText(header, rows)}`], { type: 'text/csv' }));
+  link.href = URL.createObjectURL(
+    new Blob([`\uFEFF${csvText(header, rows)}`], { type: 'text/csv' }),
+  );
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);

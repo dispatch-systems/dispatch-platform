@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Globe, Info, TriangleAlert } from 'lucide-react';
 import type {
   AgentDsp,
@@ -164,24 +164,30 @@ function Approval({
   const approval = { ...form, name: form.name.trim() };
   const ready = approval.name.length > 0 && (approval.allDsps || approval.dsps.length > 0);
   const replaces = checked.name === approval.name ? checked.replaces : null;
-  const check = async (name: string) => {
-    const { replaces } = await readOAuthRequest(request.id, name);
-    setChecked({ name, replaces });
-    return replaces;
-  };
-  const gone = (error: unknown) => {
-    if (
-      error instanceof ApiError &&
-      ['authorization_not_found', 'wrong_browser'].includes(error.code)
-    )
-      end(error.code);
-  };
+  const check = useCallback(
+    async (name: string) => {
+      const { replaces } = await readOAuthRequest(request.id, name);
+      setChecked({ name, replaces });
+      return replaces;
+    },
+    [request.id],
+  );
+  const gone = useCallback(
+    (error: unknown) => {
+      if (
+        error instanceof ApiError &&
+        ['authorization_not_found', 'wrong_browser'].includes(error.code)
+      )
+        end(error.code);
+    },
+    [end],
+  );
   // A changed name asks again once the owner pauses; approving checks again regardless.
   useEffect(() => {
     if (!approval.name || approval.name === checked.name) return;
     const timer = setTimeout(() => void check(approval.name).catch(gone), 400);
     return () => clearTimeout(timer);
-  }, [approval.name, checked.name]);
+  }, [approval.name, checked.name, check, gone]);
   // Either answer sends the browser back to the app, which reads it from the address.
   const answer = useAction(
     async (approve: boolean) => {

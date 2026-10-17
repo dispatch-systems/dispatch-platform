@@ -108,7 +108,7 @@ test('interruption, waiting for verification and cancellation preserve separate 
   const id = (await owner.post('/api/dsp/jobs', { requestId: 'metrics-interruption' })).value.id;
   const current = async (): Promise<Job> =>
     (await owner.get('/api/dsp/jobs')).value.find((j: Job) => j.id === id);
-  await until(async () => (await current()).metrics[0]?.verificationMs! > 0);
+  await until(async () => ((await current()).metrics[0]?.verificationMs ?? 0) > 0);
   const queued = seedQueuedJob(f, id, 'metrics-cancel-queued');
   const cancelled = (await owner.post(`/api/dsp/jobs/${queued.id}/cancel`)).value;
   assert.equal(cancelled.attempt, 0);

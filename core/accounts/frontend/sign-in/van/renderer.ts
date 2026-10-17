@@ -10,11 +10,13 @@ function disposeModel(model: THREE.Object3D) {
   const textures = new Set<THREE.Texture>();
   model.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
-    geometries.add(object.geometry);
-    for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+    const mesh = object as THREE.Mesh;
+    geometries.add(mesh.geometry);
+    for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
       materials.add(material);
       for (const value of Object.values(material)) {
-        if (value instanceof THREE.Texture) textures.add(value);
+        if (!(value instanceof THREE.Texture)) continue;
+        textures.add(value as THREE.Texture);
       }
     }
   });

@@ -124,7 +124,10 @@ export async function api<T>(
           : signal,
     });
     // A proxy in front of the server may answer an error with a page of its own.
-    const value = await response.json().catch(() => ({}));
+    const value = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
     if (!response.ok) {
       recoverAccess(url, response.status, value.error);
       throw new ApiError(

@@ -17,8 +17,7 @@ export const collectDvic = (requestId: string, viewing: string) =>
 export const cancelDvicJob = (id: string) => api(`/api/dsp/dvic/jobs/${id}/cancel`, {});
 /** Counts cover the whole selection; the driver page carries at most seven cells each. */
 export const summaryUrl = (from: string, to: string, query: string, vehicles: string, page = 0) =>
-  '/api/dsp/dvic/summary?' +
-  new URLSearchParams({ from, to, q: query, vehicles, offset: String(page * 25) });
+  `/api/dsp/dvic/summary?${new URLSearchParams({ from, to, q: query, vehicles, offset: String(page * 25) }).toString()}`;
 export const useSummary = (url: string, publication: string) =>
   useCachedData<DvicSummary>(url, performancePolicy.recoveryPollMs, publication);
 export const useDayInspections = (
@@ -29,14 +28,13 @@ export const useDayInspections = (
   publication: string,
 ) =>
   useCachedData<DvicInspectionPage>(
-    '/api/dsp/dvic/day?' +
-      new URLSearchParams({ date, q: query, vehicles, offset: String(page * 100) }),
+    `/api/dsp/dvic/day?${new URLSearchParams({ date, q: query, vehicles, offset: String(page * 100) }).toString()}`,
     performancePolicy.recoveryPollMs,
     publication,
   );
 export const useInspection = (id: string, from: string, to: string, publication: string) =>
   useCachedData<DvicInspectionDetail>(
-    '/api/dsp/dvic/inspection?' + new URLSearchParams({ id, from, to }),
+    `/api/dsp/dvic/inspection?${new URLSearchParams({ id, from, to }).toString()}`,
     performancePolicy.recoveryPollMs,
     publication,
   );

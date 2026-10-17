@@ -59,10 +59,11 @@ export function TimecardsPage({
   useAdjacentDays(url, date, calendarToday, current);
   // The previous day's rows hold the layout, dimmed and inert, until the new day arrives.
   const data = current ?? stale;
+  const { page, setPage } = state;
   useEffect(() => {
-    if (current && state.page && state.page * pageSize >= current.total)
-      state.setPage(Math.max(0, Math.ceil(current.total / pageSize) - 1));
-  }, [current, state.page, state.setPage]);
+    if (current && page && page * pageSize >= current.total)
+      setPage(Math.max(0, Math.ceil(current.total / pageSize) - 1));
+  }, [current, page, setPage]);
   const columns = useMemo<TableColumn<Card>[]>(
     () => [
       {

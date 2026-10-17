@@ -84,7 +84,7 @@ async function fetched(url: string, signal?: AbortSignal): Promise<Response> {
   if (!response.ok)
     throw failed(
       response.status,
-      await response.json().catch(() => ({})),
+      (await response.json().catch(() => ({}))) as { error?: string; message?: string },
       response.headers.get('x-request-id') ?? undefined,
     );
   return response;

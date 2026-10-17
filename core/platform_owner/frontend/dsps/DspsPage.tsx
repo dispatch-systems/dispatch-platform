@@ -57,7 +57,7 @@ export function DspsPage() {
       await api('/api/platform/dsps', { ownerEmail });
       refresh();
     },
-    { success: (ownerEmail) => `Invitation email queued for ${ownerEmail}` },
+    { success: (ownerEmail) => `Invitation email queued for ${String(ownerEmail ?? '')}` },
   );
   const setCode = useAction(
     async (dsp: DspSummary, code: string) => {

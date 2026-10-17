@@ -433,7 +433,7 @@ export function Browser({
         if (undoing) notify('Move undone');
         else notify(`Moved to ${to.name}`, { label: 'Undo', run: () => undo(moved, to) });
       }
-      if (failed) throw failed;
+      if (failed) throw failed instanceof Error ? failed : new Error(String(failed));
     });
   };
   const undo = (moved: Moved[], to: Place) => {

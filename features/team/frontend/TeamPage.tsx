@@ -82,7 +82,7 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
       invitations.refresh();
       roles.refresh();
     },
-    { success: (form) => `Invitation email queued for ${form.get('email')}` },
+    { success: (form) => `Invitation email queued for ${String(form.get('email') ?? '')}` },
   );
   // A null role removes the member.
   const assign = useAction(

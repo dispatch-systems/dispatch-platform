@@ -66,6 +66,7 @@ export function ScheduleForm({
       leaveRef.current = null;
     };
   });
+  const scheduleId = schedule?.id;
   useEffect(() => {
     const controller = new AbortController();
     setPreview(undefined);
@@ -87,7 +88,7 @@ export function ScheduleForm({
           cadence,
           intervalMinutes,
           localTime,
-          ...(schedule ? { scheduleId: schedule.id } : {}),
+          ...(scheduleId ? { scheduleId } : {}),
         },
         controller.signal,
       )
@@ -102,7 +103,7 @@ export function ScheduleForm({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [schedules, cadence, intervalMinutes, localTime, enabled, schedule?.id]);
+  }, [schedules, cadence, intervalMinutes, localTime, enabled, scheduleId]);
   const edit = <K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) =>
     setDraft((old) => ({ ...old, [key]: value }));
   async function save(remove = false): Promise<boolean> {

@@ -68,7 +68,8 @@ export function useCollectionUpdates() {
         }
       } finally {
         if (controller === request) controller = undefined;
-        if (!disposed && !document.hidden && !stopped) retry = setTimeout(listen, delay);
+        if (!disposed && !document.hidden && !stopped)
+          retry = setTimeout(() => void listen(), delay);
       }
     };
     const visibility = () => {

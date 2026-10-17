@@ -24,9 +24,9 @@ export function Tabs({
           role="tab"
           aria-selected={value === id}
           tabIndex={value === id ? 0 : -1}
-          onPointerEnter={() => onIntent?.(id!)}
-          onPointerDown={() => onIntent?.(id!)}
-          onFocus={() => onIntent?.(id!)}
+          onPointerEnter={() => onIntent?.(id)}
+          onPointerDown={() => onIntent?.(id)}
+          onFocus={() => onIntent?.(id)}
           onKeyDown={(event) => {
             const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
             if (!offset && !['Home', 'End'].includes(event.key)) return;
@@ -37,10 +37,10 @@ export function Tabs({
                 : event.key === 'End'
                   ? items.length - 1
                   : (index + offset + items.length) % items.length;
-            onChange(items[next]![0]!);
+            onChange(items[next]![0]);
             (event.currentTarget.parentElement?.children[next] as HTMLElement)?.focus();
           }}
-          onClick={() => onChange(id!)}
+          onClick={() => onChange(id)}
         >
           {text}
         </button>

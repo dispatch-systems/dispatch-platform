@@ -88,10 +88,11 @@ export function MealBreaksPage({
   const periodGaps = [gapsRequest.data, gapsRequest.stale].find(
     (gaps) => gaps?.period && gaps.period.from <= shownDate && shownDate <= gaps.period.to,
   );
+  const { page, setPage } = state;
   useEffect(() => {
-    if (current && state.page && state.page * 100 >= current.total)
-      state.setPage(Math.max(0, Math.ceil(current.total / 100) - 1));
-  }, [current, state.page, state.setPage]);
+    if (current && page && page * 100 >= current.total)
+      setPage(Math.max(0, Math.ceil(current.total / 100) - 1));
+  }, [current, page, setPage]);
   const nameOrder = preferences.name_order;
   const lateTime = preferences.late_da_time,
     lateDepartments = preferences.late_da_departments;
@@ -123,7 +124,6 @@ export function MealBreaksPage({
     pageSize: 100,
     subRows: (line) => line.more,
   });
-  const setPage = state.setPage;
   const unlinked = data?.drivers.filter((d) => d.matchType === 'unmatched').length ?? 0;
   const zones = new Set(data?.cortexPublications.map((p) => p.timezone));
   return (
