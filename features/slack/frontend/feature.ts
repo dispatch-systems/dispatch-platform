@@ -6,6 +6,7 @@ import {
   settingsPage,
   type FrontendFeature,
 } from '../../../core/shell/frontend/runtime/slots.js';
+import { importFiles, importFilesSection } from './imports/integration.js';
 import { CHANNELS, INTEGRATIONS } from './sections.js';
 
 // Slack's frontend manifest, loaded up front: it stays small and loads its cards and its page
@@ -90,7 +91,10 @@ export const feature: FrontendFeature = {
       visible: (view) => Boolean(view && connectionIntegrations('slack', view).length),
       render: (context) => createElement(IntegrationsSection, context),
     },
+    importFilesSection,
   ],
+  // Its own integrations, beside those other features add.
+  connectionIntegrations: [importFiles],
   // Its switch's icon on the DSPs page, and how its events read in the audit log.
   platformSlots: () => import('./platform-slots.js'),
 };

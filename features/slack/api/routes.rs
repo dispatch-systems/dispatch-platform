@@ -2,6 +2,7 @@
 //! and the permission before a handler runs; the handlers that call Slack wait outside the
 //! database and check again before they write. Slack's own requests come to public addresses
 //! outside `/api/`, each checked against Slack's signature before anything else.
+use super::imports;
 use crate::backend::{
     app::{EVENTS_PATH, INSTALL_PATH, INTERACTIONS_PATH, RETURN_PATH},
     channels,
@@ -30,12 +31,12 @@ use std::sync::Arc;
 /// Connections are.
 const CONNECTIONS: Dsp = Dsp("connections.manage");
 /// What Dispatch does in each of them, on its settings.
-const SETTINGS: Dsp = Dsp("slack.manage");
+pub(super) const SETTINGS: Dsp = Dsp("slack.manage");
 /// The workspaces themselves, for either.
 const WORKSPACES: Dsp = Dsp("connections.manage|slack.manage");
 
 pub fn routes() -> Vec<Route> {
-    vec![
+    let mut routes = vec![
         read("/api/dsp/slack/account", WORKSPACES, account),
         async_get(
             "/api/dsp/slack/workspaces/{team}/channels",
@@ -83,16 +84,19 @@ pub fn routes() -> Vec<Route> {
         protocol(Method::POST, INTERACTIONS_PATH, |state, request| {
             Box::pin(inbound::interactions(state, request))
         }),
-    ]
+    ];
+    // Import Files' own, in a module of their own.
+    routes.extend(imports::routes());
+    routes
 }
 
 /// A Slack workspace's ID, as Slack writes them.
-fn team(id: &str) -> Result<String> {
+pub(super) fn team(id: &str) -> Result<String> {
     ensure(storage::team_id(id), "invalid_input", 400)?;
     Ok(id.to_owned())
 }
 /// A Slack channel's ID, as Slack writes them.
-fn channel(id: &str) -> Result<String> {
+pub(super) fn channel(id: &str) -> Result<String> {
     ensure(channels::channel_id(id), "invalid_input", 400)?;
     Ok(id.to_owned())
 }

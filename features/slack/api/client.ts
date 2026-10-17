@@ -3,11 +3,18 @@ import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js'
 import type { SlackAccount } from './generated/SlackAccount.js';
 import type { SlackChannel } from './generated/SlackChannel.js';
 import type { SlackChannels } from './generated/SlackChannels.js';
+import type { SlackFolders } from './generated/SlackFolders.js';
+import type { SlackImports } from './generated/SlackImports.js';
 import type { SlackInstall } from './generated/SlackInstall.js';
 import type { SlackNewLink } from './generated/SlackNewLink.js';
 
 export type { SlackAccount } from './generated/SlackAccount.js';
 export type { SlackChannel } from './generated/SlackChannel.js';
+export type { SlackFolder } from './generated/SlackFolder.js';
+export type { SlackFolders } from './generated/SlackFolders.js';
+export type { SlackImportedFile } from './generated/SlackImportedFile.js';
+export type { SlackImportLink } from './generated/SlackImportLink.js';
+export type { SlackImports } from './generated/SlackImports.js';
 export type { SlackWorkspace } from './generated/SlackWorkspace.js';
 export type { SlackLink } from './generated/SlackLink.js';
 export type { SlackNewLink } from './generated/SlackNewLink.js';
@@ -30,6 +37,14 @@ const wording: Record<string, string> = {
   slack_connection_broken: 'Slack stopped accepting the connection. Reconnect the workspace.',
   slack_needs_update: 'This workspace needs updating first.',
   slack_integration_not_found: "That integration isn't available. Refresh the page.",
+  slack_import_off: 'Import Files is off in this workspace.',
+  slack_files_unavailable: "There's nowhere to save files. Refresh the page.",
+  slack_files_forbidden: "You don't have access to where files are saved.",
+  slack_files_unready: "Files can't be saved yet.",
+  slack_channel_not_joined: 'Join the channel first.',
+  slack_channel_linked: 'That channel is already linked.',
+  slack_channel_not_linked: "That channel isn't linked. Refresh the page.",
+  files_folder_not_found: "That folder isn't there anymore. Choose another.",
 };
 const call = wordedApi(wording);
 
@@ -93,6 +108,50 @@ export const setSlackChannel = (team: string, channel: string, member: boolean) 
 /** Switches the integration `id` on or off in the workspace `team`. */
 export const switchSlackIntegration = (team: string, id: string, on: boolean) =>
   call<SlackAccount>(`${workspaceUrl(team)}/integrations/${encodeURIComponent(id)}`, { on });
+/** Import Files in the workspace `team`: where files go, the channels linked, and the latest files. */
+const importReaders = new Set<() => void>();
+export function useSlackImports(team: string) {
+  const url = `${workspaceUrl(team)}/imports`;
+  const read = useCallback(
+    (signal: AbortSignal) => call<SlackImports>(url, undefined, signal),
+    [url],
+  );
+  // Files arrive from Slack on their own, so an open section reads them again every 10 seconds.
+  const imports = useData<SlackImports>(url, 10000, undefined, undefined, false, read);
+  const { refresh } = imports;
+  useEffect(() => {
+    importReaders.add(refresh);
+    return () => void importReaders.delete(refresh);
+  }, [refresh]);
+  return imports;
+}
+/** Has every reading of Import Files read it again, after a change. */
+const importsChanged = <T>(answer: T) => {
+  for (const read of importReaders) read();
+  return answer;
+};
+/** Where the folder `folder`, or the top of where files are kept, is browsed. */
+export const slackFoldersUrl = (team: string, folder?: string) =>
+  `${workspaceUrl(team)}/imports/folders${folder ? `?folder=${encodeURIComponent(folder)}` : ''}`;
+/** The folder `folder`, or the top of where files are kept, as choosing one browses it. */
+export const browseSlackFolders = (team: string, folder?: string, signal?: AbortSignal) =>
+  call<SlackFolders>(slackFoldersUrl(team, folder), undefined, signal);
+/** Links the channel `channel` to the folder `folder`, or to a new one named after it. */
+export const linkSlackChannel = (team: string, channel: string, folder?: string) =>
+  call<SlackImports>(`${workspaceUrl(team)}/imports/links`, { channel, folder }).then(
+    importsChanged,
+  );
+/** Saves the linked channel `channel`'s files to the folder `folder` from now on. */
+export const moveSlackLink = (team: string, channel: string, folder: string) =>
+  call<SlackImports>(`${workspaceUrl(team)}/imports/links/${encodeURIComponent(channel)}/folder`, {
+    folder,
+  }).then(importsChanged);
+/** Stops importing the channel `channel`. */
+export const unlinkSlackChannel = (team: string, channel: string) =>
+  call<SlackImports>(
+    `${workspaceUrl(team)}/imports/links/${encodeURIComponent(channel)}/remove`,
+    {},
+  ).then(importsChanged);
 /**
  * A new install link, in place of any the DSP had, for a workspace to have the name `label` in
  * Dispatch: shown this once.

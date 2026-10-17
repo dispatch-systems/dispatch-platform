@@ -13,7 +13,8 @@ use crate::{
 use serde_json::Value;
 use std::{collections::BTreeSet, sync::Arc};
 
-/// One feature's integration with another's connection, which its feature depends on.
+/// One feature's integration with a connection: another feature's, which it depends on, or
+/// its own, as a connection's feature may offer integrations of its own.
 pub struct Integration {
     /// The connection it works through, by the name of the feature that owns it.
     pub connection: &'static str,
@@ -59,8 +60,8 @@ pub struct Heard {
 }
 
 /// Panics unless every integration is as the slot asks, as the registry is installed: its id
-/// its own and under its feature's name, its connection a feature it depends on, and what it
-/// does with what it hears declared exactly when it hears of something.
+/// its own and under its feature's name, its connection its own or a feature it depends on, and
+/// what it does with what it hears declared exactly when it hears of something.
 pub(super) fn check(features: &[&'static Feature]) {
     let mut ids = BTreeSet::new();
     for feature in features {
@@ -75,7 +76,8 @@ pub(super) fn check(features: &[&'static Feature]) {
             );
             assert!(ids.insert(id), "the integration {id} is declared twice");
             assert!(
-                feature.depends_on.contains(&integration.connection),
+                integration.connection == feature.name
+                    || feature.depends_on.contains(&integration.connection),
                 "{}'s integration {id} works through {}, which it doesn't depend on",
                 feature.name,
                 integration.connection

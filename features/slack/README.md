@@ -46,6 +46,28 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   a public channel, and Leave, leave any channel; a private one it left goes from the list until
   someone invites it back. Up to 2,000 channels are read, 200 at a time, each time the
   section opens. The activity log records each, as `#<channel> in <workspace>`.
+- **Import Files,** Slack's own integration (`slack.import_files`, `backend/imports/`): the files
+  and photos posted in the channels a workspace links to folders are saved there, where the DSP
+  keeps its files (core's `files` service, which Documents offers, in its Google Drive), never
+  their messages. Its card and its section show only while something keeps the DSP's files;
+  its section, Import Files under Integrations, only to those who see where they're kept
+  (`documents.use`). A channel Dispatch is in links once, to a folder chosen there or a new one
+  named after it, and its files from then on are saved, while Import Files is on in the
+  workspace: one posted while it was off isn't, ever. Slack tells of each file shared
+  (`file_shared`, which reading files, `files:read`, lets the app be told of); hourly, each
+  linked channel's files Slack lists are noticed too, in case it didn't. Each file is noticed
+  once, by Slack's ID, whichever channels it's in, and kept (`slack_imports`) until it's saved:
+  tried at once, then, when it fails, after a minute, five, fifteen, an hour, three, six and
+  twelve, and given up after that. Only files Slack hosts are saved, not canvases or links to
+  elsewhere, up to 100 MB each, streamed from Slack as they arrive. While nothing keeps the
+  DSP's files, or what keeps them isn't ready (Google Drive not connected), or the admin hasn't
+  approved reading files, a file waits, and the section says why. Each is added by the DSP's
+  member whose address the poster's Slack profile has, or by the name Slack shows them by. A
+  file deleted in Slack after it was saved stays. The section lists the linked channels, each
+  with its folder, renamed or gone as it is now, and how many files it saved, and the files
+  noticed latest, with how saving each went. The activity log records linking a channel,
+  changing its folder and stopping, as `#<channel> to <folder> in <workspace>`, and where it
+  keeps them records each file saved.
 - **Names:** a workspace's name in Dispatch is the one it was added with, if it was given one,
   else its name in Slack, which follows Slack's. The pencil by its name at the top of its
   settings changes it, for those who manage the DSP's connections, and blank, has it go by its
@@ -97,7 +119,8 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   they go by in Slack, listed while their account is active. Slack lists whom the DSP can
   reach, not whom it employs (`contacts_only`): it never keeps someone from having left, and
   someone only Slack knows works in the office while their account is active.
-- **Disconnecting** a workspace forgets it, its members, its integrations and its tokens, frees it for any DSP, and then has
+- **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
+  linked and noticed there, and its tokens, frees it for any DSP, and then has
   Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
   disconnecting, making and cancelling the install link, and, with no member as their actor,
   a workspace connected by the link, the app removed from a workspace in Slack, and Slack
@@ -146,13 +169,17 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   read behind `slack.manage` too, with the integrations on in each workspace. Behind
   `slack.manage`: `GET …/workspaces/{team}/channels`, and
   `POST …/workspaces/{team}/channels/{channel}/join` and `…/leave`, each answering with the
-  channel; and `POST …/workspaces/{team}/integrations/{integration}`, with `on`, answering with
-  the account. Public:
+  channel; `POST …/workspaces/{team}/integrations/{integration}`, with `on`, answering with
+  the account; and Import Files': `GET …/workspaces/{team}/imports` and `…/imports/folders`
+  (with `folder`), and `POST …/imports/links` (with `channel`, and `folder` or none for a new
+  one), `…/imports/links/{channel}/folder` and `…/imports/links/{channel}/remove`, each
+  answering with Import Files as the section shows it. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
 - **Data:** `slack_workspaces` (each with its name in Dispatch, `label`), `slack_members` (its
   own migration 3), `slack_integrations` (migration 4: those on in each workspace, with who
-  switched each on and when),
+  switched each on and when), `slack_import_links` and `slack_imports` (migration 5: Import
+  Files' linked channels, and each file it noticed with how saving it went),
   `slack_connect_requests` (each with the workspace it named to Slack, to reconnect or update,
   and the name the workspace it adds is to have) and `slack_install_links`, in each DSP's own
   database; `slack_teams`, which DSP each workspace belongs to, in the platform's;
@@ -160,7 +187,7 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
 - **Upkeep:** hourly, each working workspace of each active DSP with Slack on is asked for, as
   the bot: that renews its token as it nears its end, keeps the workspace's name as Slack has
   it, reads its members, and marks it broken if Slack no longer honours its tokens, so its card offers to
-  reconnect it.
+  reconnect it. Import Files saves the files due every minute, and catches up hourly.
 - **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as
   the code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet,
   or the one being reconnected. Its tokens name their workspace; one whose ID holds `GONE` is
@@ -169,8 +196,10 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   leaves is kept for the server's run. Its members are some of the demo's people, by
   example.com addresses: Jordan Ellis in Operations and Drivers, the owner Morgan Lane in
   Operations and Managers, and in Drivers Cameron Hayes, Casey Rivera by phone, the guest Drew
-  Sullivan and the deactivated Jesse Kline, with Slackbot and a bot everywhere. It signs with `fixture-signing-secret`, so tests send
-  requests as Slack would.
+  Sullivan and the deactivated Jesse Kline, with Slackbot and a bot everywhere. Its channels hold
+  a few files: Morgan's van photo and a video too large to keep in `photos`, Casey's route sheet
+  in `dispatch`, and a canvas, each downloading as bytes made up to its size. It signs with
+  `fixture-signing-secret`, so tests send requests as Slack would.
 
 ## Slack's app
 

@@ -592,9 +592,16 @@
       "commands": "slack-",
       "demo": false,
       "domains": [],
-      "integrations": [],
+      "integrations": [
+        [
+          "slack.import_files",
+          "slack"
+        ]
+      ],
       "live": [],
       "maintenance": [
+        3600,
+        60,
         3600
       ],
       "people": [
@@ -615,7 +622,12 @@
         "GET /api/slack/return",
         "GET /api/slack/install",
         "POST /slack/events",
-        "POST /slack/interactions"
+        "POST /slack/interactions",
+        "GET /api/dsp/slack/workspaces/{team}/imports",
+        "GET /api/dsp/slack/workspaces/{team}/imports/folders",
+        "POST /api/dsp/slack/workspaces/{team}/imports/links",
+        "POST /api/dsp/slack/workspaces/{team}/imports/links/{channel}/folder",
+        "POST /api/dsp/slack/workspaces/{team}/imports/links/{channel}/remove"
       ],
       "services": [],
       "settings": [
@@ -631,6 +643,8 @@
     "tables": {
       "dsp": [
         "slack_connect_requests",
+        "slack_import_links",
+        "slack_imports",
         "slack_install_links",
         "slack_integrations",
         "slack_members",

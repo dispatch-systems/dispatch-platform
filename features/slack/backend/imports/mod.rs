@@ -1,0 +1,32 @@
+//! Import Files, Slack's own integration: the files and photos posted in the channels a DSP links
+//! to folders are saved there, where the DSP keeps its files (core's Files service, which
+//! Documents offers), never their messages. Switched on in a workspace's Integrations, it's told
+//! of each file shared in a channel Dispatch is in, and saves those posted in a linked channel
+//! from when it was linked, while it's on.
+//!
+//! - `links`: which channels are linked to which folders, as the workspace's settings change
+//!   them, and what's been saved.
+//! - `queue`: each file noticed, kept until it's saved, and the minute's pass that saves what's
+//!   due.
+//! - `save`: saving one file, and `author`, who posted it.
+//! - `catch_up`: the hourly pass that notices the files Slack didn't tell of.
+//! - `storage`: what's kept.
+mod author;
+pub mod catch_up;
+pub mod links;
+pub mod queue;
+mod save;
+pub mod storage;
+
+use dispatch_core::manifest::integrations::{Integration, integration};
+
+/// Its ID, as each workspace keeps it switched on.
+pub const ID: &str = "slack.import_files";
+/// What it is to Slack: it reads the files in the channels Dispatch is in (`files:read`), and is
+/// told of each one shared there (`file_shared`).
+pub const INTEGRATION: Integration = Integration {
+    needs: &["files:read"],
+    hears: &["file_shared"],
+    heard: Some(queue::heard),
+    ..integration("slack", ID, "Import Files")
+};

@@ -100,7 +100,7 @@ pub async fn leave(
 }
 
 /// A channel as Slack describes it to the bot.
-fn described(channel: &Value) -> Option<SlackChannel> {
+pub(crate) fn described(channel: &Value) -> Option<SlackChannel> {
     Some(SlackChannel {
         id: channel["id"].as_str()?.to_owned(),
         name: channel["name"].as_str()?.to_owned(),

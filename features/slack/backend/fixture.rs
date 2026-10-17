@@ -3,14 +3,17 @@
 //! workspace too, and one whose ID holds `GONE` is refused, as a workspace that removed the app
 //! is. Each workspace has the same channels, the bot in `general` and in the private
 //! `managers`, and what it joins and leaves is kept for the server's run. Its members are the
-//! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated. Requests it sends
-//! are signed with a secret the tests share.
-use super::slack::{Installed, Tokens};
+//! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated.
+//! Its channels hold a few files, one too large to keep and a canvas, which download as bytes
+//! made up to their size. Requests it sends are signed with a secret the tests share.
+use super::slack::{Bytestream, Installed, Tokens};
 use super::{app::scopes, storage::SlackStore};
+use axum::body::Bytes;
 use dispatch_core::{
     Error, Result,
     db::{Store, now},
 };
+use futures_util::stream;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -38,6 +41,86 @@ const CHANNELS: &[(&str, &str, bool, bool)] = &[
     ("C0FIXRANDOM", "random", false, false),
     ("G0FIXMANAGERS", "managers", true, true),
 ];
+/// A file in one of its channels.
+struct File {
+    id: &'static str,
+    channel: &'static str,
+    /// Who posted it, by their member ID.
+    user: &'static str,
+    name: &'static str,
+    mime: &'static str,
+    size: u64,
+    /// How Slack keeps it: `hosted` for a file uploaded to Slack.
+    mode: &'static str,
+}
+/// Its channels' files: a photo and a sheet, a video too large to keep, and a canvas.
+const FILES: &[File] = &[
+    File {
+        id: "F0FIXVAN",
+        channel: "C0FIXPHOTOS",
+        user: "U0FIXOWNER",
+        name: "Van 12 damage.jpg",
+        mime: "image/jpeg",
+        size: 2_048,
+        mode: "hosted",
+    },
+    File {
+        id: "F0FIXROUTE",
+        channel: "C0FIXDISPATCH",
+        user: "U0FIXCASEY",
+        name: "Route 4 sheet.pdf",
+        mime: "application/pdf",
+        size: 4_096,
+        mode: "hosted",
+    },
+    File {
+        id: "F0FIXDASHCAM",
+        channel: "C0FIXPHOTOS",
+        user: "U0FIXCAM",
+        name: "Dashcam.mov",
+        mime: "video/quicktime",
+        size: 150 * 1024 * 1024,
+        mode: "hosted",
+    },
+    File {
+        id: "F0FIXCANVAS",
+        channel: "C0FIXPHOTOS",
+        user: "U0FIXOWNER",
+        name: "Write-ups",
+        mime: "application/vnd.slack-docs",
+        size: 0,
+        mode: "canvas",
+    },
+];
+/// Where a fixture file downloads from.
+const DOWNLOAD: &str = "fixture-file:";
+/// The file `id`, as `files.info` and `files.list` describe it, posted now.
+fn file(id: &str) -> Option<Value> {
+    let file = FILES.iter().find(|file| file.id == id)?;
+    Some(json!({
+        "id": file.id,
+        "name": file.name,
+        "title": file.name,
+        "mimetype": file.mime,
+        "size": file.size,
+        "mode": file.mode,
+        "user": file.user,
+        "created": now() / 1000,
+        "channels": [file.channel],
+        "url_private_download": format!("{DOWNLOAD}{}", file.id),
+    }))
+}
+/// The bytes of the file `url` names, made up to its size.
+pub fn download(url: &str) -> Result<Bytestream> {
+    let id = url.strip_prefix(DOWNLOAD).unwrap_or("");
+    let file = FILES
+        .iter()
+        .find(|file| file.id == id)
+        .ok_or_else(|| Error::new("slack_file_gone", 404))?;
+    let bytes = Bytes::from(vec![b'x'; file.size as usize]);
+    Ok(Box::pin(stream::iter([Ok(bytes)])))
+}
+
 /// What a fixture member is beside a person.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -185,7 +268,7 @@ pub fn refresh(refresh: &str) -> Result<Tokens> {
 }
 /// Slack's answer to a call with `args`: the workspace for `team.info`; its members, on one
 /// page, for `users.list`; the channels the bot sees, joins, leaves or is asked of for
-/// `conversations.*`; and `ok` to anything else.
+/// `conversations.*`; a file, or a channel's files, for `files.*`; and `ok` to anything else.
 pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
     let team = workspace(token, "fixture-access:")?;
     let asked = args["channel"].as_str().unwrap_or("");
@@ -217,6 +300,29 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
             seen(team, asked)?;
             joined(team, asked, false);
             json!({"ok": true})
+        }
+        // Any of its members, as Slack describes someone in a channel shared across workspaces.
+        "users.info" => {
+            let asked = args["user"].as_str().unwrap_or("");
+            let found = EVERY
+                .iter()
+                .flat_map(|workspace| users(workspace))
+                .find(|user| user["id"] == asked)
+                .ok_or_else(|| Error::new("slack_refused", 502))?;
+            json!({"ok": true, "user": found})
+        }
+        "files.info" => {
+            let asked = args["file"].as_str().unwrap_or("");
+            let found = file(asked).ok_or_else(|| Error::new("slack_file_gone", 404))?;
+            json!({"ok": true, "file": found})
+        }
+        "files.list" => {
+            let listed: Vec<Value> = FILES
+                .iter()
+                .filter(|file| file.channel == asked)
+                .filter_map(|listed| file(listed.id))
+                .collect();
+            json!({"ok": true, "files": listed, "paging": {"pages": 1}})
         }
         _ => json!({"ok": true}),
     })

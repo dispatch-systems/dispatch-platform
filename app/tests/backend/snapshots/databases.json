@@ -70,7 +70,8 @@
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],
-      ["slack", 4, "slack_integrations", "2ba12c6e03d85946"]
+      ["slack", 4, "slack_integrations", "2ba12c6e03d85946"],
+      ["slack", 5, "slack_imports", "3f8237e6e4e91cc6"]
     ]
   },
   {

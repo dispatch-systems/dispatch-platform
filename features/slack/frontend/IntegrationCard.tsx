@@ -34,6 +34,8 @@ export function IntegrationCard({
 }) {
   const [explained, setExplained] = useState(false);
   const { label, icon: Icon } = integration;
+  const byline =
+    (context.view && integration.byline?.(context.view)) ?? `Part of ${integration.from}`;
   return (
     <article className="slack-integration" aria-label={label}>
       <header>
@@ -42,7 +44,7 @@ export function IntegrationCard({
         </span>
         <div className="slack-integration-name">
           <h3>{label}</h3>
-          <span>Part of {integration.from}</span>
+          <span>{byline}</span>
         </div>
         {on && <Badge value="ready">On</Badge>}
         <input

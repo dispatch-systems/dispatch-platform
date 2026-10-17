@@ -1,7 +1,8 @@
 import type { AuditPhrases, AuditWording } from '../../../core/shell/frontend/runtime/slots.js';
 
 // How Slack's events read in the platform owner's audit log: the workspace each was about, the
-// channel, `#<channel> in <workspace>`, or the integration, `<integration> in <workspace>`.
+// channel, `#<channel> in <workspace>`, the integration, `<integration> in <workspace>`, or a
+// channel Import Files links, `#<channel> to <folder> in <workspace>`.
 
 const phrases: AuditPhrases = {
   'slack.connected': (e, { strong }) => ['connected Slack workspace ', strong(e.detail)],
@@ -29,6 +30,16 @@ const phrases: AuditPhrases = {
   ],
   'slack.integration_on': (e, { strong }) => ['turned on Slack integration ', strong(e.detail)],
   'slack.integration_off': (e, { strong }) => ['turned off Slack integration ', strong(e.detail)],
+  'slack.import_linked': (e, { strong }) => ['linked Slack channel ', strong(e.detail)],
+  'slack.import_moved': (e, { strong }) => [
+    'moved where Slack channel ',
+    strong(e.detail),
+    ' saves',
+  ],
+  'slack.import_unlinked': (e, { strong }) => [
+    'stopped importing Slack channel ',
+    strong(e.detail),
+  ],
   'slack.link_created': () => ['made a Slack install link'],
   'slack.link_cancelled': () => ['cancelled the Slack install link'],
 };
@@ -44,6 +55,9 @@ export const wording: AuditWording = {
     'slack.channel_left',
     'slack.integration_on',
     'slack.integration_off',
+    'slack.import_linked',
+    'slack.import_moved',
+    'slack.import_unlinked',
     'slack.link_created',
     'slack.link_cancelled',
   ],
