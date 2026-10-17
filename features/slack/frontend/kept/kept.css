@@ -1,4 +1,5 @@
-/* Import Files' section of a workspace's settings. */
+/* The sections of a workspace's settings for what Slack's integrations keep where the DSP keeps
+   its files: Import Files' and Sync Canvases'. */
 .slack-section {
   position: relative;
 }
@@ -6,13 +7,15 @@
   position: absolute;
   top: 16px;
   right: 22px;
+  display: flex;
+  gap: 8px;
 }
-.slack-imports {
+.slack-kept {
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
-.slack-imports-unready {
+.slack-kept-unready {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -24,7 +27,7 @@
   font-size: 13px;
   font-weight: 500;
 }
-.slack-imports-empty {
+.slack-kept-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -34,7 +37,11 @@
   border-radius: 10px;
   text-align: center;
 }
-.slack-imports-empty > span {
+.slack-kept-empty-actions {
+  display: flex;
+  gap: 8px;
+}
+.slack-kept-empty > span {
   display: grid;
   place-items: center;
   width: 44px;
@@ -43,50 +50,52 @@
   background: var(--steel-surface);
   color: var(--steel);
 }
-.slack-import-links,
-.slack-import-files {
+.slack-kept-list {
   margin: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   list-style: none;
 }
-.slack-import-links li,
-.slack-import-files li {
+.slack-kept-list li {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 12px 10px 14px;
 }
-.slack-import-links li + li,
-.slack-import-files li + li {
+.slack-kept-list li + li {
   border-top: 1px solid var(--border);
 }
-.slack-import-what {
+.slack-kept-what {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
 }
-.slack-import-what b {
+.slack-kept-what b {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.slack-import-what b svg,
-.slack-import-arrow {
+.slack-kept-what b svg,
+.slack-kept-arrow {
   flex-shrink: 0;
   color: var(--muted-foreground);
 }
-.slack-import-what span,
-.slack-import-when {
+.slack-kept-what span,
+.slack-kept-when {
   color: var(--muted-foreground);
   font-size: 12.5px;
 }
-.slack-import-when {
+.slack-kept-when {
   white-space: nowrap;
+}
+.slack-kept-what .slack-kept-in {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .slack-folder {
   display: inline-flex;
@@ -116,7 +125,7 @@
 .slack-folder.missing svg {
   color: var(--warning);
 }
-.slack-import-kind {
+.slack-kept-kind {
   display: grid;
   flex-shrink: 0;
   place-items: center;
@@ -126,7 +135,7 @@
   background: var(--muted);
   color: var(--muted-foreground);
 }
-.slack-import-status {
+.slack-kept-status {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -134,16 +143,16 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.slack-import-status.saved {
+.slack-kept-status.saved {
   color: var(--success);
 }
-.slack-import-status.left {
+.slack-kept-status.left {
   color: var(--warning);
 }
-.slack-import-status.waiting {
+.slack-kept-status.waiting {
   color: var(--muted-foreground);
 }
-.slack-import-open {
+.slack-kept-open {
   color: var(--primary);
   font-size: 12.5px;
   font-weight: 500;
@@ -220,6 +229,11 @@
   font-size: 12px;
   font-weight: 500;
 }
+.slack-choices-none {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
 .slack-folders {
   display: flex;
   flex-direction: column;
@@ -266,11 +280,10 @@
   .slack-section-actions {
     position: static;
   }
-  .slack-import-links li,
-  .slack-import-files li {
+  .slack-kept-list li {
     flex-wrap: wrap;
   }
-  .slack-import-arrow {
+  .slack-kept-arrow {
     display: none;
   }
 }

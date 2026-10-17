@@ -91,7 +91,16 @@ pub(super) fn note(
 ) -> Result<bool> {
     let at = now();
     let due = at.max(listed.edited + queue::QUIET_MS);
-    db.note_slack_canvas(dsp, team, &listed.id, channel, listed.edited, at, due)
+    db.note_slack_canvas(
+        dsp,
+        team,
+        &listed.id,
+        channel,
+        &listed.title,
+        listed.edited,
+        at,
+        due,
+    )
 }
 
 fn pass(state: Arc<State>, due: bool) -> Upkeep {

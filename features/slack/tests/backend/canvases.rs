@@ -115,7 +115,7 @@ async fn due_now(state: &Arc<State>, dsp: &str, team: &str, canvas: &str) {
     let (at, of, canvas) = (dsp.to_owned(), team.to_owned(), canvas.to_owned());
     state
         .run(move |db| {
-            db.note_slack_canvas(&at, &of, &canvas, PHOTOS, now(), now(), now())
+            db.note_slack_canvas(&at, &of, &canvas, PHOTOS, "Test", now(), now(), now())
                 .map(drop)
         })
         .await
@@ -213,8 +213,17 @@ async fn a_canvas_is_kept_only_while_something_covers_it_and_left_once_gone_from
     let at = dsp.clone();
     state
         .run(move |db| {
-            db.note_slack_canvas(&at, TEAM, "F0FIXDELETED", PHOTOS, now(), now(), now())
-                .map(drop)
+            db.note_slack_canvas(
+                &at,
+                TEAM,
+                "F0FIXDELETED",
+                PHOTOS,
+                "Test",
+                now(),
+                now(),
+                now(),
+            )
+            .map(drop)
         })
         .await
         .unwrap();
@@ -250,7 +259,7 @@ async fn a_change_slack_tells_of_waits_for_the_changes_to_stop_and_one_mid_sync_
     let checked = state
         .run(move |db| {
             // Synced at 1,000, from its edit at 500.
-            db.note_slack_canvas(&at, TEAM, "F0FIXTEST", PHOTOS, 500, 1_000, 1_000)?;
+            db.note_slack_canvas(&at, TEAM, "F0FIXTEST", PHOTOS, "Test", 500, 1_000, 1_000)?;
             db.claim_slack_canvas(&at, TEAM, "F0FIXTEST", 1_000, 9_000)?;
             let synced = Outcome::Synced {
                 doc: "doc-9".into(),

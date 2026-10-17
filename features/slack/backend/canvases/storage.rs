@@ -80,7 +80,7 @@ pub struct Canvas {
     pub canvas: String,
     /// The channel it was found in.
     pub channel: String,
-    /// Its title, as it was last synced.
+    /// Its title, as Slack last listed it or it was last synced.
     pub title: Option<String>,
     pub status: Status,
     /// Why it's waiting or was left, as an error code.
@@ -153,9 +153,9 @@ pub trait CanvasStore {
     fn save_slack_canvas_pick(&self, dsp: &str, pick: &Pick) -> Result<()>;
     /// Takes the choice away: whether there was one.
     fn remove_slack_canvas_pick(&self, dsp: &str, team: &str, canvas: &str) -> Result<bool>;
-    /// Notes that Slack has the canvas `canvas`, found in `channel`, as last edited at `edited`,
-    /// in milliseconds, at `at`: one new to it, or edited since its document was written, is
-    /// synced at `due`. Whether it's to be synced.
+    /// Notes that Slack has the canvas `canvas`, found in `channel`, titled `title` and last
+    /// edited at `edited`, in milliseconds, at `at`: one new to it, or edited since its document
+    /// was written, is synced at `due`. Whether it's to be synced.
     #[allow(clippy::too_many_arguments)]
     fn note_slack_canvas(
         &self,
@@ -163,6 +163,7 @@ pub trait CanvasStore {
         team: &str,
         canvas: &str,
         channel: &str,
+        title: &str,
         edited: i64,
         at: i64,
         due: i64,
@@ -257,6 +258,7 @@ impl CanvasStore for Store {
         team: &str,
         canvas: &str,
         channel: &str,
+        title: &str,
         edited: i64,
         at: i64,
         due: i64,
@@ -264,11 +266,12 @@ impl CanvasStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             db.exec(
-                "INSERT INTO slack_canvases (team_id,canvas_id,channel_id,status,due_at,\
-                 waiting_since,edited_at,noticed_at) VALUES (?1,?2,?3,'waiting',?4,?5,?6,?5) \
-                 ON CONFLICT(team_id,canvas_id) DO UPDATE SET \
+                "INSERT INTO slack_canvases (team_id,canvas_id,channel_id,title,status,due_at,\
+                 waiting_since,edited_at,noticed_at) \
+                 VALUES (?1,?2,?3,?4,'waiting',?5,?6,?7,?6) \
+                 ON CONFLICT(team_id,canvas_id) DO UPDATE SET title=excluded.title,\
                  edited_at=max(coalesce(edited_at,0),excluded.edited_at)",
-                params![team, canvas, channel, due, at, edited],
+                params![team, canvas, channel, title, due, at, edited],
             )?;
             // Edited since its document was written, it's synced again.
             db.exec(

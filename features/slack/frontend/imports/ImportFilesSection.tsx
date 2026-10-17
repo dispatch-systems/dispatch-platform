@@ -2,10 +2,22 @@ import { useState } from 'react';
 import { AlertCircle, FolderInput, Plus } from 'lucide-react';
 import type { ConnectionSectionContext } from '../../../../core/shell/frontend/runtime/slots.js';
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
-import { useSlackImports } from '../../api/client.js';
-import { ChannelLinks } from './ChannelLinks.js';
-import { LinkChannel } from './LinkChannel.js';
+import { time } from '../../../../core/shell/frontend/lib/format.js';
+import { importLinking, useSlackImports, type SlackImportLink } from '../../api/client.js';
+import { ChannelLinks } from '../kept/ChannelLinks.js';
+import { LinkChannel } from '../kept/LinkChannel.js';
 import { RecentImports } from './RecentImports.js';
+
+/** What a linked channel has saved, in a few words. */
+const saved = (timeZone: string) => (link: SlackImportLink) =>
+  link.saved
+    ? `${link.saved} ${link.saved === 1 ? 'file' : 'files'} · last ${time(link.lastSavedAt, timeZone)}`
+    : 'No files yet';
+const stop = {
+  label: 'Stop importing',
+  done: 'Stopped importing',
+  stays: (folder: string) => `Files already saved stay in ${folder}.`,
+};
 
 // Import Files' own section of a workspace's settings: the channels linked to folders, linking
 // another, and the files saved latest. While files can't be saved, it says why, and new ones
@@ -18,7 +30,7 @@ export function ImportFilesSection({ view, account: team, open }: ConnectionSect
   return (
     <DataState data={imports.data} error={imports.error} retry={imports.refresh}>
       {(data) => (
-        <div className="slack-imports">
+        <div className="slack-kept">
           {data.links.length > 0 && (
             <div className="slack-section-actions">
               <button className="primary" onClick={() => setLinking(true)}>
@@ -28,15 +40,21 @@ export function ImportFilesSection({ view, account: team, open }: ConnectionSect
             </div>
           )}
           {data.unready && (
-            <div className="slack-imports-unready" role="status">
+            <div className="slack-kept-unready" role="status">
               <AlertCircle size={16} aria-hidden="true" />
               {data.unready}. New files wait until it is.
             </div>
           )}
           {data.links.length ? (
-            <ChannelLinks team={team} links={data.links} timeZone={timeZone} />
+            <ChannelLinks
+              team={team}
+              linking={importLinking}
+              links={data.links}
+              kept={saved(timeZone)}
+              stop={stop}
+            />
           ) : (
-            <div className="slack-imports-empty">
+            <div className="slack-kept-empty">
               <span>
                 <FolderInput size={22} aria-hidden="true" />
               </span>
@@ -55,6 +73,7 @@ export function ImportFilesSection({ view, account: team, open }: ConnectionSect
           {linking && (
             <LinkChannel
               team={team}
+              linking={importLinking}
               store={data.store}
               linked={data.links}
               open={open}

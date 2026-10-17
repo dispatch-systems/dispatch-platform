@@ -6,6 +6,7 @@ import {
   settingsPage,
   type FrontendFeature,
 } from '../../../core/shell/frontend/runtime/slots.js';
+import { syncCanvases, syncCanvasesSection } from './canvases/integration.js';
 import { importFiles, importFilesSection } from './imports/integration.js';
 import { CHANNELS, INTEGRATIONS } from './sections.js';
 
@@ -92,9 +93,10 @@ export const feature: FrontendFeature = {
       render: (context) => createElement(IntegrationsSection, context),
     },
     importFilesSection,
+    syncCanvasesSection,
   ],
   // Its own integrations, beside those other features add.
-  connectionIntegrations: [importFiles],
+  connectionIntegrations: [importFiles, syncCanvases],
   // Its switch's icon on the DSPs page, and how its events read in the audit log.
   platformSlots: () => import('./platform-slots.js'),
 };

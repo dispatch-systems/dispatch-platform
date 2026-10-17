@@ -68,6 +68,34 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   noticed latest, with how saving each went. The activity log records linking a channel,
   changing its folder and stopping, as `#<channel> to <folder> in <workspace>`, and where it
   keeps them records each file saved.
+- **Sync Canvases,** Slack's own integration (`slack.sync_canvases`, `backend/canvases/`): the
+  canvases a workspace chooses are kept as documents where the DSP keeps its files (Documents
+  writes each as a Google Doc), each written over in place within minutes of the canvas being
+  edited, never the other way: a change made in the document is replaced by the canvas's next.
+  A channel Dispatch is in links to a folder, chosen or new and named after it, so every canvas
+  in it is kept there, those added later too; or canvases of a channel's are chosen on their
+  own, for a folder of their own. Slack doesn't tell apps which of a channel's folders holds a
+  canvas, so a folder of Slack's is chosen as its canvases. Its card and section show as Import
+  Files' do. Slack tells of each change to a canvas it keeps (`file_change`) and of each file
+  shared in a linked channel (`file_shared`); every ten minutes each linked channel's canvases
+  and each one chosen are listed with when they were last edited, in case it didn't. A canvas
+  is synced at once when it's new, and a change waits until the changes stop for two minutes,
+  or ten at most while they go on, so a document isn't written at each keystroke; one changed
+  while it's being synced is synced again. Each is kept (`slack_canvases`) with the edit its
+  document holds, and is tried, waits and is given up as Import Files' files are, until it's
+  edited again. A canvas is Slack's HTML of it (`files:read`) made a page (`page.rs`): its
+  text, headings, lists, checklists, links and tables, its columns stacked, the members it
+  mentions by name, and its pictures in it, each itself under 2 MB or else Slack's largest
+  preview of it. Its document is added by whoever made the canvas, as Import Files names who
+  posted a file, and changed by whoever Slack says changed it last, or Slack; one deleted from
+  where the DSP keeps its files is written anew in its folder. A canvas deleted in Slack leaves
+  its document; one no longer linked or chosen stops syncing, and its document stays, to be
+  written over should it be again. The section lists the linked channels, as Import Files'
+  do, and every canvas kept, with how syncing it goes and where its document opens. The
+  activity log records linking, moving and unlinking a channel as Import Files' are, and
+  choosing a canvas and stopping as `<canvas> in #<channel> to <folder> in <workspace>`.
+  Import Files and Sync Canvases link channels the same way (`backend/channel_links/`, and
+  `frontend/kept/` for their sections' shared pieces), each in a table of its own.
 - **Names:** a workspace's name in Dispatch is the one it was added with, if it was given one,
   else its name in Slack, which follows Slack's. The pencil by its name at the top of its
   settings changes it, for those who manage the DSP's connections, and blank, has it go by its
@@ -120,7 +148,7 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   reach, not whom it employs (`contacts_only`): it never keeps someone from having left, and
   someone only Slack knows works in the office while their account is active.
 - **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
-  linked and noticed there, and its tokens, frees it for any DSP, and then has
+  and Sync Canvases linked, chose and noticed there, and its tokens, frees it for any DSP, and then has
   Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
   disconnecting, making and cancelling the install link, and, with no member as their actor,
   a workspace connected by the link, the app removed from a workspace in Slack, and Slack
@@ -173,13 +201,19 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   the account; and Import Files': `GET …/workspaces/{team}/imports` and `…/imports/folders`
   (with `folder`), and `POST …/imports/links` (with `channel`, and `folder` or none for a new
   one), `…/imports/links/{channel}/folder` and `…/imports/links/{channel}/remove`, each
-  answering with Import Files as the section shows it. Public:
+  answering with Import Files as the section shows it; and Sync Canvases': the same under
+  `…/canvases`, with `GET …/canvases/channels/{channel}`, the channel's canvases to choose from,
+  and `POST …/canvases/chosen` (with `channel`, `canvases` and `folder` or none) and
+  `…/canvases/chosen/{canvas}/remove`, each answering with Sync Canvases as the section shows
+  it. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
 - **Data:** `slack_workspaces` (each with its name in Dispatch, `label`), `slack_members` (its
   own migration 3), `slack_integrations` (migration 4: those on in each workspace, with who
   switched each on and when), `slack_import_links` and `slack_imports` (migration 5: Import
   Files' linked channels, and each file it noticed with how saving it went),
+  `slack_canvas_links`, `slack_canvas_picks` and `slack_canvases` (migration 6: Sync Canvases'
+  linked channels, the canvases chosen on their own, and each canvas kept with its document),
   `slack_connect_requests` (each with the workspace it named to Slack, to reconnect or update,
   and the name the workspace it adds is to have) and `slack_install_links`, in each DSP's own
   database; `slack_teams`, which DSP each workspace belongs to, in the platform's;
@@ -187,7 +221,8 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
 - **Upkeep:** hourly, each working workspace of each active DSP with Slack on is asked for, as
   the bot: that renews its token as it nears its end, keeps the workspace's name as Slack has
   it, reads its members, and marks it broken if Slack no longer honours its tokens, so its card offers to
-  reconnect it. Import Files saves the files due every minute, and catches up hourly.
+  reconnect it. Import Files saves the files due every minute, and catches up hourly. Sync
+  Canvases syncs the canvases due every minute, and lists its channels' every ten minutes.
 - **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as
   the code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet,
   or the one being reconnected. Its tokens name their workspace; one whose ID holds `GONE` is
@@ -198,7 +233,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   Operations and Managers, and in Drivers Cameron Hayes, Casey Rivera by phone, the guest Drew
   Sullivan and the deactivated Jesse Kline, with Slackbot and a bot everywhere. Its channels hold
   a few files: Morgan's van photo and a video too large to keep in `photos`, Casey's route sheet
-  in `dispatch`, and a canvas, each downloading as bytes made up to its size. It signs with
+  in `dispatch`, each downloading as bytes made up to its size, and Morgan's Write-ups canvas in
+  `photos`, downloading as Slack's HTML of it with a photo in it, which a test edits with
+  `fixture::edit_canvas`. It signs with
   `fixture-signing-secret`, so tests send requests as Slack would.
 
 ## Slack's app
