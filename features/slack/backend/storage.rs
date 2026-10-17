@@ -142,6 +142,13 @@ impl FromRow for InWorkspace {
         Ok(Self(row.get("team_id")?, Member::from_row(row)?))
     }
 }
+/// Whether the DSP still has the workspace `team`: one disconnected while its members were
+/// being read keeps none of them.
+fn kept_workspace(db: &Db, team: &str) -> Result<bool> {
+    Ok(db
+        .one("SELECT 1 FROM slack_workspaces WHERE team_id=?", [team])?
+        .is_some())
+}
 /// Keeps one member, as Slack describes them now: whether they're new or changed.
 fn keep_member(db: &Db, team: &str, member: &Member) -> Result<bool> {
     let kept: Vec<Member> = db.query_as(
@@ -215,11 +222,11 @@ pub trait SlackStore {
     fn remove_slack_workspace(&self, dsp: &str, team: &str) -> Result<Option<Workspace>>;
     /// Every member of the DSP's workspaces, with their workspace.
     fn slack_members(&self, dsp: &str) -> Result<Vec<(String, Member)>>;
-    /// Keeps the workspace's members, all of them as Slack lists them now: whether any was
-    /// new, changed or gone.
+    /// Keeps the workspace's members, all of them as Slack lists them now, while the DSP has
+    /// the workspace: whether any was new, changed or gone.
     fn keep_slack_members(&self, dsp: &str, team: &str, members: &[Member]) -> Result<bool>;
-    /// Keeps one member of the workspace, as Slack describes them now: whether they're new or
-    /// changed.
+    /// Keeps one member of the workspace, as Slack describes them now, while the DSP has the
+    /// workspace: whether they're new or changed.
     fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool>;
     /// The IDs of the integrations on in the workspace `team`, in order.
     fn slack_integrations(&self, dsp: &str, team: &str) -> Result<Vec<String>>;
@@ -442,6 +449,9 @@ impl SlackStore for Store {
     fn keep_slack_members(&self, dsp: &str, team: &str, members: &[Member]) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
+            if !kept_workspace(&db, team)? {
+                return Ok(false);
+            }
             let mut changed = false;
             for member in members {
                 changed |= keep_member(&db, team, member)?;
@@ -462,7 +472,7 @@ impl SlackStore for Store {
     }
     fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool> {
         let db = self.dsp(dsp)?;
-        keep_member(&db, team, member)
+        db.transaction(|| Ok(kept_workspace(&db, team)? && keep_member(&db, team, member)?))
     }
     fn slack_integrations(&self, dsp: &str, team: &str) -> Result<Vec<String>> {
         let rows: Vec<(String,)> = self.dsp(dsp)?.query_as(

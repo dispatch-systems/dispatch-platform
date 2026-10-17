@@ -19,12 +19,17 @@ pub(super) fn read(store: &Store, dsp: &str) -> Result<DriverSources> {
     Ok(DriverSources {
         identities: sources::identities(&people, store, dsp)?,
         saved: saved_links(store, dsp)?,
+        contacts_only: sources::contacts_only(&people),
     })
 }
 /// Writes what a pass found: a person for every new ID. Who already holds what is read
 /// again here, so a decision made since the read stands.
 pub(super) fn write(store: &Store, dsp: &str, found: DriverSources) -> Result<usize> {
-    let DriverSources { identities, saved } = found;
+    let DriverSources {
+        identities,
+        saved,
+        contacts_only,
+    } = found;
     let db = store.dsp(dsp)?;
     db.transaction(|| {
         let rows: Vec<IdRow> = db.query_as("SELECT * FROM person_ids", [])?;
@@ -46,6 +51,7 @@ pub(super) fn write(store: &Store, dsp: &str, found: DriverSources) -> Result<us
             let Some(key) = row.key() else { continue };
             let member = match described.get(&key) {
                 Some(x) => Member::of(x),
+                None if contacts_only.contains(&key.0) => continue,
                 None => Member::gone(key),
             };
             people.entry(row.code.clone()).or_default().push(member);

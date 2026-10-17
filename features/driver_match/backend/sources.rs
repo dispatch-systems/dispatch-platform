@@ -31,6 +31,21 @@ pub(crate) fn people(store: &Store, dsp: &str) -> Result<Vec<&'static People>> {
     people.sort_by_key(|people| people.reading_order());
     Ok(people)
 }
+/// The sources only lists of people the DSP can reach name, as Slack's members. An ID such a
+/// source no longer names went with its list, as a workspace disconnected: it sits idle, shown
+/// nowhere and keeping nobody from another, and comes back with its list.
+pub(crate) fn contacts_only(people: &[&'static People]) -> BTreeSet<DriverSource> {
+    let employs: BTreeSet<DriverSource> = people
+        .iter()
+        .filter(|people| !people.contacts_only)
+        .map(|people| people.source())
+        .collect();
+    people
+        .iter()
+        .map(|people| people.source())
+        .filter(|source| !employs.contains(source))
+        .collect()
+}
 /// The DSP's systems, in their order: the sources of the features it has on that name someone
 /// now, or that someone holds an ID of. One that has named nobody yet, as a workspace whose
 /// admin hasn't let Dispatch read its members, is none of its systems.
@@ -172,11 +187,15 @@ pub(crate) fn identities(
                     entry.written_emails.push(email.trim().to_owned());
                 }
             }
+            // A number that isn't North American is shown, though nobody is matched by it.
             for phone in &named.phones {
-                if let Some(written) = contacts::phone(phone)
-                    && entry.phones.insert(written)
-                {
-                    entry.written_phones.push(phone.trim().to_owned());
+                let written = phone.trim().to_owned();
+                let new = match contacts::phone(phone) {
+                    Some(digits) => entry.phones.insert(digits),
+                    None => !written.is_empty() && !entry.written_phones.contains(&written),
+                };
+                if new {
+                    entry.written_phones.push(written);
                 }
             }
             for role in named.roles {

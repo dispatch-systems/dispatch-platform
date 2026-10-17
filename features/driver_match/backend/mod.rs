@@ -33,6 +33,7 @@ use dispatch_core::{
 };
 use legacy::Saved;
 use sources::Key;
+use std::collections::BTreeSet;
 
 /// Driver codes, the decisions about them and the IDs they lead to: core's own domain, as
 /// every feature showing people reads them.
@@ -56,6 +57,7 @@ pub fn valid_code(code: &str) -> bool {
 pub struct DriverSources {
     identities: Vec<sources::Identity>,
     saved: Saved,
+    contacts_only: BTreeSet<DriverSource>,
 }
 
 /// A row of `person_ids`: an ID, its person and how it came to them. Nothing a source

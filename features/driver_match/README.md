@@ -10,9 +10,12 @@ only what was decided.
   needs no connection: it matches whatever the DSP's features name.
 - **Only what is on takes part.** It reads the people of the features the DSP has on and
   nothing else. A source no feature on names sits idle: its IDs keep their people, shown
-  nowhere, and come back as they were. A source is one of the DSP's systems once it has named
-  someone, so no card says "Not in Slack" while a workspace waits for its admin to let
-  Dispatch read its members.
+  nowhere, and come back as they were. So does an ID a list of people the DSP can reach no
+  longer names, as the members of a disconnected workspace: it keeps nobody from another
+  account, and comes back with its workspace. A source is one of the DSP's systems once it
+  names someone, or someone holds an ID it still could name, so no card says "Not in Slack"
+  while a workspace waits for its admin to let Dispatch read its members, or once the last
+  one is disconnected.
 - **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
 - **Its screen** is the Driver Match tab of a DSP's Settings, shown while the DSP has a feature
   on whose data names people: the questions waiting, the pairs to decide and the names written
@@ -32,12 +35,14 @@ only what was decided.
 - **Matching:** after every collection that finishes, and hourly to catch up anything missed,
   every ID the DSP's data holds gets a code, source by source in their order. A new ID joins
   someone by, in turn: another ID its source says is the same person's, as their account in
-  another workspace, whoever holds it (`account`); a link saved on the meal-break page; an
+  another workspace, when one person holds those and their names agree (`account`); a link
+  saved on the meal-break page; an
   email address or phone number only the two of them have, among every person of either
   source, when their names agree; a name
   nobody else carries; the same name written another way, as without a second surname or by a
   middle name. A nickname joins nobody: it suggests a pair to decide. Email addresses are
-  compared in lower case and phone numbers by their ten digits. A contact two people of one
+  compared in lower case and phone numbers by their ten digits; a number that isn't North
+  American is shown but matches nobody. A contact two people of one
   source share, as a family's phone, joins nobody but suggests a rehire. What counts as one name
   written two ways, and which first names are short for others, is `backend/names.rs`: no other
   owner matches names.
@@ -50,7 +55,9 @@ only what was decided.
   source shows driving, outside the departments a source's settings count as drivers, work in
   the office.
 - **Review:** two people no source knows both of, whose names tie them, or any two sharing a
-  contact only they have, with how many days they worked together. The one holding fewer
+  contact only they have, with how many days they worked together. A list of people the DSP
+  can reach may list one person twice, as an account in each of two workspaces under
+  different addresses, so its knowing both keeps no pair apart. The one holding fewer
   IDs joins the other, whose code both keep.
 - **Photos:** a person's photo is the first a connection holds under one of their IDs. The
   directory names its version for each person and serves it, so every feature showing people
@@ -120,7 +127,7 @@ people: &[&backend::people::PEOPLE],
   spellings are read after every other kind's.
 - **People it can reach, not employs** (`.contacts_only()`): being on its list never keeps
   someone from having left, and someone only such lists know works in the office, as Slack's
-  members.
+  members. One person may hold several of its IDs, and one it no longer names sits idle.
 
 A feature whose people change outside a collection, as Slack's members do, calls
 `people::changed(state, dsp)` once they're kept, and they're told apart at once rather than

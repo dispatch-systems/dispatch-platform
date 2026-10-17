@@ -90,7 +90,7 @@ impl Bot {
     /// The workspace's access token, renewed first when `due` says so of the kept tokens.
     /// Slack refusing to renew it breaks the workspace.
     async fn renewed(&self, due: impl FnOnce(&Tokens) -> bool) -> Result<String> {
-        let lock = renewing(&self.dsp, &self.team);
+        let lock = lock("renewing", &self.dsp, &self.team);
         let _renewing = lock.lock().await;
         let (dsp, team) = (self.dsp.clone(), self.team.clone());
         let kept = self
@@ -128,14 +128,15 @@ impl Bot {
     }
 }
 
-/// The lock on each workspace's renewals.
-fn renewing(dsp: &str, team: &str) -> Arc<tokio::sync::Mutex<()>> {
+/// The lock on one kind of work in each workspace, as renewing its tokens or keeping its
+/// members, so two of it never overlap there.
+pub(super) fn lock(work: &str, dsp: &str, team: &str) -> Arc<tokio::sync::Mutex<()>> {
     static LOCKS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
         LazyLock::new(Default::default);
     LOCKS
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
-        .entry(format!("{dsp}:{team}"))
+        .entry(format!("{work}:{dsp}:{team}"))
         .or_default()
         .clone()
 }

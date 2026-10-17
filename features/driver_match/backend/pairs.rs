@@ -63,7 +63,17 @@ pub(super) fn pairs(
                 .collect();
             review::Side {
                 code,
-                sources: ids.iter().map(|(_, source)| *source).collect(),
+                // A list of people the DSP can reach may list one person twice, as an
+                // account in each of two workspaces, so it never keeps two people apart.
+                sources: ids
+                    .iter()
+                    .filter(|(row, source)| {
+                        found
+                            .get(&(*source, row.external_id.clone()))
+                            .is_none_or(|x| !x.contacts_only)
+                    })
+                    .map(|(_, source)| *source)
+                    .collect(),
                 // Every name an ID's sources write, so a middle name or a different spelling
                 // in one of them still counts.
                 names: described
