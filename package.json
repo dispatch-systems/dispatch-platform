@@ -11,6 +11,7 @@
     "dev": "tsx tooling/dev/dev.ts",
     "build": "tsx tooling/build/build.ts",
     "check": "tsc --noEmit",
+    "lint": "eslint .",
     "check:ci": "tsx tooling/ci/checks.ts",
     "check:rules": "tsx tooling/ci/rules.ts",
     "check:removability": "tsx tooling/ci/removability.ts",
