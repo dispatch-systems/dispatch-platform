@@ -111,28 +111,29 @@ people: &[&backend::people::PEOPLE],
 Each order decides more than where something is listed, so a new kind or source takes its
 place here with its reason.
 
-| Source | Order | Why there |
-| ------ | ----- | --------- |
-| Paycom (`paycom`) | 10 | A payroll's legal name is the name a person is shown by. |
-| Amazon (`amazon`) | 20 | Shown by when no payroll knows them. |
-| Slack (`slack`) | 30 | A list of people the DSP can reach: shown by only when nothing else knows them. |
+| Source            | Order | Why there                                                                       |
+| ----------------- | ----- | ------------------------------------------------------------------------------- |
+| Paycom (`paycom`) | 10    | A payroll's legal name is the name a person is shown by.                        |
+| Amazon (`amazon`) | 20    | Shown by when no payroll knows them.                                            |
+| Slack (`slack`)   | 30    | A list of people the DSP can reach: shown by only when nothing else knows them. |
 
 A person is shown by the first source's name, and listed with their sources in this order.
 
-| Kind | Order | Why there |
-| ---- | ----- | --------- |
-| Timecards (`timecards`) | 10 | Paycom's roster, its name as payroll has it. |
-| Roster (`driver_profiles`) | 15 | The name Amazon has on file: read first among Amazon's. |
-| Routes (`routes`) | 20 | Routes spell names most plainly. |
-| Meal breaks (`meal_breaks`) | 30 | After routes. |
-| DVIC (`dvic`) | 40 | Sometimes writes only a last initial (`.initials()`), so its spellings are read after every other kind's. |
-| Weekly Scorecard (`weekly_scorecard`) | 50 | Often adds a middle name. |
-| Daily Performance (`daily_performance`) | 60 | |
-| Slack (`slack`) | 70 | |
+| Kind                                    | Order | Why there                                                                                                 |
+| --------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------- |
+| Timecards (`timecards`)                 | 10    | Paycom's roster, its name as payroll has it.                                                              |
+| Roster (`driver_profiles`)              | 15    | The name Amazon has on file: read first among Amazon's.                                                   |
+| Routes (`routes`)                       | 20    | Routes spell names most plainly.                                                                          |
+| Meal breaks (`meal_breaks`)             | 30    | After routes.                                                                                             |
+| DVIC (`dvic`)                           | 40    | Sometimes writes only a last initial (`.initials()`), so its spellings are read after every other kind's. |
+| Weekly Scorecard (`weekly_scorecard`)   | 50    | Often adds a middle name.                                                                                 |
+| Daily Performance (`daily_performance`) | 60    |                                                                                                           |
+| Slack (`slack`)                         | 70    |                                                                                                           |
 
 An ID's spellings are read kind by kind in this order, and the first is the one it is shown
 by; its department, position and photo come from the first kind that has them. Each person's
 sheet lists their kinds in this order.
+
 - **Who it names** (`read`): one `Named` for each ID and each way it writes their name, the
   newest first. `people::named` reads them from a query by its columns' names: `id` and `name`,
   and any of `first` and `last` (the days it saw them), `listed` (1 while its source's roster
