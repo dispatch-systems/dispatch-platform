@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Pencil } from 'lucide-react';
-import { Badge } from '../../../core/shell/frontend/ui/index.js';
-import { slackAccountChanged, type SlackWorkspace } from '../api/client.js';
-import { day } from './day.js';
+import { Badge } from '../../../../core/shell/frontend/ui/index.js';
+import { slackAccountChanged, type SlackWorkspace } from '../../api/client.js';
+import { day } from '../day.js';
 import { RenameWorkspace } from './RenameWorkspace.js';
-import { SlackLogo } from './SlackLogo.js';
+import { SlackLogo } from '../SlackLogo.js';
 
 // The workspace at the top of its settings: its name, with a pencil to rename it for those who
 // manage the DSP's connections, where it came from, and whether it works.

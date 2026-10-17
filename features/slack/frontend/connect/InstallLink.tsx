@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { Badge } from '../../../core/shell/frontend/ui/index.js';
+import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { Badge } from '../../../../core/shell/frontend/ui/index.js';
 import {
   cancelSlackLink,
   createSlackLink,
   slackAccountChanged,
   type SlackLink,
-} from '../api/client.js';
-import { day } from './day.js';
+} from '../../api/client.js';
+import { day } from '../day.js';
 import { SlackCard } from './SlackCard.js';
 
 // The DSP's install link, for whoever runs its Slack: made from New, and on a card of its own

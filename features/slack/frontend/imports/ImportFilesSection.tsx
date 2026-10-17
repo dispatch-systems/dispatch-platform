@@ -4,8 +4,8 @@ import type { ConnectionSectionContext } from '../../../../core/shell/frontend/r
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';
 import { importLinking, useSlackImports, type SlackImportLink } from '../../api/client.js';
-import { ChannelLinks } from '../kept/ChannelLinks.js';
-import { LinkChannel } from '../kept/LinkChannel.js';
+import { ChannelLinks } from '../linked/ChannelLinks.js';
+import { LinkChannel } from '../linked/LinkChannel.js';
 import { RecentImports } from './RecentImports.js';
 
 /** What a linked channel has saved, in a few words. */

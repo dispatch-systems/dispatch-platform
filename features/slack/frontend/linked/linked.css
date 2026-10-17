@@ -1,5 +1,5 @@
 /* The sections of a workspace's settings for what Slack's integrations keep where the DSP keeps
-   its files: Import Files' and Sync Canvases'. */
+   its files, Import Files' and Sync Canvases': their linked channels, linking one, and what's kept. */
 .slack-section {
   position: relative;
 }

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ChevronRight, Copy, LoaderCircle } from 'lucide-react';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { Badge, DataState, Modal } from '../../../core/shell/frontend/ui/index.js';
-import { connectSlack, useSlackAccount } from '../api/client.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { Badge, DataState, Modal } from '../../../../core/shell/frontend/ui/index.js';
+import { connectSlack, useSlackAccount } from '../../api/client.js';
 import { useInstallLink } from './InstallLink.js';
-import { SlackLogo } from './SlackLogo.js';
+import { SlackLogo } from '../SlackLogo.js';
 
 // Slack in New on Settings' DSP Connections: adding a workspace, with the name it's to have in
 // Dispatch if one's given, by installing Dispatch there or by copying the install link for

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Hash, LoaderCircle, Lock } from 'lucide-react';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { DataState, ErrorBox, SearchInput } from '../../../core/shell/frontend/ui/index.js';
-import { setSlackChannel, useSlackChannels, type SlackChannel } from '../api/client.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { DataState, ErrorBox, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
+import { setSlackChannel, useSlackChannels, type SlackChannel } from '../../api/client.js';
 
 // Slack's own section of a workspace's settings: the channels Dispatch is in, and those it may
 // join. Joining a public channel, or leaving any, happens in Slack at once. A private one shows

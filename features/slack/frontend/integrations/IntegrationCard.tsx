@@ -3,8 +3,8 @@ import { ArrowRight, ChevronDown } from 'lucide-react';
 import type {
   ListedIntegration,
   SettingsContext,
-} from '../../../core/shell/frontend/runtime/slots.js';
-import { Badge } from '../../../core/shell/frontend/ui/index.js';
+} from '../../../../core/shell/frontend/runtime/slots.js';
+import { Badge } from '../../../../core/shell/frontend/ui/index.js';
 import { IntegrationNotes, IntegrationSteps } from './IntegrationNotes.js';
 
 // One integration through Slack, on its card in a workspace's settings, for members who may not

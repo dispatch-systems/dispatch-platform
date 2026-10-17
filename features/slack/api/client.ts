@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import type { Linking } from '../frontend/kept/linking.js';
+import type { Linking } from '../frontend/linked/linking.js';
 import type { SlackAccount } from './generated/SlackAccount.js';
 import type { SlackCanvases } from './generated/SlackCanvases.js';
 import type { SlackChannel } from './generated/SlackChannel.js';

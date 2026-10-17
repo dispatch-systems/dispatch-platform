@@ -4,9 +4,9 @@ import {
   connectionSections,
   type ConnectionSectionContext,
   type ListedIntegration,
-} from '../../../core/shell/frontend/runtime/slots.js';
-import { DataState } from '../../../core/shell/frontend/ui/index.js';
-import { useSlackAccount } from '../api/client.js';
+} from '../../../../core/shell/frontend/runtime/slots.js';
+import { DataState } from '../../../../core/shell/frontend/ui/index.js';
+import { useSlackAccount } from '../../api/client.js';
 import { IntegrationCard } from './IntegrationCard.js';
 import { IntegrationSwitch } from './IntegrationSwitch.js';
 

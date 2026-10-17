@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
-import { hashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
+import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
+import { hashQuery } from '../../../../core/shell/frontend/runtime/navigation.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 
 // What Slack sent the browser back with, after an install started on Settings' Connections,
 // and finishing it there. Why one didn't finish shows at the top of the page: a workspace being

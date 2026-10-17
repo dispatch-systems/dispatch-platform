@@ -5,6 +5,8 @@ each workspace belongs to that DSP alone: everything Slack sends names its works
 alone decides the DSP it reaches. The app does nothing in Slack yet but show, on its Home tab,
 which DSP the workspace belongs to; features add what it does, on this foundation.
 
+## Switch and permissions
+
 - **Switch:** `slack`, off for every DSP until the platform owner switches it on. Switched off,
   or for a DSP that isn't active, the app stays in its workspaces and does nothing: Dispatch
   ignores what Slack sends for it, but for the app being removed or losing its tokens, and the
@@ -16,6 +18,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   does in each workspace, apart from its connection: its settings. Those who hold it alone see
   the workspaces' cards under DSP Connections too, with Settings and nothing else. Like every
   permission, each starts off for every role; the DSP's owner turns it on.
+
+## Cards and a workspace's settings
+
 - **Cards:** under DSP Connections on Settings' Connections, each workspace has a card of its
   own, under its name: whether it works, its name in Slack, who connected it and when, and what
   can be done to it. The install link has one while it works, and an install Slack just sent
@@ -46,6 +51,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   a public channel, and Leave, leave any channel; a private one it left goes from the list until
   someone invites it back. Up to 2,000 channels are read, 200 at a time, each time the
   section opens. The activity log records each, as `#<channel> in <workspace>`.
+
+## Its own integrations
+
 - **Import Files,** Slack's own integration (`slack.import_files`, `backend/imports/`): the files
   and photos posted in the channels a workspace links to folders are saved there, where the DSP
   keeps its files (core's `files` service, which Documents offers, in its Google Drive), never
@@ -95,7 +103,10 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   activity log records linking, moving and unlinking a channel as Import Files' are, and
   choosing a canvas and stopping as `<canvas> in #<channel> to <folder> in <workspace>`.
   Import Files and Sync Canvases link channels the same way (`backend/channel_links/`, and
-  `frontend/kept/` for their sections' shared pieces), each in a table of its own.
+  `frontend/linked/` for their sections' shared pieces), each in a table of its own.
+
+## Connecting workspaces
+
 - **Names:** a workspace's name in Dispatch is the one it was added with, if it was given one,
   else its name in Slack, which follows Slack's. The pencil by its name at the top of its
   settings changes it, for those who manage the DSP's connections, and blank, has it go by its
@@ -131,6 +142,15 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   install link. A link that no longer works, a
   workspace another DSP has, or an install cancelled at Slack ends on a page of its own, which
   says so in a line.
+- **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
+  and Sync Canvases linked, chose and noticed there, and its tokens, frees it for any DSP, and then has
+  Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
+  disconnecting, making and cancelling the install link, and, with no member as their actor,
+  a workspace connected by the link, the app removed from a workspace in Slack, and Slack
+  refusing a workspace's tokens.
+
+## Members
+
 - **Members:** for Driver Match, each workspace's members are read whole once it's connected,
   or its admin approves reading them (`users:read`, `users:read.email`), and hourly; and one at
   a time as Slack tells of someone joining (`team_join`) or changing their profile
@@ -148,12 +168,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   are connected, reconnected or removed. Slack lists whom the DSP can
   reach, not whom it employs (`contacts_only`): it never keeps someone from having left, and
   someone only Slack knows works in the office while their account is active.
-- **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
-  and Sync Canvases linked, chose and noticed there, and its tokens, frees it for any DSP, and then has
-  Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
-  disconnecting, making and cancelling the install link, and, with no member as their actor,
-  a workspace connected by the link, the app removed from a workspace in Slack, and Slack
-  refusing a workspace's tokens.
+
+## Talking to Slack
+
 - **What Slack sends:** events to `POST /slack/events`, and what people do with the app's
   buttons and forms to `POST /slack/interactions`, both on the admin's address. Each request
   must carry Slack's signature of its time and body, made with the app's signing secret, and be
@@ -191,6 +208,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   `channels:read` and `groups:read`, to list them, `channels:join`, to join public ones, and
   `channels:manage` and `groups:write`, to leave them; and for Driver Match `users:read` and
   `users:read.email`, to read its members with their email addresses.
+
+## API, data and upkeep
+
 - **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
   install link; `POST /api/dsp/slack/connect` (with `team`, to reconnect or update one),
   `…/connect/finish`, `…/workspaces/{team}/rename`, `…/workspaces/{team}/disconnect`, `…/link`

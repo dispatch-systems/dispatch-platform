@@ -1,7 +1,7 @@
 import { Settings2 } from 'lucide-react';
-import type { SlackWorkspace } from '../api/client.js';
-import { Badge } from '../../../core/shell/frontend/ui/index.js';
-import { day } from './day.js';
+import type { SlackWorkspace } from '../../api/client.js';
+import { Badge } from '../../../../core/shell/frontend/ui/index.js';
+import { day } from '../day.js';
 import { SlackCard } from './SlackCard.js';
 
 // One of the DSP's workspaces, on its own card, with what the member may do to it: its settings,

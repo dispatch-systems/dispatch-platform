@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react';
-import type { IntegrationNote } from '../../../core/shell/frontend/runtime/slots.js';
+import type { IntegrationNote } from '../../../../core/shell/frontend/runtime/slots.js';
 
 // What an integration says of itself: how it's used, step by step, and its notes, each with its
 // mark, a tick when it has none.
