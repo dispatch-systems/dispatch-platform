@@ -18,8 +18,7 @@ pub const MEMBERS: SourceData = SourceData {
 };
 
 /// Everyone in the DSP's workspaces, listed while their account is active, with the email
-/// address and phone number on their profile, by their name and by the one they go by in
-/// Slack.
+/// address and phone number on their profile, by their name.
 pub const PEOPLE: People = People::new(
     PeopleData {
         id: "slack",
@@ -33,13 +32,26 @@ pub const PEOPLE: People = People::new(
 )
 .contacts_only();
 
-/// Every member, once for each name they go by. A member of several workspaces is the same
-/// person in each by their email address, so Driver Match keeps all their IDs with one person
-/// whichever workspace it saw first.
+/// Every member of the DSP's workspaces, by their name. A member of several workspaces is the
+/// same person in each by their email address, so Driver Match keeps all their IDs with one
+/// person whichever workspace it saw first. A workspace whose access broke lists nobody until
+/// it's reconnected, as who is there now is unknown.
 fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
-    let members = store.slack_members(dsp)?;
+    let broken: HashMap<String, bool> = store
+        .slack_workspaces(dsp)?
+        .into_iter()
+        .map(|workspace| (workspace.team, workspace.broken))
+        .collect();
+    let members: Vec<(String, Member, bool)> = store
+        .slack_members(dsp)?
+        .into_iter()
+        .filter_map(|(team, member)| {
+            let broken = *broken.get(&team)?;
+            Some((team, member, broken))
+        })
+        .collect();
     let mut by_email: HashMap<String, Vec<String>> = HashMap::new();
-    for (team, member) in &members {
+    for (team, member, _) in &members {
         if let Some(email) = &member.email {
             by_email
                 .entry(email.to_lowercase())
@@ -49,7 +61,7 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
     }
     Ok(members
         .into_iter()
-        .flat_map(|(team, member)| {
+        .map(|(team, member, broken)| {
             let id = id(&team, &member);
             let same_as = member
                 .email
@@ -60,28 +72,20 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
                 .filter(|other| **other != id)
                 .cloned()
                 .collect();
-            named(id, member, same_as)
+            // The name someone goes by in Slack, as "Cam" or "Jordan K.", could be another's
+            // full name somewhere, so only the name on their profile is read.
+            Named {
+                name: member.name,
+                listed: member.active && !broken,
+                emails: member.email.into_iter().collect(),
+                phones: member.phone.into_iter().collect(),
+                same_as,
+                ..Named::new(&id)
+            }
         })
         .collect())
 }
 /// The ID the member `member` of the workspace `team` is known by.
 fn id(team: &str, member: &Member) -> String {
     format!("{team}:{}", member.user)
-}
-/// One member as Driver Match reads them: by their name with all else, then by the one they
-/// go by in Slack.
-fn named(id: String, member: Member, same_as: Vec<String>) -> impl Iterator<Item = Named> {
-    let also = member.display_name.map(|name| Named {
-        name,
-        ..Named::new(&id)
-    });
-    let first = Named {
-        name: member.name,
-        listed: member.active,
-        emails: member.email.into_iter().collect(),
-        phones: member.phone.into_iter().collect(),
-        same_as,
-        ..Named::new(&id)
-    };
-    std::iter::once(first).chain(also)
 }

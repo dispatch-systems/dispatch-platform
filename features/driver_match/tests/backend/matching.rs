@@ -44,6 +44,11 @@ fn reached(mut x: Identity, email: &str, phone: &str) -> Identity {
         .extend((!phone.is_empty()).then(|| phone.to_owned()));
     x
 }
+/// `x`, which its source says is the same person as `others`.
+fn same_as(mut x: Identity, others: &[&str]) -> Identity {
+    x.same_as = others.iter().map(|other| (*other).to_owned()).collect();
+    x
+}
 fn member(source: DriverSource, id: &str, name: &str) -> Member {
     Member {
         names: vec![name.into()],
@@ -248,4 +253,33 @@ fn a_contact_two_ids_of_one_source_share_says_nothing() {
     assert!(together(&result, "T1", "U1"));
     assert_eq!(result["U1"].1, DriverLink::Name);
     assert!(!together(&result, "T2", "U1"));
+}
+#[test]
+fn another_account_joins_only_its_one_holder_whose_names_agree() {
+    let mut people = BTreeMap::new();
+    people.insert(
+        "K7M2QX".to_owned(),
+        vec![
+            member(PAYCOM_SOURCE, "A001", "CARTER, DEVON"),
+            member(SLACK_SOURCE, "T1:U1", "Devon Carter"),
+        ],
+    );
+    // Their account in another workspace, split from them before.
+    people.insert(
+        "W5HC2K".to_owned(),
+        vec![member(SLACK_SOURCE, "T2:U2", "Devon Carter")],
+    );
+    // An address a front desk shares across workspaces.
+    people.insert(
+        "R39CFT".to_owned(),
+        vec![member(SLACK_SOURCE, "T1:U3", "Front Desk")],
+    );
+    let incoming = [
+        same_as(slack("T3:U1", "Devon Carter"), &["T1:U1", "T2:U2"]),
+        same_as(slack("T3:U3", "Priya Natarajan"), &["T1:U3"]),
+    ];
+    let decided = plan(people, &incoming, &Saved::default());
+    // A person decides both.
+    let links: Vec<DriverLink> = decided.iter().map(|(_, _, link)| *link).collect();
+    assert_eq!(links, [DriverLink::New, DriverLink::New]);
 }

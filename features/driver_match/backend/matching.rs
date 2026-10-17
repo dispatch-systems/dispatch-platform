@@ -141,12 +141,23 @@ impl Plan<'_> {
     fn holds(&self, person: &str, source: DriverSource) -> bool {
         self.people[person].iter().any(|m| m.source == source)
     }
-    /// The person holding another of `x`'s source's IDs for the same person.
+    /// The one person holding `x`'s source's other IDs for the same person, when their names
+    /// agree: with those IDs split among people, or names a shared address can't vouch for,
+    /// a person decides.
     fn same(&self, x: &Identity) -> Option<String> {
-        x.same_as
+        let holders: BTreeSet<&String> = x
+            .same_as
             .iter()
-            .find_map(|id| self.owner.get(&(x.source, id.clone())))
-            .cloned()
+            .filter_map(|id| self.owner.get(&(x.source, id.clone())))
+            .collect();
+        let [person] = holders.into_iter().collect::<Vec<_>>()[..] else {
+            return None;
+        };
+        let names: Vec<String> = self.people[person]
+            .iter()
+            .flat_map(|m| m.names.iter().cloned())
+            .collect();
+        agree(&names, &x.names).then(|| person.clone())
     }
     /// The one person a saved link joins this ID to.
     fn saved(&self, x: &Identity) -> Option<String> {

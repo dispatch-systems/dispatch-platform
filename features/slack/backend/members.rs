@@ -4,7 +4,7 @@
 //! hourly; one at a time as Slack tells of someone joining or changing their profile. Bots and
 //! Slackbot aren't members here; guests are.
 use super::{
-    bot::Bot,
+    bot::{self, Bot},
     storage::{Member, SlackStore},
 };
 use dispatch_core::{Error, Result, State, foundation::observability, manifest::people};
@@ -30,8 +30,10 @@ pub(super) fn member(user: &Value) -> Option<Member> {
             .map(str::to_owned)
     };
     let profile = &user["profile"];
+    // Their username only when their profile gives no name at all.
     let name = text(&profile["real_name"])
         .or_else(|| text(&user["real_name"]))
+        .or_else(|| text(&profile["display_name"]))
         .or_else(|| text(&user["name"]))?;
     Some(Member {
         user: id.to_owned(),
@@ -59,8 +61,11 @@ async fn readable(bot: &Bot) -> Result<bool> {
 }
 
 /// Reads the workspace's members whole and keeps them; when any is new, changed or gone,
-/// Driver Match tells them apart at once.
+/// Driver Match tells them apart at once. A member Slack tells of meanwhile is kept after it,
+/// so the list read before doesn't undo them.
 pub async fn read(bot: &Bot) -> Result<()> {
+    let lock = bot::lock("members", &bot.dsp, &bot.team);
+    let _keeping = lock.lock().await;
     if !readable(bot).await? {
         return Ok(());
     }
@@ -113,6 +118,8 @@ pub async fn told(bot: &Bot, event: &Value) -> Result<()> {
     let Some(member) = member(&event["user"]) else {
         return Ok(());
     };
+    let lock = bot::lock("members", &bot.dsp, &bot.team);
+    let _keeping = lock.lock().await;
     if !readable(bot).await? {
         return Ok(());
     }

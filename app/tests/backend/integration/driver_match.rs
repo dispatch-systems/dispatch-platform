@@ -483,6 +483,16 @@ fn slack(db: &Store, team: &str, id: &str, members: &[(&str, &str, Option<&str>,
     }
 }
 
+/// Disconnects the DSP's Slack workspace `team`, forgetting its members as disconnecting does.
+#[cfg(feature = "slack")]
+fn disconnect(db: &Store, id: &str, team: &str) {
+    let dsp = db.dsp(id).unwrap();
+    for table in ["slack_members", "slack_workspaces"] {
+        dsp.exec(&format!("DELETE FROM {table} WHERE team_id=?"), [team])
+            .unwrap();
+    }
+}
+
 #[cfg(feature = "slack")]
 #[test]
 fn slack_members_join_by_email_and_whom_only_slack_knows_works_in_the_office() {
@@ -592,7 +602,10 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
             ["T0OPS:U0LUIS", "T0YARD:U0LH"].map(|member| code(result, members, member)),
         ]
     };
-    let together = [[jordan.clone(), jordan.clone()], [luis.clone(), luis]];
+    let together = [
+        [jordan.clone(), jordan.clone()],
+        [luis.clone(), luis.clone()],
+    ];
     assert_eq!(accounts(&result), together);
     let links: Vec<DriverLink> = person(&result, &jordan)
         .ids
@@ -602,15 +615,122 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
         .collect();
     assert_eq!(links, [DriverLink::Email, DriverLink::Account]);
 
-    // Removing the workspace connected first and connecting it again changes nobody.
-    let dsp = db.dsp(&id).unwrap();
-    for table in ["slack_members", "slack_workspaces"] {
-        dsp.exec(&format!("DELETE FROM {table} WHERE team_id='T0OPS'"), [])
-            .unwrap();
-    }
+    // A workspace disconnected leaves its accounts idle, and connected again brings them back
+    // to the same people.
+    disconnect(&db, &id, "T0OPS");
     db.match_drivers(&id).unwrap();
-    assert_eq!(accounts(&db.driver_match(&id).unwrap()), together);
+    let result = db.driver_match(&id).unwrap();
+    let yard = ["T0YARD:U0JE", "T0YARD:U0LH"].map(|member| code(&result, members, member));
+    assert_eq!(yard, [jordan.clone(), luis.clone()]);
+    assert!(
+        person(&result, &jordan)
+            .ids
+            .iter()
+            .all(|i| i.id != "T0OPS:U0JORDAN")
+    );
     slack(&db, "T0OPS", &id, operations);
     db.match_drivers(&id).unwrap();
     assert_eq!(accounts(&db.driver_match(&id).unwrap()), together);
+
+    // With every workspace gone, Slack is none of the DSP's systems; a workspace connected in
+    // their place, with new accounts for the same people, joins them, by an email address or
+    // by a name nobody else carries.
+    disconnect(&db, &id, "T0OPS");
+    disconnect(&db, &id, "T0YARD");
+    db.match_drivers(&id).unwrap();
+    assert!(!db.driver_match(&id).unwrap().sources.contains(&members));
+    slack(
+        &db,
+        "T0NEW",
+        &id,
+        &[
+            (
+                "U0J",
+                "Jordan Ellis",
+                Some("jordan.ellis@example.com"),
+                true,
+            ),
+            ("U0L", "Luis Hernandez", Some("luis.h@example.com"), true),
+        ],
+    );
+    db.match_drivers(&id).unwrap();
+    let result = db.driver_match(&id).unwrap();
+    let new = ["T0NEW:U0J", "T0NEW:U0L"].map(|member| code(&result, members, member));
+    assert_eq!(new, [jordan, luis]);
+}
+
+/// Someone with an account in each of two workspaces, under different email addresses, gets a
+/// person for the second, and Driver Match asks whether the two are one: Slack knowing both
+/// says nothing, as one person may have several accounts.
+#[cfg(feature = "slack")]
+#[test]
+fn an_account_under_another_address_is_asked_about() {
+    dispatch_backend::install();
+    let (_root, db, id, _) = ready(None);
+    roster(&db, &id, &[("TJORDAN", "Jordan Ellis", "ACTIVE", "Driver")]);
+    slack(
+        &db,
+        "T0OPS",
+        &id,
+        &[(
+            "U0JORDAN",
+            "Jordan Ellis",
+            Some("jordan.ellis@example.com"),
+            true,
+        )],
+    );
+    slack(
+        &db,
+        "T0YARD",
+        &id,
+        &[("U0JE", "Jordan Ellis", Some("jordan.e@example.com"), true)],
+    );
+    db.match_drivers(&id).unwrap();
+    let result = db.driver_match(&id).unwrap();
+    let jordan = code(&result, AMAZON, "TJORDAN");
+    let other = code(
+        &result,
+        DriverSource::parse("slack").unwrap(),
+        "T0YARD:U0JE",
+    );
+    assert_ne!(other, jordan);
+    assert!(
+        result
+            .review
+            .iter()
+            .any(|pair| (&pair.person.code, &pair.candidate.code) == (&other, &jordan))
+    );
+}
+
+/// A phone number that isn't North American matches nobody, and is still shown.
+#[cfg(feature = "slack")]
+#[test]
+fn a_phone_number_nobody_is_matched_by_is_still_shown() {
+    dispatch_backend::install();
+    let (_root, db, id, _) = ready(None);
+    slack(
+        &db,
+        "T0OPS",
+        &id,
+        &[(
+            "U0MORGAN",
+            "Morgan Lane",
+            Some("morgan.lane@example.com"),
+            true,
+        )],
+    );
+    db.dsp(&id)
+        .unwrap()
+        .exec("UPDATE slack_members SET phone='+44 20 7946 0958'", [])
+        .unwrap();
+    db.match_drivers(&id).unwrap();
+    let result = db.driver_match(&id).unwrap();
+    let members = DriverSource::parse("slack").unwrap();
+    let morgan = code(&result, members, "T0OPS:U0MORGAN");
+    let shown: Vec<&str> = person(&result, &morgan)
+        .ids
+        .iter()
+        .flat_map(|i| i.phones.iter().map(String::as_str))
+        .collect();
+    assert_eq!(shown, ["+44 20 7946 0958"]);
 }

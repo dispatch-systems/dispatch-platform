@@ -45,11 +45,19 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         .map(|newest| (newest - chrono::Duration::days(FORMER_AFTER_DAYS)).to_string())
         .unwrap_or_default();
     let db = store.dsp(dsp)?;
-    let every: Vec<IdRow> = db.query_as::<IdRow>(
-        "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
-         WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
-        [],
-    )?;
+    let contacts_only = sources::contacts_only(&people);
+    let every: Vec<IdRow> = db
+        .query_as::<IdRow>(
+            "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
+             WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
+            [],
+        )?
+        .into_iter()
+        .filter(|row| {
+            row.key()
+                .is_none_or(|key| !contacts_only.contains(&key.0) || found.contains_key(&key))
+        })
+        .collect();
     let active = sources::active(&people, &found, every.iter().filter_map(IdRow::source));
     // IDs of a source no feature on names sit idle: kept, and shown nowhere.
     let rows: Vec<IdRow> = every
