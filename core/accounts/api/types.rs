@@ -80,7 +80,6 @@ pub struct DspSummary {
     pub profile: DspProfile,
     pub owner_email: Option<String>,
     pub owner_status: OwnerStatus,
-    pub paycom: ConnectionStatus,
     /// Every connection's state, by provider.
     pub connections: BTreeMap<String, ConnectionStatus>,
     pub last_collection: Option<String>,

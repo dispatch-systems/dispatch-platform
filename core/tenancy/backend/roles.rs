@@ -181,14 +181,12 @@ impl FromRow for CountedRole {
 }
 // The legacy role column stays populated so an older Rust runtime keeps
 // working after rollback, never with more access than the role grants. That runtime's
-// managers were the members who could run collections, so the mapping stays frozen on it.
+// managers were the members holding the one permission that declares it (`legacy_role`).
 fn legacy(system: bool, permissions: &[String]) -> &'static str {
     if system {
         "owner"
-    } else if permissions.iter().any(|p| p == "collections.run") {
-        "manager"
     } else {
-        "member"
+        registry().legacy_role(permissions).unwrap_or("member")
     }
 }
 

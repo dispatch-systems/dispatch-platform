@@ -8,7 +8,7 @@ import type { DspProfile } from "./DspProfile";
 /**
  * A DSP as the session lists it: who owns it, the caller's role, and its collection state.
  */
-export type DspSummary = { profile: DspProfile, ownerEmail: string | null, ownerStatus: OwnerStatus, paycom: ConnectionStatus,
+export type DspSummary = { profile: DspProfile, ownerEmail: string | null, ownerStatus: OwnerStatus,
 /**
  * Every connection's state, by provider.
  */

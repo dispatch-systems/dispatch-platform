@@ -298,12 +298,8 @@ pub async fn run(
         "invalid_verification_reference",
         400,
     )?;
-    let provider = Provider::parse(&request.provider)?;
-    ensure(
-        matches!(provider.id(), "paycom" | "cortex"),
-        "invalid_provider",
-        400,
-    )?;
+    let provider =
+        Provider::parse(&request.provider).map_err(|_| Error::new("invalid_provider", 400))?;
     ensure(request.request.is_object(), "invalid_input", 400)?;
     let state = State::for_collection_verification(config, authority)?;
     let retained = state
@@ -422,12 +418,7 @@ pub async fn provider_egress(config: Config, provider: &str, run: &Path) -> Resu
         "support_verification_dev_only",
         403,
     )?;
-    let provider = Provider::parse(provider)?;
-    ensure(
-        matches!(provider.id(), "paycom" | "cortex"),
-        "invalid_provider",
-        400,
-    )?;
+    let provider = Provider::parse(provider).map_err(|_| Error::new("invalid_provider", 400))?;
     let _egress = crate::collection::browser::egress::Egress::start_with_policy(
         run,
         provider.collector().network(),

@@ -69,7 +69,11 @@ pub const FEATURE: Feature = Feature {
     permissions: &[
         perm("timecard.view", "View Timecard", 20).demo(&[Manager, Member]),
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),
-        perm("collections.run", "Run Collections", 22).demo(&[Manager]),
+        perm("collections.run", "Run Collections", 22)
+            .demo(&[Manager])
+            // The members who could run collections were the managers before roles held
+            // permissions, which the memberships' legacy column still records.
+            .legacy_role("manager"),
     ],
     routes: api::routes::routes,
     // Collection progress refreshes both the timecard pages and the collections page.
