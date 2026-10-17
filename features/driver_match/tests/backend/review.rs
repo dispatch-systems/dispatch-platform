@@ -1,12 +1,12 @@
 use super::*;
-use dispatch_core::manifest::people::SourceData;
+use dispatch_core::manifest::people::SourceInfo;
 
-static PAYCOM_IDS: SourceData = SourceData {
+static PAYCOM_IDS: SourceInfo = SourceInfo {
     id: "paycom",
     label: "Paycom",
     order: 10,
 };
-static AMAZON_IDS: SourceData = SourceData {
+static AMAZON_IDS: SourceInfo = SourceInfo {
     id: "amazon",
     label: "Amazon",
     order: 20,
@@ -16,10 +16,10 @@ fn kinds(evidence: &[Evidence]) -> Vec<EvidenceKind> {
     evidence.iter().map(|e| e.kind).collect()
 }
 /// Someone one source knows by a name.
-fn side(source: &'static SourceData, code: &'static str, name: &'static str) -> Side<'static> {
+fn side(source: &'static SourceInfo, code: &'static str, name: &'static str) -> Side<'static> {
     Side {
         code,
-        sources: BTreeSet::from([DriverSource::new(source)]),
+        sources: BTreeSet::from([Source::new(source)]),
         names: vec![name],
         contacts: BTreeSet::new(),
         asked: true,

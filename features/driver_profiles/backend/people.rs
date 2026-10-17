@@ -2,20 +2,19 @@
 //! by the name Amazon has on file for them. The roster says who works for the DSP now; it
 //! says nothing of the days anyone worked.
 use crate::DriverProfilesStore;
-use dispatch_core::manifest::people::{self, People, PeopleData};
+use dispatch_core::manifest::people::{self, KindInfo, People};
 
 /// Everyone the roster has listed, listed while it lists them as active, with the email
 /// address and personal phone number Amazon has: a work phone may be the DSP's, passed from
 /// driver to driver. Whoever it still lists has their photo, by its digest.
 pub const PEOPLE: People = People::new(
-    PeopleData {
+    KindInfo {
         id: "driver_profiles",
         order: 15,
         label: "Roster",
-        unit: "listing",
         icon: "Contact",
     },
-    &dispatch_cortex::PEOPLE,
+    dispatch_cortex::SOURCE,
     |store, dsp| {
         people::named(
             &*store.driver_profiles_db(dsp)?,

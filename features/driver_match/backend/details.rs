@@ -13,7 +13,7 @@ use dispatch_core::{
     db::Store,
     ensure,
     foundation::names,
-    manifest::people::{DriverData, DriverSource},
+    manifest::people::{Kind, Source},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,7 +34,7 @@ pub(super) fn details(store: &Store, dsp: &str, code: &str) -> Result<PersonDeta
         .iter()
         .map(|(row, source)| (*row, (*source, row.external_id.clone())))
         .collect();
-    let appears = DriverData::all()
+    let appears = Kind::all()
         .filter_map(|data| {
             let count: usize = keys
                 .iter()
@@ -47,7 +47,7 @@ pub(super) fn details(store: &Store, dsp: &str, code: &str) -> Result<PersonDeta
     let dates = last_days(store, dsp)?;
     // Each source that knows them and was collected says, for each day it covers, whether
     // they worked.
-    let known: BTreeSet<DriverSource> = keys.iter().map(|(_, key)| key.0).collect();
+    let known: BTreeSet<Source> = keys.iter().map(|(_, key)| key.0).collect();
     let days = known
         .into_iter()
         .filter_map(|source| {

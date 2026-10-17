@@ -1,11 +1,11 @@
 export type { Appearance } from './generated/Appearance.js';
-export type { DriverData } from '../../../core/manifest/api/generated/DriverData.js';
 export type { DriverMatch } from './generated/DriverMatch.js';
-export type { DriverSource } from '../../../core/manifest/api/generated/DriverSource.js';
 export type { Evidence } from './generated/Evidence.js';
 export type { EvidenceKind } from './generated/EvidenceKind.js';
 export type { IdLink } from './generated/IdLink.js';
 export type { MatchCounts } from './generated/MatchCounts.js';
+export type { PeopleKind } from '../../../core/manifest/api/generated/PeopleKind.js';
+export type { PeopleSource } from '../../../core/manifest/api/generated/PeopleSource.js';
 export type { Person } from './generated/Person.js';
 export type { PersonDetails } from './generated/PersonDetails.js';
 export type { PersonEvent } from './generated/PersonEvent.js';

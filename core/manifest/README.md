@@ -66,7 +66,7 @@ piece outside the features that lets outside agents use Dispatch, `Agents`.
 ### People
 
 A feature whose data names people declares a `People` for each kind of data: what it is
-(`PeopleData`), whose IDs it names them by (`SourceData`) and who it names, most often read with
+(`KindInfo`), whose IDs it names them by (`SourceInfo`) and who it names, most often read with
 one query (`people::named`), with what else it knows in `.records`, `.workdays`,
 `.driver_departments`, `.photos`, `.initials()` and `.contacts_only()`. The one feature that
 tells people apart reads them all, and answers the directory: `people::who` says, for a feature

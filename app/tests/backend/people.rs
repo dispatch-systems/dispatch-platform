@@ -14,7 +14,7 @@ fn every_connection_reads_its_people_from_a_new_dsp() {
         let kind = people.kind.id;
         let named = (people.read)(&db, &id).unwrap_or_else(|e| panic!("{kind}: {e:?}"));
         assert!(named.is_empty(), "{kind} names someone a new DSP lacks");
-        if let Some(records) = people.records {
+        if let Some((_, records)) = people.records {
             assert!(
                 records(&db, &id).unwrap().is_empty(),
                 "{kind} counts records"

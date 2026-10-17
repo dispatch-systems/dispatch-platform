@@ -5,29 +5,28 @@ use super::storage::{Member, SlackStore};
 use dispatch_core::{
     Result,
     db::Store,
-    manifest::people::{Named, People, PeopleData, SourceData},
+    manifest::people::{KindInfo, Named, People, Source, SourceInfo},
 };
 use std::collections::HashMap;
 
 /// Slack's members, as IDs people are known by: `<workspace>:<member>`, which Slack never
 /// changes.
-pub const MEMBERS: SourceData = SourceData {
+pub const SOURCE: Source = Source::new(&SourceInfo {
     id: "slack",
     label: "Slack",
     order: 30,
-};
+});
 
 /// Everyone in the DSP's workspaces, listed while their account is active, with the email
 /// address and phone number on their profile, by their name.
 pub const PEOPLE: People = People::new(
-    PeopleData {
+    KindInfo {
         id: "slack",
         order: 70,
         label: "Slack",
-        unit: "member",
         icon: "MessageSquare",
     },
-    &MEMBERS,
+    SOURCE,
     members,
 )
 .contacts_only();

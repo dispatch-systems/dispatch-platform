@@ -1,7 +1,7 @@
 //! What the registry refuses of what features declare about one another.
 use dispatch_core::manifest::{
     Feature, Registry, ScheduleAlias, feature, optional,
-    people::{People, PeopleData},
+    people::{KindInfo, People},
     perm, sub,
 };
 
@@ -85,19 +85,18 @@ fn a_schedule_alias_of_a_collection_its_feature_does_not_keep_is_refused() {
 
 /// Routes' drivers, named a second time.
 const AGAIN: People = People::new(
-    PeopleData {
+    KindInfo {
         id: "routes",
         order: 99,
         label: "Routes",
-        unit: "day",
         icon: "Route",
     },
-    &dispatch_cortex::PEOPLE,
+    dispatch_cortex::SOURCE,
     |_, _| Ok(vec![]),
 );
 
 #[test]
-#[should_panic(expected = "routes names people twice, or in another's place")]
+#[should_panic(expected = "routes names people twice")]
 fn a_kind_of_data_that_names_people_twice_is_refused() {
     static TWICE: Feature = Feature {
         switch: optional("twice", "Twice", &[]),

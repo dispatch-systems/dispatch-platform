@@ -4,7 +4,7 @@ use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
     db::{Store, s},
-    manifest::people::DriverSource,
+    manifest::people::Source,
 };
 use dispatch_cortex::{self as cortex, discovery::Scope, meals};
 use dispatch_driver_match::DriverMatchStore;
@@ -67,7 +67,7 @@ fn context(db: &Store, id: &str) -> Context {
     };
     db.context(&auth, id, "driver_match.manage").unwrap()
 }
-fn person(db: &Store, id: &str, source: DriverSource, external: &str) -> String {
+fn person(db: &Store, id: &str, source: Source, external: &str) -> String {
     db.driver_match(id)
         .unwrap()
         .people
@@ -76,11 +76,11 @@ fn person(db: &Store, id: &str, source: DriverSource, external: &str) -> String 
         .unwrap()
         .code
 }
-fn amazon() -> DriverSource {
-    DriverSource::new(&cortex::PEOPLE)
+fn amazon() -> Source {
+    cortex::SOURCE
 }
-fn paycom() -> DriverSource {
-    DriverSource::new(&dispatch_paycom::PEOPLE)
+fn paycom() -> Source {
+    dispatch_paycom::SOURCE
 }
 fn rows(data: &Value) -> &Vec<Value> {
     data["rows"].as_array().unwrap()

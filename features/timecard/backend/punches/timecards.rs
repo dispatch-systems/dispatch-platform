@@ -1,5 +1,5 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
-use super::{cards, people::photos, sync::synced_cards};
+use super::{cards, employees::photos, sync::synced_cards};
 use crate::api::types::{EmployeeTimecardResponse, Timecard};
 use dispatch_core::{
     Error, Result,

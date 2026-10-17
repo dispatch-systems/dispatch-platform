@@ -1,7 +1,7 @@
 //! What Driver Match's endpoints answer with. Each type is written to TypeScript in
 //! `generated/`, which `client.ts` imports.
 use dispatch_core::{
-    manifest::people::{DriverData, DriverSource},
+    manifest::people::{Kind, Source},
     text_enum,
 };
 use serde::Serialize;
@@ -94,7 +94,7 @@ impl PersonRole {
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PersonId {
-    pub source: DriverSource,
+    pub source: Source,
     pub id: String,
     pub name: String,
     pub department: Option<String>,
@@ -165,7 +165,7 @@ pub enum Question {
     /// An ID a name written another way joined to `person`, which nobody has confirmed.
     Variant {
         person: String,
-        source: DriverSource,
+        source: Source,
         id: String,
     },
 }
@@ -178,7 +178,7 @@ pub struct DriverMatch {
     /// When collected data was last checked for new IDs.
     pub checked_at: Option<String>,
     /// The sources of IDs the DSP's features have on, in their order.
-    pub sources: Vec<DriverSource>,
+    pub sources: Vec<Source>,
     /// The pairs, the strongest first, then the name variants of anyone still there.
     pub questions: Vec<Question>,
     pub people: Vec<Person>,
@@ -189,7 +189,7 @@ pub struct DriverMatch {
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Appearance {
-    pub data: DriverData,
+    pub data: Kind,
     pub count: usize,
 }
 /// One source's last fourteen days of a person's work: for each day, whether they worked,
@@ -199,7 +199,7 @@ pub struct Appearance {
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceDays {
-    pub source: DriverSource,
+    pub source: Source,
     pub worked: Vec<Option<bool>>,
 }
 /// One line of a person's history: an ID added or linked, or a decision with another person.
@@ -210,7 +210,7 @@ pub struct SourceDays {
 pub struct PersonEvent {
     pub at: String,
     pub kind: PersonEventKind,
-    pub source: Option<DriverSource>,
+    pub source: Option<Source>,
     pub link: Option<IdLink>,
     /// The ID's name for `added` and `linked`; the other person's for `split` and `apart`.
     pub name: Option<String>,

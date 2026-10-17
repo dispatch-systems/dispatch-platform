@@ -1,18 +1,17 @@
 //! The drivers DVIC's inspections name, as Driver Match reads them.
 use crate::backend::DvicStore;
-use dispatch_core::manifest::people::{self, People, PeopleData, Workdays};
+use dispatch_core::manifest::people::{self, KindInfo, People, Workdays};
 
-/// Every driver a verified inspection names, counted in inspections. It sometimes writes only
-/// a last initial, so its spellings are read after every other kind's.
+/// Every driver a verified inspection names, counted in inspections, each of which shows them
+/// driving. It sometimes writes only a last initial, so it is read last.
 pub const PEOPLE: People = People::new(
-    PeopleData {
+    KindInfo {
         id: "dvic",
-        order: 40,
+        order: 90,
         label: "DVIC",
-        unit: "inspection",
         icon: "ClipboardCheck",
     },
-    &dispatch_cortex::PEOPLE,
+    dispatch_cortex::SOURCE,
     |store, dsp| {
         people::named(
             &*store.dvic_db(dsp)?,
@@ -22,23 +21,23 @@ pub const PEOPLE: People = People::new(
         )
     },
 )
-.records(|store, dsp| {
+.records("inspection", |store, dsp| {
     people::records(
         &*store.dvic_db(dsp)?,
         "SELECT transporter_id id,count(*) count,max(start_date) last \
          FROM dvic_inspections WHERE scope_verified=1 GROUP BY transporter_id",
     )
 })
-// An inspection means the driver was out that day, though DVIC alone does not say which
-// days were collected.
+.driving()
+// An inspection means the driver was out that day; its reports list only short inspections,
+// so the days without one say nothing.
 .workdays(|store, dsp| {
     Ok(Workdays {
-        worked: store.dvic_db(dsp)?.query_as(
-            "SELECT DISTINCT transporter_id,start_date FROM dvic_inspections \
+        worked: people::worked(
+            &*store.dvic_db(dsp)?,
+            "SELECT DISTINCT transporter_id id,start_date day FROM dvic_inspections \
              WHERE scope_verified=1",
-            [],
         )?,
         collected: vec![],
     })
-})
-.initials();
+});

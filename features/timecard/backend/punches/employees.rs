@@ -1,14 +1,16 @@
-use super::{people::photos, preferences::preferences};
+use super::preferences::preferences;
 use crate::api::types::{Employee, EmployeesResponse};
 use dispatch_core::{
     Result,
     db::{Store, boolean, s},
     foundation::names::{compare, display},
+    manifest::people,
 };
 use dispatch_paycom as paycom;
 use rusqlite::params;
 use serde::Serialize;
 use serde_json::json;
+use std::collections::BTreeMap;
 pub(crate) fn timecard_employees(
     store: &Store,
     id: &str,
@@ -104,4 +106,12 @@ impl Roster {
             collected_at: self.collected_at.clone(),
         }
     }
+}
+
+/// The version of each employee's photo, by their code, of those whose person has one.
+pub(super) fn photos(store: &Store, dsp: &str) -> Result<BTreeMap<String, String>> {
+    Ok(people::who(store, dsp, dispatch_paycom::SOURCE)?
+        .into_iter()
+        .filter_map(|(code, person)| Some((code, person.photo?)))
+        .collect())
 }

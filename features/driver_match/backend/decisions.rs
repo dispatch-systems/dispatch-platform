@@ -9,7 +9,7 @@ use dispatch_core::{
     accounts::Context,
     db::{AuditChange, Db, Store, iso},
     ensure,
-    manifest::people::DriverSource,
+    manifest::people::Source,
 };
 use rusqlite::params;
 
@@ -74,7 +74,7 @@ pub(super) fn split(
     store: &Store,
     c: &Context,
     code: &str,
-    source: DriverSource,
+    source: Source,
     id: &str,
 ) -> Result<()> {
     ensure(valid_code(code), "invalid_input", 400)?;
@@ -140,7 +140,7 @@ pub(super) fn confirm(
     store: &Store,
     c: &Context,
     code: &str,
-    source: DriverSource,
+    source: Source,
     id: &str,
 ) -> Result<()> {
     ensure(valid_code(code), "invalid_input", 400)?;

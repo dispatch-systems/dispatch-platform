@@ -12,15 +12,11 @@ use dispatch_core::{
     Result,
     db::{Store, s},
     foundation::names,
-    manifest::people::{self, DriverSource, Person},
+    manifest::people::{self, Person},
 };
 use dispatch_cortex as cortex;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
-
-/// The source of each driver's ID, and of each employee's.
-const AMAZON: DriverSource = DriverSource::new(&cortex::PEOPLE);
-const PAYCOM: DriverSource = DriverSource::new(&dispatch_paycom::PEOPLE);
 
 pub(crate) fn meal_comparison(
     store: &Store,
@@ -151,7 +147,7 @@ fn comparisons(
     };
     let mut context = ComparisonContext {
         timezone, selected, meals, itineraries, late,
-        known: people::who(store, id, AMAZON)?,
+        known: people::who(store, id, cortex::SOURCE)?,
         latest_zone: cortex.one(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
         )?,
@@ -267,7 +263,7 @@ impl ComparisonContext<'_> {
         for (transporter, driver) in drivers.iter_mut() {
             let person = self.known.get(transporter);
             let code = person
-                .map_or(&[][..], |person| person.ids_of(PAYCOM))
+                .map_or(&[][..], |person| person.ids_of(dispatch_paycom::SOURCE))
                 .iter()
                 .find(|c| listed.contains(c.as_str()));
             driver["paycomCode"] = json!(code);

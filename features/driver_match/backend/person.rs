@@ -7,7 +7,7 @@ use super::sources::{DriverDepartments, Found, Identity, Key, Seen};
 use crate::api::types::{Person, PersonId, PersonRole};
 use dispatch_core::{
     foundation::names,
-    manifest::people::{DriverData, DriverSource},
+    manifest::people::{Kind, Source},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,7 +21,7 @@ fn office(x: &Identity, drivers: &DriverDepartments) -> bool {
 
 impl IdRow {
     /// The ID as its sources describe it now; one no source holds any more shows bare.
-    fn public(&self, source: DriverSource, found: &Found) -> PersonId {
+    fn public(&self, source: Source, found: &Found) -> PersonId {
         let x = found.get(&(source, self.external_id.clone()));
         PersonId {
             source,
@@ -44,8 +44,10 @@ impl IdRow {
 /// What a person is drawn from.
 pub(super) struct Context<'a> {
     pub found: &'a Found,
-    pub activity: &'a BTreeMap<Key, BTreeMap<DriverData, Seen>>,
+    pub activity: &'a BTreeMap<Key, BTreeMap<Kind, Seen>>,
     pub departments: &'a DriverDepartments,
+    /// The kinds whose records show someone driving.
+    pub driving: &'a BTreeSet<Kind>,
     /// The first day that still counts as recent.
     pub recent: &'a str,
 }
@@ -73,15 +75,14 @@ fn role(
             PersonRole::Former
         };
     }
-    // Driving shows in a source that says what they do, or in records of a source no
-    // department setting speaks for.
+    // Driving shows in a source that says what they do, or in records of a kind that says each
+    // shows them driving (`.driving()`).
     let drives = described.iter().any(|x| x.drives())
         || keys.iter().any(|key| {
-            !context.departments.contains_key(&key.0)
-                && context
-                    .activity
-                    .get(key)
-                    .is_some_and(|data| !data.is_empty())
+            context
+                .activity
+                .get(key)
+                .is_some_and(|data| data.keys().any(|kind| context.driving.contains(kind)))
         });
     let counted: Vec<&&Identity> = described
         .iter()
@@ -102,7 +103,7 @@ fn role(
 }
 /// The name a person is shown by: as the first source in the sources' order writes it; `ids`
 /// are in that order. None while no source holds any of their IDs.
-pub(super) fn shown_name(ids: &[(&IdRow, DriverSource)], found: &Found) -> Option<String> {
+pub(super) fn shown_name(ids: &[(&IdRow, Source)], found: &Found) -> Option<String> {
     ids.iter().find_map(|(row, source)| {
         let x = found.get(&(*source, row.external_id.clone()))?;
         Some(names::display(x.name()))
@@ -110,12 +111,12 @@ pub(super) fn shown_name(ids: &[(&IdRow, DriverSource)], found: &Found) -> Optio
 }
 
 /// A person as the tab lists them, from their IDs in the sources' order.
-pub(super) fn person(code: &str, ids: &[(&IdRow, DriverSource)], context: &Context) -> Person {
+pub(super) fn person(code: &str, ids: &[(&IdRow, Source)], context: &Context) -> Person {
     let keys: Vec<Key> = ids
         .iter()
         .map(|(row, source)| (*source, row.external_id.clone()))
         .collect();
-    let seen: Vec<&BTreeMap<DriverData, Seen>> = keys
+    let seen: Vec<&BTreeMap<Kind, Seen>> = keys
         .iter()
         .filter_map(|key| context.activity.get(key))
         .collect();

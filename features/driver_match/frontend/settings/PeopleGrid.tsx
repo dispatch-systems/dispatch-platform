@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react';
-import type { DriverSource, Person } from '../../api/index.js';
+import type { PeopleSource, Person } from '../../api/index.js';
 import { useUpdateState } from '../../../../core/shell/frontend/runtime/browser-update.js';
 import { Empty, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
 import { found, peopleFilters, searchTerms, shows, type PeopleFilter } from '../driver-match.js';
@@ -17,7 +17,7 @@ export function PeopleGrid({
   onCheck,
 }: {
   people: Person[];
-  sources: readonly DriverSource[];
+  sources: readonly PeopleSource[];
   /** Who a question waits on, by code. */
   queued: ReadonlySet<string>;
   onOpen: (code: string) => void;

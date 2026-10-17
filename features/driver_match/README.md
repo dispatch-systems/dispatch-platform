@@ -99,7 +99,7 @@ folder, with one declaration in its manifest's `people` (`dispatch_core::manifes
 ```rust
 // backend/people.rs
 pub const PEOPLE: People = People::new(
-    PeopleData { id: "fuel", order: 80, label: "Fuel", unit: "fill-up", icon: "Fuel" },
+    KindInfo { id: "fuel", order: 80, label: "Fuel", unit: "fill-up", icon: "Fuel" },
     &dispatch_cortex::PEOPLE,
     |store, dsp| {
         people::named(
@@ -120,10 +120,10 @@ pub const PEOPLE: People = People::new(
 people: &[&backend::people::PEOPLE],
 ```
 
-- **What it is** (`PeopleData`): its id, its place among the kinds (`order`, unique: the next
+- **What it is** (`KindInfo`): its id, its place among the kinds (`order`, unique: the next
   free tens, which `--people` picks), its label, what one record is (`unit`) and its icon, by
   the name lucide-react exports it as. Each person's sheet lists it so.
-- **Whose IDs** (`SourceData`): the source its people are named by, declared by whoever owns
+- **Whose IDs** (`SourceInfo`): the source its people are named by, declared by whoever owns
   those IDs: `&dispatch_cortex::PEOPLE` for Amazon's transporter IDs, `&dispatch_paycom::PEOPLE`
   for Paycom's employee codes, or a source of its own.
 

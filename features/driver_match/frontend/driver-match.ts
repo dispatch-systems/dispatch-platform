@@ -1,7 +1,7 @@
 // What the Driver Match tab says about people, their IDs and the reasons two may be one.
 import type {
-  DriverData,
-  DriverSource,
+  PeopleKind,
+  PeopleSource,
   Evidence,
   IdLink,
   Person,
@@ -11,7 +11,7 @@ import type {
 } from '../api/index.js';
 import { personPath } from '../api/client.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
-import { driverData, driverSources } from '../../../core/manifest/api/generated/driver-data.js';
+import { peopleKinds, peopleSources } from '../../../core/manifest/api/generated/people-data.js';
 
 /** How each role reads: its name, the name of its filter, and its colour. */
 export const roles: Record<PersonRole, { label: string; filter: string; tone: string }> = {
@@ -31,12 +31,12 @@ export const peopleFilters: [PeopleFilter, string][] = [
   ['missing', 'Not in every system'],
 ];
 /** Whether a source has an ID for someone. */
-export const knows = (person: Person, source: DriverSource) =>
+export const knows = (person: Person, source: PeopleSource) =>
   person.ids.some((id) => id.source === source);
 /** Drivers and helpers belong in every source; anyone else only where they are. */
 export const working = (person: Person) => person.role === 'driver' || person.role === 'helper';
 /** Whether a filter shows someone: someone who has left shows only under Former. */
-export function shows(filter: PeopleFilter, person: Person, sources: readonly DriverSource[]) {
+export function shows(filter: PeopleFilter, person: Person, sources: readonly PeopleSource[]) {
   switch (filter) {
     case 'all':
       return person.role !== 'former';
@@ -59,17 +59,17 @@ export const links: Record<IdLink, { label: string; joined: string }> = {
 };
 
 /** Every source of IDs, in their order, as their owners declare them. */
-export const sourceKinds: readonly DriverSource[] = driverSources.map((source) => source.id);
+export const sourceKinds: readonly PeopleSource[] = peopleSources.map((source) => source.id);
 /** How a source is named: "Paycom". */
-export const sourceLabel = (source: DriverSource) =>
-  driverSources.find((s) => s.id === source)?.label ?? source;
+export const sourceLabel = (source: PeopleSource) =>
+  peopleSources.find((s) => s.id === source)?.label ?? source;
 
 /** A kind of collected data as its feature declares it: its label, unit and icon. */
-export const dataKind = (data: DriverData) => driverData.find((kind) => kind.id === data);
+export const dataKind = (data: PeopleKind) => peopleKinds.find((kind) => kind.id === data);
 /** How a kind of collected data is named. */
-export const dataLabel = (data: DriverData) => dataKind(data)?.label ?? data;
+export const dataLabel = (data: PeopleKind) => dataKind(data)?.label ?? data;
 /** How much of one kind of data a person has, in its own unit. */
-export function dataAmount(data: DriverData, count: number) {
+export function dataAmount(data: PeopleKind, count: number) {
   const unit = dataKind(data)?.unit ?? 'record';
   return `${count.toLocaleString('en-US')} ${unit}${count === 1 ? '' : 's'}`;
 }

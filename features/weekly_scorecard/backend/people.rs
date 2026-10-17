@@ -4,22 +4,22 @@ use dispatch_core::{
     Result,
     db::Store,
     foundation::weeks,
-    manifest::people::{self, Named, People, PeopleData, Records},
+    manifest::people::{self, KindInfo, Named, People, Records},
 };
 
 /// Every driver a verified scorecard names, counted in weeks.
 pub const PEOPLE: People = People::new(
-    PeopleData {
+    KindInfo {
         id: "weekly_scorecard",
         order: 50,
         label: "Weekly Scorecard",
-        unit: "week",
         icon: "Award",
     },
-    &dispatch_cortex::PEOPLE,
+    dispatch_cortex::SOURCE,
     drivers,
 )
-.records(scored_weeks);
+.records("week", scored_weeks)
+.driving();
 
 /// Each driver, seen from the Sunday their first week starts to the Saturday their last ends.
 fn drivers(store: &Store, dsp: &str) -> Result<Vec<Named>> {

@@ -219,7 +219,9 @@
         "POST /api/dsp/driver-match/apart",
         "POST /api/dsp/driver-match/confirm"
       ],
-      "services": [],
+      "services": [
+        "directory"
+      ],
       "settings": []
     },
     "switch": "driver_match",

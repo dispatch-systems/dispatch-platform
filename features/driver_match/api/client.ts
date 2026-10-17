@@ -1,5 +1,5 @@
 import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import type { DriverMatch, DriverSource, PersonDetails } from './index.js';
+import type { DriverMatch, PeopleSource, PersonDetails } from './index.js';
 
 // Driver Match's endpoints, as its tab calls them. A decision answers with nothing: the tab
 // reads itself again.
@@ -19,10 +19,10 @@ export const usePersonDetails = (code: string) => useCachedData<PersonDetails>(p
 export const mergePeople = (code: string, into: string) =>
   api(`${driverMatch}/merge`, { code, into });
 /** One of `code`'s IDs moves to a new person. */
-export const splitOff = (code: string, source: DriverSource, id: string) =>
+export const splitOff = (code: string, source: PeopleSource, id: string) =>
   api(`${driverMatch}/split`, { code, source, id });
 /** One of `code`'s IDs a match joined is theirs. */
-export const confirmLink = (code: string, source: DriverSource, id: string) =>
+export const confirmLink = (code: string, source: PeopleSource, id: string) =>
   api(`${driverMatch}/confirm`, { code, source, id });
 export const keepApart = (code: string, other: string) =>
   api(`${driverMatch}/apart`, { code, other });

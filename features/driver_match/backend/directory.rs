@@ -6,7 +6,7 @@ use dispatch_core::{
     db::Store,
     manifest::{
         Upkeep,
-        people::{self, DriverSource, Person, Photo},
+        people::{self, Person, Photo, Source},
     },
 };
 use rusqlite::params;
@@ -16,12 +16,7 @@ use std::{collections::BTreeMap, sync::Arc};
 /// driver's Paycom employee by it, and its employees show each one's photo.
 pub(crate) struct Directory;
 impl people::Directory for Directory {
-    fn people(
-        &self,
-        store: &Store,
-        dsp: &str,
-        source: DriverSource,
-    ) -> Result<BTreeMap<String, Person>> {
+    fn who(&self, store: &Store, dsp: &str, source: Source) -> Result<BTreeMap<String, Person>> {
         let rows = current_ids(&*store.dsp(dsp)?)?;
         let mut held: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
         for row in &rows {
@@ -29,9 +24,8 @@ impl people::Directory for Directory {
         }
         let versions = photos::versions(store, dsp)?;
         let mut out = BTreeMap::new();
-        for (code, ids) in held {
+        for ids in held.into_values() {
             let mut person = Person {
-                code: code.to_owned(),
                 confirmed: ids.iter().any(|i| i.linked_by.decided()),
                 ..Person::default()
             };
@@ -55,13 +49,7 @@ impl people::Directory for Directory {
         }
         Ok(out)
     }
-    fn photo(
-        &self,
-        store: &Store,
-        dsp: &str,
-        source: DriverSource,
-        id: &str,
-    ) -> Result<Option<Photo>> {
+    fn photo(&self, store: &Store, dsp: &str, source: Source, id: &str) -> Result<Option<Photo>> {
         let code = store.dsp(dsp)?.query_as::<(String,)>(
             "SELECT i.code FROM person_ids i JOIN people p ON p.code=i.code \
              WHERE p.merged_into IS NULL AND i.source=? AND i.external_id=?",

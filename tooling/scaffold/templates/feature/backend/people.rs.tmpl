@@ -4,11 +4,11 @@
 {{#ownDatabase}}
 use super::storage::STORAGE;
 {{/ownDatabase}}
-use dispatch_core::manifest::people::{self, People, PeopleData};
+use dispatch_core::manifest::people::{self, People, KindInfo};
 
 /// Everyone `{{table}}` names, counted in records.
 pub const PEOPLE: People = People::new(
-    PeopleData {
+    KindInfo {
         id: "{{name}}",
         order: {{peopleOrder}},
         label: "{{label}}",

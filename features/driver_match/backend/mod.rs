@@ -30,7 +30,7 @@ use dispatch_core::{
     Error, Result,
     accounts::Context,
     db::{Db, FromRow, Row, Store},
-    manifest::people::{DriverSource, Photo},
+    manifest::people::{Photo, Source},
     server::cache::DataDomain,
 };
 use sources::Key;
@@ -50,7 +50,7 @@ const FORMER_AFTER_DAYS: i64 = 21;
 /// one short step.
 pub struct Collected {
     found: sources::Found,
-    contacts_only: BTreeSet<DriverSource>,
+    contacts_only: BTreeSet<Source>,
 }
 
 /// A row of `person_ids`: an ID, its person and how it came to them. Nothing a source
@@ -78,8 +78,8 @@ impl FromRow for IdRow {
 }
 impl IdRow {
     /// Its source, while a feature in this build declares it.
-    fn source(&self) -> Option<DriverSource> {
-        DriverSource::parse(&self.source)
+    fn source(&self) -> Option<Source> {
+        Source::parse(&self.source)
     }
     fn key(&self) -> Option<Key> {
         Some((self.source()?, self.external_id.clone()))
@@ -101,10 +101,10 @@ pub trait DriverMatchStore {
     /// The photo of `code`'s person, from whichever feature holds one: its kind and its bytes.
     fn person_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>>;
     fn merge_people(&self, c: &Context, code: &str, into: &str) -> Result<()>;
-    fn split_off(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()>;
+    fn split_off(&self, c: &Context, code: &str, source: Source, id: &str) -> Result<()>;
     fn keep_apart(&self, c: &Context, code: &str, other: &str) -> Result<()>;
     /// Confirms one of `code`'s IDs is theirs, as a match only suggested it.
-    fn confirm_link(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()>;
+    fn confirm_link(&self, c: &Context, code: &str, source: Source, id: &str) -> Result<()>;
 }
 impl DriverMatchStore for Store {
     fn read_pass(&self, dsp: &str) -> Result<Collected> {
@@ -128,13 +128,13 @@ impl DriverMatchStore for Store {
     fn merge_people(&self, c: &Context, code: &str, into: &str) -> Result<()> {
         decisions::merge(self, c, code, into)
     }
-    fn split_off(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()> {
+    fn split_off(&self, c: &Context, code: &str, source: Source, id: &str) -> Result<()> {
         decisions::split(self, c, code, source, id)
     }
     fn keep_apart(&self, c: &Context, code: &str, other: &str) -> Result<()> {
         decisions::keep_apart(self, c, code, other)
     }
-    fn confirm_link(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()> {
+    fn confirm_link(&self, c: &Context, code: &str, source: Source, id: &str) -> Result<()> {
         decisions::confirm(self, c, code, source, id)
     }
 }

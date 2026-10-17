@@ -41,7 +41,7 @@ use crate::{
     },
 };
 use integrations::Integration;
-use people::{Directory, People};
+use people::People;
 use services::Services;
 use std::sync::{Arc, OnceLock};
 
@@ -201,9 +201,6 @@ pub struct Feature {
     /// Who its data names, for the feature that tells people apart: `people::People` says how to
     /// connect one kind of data.
     pub people: &'static [&'static People],
-    /// Who each ID its people name is, if it is the feature that tells them apart: one
-    /// feature at most answers.
-    pub directory: Option<&'static dyn Directory>,
     /// What it does through other features' connections, which their settings switch on and
     /// off for each account: `integrations::Integration` says how to declare one.
     pub integrations: &'static [Integration],
@@ -241,7 +238,6 @@ pub const fn feature(name: &'static str) -> Feature {
         demo: None,
         commands: None,
         people: &[],
-        directory: None,
         integrations: &[],
         services: Services::NONE,
     }

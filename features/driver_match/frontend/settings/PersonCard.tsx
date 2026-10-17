@@ -1,5 +1,5 @@
 import { Check, X } from 'lucide-react';
-import type { DriverSource, Person } from '../../api/index.js';
+import type { PeopleSource, Person } from '../../api/index.js';
 import { knows, roles, sourceLabel, working } from '../driver-match.js';
 import { Face } from '../parts/Face.js';
 
@@ -12,7 +12,7 @@ export function PersonCard({
   onCheck,
 }: {
   person: Person;
-  sources: readonly DriverSource[];
+  sources: readonly PeopleSource[];
   queued: boolean;
   onOpen: (code: string) => void;
   onCheck: (code: string) => void;

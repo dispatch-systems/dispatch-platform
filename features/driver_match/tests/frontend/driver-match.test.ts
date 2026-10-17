@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { DriverSource, Person, PersonId, Question } from '../../api/index.js';
+import type { PeopleSource, Person, PersonId, Question } from '../../api/index.js';
 import { shows } from '../../frontend/driver-match.js';
 import { checkList } from '../../frontend/settings/checks.js';
 
 const id = (source: string, external: string, name: string): PersonId => ({
-  source: source as DriverSource,
+  source: source as PeopleSource,
   id: external,
   name,
   department: null,
@@ -26,7 +26,7 @@ const person = (code: string, role: Person['role'], ids: PersonId[]): Person => 
   ids,
   photo: 'v1',
 });
-const sources = ['paycom', 'amazon'] as DriverSource[];
+const sources = ['paycom', 'amazon'] as PeopleSource[];
 
 test('someone who has left shows only under Former, and a driver a source lacks is missing from it', () => {
   const gone = person('K7M2QX', 'former', [id('amazon', 'T9', 'Riley Quinn')]);
@@ -71,9 +71,9 @@ test('each question the backend asks is a check about the people it names', () =
         { kind: 'worked_days', short: null, long: null, same: 1, of: 4, supports: false },
       ],
     },
-    { kind: 'variant', person: antonio.code, source: 'amazon' as DriverSource, id: 'T4' },
+    { kind: 'variant', person: antonio.code, source: 'amazon' as PeopleSource, id: 'T4' },
     // Someone the tab no longer lists asks nothing.
-    { kind: 'variant', person: 'ZZZZZZ', source: 'amazon' as DriverSource, id: 'T8' },
+    { kind: 'variant', person: 'ZZZZZZ', source: 'amazon' as PeopleSource, id: 'T8' },
   ];
   const [pair, variant, ...rest] = checkList(questions, [tony, antonio]);
   assert.equal(rest.length, 0);

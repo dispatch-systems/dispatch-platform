@@ -4,7 +4,7 @@ use super::codes::valid_code;
 use super::person;
 use super::sources::{self, Found};
 use super::{IdRow, surviving};
-use dispatch_core::{Result, db::Store, manifest::people::DriverSource};
+use dispatch_core::{Result, db::Store, manifest::people::Source};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -23,7 +23,7 @@ fn name_now(store: &Store, dsp: &str, found: &Found, code: &str) -> Result<Optio
         let code = surviving(&db, code)?;
         db.query_as("SELECT * FROM person_ids WHERE code=?", [&code])?
     };
-    let mut ids: Vec<(&IdRow, DriverSource)> = rows
+    let mut ids: Vec<(&IdRow, Source)> = rows
         .iter()
         .filter_map(|row| Some((row, row.source()?)))
         .collect();
