@@ -78,6 +78,8 @@ pub(crate) struct Identity {
     pub contacts_only: bool,
     /// The version of the photo held of them.
     pub photo: Option<String>,
+    /// The source's other IDs for the same person, which go wherever this one does.
+    pub same_as: BTreeSet<String>,
 }
 impl Identity {
     pub fn new(source: DriverSource, id: &str) -> Self {
@@ -97,6 +99,7 @@ impl Identity {
             roles: vec![],
             contacts_only: true,
             photo: None,
+            same_as: BTreeSet::new(),
         }
     }
     fn named(&mut self, name: &str) {
@@ -159,6 +162,9 @@ pub(crate) fn identities(
             entry.listed |= named.listed;
             entry.contacts_only &= people.contacts_only;
             entry.photo = entry.photo.take().or(named.photo);
+            entry
+                .same_as
+                .extend(named.same_as.into_iter().filter(|other| other != id));
             for email in &named.emails {
                 if let Some(written) = contacts::email(email)
                     && entry.emails.insert(written)

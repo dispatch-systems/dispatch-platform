@@ -1,6 +1,6 @@
-//! The members of the DSP's Slack workspaces, as Driver Match reads them: one for each person,
-//! by their email address, whichever of the DSP's workspaces they're in. Slack lists who the
-//! DSP can reach, not whom it employs.
+//! The members of the DSP's Slack workspaces, as Driver Match reads them: each member by
+//! their own ID, and one email address in several workspaces as one person. Slack lists who
+//! the DSP can reach, not whom it employs.
 use super::storage::{Member, SlackStore};
 use dispatch_core::{
     Result,
@@ -9,8 +9,8 @@ use dispatch_core::{
 };
 use std::collections::HashMap;
 
-/// Slack's members, as IDs people are known by: `<workspace>:<member>`, the member's in the
-/// workspace connected first.
+/// Slack's members, as IDs people are known by: `<workspace>:<member>`, which Slack never
+/// changes.
 pub const MEMBERS: SourceData = SourceData {
     id: "slack",
     label: "Slack",
@@ -33,69 +33,54 @@ pub const PEOPLE: People = People::new(
 )
 .contacts_only();
 
-/// One person for each email address across the workspaces, and for each member without one.
+/// Every member, once for each name they go by. A member of several workspaces is the same
+/// person in each by their email address, so Driver Match keeps all their IDs with one person
+/// whichever workspace it saw first.
 fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
-    let mut people: Vec<Person> = Vec::new();
-    let mut by_email: HashMap<String, usize> = HashMap::new();
-    for (team, member) in store.slack_members(dsp)? {
-        let email = member.email.as_deref().map(str::to_lowercase);
-        match email.as_ref().and_then(|email| by_email.get(email)) {
-            Some(&index) => people[index].add(member),
-            None => {
-                if let Some(email) = email {
-                    by_email.insert(email, people.len());
-                }
-                people.push(Person::new(&team, member));
-            }
+    let members = store.slack_members(dsp)?;
+    let mut by_email: HashMap<String, Vec<String>> = HashMap::new();
+    for (team, member) in &members {
+        if let Some(email) = &member.email {
+            by_email
+                .entry(email.to_lowercase())
+                .or_default()
+                .push(id(team, member));
         }
     }
-    Ok(people.into_iter().flat_map(Person::named).collect())
+    Ok(members
+        .into_iter()
+        .flat_map(|(team, member)| {
+            let id = id(&team, &member);
+            let same_as = member
+                .email
+                .as_ref()
+                .map(|email| by_email[&email.to_lowercase()].clone())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|other| *other != id)
+                .collect();
+            named(id, member, same_as)
+        })
+        .collect())
 }
-
-/// One person, as their members in the DSP's workspaces describe them.
-struct Person {
-    named: Named,
-    /// The other names they go by in Slack.
-    also: Vec<String>,
+/// The ID the member `member` of the workspace `team` is known by.
+fn id(team: &str, member: &Member) -> String {
+    format!("{team}:{}", member.user)
 }
-impl Person {
-    /// The person `member` of the workspace `team` is, by their ID there.
-    fn new(team: &str, member: Member) -> Self {
-        let mut named = Named::new(&format!("{team}:{}", member.user));
-        named.name = member.name.clone();
-        let mut person = Self {
-            named,
-            also: vec![],
-        };
-        person.add(member);
-        person
-    }
-    /// What another of their members says of them: listed while any account is active.
-    fn add(&mut self, member: Member) {
-        self.named.listed |= member.active;
-        keep(&mut self.named.emails, member.email);
-        keep(&mut self.named.phones, member.phone);
-        for name in [Some(member.name), member.display_name]
-            .into_iter()
-            .flatten()
-        {
-            if name != self.named.name && !self.also.contains(&name) {
-                self.also.push(name);
-            }
-        }
-    }
-    /// How Driver Match reads them: once for each name they go by, the first with all else.
-    fn named(self) -> impl Iterator<Item = Named> {
-        let id = self.named.id.clone();
-        std::iter::once(self.named).chain(self.also.into_iter().map(move |name| Named {
-            name,
-            ..Named::new(&id)
-        }))
-    }
-}
-/// Adds `value` to `kept` unless it's there already.
-fn keep(kept: &mut Vec<String>, value: Option<String>) {
-    if let Some(value) = value.filter(|value| !kept.contains(value)) {
-        kept.push(value);
-    }
+/// One member as Driver Match reads them: by their name with all else, then by the one they
+/// go by in Slack.
+fn named(id: String, member: Member, same_as: Vec<String>) -> impl Iterator<Item = Named> {
+    let also = member.display_name.map(|name| Named {
+        name,
+        ..Named::new(&id)
+    });
+    let first = Named {
+        name: member.name,
+        listed: member.active,
+        emails: member.email.into_iter().collect(),
+        phones: member.phone.into_iter().collect(),
+        same_as,
+        ..Named::new(&id)
+    };
+    std::iter::once(first).chain(also)
 }

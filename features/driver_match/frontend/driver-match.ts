@@ -50,6 +50,7 @@ export const linkLabels: Record<DriverLink, string> = {
   name: 'Same name',
   phone: 'Same phone',
   email: 'Same email',
+  account: 'Other account',
   saved: 'Linked on Meal Breaks',
   person: 'Confirmed',
 };
@@ -183,6 +184,7 @@ const linkedBy: Partial<Record<DriverLink, string>> = {
   variant: 'joined by a name variant',
   email: 'joined by the same email',
   phone: 'joined by the same phone',
+  account: 'joined as another of their accounts',
   saved: 'linked on the meal-break page',
   person: 'confirmed as this person',
 };

@@ -31,12 +31,14 @@ only what was decided.
   merged into.
 - **Matching:** after every collection that finishes, and hourly to catch up anything missed,
   every ID the DSP's data holds gets a code, source by source in their order. A new ID joins
-  someone by, in turn: a link saved on the meal-break page; an email address or phone number
-  only the two of them have, among every ID of either source, when their names agree; a name
+  someone by, in turn: another ID its source says is the same person's, as their account in
+  another workspace, whoever holds it (`account`); a link saved on the meal-break page; an
+  email address or phone number only the two of them have, among every person of either
+  source, when their names agree; a name
   nobody else carries; the same name written another way, as without a second surname or by a
   middle name. A nickname joins nobody: it suggests a pair to decide. Email addresses are
-  compared in lower case and phone numbers by their ten digits. A contact two IDs of one source
-  share, as a family's phone, joins nobody but suggests a rehire. What counts as one name
+  compared in lower case and phone numbers by their ten digits. A contact two people of one
+  source share, as a family's phone, joins nobody but suggests a rehire. What counts as one name
   written two ways, and which first names are short for others, is `backend/names.rs`: no other
   owner matches names.
 - **Names:** a person is shown by the name their first source writes, in the sources' order,
@@ -100,7 +102,9 @@ people: &[&backend::people::PEOPLE],
   newest first. `people::named` reads them from a query by its columns' names: `id` and `name`,
   and any of `first` and `last` (the days it saw them), `listed` (1 while its source's roster
   lists them), `email`, `phone`, `roles` (a JSON list, as `["Driver"]`), `department`,
-  `position` and `photo` (the photo's version).
+  `position` and `photo` (the photo's version). Someone a source knows by several IDs, as an
+  account in each of several workspaces, is named by each, with the others in `same_as`: every
+  one goes to the same person, whichever came first.
 - **How much it holds** (`.records`): `id`, `count` and `last` for each ID, counted in its
   unit. Without it the kind is listed for nobody, and its data shows no one at work.
 - **When they worked** (`.workdays`): each ID with each day it worked, and the days the data

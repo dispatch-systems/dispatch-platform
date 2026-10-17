@@ -41,19 +41,12 @@ pub(super) fn write(store: &Store, dsp: &str, found: DriverSources) -> Result<us
             .filter(|x| !known.contains(&(x.source.as_str().to_owned(), x.id.clone())))
             .cloned()
             .collect();
-        // An ID no source holds any more has nothing to match by.
         let mut people: BTreeMap<String, Vec<Member>> = BTreeMap::new();
         for row in &rows {
             let Some(key) = row.key() else { continue };
             let member = match described.get(&key) {
                 Some(x) => Member::of(x),
-                None => Member {
-                    source: key.0,
-                    id: key.1,
-                    names: vec![],
-                    emails: BTreeSet::new(),
-                    phones: BTreeSet::new(),
-                },
+                None => Member::gone(key),
             };
             people.entry(row.code.clone()).or_default().push(member);
         }

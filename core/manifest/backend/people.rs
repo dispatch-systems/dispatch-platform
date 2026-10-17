@@ -432,6 +432,9 @@ pub struct Named {
     pub roles: Vec<String>,
     /// The version of the photo it holds of them, which changes when the photo does.
     pub photo: Option<String>,
+    /// The source's other IDs for the same person, as their account in each of several
+    /// workspaces: Driver Match keeps them all with one person.
+    pub same_as: Vec<String>,
 }
 impl Named {
     pub fn new(id: &str) -> Self {
@@ -463,6 +466,7 @@ impl Named {
                 .and_then(|roles| serde_json::from_str(&roles).ok())
                 .unwrap_or_default(),
             photo: text("photo"),
+            same_as: vec![],
         }
     }
     /// Extends the days it saw them by a first and last day; an empty one says nothing.

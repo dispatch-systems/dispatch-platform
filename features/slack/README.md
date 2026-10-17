@@ -142,9 +142,10 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   Match tells people apart at once. A workspace whose admin hasn't approved reading them is
   passed by, and keeps working otherwise.
 - **People:** Driver Match reads the members as its `slack` kind of data, by Slack's own IDs,
-  `<workspace>:<member>`: one person for each email address, whichever of the DSP's workspaces
-  they're in, under the member ID of the workspace connected first, by their name and the one
-  they go by in Slack, listed while their account is active. Slack lists whom the DSP can
+  `<workspace>:<member>`, which never change: each member by their name and the one they go by
+  in Slack, listed while their account is active. Members of several workspaces with one email
+  address are one person (`same_as`), so all their IDs stay together however the workspaces
+  are connected, reconnected or removed. Slack lists whom the DSP can
   reach, not whom it employs (`contacts_only`): it never keeps someone from having left, and
   someone only Slack knows works in the office while their account is active.
 - **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
