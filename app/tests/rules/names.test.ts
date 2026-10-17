@@ -7,11 +7,12 @@ import { lexFile } from './support/rust.js';
 // Core names no feature or collector: what a feature adds reaches core through a slot, and a
 // build that leaves one out leaves core as it was. Its product code holds no permission a
 // feature declares and no collector's id as a string; its tests may name them, and its docs
-// may use them as examples.
+// may use them as examples. Its `api/generated/` files are what `npm run contracts:generate`
+// writes from the registry, the one listing that names them all, so they are not its code.
 const coreProduct = (file: string) =>
   ownerOf(file)?.layer === 'core' &&
   !isTestFile(file) &&
-  !file.includes('/generated/') &&
+  !/\/api\/generated\//.test(file) &&
   /\.(rs|ts|tsx)$/.test(file);
 
 /** The strings `file`'s code holds, outside its comments. */
