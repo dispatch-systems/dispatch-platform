@@ -103,7 +103,8 @@ people: &[&backend::people::PEOPLE],
   A source's `order` is the order sources are listed in, and whose name a person is shown by:
   the first source's that knows them. The registry refuses one id declared as two sources.
 - **Who it names** (`read`): one `Named` for each ID and each way it writes their name, the
-  newest first. `people::named` reads them from a query by its columns' names: `id` and
+  newest first, from everything the data holds, since who someone is doesn't expire; what
+  counts (`.records`, `.workdays`) reads only what the feature shows now. `people::named` reads them from a query by its columns' names: `id` and
   `name`, and any of `first` and `last` (the days it saw them), `listed` (1 while its source's
   roster lists them), `email`, `phone`, `roles` (a JSON list of `Driver` and `Helper`),
   `department`, `position` and `photo` (the photo's version, read only from a kind with

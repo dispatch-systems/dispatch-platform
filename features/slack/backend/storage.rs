@@ -149,7 +149,8 @@ fn kept_workspace(db: &Db, team: &str) -> Result<bool> {
         .one("SELECT 1 FROM slack_workspaces WHERE team_id=?", [team])?
         .is_some())
 }
-/// Keeps one member, as Slack describes them now: whether they're new or changed.
+/// Keeps one member, as Slack describes them now: whether they're new, a member Driver Match
+/// has no person for yet. What it reads of the others it reads afresh each time.
 fn keep_member(db: &Db, team: &str, member: &Member) -> Result<bool> {
     let kept: Vec<Member> = db.query_as(
         "SELECT * FROM slack_members WHERE team_id=? AND user_id=?",
@@ -174,7 +175,7 @@ fn keep_member(db: &Db, team: &str, member: &Member) -> Result<bool> {
             member.guest
         ],
     )?;
-    Ok(true)
+    Ok(kept.is_empty())
 }
 
 /// The DSP's install link, as stored: never the link itself, only its hash.
@@ -223,10 +224,10 @@ pub trait SlackStore {
     /// Every member of the DSP's workspaces, with their workspace.
     fn slack_members(&self, dsp: &str) -> Result<Vec<(String, Member)>>;
     /// Keeps the workspace's members, all of them as Slack lists them now, while the DSP has
-    /// the workspace: whether any was new, changed or gone.
+    /// the workspace: whether any is new.
     fn keep_slack_members(&self, dsp: &str, team: &str, members: &[Member]) -> Result<bool>;
     /// Keeps one member of the workspace, as Slack describes them now, while the DSP has the
-    /// workspace: whether they're new or changed.
+    /// workspace: whether they're new.
     fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool>;
     /// The IDs of the integrations on in the workspace `team`, in order.
     fn slack_integrations(&self, dsp: &str, team: &str) -> Result<Vec<String>>;
@@ -452,9 +453,9 @@ impl SlackStore for Store {
             if !kept_workspace(&db, team)? {
                 return Ok(false);
             }
-            let mut changed = false;
+            let mut new = false;
             for member in members {
-                changed |= keep_member(&db, team, member)?;
+                new |= keep_member(&db, team, member)?;
             }
             let listed = serde_json::to_string(
                 &members
@@ -462,12 +463,12 @@ impl SlackStore for Store {
                     .map(|member| &member.user)
                     .collect::<Vec<_>>(),
             )?;
-            let gone = db.exec(
+            db.exec(
                 "DELETE FROM slack_members WHERE team_id=? \
                  AND user_id NOT IN (SELECT value FROM json_each(?))",
                 [team, &listed],
             )?;
-            Ok(changed || gone > 0)
+            Ok(new)
         })
     }
     fn keep_slack_member(&self, dsp: &str, team: &str, member: &Member) -> Result<bool> {

@@ -8,7 +8,7 @@ pub use api::types::{
     Appearance, DriverMatch, Evidence, EvidenceKind, IdLink, MatchCounts, Person, PersonDetails,
     PersonEvent, PersonEventKind, PersonId, PersonRole, Question, SourceDays, Strength,
 };
-/// What the app uses: its storage and what one pass reads. Other features ask core's
+/// Its storage and what one pass reads, for the app's tests. Other features ask core's
 /// directory who an ID is.
 pub use backend::{Collected, DriverMatchStore};
 

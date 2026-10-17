@@ -161,8 +161,8 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   Up to 10,000 are read, 200 at a time; a list longer than that is refused whole
   (`slack_members_too_many`). A workspace's members are kept one read or event at a time, so a
   member Slack tells of while the list is read isn't undone by it, and only while the DSP has
-  the workspace, so one disconnected mid-read keeps none. When any member is new, changed or
-  gone, Driver Match tells people apart at once. A workspace whose admin hasn't approved
+  the workspace, so one disconnected mid-read keeps none. When any member is new, Driver Match
+  gives them a person at once; what it reads of the others it reads afresh each time. A workspace whose admin hasn't approved
   reading them is passed by, and keeps working otherwise.
 - **People:** Driver Match reads the members as its `slack` kind of data, by Slack's own IDs,
   `<workspace>:<member>`, which never change: each member by the name on their profile, listed
