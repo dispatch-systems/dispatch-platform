@@ -27,6 +27,8 @@ pub struct Employee {
     pub position: String,
     pub station: String,
     pub active: bool,
+    /// The version of their photo, from whoever Driver Match finds they are; none without one.
+    pub photo: Option<String>,
 }
 
 // Keep absent labels distinct from explicit null labels on partial punches.

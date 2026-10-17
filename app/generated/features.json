@@ -797,6 +797,7 @@
       "routes": [
         "GET /api/dsp/employees",
         "GET /api/dsp/employees/{code}",
+        "GET /api/dsp/employees/{code}/photo",
         "POST /api/dsp/employees/{code}/sync",
         "GET /api/dsp/timecards",
         "GET /api/dsp/timecards/page",

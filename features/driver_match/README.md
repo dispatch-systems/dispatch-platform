@@ -50,7 +50,9 @@ only what was decided.
 - **Review:** two people no source knows both of, whose names tie them, or any two sharing a
   contact only they have, with how many days they worked together. The one holding fewer
   IDs joins the other, whose code both keep.
-- **Photos:** a person's photo is the first a connection holds under one of their IDs.
+- **Photos:** a person's photo is the first a connection holds under one of their IDs. The
+  directory names its version for each person and serves it, so every feature showing people
+  shows the same photo.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
   `driver_match.kept_apart` and `driver_match.confirmed`, naming drivers by their codes; the
   log puts today's names to them.

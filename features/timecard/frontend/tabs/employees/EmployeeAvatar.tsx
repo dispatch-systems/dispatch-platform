@@ -1,13 +1,11 @@
-export function EmployeeAvatar({ name }: { name: string }) {
-  const words = name.match(/[\p{L}\p{N}]+/gu) ?? [];
-  const initials = words
-    .slice(0, 2)
-    .map((word) => [...word][0])
-    .join('')
-    .toLocaleUpperCase('en-US');
-  return (
-    <span className="employee-avatar" aria-hidden="true">
-      {initials || '?'}
-    </span>
-  );
+import { PersonAvatar } from '../../../../../core/shell/frontend/runtime/PersonAvatar.js';
+import type { Employee } from '../../../api/index.js';
+import { employeesPath } from '../../../api/urls.js';
+
+/** An employee's photo, from whoever Driver Match finds they are, or their initials. */
+export function EmployeeAvatar({ employee }: { employee: Employee }) {
+  const photo =
+    employee.photo &&
+    `${employeesPath}/${encodeURIComponent(employee.code)}/photo?v=${employee.photo.slice(0, 16)}`;
+  return <PersonAvatar name={employee.name} photo={photo || undefined} className="employee-avatar" />;
 }

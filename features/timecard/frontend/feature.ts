@@ -106,8 +106,10 @@ export const feature: FrontendFeature = {
     write: (write, url) => {
       if (write.startsWith(schedules)) return begins(url, schedules);
       if (write === paycomSettingsPath) return collectionData(url) || path(url) === write;
-      // A Driver Match decision moves drivers between rows of the meal-break comparison.
-      if (write.startsWith('/api/dsp/driver-match')) return begins(url, mealBreaksPath);
+      // A Driver Match decision moves drivers between rows of the meal-break comparison, and
+      // changes whose photo an employee shows.
+      if (write.startsWith('/api/dsp/driver-match'))
+        return begins(url, mealBreaksPath) || begins(url, employeesPath);
       return undefined;
     },
   },

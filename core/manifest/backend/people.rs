@@ -520,14 +520,18 @@ impl Workdays {
 /// Who an ID is, as the one feature that tells people apart answers, for a feature that shows
 /// people its data names.
 pub trait Directory: Sync {
-    /// Everyone holding an ID of `source`, by that ID: their code, every ID they hold and
-    /// whether someone confirmed who they are.
+    /// Everyone holding an ID of `source`, by that ID: their code, every ID they hold,
+    /// whether someone confirmed who they are and the version of their photo.
     fn people(
         &self,
         store: &Store,
         dsp: &str,
         source: DriverSource,
     ) -> Result<BTreeMap<String, Person>>;
+    /// The photo of whoever holds `id` of `source`, from whichever kind of data holds one: the
+    /// one their `Person` names the version of.
+    fn photo(&self, store: &Store, dsp: &str, source: DriverSource, id: &str)
+    -> Result<Option<Photo>>;
     /// Tells people apart again now, as a feature's people changed outside a collection.
     fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep;
 }
@@ -539,6 +543,8 @@ pub struct Person {
     pub ids: BTreeMap<DriverSource, Vec<String>>,
     /// Whether someone confirmed who they are, rather than a match.
     pub confirmed: bool,
+    /// The version of their photo, which changes when the photo does: `photo` serves it.
+    pub photo: Option<String>,
 }
 impl Person {
     /// Their IDs of `source`, the first linked first.
@@ -553,6 +559,13 @@ pub fn who(store: &Store, dsp: &str, source: DriverSource) -> Result<BTreeMap<St
         || Ok(BTreeMap::new()),
         |directory| directory.people(store, dsp, source),
     )
+}
+/// The photo of whoever holds `id` of `source`, as the directory finds it; none in a build
+/// without one. A feature serves it from a route of its own, behind its own permission.
+pub fn photo(store: &Store, dsp: &str, source: DriverSource, id: &str) -> Result<Option<Photo>> {
+    registry().directory().map_or(Ok(None), |directory| {
+        directory.photo(store, dsp, source, id)
+    })
 }
 /// Has the DSP's people told apart again now, as a feature's people changed outside a
 /// collection, as when a workspace's members are read: a collection's are after it ends.

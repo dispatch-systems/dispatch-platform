@@ -348,24 +348,14 @@ button.driver-more {
 .driver-avatar {
   --identity-ink: var(--slate);
   --identity-surface: var(--slate-surface);
-  display: inline-flex;
   flex: 0 0 32px;
-  align-items: center;
-  justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
   background: var(--identity-surface);
   color: var(--identity-ink);
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: -0.2px;
-}
-.driver-avatar img {
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  object-fit: cover;
 }
 .driver-avatar.large {
   flex-basis: 48px;

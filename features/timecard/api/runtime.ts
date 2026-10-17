@@ -39,6 +39,7 @@ export const employeeSchema = z.object({
   position: text,
   station: text,
   active: z.boolean(),
+  photo: z.nullable(text),
 }) satisfies z.ZodMiniType<Employee>;
 const punchSchema = z.object({
   inKind: z.optional(z.nullable(z.enum(['IN DAY', 'IN LUNCH']))),

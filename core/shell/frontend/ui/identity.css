@@ -13,6 +13,21 @@
   display: flex;
 }
 
+/* A person: their photo, or their initials. Its owner sizes and colors it. */
+.person-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+}
+.person-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .dsp-avatar {
   --identity-ink: var(--slate);
   --identity-surface: var(--slate-surface);

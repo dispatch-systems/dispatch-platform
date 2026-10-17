@@ -50,7 +50,7 @@ export function EmployeeDetail({
   return (
     <section className="employee-detail" aria-label="Employee details">
       <div className="employee-detail-heading">
-        <EmployeeAvatar name={person.name} />
+        <EmployeeAvatar employee={person} />
         <div className="employee-identity">
           <h3 title={person.name}>{person.name}</h3>
           <div className="employee-position" title={person.position}>
