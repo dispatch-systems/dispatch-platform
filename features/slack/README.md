@@ -160,8 +160,10 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   `dispatch-backend slack-manifest` prints the app to paste into Slack. The app asks for
   `team:read`, to keep each workspace's name as Slack has it, and for the channels' settings
   `channels:read` and `groups:read`, to list them, `channels:join`, to join public ones, and
-  `channels:manage` and `groups:write`, to leave them; and for Driver Match `users:read` and
-  `users:read.email`, to read its members with their email addresses.
+  `channels:manage` and `groups:write`, to leave them; for Driver Match `users:read` and
+  `users:read.email`, to read its members with their email addresses; and `bookmarks:read`,
+  for which of a channel's folders holds each canvas, which Sync Canvases, being built, will
+  read.
 - **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
   install link; `POST /api/dsp/slack/connect` (with `team`, to reconnect or update one),
   `…/connect/finish`, `…/workspaces/{team}/rename`, `…/workspaces/{team}/disconnect`, `…/link`
