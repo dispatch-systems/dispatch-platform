@@ -242,6 +242,29 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
     assert_eq!(shown(&db, "driver_match.merged"), "Antonio Reyes");
 }
 
+/// A person confirms what a match by a name or a contact only suggested; a link someone
+/// already decided, or an ID's first, has nothing to confirm.
+#[test]
+fn only_a_match_by_a_name_or_a_contact_is_confirmed() {
+    dispatch_backend::install();
+    let (_root, db, id, context) = ready(None);
+    db.match_drivers(&id).unwrap();
+    let luis = code(&db.driver_match(&id).unwrap(), PAYCOM, "E003");
+    let confirm = |source, external: &str| db.confirm_driver(&context, &luis, source, external);
+    assert_eq!(confirm(PAYCOM, "E003").unwrap_err().code, "driver_changed");
+    let after = confirm(AMAZON, "TLUIS").unwrap();
+    let link = |result: &DriverMatch| {
+        person(result, &luis)
+            .ids
+            .iter()
+            .find(|i| i.id == "TLUIS")
+            .unwrap()
+            .linked_by
+    };
+    assert_eq!(link(&after), DriverLink::Person);
+    assert_eq!(confirm(AMAZON, "TLUIS").unwrap_err().code, "driver_changed");
+}
+
 #[test]
 fn people_split_or_kept_apart_are_not_suggested_again() {
     dispatch_backend::install();
