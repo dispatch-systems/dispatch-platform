@@ -602,7 +602,10 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
             ["T0OPS:U0LUIS", "T0YARD:U0LH"].map(|member| code(result, members, member)),
         ]
     };
-    let together = [[jordan.clone(), jordan.clone()], [luis.clone(), luis.clone()]];
+    let together = [
+        [jordan.clone(), jordan.clone()],
+        [luis.clone(), luis.clone()],
+    ];
     assert_eq!(accounts(&result), together);
     let links: Vec<DriverLink> = person(&result, &jordan)
         .ids
@@ -680,12 +683,7 @@ fn an_account_under_another_address_is_asked_about() {
         &db,
         "T0YARD",
         &id,
-        &[(
-            "U0JE",
-            "Jordan Ellis",
-            Some("jordan@personal.example.com"),
-            true,
-        )],
+        &[("U0JE", "Jordan Ellis", Some("jordan.e@example.com"), true)],
     );
     db.match_drivers(&id).unwrap();
     let result = db.driver_match(&id).unwrap();
