@@ -9,7 +9,7 @@ import { wiring } from '../../../tooling/scaffold/wire.js';
 
 // Each owner's TypeScript reaches only itself, core, and for a feature the features and
 // collectors its manifest declares; core reaches only core. Only the app imports features
-// and collectors to list them. plans/restructure/enforcement.md, section 3. Front doors
+// and collectors to list them. Front doors
 // between frontends are dashboard-structure.test.ts's.
 /** The owner, or the top two folders, a file belongs to. */
 const unitOf = (file: string) => ownerOf(file)?.dir ?? file.split('/').slice(0, 2).join('/');

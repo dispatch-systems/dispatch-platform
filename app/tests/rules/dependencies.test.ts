@@ -16,7 +16,7 @@ import { lex, rust, useTree } from './support/rust.js';
 
 // Dependencies point one way, app → mcp → features → collectors → core, and are declared: a
 // feature's manifest names the features and collectors it uses, its Cargo.toml lists the
-// same, and its Rust reaches nothing else. plans/restructure/enforcement.md, sections 1 and 3.
+// same, and its Rust reaches nothing else.
 // What a feature's TypeScript may import is encapsulation.test.ts's rule, from the same list.
 
 /** What an owner may use: core and itself always, and a feature what it declares. */

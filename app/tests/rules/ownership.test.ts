@@ -8,7 +8,7 @@ import { createdTables, isSql, namedTables } from './support/sql.js';
 
 // Owners keep their data: only a table's owner writes SQL against it. Core is one owner, so
 // its parts share core's tables; a collector or feature reaches core's data through core's
-// functions, never its SQL. plans/restructure/structure.md, "Data".
+// functions, never its SQL.
 //
 // A table's owner is the owner that declares it in its manifest (`tables: &[("paycom",
 // &["employees", …])]`, or a collector's or core's `TABLES: Tables = &[…]`; the database

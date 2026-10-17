@@ -6,7 +6,7 @@ import { features, files, isFile, ownerOf, type Owner } from './support/repo.js'
 import { rust } from './support/rust.js';
 
 // Collectors gather, features keep: each collection's data goes to the one feature that keeps
-// it. plans/restructure/structure.md, "How a collection runs".
+// it.
 
 /** The collectors a feature uses: its Cargo.toml's, or until crates exist, those its Rust names. */
 function uses(owner: Owner): Set<string> {

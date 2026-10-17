@@ -72,8 +72,7 @@ test("each database's gathered migrations run from 1 without a gap or a repeat",
   holds('migrations', 'ledger', [...new Set(wrong)]);
 });
 
-// plans/restructure/structure.md, "Data": a migration lives with its owner, in a file that
-// names its database, number and name.
+// A migration lives with its owner, in a file that names its database, number and name.
 test('each migration file lives with its owner and is applied by exactly the migration it names', () => {
   const wrong: string[] = [];
   const applied = new Map<string, Migration[]>();
