@@ -14,9 +14,7 @@ use serde_json::{Value, json};
 /// Channels list the public channels and the private ones the bot was invited to
 /// (`channels:read`, `groups:read`), join public ones (`channels:join`) and leave either
 /// (`channels:manage`, `groups:write`). Driver Match reads its members, with their email
-/// addresses (`users:read`, `users:read.email`). The channels' bookmarks (`bookmarks:read`) say
-/// which of a channel's folders holds each of its canvases, which Sync Canvases, being built,
-/// will read: until it's ready, nothing reads them.
+/// addresses (`users:read`, `users:read.email`).
 pub const SCOPES: &[&str] = &[
     "team:read",
     "channels:read",
@@ -26,7 +24,6 @@ pub const SCOPES: &[&str] = &[
     "groups:write",
     "users:read",
     "users:read.email",
-    "bookmarks:read",
 ];
 /// What Slack tells the app of for Slack itself: its Home tab opened, someone joining the
 /// workspace or changing their profile, and its being removed from a workspace or losing its
