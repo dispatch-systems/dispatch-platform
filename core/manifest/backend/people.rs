@@ -530,8 +530,13 @@ pub trait Directory: Sync {
     ) -> Result<BTreeMap<String, Person>>;
     /// The photo of whoever holds `id` of `source`, from whichever kind of data holds one: the
     /// one their `Person` names the version of.
-    fn photo(&self, store: &Store, dsp: &str, source: DriverSource, id: &str)
-    -> Result<Option<Photo>>;
+    fn photo(
+        &self,
+        store: &Store,
+        dsp: &str,
+        source: DriverSource,
+        id: &str,
+    ) -> Result<Option<Photo>>;
     /// Tells people apart again now, as a feature's people changed outside a collection.
     fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep;
 }

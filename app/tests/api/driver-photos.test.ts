@@ -41,7 +41,11 @@ test("Driver Match and Timecard's employees show the photo Driver Profiles' rost
     undefined,
     owner.headers,
   );
-  const served = await f.raw(`/api/dsp/employees/${employee!.code}/photo`, undefined, owner.headers);
+  const served = await f.raw(
+    `/api/dsp/employees/${employee!.code}/photo`,
+    undefined,
+    owner.headers,
+  );
   assert.equal(served.status, 200);
   assert.equal(served.headers.get('content-type'), 'image/png');
   assert.deepEqual(
