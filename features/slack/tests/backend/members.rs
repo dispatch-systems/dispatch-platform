@@ -1,6 +1,6 @@
 //! Reading a workspace's members, as fixture mode's Slack lists them: only once its admin lets
-//! the bot, without bots, and as Driver Match reads them, one person for each email address
-//! whichever workspaces they're in.
+//! the bot, without bots, and as Driver Match reads them, each by their own ID with their
+//! accounts in the DSP's other workspaces.
 use super::*;
 use crate::backend::{
     app::SCOPES as APP,
@@ -20,9 +20,8 @@ fn platform() -> (impl Drop, Arc<State>, String) {
     drop(store);
     (root, State::new(config).unwrap(), dsp)
 }
-/// Connects the DSP's workspace `team`, `at` a time that orders it among the others, its admin
-/// having let the bot do what `scopes` say.
-async fn connect(state: &Arc<State>, dsp: &str, team: &str, at: &str, scopes: &[&str]) -> Bot {
+/// Connects the DSP's workspace `team`, its admin having let the bot do what `scopes` say.
+async fn connect(state: &Arc<State>, dsp: &str, team: &str, scopes: &[&str]) -> Bot {
     let workspace = Workspace {
         team: team.into(),
         name: team.into(),
@@ -31,7 +30,7 @@ async fn connect(state: &Arc<State>, dsp: &str, team: &str, at: &str, scopes: &[
         bot_user: "U0FIXTUREBOT".into(),
         app: "A0FIXTURE".into(),
         connected_by: None,
-        connected_at: at.into(),
+        connected_at: "2026-01-01T00:00:00Z".into(),
         label: None,
     };
     let tokens = Tokens {
@@ -59,10 +58,10 @@ async fn members_are_read_once_the_admin_lets_the_bot_and_never_bots() {
         .copied()
         .filter(|s| !SCOPES.contains(s))
         .collect();
-    let bot = connect(&state, &dsp, DRIVERS, "2026-01-01T00:00:00Z", &without).await;
+    let bot = connect(&state, &dsp, DRIVERS, &without).await;
     read(&bot).await.unwrap();
     assert!(kept(&state, &dsp).await.is_empty());
-    let bot = connect(&state, &dsp, DRIVERS, "2026-01-01T00:00:00Z", APP).await;
+    let bot = connect(&state, &dsp, DRIVERS, APP).await;
     read(&bot).await.unwrap();
     let members = kept(&state, &dsp).await;
     let names: Vec<&str> = members.iter().map(|(_, m)| m.name.as_str()).collect();
@@ -98,10 +97,10 @@ fn member_of<'a>(members: &'a [(String, Member)], name: &str) -> &'a Member {
 }
 
 #[tokio::test]
-async fn driver_match_reads_one_person_for_each_email_whichever_workspaces_they_are_in() {
+async fn driver_match_reads_each_member_with_their_accounts_in_other_workspaces() {
     let (_root, state, dsp) = platform();
-    let drivers = connect(&state, &dsp, DRIVERS, "2026-02-01T00:00:00Z", APP).await;
-    let operations = connect(&state, &dsp, OPERATIONS, "2026-01-01T00:00:00Z", APP).await;
+    let drivers = connect(&state, &dsp, DRIVERS, APP).await;
+    let operations = connect(&state, &dsp, OPERATIONS, APP).await;
     read(&drivers).await.unwrap();
     read(&operations).await.unwrap();
     let of = dsp.clone();
@@ -109,12 +108,16 @@ async fn driver_match_reads_one_person_for_each_email_whichever_workspaces_they_
         .read(move |db| (crate::backend::people::PEOPLE.read)(db, &of))
         .await
         .unwrap();
-    // Jordan, in both, holds the ID of the workspace connected first.
-    let jordan: Vec<_> = named.iter().filter(|n| n.name == "Jordan Ellis").collect();
-    assert_eq!(jordan.len(), 1);
-    assert_eq!(jordan[0].id, format!("{OPERATIONS}:U0FIXJORDAN"));
-    assert!(jordan[0].listed);
-    assert_eq!(jordan[0].emails, ["jordan.ellis@example.com"]);
+    // Jordan, in both, is named by each workspace's member ID, as the same person as the other.
+    let [in_operations, in_drivers] =
+        [OPERATIONS, DRIVERS].map(|team| format!("{team}:U0FIXJORDAN"));
+    for (id, other) in [(&in_operations, &in_drivers), (&in_drivers, &in_operations)] {
+        let jordan = named.iter().find(|n| n.id == *id).unwrap();
+        assert_eq!(jordan.name, "Jordan Ellis");
+        assert!(jordan.listed);
+        assert_eq!(jordan.emails, ["jordan.ellis@example.com"]);
+        assert_eq!(jordan.same_as, [other.clone()]);
+    }
     // The name someone goes by in Slack is another way it writes theirs.
     let morgan: Vec<&str> = named
         .iter()
