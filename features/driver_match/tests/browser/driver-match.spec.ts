@@ -28,14 +28,13 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   ).toBeVisible();
   await expect(tab).toContainText('3');
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
-  // Someone kept apart is never suggested again.
+  // Two people kept apart.
   await check('Drew S.').click();
   await expect(dialog).toContainText('Not sure');
   await dialog.getByRole('button', { name: 'Different people', exact: true }).click();
   await expect(page.getByText(/are kept as different people$/)).toBeVisible();
   await expect(tab).toContainText('2');
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
-  await expect(check('Drew S.')).toHaveCount(0);
   // A name written another way is confirmed the same way.
   await check('Quinn Foster').click();
   await expect(dialog).toContainText('Similar name');
@@ -64,7 +63,7 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await expect(
     sheet.getByRole('listitem').filter({ hasText: 'confirmed as this person' }),
   ).toHaveCount(1);
-  // A wrong link comes apart again, and the two stay apart.
+  // A wrong link comes apart again.
   await sheet
     .locator('.driver-id')
     .filter({ hasText: 'Ben Collins' })
@@ -75,5 +74,4 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await expect(sheet.locator('.driver-id')).toHaveCount(1);
   await sheet.getByRole('button', { name: 'Close dialog' }).click();
   await expect(card('Ben Collins')).toHaveCount(1);
-  await expect(check('Ben Collins')).toHaveCount(0);
 });

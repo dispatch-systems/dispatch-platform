@@ -69,6 +69,8 @@ pub(super) fn write(store: &Store, dsp: &str, collected: Collected) -> Result<us
                 params![x.source, x.id, code, decision.link, now],
             )?;
         }
+        // Written on every pass, new IDs or not: it runs under Driver Match's data area, which
+        // features showing people's photos are cleared by, so a new photo reaches them.
         db.set(CHECKED, &json!(now))?;
         Ok(decided.len())
     })

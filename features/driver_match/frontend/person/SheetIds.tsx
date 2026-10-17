@@ -1,9 +1,9 @@
 import { Split } from 'lucide-react';
-import type { Driver, DriverId } from '../../api/index.js';
-import { confirmDriver } from '../../api/client.js';
+import type { Person, PersonId } from '../../api/index.js';
+import { confirmLink } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
-import { confirmable, phoneText, seenRange, shortId, sourceLabel } from '../driver-match.js';
+import { phoneText, seenRange, shortId, sourceLabel } from '../driver-match.js';
 import { LinkTag, SourceTag } from '../parts/Tags.js';
 
 /**
@@ -11,15 +11,15 @@ import { LinkTag, SourceTag } from '../parts/Tags.js';
  * match made can be confirmed, and any ID split off while they hold more than one.
  */
 export function SheetIds({
-  driver,
+  person,
   today,
   onSplit,
 }: {
-  driver: Driver;
+  person: Person;
   today: string;
-  onSplit: (id: DriverId) => void;
+  onSplit: (id: PersonId) => void;
 }) {
-  const confirm = useAction((id: DriverId) => confirmDriver(driver.code, id.source, id.id), {
+  const confirm = useAction((id: PersonId) => confirmLink(person.code, id.source, id.id), {
     inline: true,
     success: (id) => `${sourceLabel(id.source)} ID ${shortId(id)} is confirmed`,
   });
@@ -27,7 +27,7 @@ export function SheetIds({
     <section className="driver-sheet-section" aria-labelledby="driver-ids">
       <h3 id="driver-ids">IDs</h3>
       <ErrorBox message={confirm.error} />
-      {driver.ids.map((id) => (
+      {person.ids.map((id) => (
         <div className="driver-id" key={`${id.source}:${id.id}`}>
           <div>
             <div className="driver-id-head">
@@ -54,14 +54,14 @@ export function SheetIds({
             )}
           </div>
           <LinkTag link={id.linkedBy} />
-          {(confirmable(id.linkedBy) || driver.ids.length > 1) && (
+          {(id.confirmable || person.ids.length > 1) && (
             <div className="driver-id-actions">
-              {confirmable(id.linkedBy) && (
+              {id.confirmable && (
                 <button disabled={confirm.busy} onClick={() => void confirm.run(id)}>
                   Confirm
                 </button>
               )}
-              {driver.ids.length > 1 && (
+              {person.ids.length > 1 && (
                 <button onClick={() => onSplit(id)}>
                   <Split size={14} aria-hidden="true" />
                   Split off

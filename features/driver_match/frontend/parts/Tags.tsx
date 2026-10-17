@@ -1,24 +1,24 @@
 import { CircleCheck, Mail, Phone } from 'lucide-react';
-import type { DriverLink, DriverRole, DriverSource } from '../../api/index.js';
-import { linkLabels, roleLabels, roleTones, sourceKinds, sourceLabel } from '../driver-match.js';
+import type { DriverSource, IdLink, PersonRole } from '../../api/index.js';
+import { links, roles, sourceKinds, sourceLabel } from '../driver-match.js';
 
 /** What a person does for the DSP. */
-export function RoleTag({ role }: { role: DriverRole }) {
-  return <span className={`driver-tag ${roleTones[role]}`}>{roleLabels[role]}</span>;
+export function RoleTag({ role }: { role: PersonRole }) {
+  return <span className={`driver-tag ${roles[role].tone}`}>{roles[role].label}</span>;
 }
 
-const linkIcons: Partial<Record<DriverLink, typeof Mail>> = {
+const linkIcons: Partial<Record<IdLink, typeof Mail>> = {
   email: Mail,
   phone: Phone,
   person: CircleCheck,
 };
-/** How surely an ID is its person's. */
-export function LinkTag({ link }: { link: DriverLink }) {
+/** How an ID came to its person; one a person decided reads in green. */
+export function LinkTag({ link }: { link: IdLink }) {
   const Icon = linkIcons[link];
   return (
     <span className={`driver-tag${link === 'person' ? ' sage' : ''}`}>
       {Icon && <Icon size={12} aria-hidden="true" />}
-      {linkLabels[link]}
+      {links[link].label}
     </span>
   );
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Driver, DriverMatch } from '../../../features/driver_match/api/index.js';
+import type { DriverMatch, Person } from '../../../features/driver_match/api/index.js';
 import type { Employee, EmployeesResponse } from '../../../features/timecard/api/index.js';
 import { collectRoster } from '../../../features/driver_profiles/tests/support/roster.js';
 import { fixture, until } from '../../../core/shell/tests/support/support.js';
@@ -10,14 +10,14 @@ test("Driver Match and Timecard's employees show the photo Driver Profiles' rost
   t.after(f.close);
   const owner = await f.client();
   await collectRoster(owner);
-  let pictured: Driver | undefined;
+  let pictured: Person | undefined;
   await until(async () => {
     const result: DriverMatch = await owner.read('/api/dsp/driver-match');
-    pictured = result.drivers.find((driver) => driver.photo);
+    pictured = result.people.find((person) => person.photo);
     return Boolean(pictured);
   });
   assert.ok(pictured!.ids.some((id) => id.photo));
-  const url = `/api/dsp/driver-match/drivers/${pictured!.code}/photo`;
+  const url = `/api/dsp/driver-match/people/${pictured!.code}/photo`;
   const photo = await f.raw(url, undefined, owner.headers);
   assert.equal(photo.status, 200);
   assert.equal(photo.headers.get('content-type'), 'image/png');
@@ -29,15 +29,15 @@ test("Driver Match and Timecard's employees show the photo Driver Profiles' rost
     employee = result.employees.find((e) => e.photo);
     return Boolean(employee);
   });
-  const { drivers }: DriverMatch = await owner.read('/api/dsp/driver-match');
-  const person = drivers.find((d) =>
+  const { people }: DriverMatch = await owner.read('/api/dsp/driver-match');
+  const person = people.find((d) =>
     d.ids.some((id) => id.source === 'paycom' && id.id === employee!.code),
   )!;
   assert.equal(employee!.photo, person.photo);
   const detail = await owner.read(`/api/dsp/employees/${employee!.code}`);
   assert.equal(detail.employee.photo, person.photo);
   const theirs = await f.raw(
-    `/api/dsp/driver-match/drivers/${person.code}/photo`,
+    `/api/dsp/driver-match/people/${person.code}/photo`,
     undefined,
     owner.headers,
   );

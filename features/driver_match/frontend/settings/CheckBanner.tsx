@@ -1,4 +1,4 @@
-import { DriverAvatar } from '../parts/DriverAvatar.js';
+import { Face } from '../parts/Face.js';
 import type { Check } from './checks.js';
 
 /** How many faces the banner shows of the people it asks about. */
@@ -15,7 +15,7 @@ export function CheckBanner({ checks, onStart }: { checks: Check[]; onStart: () 
     <div className="driver-checks">
       <span className="driver-checks-faces">
         {faces.map((side, index) => (
-          <DriverAvatar key={`${index}:${side.code}`} driver={side} />
+          <Face key={`${index}:${side.code}`} person={side} />
         ))}
       </span>
       <strong>{checks.length} to check</strong>

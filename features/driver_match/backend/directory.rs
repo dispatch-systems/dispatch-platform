@@ -1,7 +1,6 @@
 //! Who each ID is, for the features that show people: core's directory, answered from the
 //! codes Driver Match keeps.
-use super::{IdRow, details, sources};
-use crate::api::types::DriverLink;
+use super::{IdRow, current_ids, photos};
 use dispatch_core::{
     Result, State,
     db::Store,
@@ -23,21 +22,17 @@ impl people::Directory for Directory {
         dsp: &str,
         source: DriverSource,
     ) -> Result<BTreeMap<String, Person>> {
-        let rows: Vec<IdRow> = store.dsp(dsp)?.query_as(
-            "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
-             WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.external_id",
-            [],
-        )?;
+        let rows = current_ids(&*store.dsp(dsp)?)?;
         let mut held: BTreeMap<&str, Vec<&IdRow>> = BTreeMap::new();
         for row in &rows {
             held.entry(&row.code).or_default().push(row);
         }
-        let photos = photos(store, dsp)?;
+        let versions = photos::versions(store, dsp)?;
         let mut out = BTreeMap::new();
         for (code, ids) in held {
             let mut person = Person {
                 code: code.to_owned(),
-                confirmed: ids.iter().any(|i| i.linked_by == DriverLink::Person),
+                confirmed: ids.iter().any(|i| i.linked_by.decided()),
                 ..Person::default()
             };
             for id in &ids {
@@ -49,12 +44,11 @@ impl people::Directory for Directory {
                         .push(id.external_id.clone());
                 }
             }
-            person.photo = photos.iter().find_map(|(source, versions)| {
-                person
-                    .ids_of(*source)
-                    .iter()
-                    .find_map(|id| versions.get(id).cloned())
-            });
+            // Their IDs in the sources' order, then as they came, as the tab shows their photo.
+            let mut keys: Vec<(&IdRow, _)> =
+                ids.iter().filter_map(|i| Some((*i, i.key()?))).collect();
+            keys.sort_by_key(|(row, key)| (key.0, row.linked_at.clone()));
+            person.photo = keys.iter().find_map(|(_, key)| versions.get(key).cloned());
             for id in person.ids_of(source).to_vec() {
                 out.insert(id, person.clone());
             }
@@ -74,7 +68,7 @@ impl people::Directory for Directory {
             params![source, id],
         )?;
         match code.into_iter().next() {
-            Some((code,)) => details::photo(store, dsp, &code),
+            Some((code,)) => photos::photo_of(store, dsp, &code),
             None => Ok(None),
         }
     }
@@ -82,21 +76,4 @@ impl people::Directory for Directory {
     fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep {
         super::maintenance::after_collection(state, dsp)
     }
-}
-
-/// The version of each photo the kinds of data that hold photos name, by ID, in the order
-/// `details::photo` looks through them: the version of the photo it serves.
-fn photos(store: &Store, dsp: &str) -> Result<Vec<(DriverSource, BTreeMap<String, String>)>> {
-    let mut out = vec![];
-    for kind in sources::kinds(store, dsp)? {
-        if kind.photos.is_none() {
-            continue;
-        }
-        let versions = (kind.read)(store, dsp)?
-            .into_iter()
-            .filter_map(|named| Some((named.id, named.photo?)))
-            .collect();
-        out.push((kind.source(), versions));
-    }
-    Ok(out)
 }

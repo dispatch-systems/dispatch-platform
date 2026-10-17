@@ -1,61 +1,50 @@
 import { GitMerge } from 'lucide-react';
 import { useState } from 'react';
-import type { Driver, DriverDetails, DriverId } from '../../api/index.js';
-import { splitDriver, useDriverDetails } from '../../api/client.js';
+import type { Person, PersonDetails, PersonId } from '../../api/index.js';
+import { splitOff, usePersonDetails } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';
 import { ConfirmDialog, DataState, Modal } from '../../../../core/shell/frontend/ui/index.js';
-import {
-  dataAmount,
-  dataKinds,
-  dataLabel,
-  eventText,
-  goesBy,
-  shortId,
-  sourceLabel,
-} from '../driver-match.js';
+import { dataAmount, dataLabel, eventText, goesBy, shortId, sourceLabel } from '../driver-match.js';
 import { DataIcon } from '../parts/DataIcon.js';
-import { DriverAvatar } from '../parts/DriverAvatar.js';
+import { Face } from '../parts/Face.js';
 import { RoleTag } from '../parts/Tags.js';
 import { DayStrip } from './DayStrip.js';
 import { MergeDialog } from './MergeDialog.js';
 import { SheetIds } from './SheetIds.js';
 
 /** One person in full: their IDs, what they appear in, their last fourteen days and history. */
-export function DriverSheet({
+export function PersonSheet({
   code,
-  drivers,
+  people,
   timezone,
   today,
   onClose,
 }: {
   code: string;
-  drivers: Driver[];
+  people: Person[];
   timezone: string;
   today: string;
   onClose: () => void;
 }) {
-  const details = useDriverDetails(code);
+  const details = usePersonDetails(code);
   const [merging, setMerging] = useState(false);
-  const [splitting, setSplitting] = useState<DriverId | null>(null);
-  const split = useAction(
-    (id: DriverId) => splitDriver(details.data!.driver.code, id.source, id.id),
-    {
-      success: (id) => `${sourceLabel(id.source)} ID ${shortId(id)} is now its own person`,
-    },
-  );
-  const driver = details.data?.driver;
+  const [splitting, setSplitting] = useState<PersonId | null>(null);
+  const split = useAction((id: PersonId) => splitOff(details.data!.person.code, id.source, id.id), {
+    success: (id) => `${sourceLabel(id.source)} ID ${shortId(id)} is now its own person`,
+  });
+  const person = details.data?.person;
   return (
     <Modal
       variant="sheet"
       onClose={onClose}
-      title={driver ? <SheetTitle driver={driver} /> : 'Driver'}
+      title={person ? <SheetTitle person={person} /> : 'Person'}
     >
       <DataState data={details.data} error={details.error} retry={details.refresh}>
         {(data) => (
           <>
-            <SheetIds driver={data.driver} today={today} onSplit={setSplitting} />
-            <Activity data={data} />
+            <SheetIds person={data.person} today={today} onSplit={setSplitting} />
+            <Appears data={data} />
             {data.days.length > 0 && (
               <section className="driver-sheet-section" aria-labelledby="driver-days">
                 <h3 id="driver-days">Last 14 days</h3>
@@ -70,11 +59,7 @@ export function DriverSheet({
               </button>
             </div>
             {merging && (
-              <MergeDialog
-                driver={data.driver}
-                drivers={drivers}
-                onClose={() => setMerging(false)}
-              />
+              <MergeDialog person={data.person} people={people} onClose={() => setMerging(false)} />
             )}
             {splitting && (
               <ConfirmDialog
@@ -97,16 +82,16 @@ export function DriverSheet({
   );
 }
 
-function SheetTitle({ driver }: { driver: Driver }) {
-  const alias = goesBy(driver);
+function SheetTitle({ person }: { person: Person }) {
+  const alias = goesBy(person);
   return (
     <span className="driver-sheet-person">
-      <DriverAvatar driver={driver} size="large" />
+      <Face person={person} size="large" />
       <span>
-        <span className="driver-sheet-name">{driver.name}</span>
+        <span className="driver-sheet-name">{person.name}</span>
         <span className="driver-sheet-meta">
-          <span className="driver-code">{driver.code}</span>
-          <RoleTag role={driver.role} />
+          <span className="driver-code">{person.code}</span>
+          <RoleTag role={person.role} />
           {alias && (
             <span>
               Goes by {alias.name} on {alias.source}
@@ -118,24 +103,21 @@ function SheetTitle({ driver }: { driver: Driver }) {
   );
 }
 
-function Activity({ data }: { data: DriverDetails }) {
+function Appears({ data }: { data: PersonDetails }) {
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-activity">
       <h3 id="driver-activity">Appears in</h3>
-      {data.activity.length ? (
+      {data.appears.length ? (
         <dl className="driver-activity">
-          {dataKinds
-            .map((kind) => data.activity.find((a) => a.data === kind))
-            .filter((a) => a !== undefined)
-            .map(({ data: kind, count }) => (
-              <div key={kind}>
-                <dt>
-                  <DataIcon kind={kind} size={14} />
-                  {dataLabel(kind)}
-                </dt>
-                <dd>{dataAmount(kind, count)}</dd>
-              </div>
-            ))}
+          {data.appears.map(({ data: kind, count }) => (
+            <div key={kind}>
+              <dt>
+                <DataIcon kind={kind} size={14} />
+                {dataLabel(kind)}
+              </dt>
+              <dd>{dataAmount(kind, count)}</dd>
+            </div>
+          ))}
         </dl>
       ) : (
         <p className="driver-match-copy">No collected data yet.</p>
@@ -144,7 +126,7 @@ function Activity({ data }: { data: DriverDetails }) {
   );
 }
 
-function History({ data, timezone }: { data: DriverDetails; timezone: string }) {
+function History({ data, timezone }: { data: PersonDetails; timezone: string }) {
   return (
     <section className="driver-sheet-section" aria-labelledby="driver-history">
       <h3 id="driver-history">History</h3>

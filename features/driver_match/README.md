@@ -18,17 +18,18 @@ only what was decided.
   one is disconnected.
 - **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
 - **Its screen** is the Driver Match tab of a DSP's Settings, shown while the DSP has a feature
-  on whose data names people: the questions waiting, the pairs to decide and the names written
-  another way to confirm, asked one at a time; then everyone as a card with their photo and
-  the sources that have them, by role or a source lacking them. Driver Profiles draws its
-  roster bar above it.
-- **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on,
-  everyone, and the pairs that may be one person), `…/counts`, `…/drivers/{code}` (one
-  person's IDs, days and activity), `…/drivers/{code}/photo` (their photo), and the decisions
-  `POST …/merge` (two codes become one), `…/split` (one ID moves to a new person), `…/apart`
-  (two people are kept apart) and `…/confirm` (a match's link is right). A decision made on
-  stale data is refused (`driver_changed`), as is splitting a person's only ID
-  (`driver_single_id`).
+  on whose data names people: the questions the backend sends, asked one at a time, then
+  everyone as a card with their photo and the sources that have them, by role or a source
+  lacking them. Its badge counts the same questions. Driver Profiles draws its roster bar above
+  it.
+- **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on, the
+  questions waiting, as pairs that may be one person or name variants to confirm, by people's
+  codes, and everyone), `…/counts` (how many questions wait), `…/people/{code}` (one person's
+  IDs, what they appear in, their days and history), `…/people/{code}/photo` (their photo),
+  and the decisions `POST …/merge` (two codes become one), `…/split` (one ID moves to a new
+  person), `…/apart` (two people are kept apart) and `…/confirm` (a match by a name or a
+  contact was right), which answer with nothing. A decision made on stale data is refused
+  (`person_changed`), as is splitting a person's only ID (`person_single_id`).
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
   platform (`driver_codes`). A person keeps their code for good; merged, both keep the code
   merged into.
@@ -53,16 +54,19 @@ only what was decided.
   know works in the office while one lists them, and has left once none does. People no
   source shows driving, outside the departments a source's settings count as drivers, work in
   the office.
-- **Review:** two people no source knows both of, whose names tie them, or any two sharing a
-  contact only they have, with how many days they worked together. A list of people the DSP
-  can reach may list one person twice, as an account in each of two workspaces under
-  different addresses, so its knowing both keeps no pair apart. The one holding fewer
-  IDs joins the other, whose code both keep.
-- **Photos:** a person's photo is the first a connection holds under one of their IDs. The
-  directory names its version for each person and serves it, so every feature showing people
-  shows the same photo.
+- **Questions:** two people no source knows both of, whose names tie them, or any two sharing
+  a contact only they have, with how many days they worked together; each reason says whether
+  it argues for them being one (working fewer than half their days together argues against).
+  A list of people the DSP can reach may list one person twice, as an account in each of two
+  workspaces under different addresses, so its knowing both keeps no pair apart. The one
+  holding fewer IDs joins the other, whose code both keep. Then the IDs a name written another
+  way joined to someone. Nobody who has left is asked about.
+- **Photos:** a person's photo is the first a kind of data holds under one of their IDs, their
+  IDs in the sources' order and each ID's kinds in the order their data is read
+  (`backend/photos.rs`). The tab, a person's photo and the directory answer by that one rule,
+  so every feature showing people shows the same photo.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
-  `driver_match.kept_apart` and `driver_match.confirmed`, naming drivers by their codes; the
+  `driver_match.kept_apart` and `driver_match.confirmed`, naming people by their codes; the
   log puts today's names to them.
 - **Storage:** `driver_codes` in the platform's database (platform migration 10) and
   `people`, `person_ids` and `people_apart` in each DSP's (DSP migration 7, and its own
@@ -82,6 +86,9 @@ of rule already is:
 - `review.rs` gathers why two people might be one, and `pairs.rs` makes those pairs, which
   side joins the other and in what order they're asked.
 - `codes.rs` writes and checks codes.
+- `gather.rs` reads what the tab, a person's sheet and the badge need, once for each answer;
+  `overview.rs` makes the tab and its questions, `details.rs` one person's sheet, `photos.rs`
+  photos, and `decisions.rs` the decisions a person makes.
 
 ## Connecting a feature
 

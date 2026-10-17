@@ -28,3 +28,10 @@ mod weekly_scorecard_transition;
 
 #[cfg(all(feature = "daily_performance", feature = "weekly_scorecard"))]
 mod daily_performance;
+
+/// One Driver Match pass over a DSP's data, as after a collection: reading, then writing.
+#[cfg(feature = "driver_match")]
+fn pass(db: &dispatch_core::db::Store, dsp: &str) -> dispatch_core::Result<usize> {
+    use dispatch_driver_match::DriverMatchStore;
+    db.write_pass(dsp, db.read_pass(dsp)?)
+}

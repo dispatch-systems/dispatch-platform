@@ -1,4 +1,5 @@
 //! Timecard's meal breaks join drivers to employees through Driver Match alone.
+use crate::pass;
 use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
@@ -69,7 +70,7 @@ fn context(db: &Store, id: &str) -> Context {
 fn person(db: &Store, id: &str, source: DriverSource, external: &str) -> String {
     db.driver_match(id)
         .unwrap()
-        .drivers
+        .people
         .into_iter()
         .find(|d| d.ids.iter().any(|i| i.source == source && i.id == external))
         .unwrap()
@@ -102,7 +103,7 @@ fn drivers_join_employees_through_driver_match() {
     assert_eq!(rows(&data).len(), 12);
     // Driver Match joins them to their employee by name, and its decisions move them.
     let c = context(&db, &id);
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let data = compare(&db);
     assert_eq!(data["drivers"][0]["paycomCode"], "E001");
     assert_eq!(rows(&data).len(), 11);
@@ -117,13 +118,13 @@ fn drivers_join_employees_through_driver_match() {
             .any(|r| r["paycom"]["employeeCode"] == "E003")
     );
     let demo = person(&db, &id, amazon(), &transporter);
-    db.split_driver(&c, &demo, amazon(), &transporter).unwrap();
+    db.split_off(&c, &demo, amazon(), &transporter).unwrap();
     let data = compare(&db);
     assert!(data["drivers"][0]["paycomCode"].is_null());
     assert_eq!(rows(&data).len(), 12);
     let alone = person(&db, &id, amazon(), &transporter);
     let second = person(&db, &id, paycom(), "E002");
-    db.merge_drivers(&c, &alone, &second).unwrap();
+    db.merge_people(&c, &alone, &second).unwrap();
     let data = compare(&db);
     assert_eq!(data["drivers"][0]["paycomCode"], "E002");
     let linked = rows(&data)

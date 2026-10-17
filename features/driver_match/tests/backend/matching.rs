@@ -48,17 +48,17 @@ fn same_as(mut x: Identity, others: &[&str]) -> Identity {
     x
 }
 /// Plans from nobody, and answers who each ID ends up with, by how.
-fn run(incoming: &[Identity]) -> BTreeMap<String, (Target, DriverLink)> {
+fn run(incoming: &[Identity]) -> BTreeMap<String, (Target, IdLink)> {
     plan(BTreeMap::new(), incoming)
         .into_iter()
         .map(|d| (incoming[d.index].id.clone(), (d.target, d.link)))
         .collect()
 }
-fn together(result: &BTreeMap<String, (Target, DriverLink)>, a: &str, b: &str) -> bool {
+fn together(result: &BTreeMap<String, (Target, IdLink)>, a: &str, b: &str) -> bool {
     result[a].0 == result[b].0
 }
 /// Where each of `incoming` goes, given who holds what already, and how.
-fn decided(holders: &[(&str, Vec<Identity>)], incoming: &[Identity]) -> Vec<(Target, DriverLink)> {
+fn decided(holders: &[(&str, Vec<Identity>)], incoming: &[Identity]) -> Vec<(Target, IdLink)> {
     let holders = holders
         .iter()
         .map(|(code, ids)| ((*code).to_owned(), ids.clone()))
@@ -83,11 +83,11 @@ fn unique_names_join_across_formats_and_variants_need_the_whole_surname() {
         amazon("T3", &["James Whitfield Jr"]),
     ]);
     assert!(together(&result, "A001", "T1"));
-    assert_eq!(result["T1"].1, DriverLink::Name);
+    assert_eq!(result["T1"].1, IdLink::Name);
     assert!(together(&result, "A002", "T2"));
-    assert_eq!(result["T2"].1, DriverLink::Variant);
+    assert_eq!(result["T2"].1, IdLink::Variant);
     assert!(together(&result, "A003", "T3"));
-    assert_eq!(result["A001"].1, DriverLink::New);
+    assert_eq!(result["A001"].1, IdLink::New);
 }
 #[test]
 fn any_spelling_amazon_knows_can_match_and_middle_names_are_looked_past() {
@@ -103,9 +103,9 @@ fn any_spelling_amazon_knows_can_match_and_middle_names_are_looked_past() {
     ]);
     assert!(together(&result, "A001", "T1"));
     assert!(together(&result, "A002", "T2"));
-    assert_eq!(result["T2"].1, DriverLink::Variant);
+    assert_eq!(result["T2"].1, IdLink::Variant);
     assert!(together(&result, "A003", "T3"));
-    assert_eq!(result["T3"].1, DriverLink::Variant);
+    assert_eq!(result["T3"].1, IdLink::Variant);
 }
 #[test]
 fn a_middle_name_two_people_could_go_by_is_never_guessed() {
@@ -114,7 +114,7 @@ fn a_middle_name_two_people_could_go_by_is_never_guessed() {
         paycom("A002", "GARCIA, JUAN"),
         amazon("T1", &["Juan Jose Garcia"]),
     ]);
-    assert_eq!(result["T1"].1, DriverLink::New);
+    assert_eq!(result["T1"].1, IdLink::New);
 }
 #[test]
 fn shared_names_and_different_first_names_are_never_guessed() {
@@ -137,7 +137,7 @@ fn shared_names_and_different_first_names_are_never_guessed() {
     ] {
         assert!(!together(&result, a, b), "{a} and {b}");
     }
-    assert_eq!(result["T4"].1, DriverLink::New);
+    assert_eq!(result["T4"].1, IdLink::New);
 }
 #[test]
 fn a_person_who_has_an_amazon_id_takes_no_second_by_name_or_contact() {
@@ -148,7 +148,7 @@ fn a_person_who_has_an_amazon_id_takes_no_second_by_name_or_contact() {
     let incoming = [reached(amazon("T9", &["Devon Carter"]), "", "6125550142")];
     assert_eq!(
         decided(&[("K7M2QX", devon)], &incoming),
-        [(Target::New(0), DriverLink::New)]
+        [(Target::New(0), IdLink::New)]
     );
 }
 #[test]
@@ -157,7 +157,7 @@ fn amazon_seen_first_is_joined_by_paycom_later() {
     let incoming = [paycom("A001", "NATARAJAN, PRIYA")];
     assert_eq!(
         decided(&[("W5HC2K", priya)], &incoming),
-        [(person("W5HC2K"), DriverLink::Name)]
+        [(person("W5HC2K"), IdLink::Name)]
     );
 }
 #[test]
@@ -179,10 +179,10 @@ fn a_contact_only_two_people_share_joins_them_when_their_names_agree() {
     ]);
     assert!(together(&result, "A001", "T1"));
     assert!(together(&result, "T1", "U1"));
-    assert_eq!(result["U1"].1, DriverLink::Email);
+    assert_eq!(result["U1"].1, IdLink::Email);
     assert!(!together(&result, "T1", "U2"));
     assert!(!together(&result, "T2", "U3"));
-    assert_eq!(result["U3"].1, DriverLink::New);
+    assert_eq!(result["U3"].1, IdLink::New);
 }
 #[test]
 fn a_phone_only_the_two_share_joins_them_when_a_first_name_is_all_their_names_share() {
@@ -192,7 +192,7 @@ fn a_phone_only_the_two_share_joins_them_when_a_first_name_is_all_their_names_sh
         reached(amazon("T1", &["Shanice Bell"]), "", "6125550177"),
     ]);
     assert!(together(&result, "A001", "T1"));
-    assert_eq!(result["T1"].1, DriverLink::Phone);
+    assert_eq!(result["T1"].1, IdLink::Phone);
 }
 #[test]
 fn a_name_written_alike_decides_before_a_variant_could_guess() {
@@ -203,7 +203,7 @@ fn a_name_written_alike_decides_before_a_variant_could_guess() {
     ]);
     // "Maria Reyes" is A001's name as written, though it is a variant of A002's too.
     assert!(together(&result, "A001", "T1"));
-    assert_eq!(result["T1"].1, DriverLink::Name);
+    assert_eq!(result["T1"].1, IdLink::Name);
 }
 #[test]
 fn a_contact_two_ids_of_one_source_share_says_nothing() {
@@ -215,7 +215,7 @@ fn a_contact_two_ids_of_one_source_share_says_nothing() {
     ]);
     // Not by the phone; by the one name nobody else carries.
     assert!(together(&result, "T1", "U1"));
-    assert_eq!(result["U1"].1, DriverLink::Name);
+    assert_eq!(result["U1"].1, IdLink::Name);
     assert!(!together(&result, "T2", "U1"));
 }
 #[test]
@@ -240,9 +240,6 @@ fn another_account_joins_only_its_one_holder_whose_names_agree() {
     // A person decides both.
     assert_eq!(
         decided(&holders, &incoming),
-        [
-            (Target::New(0), DriverLink::New),
-            (Target::New(1), DriverLink::New)
-        ]
+        [(Target::New(0), IdLink::New), (Target::New(1), IdLink::New)]
     );
 }

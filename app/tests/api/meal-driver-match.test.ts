@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Driver, DriverMatch } from '../../../features/driver_match/api/index.js';
+import type { DriverMatch, Person } from '../../../features/driver_match/api/index.js';
 import type { MealEmployee } from '../../../features/timecard/api/index.js';
 import {
   seedNameVariants,
@@ -17,10 +17,10 @@ test("a decision in Driver Match changes Timecard's meal breaks at once", async 
   const { endpoint, before } = await seedNameVariants(f, owner, dsp.id);
   const rows = async () => (await owner.read(endpoint)).rows.length;
   const holder = async (id: string) => {
-    let found: Driver | undefined;
+    let found: Person | undefined;
     await until(async () => {
-      const people: DriverMatch = await owner.read('/api/dsp/driver-match');
-      found = people.drivers.find((d) => d.ids.some((i) => i.id === id));
+      const tab: DriverMatch = await owner.read('/api/dsp/driver-match');
+      found = tab.people.find((d) => d.ids.some((i) => i.id === id));
       return Boolean(found);
     });
     return found!;

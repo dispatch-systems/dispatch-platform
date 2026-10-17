@@ -17,26 +17,16 @@ test('recovery-code responses accept the active and previous rollout formats', a
   );
 });
 
-test('driver badge counts reject malformed responses without exposing their contents', async () => {
+test('Driver Match badge counts reject malformed responses without exposing their contents', async () => {
   const route = '/api/dsp/driver-match/counts';
-  const counts = {
-    people: 12,
-    review: 2,
-    unconfirmed: 1,
-    missing: 2,
-    drivers: 8,
-    helpers: 1,
-    office: 2,
-    former: 1,
-  };
+  const counts = { questions: 3 };
   assert.deepEqual(await parseApiResponse(route, 'GET', counts), counts);
-  for (const review of ['private-invalid-count', -1, 0.5, null])
+  for (const questions of ['private-invalid-count', -1, 0.5, null])
     await assert.rejects(
-      parseApiResponse(route, 'GET', { ...counts, review }),
+      parseApiResponse(route, 'GET', { questions }),
       /^Error: invalid_api_response$/,
     );
-  const { former: _former, ...incomplete } = counts;
-  await assert.rejects(parseApiResponse(route, 'GET', incomplete), /^Error: invalid_api_response$/);
+  await assert.rejects(parseApiResponse(route, 'GET', {}), /^Error: invalid_api_response$/);
 });
 
 test('generated platform contracts validate real responses and settings round trips preserve every preference', async (t) => {

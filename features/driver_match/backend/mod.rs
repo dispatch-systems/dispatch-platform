@@ -11,19 +11,21 @@ mod contacts;
 mod decisions;
 mod details;
 mod directory;
+mod gather;
 pub(crate) mod maintenance;
 mod matching;
 mod names;
 mod overview;
 mod pairs;
 mod person;
+mod photos;
 mod review;
 mod sources;
 
 pub(crate) use audit::name_driver_events;
 pub(crate) use directory::Directory;
 
-use crate::api::types::{DriverCounts, DriverDetails, DriverLink, DriverMatch};
+use crate::api::types::{DriverMatch, IdLink, MatchCounts, PersonDetails};
 use dispatch_core::{
     Error, Result,
     accounts::Context,
@@ -43,11 +45,9 @@ const CHECKED: &str = "driver_match.checked_at";
 /// before the newest day anything was collected for.
 const FORMER_AFTER_DAYS: i64 = 21;
 
-pub use codes::valid_code;
-
 /// What one pass reads: every ID the DSP's collections hold now, and the sources that only
-/// list people the DSP can reach. Reading takes the shared lock; `assign_drivers` then writes
-/// in one short step.
+/// list people the DSP can reach. Reading takes the shared lock; `write_pass` then writes in
+/// one short step.
 pub struct Collected {
     found: sources::Found,
     contacts_only: BTreeSet<DriverSource>,
@@ -60,7 +60,7 @@ pub(crate) struct IdRow {
     source: String,
     external_id: String,
     code: String,
-    linked_by: DriverLink,
+    linked_by: IdLink,
     linked_at: String,
     actor_id: Option<String>,
 }
@@ -89,83 +89,64 @@ impl IdRow {
 /// What Driver Match reads and writes for a DSP: its codes, the decisions about them and the
 /// IDs they lead to.
 pub trait DriverMatchStore {
-    fn match_drivers(&self, dsp: &str) -> Result<usize>;
-    fn driver_sources(&self, dsp: &str) -> Result<Collected>;
-    fn assign_drivers(&self, dsp: &str, found: Collected) -> Result<usize>;
+    /// Reads what a pass needs, without writing: run it under the shared lock.
+    fn read_pass(&self, dsp: &str) -> Result<Collected>;
+    /// Writes what a pass found: a person for every new ID. Answers how many IDs were new.
+    fn write_pass(&self, dsp: &str, collected: Collected) -> Result<usize>;
+    /// The Driver Match tab: the questions waiting, then every person with a code.
     fn driver_match(&self, dsp: &str) -> Result<DriverMatch>;
-    fn driver_counts(&self, dsp: &str) -> Result<DriverCounts>;
-    fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails>;
+    /// How many questions wait, for the tab's badge, without the roster.
+    fn match_counts(&self, dsp: &str) -> Result<MatchCounts>;
+    fn person_details(&self, dsp: &str, code: &str) -> Result<PersonDetails>;
     /// The photo of `code`'s person, from whichever feature holds one: its kind and its bytes.
-    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>>;
-    fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch>;
-    fn split_driver(
-        &self,
-        c: &Context,
-        code: &str,
-        source: DriverSource,
-        id: &str,
-    ) -> Result<DriverMatch>;
-    fn keep_drivers_apart(&self, c: &Context, code: &str, other: &str) -> Result<DriverMatch>;
+    fn person_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>>;
+    fn merge_people(&self, c: &Context, code: &str, into: &str) -> Result<()>;
+    fn split_off(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()>;
+    fn keep_apart(&self, c: &Context, code: &str, other: &str) -> Result<()>;
     /// Confirms one of `code`'s IDs is theirs, as a match only suggested it.
-    fn confirm_driver(
-        &self,
-        c: &Context,
-        code: &str,
-        source: DriverSource,
-        id: &str,
-    ) -> Result<DriverMatch>;
+    fn confirm_link(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()>;
 }
 impl DriverMatchStore for Store {
-    /// Gives every new ID in the DSP's collections a person. Answers how many IDs were new.
-    fn match_drivers(&self, dsp: &str) -> Result<usize> {
-        self.assign_drivers(dsp, self.driver_sources(dsp)?)
-    }
-    /// Reads what a pass needs, without writing: run it under the shared lock.
-    fn driver_sources(&self, dsp: &str) -> Result<Collected> {
+    fn read_pass(&self, dsp: &str) -> Result<Collected> {
         assign::read(self, dsp)
     }
-    /// Writes what a pass found: a person for every new ID.
-    fn assign_drivers(&self, dsp: &str, found: Collected) -> Result<usize> {
-        assign::write(self, dsp, found)
+    fn write_pass(&self, dsp: &str, collected: Collected) -> Result<usize> {
+        assign::write(self, dsp, collected)
     }
-    /// The Driver Match tab: the pairs to decide, then every person with a code.
     fn driver_match(&self, dsp: &str) -> Result<DriverMatch> {
-        Ok(overview::overview(self, dsp)?.result)
+        overview::driver_match(self, dsp)
     }
-    /// The Settings tab badge uses the same decisions without transferring the roster.
-    fn driver_counts(&self, dsp: &str) -> Result<DriverCounts> {
-        Ok(overview::overview(self, dsp)?.result.counts)
+    fn match_counts(&self, dsp: &str) -> Result<MatchCounts> {
+        overview::counts(self, dsp)
     }
-    fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails> {
+    fn person_details(&self, dsp: &str, code: &str) -> Result<PersonDetails> {
         details::details(self, dsp, code)
     }
-    fn driver_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>> {
-        details::photo(self, dsp, code)
+    fn person_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>> {
+        photos::photo_of(self, dsp, code)
     }
-    fn merge_drivers(&self, c: &Context, code: &str, into: &str) -> Result<DriverMatch> {
+    fn merge_people(&self, c: &Context, code: &str, into: &str) -> Result<()> {
         decisions::merge(self, c, code, into)
     }
-    fn split_driver(
-        &self,
-        c: &Context,
-        code: &str,
-        source: DriverSource,
-        id: &str,
-    ) -> Result<DriverMatch> {
+    fn split_off(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()> {
         decisions::split(self, c, code, source, id)
     }
-    fn keep_drivers_apart(&self, c: &Context, code: &str, other: &str) -> Result<DriverMatch> {
+    fn keep_apart(&self, c: &Context, code: &str, other: &str) -> Result<()> {
         decisions::keep_apart(self, c, code, other)
     }
-    fn confirm_driver(
-        &self,
-        c: &Context,
-        code: &str,
-        source: DriverSource,
-        id: &str,
-    ) -> Result<DriverMatch> {
+    fn confirm_link(&self, c: &Context, code: &str, source: DriverSource, id: &str) -> Result<()> {
         decisions::confirm(self, c, code, source, id)
     }
+}
+
+/// Every ID a person still holds, as they came: the IDs of people merged into others lead
+/// to those others.
+pub(super) fn current_ids(db: &Db) -> Result<Vec<IdRow>> {
+    db.query_as(
+        "SELECT i.* FROM person_ids i JOIN people p ON p.code=i.code \
+         WHERE p.merged_into IS NULL ORDER BY i.linked_at,i.source,i.external_id",
+        [],
+    )
 }
 
 /// The code a merged person's IDs went to, followed to the end.

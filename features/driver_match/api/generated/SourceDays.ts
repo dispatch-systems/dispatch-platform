@@ -5,4 +5,4 @@ import type { DriverSource } from "../../../../core/manifest/api/generated/Drive
  * One source's last fourteen days of a person's work: for each day, whether they worked,
  * `None` where nothing was collected.
  */
-export type DriverDays = { source: DriverSource, worked: Array<boolean | null>, };
+export type SourceDays = { source: DriverSource, worked: Array<boolean | null>, };

@@ -1,9 +1,10 @@
 //! A person as the tab lists them: what each source says of their IDs, what they do for the
-//! DSP, how surely their IDs are one person's, and their photo.
+//! DSP, and their photo.
 use super::IdRow;
 use super::contacts::Contact;
+use super::photos;
 use super::sources::{DriverDepartments, Found, Identity, Key, Seen};
-use crate::api::types::{Driver, DriverId, DriverLink, DriverRole};
+use crate::api::types::{Person, PersonId, PersonRole};
 use dispatch_core::{
     foundation::names,
     manifest::people::{DriverData, DriverSource},
@@ -20,14 +21,13 @@ fn office(x: &Identity, drivers: &DriverDepartments) -> bool {
 
 impl IdRow {
     /// The ID as its sources describe it now; one no source holds any more shows bare.
-    fn public(&self, source: DriverSource, found: &Found) -> DriverId {
+    fn public(&self, source: DriverSource, found: &Found) -> PersonId {
         let x = found.get(&(source, self.external_id.clone()));
-        DriverId {
+        PersonId {
             source,
             id: self.external_id.clone(),
             name: x.map(|x| x.name().to_owned()).unwrap_or_default(),
             department: x.and_then(|x| x.department.clone()),
-            position: x.and_then(|x| x.position.clone()),
             emails: x.map_or(vec![], |x| x.contacts.written(Contact::Email).to_vec()),
             phones: x.map_or(vec![], |x| x.contacts.written(Contact::Phone).to_vec()),
             roles: x.map(|x| x.roles.clone()).unwrap_or_default(),
@@ -36,7 +36,7 @@ impl IdRow {
             first_seen: x.and_then(|x| x.first_seen.clone()),
             last_seen: x.and_then(|x| x.last_seen.clone()),
             linked_by: self.linked_by,
-            linked_at: self.linked_at.clone(),
+            confirmable: self.linked_by.confirmable(),
         }
     }
 }
@@ -60,7 +60,7 @@ fn role(
     described: &[&Identity],
     last_seen: Option<&str>,
     context: &Context,
-) -> DriverRole {
+) -> PersonRole {
     // A list of people the DSP can reach says nothing of who still works for it.
     let employed = described.iter().any(|x| x.listed && !x.contacts_only);
     if !employed && last_seen.is_none_or(|last| last < context.recent) {
@@ -68,9 +68,9 @@ fn role(
             && described.iter().all(|x| x.contacts_only)
             && described.iter().any(|x| x.listed);
         return if reached {
-            DriverRole::Office
+            PersonRole::Office
         } else {
-            DriverRole::Former
+            PersonRole::Former
         };
     }
     // Driving shows in a source that says what they do, or in records of a source no
@@ -88,30 +88,20 @@ fn role(
         .filter(|x| context.departments.contains_key(&x.source))
         .collect();
     if !drives && !counted.is_empty() && counted.iter().all(|x| office(x, context.departments)) {
-        return DriverRole::Office;
+        return PersonRole::Office;
     }
     let roles: BTreeSet<&str> = described
         .iter()
         .flat_map(|x| x.roles.iter().map(String::as_str))
         .collect();
     if roles.contains("Helper") && !roles.contains("Driver") {
-        DriverRole::Helper
+        PersonRole::Helper
     } else {
-        DriverRole::Driver
+        PersonRole::Driver
     }
 }
-/// How surely a person's IDs are one person's: the least sure link among them, `new` while
-/// they hold one ID.
-fn weakest(ids: &[(&IdRow, DriverSource)]) -> DriverLink {
-    ids.iter()
-        .map(|(row, _)| row.linked_by)
-        .filter(|link| *link != DriverLink::New)
-        .min()
-        .unwrap_or(DriverLink::New)
-}
 /// The name a person is shown by: as the first source in the sources' order writes it; `ids`
-/// are in that order. None while no source
-/// holds any of their IDs.
+/// are in that order. None while no source holds any of their IDs.
 pub(super) fn shown_name(ids: &[(&IdRow, DriverSource)], found: &Found) -> Option<String> {
     ids.iter().find_map(|(row, source)| {
         let x = found.get(&(*source, row.external_id.clone()))?;
@@ -119,8 +109,8 @@ pub(super) fn shown_name(ids: &[(&IdRow, DriverSource)], found: &Found) -> Optio
     })
 }
 
-/// A person as the tab lists them, before review marks the ones in a pair.
-pub(super) fn driver(code: &str, ids: &[(&IdRow, DriverSource)], context: &Context) -> Driver {
+/// A person as the tab lists them, from their IDs in the sources' order.
+pub(super) fn person(code: &str, ids: &[(&IdRow, DriverSource)], context: &Context) -> Person {
     let keys: Vec<Key> = ids
         .iter()
         .map(|(row, source)| (*source, row.external_id.clone()))
@@ -138,23 +128,17 @@ pub(super) fn driver(code: &str, ids: &[(&IdRow, DriverSource)], context: &Conte
         .flat_map(|data| data.values().filter_map(|s| s.last.clone()))
         .chain(described.iter().filter_map(|x| x.last_seen.clone()))
         .max();
-    Driver {
+    Person {
         code: code.to_owned(),
         // An ID no source holds any more names a person no source describes.
         name: shown_name(ids, context.found)
             .or_else(|| ids.first().map(|(row, _)| row.external_id.clone()))
             .unwrap_or_default(),
         role: role(&keys, &described, last_seen.as_deref(), context),
-        link: weakest(ids),
-        review: false,
         ids: ids
             .iter()
             .map(|(row, source)| row.public(*source, context.found))
             .collect(),
-        appears: DriverData::all()
-            .filter(|d| seen.iter().any(|data| data.contains_key(d)))
-            .collect(),
-        last_seen,
-        photo: described.iter().find_map(|x| x.photo.clone()),
+        photo: photos::version(&described),
     }
 }

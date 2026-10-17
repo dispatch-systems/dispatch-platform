@@ -2,7 +2,7 @@
 use super::IdRow;
 use super::review::{self, Side, Suggestion};
 use super::sources::{Days, Found, Identity};
-use crate::api::types::{Driver, DriverEvidence, DriverRole, DriverStrength};
+use crate::api::types::{Evidence, Person, Strength};
 use dispatch_core::{foundation::names, manifest::people::DriverSource};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,10 +11,10 @@ const MOST_PER_PERSON: usize = 3;
 
 /// Two people who may be one: `person` would join `candidate`, keeping `candidate`'s code.
 pub(super) struct Pair {
-    pub strength: DriverStrength,
+    pub strength: Strength,
     pub person: String,
     pub candidate: String,
-    pub evidence: Vec<DriverEvidence>,
+    pub evidence: Vec<Evidence>,
 }
 
 /// Each person's IDs, by their code, with each ID's source, in the sources' order.
@@ -25,20 +25,20 @@ type Held<'a> = BTreeMap<&'a str, Vec<(&'a IdRow, DriverSource)>>;
 /// back on a roster or a route, they are asked again.
 pub(super) fn pairs(
     held: &Held,
-    drivers: &BTreeMap<String, Driver>,
+    people: &BTreeMap<String, Person>,
     found: &Found,
     days: &Days,
     apart: &BTreeSet<(String, String)>,
 ) -> Vec<Pair> {
     let sides: Vec<Side> = held
         .iter()
-        .map(|(code, ids)| side(code, ids, found, drivers[*code].role != DriverRole::Former))
+        .map(|(code, ids)| side(code, ids, found, !people[*code].role.left()))
         .collect();
     let pairs = review::suggest(&sides, apart)
         .into_iter()
         .map(|suggestion| pair(suggestion, held, days))
         .collect();
-    ranked(pairs, |code| &drivers[code].name)
+    ranked(pairs, |code| &people[code].name)
 }
 
 /// One person as review compares them.
@@ -130,8 +130,8 @@ fn worked(
 /// joining person's name, `MOST_PER_PERSON` at most for each person joining.
 fn ranked<'a>(mut pairs: Vec<Pair>, name: impl Fn(&str) -> &'a str) -> Vec<Pair> {
     pairs.sort_by(|a, b| {
-        (a.strength != DriverStrength::Strong)
-            .cmp(&(b.strength != DriverStrength::Strong))
+        (a.strength != Strength::Strong)
+            .cmp(&(b.strength != Strength::Strong))
             .then(b.evidence.len().cmp(&a.evidence.len()))
             .then_with(|| names::compare(name(&a.person), name(&b.person)))
     });

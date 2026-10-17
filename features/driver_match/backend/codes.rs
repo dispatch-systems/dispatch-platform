@@ -20,7 +20,7 @@ const DRAWN: usize = 24;
 const TRIES: usize = 16;
 
 /// Whether `code` is written as codes are.
-pub fn valid_code(code: &str) -> bool {
+pub(super) fn valid_code(code: &str) -> bool {
     code.len() == LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
 }
 
@@ -53,5 +53,5 @@ pub(super) fn new_person(
             return Ok(code);
         }
     }
-    Err(Error::new("driver_code_unavailable", 500))
+    Err(Error::new("person_code_unavailable", 500))
 }

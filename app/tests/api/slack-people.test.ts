@@ -13,7 +13,7 @@ test("a workspace's members reach Driver Match once it's connected, and whoever 
   const [drivers] = (await connect(owner, 'T0FIXTURE2')).value.workspaces;
   const people = () => owner.read('/api/dsp/driver-match') as Promise<DriverMatch>;
   const holder = (result: DriverMatch, member: string) =>
-    result.drivers.find((d) => d.ids.some((i) => i.source === 'slack' && i.id === member));
+    result.people.find((d) => d.ids.some((i) => i.source === 'slack' && i.id === member));
   await until(async () => (await people()).sources.includes('slack'));
   // Someone only Slack knows, and deactivated there, has left.
   assert.equal(holder(await people(), `${drivers.teamId}:U0FIXGONE`)?.role, 'former');

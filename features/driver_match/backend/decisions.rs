@@ -1,27 +1,27 @@
 //! The decisions a person makes about who is whom: two people are one, an ID belongs to
-//! someone else, two people are different, or a match was right. Each is audited by codes.
-use super::codes::new_person;
-use super::{DriverMatchStore, valid_code};
-use crate::api::types::{DriverLink, DriverMatch};
+//! someone else, two people are different, or a match was right. Each is audited by codes,
+//! never names: what a collection says about someone stays in its database.
+use super::audit::both;
+use super::codes::{new_person, valid_code};
+use crate::api::types::IdLink;
 use dispatch_core::{
     Result,
     accounts::Context,
-    db::{Db, Store, iso},
+    db::{AuditChange, Db, Store, iso},
     ensure,
     manifest::people::DriverSource,
 };
 use rusqlite::params;
 
-/// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from
-/// now on. A decision that the two were different people no longer stands.
-pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Result<DriverMatch> {
+/// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from now
+/// on. Whom `code` was kept apart from, `into` is kept apart from.
+pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Result<()> {
     ensure(
         valid_code(code) && valid_code(into) && code != into,
         "invalid_input",
         400,
     )?;
-    let dsp = c.dsp.id.as_str();
-    let db = store.dsp(dsp)?;
+    let db = store.dsp(&c.dsp.id)?;
     db.transaction(|| {
         current(&db, code)?;
         current(&db, into)?;
@@ -36,48 +36,47 @@ pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Resul
             params![into, now, c.actor(), code],
         )?;
         // Codes merged into this one before lead straight to the survivor now.
-        db.exec("UPDATE people SET merged_into=?1 WHERE merged_into=?2", params![into, code])?;
+        db.exec(
+            "UPDATE people SET merged_into=?1 WHERE merged_into=?2",
+            params![into, code],
+        )?;
         let others = db.query_as::<(String, String, String, Option<String>)>(
             "SELECT first,second,decided_at,actor_id FROM people_apart WHERE first=?1 OR second=?1",
             [code],
         )?;
-        db.exec("DELETE FROM people_apart WHERE first=?1 OR second=?1", [code])?;
+        db.exec(
+            "DELETE FROM people_apart WHERE first=?1 OR second=?1",
+            [code],
+        )?;
         for (first, second, at, by) in others {
             let other = if first == code { second } else { first };
-            if other == into {
-                continue;
+            if other != into {
+                apart(&db, into, &other, &at, by.as_deref())?;
             }
-            let (a, b) = if into < other.as_str() { (into, other.as_str()) } else { (other.as_str(), into) };
-            db.exec(
-                "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
-                params![a, b, at, by],
-            )?;
         }
         Ok(())
     })?;
     drop(db);
-    // Codes, not names: what a collection says about someone stays in its database.
-    store.audit_ref(
-        Some(c.actor()),
-        Some(dsp),
+    audited(
+        store,
+        c,
         "driver_match.merged",
         &format!("{code} into {into}"),
-        Some(&format!("{code} and {into}")),
+        &both(code, into),
         &[("code", Some(code.to_owned()), Some(into.to_owned()))],
-        Some(("driver", into)),
-    )?;
-    store.driver_match(dsp)
+        into,
+    )
 }
 
-/// Moves one ID off to a new person, when a link was wrong. The two are then kept
-/// apart, so they are not suggested as one again.
+/// Moves one ID off to a new person, when a link was wrong. The two are then kept apart, so
+/// they are not suggested as one again.
 pub(super) fn split(
     store: &Store,
     c: &Context,
     code: &str,
     source: DriverSource,
     id: &str,
-) -> Result<DriverMatch> {
+) -> Result<()> {
     ensure(valid_code(code), "invalid_input", 400)?;
     let dsp = c.dsp.id.as_str();
     let db = store.dsp(dsp)?;
@@ -88,12 +87,12 @@ pub(super) fn split(
                 "SELECT count(*) FROM person_ids WHERE source=? AND external_id=? AND code=?",
                 params![source, id, code],
             )? == 1,
-            "driver_changed",
+            "person_changed",
             409,
         )?;
         ensure(
             db.count("SELECT count(*) FROM person_ids WHERE code=?", [code])? > 1,
-            "driver_single_id",
+            "person_single_id",
             409,
         )?;
         let now = iso();
@@ -103,89 +102,58 @@ pub(super) fn split(
              WHERE source=?4 AND external_id=?5",
             params![fresh, now, c.actor(), source, id],
         )?;
-        let (a, b) = if code < fresh.as_str() {
-            (code, fresh.as_str())
-        } else {
-            (fresh.as_str(), code)
-        };
-        db.exec(
-            "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
-            params![a, b, now, c.actor()],
-        )?;
+        apart(&db, code, &fresh, &now, Some(c.actor()))?;
         Ok(fresh)
     })?;
     drop(db);
-    store.audit_ref(
-        Some(c.actor()),
-        Some(dsp),
+    audited(
+        store,
+        c,
         "driver_match.split",
         &format!("{code} to {fresh}"),
-        Some(&fresh),
+        &fresh,
         &[("code", Some(code.to_owned()), Some(fresh.clone()))],
-        Some(("driver", &fresh)),
-    )?;
-    store.driver_match(dsp)
+        &fresh,
+    )
 }
 
 /// Records that two people are different, so they are never suggested as one again.
-pub(super) fn keep_apart(
-    store: &Store,
-    c: &Context,
-    code: &str,
-    other: &str,
-) -> Result<DriverMatch> {
+pub(super) fn keep_apart(store: &Store, c: &Context, code: &str, other: &str) -> Result<()> {
     ensure(
         valid_code(code) && valid_code(other) && code != other,
         "invalid_input",
         400,
     )?;
-    let dsp = c.dsp.id.as_str();
-    let db = store.dsp(dsp)?;
-    let (first, second) = if code < other {
-        (code, other)
-    } else {
-        (other, code)
-    };
+    let db = store.dsp(&c.dsp.id)?;
     db.transaction(|| {
         current(&db, code)?;
         current(&db, other)?;
-        db.exec(
-            "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
-            params![first, second, iso(), c.actor()],
-        )
+        apart(&db, code, other, &iso(), Some(c.actor()))
     })?;
     drop(db);
-    store.audit_ref(
-        Some(c.actor()),
-        Some(dsp),
-        "driver_match.kept_apart",
-        &format!("{code} and {other}"),
-        Some(&format!("{code} and {other}")),
-        &[],
-        Some(("driver", code)),
-    )?;
-    store.driver_match(dsp)
+    let pair = both(code, other);
+    audited(store, c, "driver_match.kept_apart", &pair, &pair, &[], code)
 }
 
+/// Confirms one of `code`'s IDs is theirs, when a match by a name or a contact joined it.
 pub(super) fn confirm(
     store: &Store,
     c: &Context,
     code: &str,
     source: DriverSource,
     id: &str,
-) -> Result<DriverMatch> {
+) -> Result<()> {
     ensure(valid_code(code), "invalid_input", 400)?;
-    let dsp = c.dsp.id.as_str();
-    let db = store.dsp(dsp)?;
+    let db = store.dsp(&c.dsp.id)?;
     db.transaction(|| {
         current(&db, code)?;
-        let link: Option<(DriverLink,)> = db.one_as(
+        let link: Option<(IdLink,)> = db.one_as(
             "SELECT linked_by FROM person_ids WHERE code=? AND source=? AND external_id=?",
             params![code, source, id],
         )?;
         ensure(
             link.is_some_and(|(link,)| link.confirmable()),
-            "driver_changed",
+            "person_changed",
             409,
         )?;
         db.exec(
@@ -196,26 +164,52 @@ pub(super) fn confirm(
         Ok(())
     })?;
     drop(db);
-    store.audit_ref(
-        Some(c.actor()),
-        Some(dsp),
-        "driver_match.confirmed",
-        code,
-        Some(code),
-        &[],
-        Some(("driver", code)),
-    )?;
-    store.driver_match(dsp)
+    audited(store, c, "driver_match.confirmed", code, code, &[], code)
 }
 
-/// Answers whether `code` is a person who still holds their IDs.
-pub(super) fn current(db: &Db, code: &str) -> Result<()> {
+/// Answers whether `code` is a person who still holds their IDs; a decision about anyone
+/// else was made on what has since changed.
+fn current(db: &Db, code: &str) -> Result<()> {
     ensure(
         db.count(
             "SELECT count(*) FROM people WHERE code=? AND merged_into IS NULL",
             [code],
         )? == 1,
-        "driver_changed",
+        "person_changed",
         409,
     )
+}
+
+/// Keeps two people apart, as decided `at` by `actor`, the pair stored in the order of their
+/// codes.
+fn apart(db: &Db, a: &str, b: &str, at: &str, actor: Option<&str>) -> Result<()> {
+    let (first, second) = if a < b { (a, b) } else { (b, a) };
+    db.exec(
+        "INSERT OR IGNORE INTO people_apart(first,second,decided_at,actor_id) VALUES (?,?,?,?)",
+        params![first, second, at, actor],
+    )?;
+    Ok(())
+}
+
+/// Audits a decision about the person `code`: `detail` says what happened by codes, and
+/// `target` names the codes the activity log puts today's names to.
+fn audited(
+    store: &Store,
+    c: &Context,
+    action: &str,
+    detail: &str,
+    target: &str,
+    changes: &[AuditChange],
+    code: &str,
+) -> Result<()> {
+    store.audit_ref(
+        Some(c.actor()),
+        Some(&c.dsp.id),
+        action,
+        detail,
+        Some(target),
+        changes,
+        Some(("driver", code)),
+    )?;
+    Ok(())
 }
