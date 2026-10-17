@@ -1,4 +1,5 @@
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
+import type { DriverMatch } from '../../api/index.js';
 
 type App = Awaited<ReturnType<typeof fixture>>;
 
@@ -54,6 +55,7 @@ export async function seedDriverMatch(app: App) {
   });
   await app.start();
   await owner.select(dsp.id);
-  await until(async () => (await owner.read('/api/dsp/driver-match')).review?.length >= 3);
+  const pairs = (tab: DriverMatch) => tab.questions.filter((q) => q.kind === 'pair').length;
+  await until(async () => pairs(await owner.read('/api/dsp/driver-match')) >= 3);
   return dsp as { id: string; name: string };
 }

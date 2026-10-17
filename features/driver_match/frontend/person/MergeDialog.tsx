@@ -1,40 +1,40 @@
 import { useState } from 'react';
-import type { Driver } from '../../api/index.js';
-import { mergeDrivers } from '../../api/client.js';
+import type { Person } from '../../api/index.js';
+import { mergePeople } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { driverMatches, roleLabels } from '../driver-match.js';
+import { found, roles, searchTerms } from '../driver-match.js';
 import { ErrorBox, Modal, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
-import { DriverAvatar } from '../parts/DriverAvatar.js';
+import { Face } from '../parts/Face.js';
 
 /** Chooses who else is this person: their IDs move here, and their code leads here. */
 export function MergeDialog({
-  driver,
-  drivers,
+  person,
+  people,
   onClose,
 }: {
-  driver: Driver;
-  drivers: Driver[];
+  person: Person;
+  people: Person[];
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState('');
-  const merge = useAction((other: Driver) => mergeDrivers(other.code, driver.code), {
+  const merge = useAction((other: Person) => mergePeople(other.code, person.code), {
     inline: true,
-    success: (other) => `${other.name} and ${driver.name} are now one person`,
+    success: (other) => `${other.name} and ${person.name} are now one person`,
   });
-  const options = drivers
-    .filter((other) => other.code !== driver.code && driverMatches(other, query))
+  const options = people
+    .filter((other) => other.code !== person.code && found(searchTerms(other), query))
     .slice(0, 8);
-  const other = drivers.find((d) => d.code === chosen);
+  const other = people.find((p) => p.code === chosen);
   return (
-    <Modal title={`Merge with ${driver.name}`} onClose={onClose}>
+    <Modal title={`Merge with ${person.name}`} onClose={onClose}>
       <SearchInput
-        label="Search drivers"
+        label="Search people"
         placeholder="Search name, code or ID"
         value={query}
         onChange={setQuery}
       />
-      <div className="driver-merge-list" role="radiogroup" aria-label="Drivers">
+      <div className="driver-merge-list" role="radiogroup" aria-label="People">
         {options.map((option) => (
           <label key={option.code}>
             <input
@@ -43,11 +43,11 @@ export function MergeDialog({
               checked={chosen === option.code}
               onChange={() => setChosen(option.code)}
             />
-            <DriverAvatar driver={option} />
+            <Face person={option} />
             <span className="driver-person">
               <strong>{option.name}</strong>
               <small>
-                {option.code} · {roleLabels[option.role]}
+                {option.code} · {roles[option.role].label}
               </small>
             </span>
           </label>

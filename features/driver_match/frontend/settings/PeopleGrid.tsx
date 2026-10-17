@@ -1,8 +1,8 @@
 import { useDeferredValue, useMemo, useState } from 'react';
-import type { Driver, DriverSource } from '../../api/index.js';
+import type { DriverSource, Person } from '../../api/index.js';
 import { useUpdateState } from '../../../../core/shell/frontend/runtime/browser-update.js';
 import { Empty, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
-import { driverSearchTerms, missing, peopleFilters, type PeopleFilter } from '../driver-match.js';
+import { found, peopleFilters, searchTerms, shows, type PeopleFilter } from '../driver-match.js';
 import { PersonCard } from './PersonCard.js';
 
 /** How many cards show before more are asked for: whole rows, two to eight across. */
@@ -10,13 +10,13 @@ const PAGE = 48;
 
 /** Everyone, a card each, by what they do or a source lacking them, and found by search. */
 export function PeopleGrid({
-  drivers,
+  people,
   sources,
   queued,
   onOpen,
   onCheck,
 }: {
-  drivers: Driver[];
+  people: Person[];
   sources: readonly DriverSource[];
   /** Who a question waits on, by code. */
   queued: ReadonlySet<string>;
@@ -28,31 +28,22 @@ export function PeopleGrid({
   const [shown, setShown] = useState(PAGE);
   // What each filter would show, counted once per answer, with what a search reads.
   const prepared = useMemo(() => {
-    // Someone who has left shows only under Former.
-    const shows = (key: PeopleFilter, driver: Driver) =>
-      key === 'all'
-        ? driver.role !== 'former'
-        : key === 'missing'
-          ? missing(driver, sources)
-          : driver.role === key;
-    const searchable = drivers.map((driver) => ({ driver, terms: driverSearchTerms(driver) }));
+    const searchable = people.map((person) => ({ person, terms: searchTerms(person) }));
     const counts = Object.fromEntries(
-      peopleFilters.map(([key]) => [key, drivers.filter((driver) => shows(key, driver)).length]),
+      peopleFilters.map(([key]) => [key, people.filter((p) => shows(key, p, sources)).length]),
     ) as Record<PeopleFilter, number>;
-    return { shows, searchable, counts };
-  }, [drivers, sources]);
-  const search = query.trim().toLocaleLowerCase('en-US');
-  const deferredSearch = useDeferredValue(search);
-  const searching = search !== deferredSearch;
-  const people = useMemo(
+    return { searchable, counts };
+  }, [people, sources]);
+  const deferredQuery = useDeferredValue(query);
+  const searching = query !== deferredQuery;
+  const listed = useMemo(
     () =>
       prepared.searchable
         .filter(
-          ({ driver, terms }) =>
-            prepared.shows(filter, driver) && terms.some((text) => text.includes(deferredSearch)),
+          ({ person, terms }) => shows(filter, person, sources) && found(terms, deferredQuery),
         )
-        .map(({ driver }) => driver),
-    [prepared, filter, deferredSearch],
+        .map(({ person }) => person),
+    [prepared, filter, sources, deferredQuery],
   );
   return (
     <section aria-label="People">
@@ -82,25 +73,25 @@ export function PeopleGrid({
           }}
         />
       </div>
-      {drivers.length === 0 ? (
+      {people.length === 0 ? (
         <Empty title="No one to match yet" />
-      ) : people.length === 0 ? (
+      ) : listed.length === 0 ? (
         <Empty title="No matching people" />
       ) : (
         <ul className="driver-cards" aria-busy={searching} inert={searching}>
-          {people.slice(0, shown).map((driver) => (
+          {listed.slice(0, shown).map((person) => (
             <PersonCard
-              key={driver.code}
-              driver={driver}
+              key={person.code}
+              person={person}
               sources={sources}
-              queued={queued.has(driver.code)}
+              queued={queued.has(person.code)}
               onOpen={onOpen}
               onCheck={onCheck}
             />
           ))}
         </ul>
       )}
-      {people.length > shown && (
+      {listed.length > shown && (
         <button className="driver-more" onClick={() => setShown(shown + PAGE)}>
           Show more
         </button>

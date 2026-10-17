@@ -12,7 +12,7 @@ static AMAZON_IDS: SourceData = SourceData {
     order: 20,
 };
 
-fn kinds(evidence: &[DriverEvidence]) -> Vec<DriverEvidenceKind> {
+fn kinds(evidence: &[Evidence]) -> Vec<EvidenceKind> {
     evidence.iter().map(|e| e.kind).collect()
 }
 /// Someone one source knows by a name.
@@ -59,18 +59,12 @@ fn preferred_names_and_last_initials_are_suggested_and_strangers_are_not() {
     let reyes = between("P1", "A1").unwrap();
     assert_eq!(
         kinds(&reyes.evidence),
-        [
-            DriverEvidenceKind::SameLastName,
-            DriverEvidenceKind::ShortForm
-        ]
+        [EvidenceKind::SameLastName, EvidenceKind::ShortForm]
     );
     assert_eq!(reyes.evidence[1].short.as_deref(), Some("Tony"));
     assert_eq!(
         kinds(&between("P2", "A2").unwrap().evidence),
-        [
-            DriverEvidenceKind::LastInitial,
-            DriverEvidenceKind::SameFirstName
-        ]
+        [EvidenceKind::LastInitial, EvidenceKind::SameFirstName]
     );
     assert!(between("P3", "A3").is_none());
     assert_eq!(found.len(), 2);
@@ -110,17 +104,17 @@ fn a_contact_only_two_share_pairs_them_even_within_one_source() {
     assert_eq!(
         kinds(&rehire.evidence),
         [
-            DriverEvidenceKind::SamePhone,
-            DriverEvidenceKind::SameLastName,
-            DriverEvidenceKind::ShortForm
+            EvidenceKind::SamePhone,
+            EvidenceKind::SameLastName,
+            EvidenceKind::ShortForm
         ]
     );
-    assert_eq!(strength(&rehire.evidence), DriverStrength::Strong);
+    assert_eq!(strength(&rehire.evidence), Strength::Strong);
     // The Parks are tied by their name across sources, never by the phone.
     assert!(
-        found.iter().all(
-            |s| !kinds(&s.evidence).contains(&DriverEvidenceKind::SamePhone) || s.first == "A1"
-        )
+        found
+            .iter()
+            .all(|s| !kinds(&s.evidence).contains(&EvidenceKind::SamePhone) || s.first == "A1")
     );
     assert!(!found.iter().any(|s| s.first == "A3" && s.second == "A4"));
 }
@@ -153,32 +147,24 @@ fn days_worked_count_only_where_both_sources_were_collected() {
 #[test]
 fn strong_needs_the_last_name_and_a_short_form_or_every_day() {
     let e = |kind| evidence(kind);
-    let days = |same, of| DriverEvidence {
+    let days = |same: usize, of: usize| Evidence {
         same: Some(same),
         of: Some(of),
-        ..e(DriverEvidenceKind::WorkedDays)
+        supports: same * 2 >= of,
+        ..e(EvidenceKind::WorkedDays)
     };
-    let last = e(DriverEvidenceKind::SameLastName);
-    let short = e(DriverEvidenceKind::ShortForm);
-    assert_eq!(
-        strength(&[last.clone(), short.clone()]),
-        DriverStrength::Strong
-    );
-    assert_eq!(
-        strength(&[last.clone(), days(5, 5)]),
-        DriverStrength::Strong
-    );
-    assert_eq!(
-        strength(&[last.clone(), days(2, 2)]),
-        DriverStrength::Possible
-    );
+    let last = e(EvidenceKind::SameLastName);
+    let short = e(EvidenceKind::ShortForm);
+    assert_eq!(strength(&[last.clone(), short.clone()]), Strength::Strong);
+    assert_eq!(strength(&[last.clone(), days(5, 5)]), Strength::Strong);
+    assert_eq!(strength(&[last.clone(), days(2, 2)]), Strength::Possible);
     assert_eq!(
         strength(&[last.clone(), short, days(1, 5)]),
-        DriverStrength::Possible
+        Strength::Possible
     );
     assert_eq!(
-        strength(&[e(DriverEvidenceKind::LastInitial), days(4, 4)]),
-        DriverStrength::Possible
+        strength(&[e(EvidenceKind::LastInitial), days(4, 4)]),
+        Strength::Possible
     );
 }
 #[test]
@@ -186,9 +172,6 @@ fn a_short_form_is_a_reason_however_common_the_name() {
     let found = pairs(&[("P1", "REED, ALEXANDRA")], &[("A1", "Alex Reed")]);
     assert_eq!(
         kinds(&found[0].evidence),
-        [
-            DriverEvidenceKind::SameLastName,
-            DriverEvidenceKind::ShortForm
-        ]
+        [EvidenceKind::SameLastName, EvidenceKind::ShortForm]
     );
 }

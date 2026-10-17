@@ -5,4 +5,4 @@
  * name variant, a unique name, a phone number or an email address only they share, as
  * another account its source says is theirs, or someone's decision.
  */
-export type DriverLink = "new" | "variant" | "name" | "phone" | "email" | "account" | "person";
+export type IdLink = "new" | "variant" | "name" | "phone" | "email" | "account" | "person";

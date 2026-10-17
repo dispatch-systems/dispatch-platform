@@ -1,27 +1,28 @@
 import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import type { DriverDetails, DriverMatch, DriverSource } from './index.js';
+import type { DriverMatch, DriverSource, PersonDetails } from './index.js';
 
-// Driver Match's endpoints, as its tab calls them.
+// Driver Match's endpoints, as its tab calls them. A decision answers with nothing: the tab
+// reads itself again.
 
 const driverMatch = '/api/dsp/driver-match';
 // Only its own screens raise these, so their words load with them.
 const api = wordedApi({
-  driver_changed: 'This driver changed in another session. Refresh Driver Match and try again.',
-  driver_single_id: 'This driver has only one ID, so there is nothing to split off.',
-  driver_code_unavailable: 'Dispatch could not give the new driver a code. Try again.',
+  person_changed: 'This person changed in another session. Refresh Driver Match and try again.',
+  person_single_id: 'This person has only one ID, so there is nothing to split off.',
+  person_code_unavailable: 'Dispatch could not give the new person a code. Try again.',
 });
-/** Everyone with a Driver Match code, and the pairs that may be one person. */
+/** Everyone with a Driver Match code, and the questions waiting. */
 export const useDriverMatch = () => useCachedData<DriverMatch>(driverMatch);
-export const useDriverDetails = (code: string) =>
-  useCachedData<DriverDetails>(`${driverMatch}/drivers/${encodeURIComponent(code)}`);
+export const personPath = (code: string) => `${driverMatch}/people/${encodeURIComponent(code)}`;
+export const usePersonDetails = (code: string) => useCachedData<PersonDetails>(personPath(code));
 /** `code`'s IDs move to `into`, whose code both keep from then on. */
-export const mergeDrivers = (code: string, into: string) =>
-  api<DriverMatch>(`${driverMatch}/merge`, { code, into });
+export const mergePeople = (code: string, into: string) =>
+  api(`${driverMatch}/merge`, { code, into });
 /** One of `code`'s IDs moves to a new person. */
-export const splitDriver = (code: string, source: DriverSource, id: string) =>
-  api<DriverMatch>(`${driverMatch}/split`, { code, source, id });
+export const splitOff = (code: string, source: DriverSource, id: string) =>
+  api(`${driverMatch}/split`, { code, source, id });
 /** One of `code`'s IDs a match joined is theirs. */
-export const confirmDriver = (code: string, source: DriverSource, id: string) =>
-  api<DriverMatch>(`${driverMatch}/confirm`, { code, source, id });
-export const keepDriversApart = (code: string, other: string) =>
-  api<DriverMatch>(`${driverMatch}/apart`, { code, other });
+export const confirmLink = (code: string, source: DriverSource, id: string) =>
+  api(`${driverMatch}/confirm`, { code, source, id });
+export const keepApart = (code: string, other: string) =>
+  api(`${driverMatch}/apart`, { code, other });

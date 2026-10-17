@@ -1,5 +1,6 @@
 //! Driver Match: every ID the collections hold gets one person's code, certain names join
 //! on their own, and the rest wait for a decision that merges, splits or keeps apart.
+use crate::pass;
 use dispatch_core::testing as common;
 use dispatch_core::{
     accounts::{Auth, Context},
@@ -8,8 +9,8 @@ use dispatch_core::{
 };
 use dispatch_cortex::{associates, discovery::Scope, meals};
 use dispatch_driver_match::{
-    Driver, DriverEventKind, DriverLink, DriverMatch, DriverMatchStore, DriverRole, DriverStrength,
-    valid_code,
+    DriverMatch, DriverMatchStore, EvidenceKind, IdLink, Person, PersonEventKind, PersonRole,
+    Question, Strength,
 };
 use dispatch_driver_profiles::DriverProfilesStore;
 use dispatch_paycom::fixtures;
@@ -92,14 +93,14 @@ fn context(db: &Store, id: &str) -> Context {
 /// The code holding an ID, in a Driver Match answer.
 fn code(result: &DriverMatch, source: DriverSource, id: &str) -> String {
     result
-        .drivers
+        .people
         .iter()
         .find(|d| d.ids.iter().any(|i| i.source == source && i.id == id))
         .map(|d| d.code.clone())
         .unwrap_or_else(|| panic!("{id} has no person"))
 }
-fn person<'a>(result: &'a DriverMatch, code: &str) -> &'a Driver {
-    result.drivers.iter().find(|d| d.code == code).unwrap()
+fn person<'a>(result: &'a DriverMatch, code: &str) -> &'a Person {
+    result.people.iter().find(|d| d.code == code).unwrap()
 }
 /// The sources whose IDs a person holds, in their order.
 fn known_to(result: &DriverMatch, code: &str) -> Vec<&'static str> {
@@ -108,6 +109,58 @@ fn known_to(result: &DriverMatch, code: &str) -> Vec<&'static str> {
         .iter()
         .map(|i| i.source.as_str())
         .collect()
+}
+/// How the ID `id` of `source` came to its person.
+fn link(result: &DriverMatch, source: DriverSource, id: &str) -> IdLink {
+    let holder = code(result, source, id);
+    person(result, &holder)
+        .ids
+        .iter()
+        .find(|i| i.source == source && i.id == id)
+        .unwrap()
+        .linked_by
+}
+/// The pairs the tab asks about, each as (person, candidate, strength, reasons).
+fn pairs(result: &DriverMatch) -> Vec<(&str, &str, Strength, Vec<EvidenceKind>)> {
+    result
+        .questions
+        .iter()
+        .filter_map(|q| match q {
+            Question::Pair {
+                person,
+                candidate,
+                strength,
+                evidence,
+            } => Some((
+                person.as_str(),
+                candidate.as_str(),
+                *strength,
+                evidence.iter().map(|e| e.kind).collect(),
+            )),
+            Question::Variant { .. } => None,
+        })
+        .collect()
+}
+/// How many IDs a name written another way joined, which wait to be confirmed.
+fn variants(result: &DriverMatch) -> usize {
+    result
+        .questions
+        .iter()
+        .filter(|q| matches!(q, Question::Variant { .. }))
+        .count()
+}
+/// Whether a question asks about `code`.
+fn asked(result: &DriverMatch, code: &str) -> bool {
+    result.questions.iter().any(|q| match q {
+        Question::Pair {
+            person, candidate, ..
+        } => person == code || candidate == code,
+        Question::Variant { person, .. } => person == code,
+    })
+}
+/// How many people have the role `role`.
+fn with_role(result: &DriverMatch, role: PersonRole) -> usize {
+    result.people.iter().filter(|d| d.role == role).count()
 }
 /// The subject the platform's activity log shows for the newest event of `action`.
 fn shown(db: &Store, action: &str) -> String {
@@ -127,11 +180,11 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
     dispatch_backend::install();
     let (_root, db, id, context) = ready();
     // Twelve employees and five drivers.
-    assert_eq!(db.match_drivers(&id).unwrap(), 17);
+    assert_eq!(pass(&db, &id).unwrap(), 17);
     let result = db.driver_match(&id).unwrap();
-    assert_eq!(result.drivers.len(), 15);
+    assert_eq!(result.people.len(), 15);
     assert!(result.checked_at.is_some());
-    assert!(result.drivers.iter().all(|d| valid_code(&d.code)));
+    assert!(result.people.iter().all(|d| d.code.len() == 6));
     // Every code is listed once on the platform.
     assert_eq!(
         db.platform
@@ -142,43 +195,44 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
     assert_eq!(result.sources, [PAYCOM, AMAZON]);
     let taylor = code(&result, PAYCOM, "E004");
     assert_eq!(taylor, code(&result, AMAZON, "TTAYLOR"));
-    assert_eq!(person(&result, &taylor).link, DriverLink::Name);
+    assert_eq!(link(&result, AMAZON, "TTAYLOR"), IdLink::Name);
     let luis = code(&result, PAYCOM, "E003");
     assert_eq!(luis, code(&result, AMAZON, "TLUIS"));
-    assert_eq!(person(&result, &luis).link, DriverLink::Variant);
-    assert_eq!(result.counts.unconfirmed, 1);
+    assert_eq!(link(&result, AMAZON, "TLUIS"), IdLink::Variant);
+    assert_eq!(variants(&result), 1);
     // A short form is suggested, never joined by itself.
     let antonio = code(&result, PAYCOM, "E002");
     let tony = code(&result, AMAZON, "TREYES");
     assert_ne!(antonio, tony);
-    assert!(person(&result, &antonio).review);
+    assert!(asked(&result, &antonio));
     // Nobody is office staff until the DSP says which departments drive.
     let avery = code(&result, PAYCOM, "E001");
     assert_eq!(known_to(&result, &avery), ["paycom"]);
-    assert_eq!(person(&result, &avery).role, DriverRole::Driver);
+    assert_eq!(person(&result, &avery).role, PersonRole::Driver);
     let dmitri = code(&result, AMAZON, "TDMITRI");
     assert_eq!(known_to(&result, &dmitri), ["amazon"]);
-    assert_eq!(result.counts.review, 2);
-    assert_eq!(result.counts.office, 0);
+    assert_eq!(pairs(&result).len(), 2);
+    assert_eq!(with_role(&result, PersonRole::Office), 0);
     // Amazon's drivers merge into Paycom's employees, whose codes they keep.
-    let reyes = result
-        .review
-        .iter()
-        .find(|pair| pair.candidate.code == antonio)
+    let reyes = pairs(&result)
+        .into_iter()
+        .find(|(_, candidate, ..)| *candidate == antonio)
         .unwrap();
-    assert_eq!(reyes.person.code, tony);
-    assert_eq!(reyes.strength, DriverStrength::Strong);
+    assert_eq!((reyes.0, reyes.2), (tony.as_str(), Strength::Strong));
     // The Timecard settings' driver departments set the rest apart as office staff.
     let mut values = db.timecard_preference_values(&id).unwrap()["values"].clone();
     values["driver_departments"] = json!(["Delivery"]);
     db.save_timecard_preferences(&id, &context.auth.user.id, 0, &values)
         .unwrap();
     let staffed = db.driver_match(&id).unwrap();
-    assert_eq!(person(&staffed, &avery).role, DriverRole::Office);
-    assert_eq!(staffed.counts.office, 1);
-    assert_eq!(staffed.counts.drivers, staffed.counts.people - 1);
+    assert_eq!(person(&staffed, &avery).role, PersonRole::Office);
+    assert_eq!(with_role(&staffed, PersonRole::Office), 1);
+    assert_eq!(
+        with_role(&staffed, PersonRole::Driver),
+        staffed.people.len() - 1
+    );
     // Nothing new the second time, and nobody's code changes.
-    assert_eq!(db.match_drivers(&id).unwrap(), 0);
+    assert_eq!(pass(&db, &id).unwrap(), 0);
     let again = db.driver_match(&id).unwrap();
     assert_eq!(code(&again, PAYCOM, "E002"), antonio);
     assert_eq!(code(&again, AMAZON, "TLUIS"), luis);
@@ -188,24 +242,24 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
 fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
     dispatch_backend::install();
     let (_root, db, id, context) = ready();
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let before = db.driver_match(&id).unwrap();
     let (antonio, tony) = (
         code(&before, PAYCOM, "E002"),
         code(&before, AMAZON, "TREYES"),
     );
-    let after = db.merge_drivers(&context, &tony, &antonio).unwrap();
+    db.merge_people(&context, &tony, &antonio).unwrap();
+    let after = db.driver_match(&id).unwrap();
     assert_eq!(code(&after, AMAZON, "TREYES"), antonio);
-    assert_eq!(person(&after, &antonio).link, DriverLink::Person);
-    assert_eq!(after.counts.review, 1);
-    assert_eq!(after.drivers.len(), before.drivers.len() - 1);
-    let details = db.driver_details(&id, &tony).unwrap();
-    assert_eq!(details.driver.code, antonio);
-    assert_eq!(details.merged_codes, std::slice::from_ref(&tony));
+    assert_eq!(link(&after, AMAZON, "TREYES"), IdLink::Person);
+    assert_eq!(pairs(&after).len(), 1);
+    assert_eq!(after.people.len(), before.people.len() - 1);
+    let details = db.person_details(&id, &tony).unwrap();
+    assert_eq!(details.person.code, antonio);
     let merged = details
         .history
         .iter()
-        .find(|e| e.kind == DriverEventKind::Merged)
+        .find(|e| e.kind == PersonEventKind::Merged)
         .unwrap();
     assert_eq!(merged.code.as_deref(), Some(tony.as_str()));
     assert_eq!(merged.actor.as_deref(), Some("Platform support"));
@@ -220,8 +274,8 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
         [(PAYCOM, 14), (AMAZON, 14)]
     );
     // Merging what is already merged is refused, as the page is out of date.
-    let stale = db.merge_drivers(&context, &tony, &antonio).unwrap_err();
-    assert_eq!(stale.code, "driver_changed");
+    let stale = db.merge_people(&context, &tony, &antonio).unwrap_err();
+    assert_eq!(stale.code, "person_changed");
     let merge = db
         .platform
         .one("SELECT * FROM audit WHERE action='driver_match.merged'", [])
@@ -242,65 +296,63 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
 fn only_a_match_by_a_name_or_a_contact_is_confirmed() {
     dispatch_backend::install();
     let (_root, db, id, context) = ready();
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let luis = code(&db.driver_match(&id).unwrap(), PAYCOM, "E003");
-    let confirm = |source, external: &str| db.confirm_driver(&context, &luis, source, external);
-    assert_eq!(confirm(PAYCOM, "E003").unwrap_err().code, "driver_changed");
-    let after = confirm(AMAZON, "TLUIS").unwrap();
-    let link = |result: &DriverMatch| {
-        person(result, &luis)
-            .ids
-            .iter()
-            .find(|i| i.id == "TLUIS")
-            .unwrap()
-            .linked_by
-    };
-    assert_eq!(link(&after), DriverLink::Person);
-    assert_eq!(confirm(AMAZON, "TLUIS").unwrap_err().code, "driver_changed");
+    let confirm = |source, external: &str| db.confirm_link(&context, &luis, source, external);
+    assert_eq!(confirm(PAYCOM, "E003").unwrap_err().code, "person_changed");
+    confirm(AMAZON, "TLUIS").unwrap();
+    let after = db.driver_match(&id).unwrap();
+    assert_eq!(link(&after, AMAZON, "TLUIS"), IdLink::Person);
+    assert_eq!(confirm(AMAZON, "TLUIS").unwrap_err().code, "person_changed");
 }
 
 #[test]
 fn people_split_or_kept_apart_are_not_suggested_again() {
     dispatch_backend::install();
     let (_root, db, id, context) = ready();
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let before = db.driver_match(&id).unwrap();
     let (antonio, tony) = (
         code(&before, PAYCOM, "E002"),
         code(&before, AMAZON, "TREYES"),
     );
-    db.merge_drivers(&context, &tony, &antonio).unwrap();
-    let split = db
-        .split_driver(&context, &antonio, AMAZON, "TREYES")
-        .unwrap();
-    let fresh = code(&split, AMAZON, "TREYES");
-    assert!(fresh != antonio && fresh != tony && valid_code(&fresh));
-    assert!(
-        split
-            .review
-            .iter()
-            .all(|pair| pair.person.code != antonio && pair.candidate.code != antonio)
-    );
-    let refused = db
-        .split_driver(&context, &fresh, AMAZON, "TREYES")
+    db.merge_people(&context, &tony, &antonio).unwrap();
+    // Only an ID someone holds comes off them.
+    let theirs = db
+        .split_off(&context, &antonio, AMAZON, "TLUIS")
         .unwrap_err();
-    assert_eq!(refused.code, "driver_single_id");
+    assert_eq!(theirs.code, "person_changed");
+    db.split_off(&context, &antonio, AMAZON, "TREYES").unwrap();
+    let split = db.driver_match(&id).unwrap();
+    let fresh = code(&split, AMAZON, "TREYES");
+    assert!(fresh != antonio && fresh != tony && fresh.len() == 6);
+    assert!(!asked(&split, &antonio));
+    let refused = db
+        .split_off(&context, &fresh, AMAZON, "TREYES")
+        .unwrap_err();
+    assert_eq!(refused.code, "person_single_id");
     let (shanice, shay) = (code(&split, PAYCOM, "E005"), code(&split, AMAZON, "TSHAY"));
-    let apart = db.keep_drivers_apart(&context, &shay, &shanice).unwrap();
-    assert!(apart.review.is_empty());
+    db.keep_apart(&context, &shay, &shanice).unwrap();
+    let apart = db.driver_match(&id).unwrap();
+    assert!(pairs(&apart).is_empty());
     assert_eq!(known_to(&apart, &shanice), ["paycom"]);
-    assert!(!person(&apart, &shanice).review);
-    let history = db.driver_details(&id, &shay).unwrap().history;
-    assert!(
-        history.iter().any(
-            |e| e.kind == DriverEventKind::Apart && e.code.as_deref() == Some(shanice.as_str())
-        )
-    );
+    let kept_apart = |code: &str, other: &str| {
+        db.person_details(&id, code)
+            .unwrap()
+            .history
+            .iter()
+            .any(|e| e.kind == PersonEventKind::Apart && e.code.as_deref() == Some(other))
+    };
+    assert!(kept_apart(&shay, &shanice));
     assert_eq!(shown(&db, "driver_match.split"), "Tony Reyes");
     assert_eq!(
         shown(&db, "driver_match.kept_apart"),
         "Shay Okafor and Shanice Okafor"
     );
+    // Whoever Shay joins is kept apart from Shanice too.
+    let dmitri = code(&apart, AMAZON, "TDMITRI");
+    db.merge_people(&context, &shay, &dmitri).unwrap();
+    assert!(kept_apart(&dmitri, &shanice));
 }
 
 #[test]
@@ -323,34 +375,18 @@ fn someone_only_amazon_saw_long_ago_has_left_and_is_not_asked_about() {
     gone.driver = "Morgan Collins".into();
     db.publish_meals(&id, "job-old-meals", &capture, &old)
         .unwrap();
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let gone = code(&result, AMAZON, "TGONE");
-    assert_eq!(person(&result, &gone).role, DriverRole::Former);
+    assert_eq!(person(&result, &gone).role, PersonRole::Former);
     // Seen lately, Dmitri still waits for someone to find them in Paycom.
     let dmitri = code(&result, AMAZON, "TDMITRI");
-    assert_eq!(person(&result, &dmitri).role, DriverRole::Driver);
+    assert_eq!(person(&result, &dmitri).role, PersonRole::Driver);
     // Nobody asks whether someone who has left is someone else.
-    assert!(
-        result
-            .review
-            .iter()
-            .all(|pair| pair.person.code != gone && pair.candidate.code != gone)
-    );
-    let counts = &result.counts;
-    assert_eq!(counts.review, 2);
-    assert_eq!(counts.former, 1);
-    assert_eq!(
-        counts.drivers + counts.helpers,
-        counts.people - counts.office - counts.former
-    );
+    assert!(!asked(&result, &gone));
+    assert_eq!(pairs(&result).len(), 2);
     // Paycom's roster lists everyone else, so nobody else has left.
-    assert!(
-        result
-            .drivers
-            .iter()
-            .all(|d| d.code == gone || d.role != DriverRole::Former)
-    );
+    assert_eq!(with_role(&result, PersonRole::Former), 1);
 }
 
 /// The links the meal-break page saved before Driver Match become its own decisions once,
@@ -359,7 +395,7 @@ fn someone_only_amazon_saw_long_ago_has_left_and_is_not_asked_about() {
 fn links_the_meal_break_page_saved_become_decisions() {
     dispatch_backend::install();
     let (_root, db, id, _) = ready();
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let antonio = code(&db.driver_match(&id).unwrap(), PAYCOM, "E002");
     // A link for a driver no collection has named yet, and one Driver Match already made.
     let dsp = db.dsp(&id).unwrap();
@@ -445,43 +481,43 @@ fn the_roster_says_who_drives_who_helps_and_who_has_left() {
             ("TPAT", "Pat Quinn", "INACTIVE", "Driver"),
         ],
     );
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     // The roster's name joins Paycom's employee, and says they help.
     let casey = code(&result, PAYCOM, "E006");
     assert_eq!(casey, code(&result, AMAZON, "TCASEY"));
-    assert_eq!(person(&result, &casey).role, DriverRole::Helper);
+    assert_eq!(person(&result, &casey).role, PersonRole::Helper);
     // Listed as active, Dana works for the DSP though nothing shows them on a route yet.
     let dana = code(&result, AMAZON, "TDANA");
-    assert_eq!(person(&result, &dana).role, DriverRole::Driver);
+    assert_eq!(person(&result, &dana).role, PersonRole::Driver);
     // Inactive, unseen and on no other roster, Pat has left.
     let pat = code(&result, AMAZON, "TPAT");
-    assert_eq!(person(&result, &pat).role, DriverRole::Former);
+    assert_eq!(person(&result, &pat).role, PersonRole::Former);
 }
 
 #[test]
 fn a_feature_switched_off_says_nothing_and_its_ids_wait_for_it() {
     dispatch_backend::install();
     let (_root, db, id, context) = ready();
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let before = db.driver_match(&id).unwrap();
     let taylor = code(&before, PAYCOM, "E004");
     db.set_feature(&id, "timecard", false, &context.auth.user.id)
         .unwrap();
     // Without Timecard, Paycom names nobody: Taylor is Amazon's driver alone, and nothing
     // new is matched.
-    assert_eq!(db.match_drivers(&id).unwrap(), 0);
+    assert_eq!(pass(&db, &id).unwrap(), 0);
     let off = db.driver_match(&id).unwrap();
     assert_eq!(off.sources, [AMAZON]);
     assert_eq!(known_to(&off, &taylor), ["amazon"]);
-    assert!(off.review.is_empty());
+    assert!(pairs(&off).is_empty());
     // Back on, every link is as it was, with nothing to decide again.
     db.set_feature(&id, "timecard", true, &context.auth.user.id)
         .unwrap();
     let on = db.driver_match(&id).unwrap();
     assert_eq!(code(&on, PAYCOM, "E004"), taylor);
     assert_eq!(known_to(&on, &taylor), ["paycom", "amazon"]);
-    assert_eq!(on.counts.review, before.counts.review);
+    assert_eq!(pairs(&on).len(), pairs(&before).len());
 }
 
 /// The DSP's Slack workspace `team`, its members each as (member ID, name, email address,
@@ -553,30 +589,30 @@ fn slack_members_join_by_email_and_whom_only_slack_knows_works_in_the_office() {
             ("U0PAT", "Pat Quinn", Some("pat.quinn@example.com"), true),
         ],
     );
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let slack = slack_ids;
     assert!(result.sources.contains(&slack));
     // The roster's email address joins the member to the driver.
     let jordan = code(&result, AMAZON, "TJORDAN");
     assert_eq!(code(&result, slack, "T0OPS:U0JORDAN"), jordan);
-    assert_eq!(person(&result, &jordan).role, DriverRole::Driver);
+    assert_eq!(person(&result, &jordan).role, PersonRole::Driver);
     let member = person(&result, &jordan)
         .ids
         .iter()
         .find(|i| i.source == slack)
         .unwrap();
-    assert_eq!(member.linked_by, DriverLink::Email);
+    assert_eq!(member.linked_by, IdLink::Email);
     // Someone only Slack knows works in the office while their account is active.
     let morgan = code(&result, slack, "T0OPS:U0MORGAN");
     assert_eq!(known_to(&result, &morgan), ["slack"]);
-    assert_eq!(person(&result, &morgan).role, DriverRole::Office);
+    assert_eq!(person(&result, &morgan).role, PersonRole::Office);
     let jesse = code(&result, slack, "T0OPS:U0JESSE");
-    assert_eq!(person(&result, &jesse).role, DriverRole::Former);
+    assert_eq!(person(&result, &jesse).role, PersonRole::Former);
     // Slack keeps nobody working: Pat left Amazon's roster, whatever Slack says.
     let pat = code(&result, AMAZON, "TPAT");
     assert_eq!(code(&result, slack, "T0OPS:U0PAT"), pat);
-    assert_eq!(person(&result, &pat).role, DriverRole::Former);
+    assert_eq!(person(&result, &pat).role, PersonRole::Former);
 }
 
 /// Someone in two of the DSP's workspaces is one person, holding each workspace's member ID,
@@ -614,7 +650,7 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
             ("U0LH", "Luis Hernandez", Some("luis@example.com"), true),
         ],
     );
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let jordan = code(&result, AMAZON, "TJORDAN");
     let luis = code(&result, AMAZON, "TLUIS");
@@ -629,18 +665,18 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
         [luis.clone(), luis.clone()],
     ];
     assert_eq!(accounts(&result), together);
-    let links: Vec<DriverLink> = person(&result, &jordan)
+    let links: Vec<IdLink> = person(&result, &jordan)
         .ids
         .iter()
         .filter(|i| i.source == members)
         .map(|i| i.linked_by)
         .collect();
-    assert_eq!(links, [DriverLink::Email, DriverLink::Account]);
+    assert_eq!(links, [IdLink::Email, IdLink::Account]);
 
     // A workspace disconnected leaves its accounts idle, and connected again brings them back
     // to the same people.
     disconnect(&db, &id, "T0OPS");
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let yard = ["T0YARD:U0JE", "T0YARD:U0LH"].map(|member| code(&result, members, member));
     assert_eq!(yard, [jordan.clone(), luis.clone()]);
@@ -651,7 +687,7 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
             .all(|i| i.id != "T0OPS:U0JORDAN")
     );
     slack(&db, "T0OPS", &id, operations);
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     assert_eq!(accounts(&db.driver_match(&id).unwrap()), together);
 
     // With every workspace gone, Slack is none of the DSP's systems; a workspace connected in
@@ -659,7 +695,7 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
     // by a name nobody else carries.
     disconnect(&db, &id, "T0OPS");
     disconnect(&db, &id, "T0YARD");
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     assert!(!db.driver_match(&id).unwrap().sources.contains(&members));
     slack(
         &db,
@@ -675,7 +711,7 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
             ("U0L", "Luis Hernandez", Some("luis.h@example.com"), true),
         ],
     );
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let new = ["T0NEW:U0J", "T0NEW:U0L"].map(|member| code(&result, members, member));
     assert_eq!(new, [jordan, luis]);
@@ -707,7 +743,7 @@ fn an_account_under_another_address_is_asked_about() {
         &id,
         &[("U0JE", "Jordan Ellis", Some("jordan.e@example.com"), true)],
     );
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let jordan = code(&result, AMAZON, "TJORDAN");
     let other = code(
@@ -717,10 +753,10 @@ fn an_account_under_another_address_is_asked_about() {
     );
     assert_ne!(other, jordan);
     assert!(
-        result
-            .review
+        pairs(&result)
             .iter()
-            .any(|pair| (&pair.person.code, &pair.candidate.code) == (&other, &jordan))
+            .any(|(person, candidate, ..)| (*person, *candidate)
+                == (other.as_str(), jordan.as_str()))
     );
 }
 
@@ -745,7 +781,7 @@ fn a_phone_number_nobody_is_matched_by_is_still_shown() {
         .unwrap()
         .exec("UPDATE slack_members SET phone='+44 20 7946 0958'", [])
         .unwrap();
-    db.match_drivers(&id).unwrap();
+    pass(&db, &id).unwrap();
     let result = db.driver_match(&id).unwrap();
     let members = DriverSource::parse("slack").unwrap();
     let morgan = code(&result, members, "T0OPS:U0MORGAN");

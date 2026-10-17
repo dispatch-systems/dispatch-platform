@@ -1,7 +1,7 @@
 //! The contacts people are told apart by. Each kind is written one way to compare: an email
 //! address in lower case, a phone number as its ten digits. A new kind of contact, as a badge
 //! number, is one more `Contact`: how it is written, and how a match and a pair by it read.
-use crate::api::types::{DriverEvidenceKind, DriverLink};
+use crate::api::types::{EvidenceKind, IdLink};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A kind of contact.
@@ -25,17 +25,17 @@ impl Contact {
         self == Self::Phone
     }
     /// How an ID joined someone it shares this kind of contact with.
-    pub fn link(self) -> DriverLink {
+    pub fn link(self) -> IdLink {
         match self {
-            Self::Email => DriverLink::Email,
-            Self::Phone => DriverLink::Phone,
+            Self::Email => IdLink::Email,
+            Self::Phone => IdLink::Phone,
         }
     }
     /// Why two people sharing this kind of contact might be one.
-    pub fn evidence(self) -> DriverEvidenceKind {
+    pub fn evidence(self) -> EvidenceKind {
         match self {
-            Self::Email => DriverEvidenceKind::SameEmail,
-            Self::Phone => DriverEvidenceKind::SamePhone,
+            Self::Email => EvidenceKind::SameEmail,
+            Self::Phone => EvidenceKind::SamePhone,
         }
     }
 }

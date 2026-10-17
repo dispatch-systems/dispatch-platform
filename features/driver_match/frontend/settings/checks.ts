@@ -1,15 +1,12 @@
-// The questions the Driver Match tab asks: are these two one person?
-import type { Driver, DriverId, DriverPair } from '../../api/index.js';
-import { confirmDriver, keepDriversApart, mergeDrivers, splitDriver } from '../../api/client.js';
-import { evidenceSupports, evidenceText } from '../driver-match.js';
+// The questions the Driver Match tab asks, as the backend sends them: are these two one person?
+import type { Person, PersonId, Question } from '../../api/index.js';
+import { confirmLink, keepApart, mergePeople, splitOff } from '../../api/client.js';
+import { evidenceText } from '../driver-match.js';
 
 /** One side of a question: a person, or the IDs on one side of a name variant. */
-export type CheckSide = Pick<Driver, 'code' | 'name' | 'role' | 'photo' | 'ids'>;
+export type CheckSide = Pick<Person, 'code' | 'name' | 'role' | 'photo' | 'ids'>;
 
-/**
- * Two people a match suggested may be one, or an ID a name written another way joined to
- * someone, which nobody has confirmed: either way, are they one person?
- */
+/** A question, ready to show and answer: are its two sides one person? */
 export interface Check {
   key: string;
   sides: [CheckSide, CheckSide];
@@ -21,53 +18,56 @@ export interface Check {
   answer: (same: boolean) => Promise<unknown>;
 }
 
-function pairCheck(pair: DriverPair): Check {
-  const { person, candidate } = pair;
-  return {
-    key: `${person.code}:${candidate.code}`,
-    sides: [person, candidate],
-    likely: pair.strength === 'strong',
-    reasons: pair.evidence.map((evidence) => ({
-      text: evidenceText(evidence),
-      supports: evidenceSupports(evidence),
-    })),
-    codes: [person.code, candidate.code],
-    answer: (same) =>
-      same
-        ? mergeDrivers(person.code, candidate.code)
-        : keepDriversApart(person.code, candidate.code),
-  };
-}
-
 /** A photo belongs to whichever side holds the ID it is held under. */
-const pictured = (ids: DriverId[]) => ids.some((id) => id.photo);
+const pictured = (ids: PersonId[]) => ids.some((id) => id.photo);
 
-function variantCheck(driver: Driver, id: DriverId): Check {
-  const side = (ids: DriverId[]): CheckSide => ({
-    ...driver,
-    name: ids[0]?.name || driver.name,
-    ids,
-    photo: pictured(ids) ? driver.photo : null,
+/** Each question the backend asks, about the people it names by their codes. */
+export function checkList(questions: Question[], people: Person[]): Check[] {
+  const byCode = new Map(people.map((person) => [person.code, person]));
+  return questions.flatMap((question): Check[] => {
+    const person = byCode.get(question.person);
+    if (!person) return [];
+    if (question.kind === 'pair') {
+      const candidate = byCode.get(question.candidate);
+      if (!candidate) return [];
+      return [
+        {
+          key: `${person.code}:${candidate.code}`,
+          sides: [person, candidate],
+          likely: question.strength === 'strong',
+          reasons: question.evidence.map((evidence) => ({
+            text: evidenceText(evidence),
+            supports: evidence.supports,
+          })),
+          codes: [person.code, candidate.code],
+          answer: (same) =>
+            same
+              ? mergePeople(person.code, candidate.code)
+              : keepApart(person.code, candidate.code),
+        },
+      ];
+    }
+    const id = person.ids.find((id) => id.source === question.source && id.id === question.id);
+    if (!id) return [];
+    // The ID on one side, everything else they hold on the other.
+    const side = (ids: PersonId[]): CheckSide => ({
+      ...person,
+      name: ids[0]?.name || person.name,
+      ids,
+      photo: pictured(ids) ? person.photo : null,
+    });
+    return [
+      {
+        key: `${person.code}:${id.source}:${id.id}`,
+        sides: [side([id]), side(person.ids.filter((other) => other !== id))],
+        likely: true,
+        reasons: [{ text: 'Similar name', supports: true }],
+        codes: [person.code],
+        answer: (same) =>
+          same
+            ? confirmLink(person.code, id.source, id.id)
+            : splitOff(person.code, id.source, id.id),
+      },
+    ];
   });
-  return {
-    key: `${driver.code}:${id.source}:${id.id}`,
-    sides: [side([id]), side(driver.ids.filter((other) => other !== id))],
-    likely: true,
-    reasons: [{ text: 'Similar name', supports: true }],
-    codes: [driver.code],
-    answer: (same) =>
-      same
-        ? confirmDriver(driver.code, id.source, id.id)
-        : splitDriver(driver.code, id.source, id.id),
-  };
 }
-
-/** Every question: the pairs, the strongest first, then the name variants of anyone still there. */
-export const checkList = (review: DriverPair[], drivers: Driver[]): Check[] => [
-  ...review.map(pairCheck),
-  ...drivers
-    .filter((driver) => driver.role !== 'former')
-    .flatMap((driver) =>
-      driver.ids.filter((id) => id.linkedBy === 'variant').map((id) => variantCheck(driver, id)),
-    ),
-];

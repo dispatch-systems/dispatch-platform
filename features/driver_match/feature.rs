@@ -5,13 +5,12 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    Driver, DriverActivity, DriverCounts, DriverDays, DriverDetails, DriverEvent, DriverEventKind,
-    DriverEvidence, DriverEvidenceKind, DriverId, DriverLink, DriverMatch, DriverPair, DriverRole,
-    DriverStrength,
+    Appearance, DriverMatch, Evidence, EvidenceKind, IdLink, MatchCounts, Person, PersonDetails,
+    PersonEvent, PersonEventKind, PersonId, PersonRole, Question, SourceDays, Strength,
 };
-/// What the app uses: its storage, what one pass reads, and its codes' shape. Other features
-/// ask core's directory who an ID is.
-pub use backend::{Collected, DriverMatchStore, valid_code};
+/// What the app uses: its storage and what one pass reads. Other features ask core's
+/// directory who an ID is.
+pub use backend::{Collected, DriverMatchStore};
 
 use dispatch_core::{
     db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
@@ -79,20 +78,20 @@ pub const FEATURE: Feature = Feature {
 pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     dispatch_core::typescript!(
         cfg,
-        DriverLink,
-        DriverStrength,
-        DriverEvidenceKind,
-        DriverEventKind,
-        DriverRole,
-        DriverId,
-        Driver,
-        DriverCounts,
-        DriverEvidence,
-        DriverPair,
+        IdLink,
+        Strength,
+        EvidenceKind,
+        PersonEventKind,
+        PersonRole,
+        PersonId,
+        Person,
+        MatchCounts,
+        Evidence,
+        Question,
         DriverMatch,
-        DriverActivity,
-        DriverDays,
-        DriverEvent,
-        DriverDetails,
+        Appearance,
+        SourceDays,
+        PersonEvent,
+        PersonDetails,
     )
 }

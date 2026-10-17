@@ -4,7 +4,7 @@ import { localDate } from '../../../../core/shell/frontend/lib/day.js';
 import { DataState } from '../../../../core/shell/frontend/ui/index.js';
 import type { DriverMatch } from '../../api/index.js';
 import { useDriverMatch } from '../../api/client.js';
-import { DriverSheet } from '../person/DriverSheet.js';
+import { PersonSheet } from '../person/PersonSheet.js';
 import { CheckBanner } from './CheckBanner.js';
 import { CheckDialog } from './CheckDialog.js';
 import { checkList } from './checks.js';
@@ -25,7 +25,7 @@ export function DriverMatchSettings({ timezone }: { timezone: string }) {
 }
 
 function DriverMatchTab({ data, timezone }: { data: DriverMatch; timezone: string }) {
-  const checks = useMemo(() => checkList(data.review, data.drivers), [data]);
+  const checks = useMemo(() => checkList(data.questions, data.people), [data]);
   const queued = useMemo(() => new Set(checks.flatMap((check) => check.codes)), [checks]);
   const [open, setOpen] = useState<string | null>(null);
   // The question the dialog opens on, by its place; none while it is closed.
@@ -41,7 +41,7 @@ function DriverMatchTab({ data, timezone }: { data: DriverMatch; timezone: strin
     <>
       <CheckBanner checks={checks} onStart={() => setChecking(0)} />
       <PeopleGrid
-        drivers={data.drivers}
+        people={data.people}
         sources={data.sources}
         queued={queued}
         onOpen={setOpen}
@@ -49,9 +49,9 @@ function DriverMatchTab({ data, timezone }: { data: DriverMatch; timezone: strin
       />
       {checking !== null && <CheckDialog checks={checks} start={checking} onClose={onClose} />}
       {open && (
-        <DriverSheet
+        <PersonSheet
           code={open}
-          drivers={data.drivers}
+          people={data.people}
           timezone={timezone}
           today={today}
           onClose={() => setOpen(null)}

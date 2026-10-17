@@ -4,7 +4,7 @@
 use super::contacts::Contact;
 use super::names::{agree, exact, variant};
 use super::sources::{Identity, Key};
-use crate::api::types::DriverLink;
+use crate::api::types::IdLink;
 use dispatch_core::manifest::people::DriverSource;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -20,7 +20,7 @@ pub(crate) enum Target {
 pub(crate) struct Decision {
     pub index: usize,
     pub target: Target,
-    pub link: DriverLink,
+    pub link: IdLink,
 }
 
 /// The people of each source who carry each contact, by the person their source says each ID
@@ -55,9 +55,9 @@ impl Plan {
     ///    agree (`email`, `phone`).
     /// 3. A name nobody else carries, written alike (`name`), or else written another way
     ///    (`variant`).
-    fn decide(&self, x: &Identity) -> Option<(Target, DriverLink)> {
+    fn decide(&self, x: &Identity) -> Option<(Target, IdLink)> {
         if let Some(person) = self.account(x) {
-            return Some((person, DriverLink::Account));
+            return Some((person, IdLink::Account));
         }
         for kind in Contact::ALL {
             if let Some(person) = self.contact(x, kind) {
@@ -131,16 +131,16 @@ impl Plan {
     /// The one person `x` belongs to by name. A name written alike somewhere decides before a
     /// variant could: when the exact spelling is shared, a variant would only guess between
     /// the people sharing it.
-    fn by_name(&self, x: &Identity) -> Option<(Target, DriverLink)> {
+    fn by_name(&self, x: &Identity) -> Option<(Target, IdLink)> {
         let written_alike = self
             .holders
             .values()
             .flatten()
             .any(|held| held.source != x.source && exact(&held.names, &x.names));
         if written_alike {
-            self.unique(x, exact).map(|p| (p, DriverLink::Name))
+            self.unique(x, exact).map(|p| (p, IdLink::Name))
         } else {
-            self.unique(x, variant).map(|p| (p, DriverLink::Variant))
+            self.unique(x, variant).map(|p| (p, IdLink::Variant))
         }
     }
     /// The one person whose IDs of other sources carry `x`'s name, as `alike` compares names,
@@ -202,7 +202,7 @@ pub(crate) fn plan(
         let x = &incoming[index];
         let (target, link) = plan.decide(x).unwrap_or_else(|| {
             new += 1;
-            (Target::New(new - 1), DriverLink::New)
+            (Target::New(new - 1), IdLink::New)
         });
         plan.holders
             .entry(target.clone())

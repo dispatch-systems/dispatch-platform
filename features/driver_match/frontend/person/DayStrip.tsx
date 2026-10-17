@@ -1,4 +1,4 @@
-import type { DriverDays } from '../../api/index.js';
+import type { SourceDays } from '../../api/index.js';
 import { dateFormatter } from '../../../../core/shell/frontend/lib/date-format.js';
 import { sourceLabel } from '../driver-match.js';
 
@@ -11,7 +11,7 @@ const state = (value: boolean | null) =>
 const said = (value: boolean | null) => (value === null ? 'not collected' : value ? 'yes' : 'no');
 
 /** The last fourteen days side by side, a row for each source that saw them work. */
-export function DayStrip({ dates, days }: { dates: string[]; days: DriverDays[] }) {
+export function DayStrip({ dates, days }: { dates: string[]; days: SourceDays[] }) {
   return (
     <div className="driver-days">
       <div className="driver-days-row head" aria-hidden="true">

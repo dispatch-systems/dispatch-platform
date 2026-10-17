@@ -1,15 +1,14 @@
-import type { DriverCounts, DriverMatch } from '../api/index.js';
+import type { DriverMatch, MatchCounts } from '../api/index.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 
-/** The tab's name, with how many questions wait: pairs and unconfirmed name variants. */
+/** The tab's name, with how many questions wait. */
 export function DriverMatchTabLabel({ active }: { active: boolean }) {
   // The open panel owns the full roster's polling; its badge shares that read.
-  const { data } = useCachedData<DriverMatch | DriverCounts>(
+  const { data } = useCachedData<DriverMatch | MatchCounts>(
     active ? '/api/dsp/driver-match' : '/api/dsp/driver-match/counts',
     active ? -1 : 0,
   );
-  const counts = data && ('counts' in data ? data.counts : data);
-  const waiting = counts ? counts.review + counts.unconfirmed : 0;
+  const waiting = data ? ('people' in data ? data.questions.length : data.questions) : 0;
   return (
     <>
       Driver Match

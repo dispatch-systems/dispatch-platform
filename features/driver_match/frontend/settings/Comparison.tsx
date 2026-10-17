@@ -1,19 +1,17 @@
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { phoneText, roleLabels } from '../driver-match.js';
-import { DriverAvatar } from '../parts/DriverAvatar.js';
+import { phoneKey, phoneText, roles } from '../driver-match.js';
+import { Face } from '../parts/Face.js';
 import { SourceTag } from '../parts/Tags.js';
 import type { CheckSide } from './checks.js';
 
 const unique = <T,>(values: T[]) => [...new Set(values)];
 const emails = (side: CheckSide) => unique(side.ids.flatMap((id) => id.emails));
 const phones = (side: CheckSide) => unique(side.ids.flatMap((id) => id.phones));
-/** A phone number's last ten digits, as Driver Match compares them. */
-const digits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 const lower = (text: string) => text.toLocaleLowerCase('en-US');
-/** Whether two lists share a value, compared as `key` writes each. */
-const shared = (a: string[], b: string[], key: (value: string) => string) =>
-  a.some((x) => b.some((y) => key(x) === key(y)));
+/** Whether two lists share a value, compared as `key` writes each; one it can't write, never. */
+const shared = (a: string[], b: string[], key: (value: string) => string | undefined) =>
+  a.some((x) => key(x) !== undefined && b.some((y) => key(x) === key(y)));
 
 /** An email address that wraps, when it must, before its `@`. */
 function Email({ address }: { address: string }) {
@@ -59,7 +57,7 @@ function Row({
 function Head({ side }: { side: CheckSide }) {
   return (
     <div className="driver-compare-cell">
-      <DriverAvatar driver={side} size="portrait" />
+      <Face person={side} size="portrait" />
       <b>{side.name}</b>
       <span className="driver-sources">
         {unique(side.ids.map((id) => id.source)).map((source) => (
@@ -93,9 +91,9 @@ export function Comparison({ sides: [left, right] }: { sides: [CheckSide, CheckS
         label="Phone"
         left={listed(phone(left))}
         right={listed(phone(right))}
-        same={shared(phones(left), phones(right), digits)}
+        same={shared(phones(left), phones(right), phoneKey)}
       />
-      <Row label="Role" left={roleLabels[left.role]} right={roleLabels[right.role]} />
+      <Row label="Role" left={roles[left.role].label} right={roles[right.role].label} />
     </div>
   );
 }

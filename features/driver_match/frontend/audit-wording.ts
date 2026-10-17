@@ -5,22 +5,22 @@ import type { AuditPhrases, AuditWording } from '../../../core/shell/frontend/ru
 const phrases: AuditPhrases = {
   'driver_match.merged': (e, { strong }) => [
     'confirmed ',
-    strong(e.target ?? 'two drivers'),
+    strong(e.target ?? 'two people'),
     ' as one person',
   ],
   'driver_match.split': (e, { strong }) => [
     'split ',
-    strong(e.target ?? 'a driver'),
+    strong(e.target ?? 'a person'),
     ' off as their own person',
   ],
   'driver_match.kept_apart': (e, { strong }) => [
     'kept ',
-    strong(e.target ?? 'two drivers'),
+    strong(e.target ?? 'two people'),
     ' apart',
   ],
   'driver_match.confirmed': (e, { strong }) => [
     'confirmed ',
-    strong(e.target ?? 'a driver'),
+    strong(e.target ?? 'a person'),
     "'s match",
   ],
 };

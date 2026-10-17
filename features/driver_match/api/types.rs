@@ -13,7 +13,7 @@ text_enum! {
     /// name variant, a unique name, a phone number or an email address only they share, as
     /// another account its source says is theirs, or someone's decision.
     #[derive(PartialOrd, Ord)]
-    pub enum DriverLink {
+    pub enum IdLink {
         New => "new",
         Variant => "variant",
         Name => "name",
@@ -23,16 +23,21 @@ text_enum! {
         Person => "person",
     }
 }
-impl DriverLink {
+impl IdLink {
     /// Whether a person may confirm the link: one a match made by a name or a contact.
     pub fn confirmable(self) -> bool {
         matches!(self, Self::Variant | Self::Name | Self::Phone | Self::Email)
+    }
+    /// Whether a person decided it, rather than a match.
+    pub fn decided(self) -> bool {
+        self == Self::Person
     }
 }
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
-    pub enum DriverStrength {
+    /// How likely a pair is one person.
+    pub enum Strength {
         Strong => "strong",
         Possible => "possible",
     }
@@ -41,7 +46,7 @@ text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
     /// Why two people might be one.
-    pub enum DriverEvidenceKind {
+    pub enum EvidenceKind {
         SameEmail => "same_email",
         SamePhone => "same_phone",
         SameLastName => "same_last_name",
@@ -54,7 +59,8 @@ text_enum! {
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
-    pub enum DriverEventKind {
+    /// What happened in a person's history.
+    pub enum PersonEventKind {
         Added => "added",
         Linked => "linked",
         Merged => "merged",
@@ -65,14 +71,20 @@ text_enum! {
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
-    /// What a person does for the DSP: a driver or a helper, as Amazon's roster says or their
-    /// routes show; office staff, outside the departments the DSP counts as drivers; or
-    /// someone who has left, whom no source lists and nothing has seen lately.
-    pub enum DriverRole {
+    /// What a person does for the DSP: a driver or a helper, as their sources' roles say or
+    /// their records show; office staff, outside the departments the DSP counts as drivers;
+    /// or someone who has left, whom no source lists and nothing has seen lately.
+    pub enum PersonRole {
         Driver => "driver",
         Helper => "helper",
         Office => "office",
         Former => "former",
+    }
+}
+impl PersonRole {
+    /// Whether they have left: nobody asks about them, and only Former lists them.
+    pub fn left(self) -> bool {
+        self == Self::Former
     }
 }
 
@@ -81,12 +93,11 @@ text_enum! {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct DriverId {
+pub struct PersonId {
     pub source: DriverSource,
     pub id: String,
     pub name: String,
     pub department: Option<String>,
-    pub position: Option<String>,
     /// The email addresses and phone numbers its source has for them.
     pub emails: Vec<String>,
     pub phones: Vec<String>,
@@ -98,73 +109,67 @@ pub struct DriverId {
     pub photo: bool,
     pub first_seen: Option<String>,
     pub last_seen: Option<String>,
-    pub linked_by: DriverLink,
-    pub linked_at: String,
+    pub linked_by: IdLink,
+    /// Whether a person may confirm how it came to them.
+    pub confirmable: bool,
 }
-/// A person: their code, every ID they hold and the data they appear in.
+/// A person: their code, what they do and every ID they hold.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct Driver {
+pub struct Person {
     pub code: String,
     pub name: String,
-    pub role: DriverRole,
-    /// How surely their IDs are one person's: the least sure link among them, `new` while
-    /// they hold one ID.
-    pub link: DriverLink,
-    /// Whether they are in a pair waiting for a decision.
-    pub review: bool,
-    pub ids: Vec<DriverId>,
-    pub appears: Vec<DriverData>,
-    pub last_seen: Option<String>,
+    pub role: PersonRole,
+    pub ids: Vec<PersonId>,
     /// Their photo's version, when a feature holds one: its address carries it.
     pub photo: Option<String>,
 }
+/// How many questions wait, for the tab's badge.
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct DriverCounts {
-    /// Everyone with a code.
-    pub people: usize,
-    /// Pairs that might be one person, neither of whom has left.
-    pub review: usize,
-    /// IDs a name variant joined to someone who has not left, which nobody has confirmed.
-    pub unconfirmed: usize,
-    /// Drivers and helpers some source the DSP has does not know.
-    pub missing: usize,
-    pub drivers: usize,
-    pub helpers: usize,
-    pub office: usize,
-    pub former: usize,
+pub struct MatchCounts {
+    pub questions: usize,
 }
-/// One reason two people might be one. `short` and `long` name a short form and the name it
-/// stands for; `same` of `of` days count the days both worked.
+/// One reason two people might be one, and whether it argues for them being one. `short` and
+/// `long` name a short form and the name it stands for; `same` of `of` days count the days
+/// both worked.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct DriverEvidence {
-    pub kind: DriverEvidenceKind,
+pub struct Evidence {
+    pub kind: EvidenceKind,
     pub short: Option<String>,
     pub long: Option<String>,
     pub same: Option<usize>,
     pub of: Option<usize>,
+    pub supports: bool,
 }
-/// Someone who might be someone else listed twice: `person` holds what `candidate` lacks, and
-/// joining them keeps `candidate`'s code.
+/// A question waiting for a person, about people by their codes.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct DriverPair {
-    pub person: Driver,
-    pub candidate: Driver,
-    pub strength: DriverStrength,
-    pub evidence: Vec<DriverEvidence>,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Question {
+    /// Two people who may be one: `person` would join `candidate`, keeping `candidate`'s code.
+    Pair {
+        person: String,
+        candidate: String,
+        strength: Strength,
+        evidence: Vec<Evidence>,
+    },
+    /// An ID a name written another way joined to `person`, which nobody has confirmed.
+    Variant {
+        person: String,
+        source: DriverSource,
+        id: String,
+    },
 }
-/// The Driver Match tab: the sources the DSP has, the pairs to decide, then everyone.
+/// The Driver Match tab: the sources the DSP has, the questions waiting, then everyone.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
@@ -174,18 +179,17 @@ pub struct DriverMatch {
     pub checked_at: Option<String>,
     /// The sources of IDs the DSP's features have on, in their order.
     pub sources: Vec<DriverSource>,
-    pub counts: DriverCounts,
-    pub review: Vec<DriverPair>,
-    pub drivers: Vec<Driver>,
+    /// The pairs, the strongest first, then the name variants of anyone still there.
+    pub questions: Vec<Question>,
+    pub people: Vec<Person>,
 }
+/// How much one kind of data has of a person, in its unit.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct DriverActivity {
+pub struct Appearance {
     pub data: DriverData,
-    /// Days for timecards, routes and meal breaks; inspections for DVIC; weeks for the
-    /// scorecard.
     pub count: usize,
 }
 /// One source's last fourteen days of a person's work: for each day, whether they worked,
@@ -194,37 +198,37 @@ pub struct DriverActivity {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct DriverDays {
+pub struct SourceDays {
     pub source: DriverSource,
     pub worked: Vec<Option<bool>>,
 }
+/// One line of a person's history: an ID added or linked, or a decision with another person.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct DriverEvent {
+pub struct PersonEvent {
     pub at: String,
-    pub kind: DriverEventKind,
+    pub kind: PersonEventKind,
     pub source: Option<DriverSource>,
-    pub link: Option<DriverLink>,
-    /// The ID's name for `added` and `linked`; the other person's for the rest.
+    pub link: Option<IdLink>,
+    /// The ID's name for `added` and `linked`; the other person's for `split` and `apart`.
     pub name: Option<String>,
     pub code: Option<String>,
     pub actor: Option<String>,
 }
-/// One person in full, for the details panel.
+/// One person in full, for their sheet.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct DriverDetails {
-    pub driver: Driver,
-    pub activity: Vec<DriverActivity>,
+pub struct PersonDetails {
+    pub person: Person,
+    /// What they appear in, in the kinds' order.
+    pub appears: Vec<Appearance>,
     /// The last fourteen days, oldest first.
     pub dates: Vec<String>,
     /// What each source that saw them work says of those days.
-    pub days: Vec<DriverDays>,
-    pub history: Vec<DriverEvent>,
-    /// Codes merged into this person, which now lead here.
-    pub merged_codes: Vec<String>,
+    pub days: Vec<SourceDays>,
+    pub history: Vec<PersonEvent>,
 }

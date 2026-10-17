@@ -3,7 +3,7 @@
 //! number. A person decides; this only gathers the reasons.
 use super::contacts::Contact;
 use super::names::{Name, capitalized, short_form};
-use crate::api::types::{DriverEvidence, DriverEvidenceKind, DriverStrength};
+use crate::api::types::{Evidence, EvidenceKind, Strength};
 use dispatch_core::manifest::people::DriverSource;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -25,22 +25,24 @@ pub(crate) struct Side<'a> {
 pub(crate) struct Suggestion {
     pub first: String,
     pub second: String,
-    pub evidence: Vec<DriverEvidence>,
+    pub evidence: Vec<Evidence>,
 }
 
-fn evidence(kind: DriverEvidenceKind) -> DriverEvidence {
-    DriverEvidence {
+/// A reason of `kind` that argues for the two being one.
+fn evidence(kind: EvidenceKind) -> Evidence {
+    Evidence {
         kind,
         short: None,
         long: None,
         same: None,
         of: None,
+        supports: true,
     }
 }
 
 /// The reasons two names might be one person's, or none when nothing ties them: a shared
 /// last name, or a first name and a last initial.
-fn reasons(a: &Name, b: &Name) -> Vec<DriverEvidence> {
+fn reasons(a: &Name, b: &Name) -> Vec<Evidence> {
     let (Some(last_a), Some(last_b)) = (a.last(), b.last()) else {
         return vec![];
     };
@@ -50,12 +52,12 @@ fn reasons(a: &Name, b: &Name) -> Vec<DriverEvidence> {
         && (last_a.chars().count() == 1 || last_b.chars().count() == 1)
         && last_a.chars().next() == last_b.chars().next();
     let first = if a.same_given(b) {
-        Some(evidence(DriverEvidenceKind::SameFirstName))
+        Some(evidence(EvidenceKind::SameFirstName))
     } else {
-        short_form(&a.given, &b.given).map(|(short, long)| DriverEvidence {
+        short_form(&a.given, &b.given).map(|(short, long)| Evidence {
             short: Some(capitalized(short)),
             long: Some(capitalized(long)),
-            ..evidence(DriverEvidenceKind::ShortForm)
+            ..evidence(EvidenceKind::ShortForm)
         })
     };
     let tied = same_last || (initial && first.is_some());
@@ -63,9 +65,9 @@ fn reasons(a: &Name, b: &Name) -> Vec<DriverEvidence> {
         return vec![];
     }
     let mut out = vec![evidence(if same_last {
-        DriverEvidenceKind::SameLastName
+        EvidenceKind::SameLastName
     } else {
-        DriverEvidenceKind::LastInitial
+        EvidenceKind::LastInitial
     })];
     out.extend(first);
     out
@@ -103,7 +105,7 @@ pub(crate) fn suggest(sides: &[Side<'_>], apart: &BTreeSet<(String, String)>) ->
             if apart.contains(&key) {
                 continue;
             }
-            let mut found: Vec<DriverEvidence> = Contact::ALL
+            let mut found: Vec<Evidence> = Contact::ALL
                 .into_iter()
                 .filter(|kind| {
                     a.contacts
@@ -121,7 +123,7 @@ pub(crate) fn suggest(sides: &[Side<'_>], apart: &BTreeSet<(String, String)>) ->
                 .max_by_key(|r| {
                     (
                         r.len(),
-                        r.iter().any(|e| e.kind == DriverEvidenceKind::SameLastName),
+                        r.iter().any(|e| e.kind == EvidenceKind::SameLastName),
                     )
                 })
                 .unwrap_or_default();
@@ -145,17 +147,19 @@ pub(crate) fn worked_days(
     other: &BTreeSet<String>,
     one_collected: &BTreeSet<String>,
     other_collected: &BTreeSet<String>,
-) -> Option<DriverEvidence> {
+) -> Option<Evidence> {
     let window: BTreeSet<&String> = one_collected.intersection(other_collected).collect();
     let days: Vec<&String> = one.iter().filter(|d| window.contains(d)).collect();
     if days.len() < 2 {
         return None;
     }
     let same = days.iter().filter(|d| other.contains(**d)).count();
-    Some(DriverEvidence {
+    // Working fewer than half of them together argues against.
+    Some(Evidence {
         same: Some(same),
         of: Some(days.len()),
-        ..evidence(DriverEvidenceKind::WorkedDays)
+        supports: same * 2 >= days.len(),
+        ..evidence(EvidenceKind::WorkedDays)
     })
 }
 
@@ -163,30 +167,28 @@ pub(crate) fn worked_days(
 /// agree and either the first name is a short form of the other or the two worked every one
 /// of at least `SURE_AFTER_DAYS` days together; never when they worked fewer than half their
 /// days together.
-pub(crate) fn strength(evidence: &[DriverEvidence]) -> DriverStrength {
+pub(crate) fn strength(evidence: &[Evidence]) -> Strength {
     let has = |kind| evidence.iter().any(|e| e.kind == kind);
     let worked = evidence
         .iter()
-        .find(|e| e.kind == DriverEvidenceKind::WorkedDays)
+        .find(|e| e.kind == EvidenceKind::WorkedDays)
         .map(|e| (e.same.unwrap_or(0), e.of.unwrap_or(0)));
     let all_days = worked.is_some_and(|(same, of)| of >= SURE_AFTER_DAYS && same == of);
-    let partly = worked.is_some_and(|(same, of)| same * 2 < of);
-    let short = has(DriverEvidenceKind::ShortForm);
+    let partly = evidence.iter().any(|e| !e.supports);
+    let short = has(EvidenceKind::ShortForm);
     let contact = Contact::ALL.into_iter().any(|kind| has(kind.evidence()));
     let named = [
-        DriverEvidenceKind::SameLastName,
-        DriverEvidenceKind::SameFirstName,
-        DriverEvidenceKind::ShortForm,
-        DriverEvidenceKind::LastInitial,
+        EvidenceKind::SameLastName,
+        EvidenceKind::SameFirstName,
+        EvidenceKind::ShortForm,
+        EvidenceKind::LastInitial,
     ]
     .into_iter()
     .any(has);
-    if !partly
-        && ((contact && named) || (has(DriverEvidenceKind::SameLastName) && (all_days || short)))
-    {
-        DriverStrength::Strong
+    if !partly && ((contact && named) || (has(EvidenceKind::SameLastName) && (all_days || short))) {
+        Strength::Strong
     } else {
-        DriverStrength::Possible
+        Strength::Possible
     }
 }
 

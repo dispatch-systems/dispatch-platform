@@ -212,8 +212,8 @@
       "routes": [
         "GET /api/dsp/driver-match",
         "GET /api/dsp/driver-match/counts",
-        "GET /api/dsp/driver-match/drivers/{code}",
-        "GET /api/dsp/driver-match/drivers/{code}/photo",
+        "GET /api/dsp/driver-match/people/{code}",
+        "GET /api/dsp/driver-match/people/{code}/photo",
         "POST /api/dsp/driver-match/merge",
         "POST /api/dsp/driver-match/split",
         "POST /api/dsp/driver-match/apart",

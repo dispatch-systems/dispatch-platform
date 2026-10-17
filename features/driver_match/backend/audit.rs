@@ -1,15 +1,23 @@
 //! The names the activity log puts to the codes Driver Match's entries keep: what a
 //! collection says about someone stays in its database, so the log reads it as it is shown.
+use super::codes::valid_code;
 use super::person;
 use super::sources::{self, Found};
-use super::{IdRow, surviving, valid_code};
+use super::{IdRow, surviving};
 use dispatch_core::{Result, db::Store, manifest::people::DriverSource};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
+/// How an entry names two people by their codes, and the log reads them back.
+const AND: &str = " and ";
+/// Two people, by their codes, as an entry names them.
+pub(super) fn both(a: &str, b: &str) -> String {
+    format!("{a}{AND}{b}")
+}
+
 /// The name a code's person goes by now, as the tab shows it. A merged code answers for the
 /// person who kept its IDs.
-fn driver_name(store: &Store, dsp: &str, found: &Found, code: &str) -> Result<Option<String>> {
+fn name_now(store: &Store, dsp: &str, found: &Found, code: &str) -> Result<Option<String>> {
     let rows: Vec<IdRow> = {
         let db = store.dsp(dsp)?;
         let code = surviving(&db, code)?;
@@ -33,7 +41,7 @@ pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
         let (Some(dsp), Some(target)) = (event["dspId"].as_str(), event["target"].as_str()) else {
             continue;
         };
-        let codes: Vec<&str> = target.split(" and ").collect();
+        let codes: Vec<&str> = target.split(AND).collect();
         if !action.starts_with("driver_match.") || !codes.iter().all(|c| valid_code(c)) {
             continue;
         }
@@ -47,7 +55,7 @@ pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
             let name = known
                 .entry((dsp.to_owned(), code.to_owned()))
                 .or_insert_with(|| {
-                    driver_name(store, dsp, found, code)
+                    name_now(store, dsp, found, code)
                         .ok()
                         .flatten()
                         .unwrap_or_else(|| code.to_owned())
@@ -58,12 +66,6 @@ pub(crate) fn name_driver_events(store: &Store, events: &mut [Value]) {
                 named.push(name);
             }
         }
-        event["target"] = json!(named.join(" and "));
+        event["target"] = json!(named.join(AND));
     }
-}
-
-/// Who did something, as the DSP sees them.
-pub(super) fn actor_name(store: &Store, dsp: &str, id: Option<&str>) -> Result<Option<String>> {
-    let Some(id) = id else { return Ok(None) };
-    store.actor_name(dsp, id)
 }

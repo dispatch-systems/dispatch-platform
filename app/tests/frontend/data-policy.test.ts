@@ -47,7 +47,7 @@ test('writes invalidate their dependencies without flushing unrelated features',
     true,
   );
   assert.equal(
-    mutationAffects('/api/dsp/driver-match/apart', '/api/dsp/driver-match/drivers/K7M2QX'),
+    mutationAffects('/api/dsp/driver-match/apart', '/api/dsp/driver-match/people/K7M2QX'),
     true,
   );
   assert.equal(mutationAffects('/api/dsp/driver-match/split', '/api/dsp/timecards'), false);

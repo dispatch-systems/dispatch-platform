@@ -1,5 +1,5 @@
 //! Driver Match's upkeep: giving every ID the DSP's collections hold a code, after each
-//! collection and hourly, for each DSP that has it on.
+//! collection and hourly, for every DSP.
 use super::DriverMatchStore;
 use dispatch_core::{
     Error, Result, State,
@@ -17,20 +17,23 @@ pub const MAINTENANCE: Maintenance = Maintenance {
     run: catch_up,
 };
 
-fn failed(event: &str, error: &Error) {
-    observability::event("error", event, json!({"error":error.code}));
+/// A pass that failed, for the DSP it was for when there was one: the next catches it up.
+fn failed(dsp: Option<&str>, error: &Error) {
+    observability::event(
+        "error",
+        "driver_match.failed",
+        json!({"dspId":dsp,"error":error.code}),
+    );
 }
 
 // Reading every collection takes the shared lock; only the writes take the platform lock,
 // briefly.
 async fn assign(state: &Arc<State>, dsp: String) -> Result<()> {
     let reading = dsp.clone();
-    let found = state.read(move |db| db.driver_sources(&reading)).await?;
+    let found = state.read(move |db| db.read_pass(&reading)).await?;
     let tenant = dsp.clone();
     state
-        .run_scoped(dsp, super::DOMAIN, move |db| {
-            db.assign_drivers(&tenant, found)
-        })
+        .run_scoped(dsp, super::DOMAIN, move |db| db.write_pass(&tenant, found))
         .await?;
     Ok(())
 }
@@ -43,11 +46,11 @@ fn catch_up(state: Arc<State>, due: bool) -> Upkeep {
         let dsps = state.read(|db| db.kept_dsps()).await;
         let dsps = match dsps {
             Ok(dsps) => dsps,
-            Err(error) => return failed("driver_match_failed", &error),
+            Err(error) => return failed(None, &error),
         };
         for dsp in dsps {
-            if let Err(error) = assign(&state, dsp).await {
-                failed("driver_match_failed", &error);
+            if let Err(error) = assign(&state, dsp.clone()).await {
+                failed(Some(&dsp), &error);
             }
         }
     })
@@ -58,11 +61,7 @@ fn catch_up(state: Arc<State>, due: bool) -> Upkeep {
 pub fn after_collection(state: Arc<State>, dsp: String) -> Upkeep {
     Box::pin(async move {
         if let Err(error) = assign(&state, dsp.clone()).await {
-            observability::event(
-                "error",
-                "driver_match.failed",
-                json!({"dspId":dsp,"error":error.code}),
-            );
+            failed(Some(&dsp), &error);
         }
     })
 }
