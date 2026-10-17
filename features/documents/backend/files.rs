@@ -409,6 +409,34 @@ pub(crate) async fn put(
     Ok((drive.connection, made))
 }
 
+/// Writes the page `html` as a Doc named `name` in the folder `parent` of the DSP's Drive, and
+/// puts it in the copy: the Doc Google made.
+pub(crate) async fn write(
+    state: &Arc<State>,
+    dsp: &str,
+    parent: &str,
+    name: &str,
+    html: &str,
+) -> Result<Item> {
+    let (connection, made) = on_drive!(state, dsp, |google, token| google
+        .write(token, name, parent, html))?;
+    mirror::of(dsp).put(&connection.folder_id, made.clone());
+    Ok(made)
+}
+/// Writes the page `html` over the Doc `id`, named `name`, and puts it in the copy as it is now.
+pub(crate) async fn rewrite(
+    state: &Arc<State>,
+    dsp: &str,
+    id: &str,
+    name: &str,
+    html: &str,
+) -> Result<Item> {
+    let (connection, written) = on_drive!(state, dsp, |google, token| google
+        .rewrite(token, id, name, html))?;
+    mirror::of(dsp).put(&connection.folder_id, written.clone());
+    Ok(written)
+}
+
 /// Adds the files and folders `ids`, picked with Google's picker, to the folder `parent`, or the
 /// main one. One already inside Documents only becomes reachable; one elsewhere in the account's
 /// Drive moves in. A folder brings itself only: what it holds is picked on its own.

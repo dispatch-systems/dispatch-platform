@@ -4,8 +4,8 @@
 //! of each file shared in a channel Dispatch is in, and saves those posted in a linked channel
 //! from when it was linked, while it's on.
 //!
-//! - `links`: which channels are linked to which folders, as the workspace's settings change
-//!   them, and what's been saved.
+//! - `links`: what the workspace's settings show of it: its linked channels, which
+//!   `channel_links` links to folders as it does Sync Canvases', and what's been saved.
 //! - `queue`: each file noticed, kept until it's saved, and the minute's pass that saves what's
 //!   due.
 //! - `save`: saving one file, and `author`, who posted it.
@@ -18,6 +18,7 @@ pub mod queue;
 mod save;
 pub mod storage;
 
+use super::channel_links::Linking;
 use dispatch_core::manifest::integrations::{Integration, integration};
 
 /// Its ID, as each workspace keeps it switched on.
@@ -29,4 +30,15 @@ pub const INTEGRATION: Integration = Integration {
     hears: &["file_shared"],
     heard: Some(queue::heard),
     ..integration("slack", ID, "Import Files")
+};
+/// Its channels linked to folders, each of whose files posted since it was linked is saved there.
+pub const LINKING: Linking = Linking {
+    integration: ID,
+    table: "slack_import_links",
+    off: "slack_import_off",
+    linked: "slack.import_linked",
+    moved: "slack.import_moved",
+    unlinked: "slack.import_unlinked",
+    // What was waiting from an unlinked channel isn't saved.
+    unlinking: storage::forget_waiting,
 };

@@ -3,7 +3,10 @@
 //! handlers check they see the folders where the DSP keeps its files; each waits outside the
 //! database, as it asks where the files are kept, and checks the member again before it writes.
 use super::routes::{SETTINGS, channel, team};
-use crate::backend::imports::links;
+use crate::backend::{
+    channel_links,
+    imports::{LINKING, links},
+};
 use dispatch_core::{
     Result, State, ensure,
     foundation::validate as v,
@@ -72,7 +75,7 @@ async fn folders(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> 
     let within = optional(&input.query, "folder", |q, key| {
         folder(v::text(q, key, 1, 128)?)
     })?;
-    Reply::of(&links::browse(&state, &c, &team, within).await?)
+    Reply::of(&channel_links::browse(&state, &LINKING, &c, &team, within).await?)
 }
 async fn link(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -83,7 +86,8 @@ async fn link(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let into = optional(&input.body, "folder", |body, key| {
         folder(v::text(body, key, 1, 128)?)
     })?;
-    Reply::of(&links::link(&state, c, access, team, linked, into).await?)
+    channel_links::link(&state, &LINKING, &c, access, &team, &linked, into).await?;
+    Reply::of(&links::overview(&state, &c, &team).await?)
 }
 async fn move_to(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -91,12 +95,14 @@ async fn move_to(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> 
     v::fields(&input.body, &["folder"])?;
     let (team, linked) = (team(input.param("team"))?, channel(input.param("channel"))?);
     let into = folder(v::text(&input.body, "folder", 1, 128)?)?;
-    Reply::of(&links::move_to(&state, c, access, team, linked, into).await?)
+    channel_links::move_to(&state, &LINKING, &c, access, &team, linked, into).await?;
+    Reply::of(&links::overview(&state, &c, &team).await?)
 }
 async fn unlink(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.run(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &[])?;
     let (team, linked) = (team(input.param("team"))?, channel(input.param("channel"))?);
-    Reply::of(&links::unlink(&state, c, access, team, linked).await?)
+    channel_links::unlink(&state, &LINKING, &c, access, &team, linked).await?;
+    Reply::of(&links::overview(&state, &c, &team).await?)
 }

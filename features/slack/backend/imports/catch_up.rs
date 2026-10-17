@@ -1,8 +1,10 @@
 //! Hourly, the files Slack didn't tell of, as while the server was down: each linked channel's
 //! files since it was linked, as Slack lists them, are noticed like those it told of. A file
 //! noticed already is noticed once still.
-use super::{ID, queue, storage::ImportStore};
-use crate::backend::{bot::Bot, connection, storage::SlackStore};
+use super::{ID, LINKING, queue};
+use crate::backend::{
+    bot::Bot, channel_links::storage::LinkStore, connection, storage::SlackStore,
+};
 use dispatch_core::{
     Result, State,
     foundation::observability,
@@ -53,7 +55,7 @@ pub(super) async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
                         .iter()
                         .any(|id| id == ID)
                 {
-                    let links = db.slack_import_links(&at, &workspace.team)?;
+                    let links = db.slack_channel_links(&at, &LINKING, &workspace.team)?;
                     on.push((workspace.team, links));
                 }
             }

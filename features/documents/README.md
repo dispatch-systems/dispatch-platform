@@ -170,7 +170,12 @@ and weeks, so it's best submitted well before the limit.
   (`files_folder_not_found`). A file saved so is Documents' like any upload, added by the
   member it came from, or by the name of someone who isn't one, as a Slack member no member
   matches. The activity log records each as `<file> from <where>` (`documents.saved`), with that
-  member as its actor, or none. Those who see its folders hold `documents.use`.
+  member as its actor, or none. It writes a page of HTML, its pictures in it, as a Google Doc in
+  such a folder, recorded and logged as a saved file is, as Slack keeps a canvas; and writes a
+  page over a Doc it wrote, wherever it's been moved inside the main folder, renamed as the page
+  is and changed by whoever changed the page last, without logging it again. A Doc no longer
+  inside the main folder isn't written over, and a page over 50 MB, the most Google turns into a
+  Doc, isn't written (`upload_too_large`). Those who see its folders hold `documents.use`.
 - **Data:** `documents_connection`, `documents_connect_requests`, `documents_files` (with the
   name of whoever added or last changed a file who isn't a member, its own migration 3),
   `documents_people` (who the folder is shared with, and at what address) and

@@ -4,9 +4,10 @@
 //! what can't be saved yet waits; and the hourly catch-up finds what Slack didn't tell of.
 use crate::backend::{
     app,
+    channel_links::storage::{Link, LinkStore},
     imports::{
-        ID, catch_up,
-        storage::{ImportStore, Link, Status},
+        ID, LINKING, catch_up,
+        storage::{ImportStore, Status},
     },
     slack::Tokens,
     storage::{Member, SlackStore, Workspace},
@@ -82,7 +83,7 @@ async fn importing() -> (impl Drop, Arc<State>, String, String) {
             db.save_slack_workspace(&at, &workspace, &tokens)?;
             db.keep_slack_members(&at, TEAM, &[posting])?;
             db.turn_on_slack_integration(&at, TEAM, ID, &by)?;
-            db.save_slack_import_link(&at, &link(PHOTOS, "photos", &by))
+            db.save_slack_channel_link(&at, &LINKING, &link(PHOTOS, "photos", &by))
         })
         .await
         .unwrap();
@@ -166,7 +167,7 @@ async fn a_file_shared_in_a_linked_channel_is_saved_once_to_its_folder_as_who_po
     support::ready(&dsp, false);
     let (at, by) = (dsp.clone(), owner.clone());
     state
-        .run(move |db| db.save_slack_import_link(&at, &link(DISPATCH, "routes", &by)))
+        .run(move |db| db.save_slack_channel_link(&at, &LINKING, &link(DISPATCH, "routes", &by)))
         .await
         .unwrap();
     shared(&state, &dsp, "F0FIXROUTE", DISPATCH, 0).await;

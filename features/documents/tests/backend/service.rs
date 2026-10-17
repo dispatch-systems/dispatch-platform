@@ -1,16 +1,17 @@
 //! Documents keeping files for another feature through core's Files service, against fixture
 //! mode's Drive: only while Documents is on and its account connected, only inside the DSP's
-//! own folder, and named for whoever they came from.
+//! own folder, and named for whoever they came from; and pages written as Docs, and over them.
 use super::*;
-use crate::backend::{google::Google, storage::Connection};
+use crate::backend::{google::Google, storage::Connection, tree::Mime};
 use axum::body::Bytes;
 use dispatch_core::{
     db::iso,
-    manifest::services::files::{self, Files},
+    manifest::services::files::{self, Files, Page},
     server::http::upload::Upload,
     testing,
 };
 use futures_util::stream;
+use serde_json::json;
 
 /// A platform with one DSP, Documents on and not yet connected, and its server's state.
 fn platform() -> (impl Drop, Arc<State>, String) {
@@ -138,4 +139,89 @@ async fn files_are_kept_inside_the_dsps_folder_once_connected_and_named_for_who_
         .await
         .unwrap();
     assert!(offered(&state, &dsp).await.is_none());
+}
+
+/// The page `name`, holding `html`, as Slack writes a canvas, from `by`.
+fn page(name: &str, html: &str, by: Author) -> Page {
+    Page {
+        name: name.into(),
+        html: html.into(),
+        by,
+        from: "Slack",
+    }
+}
+
+#[tokio::test]
+async fn a_page_is_written_as_a_doc_in_the_dsps_folder_and_over_it_where_it_is() {
+    let (_root, state, dsp) = platform();
+    let files = offered(&state, &dsp).await.expect("Documents is on");
+    connect(&state, &dsp).await;
+    let owner = state.read(|db| Ok(testing::a_user(db))).await.unwrap();
+    let folder = files
+        .create_folder(&state, &dsp, "canvases", &Author::Member(owner.clone()))
+        .await
+        .unwrap();
+
+    // Written, it's a Doc in the folder, added by who wrote it and logged as saved from Slack.
+    let dre = Author::Named("Dre Holloway".into());
+    let written = files
+        .write(
+            &state,
+            &dsp,
+            &folder.id,
+            page("Write-ups", "<p>One</p>", dre.clone()),
+        )
+        .await
+        .unwrap();
+    let (_, tree) = crate::backend::files::tree(&state, &dsp).await.unwrap();
+    let row = tree.get(&written.id).expect("the Doc is in Documents");
+    assert_eq!(row.mime, Mime::Doc);
+    assert_eq!(row.parent.as_deref(), Some(folder.id.as_str()));
+    assert_eq!(&*row.name, "Write-ups");
+
+    // Written over, it stays the same Doc where it is, named as the page is now, changed by
+    // whoever changed the page last, and not logged again.
+    let member = Author::Member(owner);
+    let again = page("Write-ups, October", "<p>Two</p>", member.clone());
+    let rewritten = files
+        .rewrite(&state, &dsp, &written.id, again)
+        .await
+        .unwrap();
+    let rewritten = rewritten.expect("the Doc is still there");
+    assert_eq!(rewritten.id, written.id);
+    assert_eq!(rewritten.name, "Write-ups, October");
+    let at = dsp.clone();
+    let (records, logged) = state
+        .read(move |db| Ok((db.documents_records(&at)?, testing::audits(db, Some(&at))?)))
+        .await
+        .unwrap();
+    assert_eq!(records[&written.id].added_by, dre);
+    assert_eq!(records[&written.id].changed_by, member);
+    let saves: Vec<_> = logged
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|event| event["action"] == "documents.saved")
+        .map(|event| event["detail"].clone())
+        .collect();
+    assert_eq!(saves, [json!("Write-ups from Slack")]);
+
+    // Only a Doc among the DSP's files is written over: a folder, or one elsewhere, is gone.
+    for id in [folder.id.as_str(), "elsewhere"] {
+        let over = page("Write-ups", "<p>Three</p>", dre.clone());
+        assert!(
+            files
+                .rewrite(&state, &dsp, id, over)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+    // Nothing is written outside the DSP's folder, nor a page larger than Google takes.
+    let outside = page("Write-ups", "<p>One</p>", dre.clone());
+    let refused = files.write(&state, &dsp, "elsewhere", outside).await;
+    assert_eq!(refused.unwrap_err().code, "files_folder_not_found");
+    let huge = page("Write-ups", &"x".repeat(PAGE_LIMIT + 1), dre);
+    let refused = files.write(&state, &dsp, &folder.id, huge).await;
+    assert_eq!(refused.unwrap_err().code, "upload_too_large");
 }
