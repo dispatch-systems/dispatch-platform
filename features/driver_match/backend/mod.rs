@@ -10,7 +10,6 @@ mod contacts;
 mod decisions;
 mod details;
 mod directory;
-mod legacy;
 pub(crate) mod maintenance;
 mod matching;
 mod names;
@@ -31,7 +30,6 @@ use dispatch_core::{
     manifest::people::{DriverSource, Photo},
     server::cache::DataDomain,
 };
-use legacy::Saved;
 use sources::Key;
 use std::collections::BTreeSet;
 
@@ -52,11 +50,10 @@ pub fn valid_code(code: &str) -> bool {
     code.len() == CODE_LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
 }
 
-/// What one pass reads: every ID the collections hold and the links saved on the meal-break
-/// page. Reading takes the shared lock; `assign_drivers` then writes in one short step.
+/// What one pass reads: every ID the collections hold. Reading takes the shared lock;
+/// `assign_drivers` then writes in one short step.
 pub struct DriverSources {
     identities: Vec<sources::Identity>,
-    saved: Saved,
     contacts_only: BTreeSet<DriverSource>,
 }
 

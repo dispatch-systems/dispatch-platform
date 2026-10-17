@@ -211,7 +211,6 @@ export const mealComparisonSchema = z.object({
       id: text,
       name: text,
       paycomCode: z.nullable(text),
-      matchType: z.enum(['name', 'saved', 'separate', 'unmatched']),
     }),
   ),
 }) satisfies z.ZodMiniType<MealComparison>;

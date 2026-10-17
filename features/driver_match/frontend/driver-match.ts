@@ -51,7 +51,6 @@ export const linkLabels: Record<DriverLink, string> = {
   phone: 'Same phone',
   email: 'Same email',
   account: 'Other account',
-  saved: 'Linked on Meal Breaks',
   person: 'Confirmed',
 };
 /** A link a match made, which someone may confirm. */
@@ -180,7 +179,6 @@ const linkedBy: Partial<Record<DriverLink, string>> = {
   email: 'joined by the same email',
   phone: 'joined by the same phone',
   account: 'joined as another of their accounts',
-  saved: 'linked on the meal-break page',
   person: 'confirmed as this person',
 };
 /** One line of a person's history. */

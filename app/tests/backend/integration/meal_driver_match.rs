@@ -98,14 +98,12 @@ fn drivers_join_employees_through_driver_match() {
     // has a row of their own.
     let data = compare(&db);
     assert_eq!(data["timezone"], "America/Los_Angeles");
-    assert_eq!(data["drivers"][0]["matchType"], "unmatched");
     assert!(data["drivers"][0]["paycomCode"].is_null());
     assert_eq!(rows(&data).len(), 12);
     // Driver Match joins them to their employee by name, and its decisions move them.
     let c = context(&db, &id);
     db.match_drivers(&id).unwrap();
     let data = compare(&db);
-    assert_eq!(data["drivers"][0]["matchType"], "name");
     assert_eq!(data["drivers"][0]["paycomCode"], "E001");
     assert_eq!(rows(&data).len(), 11);
     assert!(
@@ -121,13 +119,12 @@ fn drivers_join_employees_through_driver_match() {
     let demo = person(&db, &id, amazon(), &transporter);
     db.split_driver(&c, &demo, amazon(), &transporter).unwrap();
     let data = compare(&db);
-    assert_eq!(data["drivers"][0]["matchType"], "unmatched");
+    assert!(data["drivers"][0]["paycomCode"].is_null());
     assert_eq!(rows(&data).len(), 12);
     let alone = person(&db, &id, amazon(), &transporter);
     let second = person(&db, &id, paycom(), "E002");
     db.merge_drivers(&c, &alone, &second).unwrap();
     let data = compare(&db);
-    assert_eq!(data["drivers"][0]["matchType"], "saved");
     assert_eq!(data["drivers"][0]["paycomCode"], "E002");
     let linked = rows(&data)
         .iter()
@@ -136,14 +133,6 @@ fn drivers_join_employees_through_driver_match() {
     assert!(linked["paycom"].is_null());
     assert_eq!(linked["cortex"].as_array().unwrap().len(), 1);
     assert!(linked["cortex"][0]["lastDelivery"].is_string());
-    // The previous release reads the same link where the meal-break page kept it.
-    let legacy = db
-        .dsp(&id)
-        .unwrap()
-        .setting("employees.provider_links", Value::Null)
-        .unwrap();
-    assert_eq!(legacy["links"][0]["cortexId"], json!(transporter));
-    assert_eq!(legacy["links"][0]["paycomCode"], "E002");
     assert_eq!(
         db.meal_comparison(&id, "2020-01-01", "UTC")
             .map(|value| serde_json::to_value(value).unwrap())

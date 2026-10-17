@@ -18,8 +18,7 @@ fn sureness(link: DriverLink) -> u8 {
         DriverLink::Phone => 3,
         DriverLink::Email => 4,
         DriverLink::Account => 5,
-        DriverLink::Saved => 6,
-        DriverLink::Person => 7,
+        DriverLink::Person => 6,
     }
 }
 /// Whether someone works in the office: outside the departments their source's settings

@@ -36,7 +36,7 @@ only what was decided.
   is switched on, and hourly to catch up anything missed, every ID the DSP's data holds gets a
   code, source by source in their order. A new ID joins someone by, in turn: another ID its
   source says is the same person's, as their account in another workspace, when one person
-  holds those and their names agree (`account`); a link saved on the meal-break page; an email
+  holds those and their names agree (`account`); an email
   address or phone number only the two of them have, among every person of either source,
   when their names agree; a name nobody else carries; the same name written another way, as
   without a second surname or by a middle name. A nickname, as Alex for Alexander, joins
@@ -66,8 +66,8 @@ only what was decided.
   log puts today's names to them.
 - **Storage:** `driver_codes` in the platform's database (platform migration 10) and
   `people`, `person_ids` and `people_apart` in each DSP's (DSP migration 7, and its own
-  migration 1, which lets `person_ids` hold any source). Links saved on the meal-break page
-  before Driver Match are read as decisions.
+  migration 1, which lets `person_ids` hold any source, and 2, which made the links the
+  meal-break page saved before Driver Match its own decisions).
 
 ## Connecting a feature
 

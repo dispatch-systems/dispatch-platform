@@ -44,10 +44,10 @@ test("drivers Driver Match joins share their employee's meal-break row, punches 
   await owner.select(dsp.id);
   const { date, endpoint, before } = await seedNameVariants(f, owner, dsp.id);
   // Driver Match joins each driver to their employee shortly after the server starts.
-  let combined: { rows: MealEmployee[]; drivers: { matchType: string }[] };
+  let combined: { rows: MealEmployee[]; drivers: { paycomCode: string | null }[] };
   await until(async () => {
     combined = await owner.read(endpoint);
-    return combined.drivers.every((d) => d.matchType === 'name');
+    return combined.drivers.every((d) => d.paycomCode);
   });
   assert.equal(combined!.rows.length, before.rows.length);
   assert.equal(combined!.drivers.length, 4);

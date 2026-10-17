@@ -124,7 +124,7 @@ export function MealBreaksPage({
     pageSize: 100,
     subRows: (line) => line.more,
   });
-  const unlinked = data?.drivers.filter((d) => d.matchType === 'unmatched').length ?? 0;
+  const unlinked = data?.drivers.filter((d) => !d.paycomCode).length ?? 0;
   const zones = new Set(data?.cortexPublications.map((p) => p.timezone));
   return (
     <section className="meal-page" aria-labelledby="meal-heading">

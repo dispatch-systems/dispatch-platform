@@ -21,16 +21,10 @@ const DAY: chrono::NaiveDate = chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwr
 
 /// A DSP whose Paycom roster and Amazon meal breaks name the same people in different
 /// ways: a short form, a two-part surname, an exact match, a driver Paycom lacks and an
-/// office employee. `saved` stands for links made on the meal-break page.
-fn ready(saved: Option<Value>) -> (tempfile::TempDir, Store, String, Context) {
+/// office employee.
+fn ready() -> (tempfile::TempDir, Store, String, Context) {
     let (root, db, id) = common::bootstrapped();
     db.enable_all_features(&id).unwrap();
-    if let Some(saved) = saved {
-        db.dsp(&id)
-            .unwrap()
-            .set("employees.provider_links", &saved)
-            .unwrap();
-    }
     let mut roster = fixtures::fixture_date("UTC", Some(DAY)).unwrap();
     for (code, name) in [
         ("E002", "REYES, ANTONIO"),
@@ -131,7 +125,7 @@ const AMAZON: DriverSource = DriverSource::new(&dispatch_cortex::PEOPLE);
 #[test]
 fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
     dispatch_backend::install();
-    let (_root, db, id, context) = ready(None);
+    let (_root, db, id, context) = ready();
     // Twelve employees and five drivers.
     assert_eq!(db.match_drivers(&id).unwrap(), 17);
     let result = db.driver_match(&id).unwrap();
@@ -193,7 +187,7 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
 #[test]
 fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
     dispatch_backend::install();
-    let (_root, db, id, context) = ready(None);
+    let (_root, db, id, context) = ready();
     db.match_drivers(&id).unwrap();
     let before = db.driver_match(&id).unwrap();
     let (antonio, tony) = (
@@ -247,7 +241,7 @@ fn a_merge_makes_one_person_and_the_old_code_still_finds_them() {
 #[test]
 fn only_a_match_by_a_name_or_a_contact_is_confirmed() {
     dispatch_backend::install();
-    let (_root, db, id, context) = ready(None);
+    let (_root, db, id, context) = ready();
     db.match_drivers(&id).unwrap();
     let luis = code(&db.driver_match(&id).unwrap(), PAYCOM, "E003");
     let confirm = |source, external: &str| db.confirm_driver(&context, &luis, source, external);
@@ -268,7 +262,7 @@ fn only_a_match_by_a_name_or_a_contact_is_confirmed() {
 #[test]
 fn people_split_or_kept_apart_are_not_suggested_again() {
     dispatch_backend::install();
-    let (_root, db, id, context) = ready(None);
+    let (_root, db, id, context) = ready();
     db.match_drivers(&id).unwrap();
     let before = db.driver_match(&id).unwrap();
     let (antonio, tony) = (
@@ -312,7 +306,7 @@ fn people_split_or_kept_apart_are_not_suggested_again() {
 #[test]
 fn someone_only_amazon_saw_long_ago_has_left_and_is_not_asked_about() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready(None);
+    let (_root, db, id, _) = ready();
     let old = Scope {
         date: (DAY - chrono::Duration::days(40)).to_string(),
         station: "DEMO1".into(),
@@ -359,56 +353,61 @@ fn someone_only_amazon_saw_long_ago_has_left_and_is_not_asked_about() {
     );
 }
 
+/// The links the meal-break page saved before Driver Match become its own decisions once,
+/// and the page's setting goes.
 #[test]
-fn links_saved_on_the_meal_break_page_are_kept() {
+fn links_the_meal_break_page_saved_become_decisions() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready(Some(json!({
-        "revision": 2,
-        "links": [{"id":"employee_1","cortexId":"TREYES","paycomCode":"E002"}],
-        "separate": ["TTAYLOR"],
-    })));
+    let (_root, db, id, _) = ready();
     db.match_drivers(&id).unwrap();
-    let result = db.driver_match(&id).unwrap();
-    let antonio = code(&result, PAYCOM, "E002");
-    assert_eq!(antonio, code(&result, AMAZON, "TREYES"));
-    assert_eq!(person(&result, &antonio).link, DriverLink::Saved);
-    // Kept apart from Paycom, Taylor is neither joined nor suggested.
-    let taylor = code(&result, AMAZON, "TTAYLOR");
-    assert_ne!(taylor, code(&result, PAYCOM, "E004"));
-    assert_eq!(known_to(&result, &taylor), ["amazon"]);
-    assert!(!person(&result, &taylor).review);
-}
-
-#[test]
-fn the_previous_release_keeps_every_link_after_a_decision() {
-    dispatch_backend::install();
-    // A link saved for a driver whose data has since gone, beside one Driver Match knows.
-    let (_root, db, id, context) = ready(Some(json!({
-        "revision": 4,
-        "links": [{"id":"employee_1","cortexId":"TGONE","paycomCode":"E007"}],
-        "separate": ["TDMITRI"],
-    })));
-    db.match_drivers(&id).unwrap();
-    let before = db.driver_match(&id).unwrap();
-    let (antonio, tony) = (
-        code(&before, PAYCOM, "E002"),
-        code(&before, AMAZON, "TREYES"),
+    let antonio = code(&db.driver_match(&id).unwrap(), PAYCOM, "E002");
+    // A link for a driver no collection has named yet, and one Driver Match already made.
+    let dsp = db.dsp(&id).unwrap();
+    dsp.set(
+        "employees.provider_links",
+        &json!({"revision": 4, "links": [
+            {"id": "employee_1", "cortexId": "TGONE", "paycomCode": "E002"},
+            {"id": "employee_2", "cortexId": "TREYES", "paycomCode": "E005"},
+        ], "separate": null}),
+    )
+    .unwrap();
+    dsp.exec(
+        "UPDATE person_ids SET linked_by='saved' WHERE external_id='TREYES'",
+        [],
+    )
+    .unwrap();
+    dsp.exec(
+        "DELETE FROM owner_migrations WHERE owner='driver_match' AND id=2",
+        [],
+    )
+    .unwrap();
+    drop(dsp);
+    let config = db.config.clone();
+    drop(db);
+    let db = Store::initialize(config).unwrap();
+    let held: Vec<(String, String, String)> = db
+        .dsp(&id)
+        .unwrap()
+        .query_as(
+            "SELECT external_id,code,linked_by FROM person_ids \
+             WHERE external_id IN ('TGONE','TREYES') ORDER BY external_id",
+            [],
+        )
+        .unwrap();
+    let tony = &held[1].1;
+    assert_eq!(
+        held,
+        [
+            ("TGONE".to_owned(), antonio.clone(), "person".to_owned()),
+            ("TREYES".to_owned(), tony.clone(), "person".to_owned()),
+        ]
     );
-    db.merge_drivers(&context, &tony, &antonio).unwrap();
-    let legacy = db
+    let setting = db
         .dsp(&id)
         .unwrap()
         .setting("employees.provider_links", Value::Null)
         .unwrap();
-    assert_eq!(legacy["revision"], 5);
-    let pairs: Vec<(&str, &str)> = legacy["links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|l| (s(l, "cortexId"), s(l, "paycomCode")))
-        .collect();
-    assert_eq!(pairs, [("TREYES", "E002"), ("TGONE", "E007")]);
-    assert_eq!(legacy["separate"], json!(["TDMITRI"]));
+    assert!(setting.is_null());
 }
 
 /// A roster of the DSP's company as Amazon lists it, each as (transporter ID, name, status,
@@ -436,7 +435,7 @@ fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
 #[test]
 fn the_roster_says_who_drives_who_helps_and_who_has_left() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready(None);
+    let (_root, db, id, _) = ready();
     roster(
         &db,
         &id,
@@ -463,7 +462,7 @@ fn the_roster_says_who_drives_who_helps_and_who_has_left() {
 #[test]
 fn a_feature_switched_off_says_nothing_and_its_ids_wait_for_it() {
     dispatch_backend::install();
-    let (_root, db, id, context) = ready(None);
+    let (_root, db, id, context) = ready();
     db.match_drivers(&id).unwrap();
     let before = db.driver_match(&id).unwrap();
     let taylor = code(&before, PAYCOM, "E004");
@@ -520,7 +519,7 @@ fn disconnect(db: &Store, id: &str, team: &str) {
 #[test]
 fn slack_members_join_by_email_and_whom_only_slack_knows_works_in_the_office() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready(None);
+    let (_root, db, id, _) = ready();
     roster(
         &db,
         &id,
@@ -586,7 +585,7 @@ fn slack_members_join_by_email_and_whom_only_slack_knows_works_in_the_office() {
 #[test]
 fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready(None);
+    let (_root, db, id, _) = ready();
     roster(&db, &id, &[("TJORDAN", "Jordan Ellis", "ACTIVE", "Driver")]);
     let members = DriverSource::parse("slack").unwrap();
     let operations: &[(&str, &str, Option<&str>, bool)] = &[
@@ -689,7 +688,7 @@ fn a_member_of_two_workspaces_is_one_person_however_the_workspaces_come_and_go()
 #[test]
 fn an_account_under_another_address_is_asked_about() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready(None);
+    let (_root, db, id, _) = ready();
     roster(&db, &id, &[("TJORDAN", "Jordan Ellis", "ACTIVE", "Driver")]);
     slack(
         &db,
@@ -730,7 +729,7 @@ fn an_account_under_another_address_is_asked_about() {
 #[test]
 fn a_phone_number_nobody_is_matched_by_is_still_shown() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready(None);
+    let (_root, db, id, _) = ready();
     slack(
         &db,
         "T0OPS",

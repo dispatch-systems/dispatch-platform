@@ -3,7 +3,6 @@
 //! the same person's, an email address or phone number only the two of them have, with names
 //! that agree, or a name nobody else carries. Anything less gives the ID a person of its own,
 //! for a person to review.
-use super::legacy::{AMAZON, PAYCOM, Saved};
 use super::names::{Name, name_key};
 use super::sources::{Identity, Key};
 use crate::api::types::DriverLink;
@@ -129,15 +128,14 @@ fn carried(all: &[Member]) -> Carried {
     out
 }
 
-struct Plan<'a> {
+struct Plan {
     people: BTreeMap<String, Vec<Member>>,
     owner: BTreeMap<Key, String>,
     /// Every ID of every source, held or new: a name is unique only among all of them.
     all: Vec<Member>,
     carried: Carried,
-    saved: &'a Saved,
 }
-impl Plan<'_> {
+impl Plan {
     fn holds(&self, person: &str, source: DriverSource) -> bool {
         self.people[person].iter().any(|m| m.source == source)
     }
@@ -158,30 +156,6 @@ impl Plan<'_> {
             .flat_map(|m| m.names.iter().cloned())
             .collect();
         agree(&names, &x.names).then(|| person.clone())
-    }
-    /// The one person a saved link joins this ID to.
-    fn saved(&self, x: &Identity) -> Option<String> {
-        let held = |source: &str, id: &str| {
-            self.owner
-                .iter()
-                .find(|((s, i), _)| s.as_str() == source && i == id)
-                .map(|(_, person)| person.clone())
-        };
-        match x.source.as_str() {
-            AMAZON => held(PAYCOM, self.saved.links.get(&x.id)?),
-            PAYCOM => self
-                .saved
-                .links
-                .iter()
-                .filter(|(_, code)| **code == x.id)
-                .find_map(|(id, _)| held(AMAZON, id))
-                .filter(|person| {
-                    !self.people[person]
-                        .iter()
-                        .any(|m| m.source.as_str() == PAYCOM)
-                }),
-            _ => None,
-        }
     }
     /// Whether `value` is on exactly one person of `source`.
     fn alone(&self, contact: Contact, source: DriverSource, value: &str) -> bool {
@@ -225,18 +199,10 @@ impl Plan<'_> {
     /// carry the person's name.
     fn unique(&self, x: &Identity, same: impl Fn(&[String], &[String]) -> bool) -> Option<String> {
         let carries = |m: &Member| m.source != x.source && same(&m.names, &x.names);
-        // Someone kept apart from Paycom on the meal-break page takes no Paycom ID by name,
-        // in this pass or any later one.
-        let kept = |members: &[Member]| {
-            x.source.as_str() == PAYCOM
-                && members
-                    .iter()
-                    .any(|m| m.source.as_str() == AMAZON && self.saved.separate.contains(&m.id))
-        };
         let mut matched = self
             .people
             .iter()
-            .filter(|(_, members)| !kept(members) && members.iter().any(carries))
+            .filter(|(_, members)| members.iter().any(carries))
             .map(|(person, _)| person.clone());
         let person = matched.next()?;
         if matched.next().is_some() || self.holds(&person, x.source) {
@@ -257,12 +223,6 @@ impl Plan<'_> {
     fn decide(&self, x: &Identity) -> Option<(String, DriverLink)> {
         if let Some(person) = self.same(x) {
             return Some((person, DriverLink::Account));
-        }
-        if x.source.as_str() == AMAZON && self.saved.separate.contains(&x.id) {
-            return None;
-        }
-        if let Some(person) = self.saved(x) {
-            return Some((person, DriverLink::Saved));
         }
         for contact in Contact::ALL {
             if let Some(person) = self.contact(x, contact) {
@@ -286,11 +246,7 @@ impl Plan<'_> {
 /// Decides where each new ID goes, source by source in their order: Paycom's first, as its
 /// roster lists who works for the DSP; the others then join them. `people` maps each code
 /// to the IDs it holds.
-pub(crate) fn plan(
-    people: BTreeMap<String, Vec<Member>>,
-    incoming: &[Identity],
-    saved: &Saved,
-) -> Vec<Decision> {
+pub(crate) fn plan(people: BTreeMap<String, Vec<Member>>, incoming: &[Identity]) -> Vec<Decision> {
     let mut owner = BTreeMap::new();
     for (person, members) in &people {
         for m in members {
@@ -304,7 +260,6 @@ pub(crate) fn plan(
         owner,
         carried: carried(&all),
         all,
-        saved,
     };
     let mut order: Vec<usize> = (0..incoming.len()).collect();
     order.sort_by_key(|&i| (incoming[i].source, incoming[i].id.clone()));

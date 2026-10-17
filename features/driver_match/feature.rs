@@ -49,11 +49,18 @@ pub const FEATURE: Feature = Feature {
     ],
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,
-        list: &[Migration {
-            id: 1,
-            name: "open_sources",
-            apply: Sql(include_str!("migrations/dsp/0001_open_sources.sql")),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "open_sources",
+                apply: Sql(include_str!("migrations/dsp/0001_open_sources.sql")),
+            },
+            Migration {
+                id: 2,
+                name: "meal_break_links",
+                apply: Sql(include_str!("migrations/dsp/0002_meal_break_links.sql")),
+            },
+        ],
     }],
     maintenance: &[backend::maintenance::MAINTENANCE],
     after_collection: Some(backend::maintenance::after_collection),

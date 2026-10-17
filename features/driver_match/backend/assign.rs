@@ -1,6 +1,5 @@
 //! A pass over the DSP's collections: every ID they hold that has no person yet gets one,
 //! joining someone only on a certain match.
-use super::legacy::saved_links;
 use super::matching::{self, Member};
 use super::sources::{self, Identity, Key};
 use super::{ALPHABET, CHECKED, CODE_LENGTH, DriverSources, IdRow};
@@ -18,7 +17,6 @@ pub(super) fn read(store: &Store, dsp: &str) -> Result<DriverSources> {
     let people = sources::people(store, dsp)?;
     Ok(DriverSources {
         identities: sources::identities(&people, store, dsp)?,
-        saved: saved_links(store, dsp)?,
         contacts_only: sources::contacts_only(&people),
     })
 }
@@ -27,7 +25,6 @@ pub(super) fn read(store: &Store, dsp: &str) -> Result<DriverSources> {
 pub(super) fn write(store: &Store, dsp: &str, found: DriverSources) -> Result<usize> {
     let DriverSources {
         identities,
-        saved,
         contacts_only,
     } = found;
     let db = store.dsp(dsp)?;
@@ -56,7 +53,7 @@ pub(super) fn write(store: &Store, dsp: &str, found: DriverSources) -> Result<us
             };
             people.entry(row.code.clone()).or_default().push(member);
         }
-        let decided = matching::plan(people, &incoming, &saved);
+        let decided = matching::plan(people, &incoming);
         let now = iso();
         let mut fresh: BTreeMap<String, String> = BTreeMap::new();
         for (index, person, link) in &decided {

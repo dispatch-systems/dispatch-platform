@@ -105,7 +105,6 @@ function sample(): MealComparisonSource {
         id: m.cortexId,
         name: m.driverName,
         paycomCode: `E00${i + 1}`,
-        matchType: 'name' as const,
       })),
     ),
   };
@@ -245,9 +244,7 @@ test('refreshing unmatched drivers offers the Driver Match review and returns to
   // A driver Driver Match has not matched appears alone, with the way to review them.
   data = {
     ...data,
-    drivers: data.drivers.map((d) =>
-      d.id === 'driver-5' ? { ...d, paycomCode: null, matchType: 'unmatched' as const } : d,
-    ),
+    drivers: data.drivers.map((d) => (d.id === 'driver-5' ? { ...d, paycomCode: null } : d)),
   };
   await page.getByRole('button', { name: 'Refresh meal breaks', exact: true }).click();
   await expect(
