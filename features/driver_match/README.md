@@ -32,20 +32,19 @@ only what was decided.
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
   platform (`driver_codes`). A person keeps their code for good; merged, both keep the code
   merged into.
-- **Matching:** after every collection that finishes, and hourly to catch up anything missed,
-  every ID the DSP's data holds gets a code, source by source in their order. A new ID joins
-  someone by, in turn: another ID its source says is the same person's, as their account in
-  another workspace, when one person holds those and their names agree (`account`); a link
-  saved on the meal-break page; an
-  email address or phone number only the two of them have, among every person of either
-  source, when their names agree; a name
-  nobody else carries; the same name written another way, as without a second surname or by a
-  middle name. A nickname joins nobody: it suggests a pair to decide. Email addresses are
-  compared in lower case and phone numbers by their ten digits; a number that isn't North
-  American is shown but matches nobody. A contact two people of one
-  source share, as a family's phone, joins nobody but suggests a rehire. What counts as one name
-  written two ways, and which first names are short for others, is `backend/names.rs`: no other
-  owner matches names.
+- **Matching:** after every collection that finishes, when a feature whose data names people
+  is switched on, and hourly to catch up anything missed, every ID the DSP's data holds gets a
+  code, source by source in their order. A new ID joins someone by, in turn: another ID its
+  source says is the same person's, as their account in another workspace, when one person
+  holds those and their names agree (`account`); a link saved on the meal-break page; an email
+  address or phone number only the two of them have, among every person of either source,
+  when their names agree; a name nobody else carries; the same name written another way, as
+  without a second surname or by a middle name. A nickname, as Alex for Alexander, joins
+  nobody: it suggests a pair to decide. Email addresses are compared in lower case and phone
+  numbers by their ten digits; a number that isn't North American is shown but matches
+  nobody. A contact two people of one source share, as a family's phone, joins nobody but
+  suggests a rehire. What counts as one name written two ways, and which first names are
+  short for others, is `backend/names.rs`: no other owner matches names.
 - **Names:** a person is shown by the name their first source writes, in the sources' order,
   so a payroll's legal name comes before Amazon's.
 - **Roles:** Amazon's roster says who drives or only helps. Someone no roster lists and
@@ -79,7 +78,7 @@ folder, with one declaration in its manifest's `people` (`dispatch_core::manifes
 ```rust
 // backend/people.rs
 pub const PEOPLE: People = People::new(
-    PeopleData { id: "fuel", order: 70, label: "Fuel", unit: "fill-up", icon: "Fuel" },
+    PeopleData { id: "fuel", order: 80, label: "Fuel", unit: "fill-up", icon: "Fuel" },
     &dispatch_cortex::PEOPLE,
     |store, dsp| {
         people::named(
@@ -100,18 +99,47 @@ pub const PEOPLE: People = People::new(
 people: &[&backend::people::PEOPLE],
 ```
 
-- **What it is** (`PeopleData`): its id, its place among the kinds (`order`, the next free
-  tens), its label, what one record is (`unit`) and its icon, by the name lucide-react exports
-  it as. Each person's sheet lists it so.
+- **What it is** (`PeopleData`): its id, its place among the kinds (`order`, unique: the next
+  free tens, which `--people` picks), its label, what one record is (`unit`) and its icon, by
+  the name lucide-react exports it as. Each person's sheet lists it so.
 - **Whose IDs** (`SourceData`): the source its people are named by, declared by whoever owns
   those IDs: `&dispatch_cortex::PEOPLE` for Amazon's transporter IDs, `&dispatch_paycom::PEOPLE`
-  for Paycom's employee codes, or a source of its own. The sources' `order` is the order they
-  are listed in, and whose name a person is shown by.
+  for Paycom's employee codes, or a source of its own.
+
+### Orders
+
+Each order decides more than where something is listed, so a new kind or source takes its
+place here with its reason.
+
+| Source | Order | Why there |
+| ------ | ----- | --------- |
+| Paycom (`paycom`) | 10 | A payroll's legal name is the name a person is shown by. |
+| Amazon (`amazon`) | 20 | Shown by when no payroll knows them. |
+| Slack (`slack`) | 30 | A list of people the DSP can reach: shown by only when nothing else knows them. |
+
+A person is shown by the first source's name, and listed with their sources in this order.
+
+| Kind | Order | Why there |
+| ---- | ----- | --------- |
+| Timecards (`timecards`) | 10 | Paycom's roster, its name as payroll has it. |
+| Roster (`driver_profiles`) | 15 | The name Amazon has on file: read first among Amazon's. |
+| Routes (`routes`) | 20 | Routes spell names most plainly. |
+| Meal breaks (`meal_breaks`) | 30 | After routes. |
+| DVIC (`dvic`) | 40 | Sometimes writes only a last initial (`.initials()`), so its spellings are read after every other kind's. |
+| Weekly Scorecard (`weekly_scorecard`) | 50 | Often adds a middle name. |
+| Daily Performance (`daily_performance`) | 60 | |
+| Slack (`slack`) | 70 | |
+
+An ID's spellings are read kind by kind in this order, and the first is the one it is shown
+by; its department, position and photo come from the first kind that has them. Each person's
+sheet lists their kinds in this order.
 - **Who it names** (`read`): one `Named` for each ID and each way it writes their name, the
   newest first. `people::named` reads them from a query by its columns' names: `id` and `name`,
   and any of `first` and `last` (the days it saw them), `listed` (1 while its source's roster
   lists them), `email`, `phone`, `roles` (a JSON list, as `["Driver"]`), `department`,
-  `position` and `photo` (the photo's version). Someone a source knows by several IDs, as an
+  `position` and `photo` (the photo's version); a query naming any other column is refused
+  (`people_columns`), so a misspelt one fails the app's people test. Someone a source knows by
+  several IDs, as an
   account in each of several workspaces, is named by each, with the others in `same_as`: every
   one goes to the same person, whichever came first.
 - **How much it holds** (`.records`): `id`, `count` and `last` for each ID, counted in its

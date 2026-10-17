@@ -152,8 +152,7 @@ impl Identity {
 }
 
 /// Every ID the DSP's collections hold, of the features it has on, as they say: each kind of
-/// data's names read in its place, routes before the scorecard, which often adds a middle
-/// name, and DVIC, which sometimes writes only a last initial.
+/// data's spellings read in the kinds' order, the first kept first (the README's table).
 pub(crate) fn identities(
     people: &[&'static People],
     store: &Store,

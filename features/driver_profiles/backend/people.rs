@@ -6,8 +6,7 @@ use dispatch_core::manifest::people::{self, People, PeopleData};
 
 /// Everyone the roster has listed, listed while it lists them as active, with the email
 /// address and personal phone number Amazon has: a work phone may be the DSP's, passed from
-/// driver to driver. Whoever it still lists has their photo, by its digest. Its spelling is
-/// read first among Amazon's, as the name Amazon has on file.
+/// driver to driver. Whoever it still lists has their photo, by its digest.
 pub const PEOPLE: People = People::new(
     PeopleData {
         id: "driver_profiles",

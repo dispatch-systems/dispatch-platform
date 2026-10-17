@@ -34,7 +34,8 @@ test('Driver Match gives everyone a code and answers only to its own permission'
     .value;
   assert.equal(details.driver.code, first!.code);
   assert.equal(details.dates.length, 14);
-  assert.equal((await owner.get('/api/dsp/driver-match/drivers/NOPE00')).status, 404);
+  // A code written as codes are, which nobody holds.
+  assert.equal((await owner.get('/api/dsp/driver-match/drivers/ZZZZZZ')).status, 404);
 
   // Two people kept apart: the decision is theirs to see in each one's history.
   const apart = await owner.post('/api/dsp/driver-match/apart', {

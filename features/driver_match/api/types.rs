@@ -23,6 +23,12 @@ text_enum! {
         Person => "person",
     }
 }
+impl DriverLink {
+    /// Whether a person may confirm the link: one a match made by a name or a contact.
+    pub fn confirmable(self) -> bool {
+        matches!(self, Self::Variant | Self::Name | Self::Phone | Self::Email)
+    }
+}
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]

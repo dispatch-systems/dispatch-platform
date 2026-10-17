@@ -2,8 +2,7 @@
 use dispatch_core::manifest::people::{self, People, PeopleData, Workdays};
 use dispatch_cortex as cortex;
 
-/// Every driver a meal-break report names, counted in the days reported. After routes, which
-/// spell names most plainly.
+/// Every driver a meal-break report names, counted in the days reported.
 pub const PEOPLE: People = People::new(
     PeopleData {
         id: "meal_breaks",

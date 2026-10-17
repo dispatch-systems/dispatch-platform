@@ -83,11 +83,9 @@ export function PeopleGrid({
         />
       </div>
       {drivers.length === 0 ? (
-        <Empty title="No one to match yet">
-          Codes appear after the first collection that names someone.
-        </Empty>
+        <Empty title="No one to match yet" />
       ) : people.length === 0 ? (
-        <Empty title="No matching people">Try another name or filter.</Empty>
+        <Empty title="No matching people" />
       ) : (
         <ul className="driver-cards" aria-busy={searching} inert={searching}>
           {people.slice(0, shown).map((driver) => (

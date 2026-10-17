@@ -191,6 +191,11 @@ impl Db {
         let mut rows = stmt.query(p)?;
         rows.next()?.map(|row| T::from_row(&Row(row))).transpose()
     }
+    /// The names of the columns a query answers with, as it names them.
+    pub fn columns(&self, sql: &str) -> Result<Vec<String>> {
+        let stmt = self.0.prepare_cached(sql)?;
+        Ok(stmt.column_names().into_iter().map(str::to_owned).collect())
+    }
     /// The single number a `SELECT count(*) ...` answers with.
     pub fn count(&self, sql: &str, p: impl Params) -> Result<i64> {
         Ok(self.0.prepare_cached(sql)?.query_row(p, |row| row.get(0))?)

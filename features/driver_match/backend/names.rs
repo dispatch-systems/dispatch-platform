@@ -84,13 +84,6 @@ impl Name {
         } else {
             words.remove(0)
         };
-        // Supported short forms are explicit, never arbitrary first-name prefixes
-        // (e.g. Alex must not also match Alexis or Alexandra).
-        let given = if given == "alex" {
-            "alexander".into()
-        } else {
-            given
-        };
         Self {
             given,
             surnames: words,

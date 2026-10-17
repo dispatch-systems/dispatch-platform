@@ -2,7 +2,7 @@
 //! A feature reads only its own storage; that feature joins what every feature names by ID.
 //! The directory answers the other way round: who an ID is, for a feature showing people.
 use crate::{
-    Result, State,
+    Error, Result, State,
     db::{Db, Store},
     manifest::{Registry, Upkeep, registry},
 };
@@ -22,7 +22,8 @@ pub struct SourceData {
     pub id: &'static str,
     /// How it is named where people's IDs are listed: "Paycom".
     pub label: &'static str,
-    /// Its place in the one order sources are listed in everywhere.
+    /// Its place in the one order sources are listed in everywhere, which is also whose name
+    /// a person is shown by: the first source's that knows them.
     pub order: u16,
 }
 /// Where an ID comes from: compared, hashed, stored, sent and read by its id, and in
@@ -154,7 +155,8 @@ impl ts_rs::TS for DriverSource {
 pub struct PeopleData {
     /// Permanent: answers about people name it.
     pub id: &'static str,
-    /// Its place in the one order the kinds are listed in everywhere.
+    /// Its place in the one order the kinds are listed in everywhere, unique, which is also
+    /// the order an ID's spellings are read in: the first is the one it is shown by.
     pub order: u16,
     /// How it is named where people are listed: "DVIC".
     pub label: &'static str,
@@ -479,8 +481,40 @@ impl Named {
         }
     }
 }
+/// The columns `named` reads, the first two of which every query names.
+const NAMED: &[&str] = &[
+    "id",
+    "name",
+    "first",
+    "last",
+    "listed",
+    "email",
+    "phone",
+    "roles",
+    "department",
+    "position",
+    "photo",
+];
+/// The columns `records` reads, every one of which a query names.
+const RECORDS: &[&str] = &["id", "count", "last"];
+/// Refuses a query answering with a column `known` lacks, or without one of its first
+/// `needed`, so a misspelt column fails the app's people test rather than going unread.
+fn columns(db: &Db, sql: &str, known: &[&str], needed: usize) -> Result<()> {
+    let columns = db.columns(sql)?;
+    let fits = columns.iter().all(|c| known.contains(&c.as_str()))
+        && known[..needed].iter().all(|k| columns.iter().any(|c| c == k));
+    if fits {
+        return Ok(());
+    }
+    Err(Error::caused(
+        "people_columns",
+        500,
+        format!("a people query answers {columns:?}; it reads {known:?}, the first {needed} always"),
+    ))
+}
 /// Everyone a query names, a row each, as `Named` reads them.
 pub fn named(db: &Db, sql: &str) -> Result<Vec<Named>> {
+    columns(db, sql, NAMED, 2)?;
     Ok(db.all(sql, [])?.iter().map(Named::from_row).collect())
 }
 
@@ -493,6 +527,7 @@ pub struct Records {
 }
 /// How much a query counts of each ID, from its columns `id`, `count` and `last`.
 pub fn records(db: &Db, sql: &str) -> Result<Vec<Records>> {
+    columns(db, sql, RECORDS, RECORDS.len())?;
     Ok(db
         .all(sql, [])?
         .iter()

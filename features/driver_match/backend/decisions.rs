@@ -3,7 +3,7 @@
 use super::assign::new_person;
 use super::legacy::mirror_links;
 use super::{DriverMatchStore, valid_code};
-use crate::api::types::DriverMatch;
+use crate::api::types::{DriverLink, DriverMatch};
 use dispatch_core::{
     Result,
     accounts::Context,
@@ -181,14 +181,19 @@ pub(super) fn confirm(
     let db = store.dsp(dsp)?;
     db.transaction(|| {
         current(&db, code)?;
+        let link: Option<(DriverLink,)> = db.one_as(
+            "SELECT linked_by FROM person_ids WHERE code=? AND source=? AND external_id=?",
+            params![code, source, id],
+        )?;
         ensure(
-            db.exec(
-                "UPDATE person_ids SET linked_by='person',linked_at=?1,actor_id=?2 \
-                 WHERE code=?3 AND source=?4 AND external_id=?5 AND linked_by<>'new'",
-                params![iso(), c.actor(), code, source, id],
-            )? == 1,
+            link.is_some_and(|(link,)| link.confirmable()),
             "driver_changed",
             409,
+        )?;
+        db.exec(
+            "UPDATE person_ids SET linked_by='person',linked_at=?1,actor_id=?2 \
+             WHERE code=?3 AND source=?4 AND external_id=?5",
+            params![iso(), c.actor(), code, source, id],
         )?;
         mirror_links(&db)
     })?;

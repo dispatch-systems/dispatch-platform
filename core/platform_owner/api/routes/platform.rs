@@ -5,6 +5,7 @@ use crate::{
     db::{Store, iso},
     ensure,
     foundation::{config::ProviderMode, validate as v},
+    manifest::{people, registry},
     platform_owner::api::types::{BrowserHealth, DspFeatures, PlatformHealth},
     server::{
         http::{
@@ -286,6 +287,21 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
     }
     for provider in stopped(&result) {
         state.browsers.revoke_for(&id, provider).await;
+    }
+    // A feature whose data names people, switched on, has them told apart at once rather
+    // than at its next collection.
+    let names_people = |feature: &str| {
+        registry()
+            .features
+            .iter()
+            .any(|f| f.switch.id == feature && !f.people.is_empty())
+    };
+    if result
+        .changed
+        .iter()
+        .any(|change| change.enabled && names_people(&change.feature))
+    {
+        people::changed(state.clone(), id.clone()).await;
     }
     state
         .schedule_revision

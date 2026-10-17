@@ -2,8 +2,7 @@
 use crate::backend::RoutesStore;
 use dispatch_core::manifest::people::{self, People, PeopleData, Workdays};
 
-/// Every driver the routes name, counted in the days they drove. Routes spell names most
-/// plainly, so theirs is read first among Amazon's.
+/// Every driver the routes name, counted in the days they drove.
 pub const PEOPLE: People = People::new(
     PeopleData {
         id: "routes",
