@@ -1,18 +1,18 @@
 import { Suspense, useState } from 'react';
-import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
+import type { DspView, SessionView } from '../../../../core/accounts/api/index.js';
 import {
   hashQuery,
   replaceHashQuery,
   settingsHash,
-} from '../../../core/shell/frontend/runtime/navigation.js';
-import { can } from '../../../core/shell/frontend/runtime/permissions.js';
+} from '../../../../core/shell/frontend/runtime/navigation.js';
+import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
 import {
   connectionSections,
   type ConnectionSection,
-} from '../../../core/shell/frontend/runtime/slots.js';
-import { DataState, ErrorBox, Loading } from '../../../core/shell/frontend/ui/index.js';
-import { useSlackAccount, type SlackWorkspace } from '../api/client.js';
-import { INTEGRATIONS } from './sections.js';
+} from '../../../../core/shell/frontend/runtime/slots.js';
+import { DataState, ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
+import { useSlackAccount, type SlackWorkspace } from '../../api/client.js';
+import { INTEGRATIONS } from '../sections.js';
 import { WorkspaceHero } from './WorkspaceHero.js';
 
 // One of the DSP's workspaces' settings, on a page of their own, for those who manage Slack: the

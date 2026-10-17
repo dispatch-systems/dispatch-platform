@@ -1,7 +1,7 @@
-import type { ListedIntegration } from '../../../core/shell/frontend/runtime/slots.js';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { ErrorBox, Modal } from '../../../core/shell/frontend/ui/index.js';
-import { slackAccountChanged, switchSlackIntegration } from '../api/client.js';
+import type { ListedIntegration } from '../../../../core/shell/frontend/runtime/slots.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { ErrorBox, Modal } from '../../../../core/shell/frontend/ui/index.js';
+import { slackAccountChanged, switchSlackIntegration } from '../../api/client.js';
 import { IntegrationNotes } from './IntegrationNotes.js';
 
 // Switching an integration on or off in a workspace, once what that means is said, in the

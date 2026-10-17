@@ -1,0 +1,88 @@
+/* Slack's cards on Settings' Connections, and its entry in New there. */
+.slack-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 20px;
+  margin: 0;
+  font-size: 14px;
+}
+.slack-details dt {
+  color: var(--muted-foreground);
+}
+.slack-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.slack-install-link {
+  width: 100%;
+  font-size: 13px;
+}
+.slack-new-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.slack-new {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.slack-ways {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.slack-way {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 16px;
+  border-radius: 10px;
+  background: var(--card);
+  font-weight: 600;
+  text-align: left;
+  transition:
+    background-color var(--motion-duration),
+    border-color var(--motion-duration);
+}
+.slack-way:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+.slack-way-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted-foreground);
+}
+.slack-way-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--foreground);
+}
+@media (max-width: 520px) {
+  .slack-ways {
+    grid-template-columns: 1fr;
+  }
+}
+.slack-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.slack-link-button:hover {
+  background: var(--accent);
+}

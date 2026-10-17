@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import type { DspView } from '../../../core/accounts/api/index.js';
-import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
-import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { Badge, ConfirmDialog, DataState } from '../../../core/shell/frontend/ui/index.js';
+import type { DspView } from '../../../../core/accounts/api/index.js';
+import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
+import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { Badge, ConfirmDialog, DataState } from '../../../../core/shell/frontend/ui/index.js';
 import {
   connectSlack,
   disconnectSlack,
   finishSlack,
   useSlackAccount,
   type SlackWorkspace,
-} from '../api/client.js';
+} from '../../api/client.js';
 import { LinkCard } from './InstallLink.js';
 import { SlackCard } from './SlackCard.js';
 import { useSlackReturn } from './slackReturn.js';

@@ -1,0 +1,167 @@
+/* A workspace's settings, on a page of their own. */
+.slack-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.slack-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.slack-trail a {
+  color: inherit;
+  text-decoration: none;
+}
+.slack-trail a:hover {
+  color: var(--foreground);
+}
+.slack-trail [aria-current] {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.slack-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--primary) 10%, transparent),
+      color-mix(in srgb, #2eb67d 6%, transparent)
+    ),
+    var(--card);
+}
+.slack-hero-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+}
+.slack-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.slack-hero h1 {
+  font-size: 24px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.slack-hero dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0;
+  font-size: 13px;
+}
+.slack-hero dt {
+  color: var(--muted-foreground);
+}
+.slack-hero dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.slack-hero-status {
+  margin-left: auto;
+}
+.slack-page-body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.slack-sections {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.slack-sections button {
+  justify-content: flex-start;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.slack-sections button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.slack-sections button[aria-current] {
+  background: var(--accent);
+  color: var(--foreground);
+  font-weight: 600;
+}
+.slack-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.slack-channel-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.slack-channel-name svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.slack-private {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+/* The rename pencil beside the workspace's name. */
+.slack-hero-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.slack-rename {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.slack-rename:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+/* An integration's sections, under Integrations. */
+.slack-sections button.slack-subsection {
+  min-height: 34px;
+  margin-left: 17px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .slack-page-body {
+    grid-template-columns: 1fr;
+  }
+  .slack-sections {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .slack-hero-status {
+    margin-left: 0;
+  }
+}

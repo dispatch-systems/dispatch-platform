@@ -9,9 +9,9 @@ import {
   useSlackChannels,
   type SlackFolder,
 } from '../../api/client.js';
-import { ChannelChoice, NoChannels } from '../kept/ChannelChoice.js';
-import { FolderBrowser } from '../kept/FolderBrowser.js';
-import { SaveTo } from '../kept/SaveTo.js';
+import { ChannelChoice, NoChannels } from '../linked/ChannelChoice.js';
+import { FolderBrowser } from '../linked/FolderBrowser.js';
+import { SaveTo } from '../linked/SaveTo.js';
 
 // Choosing canvases on their own: one of the channels Dispatch is in, the canvases in it to
 // sync, and where their documents go, a new folder named after the channel or one chosen from

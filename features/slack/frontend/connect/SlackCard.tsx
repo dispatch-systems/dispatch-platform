@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { SlackLogo } from './SlackLogo.js';
+import { SlackLogo } from '../SlackLogo.js';
 
 /**
  * One of Slack's cards on Settings' DSP Connections, under Slack's mark and its `title`, with

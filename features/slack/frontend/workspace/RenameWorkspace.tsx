@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
-import { Modal } from '../../../core/shell/frontend/ui/index.js';
-import { renameSlack, type SlackWorkspace } from '../api/client.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { Modal } from '../../../../core/shell/frontend/ui/index.js';
+import { renameSlack, type SlackWorkspace } from '../../api/client.js';
 
 // Renaming one of the DSP's workspaces in Dispatch. Left blank, it goes by its name in Slack.
 
