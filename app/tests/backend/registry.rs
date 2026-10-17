@@ -1,7 +1,7 @@
 //! What the registry refuses of what features declare about one another.
 use dispatch_core::manifest::{
     Feature, Registry, ScheduleAlias, feature, optional,
-    people::{KindInfo, People},
+    people::{KindInfo, People, Source, SourceInfo},
     perm, sub,
 };
 
@@ -102,6 +102,34 @@ fn a_kind_of_data_that_names_people_twice_is_refused() {
         switch: optional("twice", "Twice", &[]),
         people: &[&AGAIN],
         ..feature("twice")
+    };
+    crate::install();
+    with(&TWICE).check();
+}
+
+/// Amazon's transporter IDs, declared a second time under another name.
+const ELSEWHERE: People = People::new(
+    KindInfo {
+        id: "elsewhere",
+        order: 99,
+        label: "Elsewhere",
+        icon: "Route",
+    },
+    Source::new(&SourceInfo {
+        id: "amazon",
+        label: "Amazon elsewhere",
+        order: 20,
+    }),
+    |_, _| Ok(vec![]),
+);
+
+#[test]
+#[should_panic(expected = "the source amazon is declared twice")]
+fn a_source_declared_twice_is_refused() {
+    static TWICE: Feature = Feature {
+        switch: optional("elsewhere", "Elsewhere", &[]),
+        people: &[&ELSEWHERE],
+        ..feature("elsewhere")
     };
     crate::install();
     with(&TWICE).check();

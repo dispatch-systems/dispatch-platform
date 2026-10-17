@@ -231,6 +231,13 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
         with_role(&staffed, PersonRole::Driver),
         staffed.people.len() - 1
     );
+    // Whoever the meal breaks show driving drives, whatever department Paycom has them in.
+    values["driver_departments"] = json!(["Warehouse"]);
+    db.save_timecard_preferences(&id, &context.auth.user.id, 1, &values)
+        .unwrap();
+    let warehouse = db.driver_match(&id).unwrap();
+    assert_eq!(person(&warehouse, &luis).role, PersonRole::Driver);
+    assert_eq!(person(&warehouse, &avery).role, PersonRole::Office);
     // Nothing new the second time, and nobody's code changes.
     assert_eq!(pass(&db, &id).unwrap(), 0);
     let again = db.driver_match(&id).unwrap();
@@ -466,6 +473,23 @@ fn roster(db: &Store, id: &str, listed: &[(&str, &str, &str, &str)]) {
         })
         .collect();
     db.publish_roster(id, "job-roster", &capture).unwrap();
+}
+
+/// A person is shown by the first source's name in the sources' order, and an ID by the first
+/// spelling in the kinds' order: Amazon's roster before its meal breaks, Paycom before Amazon.
+#[test]
+fn the_first_source_and_kind_in_order_name_a_person() {
+    dispatch_backend::install();
+    let (_root, db, id, context) = ready();
+    roster(&db, &id, &[("TREYES", "Anthony Reyes", "ACTIVE", "Driver")]);
+    pass(&db, &id).unwrap();
+    let before = db.driver_match(&id).unwrap();
+    let tony = code(&before, AMAZON, "TREYES");
+    assert_eq!(person(&before, &tony).name, "Anthony Reyes");
+    let antonio = code(&before, PAYCOM, "E002");
+    db.merge_people(&context, &tony, &antonio).unwrap();
+    let after = db.driver_match(&id).unwrap();
+    assert_eq!(person(&after, &antonio).name, "Antonio Reyes");
 }
 
 #[test]
