@@ -6,5 +6,9 @@ CREATE TABLE IF NOT EXISTS storage_identity (dsp_id TEXT NOT NULL, provider TEXT
 CREATE TABLE IF NOT EXISTS {{table}} (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+{{#people}}
+    -- Who the row is about: the ID {{peopleSource}} knows them by.
+    person_id TEXT,
+{{/people}}
     created_at TEXT NOT NULL
 );

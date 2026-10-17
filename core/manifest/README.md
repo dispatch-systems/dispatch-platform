@@ -55,8 +55,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `demo`                | `commands`     | What fills a new DSP with its demo data, for the development seed and Diagnostics' test DSPs.                                      |
 | `commands`            | `commands`     | Its operator commands of the binary, every one whose name begins with its prefix.                                                  |
 | `dsp_connection`      | `mod.rs`       | Whether it adds one of the DSP's own accounts to Settings' DSP Connections, as a collector's connection is.                        |
-| `people`              | `people`       | Who its data names, for the feature that tells people apart: a `People` for each kind of data, with what else it knows of them.    |
-| `directory`           | `people`       | Who each ID its people name is, if it is the feature that tells them apart; one feature at most answers.                           |
+| `people`              | `people/`      | Who its data names, for the feature that tells people apart: a `People` for each kind of data, with what else it knows of them.    |
 | `integrations`        | `integrations` | What it does through another feature's connection, switched on and off in that connection's settings for each of its accounts.     |
 | `services`            | `services/`    | What it offers every other feature through a contract core defines; one feature at most offers each.                               |
 
@@ -65,20 +64,84 @@ piece outside the features that lets outside agents use Dispatch, `Agents`.
 
 ### People
 
-A feature whose data names people declares a `People` for each kind of data: what it is
-(`KindInfo`), whose IDs it names them by (`SourceInfo`) and who it names, most often read with
-one query (`people::named`), with what else it knows in `.records`, `.workdays`,
-`.driver_departments`, `.photos`, `.initials()` and `.contacts_only()`. The one feature that
-tells people apart reads them all, and answers the directory: `people::who` says, for a feature
-showing people, who holds each ID of a source and the version of their photo, `people::photo`
-gives that photo, from whichever feature holds one, for the feature to serve behind its own
-permission, and `people::changed` has people told apart at once when a feature's data changes
-outside a collection. The dashboard draws a person with `PersonAvatar`, their photo or, without
-one, their initials. The sources and kinds are shared words, written to TypeScript in
-`api/generated/`: each kind with its label, unit and icon, in their order (`driver-data.ts`,
-which imports the icons from lucide-react by the names the kinds declare), loaded only by the
-lists of people; and the features whose data names people, by their switches
-(`people-features.ts`), small enough for a frontend manifest to ask whether a DSP has one on.
+A feature whose data names people connects to the feature that tells them apart (Driver
+Match) with one declaration for each kind of data, in its own folder:
+`dispatchdev new feature <name> --tables dsp --people amazon` writes one to start from.
+
+```rust
+// backend/people.rs
+pub const PEOPLE: People = People::new(
+    KindInfo { id: "fuel", order: 100, label: "Fuel", icon: "Fuel" },
+    dispatch_cortex::SOURCE,
+    |store, dsp| {
+        people::named(
+            &*store.fuel_db(dsp)?,
+            "SELECT transporter_id id,driver_name name,min(day) first,max(day) last \
+             FROM fill_ups GROUP BY 1,2 ORDER BY last DESC",
+        )
+    },
+)
+.records("fill-up", |store, dsp| {
+    people::records(
+        &*store.fuel_db(dsp)?,
+        "SELECT transporter_id id,count(*) count,max(day) last FROM fill_ups GROUP BY 1",
+    )
+})
+.driving();
+
+// feature.rs
+people: &[&backend::people::PEOPLE],
+```
+
+- **What it is** (`KindInfo`): its id, permanent; its place among the kinds (`order`), which
+  is also the order an ID's spellings are read in, the first being the one it is shown by, so
+  a kind that writes names less fully goes later (`--people` picks the next free tens); its
+  label, and its icon, by the name lucide-react exports it as.
+- **Whose IDs** (`Source`): the source its people are named by, declared once by whoever owns
+  those IDs, as a collector's `SOURCE` (`dispatch_cortex::SOURCE` for Amazon's transporter
+  IDs), or a source of the feature's own (`Source::new(&SourceInfo { id, label, order })`).
+  A source's `order` is the order sources are listed in, and whose name a person is shown by:
+  the first source's that knows them. The registry refuses one id declared as two sources.
+- **Who it names** (`read`): one `Named` for each ID and each way it writes their name, the
+  newest first. `people::named` reads them from a query by its columns' names: `id` and
+  `name`, and any of `first` and `last` (the days it saw them), `listed` (1 while its source's
+  roster lists them), `email`, `phone`, `roles` (a JSON list of `Driver` and `Helper`),
+  `department`, `position` and `photo` (the photo's version, read only from a kind with
+  `.photos`). A query naming any other column is refused (`people_columns`), so a misspelt
+  one fails the app's people test. Someone a source knows by several IDs, as an account in
+  each of several workspaces, is named by each, with the others in `same_as`.
+- **How much it holds** (`.records(unit, …)`): `id`, `count` and `last` for each ID
+  (`people::records`), counted in what one record is, singular. Without it the kind is listed
+  for nobody on a person's sheet.
+- **Whether each record shows them driving** (`.driving()`): as a route or an inspection does.
+  Someone such a kind counts drives, unless their source's departments say otherwise.
+- **When they worked** (`.workdays`): each ID with each day it worked (`people::worked`, from
+  columns `id` and `day`), and the days the data was collected for (`Workdays::daily` when
+  every day it holds was collected), so two people who never worked the same days are less
+  likely one.
+- **Which departments drive** (`.driver_departments`): from the feature's settings; anyone it
+  names outside them works in the office.
+- **Photos** (`.photos`): serves the photo of the first of some IDs it holds one of, each
+  named by its version in `read`'s `photo` column.
+- **People it can reach, not employs** (`.contacts_only()`): being on its list never keeps
+  someone from having left, and someone only such lists know works in the office. One person
+  may hold several of its IDs, and one it no longer names sits idle.
+
+A kind is read while its feature is on, and every ID it names gets a person after each
+collection; a feature whose people may gain new IDs outside a collection, as a chat
+workspace's members do, calls `people::changed(state, dsp)` once they're kept. The app's people
+test runs every connection's queries against a new DSP, so a connection is tried without a test
+of its own. `npm run contracts:generate` writes the kinds and sources to TypeScript in
+`api/generated/`: each kind with its label, unit and icon, in their order (`people-data.ts`,
+which imports the icons from lucide-react), loaded only by the lists of people; and the
+features whose data names people, by their switches (`people-features.ts`), small enough for a
+frontend manifest to ask whether a DSP has one on.
+
+The other way round, a feature showing people asks the directory, a service
+(`services/directory.rs`) the feature that tells people apart offers: `people::who` says who
+holds each ID of a source, with every ID they hold and the version of their photo,
+`people::photo` gives that photo for the feature to serve behind its own permission, and both
+answer nothing in a build without it. The dashboard draws a person with `PersonAvatar`.
 
 ### Services
 
@@ -92,6 +155,7 @@ permission that shows its folders, the largest file it takes, why it can't keep 
 browsing its folders, a folder by ID, making a folder, saving a file streamed as it arrives
 (`Upload::streamed`) with who it came from, a member or someone known only by name, and writing
 a page of HTML as a document members open and edit, then over it as the page changes. The
+second is `directory`, who an ID is, which the People section above describes. The
 services offered are written to TypeScript too (`api/generated/services.ts`): `offered(name,
 view)` in the frontend's runtime answers a page using one whether the DSP has it, what it's
 called and the permission that shows what it keeps, without naming the feature offering it.

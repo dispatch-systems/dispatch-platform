@@ -147,3 +147,8 @@ isolation, fair historical catch-up, bounded XLSX parsing, report scope validati
 cookie-free conditional downloads, schedule CRUD/execution, DVIC-only role grants,
 and feature independence. The native scorecard regression exercises multiple queued
 performance-page requests, including a page initially selecting another station.
+
+## People
+
+Its inspections' drivers are Driver Match's `dvic` kind of data, each inspection showing
+them driving. It sometimes writes only a last initial, so its spellings are read last.

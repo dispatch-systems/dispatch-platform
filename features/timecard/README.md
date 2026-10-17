@@ -14,9 +14,9 @@ Timecard's collections. It names drivers through Driver Match.
 - **Drivers and employees:** the Meal Breaks tab pairs each driver with their employee through
   core's directory, which Driver Match answers; it matches no names itself. A driver Driver
   Match hasn't reached yet, as while a collection runs, waits unmatched, as does every driver
-  in a build without it. Drivers kept apart from Paycom on this page before Driver Match read
-  as separate. Employee Search shows each employee's photo the same way: the directory names
-  its version and serves it, from whichever feature holds one; without one, their initials.
+  in a build without it. Employee Search shows each employee's photo the same way: the
+  directory names its version and serves it, from whichever feature holds one; without one,
+  their initials.
 - **Permissions:** `timecard.view`, to read it; `timecard.manage`, which includes it, for its
   settings and schedules; and `collections.run`, to sync now or cancel a sync. The demo DSPs
   give Managers and Members View, and Managers Run Collections.
