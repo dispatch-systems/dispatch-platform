@@ -172,6 +172,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
     if (!initial.dspId) void loadAuth().catch(() => undefined);
     else void prepareRoute('dsp', initial.page).catch(() => undefined);
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- the count ends whatever request is in flight by then
       sessionRequest.current++;
     };
   }, [load]);
@@ -354,6 +355,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
     }
     void reopen().catch((error) => fail(messageOf(error)));
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- the count ends whatever admission is in flight by then
       admission.current++;
     };
   }, [session, dspId, fail, securityRequired, showAuth, reopen]);

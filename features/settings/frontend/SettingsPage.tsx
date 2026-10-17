@@ -28,7 +28,7 @@ export function SettingsPage({ session, view }: { session: SessionView; view?: D
     return () => {
       live = false;
     };
-    // `waiting` names exactly the tabs `missing` holds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `waiting` names exactly the tabs `missing` holds
   }, [waiting]);
   const pieces = settingsPieces(tab.id, view);
   const drawn = (piece: SettingsPiece) => (

@@ -52,6 +52,7 @@ const checkCommands: Command[] = [
   { name: 'check:privacy', command: 'npm', args: ['run', 'check:privacy'] },
   { name: 'check', command: 'npm', args: ['run', 'check'] },
   { name: 'format:check', command: 'npm', args: ['run', 'format:check'] },
+  { name: 'lint', command: 'npm', args: ['run', 'lint'] },
   { name: 'test:artifact', command: 'npm', args: ['run', 'test:artifact'] },
   ...sourceLintCommands,
   dashboardCommand,

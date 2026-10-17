@@ -86,9 +86,11 @@ export async function agentWhoami(
       headers: { Authorization: `Bearer ${token}` },
     });
     // A proxy's error page is no JSON; say what the server answered rather than nothing.
-    const value = await response.json().catch(() => undefined);
-    if (response.ok && value) return { ok: true, value };
-    return { ok: false, error: value?.error ? String(value.error) : `http_${response.status}` };
+    const value = (await response.json().catch(() => undefined)) as
+      (AgentWhoami & { error?: undefined }) | { error?: unknown } | undefined;
+    if (response.ok && value) return { ok: true, value: value as AgentWhoami };
+    const error = value?.error;
+    return { ok: false, error: typeof error === 'string' ? error : `http_${response.status}` };
   } catch {
     return { ok: false, error: 'network_error' };
   }

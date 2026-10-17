@@ -40,7 +40,7 @@ export function usePresence(token: string | undefined) {
       }).then(
         async (response) => {
           if (!active || state === 'gone' || ![401, 409].includes(response.status)) return;
-          const value = await response.json().catch(() => null);
+          const value = (await response.json().catch(() => null)) as { error?: string } | null;
           if (!active || (response.status !== 401 && value?.error !== 'dsp_view_expired')) return;
           // Stop the rejected view before recovery can install its replacement. Late
           // replies from a view that already closed cannot refresh a newer admission.

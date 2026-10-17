@@ -12,6 +12,7 @@ import {
   Modal,
   RecoveryCodes,
 } from '../../../shell/frontend/ui/index.js';
+import { field } from '../../../shell/frontend/lib/form.js';
 
 type Removing =
   { kind: 'passkey'; id: string; last: boolean } | { kind: 'authenticator'; last: boolean };
@@ -244,7 +245,7 @@ function PasskeyDialog({
         className="security-form"
         onSubmit={(event) => {
           event.preventDefault();
-          finish(String(new FormData(event.currentTarget).get('name')));
+          finish(field(new FormData(event.currentTarget), 'name'));
         }}
       >
         <label>
@@ -291,7 +292,7 @@ function AuthenticatorDialog({
         className="security-form authenticator-setup"
         onSubmit={(event) => {
           event.preventDefault();
-          finish(String(new FormData(event.currentTarget).get('code')));
+          finish(field(new FormData(event.currentTarget), 'code'));
         }}
       >
         <p>Scan this QR code, or enter the setup key manually. Then enter the current code.</p>

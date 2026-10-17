@@ -102,10 +102,15 @@ export interface DataTable<T> {
   collapseAll: () => void;
 }
 
+/** A cell's value as text: numbers and booleans as they print, nothing for null. */
+const text = (value: unknown) =>
+  typeof value === 'string'
+    ? value
+    : typeof value === 'number' || typeof value === 'boolean'
+      ? String(value)
+      : '';
 const compare = (a: unknown, b: unknown) =>
-  typeof a === 'number' && typeof b === 'number'
-    ? a - b
-    : String(a ?? '').localeCompare(String(b ?? ''));
+  typeof a === 'number' && typeof b === 'number' ? a - b : text(a).localeCompare(text(b));
 const everything = Number.MAX_SAFE_INTEGER;
 
 function useLocalState(): TableStateStore {
@@ -147,6 +152,7 @@ export function useDataTable<T extends RowData>({
         sortFn: (a: Row<Features, T>, b: Row<Features, T>, id: string) =>
           compare(a.getValue(id), b.getValue(id)),
       })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `columns` is new on every render, so naming it would rebuild the definitions every time; they change only with `shape`, and read the latest columns through the ref, which isn't reactive
     [shape],
   );
   const count = total ?? rows.length;
@@ -194,6 +200,7 @@ export function useDataTable<T extends RowData>({
           toggle: () => row.toggleExpanded(),
         },
       })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `expanded` is a key: a row's context reads the table's expansion, which changes with it
     [visible, expanded],
   );
   return {

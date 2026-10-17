@@ -18,7 +18,7 @@ export async function registerPasskey(name: string): Promise<string[]> {
     throw new Error('Passkey registration was cancelled.');
   const result = await api<{ codes: string[] }>('/api/auth/security/passkeys/register/finish', {
     name,
-    credential: credential.toJSON(),
+    credential: credential.toJSON() as unknown,
   });
   return result.codes;
 }
@@ -34,5 +34,7 @@ export async function verifyPasskey() {
   });
   if (!(credential instanceof PublicKeyCredential))
     throw new Error('Passkey verification was cancelled.');
-  await api('/api/auth/security/passkeys/verify/finish', { credential: credential.toJSON() });
+  await api('/api/auth/security/passkeys/verify/finish', {
+    credential: credential.toJSON() as unknown,
+  });
 }

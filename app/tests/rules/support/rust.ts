@@ -42,9 +42,13 @@ export function lex(text: string): Lexed {
       let depth = 0;
       let j = i;
       do {
-        if (text.startsWith('/*', j)) (depth++, (j += 2));
-        else if (text.startsWith('*/', j)) (depth--, (j += 2));
-        else j++;
+        if (text.startsWith('/*', j)) {
+          depth++;
+          j += 2;
+        } else if (text.startsWith('*/', j)) {
+          depth--;
+          j += 2;
+        } else j++;
       } while (depth > 0 && j < text.length);
       blank(i, j);
       i = j;
@@ -115,8 +119,10 @@ export function useTree(tree: string): UsePath[] {
     for (const char of text) {
       if (char === '{') depth++;
       if (char === '}') depth--;
-      if (char === ',' && depth === 0) (parts.push(part), (part = ''));
-      else part += char;
+      if (char === ',' && depth === 0) {
+        parts.push(part);
+        part = '';
+      } else part += char;
     }
     parts.push(part);
     for (const raw of parts.map((item) => item.trim()).filter(Boolean)) {

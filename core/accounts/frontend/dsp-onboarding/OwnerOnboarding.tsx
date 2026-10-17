@@ -8,6 +8,7 @@ import { ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { signInAt } from '../sign-in-handoff.js';
 import { DspSetupForm, type DspSetup } from './DspSetupForm.js';
 import { OnboardingLayout } from './OnboardingLayout.js';
+import { field } from '../../../shell/frontend/lib/form.js';
 
 /**
  * A new DSP's first owner sets it up and makes their profile in one go, then signs in at the
@@ -36,9 +37,9 @@ export function OwnerOnboarding({
     async (form: HTMLFormElement) => {
       const values = new FormData(form);
       const accepted = await api<{ email: string; signIn: string | null }>(`${invitation}/accept`, {
-        firstName: String(values.get('firstName')).trim(),
-        lastName: String(values.get('lastName')).trim(),
-        password: String(values.get('password')),
+        firstName: field(values, 'firstName').trim(),
+        lastName: field(values, 'lastName').trim(),
+        password: field(values, 'password'),
         dspProfile: profile,
       });
       signInAt(accepted.email, accepted.signIn);

@@ -14,6 +14,7 @@ import {
 } from '../../../shell/frontend/runtime/navigation.js';
 import { routeOf } from '../../../shell/frontend/runtime/slots.js';
 import { clearSignInHandoff, getSignInHandoff } from '../sign-in-handoff.js';
+import { field } from '../../../shell/frontend/lib/form.js';
 export function SignInScreen({ onLogin }: { onLogin: () => Promise<void> }) {
   const [handoff] = useState(getSignInHandoff);
   useEffect(clearSignInHandoff, []);
@@ -28,8 +29,8 @@ export function SignInScreen({ onLogin }: { onLogin: () => Promise<void> }) {
     setError('');
     setNotice('');
     const form = new FormData(event.currentTarget),
-      email = String(form.get('email') ?? ''),
-      password = String(form.get('password') ?? '');
+      email = field(form, 'email'),
+      password = field(form, 'password');
     if (mode === 'reset' && password !== form.get('confirmPassword')) {
       setError('The passwords must match.');
       return;

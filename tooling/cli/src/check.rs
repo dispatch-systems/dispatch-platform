@@ -192,7 +192,8 @@ fn owner(file: &str) -> Option<String> {
 }
 /// The local commands that check what the diff touches: the Rust crates it changes, and the
 /// test files it changes or that watch a source it changes, from `tooling/ci/test-plan.json`.
-/// `npm run check:rules` already runs the rule and dashboard tests, so they are left out.
+/// `npm run check:rules` already runs the rule and dashboard tests, so they are left out, and
+/// `npm run lint` the linter.
 pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<String> {
     let list = |value: &Value| -> Vec<String> {
         value
@@ -423,7 +424,7 @@ pub fn execute(
     if let (true, Some(command)) = (reused, clippy) {
         println!("ok     reused  {command} (passed on these Rust inputs before)");
     }
-    let commands: Vec<String> = ["npm run check:rules".to_owned()]
+    let commands: Vec<String> = ["npm run check:rules".to_owned(), "npm run lint".to_owned()]
         .into_iter()
         .chain(
             plan.commands

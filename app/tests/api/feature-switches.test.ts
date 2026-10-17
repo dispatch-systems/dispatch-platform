@@ -348,7 +348,7 @@ test('a feature hidden from a DSP keeps running, out of sight of all but the pla
   assert.deepEqual(view.permissions, []);
   assert.equal((await member.get(meals)).status, 403);
   // Shown again, each comes back as it was, the tab hidden on its own still hidden.
-  result = await platform.post(url, { feature: 'timecard', shown: true });
+  await platform.post(url, { feature: 'timecard', shown: true });
   result = await platform.post(url, { feature: 'uniforms', shown: true });
   assert.deepEqual(result.value.hidden, ['timecard.employees']);
   view = await member.select(north.id);

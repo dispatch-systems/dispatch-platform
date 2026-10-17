@@ -5,8 +5,11 @@
  */
 export const csvCell = (value: string | number | null | undefined) => {
   const text = String(value ?? '');
-  const safe =
-    /^[=+\-@]/.test(text.trimStart()) || /^[\u0000-\u001f\u007f]/.test(text) ? `'${text}` : text;
+  // A cell starting with a formula's sign or a control character is quoted, so a spreadsheet
+  // opening the file runs nothing.
+  // eslint-disable-next-line no-control-regex -- the control characters are what's quoted
+  const unsafe = /^[=+\-@]/.test(text.trimStart()) || /^[\u0000-\u001f\u007f]/.test(text);
+  const safe = unsafe ? `'${text}` : text;
   return `"${safe.replaceAll('"', '""')}"`;
 };
 
@@ -22,7 +25,9 @@ export function downloadCsv(
   rows: (string | number | null | undefined)[][],
 ) {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([`﻿${csvText(header, rows)}`], { type: 'text/csv' }));
+  link.href = URL.createObjectURL(
+    new Blob([`\uFEFF${csvText(header, rows)}`], { type: 'text/csv' }),
+  );
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);

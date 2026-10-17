@@ -11,6 +11,7 @@
     "dev": "tsx tooling/dev/dev.ts",
     "build": "tsx tooling/build/build.ts",
     "check": "tsc --noEmit",
+    "lint": "eslint .",
     "check:ci": "tsx tooling/ci/checks.ts",
     "check:rules": "tsx tooling/ci/rules.ts",
     "check:removability": "tsx tooling/ci/removability.ts",
@@ -51,15 +52,20 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260924.1",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.19.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@types/three": "0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
     "prettier": "^3.9.9",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.2",
     "vite": "^8.3.0"
   }
 }

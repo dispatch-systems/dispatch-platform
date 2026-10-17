@@ -10,6 +10,7 @@ import { MemberProfilePasswordField } from './MemberProfilePasswordField.js';
 import { useMemberCompletion } from './useMemberCompletion.js';
 import { MEMBER_COMPLETION_MEDIA } from './member-completion-motion.js';
 import type { MemberIdentity } from './MemberProfileCompletion.js';
+import { field } from '../../../shell/frontend/lib/form.js';
 
 export function MemberProfileCreation({
   token,
@@ -44,15 +45,15 @@ export function MemberProfileCreation({
   const save = useAction(
     async (form: HTMLFormElement) => {
       const values = new FormData(form);
-      const firstName = String(values.get('firstName')).trim();
-      const lastName = String(values.get('lastName')).trim();
+      const firstName = field(values, 'firstName').trim();
+      const lastName = field(values, 'lastName').trim();
       try {
         const accepted = await api<{ email: string; signIn: string | null }>(
           `/api/invitations/${encodeURIComponent(token)}/accept`,
           {
             firstName,
             lastName,
-            password: String(values.get('password')),
+            password: field(values, 'password'),
           },
         );
         if (!mounted.current) return;

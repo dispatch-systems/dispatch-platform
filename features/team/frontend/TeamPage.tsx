@@ -34,6 +34,7 @@ import {
   useRoles,
   removeRole,
 } from '../api/client.js';
+import { field } from '../../../core/shell/frontend/lib/form.js';
 
 type Invitation = { email: string; role: string; expiresAt: number; accepted: boolean };
 const actions = <span className="sr-only">Actions</span>;
@@ -82,12 +83,12 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
       invitations.refresh();
       roles.refresh();
     },
-    { success: (form) => `Invitation email queued for ${form.get('email')}` },
+    { success: (form) => `Invitation email queued for ${field(form, 'email')}` },
   );
   // A null role removes the member.
   const assign = useAction(
     async (member: Membership, role: FormDataEntryValue | null) => {
-      await setMemberRole(member.id, role === null ? null : String(role));
+      await setMemberRole(member.id, typeof role === 'string' ? role : null);
       setEditing(undefined);
       setRemoving(undefined);
       await reopen();

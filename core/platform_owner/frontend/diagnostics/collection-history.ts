@@ -47,7 +47,7 @@ export function runHistory(job: Job) {
     resumed,
     pageRetries: metrics.reduce((n, m) => n + (m.pageReads?.retries ?? 0), 0),
     jobRetries: Math.max(0, job.attempt - 1),
-    perItemMs: comparable && collectionMs !== null ? collectionMs / count! : null,
+    perItemMs: comparable && collectionMs !== null ? collectionMs / count : null,
     comparable,
     partial: metrics.some((m) => m.outcome === 'interrupted'),
   };

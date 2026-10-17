@@ -47,10 +47,11 @@ export function ConnectionCard({
   const endpoint = connectionUrl(provider);
   const [poll, setPoll] = useState(performancePolicy.recoveryPollMs);
   const { data, error, refresh } = useConnection(read, poll);
+  const status = data?.status;
   useEffect(() => {
-    const active = data && ['signing_in', 'needs_verification'].includes(data.status);
+    const active = status !== undefined && ['signing_in', 'needs_verification'].includes(status);
     setPoll(active ? 4000 : performancePolicy.recoveryPollMs);
-  }, [data?.status]);
+  }, [status]);
   const [disconnecting, setDisconnecting] = useState(false);
   const [credentialError, setCredentialError] = useState('');
   const [saveError, setSaveError] = useState('');

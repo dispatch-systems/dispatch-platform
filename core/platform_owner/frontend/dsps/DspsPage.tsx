@@ -23,6 +23,7 @@ import { DspDetail, type DspAction } from './DspDetail.js';
 import { DspListPane } from './DspListPane.js';
 import { open } from './open.js';
 import { dspState, dspStates, stateLabels } from './status.js';
+import { field } from '../../../shell/frontend/lib/form.js';
 
 const none: DspSummary[] = [];
 const requests: Record<Exclude<DspAction, 'view' | 'code'>, [string, unknown, string]> = {
@@ -57,7 +58,10 @@ export function DspsPage() {
       await api('/api/platform/dsps', { ownerEmail });
       refresh();
     },
-    { success: (ownerEmail) => `Invitation email queued for ${ownerEmail}` },
+    {
+      success: (ownerEmail) =>
+        `Invitation email queued for ${typeof ownerEmail === 'string' ? ownerEmail : ''}`,
+    },
   );
   const setCode = useAction(
     async (dsp: DspSummary, code: string) => {
@@ -167,7 +171,7 @@ export function DspsPage() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              const code = String(new FormData(event.currentTarget).get('code')).trim();
+              const code = field(new FormData(event.currentTarget), 'code').trim();
               void setCode.run(coding, code);
             }}
           >

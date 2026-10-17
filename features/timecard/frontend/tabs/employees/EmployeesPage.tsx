@@ -1,5 +1,5 @@
 import { performancePolicy } from '../../../../../core/shell/frontend/lib/performance-policy.js';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDownAZ, ArrowUpAZ, ChevronRight } from 'lucide-react';
 import type { EmployeeTimecardPeriod, EmployeeTimecardResponse } from '../../../api/index.js';
 import { useUpdateState } from '../../../../../core/shell/frontend/runtime/browser-update.js';
@@ -85,6 +85,9 @@ export function EmployeesPage({
   };
   const directory = useRef<HTMLUListElement>(null);
   const visibleCodes = data?.employees.map((person) => person.code).join(',');
+  const from = shownPeriod?.from;
+  const to = shownPeriod?.to;
+  const prefetched = useMemo(() => (from && to ? { from, to } : undefined), [from, to]);
   useEffect(() => {
     const list = directory.current;
     if (!list) return;
@@ -95,7 +98,7 @@ export function EmployeesPage({
           entries
             .filter((entry) => entry.isIntersecting)
             .map((entry) =>
-              employeeTimecardUrl((entry.target as HTMLElement).dataset.employee!, shownPeriod),
+              employeeTimecardUrl((entry.target as HTMLElement).dataset.employee!, prefetched),
             ),
           { owner },
         );
@@ -107,7 +110,7 @@ export function EmployeesPage({
       observer.disconnect();
       cancelPrefetches(owner);
     };
-  }, [visibleCodes, shownPeriod?.from, shownPeriod?.to]);
+  }, [visibleCodes, prefetched]);
   return (
     <section className="employees-page" aria-label="Employees">
       <div className="employees-heading">

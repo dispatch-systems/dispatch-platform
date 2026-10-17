@@ -217,7 +217,7 @@ test('--api writes one endpoint behind the view permission, its client function 
   assert.match(apiTest, /assert\.equal\(\(await member\.get\(route\)\)\.status, 403\);/);
   const manifest = file(plan, 'features/parking/feature.rs');
   assert.match(manifest, /^mod api;$/m);
-  assert.match(manifest, /^    routes: api::routes::routes,$/m);
+  assert.match(manifest, /^ {4}routes: api::routes::routes,$/m);
   // It lists its API type itself, which the app's export writes to
   // features/parking/api/generated/, and its root re-exports it.
   assert.match(manifest, /^pub use api::types::ParkingSummary;$/m);

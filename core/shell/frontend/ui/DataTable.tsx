@@ -21,7 +21,7 @@ function moveBetweenRows(event: KeyboardEvent<HTMLTableSectionElement>) {
     (target.matches('input, select, textarea') && !target.matches('[type="checkbox"]'))
   )
     return;
-  const cell = target.closest('td, th') as HTMLTableCellElement | null;
+  const cell = target.closest<HTMLTableCellElement>('td, th');
   let row = target.closest('tr');
   if (!cell || !row || row.parentElement !== event.currentTarget) return;
   while ((row = (step > 0 ? row.nextElementSibling : row.previousElementSibling) as typeof row)) {

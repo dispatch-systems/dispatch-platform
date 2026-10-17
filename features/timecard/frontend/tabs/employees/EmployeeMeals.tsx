@@ -67,11 +67,13 @@ export function EmployeeMeals({
 }) {
   const request = useMealPeriod(`paycom:${code}`, period, refreshKey);
   const error = period ? request.error : periodError;
+  const from = period?.from;
+  const to = period?.to;
   const rows = useMemo(() => {
-    if (!period || !request.data) return [];
+    if (!from || !to || !request.data) return [];
     const days: Day[] = [];
     const byDate = new Map(request.data.days.map((day) => [day.date, day]));
-    for (let date = period.from; date <= period.to; date = addDays(date, 1)) {
+    for (let date = from; date <= to; date = addDays(date, 1)) {
       const day = byDate.get(date);
       const row = day?.rows[0];
       if (row) {
@@ -91,7 +93,7 @@ export function EmployeeMeals({
         });
     }
     return days;
-  }, [request.data, period?.from, period?.to, today]);
+  }, [request.data, from, to, today]);
   const table = useDataTable({ columns, rows, rowId: (day) => day.id });
   const region = useRef<HTMLDivElement>(null);
   useEffect(() => {

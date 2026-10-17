@@ -20,7 +20,13 @@ export function clearNavigationState() {
 let restored: Record<string, unknown> = {};
 let position: { x: number; y: number; hash: string } | undefined;
 try {
-  const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+  const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null') as {
+    x: number;
+    y: number;
+    hash: string;
+    at: number;
+    values: Record<string, unknown>;
+  } | null;
   sessionStorage.removeItem(storageKey);
   if (saved && Date.now() - saved.at < 60_000 && saved.hash === location.hash) {
     restored = saved.values;
@@ -110,7 +116,7 @@ export function useBrowserUpdate(enabled: boolean) {
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
         });
         if (!response.ok) throw new Error('Update check unavailable');
-        const next = await response.json();
+        const next = (await response.json()) as { ready?: unknown; build?: unknown };
         if (stopped) return;
         candidate =
           next.ready === true &&
@@ -134,8 +140,11 @@ export function useBrowserUpdate(enabled: boolean) {
       }
       try {
         const guardKey = 'dispatch:browser-update:last';
-        const last = JSON.parse(sessionStorage.getItem(guardKey) || 'null');
-        if (last?.build === candidate && Date.now() - last.at < 300_000) return;
+        const last = JSON.parse(sessionStorage.getItem(guardKey) || 'null') as {
+          build?: string;
+          at?: number;
+        } | null;
+        if (last?.build === candidate && Date.now() - (last.at ?? 0) < 300_000) return;
         sessionStorage.setItem(guardKey, JSON.stringify({ build: candidate, at: Date.now() }));
         sessionStorage.setItem(
           storageKey,

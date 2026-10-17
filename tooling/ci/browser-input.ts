@@ -6,6 +6,7 @@ export function manualBrowserSelection(value: string): string[] {
   if (!selector) return [];
   if (selector.length > MAX_SELECTOR_LENGTH)
     throw new Error(`Browser selector must be at most ${MAX_SELECTOR_LENGTH} characters`);
+  // eslint-disable-next-line no-control-regex -- the control characters are what's refused
   if (/[\u0000-\u001f\u007f]/u.test(selector))
     throw new Error('Browser selector must not contain control characters');
   if (selector.startsWith('-')) throw new Error('Browser selector must not start with an option');
