@@ -54,7 +54,8 @@ pub(crate) fn overview(store: &Store, dsp: &str) -> Result<Overview> {
         )?
         .into_iter()
         .filter(|row| {
-            row.key().is_none_or(|key| !contacts_only.contains(&key.0) || found.contains_key(&key))
+            row.key()
+                .is_none_or(|key| !contacts_only.contains(&key.0) || found.contains_key(&key))
         })
         .collect();
     let active = sources::active(&people, &found, every.iter().filter_map(IdRow::source));
