@@ -7,6 +7,7 @@ import path from 'node:path';
 import * as prettier from 'prettier';
 import { planCollector } from '../scaffold/new-collector.js';
 import { planFeature } from '../scaffold/new-feature.js';
+import { planSlot } from '../scaffold/new-slot.js';
 import { planTool } from '../scaffold/new-tool.js';
 import { crates, tools, wiredTools } from '../scaffold/wire.js';
 import { render, repositoryRoot as root, type Plan } from '../scaffold/scaffold.js';
@@ -19,6 +20,7 @@ const temporary = () => fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-scaffold
 const feature = async (...argv: string[]) => (await planFeature(root, argv)).plan;
 const collector = async (...argv: string[]) => (await planCollector(root, argv)).plan;
 const tool = async (...argv: string[]) => (await planTool(root, argv)).plan;
+const slot = async (...argv: string[]) => (await planSlot(root, argv)).plan;
 /** The files a plan writes under `dir`, relative to it. */
 const writes = (plan: Plan, dir: string) =>
   [...plan.files.keys()].map((file) => path.posix.relative(dir, file)).sort();
@@ -624,6 +626,63 @@ test('a tool has a name of its own, and needs features and actions there are', a
   await refusedTool(/120 characters at most/, 'beam', '--description', 'List. '.repeat(21));
   await refusedTool(/Name the tool, and only the tool/);
   await refusedTool(/Name the tool, and only the tool/, 'dvic', 'beam');
+});
+
+test('a slot is a backend module and a frontend module, declared, checked, re-exported and catalogued', async () => {
+  const plan = await slot('badges', '--description', 'Its badges on the DSPs page.');
+  assert.deepEqual(writes(plan, 'core'), [
+    'manifest/backend/badges.rs',
+    'shell/frontend/runtime/slots/badges.ts',
+  ]);
+  const backend = file(plan, 'core/manifest/backend/badges.rs');
+  assert.match(backend, /pub struct Badge \{/);
+  assert.match(backend, /pub const fn badge\(id: &'static str, label: &'static str\) -> Badge/);
+  assert.match(backend, /pub fn badges\(&self\)/);
+  assert.match(backend, /pub\(crate\) fn check\(registry: &Registry\)/);
+  // The manifest gains the slot in each of its four places, each among its kind in order.
+  const manifest = file(plan, 'core/manifest/backend/mod.rs');
+  assert.match(manifest, /^pub mod audit;\npub mod badges;\npub mod caching;$/m);
+  assert.match(manifest, /^pub use audit::Audit;\npub use badges::\{Badge, badge\};$/m);
+  assert.match(
+    manifest,
+    / {4}\/\/\/ Its badges on the DSPs page\.\n {4}pub badges: &'static \[Badge\],\n\}/,
+  );
+  assert.match(manifest, / {8}services: Services::NONE,\n {8}badges: &\[\],\n {4}\}/);
+  assert.match(manifest, / {8}badges::check\(self\);\n {8}agents::check\(self\);/);
+  // The frontend slot adds its field by declaration merging, and the facade re-exports it.
+  const frontend = file(plan, 'core/shell/frontend/runtime/slots/badges.ts');
+  assert.match(
+    frontend,
+    /declare module '\.\/installed\.js' \{\n {2}interface FrontendFeature \{\n {4}\/\*\* Its badges\. \*\/\n {4}badges\?: readonly Badge\[\];/,
+  );
+  assert.match(frontend, /export const badges = \(view: DspView\) =>/);
+  const facade = file(plan, 'core/shell/frontend/runtime/slots.ts');
+  assert.match(
+    facade,
+    /export type \{ Badge \} from '\.\/slots\/badges\.js';\nexport \{ badges \} from '\.\/slots\/badges\.js';\n$/,
+  );
+  // Both tables of the catalogue gain its row, so the catalogue rule passes as written.
+  const catalogue = file(plan, 'core/manifest/README.md');
+  assert.equal(
+    catalogue.match(/^\| `badges` +\| `badges` +\| Its badges on the DSPs page\. +\|$/gm)?.length,
+    2,
+  );
+  // One side alone, and one of several named for itself.
+  const only = await slot('shortcuts', '--frontend-only');
+  assert.deepEqual(writes(only, 'core'), ['shell/frontend/runtime/slots/shortcuts.ts']);
+  assert.deepEqual([...only.changes.keys()].sort(), [
+    'core/manifest/README.md',
+    'core/shell/frontend/runtime/slots.ts',
+  ]);
+  const own = await slot('crews', '--each', 'crew', '--backend-only');
+  assert.match(file(own, 'core/manifest/backend/crews.rs'), /pub struct Crew \{/);
+  // A slot there is, a name that isn't one, and nothing to write are refused.
+  await assert.rejects(planSlot(root, ['permissions']), /taken/);
+  await assert.rejects(planSlot(root, ['Badges']), /not a name/);
+  await assert.rejects(
+    planSlot(root, ['x', '--backend-only', '--frontend-only']),
+    /nothing to write/,
+  );
 });
 
 test('names are lowercase words, not taken by an owner and not retired', async () => {

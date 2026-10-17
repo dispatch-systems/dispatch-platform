@@ -25,6 +25,7 @@
     "new:feature": "tsx tooling/scaffold/new-feature.ts",
     "new:collector": "tsx tooling/scaffold/new-collector.ts",
     "new:tool": "tsx tooling/scaffold/new-tool.ts",
+    "new:slot": "tsx tooling/scaffold/new-slot.ts",
     "test:feature": "tsx tooling/testing/owner-tests.ts feature",
     "test:collector": "tsx tooling/testing/owner-tests.ts collector",
     "test:core": "tsx tooling/testing/owner-tests.ts core",

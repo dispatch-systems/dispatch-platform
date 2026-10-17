@@ -1,0 +1,41 @@
+//! The {{name}} slot: {{description}}
+//!
+//! What's here is a start: the declaration a feature writes, what the registry answers of it,
+//! and what must hold of every declaration. Give it what the host that reads it needs, and
+//! have that host read it with `registry().{{name}}()`.
+use crate::manifest::{Feature, Registry};
+
+/// One of a feature's {{name}}, as its manifest declares it.
+pub struct {{pascal}} {
+    /// Permanent once shipped, as what keeps it stores it: `<feature>.<what>`.
+    pub id: &'static str,
+    /// How it reads where it's listed.
+    pub label: &'static str,
+}
+/// One {{singular}}: `{{singular}}("x.what", "What")`.
+pub const fn {{singular}}(id: &'static str, label: &'static str) -> {{pascal}} {
+    {{pascal}} { id, label }
+}
+
+impl Registry {
+    /// Every feature's {{name}}, each with its feature, in the registry's order.
+    pub fn {{name}}(&self) -> impl Iterator<Item = (&'static Feature, &'static {{pascal}})> {
+        self.features
+            .iter()
+            .flat_map(|feature| feature.{{name}}.iter().map(move |each| (*feature, each)))
+    }
+}
+
+/// Panics unless each of the {{name}} has an id of its own, under its feature's name.
+pub(crate) fn check(registry: &Registry) {
+    let mut seen = std::collections::BTreeSet::new();
+    for (feature, each) in registry.{{name}}() {
+        assert!(
+            each.id.starts_with(&format!("{}.", feature.name)),
+            "{} declares {} among its {{name}}, which is not under its name",
+            feature.name,
+            each.id
+        );
+        assert!(seen.insert(each.id), "{} is declared twice among the {{name}}", each.id);
+    }
+}
