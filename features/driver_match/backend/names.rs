@@ -24,15 +24,18 @@ fn plain(c: char) -> char {
     }
 }
 
-/// A name with its formatting removed: "Last, First" put in order, then only its letters
-/// and digits, lowercased and without accents. Names with one key are one name.
+/// A name as it is said, first name first: "Last, First" put in order.
+fn in_order(name: &str) -> std::borrow::Cow<'_, str> {
+    match name.split_once(',') {
+        Some((last, first)) => format!("{first} {last}").into(),
+        None => name.into(),
+    }
+}
+
+/// A name with its formatting removed: in order, then only its letters and digits,
+/// lowercased and without accents. Names with one key are one name.
 pub fn name_key(name: &str) -> String {
-    let ordered = name
-        .split_once(',')
-        .map(|(last, first)| format!("{first} {last}"));
-    ordered
-        .as_deref()
-        .unwrap_or(name)
+    in_order(name)
         .to_lowercase()
         .chars()
         .map(plain)
@@ -49,18 +52,13 @@ pub struct Name {
 
 impl Name {
     pub fn new(name: &str) -> Self {
-        let ordered = name
-            .split_once(',')
-            .map(|(last, first)| format!("{first} {last}"));
-        let mut words: Vec<_> = ordered
-            .as_deref()
-            .unwrap_or(name)
+        let mut words: Vec<_> = in_order(name)
             .split_whitespace()
             .map(name_key)
             .filter(|word| !word.is_empty())
             .collect();
-        // A suffix closes a name, though the scorecard sometimes writes it before the last
-        // name, as "Enrique Henry Jr Cortez". The first word is always the first name.
+        // A suffix closes a name, though a source may write it before the last name, as
+        // "Enrique Henry Jr Cortez". The first word is always the first name.
         let mut suffix = None;
         let mut index = 1;
         while index < words.len() {
@@ -107,16 +105,14 @@ impl Name {
         // Someone may go by a middle name: "Martin Ruben Morgan" is "MORGAN, RUBEN".
         let middle =
             |name: &Self, first: &String| name.surnames[..name.surnames.len() - 1].contains(first);
-        let last = self.last().filter(|last| last.chars().count() > 1);
-        if last.is_some()
-            && last == other.last()
+        if self.same_last(other)
             && (self.given == other.given
                 || middle(self, &other.given)
                 || middle(other, &self.given))
         {
             return true;
         }
-        if self.given != other.given {
+        if !self.same_given(other) {
             return false;
         }
         // One provider may omit a second surname or join surname words. Require
@@ -136,6 +132,45 @@ impl Name {
     pub fn last(&self) -> Option<&str> {
         self.surnames.last().map(String::as_str)
     }
+    /// Whether two names share a first name.
+    pub fn same_given(&self, other: &Self) -> bool {
+        !self.given.is_empty() && self.given == other.given
+    }
+    /// Whether two names share a last name longer than an initial.
+    pub fn same_last(&self, other: &Self) -> bool {
+        self.last()
+            .is_some_and(|last| last.chars().count() > 1 && other.last() == Some(last))
+    }
+}
+
+/// Every key of a list of names, without the empty ones.
+fn keys(names: &[String]) -> std::collections::BTreeSet<String> {
+    names
+        .iter()
+        .map(|n| name_key(n))
+        .filter(|k| !k.is_empty())
+        .collect()
+}
+/// Whether two lists of one person's names share a name, however it is formatted.
+pub fn exact(a: &[String], b: &[String]) -> bool {
+    !keys(a).is_disjoint(&keys(b))
+}
+/// Whether two lists of one person's names share a name written two ways (`Name::matches`).
+pub fn variant(a: &[String], b: &[String]) -> bool {
+    a.iter()
+        .any(|x| b.iter().any(|y| Name::new(x).matches(&Name::new(y))))
+}
+/// Whether two lists of names could be one person's: a name in common, or a first or last
+/// name, so a contact two people share joins them only when their names agree.
+pub fn agree(a: &[String], b: &[String]) -> bool {
+    exact(a, b)
+        || a.iter().any(|x| {
+            let x = Name::new(x);
+            b.iter().any(|y| {
+                let y = Name::new(y);
+                x.same_given(&y) || x.same_last(&y)
+            })
+        })
 }
 
 /// First names people go by in place of their own, each beside the names it shortens.

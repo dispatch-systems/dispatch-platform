@@ -1,149 +1,92 @@
 //! Who a new ID belongs to. Pure: it reads what is known and decides, and the store writes
-//! the decisions. Only certain answers link an ID to someone: another ID its source says is
-//! the same person's, an email address or phone number only the two of them have, with names
-//! that agree, or a name nobody else carries. Anything less gives the ID a person of its own,
-//! for a person to review.
-use super::names::{Name, name_key};
+//! the decisions. Only certain answers link an ID to someone, tried in the order `decide`
+//! lists them; anything less gives the ID a person of its own, for a person to review.
+use super::contacts::Contact;
+use super::names::{agree, exact, variant};
 use super::sources::{Identity, Key};
 use crate::api::types::DriverLink;
 use dispatch_core::manifest::people::DriverSource;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// An ID someone already holds, with what its sources say of it today.
-#[derive(Clone, Debug)]
-pub(crate) struct Member {
-    pub source: DriverSource,
-    pub id: String,
-    pub names: Vec<String>,
-    pub emails: BTreeSet<String>,
-    pub phones: BTreeSet<String>,
-    pub same_as: BTreeSet<String>,
+/// Whom an ID goes to: someone who holds IDs already, by their code, or a new person, the
+/// plan's `n`th, whom the store gives a code.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Target {
+    Person(String),
+    New(usize),
 }
-impl Member {
-    pub fn of(x: &Identity) -> Self {
-        Self {
-            source: x.source,
-            id: x.id.clone(),
-            names: x.names.clone(),
-            emails: x.emails.clone(),
-            phones: x.phones.clone(),
-            same_as: x.same_as.clone(),
-        }
-    }
-    /// An ID no source holds any more, which has nothing to match by.
-    pub fn gone((source, id): Key) -> Self {
-        Self {
-            source,
-            id,
-            names: vec![],
-            emails: BTreeSet::new(),
-            phones: BTreeSet::new(),
-            same_as: BTreeSet::new(),
-        }
-    }
-    /// The person its source says it is: the first of its IDs for them.
-    fn one(&self) -> &str {
-        self.same_as
-            .iter()
-            .map(String::as_str)
-            .chain([self.id.as_str()])
-            .min()
-            .unwrap_or_default()
-    }
-}
-/// Where a new ID goes: to a person by code, or to a new person, `+0`, `+1` and on, that
-/// the store then gives a code.
-pub(crate) type Decision = (usize, String, DriverLink);
-
-fn keys(names: &[String]) -> BTreeSet<String> {
-    names
-        .iter()
-        .map(|n| name_key(n))
-        .filter(|k| !k.is_empty())
-        .collect()
-}
-fn exact(a: &[String], b: &[String]) -> bool {
-    !keys(a).is_disjoint(&keys(b))
-}
-fn variant(a: &[String], b: &[String]) -> bool {
-    a.iter()
-        .any(|x| b.iter().any(|y| Name::new(x).matches(&Name::new(y))))
-}
-/// Whether two name lists could be one person's: one name, a variant of it, or a shared
-/// first or last name. A contact two people share joins them only when their names agree.
-pub(crate) fn agree(a: &[String], b: &[String]) -> bool {
-    exact(a, b)
-        || variant(a, b)
-        || a.iter().any(|x| {
-            let x = Name::new(x);
-            b.iter().any(|y| {
-                let y = Name::new(y);
-                (!x.given.is_empty() && x.given == y.given)
-                    || x.last()
-                        .is_some_and(|last| last.chars().count() > 1 && y.last() == Some(last))
-            })
-        })
+/// Where one new ID goes, and how: `index` is its place among the new IDs.
+#[derive(Debug)]
+pub(crate) struct Decision {
+    pub index: usize,
+    pub target: Target,
+    pub link: DriverLink,
 }
 
-/// Which kind of contact a link came by.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Contact {
-    Email,
-    Phone,
-}
-impl Contact {
-    const ALL: [Self; 2] = [Self::Email, Self::Phone];
-    /// The contacts of this kind among an ID's.
-    fn pick<'a>(
-        self,
-        emails: &'a BTreeSet<String>,
-        phones: &'a BTreeSet<String>,
-    ) -> &'a BTreeSet<String> {
-        match self {
-            Self::Email => emails,
-            Self::Phone => phones,
-        }
-    }
-    fn link(self) -> DriverLink {
-        match self {
-            Self::Email => DriverLink::Email,
-            Self::Phone => DriverLink::Phone,
-        }
-    }
-}
-/// The people of each source who carry each contact, among every ID held or new: a contact
-/// two people of one source share says nothing of either.
+/// The people of each source who carry each contact, by the person their source says each ID
+/// is, among every ID held or new: a contact two people of one source share says nothing of
+/// either.
 type Carried = BTreeMap<(Contact, DriverSource, String), BTreeSet<String>>;
-fn carried(all: &[Member]) -> Carried {
+fn carried(all: &[Identity]) -> Carried {
     let mut out = Carried::new();
-    for m in all {
-        for contact in Contact::ALL {
-            for value in contact.pick(&m.emails, &m.phones) {
-                out.entry((contact, m.source, value.clone()))
-                    .or_default()
-                    .insert(m.one().to_owned());
-            }
+    for x in all {
+        for (kind, value) in x.contacts.all() {
+            out.entry((kind, x.source, value.to_owned()))
+                .or_default()
+                .insert(x.one().to_owned());
         }
     }
     out
 }
 
 struct Plan {
-    people: BTreeMap<String, Vec<Member>>,
-    owner: BTreeMap<Key, String>,
+    /// Every person and the IDs they hold, as they are known now.
+    holders: BTreeMap<Target, Vec<Identity>>,
+    owner: BTreeMap<Key, Target>,
     /// Every ID of every source, held or new: a name is unique only among all of them.
-    all: Vec<Member>,
+    all: Vec<Identity>,
     carried: Carried,
 }
 impl Plan {
-    fn holds(&self, person: &str, source: DriverSource) -> bool {
-        self.people[person].iter().any(|m| m.source == source)
+    /// Where `x` goes, by the first rule that is certain:
+    /// 1. Another ID its source says is the same person's, when one person holds those and
+    ///    their names agree (`account`).
+    /// 2. A contact of each kind in turn, that only the two of them have, when their names
+    ///    agree (`email`, `phone`).
+    /// 3. A name nobody else carries, written alike (`name`), or else written another way
+    ///    (`variant`).
+    fn decide(&self, x: &Identity) -> Option<(Target, DriverLink)> {
+        if let Some(person) = self.account(x) {
+            return Some((person, DriverLink::Account));
+        }
+        for kind in Contact::ALL {
+            if let Some(person) = self.contact(x, kind) {
+                return Some((person, kind.link()));
+            }
+        }
+        self.by_name(x)
     }
+
+    /// The names everyone holding `person`'s IDs is written by.
+    fn names(&self, person: &Target) -> Vec<String> {
+        self.holders[person]
+            .iter()
+            .flat_map(|held| held.names.iter().cloned())
+            .collect()
+    }
+    /// Whether `person` may take `x` by a contact or a name: one who has an ID of its source
+    /// already takes no second that way, as two people may share both.
+    fn open(&self, person: &Target, x: &Identity) -> bool {
+        !self.holders[person]
+            .iter()
+            .any(|held| held.source == x.source)
+    }
+
     /// The one person holding `x`'s source's other IDs for the same person, when their names
     /// agree: with those IDs split among people, or names a shared address can't vouch for,
     /// a person decides.
-    fn same(&self, x: &Identity) -> Option<String> {
-        let holders: BTreeSet<&String> = x
+    fn account(&self, x: &Identity) -> Option<Target> {
+        let holders: BTreeSet<&Target> = x
             .same_as
             .iter()
             .filter_map(|id| self.owner.get(&(x.source, id.clone())))
@@ -151,131 +94,128 @@ impl Plan {
         let [person] = holders.into_iter().collect::<Vec<_>>()[..] else {
             return None;
         };
-        let names: Vec<String> = self.people[person]
-            .iter()
-            .flat_map(|m| m.names.iter().cloned())
-            .collect();
-        agree(&names, &x.names).then(|| person.clone())
+        agree(&self.names(person), &x.names).then(|| person.clone())
     }
-    /// Whether `value` is on exactly one person of `source`.
-    fn alone(&self, contact: Contact, source: DriverSource, value: &str) -> bool {
+    /// Whether `value` is a contact of `kind` on exactly one person of `source`.
+    fn alone(&self, kind: Contact, source: DriverSource, value: &str) -> bool {
         self.carried
-            .get(&(contact, source, value.to_owned()))
+            .get(&(kind, source, value.to_owned()))
             .is_some_and(|people| people.len() == 1)
     }
-    /// The one person `x` shares a contact of one kind with that no other ID of either
-    /// source has, when their names agree and they lack an ID of `x`'s source.
-    fn contact(&self, x: &Identity, contact: Contact) -> Option<String> {
-        let mine: Vec<&String> = contact
-            .pick(&x.emails, &x.phones)
-            .iter()
-            .filter(|value| self.alone(contact, x.source, value))
+    /// The one person `x` shares a contact of `kind` with that no other person of either
+    /// source has.
+    fn contact(&self, x: &Identity, kind: Contact) -> Option<Target> {
+        let mine: Vec<&str> = x
+            .contacts
+            .of(kind)
+            .filter(|value| self.alone(kind, x.source, value))
             .collect();
         if mine.is_empty() {
             return None;
         }
-        let mut found = self.people.iter().filter(|(_, members)| {
-            members.iter().any(|m| {
-                m.source != x.source
-                    && mine.iter().any(|value| {
-                        contact.pick(&m.emails, &m.phones).contains(*value)
-                            && self.alone(contact, m.source, value)
-                    })
-            })
-        });
-        let (person, members) = found.next()?;
-        if found.next().is_some() || self.holds(person, x.source) {
-            return None;
-        }
-        let names: Vec<String> = members
+        let shares = |held: &Identity| {
+            held.source != x.source
+                && mine.iter().any(|value| {
+                    held.contacts.has(kind, value) && self.alone(kind, held.source, value)
+                })
+        };
+        let mut found = self
+            .holders
             .iter()
-            .flat_map(|m| m.names.iter().cloned())
-            .collect();
-        agree(&names, &x.names).then(|| person.clone())
+            .filter(|(_, ids)| ids.iter().any(shares))
+            .map(|(person, _)| person);
+        let person = found.next()?;
+        (found.next().is_none() && self.open(person, x) && agree(&self.names(person), &x.names))
+            .then(|| person.clone())
     }
-    /// The one person `x` belongs to by name, when nothing else could: `same` says whether
-    /// two name lists are one name. The person must lack an ID of `x`'s source, no other
-    /// person may carry the name in another source, and no other ID of `x`'s source may
-    /// carry the person's name.
-    fn unique(&self, x: &Identity, same: impl Fn(&[String], &[String]) -> bool) -> Option<String> {
-        let carries = |m: &Member| m.source != x.source && same(&m.names, &x.names);
-        let mut matched = self
-            .people
-            .iter()
-            .filter(|(_, members)| members.iter().any(carries))
-            .map(|(person, _)| person.clone());
-        let person = matched.next()?;
-        if matched.next().is_some() || self.holds(&person, x.source) {
-            return None;
-        }
-        let theirs: Vec<&Member> = self.people[&person]
-            .iter()
-            .filter(|m| m.source != x.source)
-            .collect();
-        let rival = self.all.iter().any(|m| {
-            m.source == x.source
-                && m.id != x.id
-                && !x.same_as.contains(&m.id)
-                && theirs.iter().any(|t| same(&m.names, &t.names))
-        });
-        (!rival).then_some(person)
-    }
-    fn decide(&self, x: &Identity) -> Option<(String, DriverLink)> {
-        if let Some(person) = self.same(x) {
-            return Some((person, DriverLink::Account));
-        }
-        for contact in Contact::ALL {
-            if let Some(person) = self.contact(x, contact) {
-                return Some((person, contact.link()));
-            }
-        }
-        // A name written alike somewhere decides before a variant could: when the exact
-        // spelling is shared, a variant would only guess between the people sharing it.
-        if self
-            .people
+    /// The one person `x` belongs to by name. A name written alike somewhere decides before a
+    /// variant could: when the exact spelling is shared, a variant would only guess between
+    /// the people sharing it.
+    fn by_name(&self, x: &Identity) -> Option<(Target, DriverLink)> {
+        let written_alike = self
+            .holders
             .values()
             .flatten()
-            .any(|m| m.source != x.source && exact(&m.names, &x.names))
-        {
-            return self.unique(x, exact).map(|p| (p, DriverLink::Name));
+            .any(|held| held.source != x.source && exact(&held.names, &x.names));
+        if written_alike {
+            self.unique(x, exact).map(|p| (p, DriverLink::Name))
+        } else {
+            self.unique(x, variant).map(|p| (p, DriverLink::Variant))
         }
-        self.unique(x, variant).map(|p| (p, DriverLink::Variant))
+    }
+    /// The one person whose IDs of other sources carry `x`'s name, as `alike` compares names,
+    /// when no other ID of `x`'s source, but its own other IDs, carries that person's name.
+    fn unique(&self, x: &Identity, alike: fn(&[String], &[String]) -> bool) -> Option<Target> {
+        let carries = |held: &Identity| held.source != x.source && alike(&held.names, &x.names);
+        let mut matched = self
+            .holders
+            .iter()
+            .filter(|(_, ids)| ids.iter().any(carries))
+            .map(|(person, _)| person);
+        let person = matched.next()?;
+        if matched.next().is_some() || !self.open(person, x) {
+            return None;
+        }
+        let theirs: Vec<&Identity> = self.holders[person]
+            .iter()
+            .filter(|held| held.source != x.source)
+            .collect();
+        let rival = self.all.iter().any(|other| {
+            other.source == x.source
+                && other.id != x.id
+                && !x.same_as.contains(&other.id)
+                && theirs.iter().any(|t| alike(&other.names, &t.names))
+        });
+        (!rival).then(|| person.clone())
     }
 }
 
-/// Decides where each new ID goes, source by source in their order: Paycom's first, as its
-/// roster lists who works for the DSP; the others then join them. `people` maps each code
-/// to the IDs it holds.
-pub(crate) fn plan(people: BTreeMap<String, Vec<Member>>, incoming: &[Identity]) -> Vec<Decision> {
+/// Decides where each new ID goes, source by source in their order, so the first source's IDs
+/// are there for the others to join. `holders` maps each code to the IDs it holds.
+pub(crate) fn plan(
+    holders: BTreeMap<String, Vec<Identity>>,
+    incoming: &[Identity],
+) -> Vec<Decision> {
+    let holders: BTreeMap<Target, Vec<Identity>> = holders
+        .into_iter()
+        .map(|(code, ids)| (Target::Person(code), ids))
+        .collect();
     let mut owner = BTreeMap::new();
-    for (person, members) in &people {
-        for m in members {
-            owner.insert((m.source, m.id.clone()), person.clone());
+    for (person, ids) in &holders {
+        for held in ids {
+            owner.insert((held.source, held.id.clone()), person.clone());
         }
     }
-    let mut all: Vec<Member> = people.values().flatten().cloned().collect();
-    all.extend(incoming.iter().map(Member::of));
+    let mut all: Vec<Identity> = holders.values().flatten().cloned().collect();
+    all.extend(incoming.iter().cloned());
     let mut plan = Plan {
-        people,
+        holders,
         owner,
         carried: carried(&all),
         all,
     };
     let mut order: Vec<usize> = (0..incoming.len()).collect();
     order.sort_by_key(|&i| (incoming[i].source, incoming[i].id.clone()));
-    let mut out = Vec::new();
+    let mut decisions = Vec::new();
+    let mut new = 0;
     for index in order {
         let x = &incoming[index];
-        let (person, link) = plan.decide(x).unwrap_or_else(|| {
-            let fresh = format!("+{}", out.len());
-            plan.people.insert(fresh.clone(), vec![]);
-            (fresh, DriverLink::New)
+        let (target, link) = plan.decide(x).unwrap_or_else(|| {
+            new += 1;
+            (Target::New(new - 1), DriverLink::New)
         });
-        plan.people.get_mut(&person).unwrap().push(Member::of(x));
-        plan.owner.insert((x.source, x.id.clone()), person.clone());
-        out.push((index, person, link));
+        plan.holders
+            .entry(target.clone())
+            .or_default()
+            .push(x.clone());
+        plan.owner.insert((x.source, x.id.clone()), target.clone());
+        decisions.push(Decision {
+            index,
+            target,
+            link,
+        });
     }
-    out
+    decisions
 }
 
 #[cfg(test)]

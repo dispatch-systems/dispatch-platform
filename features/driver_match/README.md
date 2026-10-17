@@ -69,6 +69,20 @@ only what was decided.
   migration 1, which lets `person_ids` hold any source, and 2, which made the links the
   meal-break page saved before Driver Match its own decisions).
 
+## How it's built
+
+A pass reads, decides and writes, each in its own module, so a new rule goes where its kind
+of rule already is:
+
+- `sources.rs` reads what every kind of data the DSP has on says of each ID (`Identity`).
+- `matching.rs` decides where each new ID goes, its rules tried in the order `decide` lists;
+  `assign.rs` runs a pass and writes the decisions.
+- `names.rs` is every rule for comparing names, and `contacts.rs` every kind of contact: a new
+  kind, as a badge number, is one more `Contact`.
+- `review.rs` gathers why two people might be one, and `pairs.rs` makes those pairs, which
+  side joins the other and in what order they're asked.
+- `codes.rs` writes and checks codes.
+
 ## Connecting a feature
 
 Driver Match names no feature: a feature whose data names people connects itself, in its own

@@ -6,6 +6,7 @@
 //! uses.
 mod assign;
 mod audit;
+mod codes;
 mod contacts;
 mod decisions;
 mod details;
@@ -38,22 +39,17 @@ use std::collections::BTreeSet;
 pub const DOMAIN: DataDomain = DataDomain::DRIVERS;
 /// When collected data was last checked for new IDs.
 const CHECKED: &str = "driver_match.checked_at";
-/// Letters and digits that cannot be mistaken for one another, without U, so a code
-/// rarely spells a word.
-const ALPHABET: &[u8; 30] = b"23456789ABCDEFGHJKMNPQRSTVWXYZ";
-const CODE_LENGTH: usize = 6;
 /// How long someone no source lists can go unseen before they count as having left: days
 /// before the newest day anything was collected for.
 const FORMER_AFTER_DAYS: i64 = 21;
 
-pub fn valid_code(code: &str) -> bool {
-    code.len() == CODE_LENGTH && code.bytes().all(|b| ALPHABET.contains(&b))
-}
+pub use codes::valid_code;
 
-/// What one pass reads: every ID the collections hold. Reading takes the shared lock;
-/// `assign_drivers` then writes in one short step.
-pub struct DriverSources {
-    identities: Vec<sources::Identity>,
+/// What one pass reads: every ID the DSP's collections hold now, and the sources that only
+/// list people the DSP can reach. Reading takes the shared lock; `assign_drivers` then writes
+/// in one short step.
+pub struct Collected {
+    found: sources::Found,
     contacts_only: BTreeSet<DriverSource>,
 }
 
@@ -94,8 +90,8 @@ impl IdRow {
 /// IDs they lead to.
 pub trait DriverMatchStore {
     fn match_drivers(&self, dsp: &str) -> Result<usize>;
-    fn driver_sources(&self, dsp: &str) -> Result<DriverSources>;
-    fn assign_drivers(&self, dsp: &str, found: DriverSources) -> Result<usize>;
+    fn driver_sources(&self, dsp: &str) -> Result<Collected>;
+    fn assign_drivers(&self, dsp: &str, found: Collected) -> Result<usize>;
     fn driver_match(&self, dsp: &str) -> Result<DriverMatch>;
     fn driver_counts(&self, dsp: &str) -> Result<DriverCounts>;
     fn driver_details(&self, dsp: &str, code: &str) -> Result<DriverDetails>;
@@ -125,11 +121,11 @@ impl DriverMatchStore for Store {
         self.assign_drivers(dsp, self.driver_sources(dsp)?)
     }
     /// Reads what a pass needs, without writing: run it under the shared lock.
-    fn driver_sources(&self, dsp: &str) -> Result<DriverSources> {
+    fn driver_sources(&self, dsp: &str) -> Result<Collected> {
         assign::read(self, dsp)
     }
     /// Writes what a pass found: a person for every new ID.
-    fn assign_drivers(&self, dsp: &str, found: DriverSources) -> Result<usize> {
+    fn assign_drivers(&self, dsp: &str, found: Collected) -> Result<usize> {
         assign::write(self, dsp, found)
     }
     /// The Driver Match tab: the pairs to decide, then every person with a code.

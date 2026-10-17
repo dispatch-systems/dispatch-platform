@@ -173,13 +173,13 @@ pub(super) fn photo(store: &Store, dsp: &str, code: &str) -> Result<Option<Photo
         [&code],
     )?;
     drop(db);
-    for people in sources::people(store, dsp)? {
-        let Some(photos) = people.photos else {
+    for kind in sources::kinds(store, dsp)? {
+        let Some(photos) = kind.photos else {
             continue;
         };
         let ids: Vec<String> = held
             .iter()
-            .filter(|(source, _)| source == people.source().as_str())
+            .filter(|(source, _)| source == kind.source().as_str())
             .map(|(_, id)| id.clone())
             .collect();
         if !ids.is_empty()

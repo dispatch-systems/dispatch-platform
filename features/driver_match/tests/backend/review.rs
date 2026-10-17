@@ -21,8 +21,8 @@ fn side(source: &'static SourceData, code: &'static str, name: &'static str) -> 
         code,
         sources: BTreeSet::from([DriverSource::new(source)]),
         names: vec![name],
-        emails: BTreeSet::new(),
-        phones: BTreeSet::new(),
+        contacts: BTreeSet::new(),
+        asked: true,
     }
 }
 fn pairs(
@@ -87,17 +87,20 @@ fn pairs_kept_apart_are_not_suggested_again() {
 #[test]
 fn a_contact_only_two_share_pairs_them_even_within_one_source() {
     let reached = |mut side: Side<'static>, phone: &'static str| {
-        side.phones.insert(phone);
+        side.contacts.insert((Contact::Phone, phone));
         side
     };
     let people = [
         // A rehire, under a second transporter ID.
         reached(side(&AMAZON_IDS, "A1", "Sam Rivera"), "6125550123"),
         reached(side(&AMAZON_IDS, "A2", "Samuel Rivera"), "6125550123"),
-        // A phone three people carry joins none of them.
+        // A phone three people carry joins none of them, though one of them has left.
         reached(side(&AMAZON_IDS, "A3", "Lee Park"), "6125550100"),
         reached(side(&AMAZON_IDS, "A4", "Kim Park"), "6125550100"),
-        reached(side(&PAYCOM_IDS, "P1", "PARK, JO"), "6125550100"),
+        Side {
+            asked: false,
+            ..reached(side(&PAYCOM_IDS, "P1", "PARK, JO"), "6125550100")
+        },
     ];
     let found = suggest(&people, &BTreeSet::new());
     let rehire = found
@@ -144,9 +147,8 @@ fn days_worked_count_only_where_both_sources_were_collected() {
         "2026-09-04",
         "2026-09-09",
     ]);
-    let days = worked_days(Some(&clocked), Some(&drove), &paycom, &amazon).unwrap();
+    let days = worked_days(&drove, &clocked, &amazon, &paycom).unwrap();
     assert_eq!((days.same, days.of), (Some(3), Some(4)));
-    assert!(worked_days(Some(&clocked), None, &paycom, &amazon).is_none());
 }
 #[test]
 fn strong_needs_the_last_name_and_a_short_form_or_every_day() {
@@ -177,5 +179,16 @@ fn strong_needs_the_last_name_and_a_short_form_or_every_day() {
     assert_eq!(
         strength(&[e(DriverEvidenceKind::LastInitial), days(4, 4)]),
         DriverStrength::Possible
+    );
+}
+#[test]
+fn a_short_form_is_a_reason_however_common_the_name() {
+    let found = pairs(&[("P1", "REED, ALEXANDRA")], &[("A1", "Alex Reed")]);
+    assert_eq!(
+        kinds(&found[0].evidence),
+        [
+            DriverEvidenceKind::SameLastName,
+            DriverEvidenceKind::ShortForm
+        ]
     );
 }
