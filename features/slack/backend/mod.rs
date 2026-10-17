@@ -13,7 +13,8 @@
 //!   `author`, who one is to the DSP.
 //! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`.
 //! - `storage`, `maintenance` and `pages`: what's kept, the hourly check, and the install
-//!   link's own page.
+//!   link's own page; `work`, what the passes share: the DSPs Slack works for, and the work
+//!   an integration keeps until it's done.
 pub(crate) mod app;
 pub(crate) mod author;
 pub(crate) mod bot;
@@ -33,6 +34,7 @@ pub(crate) mod pages;
 pub(crate) mod people;
 pub(crate) mod slack;
 pub(crate) mod storage;
+pub(crate) mod work;
 
 #[cfg(test)]
 #[path = "../tests/backend/support.rs"]

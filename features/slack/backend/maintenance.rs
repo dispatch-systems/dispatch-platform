@@ -3,10 +3,9 @@
 //! keeps the workspace's name as Slack has it, and its members; and notices a workspace whose tokens Slack stopped
 //! honouring, so the card says so and the DSP can reconnect it before someone finds out by
 //! trying.
-use super::{bot::Bot, connection, members, slack::Slack, storage::SlackStore};
+use super::{bot::Bot, members, slack::Slack, storage::SlackStore, work};
 use dispatch_core::{
-    Error, State,
-    foundation::observability,
+    State,
     manifest::{Maintenance, Upkeep},
 };
 use futures_util::{StreamExt, stream};
@@ -18,6 +17,9 @@ pub const MAINTENANCE: Maintenance = Maintenance {
     run: check,
 };
 
+/// How a failure is reported.
+const FAILED: &str = "slack_check_failed";
+
 /// Each pass reads in short database turns, and asks Slack about two workspaces at once at
 /// most.
 fn check(state: Arc<State>, due: bool) -> Upkeep {
@@ -25,21 +27,10 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
         if !due || Slack::of(&state.config).is_err() {
             return;
         }
-        let dsps = match state.read(|db| db.kept_dsps()).await {
-            Ok(dsps) => dsps,
-            Err(error) => return failed(&error),
-        };
         let mut working = Vec::new();
-        for dsp in dsps {
+        for dsp in work::dsps(&state, FAILED).await {
             let at = dsp.clone();
-            let found = state
-                .read(move |db| {
-                    if !connection::open(db, &at)? {
-                        return Ok(Vec::new());
-                    }
-                    db.slack_workspaces(&at)
-                })
-                .await;
+            let found = state.read(move |db| db.slack_workspaces(&at)).await;
             match found {
                 Ok(found) => working.extend(
                     found
@@ -47,7 +38,7 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
                         .filter(|workspace| !workspace.broken)
                         .map(|workspace| (dsp.clone(), workspace)),
                 ),
-                Err(error) => failed(&error),
+                Err(error) => work::failed(FAILED, &error),
             }
         }
         stream::iter(working)
@@ -77,14 +68,12 @@ fn check(state: Arc<State>, due: bool) -> Upkeep {
             .buffer_unordered(2)
             .for_each(|result| async move {
                 match result {
-                    Err(error) if error.code != "slack_connection_broken" => failed(&error),
+                    Err(error) if error.code != "slack_connection_broken" => {
+                        work::failed(FAILED, &error)
+                    }
                     _ => {}
                 }
             })
             .await;
     })
-}
-
-fn failed(error: &Error) {
-    observability::event("error", "slack_check_failed", json!({"error": error.code}));
 }

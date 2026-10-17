@@ -6,13 +6,10 @@ use super::{
     ID, LINKING, queue,
     storage::{CanvasStore, Outcome, Pick, Status},
 };
-use crate::backend::{
-    bot::Bot, channel_links::storage::LinkStore, connection, storage::SlackStore,
-};
+use crate::backend::{bot::Bot, channel_links::storage::LinkStore, work};
 use dispatch_core::{
     Result, State,
     db::{Store, now},
-    foundation::observability,
     manifest::{Maintenance, Upkeep},
 };
 use serde_json::{Value, json};
@@ -23,6 +20,8 @@ pub const MAINTENANCE: Maintenance = Maintenance {
     run: pass,
 };
 
+/// How a failure is reported.
+const FAILED: &str = "slack_canvas_check_failed";
 /// The files each page of Slack's list holds, at most, and the pages read of one channel.
 const PAGE: u64 = 100;
 const PAGES: u64 = 10;
@@ -108,13 +107,9 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         if !due {
             return;
         }
-        let dsps = match state.read(|db| db.kept_dsps()).await {
-            Ok(dsps) => dsps,
-            Err(error) => return failed(&error),
-        };
-        for dsp in dsps {
+        for dsp in work::dsps(&state, FAILED).await {
             if let Err(error) = check(&state, &dsp).await {
-                failed(&error);
+                work::failed(FAILED, &error);
             }
         }
     })
@@ -126,22 +121,15 @@ pub(super) async fn check(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
     let workspaces = state
         .read(move |db| {
-            if !connection::open(db, &at)? {
-                return Ok(Vec::new());
-            }
             let mut on = Vec::new();
-            for workspace in db.slack_workspaces(&at)? {
-                let team = workspace.team;
-                if !workspace.broken && db.slack_integrations(&at, &team)?.iter().any(|id| id == ID)
-                {
-                    let linked: BTreeSet<String> = db
-                        .slack_channel_links(&at, &LINKING, &team)?
-                        .into_iter()
-                        .map(|link| link.channel)
-                        .collect();
-                    let picks = db.slack_canvas_picks(&at, &team)?;
-                    on.push((team, linked, picks));
-                }
+            for team in work::workspaces_on(db, &at, ID)? {
+                let linked: BTreeSet<String> = db
+                    .slack_channel_links(&at, &LINKING, &team)?
+                    .into_iter()
+                    .map(|link| link.channel)
+                    .collect();
+                let picks = db.slack_canvas_picks(&at, &team)?;
+                on.push((team, linked, picks));
             }
             Ok(on)
         })
@@ -161,12 +149,12 @@ pub(super) async fn check(state: &Arc<State>, dsp: &str) -> Result<()> {
             };
             match in_channel(state, &bot, channel, covers).await {
                 Ok(noted) => seen.extend(noted),
-                Err(error) => failed(&error),
+                Err(error) => work::failed(FAILED, &error),
             }
         }
         for pick in picks.iter().filter(|pick| !seen.contains(&pick.canvas)) {
             if let Err(error) = unlisted(state, &bot, pick).await {
-                failed(&error);
+                work::failed(FAILED, &error);
             }
         }
     }
@@ -214,12 +202,4 @@ async fn unlisted(state: &Arc<State>, bot: &Bot, pick: &Pick) -> Result<()> {
             }
         })
         .await
-}
-
-fn failed(error: &dispatch_core::Error) {
-    observability::event(
-        "error",
-        "slack_canvas_check_failed",
-        json!({"error": error.code}),
-    );
 }

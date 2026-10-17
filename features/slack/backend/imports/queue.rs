@@ -3,32 +3,31 @@
 //! One is tried as soon as it's noticed, and every minute the files due are tried again; one
 //! that failed waits longer each time, and is given up after a day.
 use super::{ID, LINKING, save, storage::ImportStore};
-use crate::backend::{channel_links::storage::LinkStore, connection};
+use crate::backend::{
+    channel_links::storage::LinkStore,
+    work::{self, Queue},
+};
 use dispatch_core::{
     Result, State,
-    db::now,
-    foundation::observability,
+    db::{Store, now},
     manifest::{Maintenance, Upkeep, integrations::Heard},
 };
-use serde_json::json;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
+use std::time::Duration;
 
-/// The files tried in one pass for a DSP, at most.
-const BATCH: usize = 20;
-/// How long a try holds its file before another may try it, in milliseconds: longer than the
-/// largest file takes.
-const CLAIM_MS: i64 = 30 * 60 * 1000;
+/// How a failure is reported.
+const FAILED: &str = "slack_import_failed";
 
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
-    run: pass,
+    run: work::pass::<Imports>,
 };
 
 /// What Import Files does with a file Slack told of: notices it, and tries it at once.
 pub fn heard(state: Arc<State>, heard: Heard) -> Upkeep {
     Box::pin(async move {
         if let Err(error) = noticed(&state, &heard).await {
-            failed(&error);
+            work::failed(FAILED, &error);
         }
     })
 }
@@ -62,7 +61,7 @@ async fn noticed(state: &Arc<State>, heard: &Heard) -> Result<()> {
 /// Notices the file `file` posted in `channel` at `posted`, in milliseconds, if the channel is
 /// linked and it was posted since, while Import Files was on: whether it's new.
 pub(super) fn notice(
-    db: &dispatch_core::db::Store,
+    db: &Store,
     dsp: &str,
     team: &str,
     file: &str,
@@ -83,61 +82,47 @@ pub(super) fn notice(
     db.notice_slack_import(dsp, team, file, channel, now())
 }
 
-/// Every minute, the files due in each DSP Slack works for.
-fn pass(state: Arc<State>, _: bool) -> Upkeep {
-    Box::pin(async move {
-        let dsps = match state.read(|db| db.kept_dsps()).await {
-            Ok(dsps) => dsps,
-            Err(error) => return failed(&error),
-        };
-        for dsp in dsps {
-            let at = dsp.clone();
-            match state.read(move |db| connection::open(db, &at)).await {
-                Ok(true) => save_due(&state, &dsp).await,
-                Ok(false) => {}
-                Err(error) => failed(&error),
-            }
-        }
-    })
-}
-
-/// Tries the DSP's files that are due, each claimed first so two tries never run at once.
+/// Saves the DSP's files that are due.
 pub(super) async fn save_due(state: &Arc<State>, dsp: &str) {
-    let at = dsp.to_owned();
-    let due = match state
-        .read(move |db| db.due_slack_imports(&at, now(), BATCH))
-        .await
-    {
-        Ok(due) => due,
-        Err(error) => return failed(&error),
-    };
-    for import in due {
-        let (at, team, file) = (dsp.to_owned(), import.team.clone(), import.file.clone());
-        let started = now();
-        let claimed = state
-            .run(move |db| db.claim_slack_import(&at, &team, &file, started, started + CLAIM_MS))
-            .await;
-        match claimed {
-            Ok(true) => {}
-            Ok(false) => continue,
-            Err(error) => {
-                failed(&error);
-                continue;
-            }
-        }
-        let outcome = save::one(state, dsp, &import).await;
-        let (at, team, file) = (dsp.to_owned(), import.team, import.file);
-        if let Err(error) = state
-            .run(move |db| db.finish_slack_import(&at, &team, &file, &outcome, now()))
-            .await
-        {
-            failed(&error);
-        }
-    }
+    work::due::<Imports>(state, dsp).await;
 }
 
-fn failed(error: &dispatch_core::Error) {
-    observability::event("error", "slack_import_failed", json!({"error": error.code}));
+/// The files to save, as the pass works through them.
+struct Imports;
+impl Queue for Imports {
+    type Item = super::storage::Import;
+    type Claimed = ();
+    type Outcome = super::storage::Outcome;
+    const BATCH: usize = 20;
+    const CLAIM_MS: i64 = 30 * 60 * 1000;
+    const FAILED: &'static str = FAILED;
+
+    fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Self::Item>> {
+        db.due_slack_imports(dsp, at, most)
+    }
+    fn claim(
+        db: &Store,
+        dsp: &str,
+        import: &Self::Item,
+        at: i64,
+        until: i64,
+    ) -> Result<Option<()>> {
+        Ok(db
+            .claim_slack_import(dsp, &import.team, &import.file, at, until)?
+            .then_some(()))
+    }
+    async fn try_one(state: &Arc<State>, dsp: &str, import: &Self::Item, (): ()) -> Self::Outcome {
+        save::one(state, dsp, import).await
+    }
+    fn finish(
+        db: &Store,
+        dsp: &str,
+        import: &Self::Item,
+        outcome: &Self::Outcome,
+        at: i64,
+    ) -> Result<()> {
+        db.finish_slack_import(dsp, &import.team, &import.file, outcome, at)
+    }
 }
 
 #[cfg(test)]

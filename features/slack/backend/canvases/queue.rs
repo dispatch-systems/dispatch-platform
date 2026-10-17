@@ -9,21 +9,21 @@ use super::{
     storage::{Canvas, CanvasStore, Outcome},
     sync,
 };
-use crate::backend::{bot::Bot, channel_links::storage::LinkStore, connection};
+use crate::backend::{
+    bot::Bot,
+    channel_links::storage::LinkStore,
+    work::{self, Queue},
+};
 use dispatch_core::{
     Result, State,
     db::{Store, now},
-    foundation::observability,
     manifest::{Maintenance, Upkeep, integrations::Heard},
 };
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
 
-/// The canvases synced in one pass for a DSP, at most.
-const BATCH: usize = 10;
-/// How long a try holds its canvas before another may try it, in milliseconds: longer than
-/// the largest canvas takes.
-const CLAIM_MS: i64 = 30 * 60 * 1000;
+/// How a failure is reported.
+const FAILED: &str = "slack_canvas_failed";
 /// How long after the last change Slack told of a canvas is synced, in milliseconds: long
 /// enough for whoever's typing to have stopped.
 pub(super) const QUIET_MS: i64 = 2 * 60 * 1000;
@@ -34,7 +34,7 @@ const UNCOVERED_MS: i64 = 15 * 60 * 1000;
 
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
-    run: pass,
+    run: work::pass::<Canvases>,
 };
 
 /// What Sync Canvases does with what Slack told of: a change to a canvas it keeps waits for the
@@ -42,7 +42,7 @@ pub const MAINTENANCE: Maintenance = Maintenance {
 pub fn heard(state: Arc<State>, heard: Heard) -> Upkeep {
     Box::pin(async move {
         if let Err(error) = told(&state, &heard).await {
-            failed(&error);
+            work::failed(FAILED, &error);
         }
     })
 }
@@ -90,67 +90,55 @@ async fn told(state: &Arc<State>, heard: &Heard) -> Result<()> {
     Ok(())
 }
 
-/// Every minute, the canvases due in each DSP Slack works for.
-fn pass(state: Arc<State>, _: bool) -> Upkeep {
-    Box::pin(async move {
-        let dsps = match state.read(|db| db.kept_dsps()).await {
-            Ok(dsps) => dsps,
-            Err(error) => return failed(&error),
-        };
-        for dsp in dsps {
-            let at = dsp.clone();
-            match state.read(move |db| connection::open(db, &at)).await {
-                Ok(true) => sync_due(&state, &dsp).await,
-                Ok(false) => {}
-                Err(error) => failed(&error),
-            }
-        }
-    })
+/// Syncs the DSP's canvases that are due, each into the folder its choice names, or its
+/// channel's link.
+pub(super) async fn sync_due(state: &Arc<State>, dsp: &str) {
+    work::due::<Canvases>(state, dsp).await;
 }
 
-/// Syncs the DSP's canvases that are due, each claimed first so two tries never run at once,
-/// into the folder its choice names, or its channel's link.
-pub(super) async fn sync_due(state: &Arc<State>, dsp: &str) {
-    let at = dsp.to_owned();
-    let due = match state
-        .read(move |db| db.due_slack_canvases(&at, now(), BATCH))
-        .await
-    {
-        Ok(due) => due,
-        Err(error) => return failed(&error),
-    };
-    for canvas in due {
-        let (at, of) = (dsp.to_owned(), canvas.clone());
-        let started = now();
-        let folder = state
-            .run(move |db| {
-                let until = started + CLAIM_MS;
-                if !db.claim_slack_canvas(&at, &of.team, &of.canvas, started, until)? {
-                    return Ok(None);
-                }
-                Ok(Some(folder(db, &at, &of)?))
-            })
-            .await;
-        let outcome = match folder {
-            Ok(Some(Some(folder))) => sync::one(state, dsp, &canvas, &folder).await,
-            Ok(Some(None)) => Outcome::Later {
+/// The canvases to sync, as the pass works through them: claiming one finds where its document
+/// goes, none while nothing covers it.
+struct Canvases;
+impl Queue for Canvases {
+    type Item = Canvas;
+    type Claimed = Option<String>;
+    type Outcome = Outcome;
+    const BATCH: usize = 10;
+    const CLAIM_MS: i64 = 30 * 60 * 1000;
+    const FAILED: &'static str = FAILED;
+
+    fn due(db: &Store, dsp: &str, at: i64, most: usize) -> Result<Vec<Canvas>> {
+        db.due_slack_canvases(dsp, at, most)
+    }
+    fn claim(
+        db: &Store,
+        dsp: &str,
+        canvas: &Canvas,
+        at: i64,
+        until: i64,
+    ) -> Result<Option<Option<String>>> {
+        if !db.claim_slack_canvas(dsp, &canvas.team, &canvas.canvas, at, until)? {
+            return Ok(None);
+        }
+        Ok(Some(folder(db, dsp, canvas)?))
+    }
+    async fn try_one(
+        state: &Arc<State>,
+        dsp: &str,
+        canvas: &Canvas,
+        folder: Option<String>,
+    ) -> Outcome {
+        match folder {
+            Some(folder) => sync::one(state, dsp, canvas, &folder).await,
+            None => Outcome::Later {
                 reason: "slack_canvas_uncovered".to_owned(),
                 at: now() + UNCOVERED_MS,
                 counted: false,
             },
-            Ok(None) => continue,
-            Err(error) => {
-                failed(&error);
-                continue;
-            }
-        };
-        let (at, team, id) = (dsp.to_owned(), canvas.team, canvas.canvas);
-        if let Err(error) = state
-            .run(move |db| db.finish_slack_canvas(&at, &team, &id, &outcome, now()))
-            .await
-        {
-            failed(&error);
         }
+    }
+    fn finish(db: &Store, dsp: &str, canvas: &Canvas, outcome: &Outcome, at: i64) -> Result<()> {
+        db.finish_slack_canvas(dsp, &canvas.team, &canvas.canvas, outcome, at)
     }
 }
 
@@ -163,10 +151,6 @@ fn folder(db: &Store, dsp: &str, canvas: &Canvas) -> Result<Option<String>> {
     Ok(db
         .slack_channel_link(dsp, &LINKING, &canvas.team, &canvas.channel)?
         .map(|link| link.folder))
-}
-
-fn failed(error: &dispatch_core::Error) {
-    observability::event("error", "slack_canvas_failed", json!({"error": error.code}));
 }
 
 #[cfg(test)]

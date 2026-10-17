@@ -2,12 +2,9 @@
 //! files since it was linked, as Slack lists them, are noticed like those it told of. A file
 //! noticed already is noticed once still.
 use super::{ID, LINKING, queue};
-use crate::backend::{
-    bot::Bot, channel_links::storage::LinkStore, connection, storage::SlackStore,
-};
+use crate::backend::{bot::Bot, channel_links::storage::LinkStore, work};
 use dispatch_core::{
     Result, State,
-    foundation::observability,
     manifest::{Maintenance, Upkeep},
 };
 use serde_json::json;
@@ -18,6 +15,8 @@ pub const MAINTENANCE: Maintenance = Maintenance {
     run: pass,
 };
 
+/// How a failure is reported.
+const FAILED: &str = "slack_import_catch_up_failed";
 /// The files each page of Slack's list holds, at most.
 const PAGE: u64 = 100;
 
@@ -26,13 +25,9 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         if !due {
             return;
         }
-        let dsps = match state.read(|db| db.kept_dsps()).await {
-            Ok(dsps) => dsps,
-            Err(error) => return failed(&error),
-        };
-        for dsp in dsps {
+        for dsp in work::dsps(&state, FAILED).await {
             if let Err(error) = catch_up(&state, &dsp).await {
-                failed(&error);
+                work::failed(FAILED, &error);
             }
         }
     })
@@ -44,20 +39,10 @@ pub(super) async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
     let workspaces = state
         .read(move |db| {
-            if !connection::open(db, &at)? {
-                return Ok(Vec::new());
-            }
             let mut on = Vec::new();
-            for workspace in db.slack_workspaces(&at)? {
-                if !workspace.broken
-                    && db
-                        .slack_integrations(&at, &workspace.team)?
-                        .iter()
-                        .any(|id| id == ID)
-                {
-                    let links = db.slack_channel_links(&at, &LINKING, &workspace.team)?;
-                    on.push((workspace.team, links));
-                }
+            for team in work::workspaces_on(db, &at, ID)? {
+                let links = db.slack_channel_links(&at, &LINKING, &team)?;
+                on.push((team, links));
             }
             Ok(on)
         })
@@ -91,12 +76,4 @@ pub(super) async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
     }
     queue::save_due(state, dsp).await;
     Ok(())
-}
-
-fn failed(error: &dispatch_core::Error) {
-    observability::event(
-        "error",
-        "slack_import_catch_up_failed",
-        json!({"error": error.code}),
-    );
 }
