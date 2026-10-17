@@ -1,5 +1,5 @@
 //! Employee timecards: calendar navigation and explicitly scoped collections.
-use super::{cards, sync::synced_cards};
+use super::{cards, people::photos, sync::synced_cards};
 use crate::api::types::{EmployeeTimecardResponse, Timecard};
 use dispatch_core::{
     Error, Result,
@@ -144,6 +144,7 @@ pub(crate) fn employee_timecard(
         collected_at = Some(s(&sync, "collected_at").to_owned());
     }
     employee["name"] = json!(display(s(&employee, "name")));
+    employee["photo"] = json!(photos(store, id)?.remove(code));
     let previous = period.shift(-1)?;
     let job = store.latest_job_requesting(
         id,

@@ -15,12 +15,13 @@ Timecard's collections. It names drivers through Driver Match.
   core's directory, which Driver Match answers; it matches no names itself. A driver Driver
   Match hasn't reached yet, as while a collection runs, waits unmatched, as does every driver
   in a build without it. Drivers kept apart from Paycom on this page before Driver Match read
-  as separate.
+  as separate. Employee Search shows each employee's photo the same way: the directory names
+  its version and serves it, from whichever feature holds one; without one, their initials.
 - **Permissions:** `timecard.view`, to read it; `timecard.manage`, which includes it, for its
   settings and schedules; and `collections.run`, to sync now or cancel a sync. The demo DSPs
   give Managers and Members View, and Managers Run Collections.
-- **API:** behind `timecard.view`, `GET /api/dsp/timecards` (a day's), `…/employees` and
-  `…/employees/{code}` (Employee Search's), `GET /api/dsp/paycom/meal-breaks`, its
+- **API:** behind `timecard.view`, `GET /api/dsp/timecards` (a day's), `…/employees`,
+  `…/employees/{code}` and `…/employees/{code}/photo` (Employee Search's), `GET /api/dsp/paycom/meal-breaks`, its
   `…/period` (a person's gaps over their timecard period) and `…/period-gaps` (everyone's
   count of them), and `GET /api/dsp/cortex/meal-breaks` (the Meal Breaks tab's),
   `…/paycom/status`, `…/paycom/settings` and `GET /api/dsp/jobs/meal-breaks`. Behind `collections.run`:

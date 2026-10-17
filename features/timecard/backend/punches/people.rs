@@ -4,7 +4,7 @@ use super::preferences::preferences;
 use dispatch_core::{
     Result,
     db::{Store, n, s},
-    manifest::people::{self, Named, People, PeopleData, Workdays},
+    manifest::people::{self, DriverSource, Named, People, PeopleData, Workdays},
 };
 use dispatch_paycom as paycom;
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,6 +31,16 @@ pub const PEOPLE: People = People::new(
 })
 .workdays(workdays)
 .driver_departments(driver_departments);
+
+/// Paycom's employee codes, as the directory answers who holds each.
+pub(crate) const PAYCOM: DriverSource = DriverSource::new(&paycom::PEOPLE);
+/// The version of each employee's photo, by their code, of those whose person has one.
+pub(crate) fn photos(store: &Store, dsp: &str) -> Result<BTreeMap<String, String>> {
+    Ok(people::who(store, dsp, PAYCOM)?
+        .into_iter()
+        .filter_map(|(code, person)| Some((code, person.photo?)))
+        .collect())
+}
 
 fn employees(store: &Store, dsp: &str) -> Result<Vec<Named>> {
     let paycom = store.collector(dsp, paycom::PROVIDER)?;

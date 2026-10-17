@@ -10,8 +10,11 @@ who it names, most often read with one query (`people::named`), with what else i
 `.records`, `.workdays`, `.driver_departments`, `.photos`, `.initials()` and
 `.contacts_only()`. The one feature that
 tells people apart reads them all, and answers the directory: `people::who` says, for a feature
-showing people, who holds each ID of a source, and `people::changed` has people told apart at
-once when a feature's change outside a collection. The sources and kinds are shared words, written
+showing people, who holds each ID of a source and the version of their photo, `people::photo`
+gives that photo, from whichever feature holds one, for the feature to serve behind its own
+permission, and `people::changed` has people told apart at once when a feature's change
+outside a collection. The dashboard draws a person with `PersonAvatar`, their photo or, without
+one, their initials. The sources and kinds are shared words, written
 to TypeScript in `api/generated/`. Each kind is
 written there with its label, unit and icon too, in their order (`driver-data.ts`, which
 imports the icons from lucide-react by the names the kinds declare), and only the lists of

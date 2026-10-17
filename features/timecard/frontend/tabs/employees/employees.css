@@ -151,13 +151,8 @@
   background: var(--primary);
 }
 .employee-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 32px;
   height: 32px;
-  flex-shrink: 0;
-  border-radius: 50%;
   background: var(--muted);
   color: var(--muted-foreground);
   font-size: 11px;

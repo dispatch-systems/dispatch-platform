@@ -124,11 +124,6 @@ export function dayLabel(day: string | null | undefined, today: string) {
   }).format(new Date(`${day}T00:00:00Z`));
 }
 
-export const initials = (name: string) =>
-  (name.match(/[\p{L}\p{N}]+/gu) ?? [])
-    .slice(0, 2)
-    .map((word) => [...word][0]!.toLocaleUpperCase('en-US'))
-    .join('') || '?';
 /** The same tone for a code everywhere it appears. */
 export const toneOf = (code: string) => [...code].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 4;
 /** Amazon's transporter IDs run to fourteen characters; the start and end tell them apart. */

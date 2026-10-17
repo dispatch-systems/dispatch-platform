@@ -1,6 +1,9 @@
 //! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
 //! preferences, and the jobs and schedules that collect them.
-use crate::{api::settings::PaycomSettings, backend::TimecardStore};
+use crate::{
+    api::settings::PaycomSettings,
+    backend::{TimecardStore, punches::people::PAYCOM},
+};
 use dispatch_core::{
     Error, Result,
     accounts::api::requests::CollectionRequest,
@@ -11,6 +14,7 @@ use dispatch_core::{
     },
     db::Store,
     foundation::validate as v,
+    manifest::people,
     server::http::{
         input::{Input, Reply, descending, optional, optional_text, query_number},
         route::{Dsp, Member, Route, coalesced_read, coalesced_read_by, read, write},
@@ -54,6 +58,7 @@ pub fn routes() -> Vec<Route> {
         )
         .logged(),
         read("/api/dsp/employees/{code}", VIEW, employee).logged(),
+        read("/api/dsp/employees/{code}/photo", VIEW, employee_photo),
         write(
             "/api/dsp/employees/{code}/sync",
             Dsp("collections.run"),
@@ -193,6 +198,15 @@ fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         period
     };
     Reply::of(&db.employee_timecard(c.dsp_id(), input.param("code"), period.as_ref())?)
+}
+
+/// An employee's photo, from whoever Driver Match finds they are. The address carries its
+/// version, so the browser keeps it until the photo changes.
+fn employee_photo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    tab(c, EMPLOYEES)?;
+    let (kind, bytes) = people::photo(db, c.dsp_id(), PAYCOM, input.param("code"))?
+        .ok_or_else(|| Error::new("not_found", 404))?;
+    Ok(Reply::picture(kind, bytes.into()))
 }
 
 fn timecards(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

@@ -157,9 +157,10 @@ pub const FEATURE: Feature = Feature {
             read: punches::daily::CACHED,
             evicted: By(&[punches::DOMAIN, DataDomain::LIVE, DataDomain::TENANT]),
         },
+        // Driver Match's decisions and the photos it finds change who each employee's is.
         Cached {
             read: punches::employees::CACHED,
-            evicted: By(&[punches::DOMAIN, DataDomain::TENANT]),
+            evicted: By(&[punches::DOMAIN, DataDomain::DRIVERS, DataDomain::TENANT]),
         },
         // The DSP listings' collection dates are its timecards'.
         Cached {

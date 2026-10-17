@@ -1,4 +1,4 @@
-use super::preferences::preferences;
+use super::{people::photos, preferences::preferences};
 use crate::api::types::{Employee, EmployeesResponse};
 use dispatch_core::{
     Result,
@@ -54,6 +54,10 @@ pub(crate) fn roster(store: &Store, id: &str) -> Result<Roster> {
         row["name"] = json!(display(s(row, "name")));
     }
     let mut employees: Vec<Employee> = serde_json::from_value(json!(rows))?;
+    let mut photos = photos(store, id)?;
+    for employee in &mut employees {
+        employee.photo = photos.remove(&employee.code);
+    }
     employees.sort_by(|a, b| compare(&a.name, &b.name).then_with(|| compare(&a.code, &b.code)));
     let search = employees
         .iter()

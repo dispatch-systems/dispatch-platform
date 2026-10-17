@@ -191,7 +191,7 @@ export function EmployeesPage({
                             })
                           }
                         >
-                          <EmployeeAvatar name={person.name} />
+                          <EmployeeAvatar employee={person} />
                           <span>{person.name}</span>
                           <ChevronRight size={16} aria-hidden="true" />
                         </button>
