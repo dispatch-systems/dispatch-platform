@@ -210,7 +210,7 @@ fn itinerary_page_links_are_stored_returned_and_bound_to_the_route() {
             &id,
             &scope.date,
             &scope.timezone,
-            &people::read(&db, &id).unwrap(),
+            &people::read(db, &id).unwrap(),
         )
         .map(|value| serde_json::to_value(value).unwrap())
         .unwrap()["rows"][0]["cortex"][0]
@@ -264,7 +264,7 @@ fn deliveries_open_the_route_at_the_stop_that_held_them() {
             &id,
             &scope.date,
             &scope.timezone,
-            &people::read(&db, &id).unwrap(),
+            &people::read(db, &id).unwrap(),
         )
         .map(|value| serde_json::to_value(value).unwrap())
         .unwrap()["rows"][0]["cortex"][0]
