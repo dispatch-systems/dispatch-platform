@@ -8,7 +8,7 @@
 //! everything else it does, and its frontend says what it is in the connection's settings.
 use crate::{
     State,
-    manifest::{Feature, Upkeep},
+    manifest::{Feature, Registry, Upkeep},
 };
 use serde_json::Value;
 use std::{collections::BTreeSet, sync::Arc};
@@ -89,5 +89,22 @@ pub(super) fn check(features: &[&'static Feature]) {
                 feature.name
             );
         }
+    }
+}
+
+impl Registry {
+    /// Every feature's integrations through the connection `connection`, each with the
+    /// feature it's of, in the registry's order.
+    pub fn integrations(
+        &self,
+        connection: &str,
+    ) -> impl Iterator<Item = (&'static Feature, &'static Integration)> {
+        self.features.iter().flat_map(move |feature| {
+            feature
+                .integrations
+                .iter()
+                .filter(move |integration| integration.connection == connection)
+                .map(move |integration| (*feature, integration))
+        })
     }
 }

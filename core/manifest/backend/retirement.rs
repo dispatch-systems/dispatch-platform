@@ -2,7 +2,7 @@
 use crate::{
     Result,
     db::{Db, Store, s},
-    manifest::registry,
+    manifest::{Registry, registry},
 };
 use serde_json::Value;
 fn renamed(value: &str) -> &str {
@@ -105,4 +105,31 @@ pub(crate) fn dsp(store: &Store, id: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Panics unless every retired identifier is retired once, into one its feature owns.
+pub(crate) fn check(registry: &Registry) {
+    let mut spellings = std::collections::BTreeSet::new();
+    for feature in registry.features {
+        for (old, current) in feature.retired_identifiers {
+            assert!(
+                old != current && spellings.insert(old) && spellings.insert(current),
+                "{} repeats an identifier retirement spelling",
+                feature.name
+            );
+            assert!(
+                feature.switch.id == *current
+                    || feature
+                        .permissions
+                        .iter()
+                        .any(|permission| permission.id == *current)
+                    || feature
+                        .keeps
+                        .iter()
+                        .any(|keeper| keeper.keeps() == *current),
+                "{} retires an identifier into one it does not own: {current}",
+                feature.name
+            );
+        }
+    }
 }
