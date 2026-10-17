@@ -49,6 +49,9 @@ A change, from start to finish:
                                    one DSP, several or the connection, and take actions, some
                                    that change something. Who may use it is chosen per key and
                                    app on the Agents page: Off, Read, or Read and change.
+  new slot <name> [options]        A new kind of slot in core: what a feature declares in its
+                                   manifest and a host reads. Its backend and frontend modules,
+                                   the manifest's field and check, and its catalogue rows.
 
   build [--release | --fixture]    Build the backend and support worker, or the browser tests'
         [--cache-key]              assessment fixture, reusing a build of identical inputs.

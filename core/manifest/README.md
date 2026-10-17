@@ -16,7 +16,7 @@ is installed, which `Registry::check` calls. A frontend slot's module declares w
 puts in it, adds its field to `FrontendFeature` by declaration merging, and exports what the
 hosts read it with.
 
-Adding a slot:
+Adding a slot, which `dispatchdev new slot <name>` writes as far as step 3:
 
 1. Backend: its module here, its field in `Feature` with its empty value in `feature()`, its
    names in the `pub use` list in `backend/mod.rs`, and its `check` in `Registry::check`.
