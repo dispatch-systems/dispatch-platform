@@ -54,10 +54,11 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
             let same_as = member
                 .email
                 .as_ref()
-                .map(|email| by_email[&email.to_lowercase()].clone())
-                .unwrap_or_default()
+                .and_then(|email| by_email.get(&email.to_lowercase()))
                 .into_iter()
-                .filter(|other| *other != id)
+                .flatten()
+                .filter(|other| **other != id)
+                .cloned()
                 .collect();
             named(id, member, same_as)
         })
