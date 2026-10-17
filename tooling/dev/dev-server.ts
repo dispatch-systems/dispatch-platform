@@ -4,6 +4,7 @@ import { isIP } from 'node:net';
 import path from 'node:path';
 import { createServer, type ProxyOptions, type ViteDevServer } from 'vite';
 import { demo, fixture } from '../testing/fixture-server.js';
+import { backendProxy } from './backend-paths.js';
 
 const previewCookie = (value: string, port: number) =>
   value
@@ -139,7 +140,7 @@ export async function startPreview({
         port: address.port,
         middlewareMode: { server },
         hmr: { server },
-        proxy: { '/api': sessionProxy(`http://127.0.0.1:${app.env.PORT}`, address.port) },
+        proxy: backendProxy(sessionProxy(`http://127.0.0.1:${app.env.PORT}`, address.port)),
       },
     });
     const exited = app.exited();

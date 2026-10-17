@@ -103,6 +103,15 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   }
   assert.equal((await session(second, firstBrowser)).status, 401);
   assert.equal((await session(second, await enter(second))).status, 200);
+
+  // The backend's paths outside /api reach it too, as Slack and MCP clients call them at the
+  // preview's own address, rather than the frontend answering them.
+  const discovery = await fetch(first.origin + '/.well-known/oauth-authorization-server');
+  assert.equal(discovery.status, 200);
+  assert.equal(typeof (await discovery.json()).token_endpoint, 'string');
+  const fromSlack = await fetch(first.origin + '/slack/events', { method: 'POST', body: '{}' });
+  assert.equal(fromSlack.status, 401);
+  assert.equal((await fromSlack.json()).error, 'slack_unsigned');
   const logout = await fetch(first.origin + '/api/auth/logout', {
     method: 'POST',
     headers: {
