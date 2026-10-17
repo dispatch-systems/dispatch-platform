@@ -13,8 +13,8 @@ import {
 } from './support/repo.js';
 import { lexFile, testAttributes } from './support/rust.js';
 
-// What every feature, collector and core part is made of: plans/restructure/structure.md,
-// "A feature's anatomy" and "What every feature has, and what it adds".
+// What every feature, collector and core part is made of: the folders core/manifest/README.md
+// names, each holding one kind of piece.
 const featurePieces = ['backend', 'api', 'frontend', 'migrations', 'tooling', 'tests'];
 const collectorPieces = [
   'connection',

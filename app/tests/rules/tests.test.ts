@@ -3,7 +3,7 @@ import { holds } from './support/holds.js';
 import { files, isDirectory, isFile, ownerOf, owners, templated } from './support/repo.js';
 import { lexFile, rust, testAttributes } from './support/rust.js';
 
-// plans/restructure/structure.md, "Tests": the folder decides how a test runs.
+// The folder decides how a test runs.
 const kinds = ['api', 'browser', 'frontend', 'backend', 'native', 'support'];
 /**
  * Where the tooling's and the hosts' own tests live, beside the owners' tests/<kind>/: their
