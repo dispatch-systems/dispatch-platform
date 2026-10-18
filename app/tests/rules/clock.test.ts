@@ -9,9 +9,10 @@ import { lexFile } from './support/rust.js';
 // coming from `db::now`; core reads it only for an instant, `Utc::now().timestamp_millis()`,
 // and today's date only in the clock.
 const clock = 'core/foundation/backend/clock.rs';
-const systemClock = /\b(?:Utc|Local|SystemTime)\s*::\s*now\s*\(/;
+// Called or passed as a function: `.unwrap_or_else(Utc::now)` reads it too.
+const systemClock = /\b(?:Utc|Local|SystemTime)\s*::\s*now\b/;
 const coreClock =
-  /\b(?:Utc|Local)\s*::\s*now\s*\(\s*\)(?!\s*\.\s*timestamp_millis\s*\(\s*\))|\bSystemTime\s*::\s*now\s*\(/;
+  /\b(?:Utc|Local)\s*::\s*now\b(?!\s*\(\s*\)\s*\.\s*timestamp_millis\s*\(\s*\))|\bSystemTime\s*::\s*now\b/;
 
 test("product code reads today's date only from core's clock", () => {
   holds(

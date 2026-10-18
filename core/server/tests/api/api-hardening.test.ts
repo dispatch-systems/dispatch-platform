@@ -132,4 +132,10 @@ test('production rejects conflicting modes and unsafe defaults before opening st
     status({ ...f.env, DISPATCH_FIXTURE_TODAY: '14 Oct' }).stderr,
     /invalid_fixture_today/,
   );
+  const real = { ...f.env, DISPATCH_PROVIDER_MODE: 'native' };
+  assert.equal(status(real).status, 0, status(real).stderr);
+  assert.match(
+    status({ ...real, DISPATCH_FIXTURE_TODAY: '2026-10-14' }).stderr,
+    /fixture_forbidden/,
+  );
 });

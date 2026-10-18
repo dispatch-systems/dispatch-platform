@@ -4,7 +4,8 @@ use chrono_tz::Tz;
 use std::sync::RwLock;
 
 /// The day a test server pins with `DISPATCH_FIXTURE_TODAY`, which `Config::load` sets: what
-/// reads today has no config to hand, so the day holds for the whole process.
+/// reads today has no config to hand, so the day holds for the whole process, every test in it
+/// included.
 static PINNED: RwLock<Option<NaiveDate>> = RwLock::new(None);
 
 /// Today in `zone`, or the day the server pins, so a test collects and seeds the same days
