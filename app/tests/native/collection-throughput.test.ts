@@ -206,8 +206,9 @@ test(
         )
         .get(from, to),
     );
-    assert.equal(selectedPeriod?.period_from, '2026-01-04');
-    assert.equal(selectedPeriod?.period_to, '2026-01-17');
+    // Jan 10 ends a period of the fixture's cycle, the demo's.
+    assert.equal(selectedPeriod?.period_from, '2025-12-28');
+    assert.equal(selectedPeriod?.period_to, '2026-01-10');
     const capturedPublication = selectedPeriod?.id;
     assert(typeof capturedPublication === 'string');
     assert.deepEqual(
