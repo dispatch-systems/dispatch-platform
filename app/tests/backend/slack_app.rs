@@ -16,7 +16,10 @@ fn slack_asks_for_what_it_and_its_integrations_need() {
         .iter()
         .find(|feature| feature.name == "slack")
         .expect("Slack is in the build");
-    let commands = slack.commands.as_ref().expect("Slack has its operator command");
+    let commands = slack
+        .commands
+        .as_ref()
+        .expect("Slack has its operator command");
     let manifest = (commands.run)(&config, &["slack-manifest".to_owned()]).unwrap();
     snapshot::check("slack-app.json", &manifest);
 }
