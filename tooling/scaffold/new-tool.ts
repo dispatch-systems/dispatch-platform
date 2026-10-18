@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   UsageError,
   emptyPlan,
+  exists,
   features,
   files,
   formatRust,
@@ -29,6 +30,8 @@ export const usage = `Usage: dispatchdev new tool <name> [options]
   --features <ids>        the features, or their parts, it needs, by their switches, as
                           timecard,routes or timecard.meal_breaks: it runs at a DSP only
                           where every one is on
+  --reads <feature>       a feature whose contract it reads through, as dvic: it needs the
+                          feature, and reads what it exposes, never its storage
   --actions <names>       what it can be asked to do, as list,approve: one tool doing several
                           things, each action with arguments of its own
   --changes               every call changes something
@@ -42,7 +45,17 @@ export const usage = `Usage: dispatchdev new tool <name> [options]
 A key or app reads with it at most until the platform owner allows it to change something.`;
 
 const FLAGS = ['changes', 'dry-run'];
-const OPTIONS = ['scope', 'features', 'actions', 'changing', 'title', 'description', 'out', 'root'];
+const OPTIONS = [
+  'scope',
+  'features',
+  'reads',
+  'actions',
+  'changing',
+  'title',
+  'description',
+  'out',
+  'root',
+];
 const SCOPES = ['dsp', 'dsps', 'connection'] as const;
 type Scope = (typeof SCOPES)[number];
 /** Where the tools live, and the list that names them. */
@@ -127,6 +140,23 @@ export function toolValues(root: string, argv: string[]) {
   for (const id of needed)
     if (!known.has(id))
       throw new UsageError(`${id} is no feature or part of one: no manifest declares its switch`);
+  // The feature whose contract it reads through, which it then needs.
+  const through = args.options.get('reads');
+  let throughCrate = '';
+  if (through !== undefined) {
+    if (!features(root).includes(through))
+      throw new UsageError(`--reads names a feature, and ${through} is none`);
+    const contract = `features/${through}/contract`;
+    if (!exists(root, `${contract}/Cargo.toml`))
+      throw new UsageError(
+        `${through} exposes no contract: \`dispatchdev add contract <name> --to ${through}\` gives it one`,
+      );
+    if (!/\bpub fn for_dsp\b/.test(read(root, `${contract}/contract.rs`)))
+      throw new UsageError(`${contract}/contract.rs has no for_dsp to find it for a DSP by`);
+    if (scope !== 'dsp') throw new UsageError('--reads reads for one DSP, as --scope dsp does');
+    throughCrate = /^name\s*=\s*"([^"]+)"/m.exec(read(root, `${contract}/Cargo.toml`))![1]!;
+    if (!needed.some((id) => id.split('.')[0] === through)) needed.push(through);
+  }
   const actions = listOf(args.options.get('actions'), 'actions', WORD);
   const changing = listOf(args.options.get('changing'), 'changing', WORD);
   const changes = args.flags.has('changes');
@@ -172,6 +202,14 @@ export function toolValues(root: string, argv: string[]) {
     everyCall: changes,
     changingAction: changing[0] ?? '',
     reading: actions.find((action) => !changing.includes(action)) ?? '',
+    through: through ?? '',
+    throughIdent: throughCrate.replace(/-/g, '_'),
+    // Its name as people read it, as its manifest's switch gives it.
+    throughLabel: through
+      ? (/\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(
+          read(root, `features/${through}/feature.rs`),
+        )?.[1] ?? labelOf(through))
+      : '',
   };
   return {
     args,

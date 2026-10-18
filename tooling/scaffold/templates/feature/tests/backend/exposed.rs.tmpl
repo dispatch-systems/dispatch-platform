@@ -1,0 +1,20 @@
+//! What {{label}} exposes, as a feature using it finds it{{#switch}}: only while it's on for the
+//! DSP{{/switch}}.
+use super::*;
+use dispatch_core::testing;
+
+#[test]
+fn {{contract}}_is_offered_{{#switch}}only_while_{{name}}_is_on{{/switch}}{{^switch}}to_every_dsp{{/switch}}() {
+    testing::install(&[{{testCollectors}}], &[&crate::FEATURE]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    let offered = {{contractIdent}}::for_dsp(&db, &dsp)
+        .unwrap()
+        .expect("{{label}} is on");
+    // TODO(scaffold): prove each of its readers and actions against what it keeps.
+    assert!(offered.ready(&db, &dsp).unwrap());
+{{#switch}}
+    let owner = testing::a_user(&db);
+    db.set_feature(&dsp, "{{name}}", false, &owner).unwrap();
+    assert!({{contractIdent}}::for_dsp(&db, &dsp).unwrap().is_none());
+{{/switch}}
+}

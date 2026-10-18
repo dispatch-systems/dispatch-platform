@@ -39,6 +39,8 @@ const MADE: [string, ...string[]][] = [
   ['feature', 'smoke_tab', '--tab-of', 'uniforms'],
   ['feature', 'smoke_team_tab', '--tab-of', 'team', '--mandatory'],
   ['feature', 'smoke_front', '--no-backend', '--page'],
+  // What one exposes, and a tool reading it.
+  ['feature', 'smoke_offer', '--contract', 'smoke_counts', '--api'],
   [
     'tool',
     'smoke_lookup',
@@ -52,6 +54,7 @@ const MADE: [string, ...string[]][] = [
     'flag',
   ],
   ['tool', 'smoke_ping', '--scope', 'connection'],
+  ['tool', 'smoke_reader', '--reads', 'smoke_offer'],
   // One of Slack's own integrations, and one of another feature's through Slack.
   ['integration', 'smoke_alerts', '--needs', 'chat:write', '--hears', 'message'],
   ['integration', 'smoke_notes', '--to', 'smoke_people'],
@@ -74,6 +77,7 @@ const ADDED: string[][] = [
   ['page', '--to', 'smoke_people'],
   ['api', '--to', 'smoke_front'],
   ['api', '--to', 'smoke_bare'],
+  ['contract', 'smoke_rows_counts', '--to', 'smoke_rows'],
   // The product's own, each a case add once broke: Team has no team.view for its manage
   // permission to imply; Timecard has a loadSettings of its own, keeps its people's table in
   // Paycom's database and declares a module without pub(crate); Weekly Scorecard's retired
@@ -83,6 +87,8 @@ const ADDED: string[][] = [
   ['people', 'paycom', '--to', 'timecard', '--table', 'employees'],
   ['page', '--to', 'weekly_scorecard'],
   ['people', 'amazon', '--to', 'documents', '--table', 'documents_files'],
+  // Routes' tests install the collector it uses, as its contract's must.
+  ['contract', 'route_counts', '--to', 'routes'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */

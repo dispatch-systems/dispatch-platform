@@ -167,7 +167,9 @@ contract is a trait, owned by the feature offering it in a crate of its own besi
 `features/<name>/contract/`, which holds the trait and the types it speaks in and depends on
 core alone: any feature uses it without declaring the feature, and it stays in a build that
 leaves the feature out, when nothing offers it. A contract core uses itself, as the directory
-its people helpers ask, is core's. A feature offers one in its manifest's `exposes`:
+its people helpers ask, is core's. `dispatchdev add contract <name> --to <feature>` (or
+`--contract <name>` on `new feature`) writes one that works as written: its crate, what fulfils
+it, its exposure and their test. A feature offers one in its manifest's `exposes`:
 
 ```rust
 exposes: &[dispatch_core::expose!(

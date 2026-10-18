@@ -1,5 +1,8 @@
 //! {{title}}: {{description}}
-use crate::toolbox::{Answer, Cx, {{#changes}}Effect, {{/changes}}{{^actions}}Nothing, {{/actions}}Reply, {{^dsp}}Scope, {{/dsp}}Tool};
+use crate::toolbox::{Answer, Cx, {{#changes}}Effect, {{/changes}}{{^actions}}Nothing, {{/actions}}{{#through}}Refusal, {{/through}}Reply, {{^dsp}}Scope, {{/dsp}}Tool};
+{{#through}}
+use {{throughIdent}} as {{through}};
+{{/through}}
 
 /// What {{name}} answers.
 #[derive(serde::Serialize, schemars::JsonSchema)]
@@ -68,8 +71,26 @@ impl Tool for {{pascal}} {
 {{/actions}}
         // TODO(scaffold): answer with what it's for; the starter names what it answered for.
 {{#dsp}}
+{{#through}}
+        let dsp = cx.dsp().clone();
+        let at = dsp.id.clone();
+        cx.read(move |db| {
+            // The toolbox runs it only where {{throughLabel}} is on; this answers for a DSP whose
+            // {{throughLabel}} was switched off since.
+            let Some(_{{through}}) = {{through}}::for_dsp(db, &at)? else {
+                let message = "{{throughLabel}} is switched off at this DSP. Tell the user.";
+                return Err(Refusal::new("switched_off", message).into());
+            };
+            // TODO(scaffold): read what it's for through `_{{through}}`, what {{throughLabel}} exposes.
+            Ok(())
+        })
+        .await?;
+        Ok({{pascal}}Answer { dsp: dsp.name }.into())
+{{/through}}
+{{^through}}
         let dsp = cx.dsp().name.clone();
         Ok({{pascal}}Answer { dsp }.into())
+{{/through}}
 {{/dsp}}
 {{#dsps}}
         let dsps = cx.dsps().iter().map(|dsp| dsp.name.clone()).collect();

@@ -30,7 +30,8 @@ Every tool lives in `tools/`, a file each, with its test in `tests/backend/tools
 are made of is `backend/toolbox/`. Adding a tool is adding its file, which
 `dispatchdev generate` lists in `tools::TOOLS`. `dispatchdev new tool <name>` makes one
 that works as written, with its test, and runs that; its `--features`, `--scope`, `--actions`,
-`--changes` and `--changing` set what the list below describes. A tool is a type implementing
+`--changes` and `--changing` set what the list below describes, and `--reads <feature>` has it
+read through that feature's contract. A tool is a type implementing
 `toolbox::Tool`:
 
 - `NAME`, `TITLE` and `DESCRIPTION`: what agents call it and read about it. `DESCRIPTION` is

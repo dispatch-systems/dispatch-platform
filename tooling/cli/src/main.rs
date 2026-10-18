@@ -212,8 +212,9 @@ const COMMANDS: &[Spec] = &[
         "add",
         &["add <piece> --to <feature>", "    [--dry-run] [--json]"],
         "A piece new feature writes, added to a feature that exists: page, tab-of <feature>, \
-         settings, api or people <source>. Its slot entries, fields and permissions join the \
-         feature's; what it can't merge it names. dispatchdev add lists the pieces.",
+         settings, api, people <source> or contract <name>. Its slot entries, fields and \
+         permissions join the feature's; what it can't merge it names. dispatchdev add lists \
+         the pieces.",
     )
     .passed(),
     spec(
