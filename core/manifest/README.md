@@ -50,7 +50,6 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `domains`             | `caching`      | The kinds of data its reviewed writes change, for the read cache.                                                                  |
 | `cached`              | `caching`      | What evicts the reads it caches, and any other owner's read its data feeds.                                                        |
 | `maintenance`         | `upkeep`       | Work the scheduler runs for it, each task at its own interval.                                                                     |
-| `after_collection`    | `upkeep`       | What runs for the DSP after each of its collections succeeds, before the dashboard hears of it.                                    |
 | `audit`               | `audit`        | How its actions read in the activity log: the areas they are listed under, the kinds of record they name, and today's names.       |
 | `demo`                | `commands`     | What fills a new DSP with its demo data, for the development seed and Diagnostics' test DSPs.                                      |
 | `commands`            | `commands`     | Its operator commands of the binary, every one whose name begins with its prefix.                                                  |
@@ -58,6 +57,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `people`              | `people/`      | Who its data names, for the feature that tells people apart: a `People` for each kind of data, with what else it knows of them.    |
 | `integrations`        | `integrations` | What it does through another feature's connection, switched on and off in that connection's settings for each of its accounts.     |
 | `exposes`             | `exposes`      | What it offers every other feature, each through a contract; one feature at most offers each.                                      |
+| `on`                  | `events`       | What it does when something happens for a DSP: a collection succeeding, the DSP's people changing, or another feature's event.     |
 
 `collectors.rs` holds what a collector declares instead, `Collector`, and `agents.rs` the one
 piece outside the features that lets outside agents use Dispatch, `Agents`.
@@ -130,7 +130,7 @@ people: &[&backend::people::PEOPLE],
 
 A kind is read while its feature is on, and every ID it names gets a person after each
 collection; a feature whose people may gain new IDs outside a collection, as a chat
-workspace's members do, calls `people::changed(state, dsp)` once they're kept. The app's people
+workspace's members do, publishes `events::PeopleChanged` once they're kept. The app's people
 test runs every connection's queries against a new DSP, so a connection is tried without a test
 of its own. `dispatchdev generate` writes the kinds and sources to TypeScript in
 `api/generated/`: each kind with its label, unit and icon, in their order (`people-data.ts`,
@@ -191,6 +191,31 @@ the DSP has it, what it's called and the permission that shows what it keeps, wi
 feature offering it. A new one a page shows takes an entry in `exposes()` in
 `app/tests/backend/export.rs`, which names its contract, so the app depends on that contract's
 crate, and its name in `ExposedName` in `exposes.ts`.
+
+### Events
+
+What happened for a DSP, which any feature hears of without depending on where it happened or
+knowing who hears (`events.rs`). An event is a type with a name (`Event::NAME`). Core's are
+`CollectionSucceeded` (`collection.succeeded`), once a collection's outcome is recorded and
+before the dashboard hears of it, and `PeopleChanged` (`people.changed`), when the people a
+DSP's features name change outside a collection. A feature's own goes in its contract crate,
+beside what it exposes, so a feature hearing it depends on neither.
+
+Whoever an event happens to says so, `events::publish(&state, &dsp, PeopleChanged).await`, and
+a feature hears it by naming it in its manifest's `on`:
+
+```rust
+on: &[dispatch_core::on!(CollectionSucceeded, backend::maintenance::collected)],
+
+pub fn collected(state: Arc<State>, dsp: String, event: CollectionSucceeded) -> Upkeep {
+    Box::pin(async move { … })
+}
+```
+
+`publish` tells each feature hearing it, in the registry's order and one at a time, only while
+that feature is on for the DSP, and returns once each has done its work; a feature logs its own
+failures. The registry refuses two types under one name, and a feature hearing one twice.
+`dispatchdev list events` lists every event a feature hears, with who hears it.
 
 ## Frontend slots
 

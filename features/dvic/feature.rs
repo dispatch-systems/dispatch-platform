@@ -78,6 +78,13 @@ pub const FEATURE: Feature = Feature {
         run: backend::cli::run,
     }),
     people: &[&backend::people::PEOPLE],
+    // Agent tools and other features read its short inspections without depending on it.
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_dvic_contract::ShortInspections,
+        &backend::reader::READER,
+        "short_inspections",
+        "The pre-trip inspections shorter than the minimum, who made them, and the days collected.",
+    )],
     ..feature("dvic")
 };
 

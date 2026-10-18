@@ -92,10 +92,10 @@ test("core's Cargo.toml lists none of our crates", () => {
   );
 });
 
-// The MCP sits above the features. It uses core, and a feature's crate only as the features its
-// tools need bring it: an optional dependency that the MCP's Cargo feature of that feature turns
-// on, with the crates the MCP's tests install beside it, as `dispatchdev generate` writes
-// them. Its tests use nothing else.
+// The MCP sits above the features. It uses core, any feature's contract, and a feature's crate
+// only as the features its tools need bring it: an optional dependency that the MCP's Cargo
+// feature of that feature turns on, with the crates the MCP's tests install beside it, as
+// `dispatchdev generate` writes them. Its tests use nothing else.
 test("the MCP's Cargo.toml lists core, and features and collectors only as its tools bring them", () => {
   if (!isFile('mcp/Cargo.toml')) return;
   const crate = readCrate('mcp/Cargo.toml');
@@ -115,7 +115,10 @@ test("the MCP's Cargo.toml lists core, and features and collectors only as its t
       .filter(({ unit }) => unit !== 'core')
       .flatMap(({ dependency, unit }) => [
         ...(/^(features|collectors)\//.test(unit) ? [] : [`mcp/Cargo.toml lists ${unit}`]),
-        ...(dependency.optional ? [] : [`mcp/Cargo.toml lists ${unit} as always on`]),
+        // A contract stays whatever a build leaves out, so it's always on.
+        ...(dependency.optional || contract(unit)
+          ? []
+          : [`mcp/Cargo.toml lists ${unit} as always on`]),
       ]),
     ...ours(true)
       .filter(({ unit }) => unit !== 'core')

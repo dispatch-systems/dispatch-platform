@@ -20,6 +20,8 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 [dependencies]
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
+# The contract it exposes, its short inspections.
+dispatch-dvic-contract = { path = "contract" }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 rusqlite = { workspace = true }

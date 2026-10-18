@@ -1,10 +1,12 @@
 //! What the registry refuses of what features declare about one another.
-use dispatch_core::expose;
 use dispatch_core::manifest::{
-    Feature, Registry, ScheduleAlias, feature, optional,
+    Feature, Registry, ScheduleAlias, Upkeep,
+    events::{Event, PeopleChanged},
+    feature, optional,
     people::{KindInfo, People, Source, SourceInfo},
     perm, sub,
 };
+use dispatch_core::{expose, on};
 
 /// The app's registry with one more feature, as `install` would check it.
 fn with(extra: &'static Feature) -> Registry {
@@ -221,4 +223,49 @@ fn a_contract_is_found_by_its_type_in_the_feature_offering_it() {
         .expect("Offering exposes it");
     assert_eq!(feature.name, "offering");
     assert!(registry.exposed::<dyn Farewell>().is_none());
+}
+
+/// An event that calls itself what core's people event is called.
+#[derive(Clone)]
+struct Impostor;
+impl Event for Impostor {
+    const NAME: &'static str = "people.changed";
+}
+fn noted(_: std::sync::Arc<dispatch_core::State>, _: String, _: impl Event) -> Upkeep {
+    Box::pin(async {})
+}
+fn impostor(state: std::sync::Arc<dispatch_core::State>, dsp: String, event: Impostor) -> Upkeep {
+    noted(state, dsp, event)
+}
+fn people(
+    state: std::sync::Arc<dispatch_core::State>,
+    dsp: String,
+    event: PeopleChanged,
+) -> Upkeep {
+    noted(state, dsp, event)
+}
+
+#[test]
+#[should_panic(expected = "Impostor are each called people.changed; an event's name is its own")]
+fn an_event_named_as_another_is_refused() {
+    static FOOLED: Feature = Feature {
+        switch: optional("fooled", "Fooled", &[]),
+        // Core's own first, so the build needn't have a feature hearing it.
+        on: &[on!(PeopleChanged, people), on!(Impostor, impostor)],
+        ..feature("fooled")
+    };
+    crate::install();
+    with(&FOOLED).check();
+}
+
+#[test]
+#[should_panic(expected = "eager hears people.changed twice; once does all it does")]
+fn an_event_heard_twice_by_one_feature_is_refused() {
+    static EAGER: Feature = Feature {
+        switch: optional("eager", "Eager", &[]),
+        on: &[on!(PeopleChanged, people), on!(PeopleChanged, people)],
+        ..feature("eager")
+    };
+    crate::install();
+    with(&EAGER).check();
 }

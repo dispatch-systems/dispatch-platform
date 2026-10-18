@@ -102,6 +102,36 @@ async fn members_are_read_once_the_admin_lets_the_bot_and_never_bots() {
         .unwrap();
     assert!(kept(&state, &dsp).await.is_empty());
 }
+#[tokio::test]
+async fn new_members_say_the_dsps_people_changed_to_each_feature_on_there() {
+    let (_root, state, dsp) = platform();
+    let switch = |on: bool| {
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move {
+            state
+                .run(move |db| {
+                    let owner = testing::a_user(db);
+                    db.set_feature(&dsp, "listening", on, &owner).map(drop)
+                })
+                .await
+                .unwrap()
+        }
+    };
+    // Off for the DSP, the stand-in hears nothing of the members read.
+    switch(false).await;
+    read(&connect(&state, &dsp, DRIVERS, APP).await)
+        .await
+        .unwrap();
+    assert_eq!(crate::backend::support::changed(&dsp), 0);
+    // On, it hears once of another workspace's new members, and not of the same read again.
+    switch(true).await;
+    let operations = connect(&state, &dsp, OPERATIONS, APP).await;
+    read(&operations).await.unwrap();
+    assert_eq!(crate::backend::support::changed(&dsp), 1);
+    read(&operations).await.unwrap();
+    assert_eq!(crate::backend::support::changed(&dsp), 1);
+}
+
 #[test]
 fn a_member_whose_profile_has_no_name_goes_by_the_one_they_chose() {
     let user = |profile: Value| json!({"id": "U0FIXSAM", "name": "sam.k", "profile": profile});

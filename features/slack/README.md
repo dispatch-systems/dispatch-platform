@@ -162,19 +162,19 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
 
 ## Members
 
-- **Members:** for Driver Match, each workspace's members are read whole once it's connected,
-  or its admin approves reading them (`users:read`, `users:read.email`), and hourly; and one at
-  a time as Slack tells of someone joining (`team_join`) or changing their profile
-  (`user_change`). Each keeps their name (the one on their profile, else the one they go by,
-  else their username), the name they go by in Slack when it's another, the email address and
-  phone number on their profile, whether their account is active and whether they're a guest.
-  Bots and Slackbot aren't kept; guests are, and a member Slack deactivates stays, inactive.
-  Up to 10,000 are read, 200 at a time; a list longer than that is refused whole
-  (`slack_members_too_many`). A workspace's members are kept one read or event at a time, so a
-  member Slack tells of while the list is read isn't undone by it, and only while the DSP has
-  the workspace, so one disconnected mid-read keeps none. When any member is new, Driver Match
-  gives them a person at once; what it reads of the others it reads afresh each time. A workspace whose admin hasn't approved
-  reading them is passed by, and keeps working otherwise.
+- **Members:** for Driver Match, each workspace's members are read whole once it's connected, or its
+  admin approves reading them (`users:read`, `users:read.email`), and hourly; and one at a time as
+  Slack tells of someone joining (`team_join`) or changing their profile (`user_change`). Each keeps
+  their name (the one on their profile, else the one they go by, else their username), the name they
+  go by in Slack when it's another, the email address and phone number on their profile, whether
+  their account is active and whether they're a guest. Bots and Slackbot aren't kept; guests are,
+  and a member Slack deactivates stays, inactive. Up to 10,000 are read, 200 at a time; a list
+  longer than that is refused whole (`slack_members_too_many`). A workspace's members are kept one
+  read or event at a time, so a member Slack tells of while the list is read isn't undone by it, and
+  only while the DSP has the workspace, so one disconnected mid-read keeps none. When any member is
+  new, it says the DSP's people changed (`people.changed`), so Driver Match gives them a person at
+  once; what it reads of the others it reads afresh each time. A workspace whose admin hasn't
+  approved reading them is passed by, and keeps working otherwise.
 - **People:** Driver Match reads the members as its `slack` kind of data, by Slack's own IDs,
   `<workspace>:<member>`, which never change: each member by the name on their profile, listed
   while their account is active and their workspace's access works. The name they go by isn't

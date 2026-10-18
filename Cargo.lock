@@ -761,11 +761,19 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-dvic-contract",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-dvic-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
@@ -805,6 +813,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-dvic",
+ "dispatch-dvic-contract",
  "reqwest",
  "rmcp",
  "rusqlite",

@@ -22,7 +22,6 @@
       "daily_performance.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -42,6 +41,7 @@
       "integrations": [],
       "live": [],
       "maintenance": [],
+      "on": [],
       "people": [
         "daily_performance"
       ],
@@ -99,7 +99,6 @@
       "documents.use"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -120,6 +119,7 @@
         3600,
         60
       ],
+      "on": [],
       "people": [],
       "routes": [
         "GET /api/dsp/documents",
@@ -195,7 +195,6 @@
       "driver_match.manage"
     ],
     "slots": {
-      "after_collection": true,
       "audit": {
         "areas": [],
         "names": true,
@@ -211,6 +210,16 @@
       "live": [],
       "maintenance": [
         3600
+      ],
+      "on": [
+        {
+          "event": "collection.succeeded",
+          "kind": "dispatch_core::manifest::events::CollectionSucceeded"
+        },
+        {
+          "event": "people.changed",
+          "kind": "dispatch_core::manifest::events::PeopleChanged"
+        }
       ],
       "people": [],
       "routes": [
@@ -266,7 +275,6 @@
       "driver_profiles.collect"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -290,6 +298,7 @@
       "maintenance": [
         600
       ],
+      "on": [],
       "people": [
         "driver_profiles"
       ],
@@ -350,7 +359,6 @@
       "dvic.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -374,6 +382,7 @@
         "dvic.view"
       ],
       "maintenance": [],
+      "on": [],
       "people": [
         "dvic"
       ],
@@ -392,7 +401,13 @@
         "POST /api/dsp/dvic/schedules/{key}/enabled",
         "POST /api/dsp/dvic/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "short_inspections",
+          "contract": "dispatch_dvic_contract::ShortInspections",
+          "about": "The pre-trip inspections shorter than the minimum, who made them, and the days collected."
+        }
+      ],
       "settings": []
     },
     "switch": "dvic",
@@ -420,7 +435,6 @@
     "migrations": {},
     "permissions": [],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [],
         "names": false,
@@ -433,6 +447,7 @@
       "integrations": [],
       "live": [],
       "maintenance": [],
+      "on": [],
       "people": [],
       "routes": [],
       "exposes": [],
@@ -474,7 +489,6 @@
       "routes.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -496,6 +510,7 @@
       "maintenance": [
         3600
       ],
+      "on": [],
       "people": [
         "routes"
       ],
@@ -551,7 +566,6 @@
       "settings.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [],
         "names": false,
@@ -564,6 +578,7 @@
       "integrations": [],
       "live": [],
       "maintenance": [],
+      "on": [],
       "people": [],
       "routes": [
         "POST /api/dsp/profile"
@@ -586,7 +601,6 @@
       "slack.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -619,6 +633,7 @@
         60,
         600
       ],
+      "on": [],
       "people": [
         "slack"
       ],
@@ -694,7 +709,6 @@
       "roles.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [],
         "names": false,
@@ -707,6 +721,7 @@
       "integrations": [],
       "live": [],
       "maintenance": [],
+      "on": [],
       "people": [],
       "routes": [
         "GET /api/dsp/members",
@@ -766,7 +781,6 @@
       "collections.run"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -799,6 +813,7 @@
         "collections.run"
       ],
       "maintenance": [],
+      "on": [],
       "people": [
         "timecards",
         "meal_breaks"
@@ -886,7 +901,6 @@
       "uniforms.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [],
         "names": false,
@@ -899,6 +913,7 @@
       "integrations": [],
       "live": [],
       "maintenance": [],
+      "on": [],
       "people": [],
       "routes": [
         "GET /api/dsp/uniforms",
@@ -952,7 +967,6 @@
       "weekly_scorecard.manage"
     ],
     "slots": {
-      "after_collection": false,
       "audit": {
         "areas": [
           [
@@ -972,6 +986,7 @@
       "integrations": [],
       "live": [],
       "maintenance": [],
+      "on": [],
       "people": [
         "weekly_scorecard"
       ],

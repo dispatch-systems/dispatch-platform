@@ -13,6 +13,7 @@ pub mod audit;
 pub mod caching;
 pub mod collectors;
 pub mod commands;
+pub mod events;
 pub mod exposes;
 pub mod integrations;
 pub mod keeping;
@@ -35,7 +36,7 @@ pub use switches::{Sub, Switch, mandatory, optional, sub, tab};
 pub use upkeep::{Maintenance, Upkeep};
 
 use crate::{
-    Result, State,
+    Result,
     db::{Migrations, OwnMigrations, Store},
     server::{
         cache::{Cached, DataDomain},
@@ -44,7 +45,7 @@ use crate::{
 };
 use integrations::Integration;
 use people::People;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 /// Everything this build is made of. The app builds one and installs it at startup.
 pub struct Registry {
@@ -121,6 +122,7 @@ impl Registry {
         }
         integrations::check(self.features);
         exposes::check(self.features);
+        events::check(self.features);
         people::check(self);
         permissions::check(self);
         storage::check(self);
@@ -189,9 +191,6 @@ pub struct Feature {
     pub cached: &'static [Cached],
     /// Upkeep it needs the scheduler to run.
     pub maintenance: &'static [Maintenance],
-    /// Runs for the DSP after each of its collections succeeds, whichever it is, once its
-    /// outcome is recorded and before the dashboard hears of it.
-    pub after_collection: Option<fn(Arc<State>, String) -> Upkeep>,
     /// How its actions read in the activity log.
     pub audit: Audit,
     /// Fills a new DSP with demo data: the development seed's DSPs and Diagnostics' test
@@ -208,6 +207,9 @@ pub struct Feature {
     /// What it offers every other feature, each through a contract, by `expose!`: one
     /// feature at most offers each contract.
     pub exposes: &'static [exposes::Exposed],
+    /// What it does when something happens for a DSP, each by `on!`: a collection succeeding,
+    /// or another feature's event, as its contract crate says it.
+    pub on: &'static [events::On],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -234,12 +236,12 @@ pub const fn feature(name: &'static str) -> Feature {
         domains: &[],
         cached: &[],
         maintenance: &[],
-        after_collection: None,
         audit: Audit::NONE,
         demo: None,
         commands: None,
         people: &[],
         integrations: &[],
         exposes: &[],
+        on: &[],
     }
 }

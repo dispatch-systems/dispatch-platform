@@ -5,15 +5,12 @@ use super::contacts::Contact;
 use super::gather::{Gathered, gather};
 use super::{IdRow, photos};
 use dispatch_core::{
-    Result, State,
+    Result,
     db::Store,
     foundation::names,
-    manifest::{
-        Upkeep,
-        people::{self, Everyone, Person, Photo, Source},
-    },
+    manifest::people::{self, Everyone, Person, Photo, Source},
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 /// Everyone, for the features that show people: Timecard's employees and meal breaks name
 /// each by their code and show their photos.
@@ -38,10 +35,6 @@ impl people::Directory for Directory {
     }
     fn photo(&self, store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
         photos::photo_of(store, dsp, code)
-    }
-    /// The same pass as after a collection.
-    fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep {
-        super::maintenance::after_collection(state, dsp)
     }
 }
 

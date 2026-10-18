@@ -14,7 +14,13 @@ pub use backend::{Collected, DriverMatchStore};
 
 use dispatch_core::{
     db::{Kind, Migration, Migrations, OwnMigrations, migrations::Apply::Sql},
-    manifest::{Audit, Feature, feature, mandatory, people::Directory, perm},
+    manifest::{
+        Audit, Feature,
+        events::{CollectionSucceeded, PeopleChanged},
+        feature, mandatory,
+        people::Directory,
+        perm,
+    },
 };
 
 pub const FEATURE: Feature = Feature {
@@ -62,7 +68,6 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     maintenance: &[backend::maintenance::MAINTENANCE],
-    after_collection: Some(backend::maintenance::after_collection),
     // Its events name drivers by their codes, and the log puts today's names to them.
     audit: Audit {
         subjects: &["driver"],
@@ -76,6 +81,11 @@ pub const FEATURE: Feature = Feature {
         "directory",
         "Who an ID is: everyone the DSP's features name, told apart.",
     )],
+    // Whoever a collection or another feature brings in gets a code at once.
+    on: &[
+        dispatch_core::on!(CollectionSucceeded, backend::maintenance::collected),
+        dispatch_core::on!(PeopleChanged, backend::maintenance::changed),
+    ],
     ..feature("driver_match")
 };
 

@@ -148,6 +148,14 @@ cookie-free conditional downloads, schedule CRUD/execution, DVIC-only role grant
 and feature independence. The native scorecard regression exercises multiple queued
 performance-page requests, including a page initially selecting another station.
 
+## Exposed
+
+It exposes its short inspections as `short_inspections` (`contract/`,
+`dispatch-dvic-contract`): the days collected, every driver with a short inspection, and the
+short inspections over some days, a driver's or everyone's, a page at a time; with the source
+whose IDs name its drivers. Agent tools and other features read them through it, only while
+DVIC is on for the DSP, as the DVIC short inspections tool does.
+
 ## People
 
 Its inspections' drivers are Driver Match's `dvic` kind of data, each inspection showing

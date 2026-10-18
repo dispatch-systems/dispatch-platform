@@ -178,6 +178,8 @@ export type Tool = {
   type: string;
   /** The features it needs, by folder name, without their parts. */
   needs: string[];
+  /** The features whose contracts it reads through (`dispatch_<feature>_contract`), by folder name. */
+  reads: string[];
 };
 
 /** Every tool in `root`'s mcp/tools/, by file name. */
@@ -190,6 +192,9 @@ export function tools(root: string, features: Crate[]): Tool[] {
     .sort()
     .map((file) => toolOf(file.slice(0, -3), read(root, `mcp/tools/${file}`), features));
 }
+/** Rust source without its comments, strings and characters, each matched from where it starts. */
+const code = (source: string) =>
+  source.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"\\]|\\.)*"|'(?:[^'\\\n]|\\.)'/g, '');
 /** What the wiring needs of the tool in the file `module`.rs. */
 export function toolOf(module: string, source: string, features: Crate[]): Tool {
   const type = /\bimpl\s+Tool\s+for\s+(\w+)/.exec(source)?.[1];
@@ -201,7 +206,17 @@ export function toolOf(module: string, source: string, features: Crate[]): Tool 
   for (const name of needs)
     if (!features.some((feature) => feature.name === name))
       throw new Error(`mcp/tools/${module}.rs needs ${name}, which is no feature in features/`);
-  return { module, type, needs };
+  const reads = [
+    ...new Set(
+      [...code(source).matchAll(/\bdispatch_(\w+)_contract\b/g)].map((found) => found[1]!),
+    ),
+  ].sort();
+  for (const name of reads)
+    if (!features.some((feature) => feature.name === name))
+      throw new Error(
+        `mcp/tools/${module}.rs reads dispatch_${name}_contract, and ${name} is no feature in features/`,
+      );
+  return { module, type, needs, reads };
 }
 
 /** The features the MCP's tools need, by name. */
@@ -235,6 +250,15 @@ function installs(features: Crate[], list: Tool[]) {
   }
   return brought;
 }
+/** A feature's contract crate, from its manifest. */
+const contractCrate = (root: string, name: string) => {
+  const manifest = `features/${name}/contract/Cargo.toml`;
+  if (!fs.existsSync(path.join(root, manifest)))
+    throw new Error(`a tool reads ${name}'s contract, and ${manifest} isn't there`);
+  const crate = /^name\s*=\s*"([^"]+)"/m.exec(section(read(root, manifest), 'package'))?.[1];
+  if (!crate) throw new Error(`${manifest} names no package`);
+  return crate;
+};
 /** A collector's crate, from its manifest. */
 const collectorCrate = (root: string, name: string) => {
   const crate = /^name\s*=\s*"([^"]+)"/m.exec(
@@ -247,7 +271,8 @@ const collectorCrate = (root: string, name: string) => {
 /**
  * The MCP's manifest with the features its tools need: each a Cargo feature of its own, on by
  * default for the MCP's own tests, that brings the feature's crate and every crate its tests
- * install with it, each an optional dependency.
+ * install with it, each an optional dependency; and every contract its tools read through,
+ * always, as a contract stays whatever a build leaves out.
  */
 export function wiredMcpManifest(root: string, manifest: string, features: Crate[], list: Tool[]) {
   const brought = installs(features, list);
@@ -261,6 +286,10 @@ export function wiredMcpManifest(root: string, manifest: string, features: Crate
     ...[...brought.collectors.keys()].map((name) => ({
       crate: collectorCrate(root, name),
       line: `${collectorCrate(root, name)} = { path = "../collectors/${name}", optional = true }`,
+    })),
+    ...[...new Set(list.flatMap((tool) => tool.reads))].map((name) => ({
+      crate: contractCrate(root, name),
+      line: `${contractCrate(root, name)} = { path = "../features/${name}/contract" }`,
     })),
   ].sort((a, b) => a.crate.localeCompare(b.crate));
   const brings = (need: string) =>

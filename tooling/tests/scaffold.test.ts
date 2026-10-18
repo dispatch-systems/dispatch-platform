@@ -653,7 +653,7 @@ test('a slot is a backend module and a frontend module, declared, checked, re-ex
     manifest,
     / {4}\/\/\/ Its badges on the DSPs page\.\n {4}pub badges: &'static \[Badge\],\n\}/,
   );
-  assert.match(manifest, / {8}exposes: &\[\],\n {8}badges: &\[\],\n {4}\}/);
+  assert.match(manifest, / {8}on: &\[\],\n {8}badges: &\[\],\n {4}\}/);
   assert.match(manifest, / {8}badges::check\(self\);\n {8}agents::check\(self\);/);
   // The frontend slot adds its field by declaration merging, and the facade re-exports it.
   const frontend = file(plan, 'core/shell/frontend/runtime/slots/badges.ts');

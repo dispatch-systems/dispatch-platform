@@ -78,6 +78,41 @@ test('a tool is in a build only while every feature it needs is', () => {
   );
 });
 
+test("a tool reading a feature's contract brings the contract always, beside the feature", () => {
+  const root = workspace();
+  try {
+    fs.mkdirSync(path.join(root, 'features/dvic/contract'), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, 'features/dvic/contract/Cargo.toml'),
+      '[package]\nname = "dispatch-dvic-contract"\n',
+    );
+    const reading = toolOf(
+      'inspections',
+      `use dispatch_dvic_contract::{self as dvic, Asked};\npub struct T;\nimpl Tool for T {\n    const FEATURES: &'static [&'static str] = &["dvic"];\n}\n`,
+      features,
+    );
+    assert.deepEqual(reading.reads, ['dvic']);
+    const manifest = ['[features]', mcpMarker, '', '[dependencies]', mcpMarker, ''].join('\n');
+    assert.match(
+      wiredMcpManifest(root, manifest, features, [reading]),
+      /^dispatch-dvic-contract = \{ path = "\.\.\/features\/dvic\/contract" \}$/m,
+    );
+    assert.throws(
+      () => toolOf('x', 'use dispatch_teleport_contract::Beam;\nimpl Tool for X {}', features),
+      /reads dispatch_teleport_contract, and teleport is no feature/,
+    );
+    // Named in a comment or a string, a contract isn't read.
+    const naming = toolOf(
+      'x',
+      '//! Unlike dispatch_timecard_contract, this reads nothing.\n/* dispatch_dvic_contract */\nconst S: &str = "dispatch_routes_contract // \\" and more";\nimpl Tool for X {}\n',
+      features,
+    );
+    assert.deepEqual(naming.reads, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("the MCP brings each needed feature's crate, and what its tests install, only with it", () => {
   const root = workspace();
   try {

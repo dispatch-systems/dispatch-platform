@@ -8,7 +8,10 @@ use crate::{
     },
     db::now,
     ensure,
-    manifest::registry,
+    manifest::{
+        events::{self, CollectionSucceeded},
+        registry,
+    },
     server::cache::DataDomain,
 };
 use rusqlite::params;
@@ -272,13 +275,8 @@ async fn run(state: Arc<State>, job: JobRow, owner: String) {
         })
         .await;
     if succeeded {
-        for after in registry()
-            .features
-            .iter()
-            .filter_map(|f| f.after_collection)
-        {
-            after(state.clone(), changed_dsp.clone()).await;
-        }
+        let keeps = keeper.keeps();
+        events::publish(&state, &changed_dsp, CollectionSucceeded { keeps }).await;
     }
     state.updates.changed(&changed_dsp, keeper.keeps(), change);
     // A collection parses tens of megabytes; hand the freed pages back to the host

@@ -1,12 +1,15 @@
 //! What every Slack backend test installs. A test binary holds one registry, so each installs
 //! the same: Slack; a stand-in feature with an integration through it, which hears of Slack's
-//! events as an integration would and keeps what it heard; and a stand-in for where a DSP keeps
-//! its files, which keeps what's saved and written there in memory.
+//! events as an integration would and keeps what it heard, and hears when the DSP's people
+//! change; and a stand-in for where a DSP keeps its files, which keeps what's saved and written
+//! there in memory.
 use crate::FEATURE;
 use dispatch_core::{
     State,
     manifest::{
-        Feature, Upkeep, feature,
+        Feature, Upkeep,
+        events::PeopleChanged,
+        feature,
         integrations::{Heard, Integration, integration},
         optional,
     },
@@ -39,13 +42,27 @@ fn answer(
 ) -> Option<dispatch_core::Result<serde_json::Value>> {
     (method == "listening.ping").then(|| Ok(serde_json::json!({"ok": true, "team": team})))
 }
-/// A feature that works through Slack, switched off for every DSP until a test switches it on.
+/// A feature that works through Slack, on for a test's DSP as every feature is, until a test
+/// switches it off.
 static LISTENER: Feature = Feature {
     switch: optional("listening", "Listening", &[]),
     depends_on: &["slack"],
     integrations: &[LISTENING],
+    on: &[dispatch_core::on!(PeopleChanged, people_changed)],
     ..feature("listening")
 };
+/// Each DSP whose people the stand-in heard changed, in every test, once each time.
+static CHANGED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+fn people_changed(_: Arc<State>, dsp: String, _: PeopleChanged) -> Upkeep {
+    let mut kept = CHANGED.lock().unwrap_or_else(|poison| poison.into_inner());
+    kept.push(dsp);
+    Box::pin(async {})
+}
+/// How many times the stand-in heard the DSP `dsp`'s people changed.
+pub fn changed(dsp: &str) -> usize {
+    let kept = CHANGED.lock().unwrap_or_else(|poison| poison.into_inner());
+    kept.iter().filter(|at| *at == dsp).count()
+}
 /// What the stand-in heard of, in every test: each event's DSP, workspace and kind.
 static HEARD: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
 fn hear(_: std::sync::Arc<dispatch_core::State>, heard: Heard) -> Upkeep {

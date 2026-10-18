@@ -5,7 +5,10 @@ use crate::{
     db::{Store, iso},
     ensure,
     foundation::{config::ProviderMode, validate as v},
-    manifest::{people, registry},
+    manifest::{
+        events::{self, PeopleChanged},
+        registry,
+    },
     platform_owner::api::types::{BrowserHealth, DspFeatures, PlatformHealth},
     server::{
         http::{
@@ -301,7 +304,7 @@ async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -
         .iter()
         .any(|change| change.enabled && names_people(&change.feature))
     {
-        people::changed(state.clone(), id.clone()).await;
+        events::publish(&state, &id, PeopleChanged).await;
     }
     state
         .schedule_revision

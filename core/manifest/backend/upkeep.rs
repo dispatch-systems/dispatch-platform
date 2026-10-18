@@ -1,5 +1,5 @@
-//! The upkeep slots: work a feature runs for the platform on the scheduler (`maintenance`),
-//! and after each of its collections (`after_collection`).
+//! The upkeep slot: work a feature runs for the platform on the scheduler (`maintenance`).
+//! What it does after each collection is an event it hears (`events`).
 use crate::State;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
