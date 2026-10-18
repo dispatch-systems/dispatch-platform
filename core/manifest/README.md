@@ -28,36 +28,36 @@ Adding a slot, which `dispatchdev new slot <name>` writes as far as step 3:
 
 Every field of `Feature`, as `feature.rs` fills it.
 
-| Slot                  | Module         | What it adds                                                                                                                                                                                       |
-| --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                | `mod.rs`       | Its directory's name, which its switch, permissions and audit actions begin with.                                                                                                                  |
-| `place`               | `mod.rs`       | Where it sits among the features: its pages in the sidebar, its switch on the DSPs page, its section on the role sheet.                                                                            |
-| `depends_on`          | `mod.rs`       | The features and collectors it uses beyond those whose collections it keeps; its code may reach only these, core and itself.                                                                       |
-| `switch`              | `switches`     | Whether every DSP has it (`mandatory`) or the platform owner switches it per DSP (`optional`), with the connections it requires.                                                                   |
-| `subfeatures`         | `switches`     | The parts of its page switched on their own: its tabs (`tab`) and any other part (`sub`), each with the permissions it owns.                                                                       |
-| `permissions`         | `permissions`  | What a DSP's roles may grant, on the role sheet under its name: `perm`, with what each implies, sits under or lets its holder do.                                                                  |
-| `routes`              | `mod.rs`       | Its endpoints, each with its path and access, which the server checks before a handler runs; listed in its `tests/api/routes.txt`.                                                                 |
-| `settings`            | `settings`     | The server's settings it reads with `config.setting`, in groups that go together; a server with part of a group refuses to start.                                                                  |
-| `keeps`               | `keeping`      | The collections it keeps: for each, what a run needs, how what it brings is stored, and what a schedule of it queues (`Keeper`).                                                                   |
-| `schedule_aliases`    | `keeping`      | A name a schedule runs several of its collections by at once.                                                                                                                                      |
-| `live`                | `mod.rs`       | The permissions that may follow its collections' progress through the collection updates the dashboard waits on.                                                                                   |
-| `migrations`          | `storage`      | What it adds to a database it keeps whole: that database's one list.                                                                                                                               |
-| `own_migrations`      | `storage`      | What it adds to a database other owners add to, numbered by the feature from 1 and recorded under its name.                                                                                        |
-| `retired_migrations`  | `storage`      | The ledger of a database it no longer opens, kept so its retired storage can be read during an import.                                                                                             |
-| `retired_identifiers` | `retirement`   | Identifiers it renamed, migrated at startup and refused by current readers.                                                                                                                        |
-| `upgrade_storage`     | `retirement`   | An import of its storage from before, run before a collector's storage is opened.                                                                                                                  |
-| `tables`              | `storage`      | The tables it keeps, by database, which no other owner's code runs SQL on.                                                                                                                         |
-| `domains`             | `caching`      | The kinds of data its reviewed writes change, for the read cache.                                                                                                                                  |
-| `cached`              | `caching`      | What evicts the reads it caches, and any other owner's read its data feeds.                                                                                                                        |
-| `maintenance`         | `upkeep`       | Work the scheduler runs for it, each task at its own interval.                                                                                                                                     |
-| `audit`               | `audit`        | How its actions read in the activity log: the areas they are listed under, the kinds of record they name, and today's names.                                                                       |
-| `demo`                | `commands`     | What fills a new DSP with its demo data, for the development seed and Diagnostics' test DSPs.                                                                                                      |
-| `commands`            | `commands`     | Its operator commands of the binary, every one whose name begins with its prefix.                                                                                                                  |
-| `dsp_connection`      | `mod.rs`       | Whether it adds one of the DSP's own accounts to Settings' DSP Connections, as a collector's connection is.                                                                                        |
-| `people`              | `people/`      | Who its data names, for the feature that tells people apart: a `People` for each kind of data, with what else it knows of them.                                                                    |
-| `integrations`        | `integrations` | What it does through another feature's connection, switched on and off in that connection's settings for each of its accounts, and what it clears of an account the connection forgets (`forget`). |
-| `exposes`             | `exposes`      | What it offers every other feature, each through a contract; one feature at most offers each.                                                                                                      |
-| `on`                  | `events`       | What it does when something happens for a DSP: a collection succeeding, the DSP's people changing, or another feature's event.                                                                     |
+| Slot                  | Module         | What it adds                                                                                                                       |
+| --------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                | `mod.rs`       | Its directory's name, which its switch, permissions and audit actions begin with.                                                  |
+| `place`               | `mod.rs`       | Where it sits among the features: its pages in the sidebar, its switch on the DSPs page, its section on the role sheet.            |
+| `depends_on`          | `mod.rs`       | The features and collectors it uses beyond those whose collections it keeps; its code may reach only these, core and itself.       |
+| `switch`              | `switches`     | Whether every DSP has it (`mandatory`) or the platform owner switches it per DSP (`optional`), with the connections it requires.   |
+| `subfeatures`         | `switches`     | The parts of its page switched on their own: its tabs (`tab`) and any other part (`sub`), each with the permissions it owns.       |
+| `permissions`         | `permissions`  | What a DSP's roles may grant, on the role sheet under its name: `perm`, with what each implies, sits under or lets its holder do.  |
+| `routes`              | `mod.rs`       | Its endpoints, each with its path and access, which the server checks before a handler runs; listed in its `tests/api/routes.txt`. |
+| `settings`            | `settings`     | The server's settings it reads with `config.setting`, in groups that go together; a server with part of a group refuses to start.  |
+| `keeps`               | `keeping`      | The collections it keeps: for each, what a run needs, how what it brings is stored, and what a schedule of it queues (`Keeper`).   |
+| `schedule_aliases`    | `keeping`      | A name a schedule runs several of its collections by at once.                                                                      |
+| `live`                | `mod.rs`       | The permissions that may follow its collections' progress through the collection updates the dashboard waits on.                   |
+| `migrations`          | `storage`      | What it adds to a database it keeps whole: that database's one list.                                                               |
+| `own_migrations`      | `storage`      | What it adds to a database other owners add to, numbered by the feature from 1 and recorded under its name.                        |
+| `retired_migrations`  | `storage`      | The ledger of a database it no longer opens, kept so its retired storage can be read during an import.                             |
+| `retired_identifiers` | `retirement`   | Identifiers it renamed, migrated at startup and refused by current readers.                                                        |
+| `upgrade_storage`     | `retirement`   | An import of its storage from before, run before a collector's storage is opened.                                                  |
+| `tables`              | `storage`      | The tables it keeps, by database, which no other owner's code runs SQL on.                                                         |
+| `domains`             | `caching`      | The kinds of data its reviewed writes change, for the read cache.                                                                  |
+| `cached`              | `caching`      | What evicts the reads it caches, and any other owner's read its data feeds.                                                        |
+| `maintenance`         | `upkeep`       | Work the scheduler runs for it, each task at its own interval.                                                                     |
+| `audit`               | `audit`        | How its actions read in the activity log: the areas they are listed under, the kinds of record they name, and today's names.       |
+| `demo`                | `commands`     | What fills a new DSP with its demo data, for the development seed and Diagnostics' test DSPs.                                      |
+| `commands`            | `commands`     | Its operator commands of the binary, every one whose name begins with its prefix.                                                  |
+| `dsp_connection`      | `mod.rs`       | Whether it adds one of the DSP's own accounts to Settings' DSP Connections, as a collector's connection is.                        |
+| `people`              | `people/`      | Who its data names, for the feature that tells people apart: a `People` for each kind of data, with what else it knows of them.    |
+| `integrations`        | `integrations` | What it does through another feature's connection, switched on and off for each of its accounts, and clears of one forgotten.      |
+| `exposes`             | `exposes`      | What it offers every other feature, each through a contract; one feature at most offers each.                                      |
+| `on`                  | `events`       | What it does when something happens for a DSP: a collection succeeding, the DSP's people changing, or another feature's event.     |
 
 `collectors.rs` holds what a collector declares instead, `Collector`, and `agents.rs` the one
 piece outside the features that lets outside agents use Dispatch, `Agents`.

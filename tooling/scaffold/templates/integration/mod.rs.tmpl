@@ -23,7 +23,8 @@ use dispatch_core::manifest::integrations::{Integration, integration};
 pub const ID: &str = "{{owner}}.{{name}}";
 /// What it is to Slack: the permissions it needs of Slack, and the events it's told of. A
 /// Slack method only it calls is answered in fixture mode by its `fixture`, so previews and
-/// tests never reach Slack.
+/// tests never reach Slack.{{^own}} Once it keeps rows by workspace, its `forget` clears them as
+/// Slack forgets one.{{/own}}
 pub const INTEGRATION: Integration = Integration {
     needs: &[{{needs}}],
     hears: &[{{hears}}],

@@ -37,9 +37,9 @@ pub struct Integration {
     /// named first: the connection's fixture asks it of each method it doesn't answer itself,
     /// so previews and tests never reach the service. None for one it doesn't call.
     pub fixture: Option<Fixture>,
-    /// Clears what it keeps of the DSP's account, as the connection forgets it, as
-    /// disconnecting a Slack workspace does: before the connection clears its own, whether or
-    /// not the feature is on. None for one keeping nothing of an account, or whose tables the
+    /// Clears what it keeps of the DSP's account when the connection forgets it, as on
+    /// disconnecting a Slack workspace: before the connection clears its own, whether or not
+    /// its feature is on. None for one keeping nothing of an account, or whose tables the
     /// connection's own feature declares, as Slack's own integrations' are.
     pub forget: Option<Forget>,
 }
