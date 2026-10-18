@@ -21,6 +21,19 @@ use dispatch_core::{
     tenancy::api::audit::AuditArea::Connections,
 };
 
+/// What another feature's integration through Slack uses of Slack, beside core's
+/// `Integration`: the bot that acts in a DSP's workspace, and linking a workspace's channels to
+/// folders where the DSP keeps its files, as Import Files and Sync Canvases do. Its folder takes
+/// their shape, `integrations/<name>/` in its feature, as `dispatchdev new integration <name>
+/// --to <feature>` writes it, and its feature declares `slack` in `depends_on` once it uses this.
+pub mod kit {
+    pub use crate::backend::bot::Bot;
+    pub use crate::backend::channel_links::{
+        Linking,
+        storage::{Link, LinkStore},
+    };
+}
+
 pub const FEATURE: Feature = Feature {
     place: 120,
     switch: optional("slack", "Slack", &[]),
