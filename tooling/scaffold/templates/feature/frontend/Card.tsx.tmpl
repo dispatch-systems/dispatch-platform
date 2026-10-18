@@ -1,0 +1,13 @@
+import type { DspView } from '{{toRoot}}{{dspView}}';
+
+/** {{label}}'s card on a DSP's Connections tab: the account of the DSP's it connects. */
+export function {{pascal}}Card(_: { view: DspView }) {
+  return (
+    <article className="archived-connection-card" aria-labelledby="{{slug}}-connection">
+      <header>
+        <h3 id="{{slug}}-connection">{{label}}</h3>
+      </header>
+      {/* TODO(scaffold): the DSP's account, and connecting and disconnecting it. */}
+    </article>
+  );
+}

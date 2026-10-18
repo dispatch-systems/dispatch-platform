@@ -18,16 +18,12 @@ import { make, repositoryRoot as root } from './scaffold.js';
  * its collector first and a tool its feature. */
 const MADE: [string, ...string[]][] = [
   ['collector', 'smokesite'],
-  [
-    'feature',
-    'smoke_keeper',
-    '--keeps',
-    'smokesite.records',
-    '--tables',
-    'smoke_keeper',
-    '--page',
-    '--api',
-  ],
+  ['feature', 'smoke_keeper', '--preset', 'keeper', '--keeps', 'smokesite.records'],
+  // Each other preset.
+  ['feature', 'smoke_tabs', '--preset', 'page-with-tabs'],
+  ['feature', 'smoke_connection', '--preset', 'connection'],
+  ['feature', 'smoke_source', '--preset', 'people-source'],
+  ['feature', 'smoke_settings', '--preset', 'settings', '--mandatory'],
   [
     'feature',
     'smoke_people',

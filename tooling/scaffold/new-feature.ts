@@ -104,7 +104,18 @@ export function withPreset(argv: string[]) {
 }
 
 const FLAGS = ['mandatory', 'api', 'page', 'settings', 'connection', 'no-backend', 'dry-run'];
-const OPTIONS = ['tables', 'keeps', 'people', 'tab-of', 'tabs', 'label', 'icon', 'out', 'root'];
+const OPTIONS = [
+  'tables',
+  'keeps',
+  'people',
+  'tab-of',
+  'tabs',
+  'label',
+  'icon',
+  'preset',
+  'out',
+  'root',
+];
 /** Where the shell's frontend reads a DSP view's type from, relative to the root. */
 const DSP_VIEW = 'core/accounts/api/index.js';
 
@@ -380,6 +391,7 @@ export function featureValues(root: string, argv: string[], adding = false) {
     tab: Boolean(host),
     settings,
     prefetch: page && api,
+    summaryUrl: api && (page || connection),
     pageKey: /^[A-Za-z_$][\w$]*$/.test(slug) ? slug : `'${slug}'`,
     host: host ?? '',
     hostPage: hostPage.id,

@@ -1,5 +1,9 @@
 import type { DspView } from '{{toRoot}}{{dspView}}';
-import { {{#api}}DataState, {{/api}}Header } from '{{toRoot}}core/shell/frontend/ui/index.js';
+import { {{#api}}DataState, {{/api}}Header{{#ownTabs}}, Tabs{{/ownTabs}} } from '{{toRoot}}core/shell/frontend/ui/index.js';
+{{#ownTabs}}
+import { useUpdateState } from '{{toRoot}}core/shell/frontend/runtime/browser-update.js';
+import { HostedTab, usePageTabs } from '{{toRoot}}core/shell/frontend/runtime/PageTabs.js';
+{{/ownTabs}}
 {{#api}}
 import { use{{pascal}}Summary } from '../api/client.js';
 {{/api}}
@@ -8,9 +12,26 @@ export function {{pascal}}Page(_: { view: DspView }) {
 {{#api}}
   const { data, error, refresh } = use{{pascal}}Summary();
 {{/api}}
+{{#ownTabs}}
+  // Its own tabs, and those other features add to it.
+  const [ownTab, setTab] = useUpdateState('{{slug}}-tab', '{{tabDefault}}');
+  const tabs = usePageTabs('{{slug}}', [{{tabItems}}]);
+  const tab = tabs.open?.id ?? ownTab;
+{{/ownTabs}}
   return (
     <>
       <Header title="{{label}}" />
+{{#ownTabs}}
+      <Tabs
+        label="{{label}}"
+        value={tab}
+        items={tabs.items}
+        onIntent={tabs.warm}
+        onChange={(id) => tabs.change(id, setTab)}
+      />
+      {tabs.open && <HostedTab tab={tabs.open} />}
+{{tabBlocks}}
+{{/ownTabs}}
 {{#api}}
       <DataState data={data} error={error} retry={refresh}>
         {/* TODO(scaffold): what the page shows of its summary, as (summary) => … */}
@@ -18,7 +39,9 @@ export function {{pascal}}Page(_: { view: DspView }) {
       </DataState>
 {{/api}}
 {{^api}}
+{{^ownTabs}}
       {/* TODO(scaffold): what the page shows. */}
+{{/ownTabs}}
 {{/api}}
     </>
   );
