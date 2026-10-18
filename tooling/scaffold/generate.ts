@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { wire } from './wire.js';
 
 // `dispatchdev generate`: writes everything generated from what the owners declare, after any
@@ -70,7 +71,7 @@ export function failure(log: string) {
     'right:',
     'AssertionError',
   ];
-  const lines = log.replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+  const lines = stripVTControlCharacters(log).split('\n');
   const found: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
