@@ -47,6 +47,13 @@ pub const FEATURE: Feature = Feature {
         ..Audit::NONE
     },
     people: &[&backend::people::PEOPLE],
+    // What it offers every other feature and agent tool, through its contract.
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_driver_profiles_contract::AmazonRoster,
+        &backend::exposed::EXPOSED,
+        "amazon_roster",
+        "TODO(scaffold): what it offers, in a sentence.",
+    )],
     ..feature("driver_profiles")
 };
 

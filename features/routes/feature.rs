@@ -84,6 +84,13 @@ pub const FEATURE: Feature = Feature {
         areas: &[("routes.", Collections)],
         ..Audit::NONE
     },
+    // What it offers every other feature and agent tool, through its contract.
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_routes_contract::DriverRoutes,
+        &backend::exposed::EXPOSED,
+        "driver_routes",
+        "TODO(scaffold): what it offers, in a sentence.",
+    )],
     ..feature("routes")
 };
 

@@ -1,0 +1,17 @@
+[package]
+name = "dispatch-timecard-contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "contract.rs"
+doctest = false
+
+# Core alone: any feature or agent tool may use the contract, and it stays when Timecard is
+# left out of a build, when nothing offers it.
+[dependencies]
+dispatch-core = { path = "../../../core" }

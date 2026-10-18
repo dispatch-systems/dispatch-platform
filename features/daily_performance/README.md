@@ -35,3 +35,5 @@ their field contract is not invented. Raw provider fields are retained for later
 
 Its drivers are Driver Match's `daily_performance` kind of data, counted in the days their
 quality was reported, each showing them driving.
+
+- **Exposed:** `daily_metrics`, through its contract in `contract/` (`dispatch-daily-performance-contract`), for any feature or agent tool, while it's on for the DSP.

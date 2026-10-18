@@ -36,3 +36,4 @@ yet: its roster bar sits at the top of Driver Match's Settings tab.
   as active. It names each listed associate's photo by its digest and serves it, so Driver
   Match shows it.
 - **Log:** `driver_profiles.collection_requested`, under Collections.
+- **Exposed:** `amazon_roster`, through its contract in `contract/` (`dispatch-driver-profiles-contract`), for any feature or agent tool, while it's on for the DSP.

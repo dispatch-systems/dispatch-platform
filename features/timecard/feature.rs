@@ -192,6 +192,13 @@ pub const FEATURE: Feature = Feature {
     },
     demo: Some(punches::demo),
     people: &[&punches::people::PEOPLE, &meals::people::PEOPLE],
+    // What it offers every other feature and agent tool, through its contract.
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_timecard_contract::Timecards,
+        &backend::exposed::EXPOSED,
+        "timecards",
+        "TODO(scaffold): what it offers, in a sentence.",
+    )],
     ..feature("timecard")
 };
 

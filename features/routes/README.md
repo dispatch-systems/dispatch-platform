@@ -27,3 +27,4 @@ name `routedata` on disk.
 - **Log:** `routes.collection_requested`, `routes.retention_changed` and `routes.data_expired`,
   under Collections.
 - **People:** its drivers and their days are Driver Match's `routes` kind of data.
+- **Exposed:** `driver_routes`, through its contract in `contract/` (`dispatch-routes-contract`), for any feature or agent tool, while it's on for the DSP.

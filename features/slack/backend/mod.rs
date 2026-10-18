@@ -21,6 +21,7 @@ pub(crate) mod bot;
 pub(crate) mod channel_links;
 pub(crate) mod channels;
 pub(crate) mod connection;
+pub(crate) mod exposed;
 pub(crate) mod fixture;
 pub(crate) mod home;
 pub(crate) mod inbound;

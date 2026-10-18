@@ -68,3 +68,4 @@ Timecard's collections. It names drivers through Driver Match.
   publications to their actual collection job. Each day validates and publishes all scopes
   in one transaction. Existing meal fields and privacy cleanup remain unchanged. The additive
   table can remain during a code rollback; do not remove it or rewrite shipped migrations.
+- **Exposed:** `timecards`, through its contract in `contract/` (`dispatch-timecard-contract`), for any feature or agent tool, while it's on for the DSP.

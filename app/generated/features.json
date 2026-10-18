@@ -59,7 +59,13 @@
         "POST /api/dsp/daily-performance/schedules/{key}/enabled",
         "POST /api/dsp/daily-performance/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "daily_metrics",
+          "contract": "dispatch_daily_performance_contract::DailyMetrics",
+          "about": "TODO(scaffold): what it offers, in a sentence."
+        }
+      ],
       "settings": []
     },
     "switch": "daily_performance",
@@ -313,7 +319,13 @@
         "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
         "POST /api/dsp/driver-profiles/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "amazon_roster",
+          "contract": "dispatch_driver_profiles_contract::AmazonRoster",
+          "about": "TODO(scaffold): what it offers, in a sentence."
+        }
+      ],
       "settings": []
     },
     "switch": "driver_profiles",
@@ -532,7 +544,13 @@
         "POST /api/dsp/routes/schedules/{key}/enabled",
         "POST /api/dsp/routes/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "driver_routes",
+          "contract": "dispatch_routes_contract::DriverRoutes",
+          "about": "TODO(scaffold): what it offers, in a sentence."
+        }
+      ],
       "settings": []
     },
     "switch": "routes",
@@ -667,7 +685,13 @@
         "POST /api/dsp/slack/workspaces/{team}/canvases/chosen",
         "POST /api/dsp/slack/workspaces/{team}/canvases/chosen/{canvas}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "chat_accounts",
+          "contract": "dispatch_slack_contract::ChatAccounts",
+          "about": "TODO(scaffold): what it offers, in a sentence."
+        }
+      ],
       "settings": [
         [
           "SLACK_CLIENT_ID",
@@ -848,7 +872,13 @@
         "POST /api/dsp/schedules/{key}/enabled",
         "POST /api/dsp/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "timecards",
+          "contract": "dispatch_timecard_contract::Timecards",
+          "about": "TODO(scaffold): what it offers, in a sentence."
+        }
+      ],
       "settings": []
     },
     "switch": "timecard",
@@ -1004,7 +1034,13 @@
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "driver_scorecards",
+          "contract": "dispatch_weekly_scorecard_contract::DriverScorecards",
+          "about": "TODO(scaffold): what it offers, in a sentence."
+        }
+      ],
       "settings": []
     },
     "switch": "weekly_scorecard",

@@ -40,3 +40,5 @@ requires restoring a consistent pre-transition snapshot of the platform, jobs an
 
 Its scorecards' drivers are Driver Match's `weekly_scorecard` kind of data, counted in the
 weeks they were scored, each showing them driving.
+
+- **Exposed:** `driver_scorecards`, through its contract in `contract/` (`dispatch-weekly-scorecard-contract`), for any feature or agent tool, while it's on for the DSP.

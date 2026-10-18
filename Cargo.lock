@@ -693,11 +693,19 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-daily-performance-contract",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-daily-performance-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
@@ -745,11 +753,19 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-driver-profiles-contract",
  "rusqlite",
  "serde",
  "serde_json",
  "tokio",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-driver-profiles-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
@@ -855,6 +871,7 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-routes-contract",
  "flate2",
  "rusqlite",
  "serde",
@@ -862,6 +879,13 @@ dependencies = [
  "tempfile",
  "tokio",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-routes-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
@@ -888,6 +912,7 @@ dependencies = [
  "base64 0.23.1",
  "dispatch-core",
  "dispatch-documents-contract",
+ "dispatch-slack-contract",
  "futures-util",
  "hmac",
  "reqwest",
@@ -899,6 +924,13 @@ dependencies = [
  "tokio",
  "ts-rs",
  "url",
+]
+
+[[package]]
+name = "dispatch-slack-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
@@ -933,12 +965,20 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-paycom",
+ "dispatch-timecard-contract",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "ts-rs",
  "url",
+]
+
+[[package]]
+name = "dispatch-timecard-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
@@ -962,11 +1002,19 @@ dependencies = [
  "chrono-tz",
  "dispatch-core",
  "dispatch-cortex",
+ "dispatch-weekly-scorecard-contract",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-weekly-scorecard-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]

@@ -141,6 +141,13 @@ pub const FEATURE: Feature = Feature {
     }),
     // Its workspaces' members, for Driver Match: whom the DSP can reach, not whom it employs.
     people: &[&backend::people::PEOPLE],
+    // What it offers every other feature and agent tool, through its contract.
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_slack_contract::ChatAccounts,
+        &backend::exposed::EXPOSED,
+        "chat_accounts",
+        "TODO(scaffold): what it offers, in a sentence.",
+    )],
     ..feature("slack")
 };
 

@@ -28,6 +28,7 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true }
 ts-rs = { workspace = true, optional = true }
+dispatch-routes-contract = { path = "contract" }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }

@@ -278,6 +278,7 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   `fixture-signing-secret`, so tests send requests as Slack would. It answers each method
   Dispatch calls, and an integration's own answer a method only that integration calls; any
   other fails, so a call nothing answers shows in a test or a preview.
+- **Exposed:** `chat_accounts`, through its contract in `contract/` (`dispatch-slack-contract`), for any feature or agent tool, while it's on for the DSP.
 
 ## Slack's app
 

@@ -57,6 +57,13 @@ pub const FEATURE: Feature = Feature {
         ..Audit::NONE
     },
     people: &[&backend::people::PEOPLE],
+    // What it offers every other feature and agent tool, through its contract.
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_daily_performance_contract::DailyMetrics,
+        &backend::exposed::EXPOSED,
+        "daily_metrics",
+        "TODO(scaffold): what it offers, in a sentence.",
+    )],
     ..feature("daily_performance")
 };
 
