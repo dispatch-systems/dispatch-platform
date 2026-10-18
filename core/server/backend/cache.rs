@@ -159,6 +159,14 @@ fn evicts(read: &str, domain: DataDomain) -> bool {
             Evicted::ByAllBut(domains) => !domains.contains(&domain),
         })
 }
+/// The most the read cache keeps in all, by its estimates: room for the working sets of
+/// several busy DSPs at once, each a people directory with its feature's reads beside it, so
+/// one DSP's reads don't push another's out.
+const KEPT: usize = 64 * 1024 * 1024;
+/// The most one result may be, by its estimate, to be kept: no one result fills the cache.
+const LARGEST: usize = 16 * 1024 * 1024;
+/// The most results the read cache keeps.
+const ENTRIES: usize = 256;
 #[derive(Default)]
 pub struct ReadCache {
     entries: Mutex<VecDeque<Entry>>,
@@ -252,15 +260,14 @@ impl ReadCache {
         }
         let value = load()?;
         let bytes = size(&value)?;
-        const BYTES: usize = 8 * 1024 * 1024;
-        if bytes <= BYTES
+        if bytes <= LARGEST
             && let Ok(mut entries) = self.entries.lock()
         {
             entries.retain(|entry| {
                 (entry.key != key || entry.scope != scope) && entry.revision == revision
             });
-            while entries.len() >= 64
-                || entries.iter().map(|entry| entry.bytes).sum::<usize>() + bytes > BYTES
+            while entries.len() >= ENTRIES
+                || entries.iter().map(|entry| entry.bytes).sum::<usize>() + bytes > KEPT
             {
                 entries.pop_front();
             }
