@@ -6,7 +6,9 @@ import {
   features,
   format,
   formatRust,
+  files,
   pageOf,
+  peopleSources,
   parseArguments,
   read,
   repositoryRoot,
@@ -454,6 +456,20 @@ export async function planAdd(root: string, argv: string[]) {
     }
     if (merged !== current) plan.changes.set(file, await format(file, merged));
   }
+  // A collector its people come from is one its tests install it with, as the registry wants
+  // each feature's dependencies installed.
+  const site = peopleSources(root).find((source) => source.id === value)?.site;
+  if (piece === 'people' && site)
+    for (const file of files(root, dir, /\.rs$/)) {
+      const current = plan.changes.get(file) ?? read(root, file);
+      const collector = `&dispatch_${site}::COLLECTOR`;
+      const merged = current.replace(/testing::install\(&\[([^\]]*)\]/g, (call, list: string) =>
+        list.includes(collector)
+          ? call
+          : `testing::install(&[${[...items(`[${list}]`), collector].join(', ')}]`,
+      );
+      if (merged !== current) plan.changes.set(file, merged);
+    }
   // Its Rust as rustfmt leaves it: the files it writes together, and each it changes alone,
   // since that file's modules aren't beside it.
   formatRust(plan);

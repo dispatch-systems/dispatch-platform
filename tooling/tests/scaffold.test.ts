@@ -1000,6 +1000,11 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
     /UniformsStore|own_migrations: &\[OwnMigrations \{\s*kind: Kind::DSP,\s*list: &\[Migration \{\s*id: 1,/,
   );
   assert(![...people.files.keys()].some((file) => /storage|migrations/.test(file)));
+  // Its tests install it with the collector it now depends on, as the registry wants.
+  const installs = [...people.changes].filter(([file]) => file.includes('/tests/'));
+  assert(installs.length, 'no test of uniforms installs it');
+  for (const [, text] of installs)
+    assert.match(text, /testing::install\(&\[[^\]]*&dispatch_paycom::COLLECTOR\]/);
 
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
   await assert.rejects(add('page', '--to', 'documents'), /documents has a page already/);
