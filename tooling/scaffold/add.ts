@@ -157,24 +157,58 @@ function statements(source: string, start: RegExp) {
   }
   return found;
 }
-/** The names a `use` brings, with the path each comes from, for flat and one-level trees. */
+/** The names a `use` brings, each with the path it comes from, however deep its tree. */
 function useNames(statement: string): [string, string][] {
-  const flat = statement.replace(/\s+/g, ' ');
-  const tree = /^use ([\w:]+)::\{(.*)\};$/.exec(flat);
-  if (!tree) {
-    const one = /^use ([\w:]+)::(\w+);$/.exec(flat);
-    return one ? [[one[1]!, one[2]!]] : [];
+  const tree = statement
+    .replace(/\s+/g, ' ')
+    .replace(/^(pub(\([^)]*\))? )?use /, '')
+    .replace(/;$/, '')
+    .trim();
+  return treeNames(tree, '');
+}
+function treeNames(tree: string, prefix: string): [string, string][] {
+  const brace = tree.indexOf('{');
+  if (brace < 0) {
+    const parts = tree.split('::');
+    const path = [prefix, ...parts.slice(0, -1)].filter(Boolean).join('::');
+    const leaf = parts.at(-1)!.split(' as ').at(-1)!.trim();
+    return [[path, leaf === 'self' ? path.split('::').at(-1)! : leaf]];
   }
-  return items(`[${tree[2]}]`).flatMap((item): [string, string][] => {
-    const nested = /^(\w+)::\{(.*)\}$/.exec(item);
-    if (nested)
-      return items(`[${nested[2]}]`).map((name): [string, string] => [
-        `${tree[1]}::${nested[1]}`,
-        name.split('::').at(-1)!,
-      ]);
-    const parts = item.split('::');
-    return [[[tree[1], ...parts.slice(0, -1)].join('::'), parts.at(-1)!]];
-  });
+  const base = [prefix, tree.slice(0, brace).replace(/::$/, '')].filter(Boolean).join('::');
+  const inner = tree.slice(brace + 1, closing(tree, brace));
+  return items(`[${inner}]`).flatMap((item) => treeNames(item, base));
+}
+/** `text` importing `name` from `from`: in a group of that path's names if one is there. */
+function withImport(text: string, from: string, name: string) {
+  const last = from.split('::').at(-1)!;
+  for (const statement of statements(text, /^use /)) {
+    if (!useNames(statement).some(([path]) => path === from)) continue;
+    const group = statement.indexOf(`${last}::{`);
+    if (group >= 0) {
+      const at = group + last.length + 3;
+      return text.replace(statement, `${statement.slice(0, at)}${name}, ${statement.slice(at)}`);
+    }
+    const one = new RegExp(`^use ${from}::(\\w+);$`).exec(statement.trim());
+    if (one) return text.replace(statement, `use ${from}::{${one[1]}, ${name}};`);
+  }
+  const lastUse = statements(text, /^use /).at(-1);
+  if (lastUse) {
+    const at = text.indexOf(lastUse) + lastUse.length;
+    return `${text.slice(0, at)}\nuse ${from}::${name};${text.slice(at)}`;
+  }
+  const at = text.indexOf('\npub const FEATURE');
+  return `${text.slice(0, at)}\nuse ${from}::${name};\n${text.slice(at)}`;
+}
+/** `text` with `line` after the last line `pattern` matches, or else before `before`'s first. */
+function placed(text: string, line: string, pattern: RegExp, before: RegExp) {
+  const last = [...text.matchAll(pattern)].at(-1);
+  if (last) {
+    const at = last.index! + last[0].length + 1;
+    return `${text.slice(0, at)}${line}\n${text.slice(at)}`;
+  }
+  const first = before.exec(text);
+  const at = first ? first.index : text.indexOf('\npub const FEATURE') + 1;
+  return `${text.slice(0, at)}${line}\n\n${text.slice(at)}`;
 }
 /** The feature's manifest with what the piece's adds; what it can't add goes in `left`. */
 export function mergeRust(
@@ -186,6 +220,7 @@ export function mergeRust(
 ) {
   let text = target;
   const struct = (source: string) => source.indexOf('{', source.indexOf('pub const FEATURE'));
+  const id = (item: string) => /"([^"]+)"/.exec(item)?.[1] ?? item;
   // Its fields: a list's entries join the feature's list, and another field is added whole.
   for (const field of entries(piece, struct(piece)).entries) {
     if (!FIELDS.includes(field.name)) continue;
@@ -200,24 +235,33 @@ export function mergeRust(
       left.push(`its manifest declares ${field.name} already: ${field.text.trim()}`);
       continue;
     }
-    const id = (item: string) => /"([^"]+)"/.exec(item)?.[1] ?? item;
     const there = items(have.text).map(id);
-    // Of the permissions, those the piece uses.
-    const added = items(field.text).filter(
+    // Of the permissions, those the piece uses, implying only permissions the feature has.
+    let added = items(field.text).filter(
       (item) =>
         !there.includes(id(item)) &&
         (field.name !== 'permissions' || uses.some((use) => id(item).endsWith(`.${use}`))),
     );
+    const known = new Set([...there, ...added.map(id)]);
+    added = added.map((item) =>
+      item.replace(/\s*\.implies\(&\[([^\]]*)\]\)/, (_, list: string) => {
+        const kept = items(`[${list}]`).filter((each) => known.has(id(each)));
+        return kept.length ? `.implies(&[${kept.join(', ')}])` : '';
+      }),
+    );
     if (added.length) text = appended(text, text.indexOf('&[', have.start) + 1, added);
   }
-  // Its modules and re-exports, after the feature's own.
-  for (const line of statements(piece, /^(pub )?mod \w+;|^pub use /)) {
+  // Its modules first, then its re-exports, each after the feature's own.
+  for (const line of statements(piece, /^(pub(\([^)]*\))? )?mod \w+;/)) {
+    const module = /mod (\w+);/.exec(line)![1];
+    if (new RegExp(`^(pub(\\([^)]*\\))? )?mod ${module};`, 'm').test(text)) continue;
+    text = placed(text, line, /^(?:pub(?:\([^)]*\))? )?mod \w+;$/gm, /^(pub )?use /m);
+  }
+  for (const line of statements(piece, /^pub use /)) {
     // A re-export of what the piece writes, never of what it leaves out.
     const from = /^pub use ([\w:]+)::/.exec(line)?.[1];
     if (text.includes(line) || (from && !writes(from.replace(/::/g, '/')))) continue;
-    const last = [...text.matchAll(/^(?:pub )?mod \w+;$/gm)].at(-1);
-    const at = last ? last.index! + last[0].length + 1 : text.indexOf('\n\n') + 2;
-    text = `${text.slice(0, at)}${line}\n${text.slice(at)}`;
+    text = placed(text, line, /^pub use [^;]*;$/gms, /^use /m);
   }
   // Items after the manifest, as its API types' export: added whole unless one is there.
   const tail = piece.slice(closing(piece, struct(piece)) + 2).trim();
@@ -231,14 +275,12 @@ export function mergeRust(
   const imported = new Set(
     statements(text, /^use /).flatMap((line) => useNames(line).map(([, n]) => n)),
   );
-  const body = text.replace(/^use [^;]*;$/gms, '');
-  const missing = statements(piece, /^use /)
-    .flatMap(useNames)
-    .filter(([, name]) => !imported.has(name) && new RegExp(`\\b${name}\\b`).test(body));
-  for (const [from, name] of missing) {
-    const at = text.indexOf('\npub const FEATURE');
-    text = `${text.slice(0, at)}\nuse ${from}::${name};${text.slice(at)}`;
-  }
+  const body = text.replace(/^use [^;]*;$/gms, '').replace(/\/\/[^\n]*/g, '');
+  for (const [from, name] of statements(piece, /^use /).flatMap(useNames))
+    if (!imported.has(name) && new RegExp(`\\b${name}\\b`).test(body)) {
+      text = withImport(text, from, name);
+      imported.add(name);
+    }
   return text;
 }
 
@@ -316,12 +358,19 @@ export function mergeTypeScript(target: string, piece: string) {
     const have = own.find((each) => each.name === key.name);
     if (!have)
       text = `${text.slice(0, end).trimEnd()}\n${key.text.replace(/^\n+/, '').trim()}\n${text.slice(end)}`;
-    else if (key.text.includes('[') && text.slice(have.start, have.end).includes('['))
+    else if (key.text.includes('[') && text.slice(have.start, have.end).includes('[')) {
+      // An entry's id is its own among the feature's: one there already is the feature's.
+      const ids = (list: string) =>
+        items(list.slice(list.indexOf('['))).map((item) => /^\{\s*id: '([^']+)'/.exec(item)?.[1]);
+      const taken = ids(text.slice(have.start, have.end));
+      const twice = ids(key.text).find((id) => id && taken.includes(id));
+      if (twice) throw new UsageError(`Its ${key.name} holds ${twice} already`);
       text = appended(
         text,
         text.indexOf('[', have.start),
         items(key.text.slice(key.text.indexOf('['))),
       );
+    }
   }
   return text;
 }
@@ -384,6 +433,16 @@ export async function planAdd(root: string, argv: string[]) {
   if (piece === 'people' && !args.options.has('table'))
     throw new UsageError('people reads who a table names: add --table <table>');
   const manifest = read(root, `${dir}/feature.rs`);
+  // A permission the piece uses that the feature retired can't come back.
+  for (const use of known.uses) {
+    const permission = `${name}.${use}`;
+    if (
+      new RegExp(`retired_identifiers:[^;]*\\("${permission.replace('.', '\\.')}"`).test(manifest)
+    )
+      throw new UsageError(
+        `${name} retired ${permission}, which the ${piece} would use: add it by hand`,
+      );
+  }
   const label = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
   // The piece as the feature's templates write it, for the feature as it is.
   const { plan: rendered } = await renderFeature(
@@ -403,7 +462,11 @@ export async function planAdd(root: string, argv: string[]) {
   const left: string[] = [];
   // A new feature's own storage and first migration, which a piece added to one never needs.
   const own = /\/(backend\/storage\.rs|tests\/backend\/(storage|feature)\.rs|migrations\/.*)$/;
-  const wanted = [...rendered.files].filter(([file]) => !own.test(file));
+  // A browser test only for a piece with a screen.
+  const screen = ['page', 'tab-of', 'settings'].includes(piece!);
+  const wanted = [...rendered.files].filter(
+    ([file]) => !own.test(file) && (screen || !file.includes('/tests/browser/')),
+  );
   const wrote = (file: string) => exists(root, file) || wanted.some(([each]) => each === file);
   const fresh = new Set(wanted.map(([file]) => file).filter((file) => !exists(root, file)));
   for (const [file, content] of wanted) {
@@ -426,7 +489,8 @@ export async function planAdd(root: string, argv: string[]) {
         .filter((line) => {
           const module = /mod (\w+);/.exec(line)?.[1];
           const at = `${file.slice(0, file.lastIndexOf('/'))}/${module}`;
-          return module && !current.includes(line) && (wrote(`${at}.rs`) || exists(root, at));
+          const declared = new RegExp(`^(pub(\\([^)]*\\))? )?mod ${module};`, 'm');
+          return module && !declared.test(current) && (wrote(`${at}.rs`) || exists(root, at));
         })
         .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
     else if (file.endsWith('/routes.txt'))
@@ -435,10 +499,16 @@ export async function planAdd(root: string, argv: string[]) {
         .filter((line) => /^[A-Z]+ \//.test(line) && !current.includes(line))
         .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
     else if (file.endsWith('/README.md'))
+      // Its line, after the README's last line of what the feature declares.
       merged = content
         .split('\n')
         .filter((line) => line.startsWith(`- **${known.readme}:**`) && !current.includes(line))
-        .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
+        .reduce((text, line) => {
+          const last = [...text.matchAll(/^- \*\*[^*]+:\*\*.*$/gm)].at(-1);
+          if (!last) return `${text.trimEnd()}\n\n${line}\n`;
+          const at = last.index! + last[0].length;
+          return `${text.slice(0, at)}\n${line}${text.slice(at)}`;
+        }, current);
     else if (/\/frontend\/index\.ts$/.test(file))
       // What its page's code exports.
       merged = content
@@ -446,8 +516,6 @@ export async function planAdd(root: string, argv: string[]) {
         .filter((line) => line.startsWith('export ') && !current.includes(line))
         .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
     else if (file.endsWith('/platform-slots.ts')) continue;
-    else if (file.endsWith('.spec.ts') && !['page', 'tab-of', 'settings'].includes(piece!))
-      continue;
     else if (file.endsWith('.spec.ts'))
       merged = `${mergeImports(current, content).trimEnd()}\n${content.slice(content.search(/\ntest\(/)).trimEnd()}\n`;
     else {

@@ -239,11 +239,13 @@ export async function generate(
   if (!done(await step('build', [...CARGO, '--no-run']))) return end();
   // A test can read a snapshot another writes in the same pass, and fail on what it read
   // before: only the check after a pass says whether they agree, and a second pass settles them.
+  // A write that still fails then failed for its own reason, which it says.
   for (let attempt = 0; attempt < 2; attempt++) {
     const write = await step('write', [...CARGO, '--', ...filters], UPDATE);
-    done({ ...write, ok: true, why: undefined });
     const check = await step('check', [...CARGO, '--', ...filters]);
-    if (check.ok || attempt === 1) {
+    const last = check.ok || attempt === 1;
+    done(last && !check.ok ? write : { ...write, ok: true, why: undefined });
+    if (last) {
       done(check);
       break;
     }

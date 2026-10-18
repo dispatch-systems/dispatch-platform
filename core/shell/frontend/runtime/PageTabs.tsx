@@ -1,4 +1,4 @@
-import { Suspense, createContext, use, useState, type ReactNode } from 'react';
+import { Suspense, createContext, use, useEffect, useState, type ReactNode } from 'react';
 import { hashQuery, replaceHashQuery } from './navigation.js';
 import { pageTabs, type DspPageContext, type PageTab } from './slots.js';
 import { Loading } from '../ui/Loading.js';
@@ -23,6 +23,12 @@ export function usePageTabs(page: string, own: readonly Item[]) {
   const context = use(OpenPage);
   const hosted = context ? pageTabs(page, context.view) : [];
   const [requested, setRequested] = useState(() => hashQuery().get('tab'));
+  // The address moving, as Back or the page's own link in the sidebar moves it, moves the tab.
+  useEffect(() => {
+    const follow = () => setRequested(hashQuery().get('tab'));
+    window.addEventListener('hashchange', follow);
+    return () => window.removeEventListener('hashchange', follow);
+  }, []);
   const open = hosted.find((tab) => tab.id === requested);
   const select = (id: string | null) => {
     const query = Object.fromEntries(hashQuery());

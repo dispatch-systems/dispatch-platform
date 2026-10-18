@@ -55,13 +55,17 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_badges', '--description', 'Its badges on the DSPs page.'],
   // A second slot, after the first.
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
-  // Pieces added to features that exist, made here and the product's own.
+  // Pieces added to features that exist, made here.
   ['feature', 'smoke_rows', '--tables', 'dsp'],
   ['add', 'people', 'paycom', '--to', 'smoke_rows', '--table', 'smoke_rows_items'],
   ['add', 'tab-of', 'team', '--to', 'smoke_rows'],
   ['add', 'page', '--to', 'smoke_people'],
   ['add', 'api', '--to', 'smoke_front'],
-  ['add', 'settings', '--to', 'uniforms'],
+  // The product's own: Team has no team.view for its manage permission to imply, Timecard
+  // declares a module without pub(crate), and Documents imports through a nested use tree.
+  ['add', 'settings', '--to', 'team'],
+  ['add', 'people', 'amazon', '--to', 'timecard', '--table', 'timecard_punches'],
+  ['add', 'people', 'amazon', '--to', 'documents', '--table', 'documents_files'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */

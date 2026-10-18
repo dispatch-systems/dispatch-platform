@@ -1006,7 +1006,27 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   for (const [, text] of installs)
     assert.match(text, /testing::install\(&\[[^\]]*&dispatch_paycom::COLLECTOR\]/);
 
+  // A manage permission implies only what the feature has: Team has no team.view.
+  const team = changed(await add('settings', '--to', 'team'), 'features/team/feature.rs');
+  assert.match(team, /perm\("team\.manage", "Manage Team & Roles", \d+\),/);
+  // A name a nested use tree imports, as Documents' Sql, is not imported again; a module a
+  // feature declares without pub(crate), as Timecard's storage, is not declared again; and a
+  // piece without a screen writes no browser test.
+  const drive = await add('people', 'amazon', '--to', 'documents', '--table', 'documents_files');
+  assert.equal(changed(drive, 'features/documents/feature.rs').match(/\bSql\b[,}]/g)?.length, 1);
+  const punches = await add('people', 'amazon', '--to', 'timecard', '--table', 'timecard_punches');
+  assert.doesNotMatch(
+    changed(punches, 'features/timecard/backend/mod.rs'),
+    /pub\(crate\) mod storage;/,
+  );
+  assert(![...punches.files.keys()].some((file) => file.includes('/tests/browser/')));
+
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
+  await assert.rejects(
+    add('settings', '--to', 'driver_match'),
+    /settingsTabs holds driver-match already/,
+  );
+  await assert.rejects(add('settings', '--to', 'documents'), /documents retired documents\.manage/);
   await assert.rejects(add('page', '--to', 'documents'), /documents has a page already/);
   await assert.rejects(add('people', 'paycom', '--to', 'uniforms'), /add --table/);
   await assert.rejects(add('wings', '--to', 'uniforms'), /Name one piece/);
@@ -1014,14 +1034,12 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
 });
 
 test('a preset stands for its options, and --tabs, --connection and --people own write theirs', async () => {
-  assert.deepEqual(withPreset(['desk', '--preset', 'settings']), ['desk', '--settings', '--api']);
-  assert.deepEqual(withPreset(['desk', '--preset=connection', '--icon', 'Truck']), [
-    'desk',
-    '--icon',
-    'Truck',
-    '--connection',
-    '--api',
-  ]);
+  // An option given beside a preset wins over the preset's own.
+  const named = await feature('desk', '--preset', 'page-with-tabs', '--tabs', 'today,week');
+  assert.match(
+    file(named, 'features/desk/frontend/DeskPage.tsx'),
+    /\['today', 'Today'\],\s*\['week', 'Week'\]/,
+  );
   assert.throws(() => withPreset(['desk', '--preset', 'keeper']), /add --keeps/);
   assert.throws(() => withPreset(['desk', '--preset', 'kiosk']), /--preset names one of/);
 

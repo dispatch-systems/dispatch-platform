@@ -100,7 +100,8 @@ export function withPreset(argv: string[]) {
     throw new UsageError(
       '--preset keeper keeps a collection: add --keeps <collector>.<collection>',
     );
-  return [...rest, ...expand(name)];
+  // The options given after it win over its own.
+  return [...expand(name), ...rest];
 }
 
 const FLAGS = ['mandatory', 'api', 'page', 'settings', 'connection', 'no-backend', 'dry-run'];
