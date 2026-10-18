@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { mergeRust, mergeToml, mergeTypeScript, rustfmt } from './add.js';
+import { installing, mergeRust, mergeToml, mergeTypeScript, rustfmt } from './add.js';
 import {
   UsageError,
   change,
@@ -135,6 +135,8 @@ export async function planIntegration(root: string, argv: string[]) {
   // Its declaration in its owner's manifest; one of another feature's is its first module there,
   // and works through Slack, which its feature then depends on, as the registry holds it to.
   const piece = `mod integrations;\n\nuse dispatch_core::manifest::{Feature, feature};\n\npub const FEATURE: Feature = Feature {\n${own ? '' : '    depends_on: &["slack"],\n'}    integrations: &[integrations::${names.name}::INTEGRATION],\n    ..feature("${owner}")\n};\n`;
+  // Its feature's tests install it with Slack, as they install it with what else it uses.
+  if (!own) installing(root, plan, `features/${owner}`, { feature: 'slack' });
   if (!own)
     await edit(`features/${owner}/Cargo.toml`, (text) =>
       mergeToml(text, '[dependencies]\ndispatch-slack = { path = "../slack" }\n'),

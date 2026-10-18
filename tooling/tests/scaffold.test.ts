@@ -1180,6 +1180,11 @@ test('new integration writes one in a folder of its own, listed where its owner 
     changed(other, 'features/uniforms/Cargo.toml'),
     /^dispatch-slack = \{ path = "\.\.\/slack" \}$/m,
   );
+  // Its tests install it with Slack, as the registry wants each dependency installed.
+  assert.match(
+    changed(other, 'features/uniforms/tests/backend/storage.rs'),
+    /install\(&\[[^\]]*\], &\[[^\]]*&dispatch_slack::FEATURE\]/,
+  );
   assert.match(
     changed(other, 'features/uniforms/frontend/feature.ts'),
     /connectionIntegrations: \[notes\]/,
