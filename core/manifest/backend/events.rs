@@ -81,8 +81,8 @@ pub async fn publish<E: Event>(state: &Arc<State>, dsp: &str, event: E) {
     deliver(registry().features, state, dsp, &event, is_on).await;
 }
 
-/// Whether `feature` is on for the DSP, as the event `event` reaches it: a mandatory one always,
-/// with no switch to read, and one whose switch can't be read not, which is logged.
+/// Whether `feature` is on for the DSP as the event `event` reaches it. A mandatory one is,
+/// with no switch to read; one whose switch can't be read isn't, logged as `events.unheard`.
 async fn on_for(state: &Arc<State>, dsp: &str, feature: &'static Feature, event: &str) -> bool {
     if feature.switch.mandatory {
         return true;

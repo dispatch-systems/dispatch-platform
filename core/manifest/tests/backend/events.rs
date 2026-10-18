@@ -66,8 +66,9 @@ async fn an_event_reaches_each_feature_on_that_hears_it_in_order() {
 
 #[tokio::test]
 async fn a_feature_whose_switch_cannot_be_read_is_off_and_a_mandatory_one_on() {
+    // Switched as the one feature core's catalog has: its switch reads until the table goes.
     static SWITCHED: Feature = Feature {
-        switch: optional("switched", "Switched", &[]),
+        switch: optional("stand_in", "Stand-in", &[]),
         ..feature("switched")
     };
     static ALWAYS: Feature = Feature {
@@ -78,6 +79,7 @@ async fn a_feature_whose_switch_cannot_be_read_is_off_and_a_mandatory_one_on() {
     let (_root, store, dsp) = testing::bootstrapped();
     let state = State::new(store.config.clone()).unwrap();
     let event = PeopleChanged::NAME;
+    assert!(on_for(&state, &dsp, &SWITCHED, event).await);
     // Every DSP's switches, gone from under the read.
     state
         .run(|db| db.platform.exec("DROP TABLE dsp_features", []).map(drop))
