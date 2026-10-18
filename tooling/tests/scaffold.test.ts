@@ -1173,6 +1173,13 @@ test('new integration writes one in a folder of its own, listed where its owner 
   const manifest = changed(other, 'features/uniforms/feature.rs');
   assert.match(manifest, /^mod integrations;$/m);
   assert.match(manifest, /integrations: &\[integrations::notes::INTEGRATION\],/);
+  // It works through Slack, which its feature declares and its crate lists, as the registry
+  // and the dependency rule hold them to.
+  assert.match(manifest, /depends_on: &\["slack"\],/);
+  assert.match(
+    changed(other, 'features/uniforms/Cargo.toml'),
+    /^dispatch-slack = \{ path = "\.\.\/slack" \}$/m,
+  );
   assert.match(
     changed(other, 'features/uniforms/frontend/feature.ts'),
     /connectionIntegrations: \[notes\]/,

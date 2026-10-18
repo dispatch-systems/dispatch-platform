@@ -54,7 +54,16 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
 
 ## Its own integrations
 
-- **Import Files,** Slack's own integration (`slack.import_files`, `backend/imports/`): the files
+Each is a folder of its own, `integrations/<name>/`, holding all of it:
+
+- `mod.rs`: its declaration (core's `Integration`, and Slack's `Own`: its routes and fixture mode's answers to any Slack method only it calls), and its logic in its modules.
+- `api.rs` and `types.rs`: its endpoints, and what they answer with, re-exported from `api/types.rs`.
+- `frontend/`: its card, section, calls and audit wording.
+- `migrations/` and `tests/`.
+
+Slack's manifest lists each one's integration, upkeep, migration and tables. `integrations/mod.rs` lists each folder. `dispatchdev new integration <name>` writes a new one, listed in each of these places. Another feature's integration through Slack takes the same shape in its own `integrations/`, using `kit` (the bot, and linking channels to folders) once it acts in Slack.
+
+- **Import Files,** Slack's own integration (`slack.import_files`, `integrations/import_files/`): the files
   and photos posted in the channels a workspace links to folders are saved there, where the DSP
   keeps its files (core's `files` service, which Documents offers, in its Google Drive), never
   their messages. Its card and its section show only while something keeps the DSP's files;
@@ -76,7 +85,7 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   noticed latest, with how saving each went. The activity log records linking a channel,
   changing its folder and stopping, as `#<channel> to <folder> in <workspace>`, and where it
   keeps them records each file saved.
-- **Sync Canvases,** Slack's own integration (`slack.sync_canvases`, `backend/canvases/`): the
+- **Sync Canvases,** Slack's own integration (`slack.sync_canvases`, `integrations/sync_canvases/`): the
   canvases a workspace chooses are kept as documents where the DSP keeps its files (Documents
   writes each as a Google Doc), each written over in place within minutes of the canvas being
   edited, never the other way: a change made in the document is replaced by the canvas's next.
@@ -143,7 +152,8 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   workspace another DSP has, or an install cancelled at Slack ends on a page of its own, which
   says so in a line.
 - **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
-  and Sync Canvases linked, chose and noticed there, and its tokens, frees it for any DSP, and then has
+  and Sync Canvases linked, chose and noticed there (every table Slack declares in the DSP's
+  database that keeps rows by `team_id`, an integration's too), and its tokens, frees it for any DSP, and then has
   Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
   disconnecting, making and cancelling the install link, and, with no member as their actor,
   a workspace connected by the link, the app removed from a workspace in Slack, and Slack
@@ -261,7 +271,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   in `dispatch`, each downloading as bytes made up to its size, and Morgan's Write-ups canvas in
   `photos`, downloading as Slack's HTML of it with a photo in it, which a test edits with
   `fixture::edit_canvas`. It signs with
-  `fixture-signing-secret`, so tests send requests as Slack would.
+  `fixture-signing-secret`, so tests send requests as Slack would. It answers each method
+  Dispatch calls, and an integration's own answer a method only that integration calls; any
+  other fails, so a call nothing answers shows in a test or a preview.
 
 ## Slack's app
 
@@ -277,7 +289,8 @@ only some, the server refuses to start.
 
 `dispatch-backend slack-manifest` prints the server's app as Slack's manifest: its name, its
 Home tab, the permissions it asks for, the events it's told of, the addresses Slack reaches it
-at, and its tokens rotating. To make the app, or change it, paste that into Slack:
+at, and its tokens rotating. The app's tests hold it to `app/tests/backend/snapshots/slack-app.json`,
+so a change to what it asks for or hears of shows in review, as a change to make in Slack too. To make the app, or change it, paste that into Slack:
 
 1. At [api.slack.com/apps](https://api.slack.com/apps), Create New App, From a manifest, in the
    platform's own workspace; or, for an app made already, App Manifest in its settings.

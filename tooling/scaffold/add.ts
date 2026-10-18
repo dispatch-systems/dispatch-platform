@@ -426,7 +426,7 @@ export function rustfmt(source: string) {
 // ---- Cargo.toml and the rest
 
 /** The manifest with each `key = value` the piece's lists that it lacks, in its section. */
-function mergeToml(target: string, piece: string) {
+export function mergeToml(target: string, piece: string) {
   let text = target;
   let section = '';
   for (const line of piece.split('\n')) {

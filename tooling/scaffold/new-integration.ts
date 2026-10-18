@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { mergeRust, mergeTypeScript, rustfmt } from './add.js';
+import { mergeRust, mergeToml, mergeTypeScript, rustfmt } from './add.js';
 import {
   UsageError,
   change,
@@ -132,8 +132,13 @@ export async function planIntegration(root: string, argv: string[]) {
       list,
       `//! ${ownerLabel ?? owner}'s integrations through other features' connections, a folder each, in\n//! the shape \`dispatchdev new integration\` writes.\npub(crate) mod ${names.name};\n`,
     );
-  // Its declaration in its owner's manifest; one of another feature's is its first module there.
-  const piece = `mod integrations;\n\nuse dispatch_core::manifest::{Feature, feature};\n\npub const FEATURE: Feature = Feature {\n    integrations: &[integrations::${names.name}::INTEGRATION],\n    ..feature("${owner}")\n};\n`;
+  // Its declaration in its owner's manifest; one of another feature's is its first module there,
+  // and works through Slack, which its feature then depends on, as the registry holds it to.
+  const piece = `mod integrations;\n\nuse dispatch_core::manifest::{Feature, feature};\n\npub const FEATURE: Feature = Feature {\n${own ? '' : '    depends_on: &["slack"],\n'}    integrations: &[integrations::${names.name}::INTEGRATION],\n    ..feature("${owner}")\n};\n`;
+  if (!own)
+    await edit(`features/${owner}/Cargo.toml`, (text) =>
+      mergeToml(text, '[dependencies]\ndispatch-slack = { path = "../slack" }\n'),
+    );
   await edit(`features/${owner}/feature.rs`, (text) =>
     mergeRust(text, piece, left, [], () => true),
   );
@@ -194,10 +199,7 @@ export async function planIntegration(root: string, argv: string[]) {
   for (const [file, content] of plan.changes)
     if (file.endsWith('.rs')) plan.changes.set(file, rustfmt(content));
   plan.notes.push(...left.map((note) => `By hand: ${note}.`));
-  if (!own)
-    plan.notes.push(
-      `What it does in Slack it does through dispatch_slack::kit, as Bot: add slack to ${owner}'s depends_on and its Cargo.toml when it first does.`,
-    );
+  if (!own) plan.notes.push(`What it does in Slack it does through dispatch_slack::kit, as Bot.`);
   plan.notes.push(
     "`dispatchdev generate` writes what follows from it, and Slack's app manifest snapshot names what it asks Slack for.",
   );
