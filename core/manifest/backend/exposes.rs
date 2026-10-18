@@ -98,7 +98,7 @@ pub(super) fn check(features: &[&'static Feature]) {
     for by in contracts.values() {
         assert!(
             by.len() == 1,
-            "{} each offer one contract; one feature at most may",
+            "{} each offer the same contract; one feature at most may",
             by.join(" and ")
         );
     }

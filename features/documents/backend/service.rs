@@ -1,8 +1,8 @@
-//! What Documents offers every other feature: somewhere to keep a DSP's files (the Files
-//! contract, in its `contract/` crate), in its Google Drive, as Slack keeps the files posted in a channel. A file
-//! saved through it is Documents' like any other, shown, opened and moved as an upload is, with
-//! who it came from as who added it. A page is written as a Google Doc, and over it as the page
-//! changes. Every call works only inside the DSP's own folder.
+//! What Documents exposes to every other feature: somewhere to keep a DSP's files (the `Files`
+//! contract, in its `contract/` crate), in its Google Drive, as Slack keeps the files posted in
+//! a channel. A file saved through it is Documents' like any other, shown, opened and moved as
+//! an upload is, with who it came from as who added it. A page is written as a Google Doc, and
+//! over it as the page changes. Every call works only inside the DSP's own folder.
 use super::{
     files::{self, make, put},
     google::FOLDER,
@@ -13,7 +13,7 @@ use dispatch_core::{Result, State, ensure, server::http::upload::UPLOAD_LIMIT};
 use dispatch_documents_contract::{Answer, Author, Browsed, Files, Folder, Incoming, Page, Saved};
 use std::sync::Arc;
 
-/// How the service refuses a folder that isn't one of the DSP's.
+/// How it refuses a folder that isn't one of the DSP's.
 const FOLDER_NOT_FOUND: &str = "files_folder_not_found";
 /// The largest page Google turns into a Doc, in bytes.
 const PAGE_LIMIT: usize = 50 * 1024 * 1024;

@@ -1,5 +1,5 @@
 //! Channels linked to folders, for each of Slack's own integrations that keeps what's in a
-//! channel where the DSP keeps its files (core's Files service): Import Files keeps a linked
+//! channel where the DSP keeps its files (the `files` contract): Import Files keeps a linked
 //! channel's files there, Sync Canvases its canvases. Each keeps its links apart, in a table of
 //! its own, and changes them as the workspace's settings do: for a member who manages Slack and
 //! sees the folders where the DSP keeps its files, while the integration is on in the

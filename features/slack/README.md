@@ -56,7 +56,7 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
 
 Each is a folder of its own, `integrations/<name>/`, holding all of it:
 
-- `mod.rs`: its declaration (core's `Integration`, and Slack's `Own`: its routes and fixture mode's answers to any Slack method only it calls), and its logic in its modules.
+- `mod.rs`: its declaration (core's `Integration`, whose `fixture` answers fixture mode for a Slack method only it calls, and Slack's `Own`: its routes), and its logic in its modules.
 - `api.rs` and `types.rs`: its endpoints, and what they answer with, re-exported from `api/types.rs`.
 - `frontend/`: its card, section, calls and audit wording.
 - `migrations/` and `tests/`.
@@ -65,7 +65,7 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
 
 - **Import Files,** Slack's own integration (`slack.import_files`, `integrations/import_files/`): the files
   and photos posted in the channels a workspace links to folders are saved there, where the DSP
-  keeps its files (core's `files` service, which Documents offers, in its Google Drive), never
+  keeps its files (the `files` contract, which Documents exposes, in its Google Drive), never
   their messages. Its card and its section show only while something keeps the DSP's files;
   its section, Import Files under Integrations, only to those who see where they're kept
   (`documents.use`). A channel Dispatch is in links once, to a folder chosen there or a new one

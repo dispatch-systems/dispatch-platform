@@ -1,6 +1,6 @@
 //! Import Files, Slack's own integration: the files and photos posted in the channels a DSP links
-//! to folders are saved there, where the DSP keeps its files (core's Files service, which
-//! Documents offers), never their messages. Switched on in a workspace's Integrations, it's told
+//! to folders are saved there, where the DSP keeps its files (the `files` contract, which
+//! Documents exposes), never their messages. Switched on in a workspace's Integrations, it's told
 //! of each file shared in a channel Dispatch is in, and saves those posted in a linked channel
 //! from when it was linked, while it's on.
 //!

@@ -1,5 +1,5 @@
 //! Sync Canvases, Slack's own integration: the canvases a DSP chooses are kept as documents where
-//! it keeps its files (core's Files service, which Documents offers, as Google Docs), each
+//! it keeps its files (the `files` contract, which Documents exposes, as Google Docs), each
 //! written over within minutes of the canvas being edited, never the other way. A DSP links a
 //! channel to a folder, so every canvas in it is kept there, those to come too; or chooses
 //! canvases of a channel's on their own. Slack doesn't tell apps which of a channel's folders

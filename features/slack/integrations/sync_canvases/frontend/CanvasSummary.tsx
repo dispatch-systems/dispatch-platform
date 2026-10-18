@@ -1,6 +1,6 @@
 import type { DspView } from '../../../../../core/accounts/api/index.js';
 import { can } from '../../../../../core/shell/frontend/runtime/permissions.js';
-import { offered } from '../../../../../core/shell/frontend/runtime/services.js';
+import { offered } from '../../../../../core/shell/frontend/runtime/exposes.js';
 import { useSlackCanvases } from './client.js';
 
 // What Sync Canvases is doing in a workspace, on its card while it's on: how many channels are

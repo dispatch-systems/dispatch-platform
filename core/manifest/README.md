@@ -57,7 +57,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `dsp_connection`      | `mod.rs`       | Whether it adds one of the DSP's own accounts to Settings' DSP Connections, as a collector's connection is.                        |
 | `people`              | `people/`      | Who its data names, for the feature that tells people apart: a `People` for each kind of data, with what else it knows of them.    |
 | `integrations`        | `integrations` | What it does through another feature's connection, switched on and off in that connection's settings for each of its accounts.     |
-| `services`            | `services/`    | What it offers every other feature through a contract core defines; one feature at most offers each.                               |
+| `exposes`             | `exposes`      | What it offers every other feature, each through a contract; one feature at most offers each.                                      |
 
 `collectors.rs` holds what a collector declares instead, `Collector`, and `agents.rs` the one
 piece outside the features that lets outside agents use Dispatch, `Agents`.
@@ -139,7 +139,7 @@ features whose data names people, by their switches (`people-features.ts`), smal
 frontend manifest to ask whether a DSP has one on.
 
 The other way round, any feature that shows people or uses what is known of them asks the
-directory, a service (`services/directory.rs`) the feature that tells people apart offers. Each
+directory (`people/directory.rs`), a contract the feature that tells people apart exposes. Each
 `Person` has their code, theirs for good and the same in every feature, so it is what a feature
 keeps to name them; the name they are shown by and every other way their sources write it; their
 role (driver, helper, office or former); every ID they hold, by source; their email addresses
@@ -159,22 +159,43 @@ without the directory. Every member of a DSP reads its people, whatever their ro
 `GET /api/dsp/people`, `…/people/{code}` and `…/people/{code}/photo` (`api/routes.rs`). The
 dashboard draws a person with `PersonAvatar`, from their name, code and photo version.
 
-### Services
+### Exposes
 
-What a feature offers every other feature through a contract core defines, so one feature uses
-another's work without depending on it or knowing which feature does it. Each service is a
-trait in a module of its own in `backend/services/`, named for what it does; a feature offers
-it in its manifest's `services`, one feature at most offers each, and a feature using it asks
-for it for a DSP (`files::for_dsp`), which answers only while the feature offering it is on
-there. The first is `files`, somewhere to keep a DSP's files in folders: its name and the
-permission that shows its folders, the largest file it takes, why it can't keep files yet,
-browsing its folders, a folder by ID, making a folder, saving a file streamed as it arrives
-(`Upload::streamed`) with who it came from, a member or someone known only by name, and writing
-a page of HTML as a document members open and edit, then over it as the page changes. The
-second is `directory`, who an ID is, which the People section above describes. The
-services offered are written to TypeScript too (`api/generated/services.ts`): `offered(name,
-view)` in the frontend's runtime answers a page using one whether the DSP has it, what it's
-called and the permission that shows what it keeps, without naming the feature offering it.
+What a feature offers every other feature, each through a contract, so one feature uses
+another's work without depending on it or knowing which feature does it (`exposes.rs`). A
+contract is a trait, owned by the feature offering it in a crate of its own beside it,
+`features/<name>/contract/`, which holds the trait and the types it speaks in and depends on
+core alone: any feature uses it without declaring the feature, and it stays in a build that
+leaves the feature out, when nothing offers it. A contract core uses itself, as the directory
+its people helpers ask, is core's. A feature offers one in its manifest's `exposes`:
+
+```rust
+exposes: &[dispatch_core::expose!(
+    dyn dispatch_documents_contract::Files, // the contract
+    &backend::service::FILES,               // what fulfils it
+    "files",                                // its name, as `dispatchdev list exposes` lists it
+    "Somewhere to keep a DSP's files, in folders, in its Google Drive.",
+)],
+```
+
+One feature at most offers each contract and each name, as the registry checks. A feature using
+one asks for it for a DSP, `exposes::for_dsp::<dyn Files>(db, dsp)` (or the contract crate's own
+`for_dsp`), which answers only while the feature offering it is on there; `Registry::exposed`
+finds it in the build. `dispatchdev list exposes` lists each, with its feature and contract.
+
+- `files` (Documents, `features/documents/contract/`): somewhere to keep a DSP's files in
+  folders: its name and the permission that shows its folders, the largest file it takes, why
+  it can't keep files yet, browsing its folders, a folder by ID, making a folder, saving a file
+  streamed as it arrives (`Upload::streamed`) with who it came from, a member or someone known
+  only by name, and writing a page of HTML as a document members open and edit, then over it as
+  the page changes.
+- `directory` (Driver Match, core's `people/directory.rs`): who an ID is, which the People
+  section above describes.
+
+What's exposed that a page shows is written to TypeScript too (`api/generated/exposes.ts`):
+`offered(name, view)` in the frontend's runtime (`exposes.ts`) answers a page using one whether
+the DSP has it, what it's called and the permission that shows what it keeps, without naming the
+feature offering it.
 
 ## Frontend slots
 

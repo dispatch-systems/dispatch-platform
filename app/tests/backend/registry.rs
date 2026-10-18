@@ -7,11 +7,16 @@ use dispatch_core::manifest::{
 
 /// The app's registry with one more feature, as `install` would check it.
 fn with(extra: &'static Feature) -> Registry {
+    with_all(&[extra])
+}
+
+/// The app's registry with more features, as `install` would check it.
+fn with_all(extra: &[&'static Feature]) -> Registry {
     let features: Vec<&'static Feature> = crate::REGISTRY
         .features
         .iter()
+        .chain(extra)
         .copied()
-        .chain([extra])
         .collect();
     Registry {
         collectors: crate::REGISTRY.collectors,
@@ -155,4 +160,64 @@ fn an_optional_feature_with_a_mandatory_part_is_refused() {
     };
     crate::install();
     with(&HALFWAY).check();
+}
+
+/// A contract no feature of the app's offers.
+trait Greeting: Send + Sync {}
+struct Hello;
+impl Greeting for Hello {}
+
+#[test]
+#[should_panic(expected = "first and second each offer the same contract; one feature at most may")]
+fn a_contract_two_features_offer_is_refused() {
+    static FIRST: Feature = Feature {
+        switch: optional("first", "First", &[]),
+        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
+        ..feature("first")
+    };
+    static SECOND: Feature = Feature {
+        switch: optional("second", "Second", &[]),
+        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "welcome", "A welcome.")],
+        ..feature("second")
+    };
+    crate::install();
+    with_all(&[&FIRST, &SECOND]).check();
+}
+
+/// Another contract no feature of the app's offers.
+trait Farewell: Send + Sync {}
+impl Farewell for Hello {}
+
+#[test]
+#[should_panic(expected = "first and second each expose greeting; one feature at most may")]
+fn a_name_two_features_expose_is_refused() {
+    static FIRST: Feature = Feature {
+        switch: optional("first", "First", &[]),
+        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
+        ..feature("first")
+    };
+    static SECOND: Feature = Feature {
+        switch: optional("second", "Second", &[]),
+        exposes: &[dispatch_core::expose!(dyn Farewell, &Hello, "greeting", "A farewell.")],
+        ..feature("second")
+    };
+    crate::install();
+    with_all(&[&FIRST, &SECOND]).check();
+}
+
+#[test]
+fn a_contract_is_found_by_its_type_in_the_feature_offering_it() {
+    static OFFERING: Feature = Feature {
+        switch: optional("offering", "Offering", &[]),
+        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
+        ..feature("offering")
+    };
+    crate::install();
+    let registry = with(&OFFERING);
+    registry.check();
+    let (feature, _) = registry
+        .exposed::<dyn Greeting>()
+        .expect("Offering exposes it");
+    assert_eq!(feature.name, "offering");
+    assert!(registry.exposed::<dyn Farewell>().is_none());
 }

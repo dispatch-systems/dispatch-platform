@@ -2,7 +2,7 @@ import { createElement, lazy } from 'react';
 import { Clock, Image, Mail, MessageSquareOff, NotebookText, PenOff } from 'lucide-react';
 import type { DspView } from '../../../../../core/accounts/api/index.js';
 import { can } from '../../../../../core/shell/frontend/runtime/permissions.js';
-import { offered } from '../../../../../core/shell/frontend/runtime/services.js';
+import { offered } from '../../../../../core/shell/frontend/runtime/exposes.js';
 import type {
   ConnectionIntegration,
   ConnectionSection,
@@ -10,8 +10,8 @@ import type {
 
 // Sync Canvases, Slack's own integration, as Slack's manifest declares it: its card under a
 // workspace's Integrations, which says what it does for members who don't know, and its section,
-// listed under Integrations while it's on. Both show only while something keeps the DSP's
-// files (core's Files service), the section only to those who see where they're kept. Its
+// listed under Integrations while it's on. Both show only while something keeps the DSP's files
+// (what a feature exposes as `files`), the section only to those who see where they're kept. Its
 // screens load with the workspace's page.
 
 const loadPage = () => import('../../../frontend/page.js');

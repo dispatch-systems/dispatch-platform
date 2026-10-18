@@ -1,4 +1,4 @@
-//! Documents keeping files for another feature through core's Files service, against fixture
+//! Documents keeping files for another feature through the `files` contract it exposes, against fixture
 //! mode's Drive: only while Documents is on and its account connected, only inside the DSP's
 //! own folder, and named for whoever they came from; and pages written as Docs, and over them.
 use super::*;
@@ -56,7 +56,7 @@ async fn incoming(name: &str, text: &'static str, by: Author) -> Incoming {
         from: "Slack",
     }
 }
-/// The Files service for the DSP, as a feature using it finds it.
+/// The `files` contract's offering for the DSP, as a feature using it finds it.
 async fn offered(state: &Arc<State>, dsp: &str) -> Option<&'static dyn Files> {
     let at = dsp.to_owned();
     state.read(move |db| files::for_dsp(db, &at)).await.unwrap()

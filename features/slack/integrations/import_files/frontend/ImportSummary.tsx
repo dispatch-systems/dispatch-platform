@@ -1,6 +1,6 @@
 import type { DspView } from '../../../../../core/accounts/api/index.js';
 import { can } from '../../../../../core/shell/frontend/runtime/permissions.js';
-import { offered } from '../../../../../core/shell/frontend/runtime/services.js';
+import { offered } from '../../../../../core/shell/frontend/runtime/exposes.js';
 import { useSlackImports } from './client.js';
 
 // What Import Files is doing in a workspace, on its card while it's on: how many channels are
