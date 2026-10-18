@@ -11,7 +11,6 @@ import {
   emptyPlan,
   exists,
   features,
-  finish,
   format,
   formatRust,
   keeperOf,
@@ -22,21 +21,30 @@ import {
   pageOf,
   parseArguments,
   peopleSources,
-  repositoryRoot,
   run,
   snapshotsNote,
   template,
+  type Generator,
   type Plan,
   type Values,
 } from './scaffold.js';
-import { appManifest, crateOf, crates, featureList, wiredList, wiredManifest } from './wire.js';
+import {
+  appManifest,
+  crateOf,
+  crates,
+  featureList,
+  needed,
+  tools,
+  wiredList,
+  wiredManifest,
+} from './wire.js';
 
-// `npm run new:feature -- <name> [flags]`: a feature that works as written. It is a crate of its
+// `dispatchdev new feature <name> [options]`: a feature that works as written. It is a crate of its
 // own, listed in app/, optional, with a switch that starts off for every DSP, which a browser test finds on
 // the DSPs page, and a view permission on the role sheet. Each flag adds a piece with its starter
 // code and its test.
 
-export const usage = `Usage: npm run new:feature -- <name> [options]
+export const usage = `Usage: dispatchdev new feature <name> [options]
 
   --mandatory                       every DSP has it, with no switch to turn it off
   --api                             api/ with one endpoint behind the view permission
@@ -347,7 +355,7 @@ export async function planFeature(root: string, argv: string[]) {
   }
   formatRust(plan);
 
-  // List it in app/, as `npm run contracts:generate` does from its folder: its crate in the
+  // List it in app/, as `dispatchdev generate` does from its folder: its crate in the
   // app's Cargo manifest and its manifest in the registry's list. Its manifest brings its
   // routes, and lists its API types itself.
   const edit = (file: string, apply: (text: string) => string) => change(plan, root, file, apply);
@@ -355,7 +363,9 @@ export async function planFeature(root: string, argv: string[]) {
   const wired = [...crates(root), crateOf(name, plan.files.get(`${dir}/Cargo.toml`)!)].sort(
     (a, b) => (a.name < b.name ? -1 : 1),
   );
-  await edit(appManifest, (text) => wiredManifest(text, wired));
+  // The MCP's tools keep the features they need on, as the wiring has them.
+  const mcp = needed(tools(root, wired));
+  await edit(appManifest, (text) => wiredManifest(text, wired, mcp));
   await edit(featureList, () => wiredList(wired));
   // Its routes, and who may call each, in its own list, which the app's route test holds it to.
   const routes = [...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : [])];
@@ -375,7 +385,7 @@ export async function planFeature(root: string, argv: string[]) {
     ...(declared.length ? [`the catalog with its ${declared.join(' and ')}`] : []),
     ...(values.api ? [`${dir}/api/generated/`] : []),
   ];
-  plan.notes.push(`\`npm run contracts:generate\` writes ${generated.join(', and ')}.`);
+  plan.notes.push(`\`dispatchdev generate\` writes ${generated.join(', and ')}.`);
   plan.notes.push(snapshotsNote);
   if (values.tables && !values.ownDatabase)
     plan.notes.push(
@@ -391,14 +401,15 @@ export async function planFeature(root: string, argv: string[]) {
   return { plan, args };
 }
 
-export async function main(argv: string[]) {
-  const options = parseArguments(argv, FLAGS, OPTIONS);
-  const root = path.resolve(options.options.get('root') ?? repositoryRoot);
-  const { plan, args } = await planFeature(root, argv);
-  const dryRun = args.flags.has('dry-run');
-  if (args.options.has('out') && !dryRun) throw new UsageError('--out goes with --dry-run');
-  finish(plan, root, { dryRun, out: args.options.get('out') });
-}
+export const generator: Generator = {
+  kind: 'feature',
+  about: 'a feature: a crate of its own listed in app/, with the pieces its options add',
+  usage,
+  flags: FLAGS,
+  options: OPTIONS,
+  plan: planFeature,
+  generates: true,
+};
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename))
-  await run(usage, main);
+  await run(generator);

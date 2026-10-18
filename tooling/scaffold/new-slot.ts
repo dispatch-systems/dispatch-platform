@@ -4,14 +4,13 @@ import {
   change,
   emptyPlan,
   exists,
-  finish,
   formatRust,
   names,
   parseArguments,
   read,
-  repositoryRoot,
   run,
   template,
+  type Generator,
   type Plan,
 } from './scaffold.js';
 
@@ -23,7 +22,7 @@ import {
 // and gives it its rows in core/manifest/README.md, which the catalogue rule holds. What's
 // written works as written; the host that reads it is the work left.
 
-export const usage = `Usage: npm run new:slot -- <name> [options]
+export const usage = `Usage: dispatchdev new slot <name> [options]
 
   --description <text>    what a feature declares in it, in one sentence of at most 160
                           characters: "Its badges on the DSPs page."
@@ -183,14 +182,15 @@ export async function planSlot(root: string, argv: string[]) {
   return { plan, args };
 }
 
-export async function main(argv: string[]) {
-  const options = parseArguments(argv, FLAGS, OPTIONS);
-  const root = path.resolve(options.options.get('root') ?? repositoryRoot);
-  const { plan, args } = await planSlot(root, argv);
-  const dryRun = args.flags.has('dry-run');
-  if (args.options.has('out') && !dryRun) throw new UsageError('--out goes with --dry-run');
-  finish(plan, root, { dryRun, out: args.options.get('out') });
-}
+export const generator: Generator = {
+  kind: 'slot',
+  about: 'a new kind of slot in core: what a feature declares in its manifest and a host reads',
+  usage,
+  flags: FLAGS,
+  options: OPTIONS,
+  plan: planSlot,
+  generates: false,
+};
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename))
-  await run(usage, main);
+  await run(generator);

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { ProxyOptions } from 'vite';
 
 // Where the backend answers rather than the frontend: the first part of each route's path, as
-// `npm run contracts:generate` writes them from the backend's route table. `/api` is one; so
+// `dispatchdev generate` writes them from the backend's route table. `/api` is one; so
 // are the paths outside it that Slack and MCP clients call at this server's own address.
 const paths: string[] = JSON.parse(
   fs.readFileSync(new URL('../../app/generated/backend-paths.json', import.meta.url), 'utf8'),

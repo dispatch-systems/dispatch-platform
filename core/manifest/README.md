@@ -132,7 +132,7 @@ A kind is read while its feature is on, and every ID it names gets a person afte
 collection; a feature whose people may gain new IDs outside a collection, as a chat
 workspace's members do, calls `people::changed(state, dsp)` once they're kept. The app's people
 test runs every connection's queries against a new DSP, so a connection is tried without a test
-of its own. `npm run contracts:generate` writes the kinds and sources to TypeScript in
+of its own. `dispatchdev generate` writes the kinds and sources to TypeScript in
 `api/generated/`: each kind with its label, unit and icon, in their order (`people-data.ts`,
 which imports the icons from lucide-react), loaded only by the lists of people; and the
 features whose data names people, by their switches (`people-features.ts`), small enough for a

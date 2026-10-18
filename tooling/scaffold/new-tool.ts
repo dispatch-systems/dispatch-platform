@@ -4,25 +4,24 @@ import {
   emptyPlan,
   features,
   files,
-  finish,
   formatRust,
   parseArguments,
   read,
-  repositoryRoot,
   run,
   snapshotsNote,
   template,
+  type Generator,
   type Plan,
   type Values,
 } from './scaffold.js';
 
 // `dispatchdev new tool <name> [options]`: a tool agents can use, in mcp/tools/: its file,
-// which works as written, and a test that calls it as an agent does. `npm run
-// contracts:generate`, which `dispatchdev new` runs next, lists it in `tools::TOOLS`, and gives
+// which works as written, and a test that calls it as an agent does. `dispatchdev generate`,
+// which `dispatchdev new` runs next, lists it in `tools::TOOLS`, and gives
 // the MCP the crates of the features it needs. Who may use it is no part of it: the platform
 // owner chooses, for each key and app, on the Agents page: Off, Read, or Read and change.
 
-export const usage = `Usage: npm run new:tool -- <name> [options]
+export const usage = `Usage: dispatchdev new tool <name> [options]
 
   --scope <scope>         what it is about: dsp, one DSP a call names (the default); dsps,
                           several, those a call names or every one the connection reaches;
@@ -226,9 +225,7 @@ export async function planTool(root: string, argv: string[]) {
   plan.files.set(`${TOOLS}/${name}.rs`, tool);
   plan.files.set(`mcp/tests/backend/tools/${name}.rs`, template('tool/test.rs', values));
   formatRust(plan);
-  plan.notes.push(
-    '`npm run contracts:generate` lists it, with the crates of the features it needs; `dispatchdev new` runs it next.',
-  );
+  plan.notes.push('`dispatchdev generate` lists it, with the crates of the features it needs.');
   plan.notes.push(
     `Make it do what it's for: its Input and Output in ${TOOLS}/${name}.rs, and its test.`,
   );
@@ -239,14 +236,15 @@ export async function planTool(root: string, argv: string[]) {
   return { plan, args };
 }
 
-export async function main(argv: string[]) {
-  const options = parseArguments(argv, FLAGS, OPTIONS);
-  const root = path.resolve(options.options.get('root') ?? repositoryRoot);
-  const { plan, args } = await planTool(root, argv);
-  const dryRun = args.flags.has('dry-run');
-  if (args.options.has('out') && !dryRun) throw new UsageError('--out goes with --dry-run');
-  finish(plan, root, { dryRun, out: args.options.get('out') });
-}
+export const generator: Generator = {
+  kind: 'tool',
+  about: 'a tool agents use, in mcp/tools/, with its test',
+  usage,
+  flags: FLAGS,
+  options: OPTIONS,
+  plan: planTool,
+  generates: true,
+};
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename))
-  await run(usage, main);
+  await run(generator);

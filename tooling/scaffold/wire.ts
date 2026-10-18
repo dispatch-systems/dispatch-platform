@@ -205,7 +205,7 @@ export function toolOf(module: string, source: string, features: Crate[]): Tool 
 }
 
 /** The features the MCP's tools need, by name. */
-const needed = (list: Tool[]) => [...new Set(list.flatMap((tool) => tool.needs))].sort();
+export const needed = (list: Tool[]) => [...new Set(list.flatMap((tool) => tool.needs))].sort();
 /**
  * What a test installs with each feature the tools need, by the MCP's Cargo feature that
  * brings it: the feature, the features it uses, however indirectly, and their collectors.

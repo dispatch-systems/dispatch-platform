@@ -641,7 +641,7 @@ fn the_feature_map_the_frontend_list_and_the_backend_paths_are_the_registrys() {
         }
         assert!(
             std::fs::read_to_string(&path).ok() == Some(text),
-            "{file} is out of date: run `npm run contracts:generate`"
+            "{file} is out of date: run `dispatchdev generate`"
         );
     }
 }
