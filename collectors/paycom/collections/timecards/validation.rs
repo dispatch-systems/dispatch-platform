@@ -145,7 +145,7 @@ pub fn collection_date(request: &Value, timezone: &str) -> Result<Option<chrono:
     ensure(
         date.to_string() == value
             && value >= "2000-01-01"
-            && date <= chrono::Utc::now().with_timezone(&tz).date_naive(),
+            && date <= dispatch_core::foundation::clock::today(tz),
         "invalid_date",
         400,
     )?;

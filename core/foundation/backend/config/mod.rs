@@ -184,6 +184,20 @@ impl Config {
                 403,
             )?;
         }
+        // The day a test server takes as today: only with fixture providers, while developing.
+        // Loading the config pins it for the process (`clock`).
+        let today = env::var("DISPATCH_FIXTURE_TODAY")
+            .ok()
+            .map(|day| {
+                chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d")
+                    .map_err(|_| crate::Error::new("invalid_fixture_today", 400))
+            })
+            .transpose()?;
+        ensure(
+            today.is_none() || (c.development && c.fixture),
+            "fixture_forbidden",
+            403,
+        )?;
         ensure(
             ["capture", "cloudflare", "smtp", "disabled"].contains(&c.mail_mode.as_str()),
             "invalid_mail_mode",
@@ -228,6 +242,7 @@ impl Config {
             )?;
         }
         ensure(c.standalone, "independent_environment_required", 400)?;
+        crate::foundation::clock::pin(today);
         Ok(c)
     }
     /// Which of this server's addresses a request's `Host` names, if any. This machine's own

@@ -42,7 +42,7 @@ pub(crate) fn today(store: &Store, dsp: &str) -> Result<chrono::NaiveDate> {
         .timezone
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))?;
-    Ok(chrono::Utc::now().with_timezone(&tz).date_naive())
+    Ok(dispatch_core::foundation::clock::today(tz))
 }
 pub(crate) fn bind(store: &Store, dsp: &str, date: &str) -> Result<Value> {
     let tenant = store.find_dsp(dsp)?;

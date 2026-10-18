@@ -153,13 +153,10 @@ impl Ask<'_> {
 }
 /// Whether the scope's day has ended where its station is.
 fn day_over(scope: &Scope) -> bool {
-    scope.timezone.parse::<chrono_tz::Tz>().is_ok_and(|tz| {
-        scope.date
-            < chrono::Utc::now()
-                .with_timezone(&tz)
-                .date_naive()
-                .to_string()
-    })
+    scope
+        .timezone
+        .parse::<chrono_tz::Tz>()
+        .is_ok_and(|tz| scope.date < dispatch_core::foundation::clock::today(tz).to_string())
 }
 /// What `kept` holds of `c`'s route when the route was finished then and the list still
 /// shows it finished, with the same driver and meals: a record nothing can change any more.

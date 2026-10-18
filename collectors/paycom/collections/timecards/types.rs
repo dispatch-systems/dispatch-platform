@@ -112,7 +112,7 @@ impl PeriodSync {
         let zone: chrono_tz::Tz = timezone
             .parse()
             .map_err(|_| Error::new("invalid_timezone", 400))?;
-        let today = chrono::Utc::now().with_timezone(&zone).date_naive();
+        let today = dispatch_core::foundation::clock::today(zone);
         let mut data = fixtures::fixture_date(
             timezone,
             Some((start + Duration::days(PERIOD_DAYS - 1)).min(today)),
@@ -184,7 +184,7 @@ impl EmployeeSync {
         let zone: chrono_tz::Tz = timezone
             .parse()
             .map_err(|_| Error::new("invalid_timezone", 400))?;
-        let today = chrono::Utc::now().with_timezone(&zone).date_naive();
+        let today = dispatch_core::foundation::clock::today(zone);
         let end = self.period().start()? + Duration::days(PERIOD_DAYS - 1);
         let mut data = fixtures::fixture_date(timezone, Some(end.min(today)))?;
         data["employees"]

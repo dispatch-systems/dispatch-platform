@@ -407,10 +407,7 @@ impl KeyStore for Store {
                 id: dsp.id.clone(),
                 name: dsp.name.clone(),
                 timezone: dsp.timezone.clone(),
-                today: chrono::Utc::now()
-                    .with_timezone(&zone)
-                    .date_naive()
-                    .to_string(),
+                today: dispatch_core::foundation::clock::today(zone).to_string(),
             });
         }
         Ok(AgentWhoami {

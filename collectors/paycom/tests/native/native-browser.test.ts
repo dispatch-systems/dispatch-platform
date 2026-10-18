@@ -74,6 +74,8 @@ test(
       db.prepare('DELETE FROM publications WHERE id<>?').run(id);
       return db.prepare('SELECT period_from,period_to FROM publications WHERE id=?').get(id)!;
     });
+    // The period the pinned today falls in.
+    assert.deepEqual([bounds.period_from, bounds.period_to], ['2026-10-04', '2026-10-17']);
     f.state.unlistedCodes = ['BB02'];
     const start = Date.parse(`${bounds.period_from}T00:00:00Z`) - 14 * 86400000;
     const from = new Date(start).toISOString().slice(0, 10);

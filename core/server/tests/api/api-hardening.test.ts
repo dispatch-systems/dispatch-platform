@@ -107,6 +107,8 @@ test('production rejects conflicting modes and unsafe defaults before opening st
     { NODE_ENV: 'development' },
     { NODE_ENV: 'test' },
     { DISPATCH_PROVIDER_MODE: 'fixture' },
+    // Only a test server takes another day as today.
+    { DISPATCH_FIXTURE_TODAY: '2026-10-14' },
     { DISPATCH_PRODUCTION_MAIL_MODE: 'capture' },
     { DISPATCH_ORIGIN: 'http://admin.dispatch.example' },
     { DISPATCH_STATE_ROOT: undefined },
@@ -126,4 +128,14 @@ test('production rejects conflicting modes and unsafe defaults before opening st
     /invalid_provider_mode/,
   );
   assert.match(status({ ...f.env, DISPATCH_TRUSTED_PROXY: 'all' }).stderr, /invalid_trusted_proxy/);
+  assert.match(
+    status({ ...f.env, DISPATCH_FIXTURE_TODAY: '14 Oct' }).stderr,
+    /invalid_fixture_today/,
+  );
+  const real = { ...f.env, DISPATCH_PROVIDER_MODE: 'native' };
+  assert.equal(status(real).status, 0, status(real).stderr);
+  assert.match(
+    status({ ...real, DISPATCH_FIXTURE_TODAY: '2026-10-14' }).stderr,
+    /fixture_forbidden/,
+  );
 });

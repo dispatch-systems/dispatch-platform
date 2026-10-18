@@ -2,6 +2,7 @@ use super::*;
 use crate::api::types::{DvicCoverage, DvicInspection, DvicInspections, DvicStatus};
 use dispatch_core::{
     db::{DspLease, Store, at, s},
+    foundation::clock,
     manifest::Keeper,
 };
 use dispatch_cortex as cortex;
@@ -68,7 +69,7 @@ impl DvicStore for Store {
         weeks: usize,
         viewing: Option<&str>,
     ) -> Result<Value> {
-        let latest = report_week(chrono::Utc::now().date_naive());
+        let latest = report_week(clock::today(chrono_tz::UTC));
         let week = week.unwrap_or(&latest);
         weeks::parse_week(week)?;
         ensure(week <= latest.as_str(), "dvic_week_not_available", 400)?;
@@ -92,7 +93,7 @@ impl DvicStore for Store {
     /// Check the current and previous publication weeks, as a manual sync does; a schedule
     /// never reaches back for older ones.
     fn dvic_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let latest = report_week(chrono::Utc::now().date_naive());
+        let latest = report_week(clock::today(chrono_tz::UTC));
         Ok(vec![(
             "dvic".into(),
             dvic_request(self, id, weeks_ending(&latest, 2)?)?,
@@ -221,7 +222,7 @@ impl DvicStore for Store {
         let db = self.dvic_db(id)?;
         let decode = |sql: &str| db.all(sql, [&station]);
         Ok(DvicStatus {
-            latest_week: report_week(chrono::Utc::now().date_naive()),
+            latest_week: report_week(clock::today(chrono_tz::UTC)),
             short_inspections: db.count(
                 "SELECT count(*) FROM dvic_inspections \
                  WHERE station=? AND short=1 AND scope_verified=1",
@@ -368,10 +369,7 @@ pub(crate) fn bind_dvic_request(store: &Store, id: &str, weeks: Vec<String>) -> 
         collection: Collection::Dvic,
         station: profile.station_code,
         weeks,
-        date: chrono::Utc::now()
-            .with_timezone(&timezone)
-            .date_naive()
-            .to_string(),
+        date: clock::today(timezone).to_string(),
         timezone: dsp.timezone,
         dsp_name: dsp.name,
         dsp_abbreviation: profile.abbreviation,

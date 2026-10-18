@@ -423,7 +423,7 @@ fn weekly_scorecard_today(store: &Store, id: &str) -> Result<NaiveDate> {
         .timezone
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))?;
-    Ok(chrono::Utc::now().with_timezone(&tz).date_naive())
+    Ok(dispatch_core::foundation::clock::today(tz))
 }
 /// The station the DSP's profile names, which every scorecard request carries.
 fn weekly_scorecard_station(store: &Store, id: &str) -> Result<String> {

@@ -1,4 +1,5 @@
 //! What every other part builds on.
+pub mod clock;
 pub mod config;
 pub mod crypto;
 pub mod error;

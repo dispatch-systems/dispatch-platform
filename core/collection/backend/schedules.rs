@@ -244,10 +244,7 @@ impl Store {
     /// Today, where the DSP is.
     pub fn local_date(&self, id: &str) -> Result<String> {
         let tz = timezone(&self.find_dsp(id)?.timezone)?;
-        Ok(chrono::Utc::now()
-            .with_timezone(&tz)
-            .format("%Y-%m-%d")
-            .to_string())
+        Ok(crate::foundation::clock::today(tz).to_string())
     }
     fn check_schedule_sources(&self, id: &str, collection: ScheduleCollection) -> Result<()> {
         for (provider, scheduled) in Self::scheduled_collections(collection) {
