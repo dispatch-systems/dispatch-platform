@@ -499,7 +499,6 @@ fn feature_map(root: &Path) -> String {
         }
         let audit = &feature.audit;
         let slots = json!({
-            "after_collection": feature.after_collection.is_some(),
             "audit": {
                 "areas": audit.areas.iter().map(|(prefix, area)| json!([prefix, area.as_str()]))
                     .collect::<Vec<_>>(),
@@ -515,6 +514,9 @@ fn feature_map(root: &Path) -> String {
                 .collect::<Vec<_>>(),
             "live": feature.live,
             "maintenance": feature.maintenance.iter().map(|task| task.every.as_secs())
+                .collect::<Vec<_>>(),
+            "on": feature.on.iter()
+                .map(|on| json!({"event": on.event, "kind": (on.kind)()}))
                 .collect::<Vec<_>>(),
             "people": feature.people.iter().map(|people| people.kind.id)
                 .collect::<Vec<_>>(),

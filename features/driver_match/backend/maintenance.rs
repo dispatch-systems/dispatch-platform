@@ -4,7 +4,10 @@ use super::DriverMatchStore;
 use dispatch_core::{
     Error, Result, State,
     foundation::observability,
-    manifest::{Maintenance, Upkeep},
+    manifest::{
+        Maintenance, Upkeep,
+        events::{CollectionSucceeded, PeopleChanged},
+    },
 };
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -58,7 +61,18 @@ fn catch_up(state: Arc<State>, due: bool) -> Upkeep {
 
 /// Whoever a collection brought in gets a Driver Match code. A failure here leaves the
 /// collection as it is; the hourly pass catches the IDs up.
-pub fn after_collection(state: Arc<State>, dsp: String) -> Upkeep {
+pub fn collected(state: Arc<State>, dsp: String, _: CollectionSucceeded) -> Upkeep {
+    now(state, dsp)
+}
+
+/// Whoever a feature names outside a collection, as a workspace's new members, gets a code at
+/// once rather than at the next collection.
+pub fn changed(state: Arc<State>, dsp: String, _: PeopleChanged) -> Upkeep {
+    now(state, dsp)
+}
+
+/// Gives every ID the DSP's features hold a code now; a failure waits for the hourly pass.
+fn now(state: Arc<State>, dsp: String) -> Upkeep {
     Box::pin(async move {
         if let Err(error) = assign(&state, dsp.clone()).await {
             failed(Some(&dsp), &error);

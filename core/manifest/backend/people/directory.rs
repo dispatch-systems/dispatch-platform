@@ -1,12 +1,12 @@
 //! The directory: everyone a DSP's features name, each told apart under a code of their own,
 //! for any feature that shows people or uses what is known of them. A contract core keeps, as
 //! its people helpers use it: the feature that tells people apart exposes it, and
-//! `people::everyone`, `people::photo` and `people::changed` ask it, answering nothing in a
-//! build without one.
+//! `people::everyone` and `people::photo` ask it, answering nothing in a build without one. It
+//! tells people apart again when it hears `events::PeopleChanged`.
 use super::{Photo, Source};
-use crate::{Result, State, db::Store, foundation::names, manifest::Upkeep, text_enum};
+use crate::{Result, db::Store, foundation::names, text_enum};
 use serde::Serialize;
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 /// Who everyone is, as the feature that tells people apart answers.
 pub trait Directory: Sync {
@@ -15,8 +15,6 @@ pub trait Directory: Sync {
     /// The photo of the person `code` names: the one their `Person` names the version of. A
     /// merged person's code answers for whoever kept their IDs.
     fn photo(&self, store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>>;
-    /// Tells people apart again now, as a feature's people changed outside a collection.
-    fn changed(&self, state: Arc<State>, dsp: String) -> Upkeep;
 }
 
 text_enum! {

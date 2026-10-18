@@ -7,7 +7,11 @@ use super::{
     bot::{self, Bot},
     storage::{Member, SlackStore},
 };
-use dispatch_core::{Error, Result, State, foundation::observability, manifest::people};
+use dispatch_core::{
+    Error, Result, State,
+    foundation::observability,
+    manifest::events::{self, PeopleChanged},
+};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -96,7 +100,7 @@ pub async fn read(bot: &Bot) -> Result<()> {
         .run(move |db| db.keep_slack_members(&dsp, &team, &members))
         .await?;
     if new {
-        people::changed(bot.state.clone(), bot.dsp.clone()).await;
+        events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
     Ok(())
 }
@@ -129,7 +133,7 @@ pub async fn told(bot: &Bot, event: &Value) -> Result<()> {
         .run(move |db| db.keep_slack_member(&dsp, &team, &member))
         .await?;
     if new {
-        people::changed(bot.state.clone(), bot.dsp.clone()).await;
+        events::publish(&bot.state, &bot.dsp, PeopleChanged).await;
     }
     Ok(())
 }

@@ -186,13 +186,6 @@ pub fn photo(store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
         .exposed::<dyn Directory>()
         .map_or(Ok(None), |(_, directory)| directory.photo(store, dsp, code))
 }
-/// Has the DSP's people told apart again now, as new IDs may be there outside a collection,
-/// as when a workspace's members are read: a collection's are after it ends.
-pub async fn changed(state: Arc<State>, dsp: String) {
-    if let Some((_, directory)) = registry().exposed::<dyn Directory>() {
-        directory.changed(state, dsp).await;
-    }
-}
 
 impl Registry {
     /// Every kind of data that names people, in the order their spellings are read: by
