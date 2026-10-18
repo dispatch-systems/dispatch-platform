@@ -9,7 +9,9 @@ use super::{
     storage::DocumentsStore,
     tree::{Mime, Row},
 };
-use dispatch_core::{Result, State, ensure, server::http::upload::UPLOAD_LIMIT};
+use dispatch_core::{
+    Result, State, ensure, manifest::exposes::Shown, server::http::upload::UPLOAD_LIMIT,
+};
 use dispatch_documents_contract::{Answer, Author, Browsed, Files, Folder, Incoming, Page, Saved};
 use std::sync::Arc;
 
@@ -22,13 +24,16 @@ const PAGE_LIMIT: usize = 50 * 1024 * 1024;
 pub(crate) struct DocumentsFiles;
 pub(crate) static FILES: DocumentsFiles = DocumentsFiles;
 
-impl Files for DocumentsFiles {
+impl Shown for DocumentsFiles {
     fn name(&self) -> &'static str {
         "Documents"
     }
     fn permission(&self) -> &'static str {
         "documents.use"
     }
+}
+
+impl Files for DocumentsFiles {
     fn largest(&self) -> u64 {
         UPLOAD_LIMIT
     }

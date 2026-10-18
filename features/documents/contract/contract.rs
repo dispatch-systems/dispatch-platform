@@ -1,20 +1,19 @@
 //! Files, the contract Documents exposes: somewhere to keep a DSP's files, in folders. A feature
 //! bringing files in from elsewhere saves them through it, never knowing which feature keeps
 //! them or where; it uses this crate, which depends on core alone, and asks `for_dsp`.
-use dispatch_core::{Result, State, db::Store, server::http::upload::Upload};
+use dispatch_core::{
+    Result, State, db::Store, manifest::exposes::Shown, server::http::upload::Upload,
+};
 use std::{future::Future, pin::Pin, sync::Arc};
 
 /// What its asynchronous answers are: work done outside the database, as a call to Google is.
 pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
-/// What a feature that keeps files offers. Every call names the DSP, and works only inside the
-/// files it keeps for that DSP: a folder that isn't one of them is refused as
-/// `files_folder_not_found`.
-pub trait Files: Send + Sync {
-    /// What it's called where members see it, as its page is named.
-    fn name(&self) -> &'static str;
-    /// The permission a member needs to see its folders, and so to choose one.
-    fn permission(&self) -> &'static str;
+/// What a feature that keeps files offers, which a page shows as `files`: its name, and the
+/// permission a member needs to see its folders, and so to choose one. Every call names the
+/// DSP, and works only inside the files it keeps for that DSP: a folder that isn't one of them
+/// is refused as `files_folder_not_found`.
+pub trait Files: Shown + Send + Sync {
     /// The most one file may be, in bytes.
     fn largest(&self) -> u64;
     /// Why it can't keep the DSP's files now, in words a member reads, as what it keeps them in

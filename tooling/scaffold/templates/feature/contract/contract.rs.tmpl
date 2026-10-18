@@ -1,9 +1,21 @@
 //! {{contractLabel}}, as any feature or agent tool uses it without depending on {{label}}:
 //! TODO(scaffold): what it offers, in a sentence. {{label}} exposes it as `{{contract}}`.
+{{#shown}}
+use dispatch_core::{Result, db::Store, manifest::exposes::Shown};
+{{/shown}}
+{{^shown}}
 use dispatch_core::{Result, db::Store};
+{{/shown}}
 
+{{#shown}}
+/// TODO(scaffold): what it reads or does for a DSP, in a sentence. A page shows it as
+/// `{{contract}}`, by its name, to those holding its permission.
+pub trait {{contractPascal}}: Shown + Send + Sync {
+{{/shown}}
+{{^shown}}
 /// TODO(scaffold): what it reads or does for a DSP, in a sentence.
 pub trait {{contractPascal}}: Send + Sync {
+{{/shown}}
     /// Whether it's ready for the DSP. TODO(scaffold): its readers and actions instead, each
     /// with only what its first user needs, and every one naming the DSP.
     fn ready(&self, db: &Store, dsp: &str) -> Result<bool>;

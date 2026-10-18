@@ -57,9 +57,6 @@ operator-probes = ["dispatch-cortex/operator-probes", "dispatch-paycom/operator-
 
 [dependencies]
 dispatch-core = { path = "../../core" }
-# The contracts the app names itself, as its export of what a page shows does: each stays
-# whatever features a build leaves out.
-dispatch-documents-contract = { path = "../../features/documents/contract" }
 dispatch-cortex = { path = "../../collectors/cortex" }
 dispatch-host = { path = "../../ops/host-manager" }
 # What the MCP has of the features, each turned on with the app's own of its name.

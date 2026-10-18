@@ -9,6 +9,7 @@ use dispatch_core::{
     manifest::{
         Feature, Upkeep,
         events::PeopleChanged,
+        exposes::Shown,
         feature,
         integrations::{Heard, Integration, integration},
         optional,
@@ -94,17 +95,20 @@ static KEEPER: Feature = Feature {
         dyn Files,
         &KEEPING,
         "files",
-        "Where the stand-in keeps files."
+        "Where the stand-in keeps files.",
+        shown,
     )],
     ..feature("keeping")
 };
-impl Files for Keeping {
+impl Shown for Keeping {
     fn name(&self) -> &'static str {
         "Keeping"
     }
     fn permission(&self) -> &'static str {
         "keeping.use"
     }
+}
+impl Files for Keeping {
     fn largest(&self) -> u64 {
         UPLOAD_LIMIT
     }

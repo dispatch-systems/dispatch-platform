@@ -1308,6 +1308,45 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
   }
 });
 
+test('--shown writes a contract a page shows, by its name and permission, and the name pages use', async () => {
+  const plan = await feature('parking', '--api', '--contract', 'parking_spots', '--shown');
+  assert.match(
+    file(plan, 'features/parking/contract/contract.rs'),
+    /^pub trait ParkingSpots: Shown \+ Send \+ Sync \{$/m,
+  );
+  assert.match(
+    file(plan, 'features/parking/backend/exposed.rs'),
+    /^impl Shown for Exposed \{\n\s+fn name\(&self\) -> &'static str \{\n\s+"Parking"\n[\s\S]*?"parking\.view"/m,
+  );
+  assert.match(file(plan, 'features/parking/feature.rs'), /"parking_spots",\n[^\n]*\n\s+shown,\n/);
+  assert.match(
+    changed(plan, 'core/shell/frontend/runtime/exposes.ts'),
+    /^export type ExposedName = 'files' \| 'parking_spots';$/m,
+  );
+  // Added to a feature that exists, shown to those who view it.
+  const added = await add('contract', 'sizes', '--to', 'uniforms', '--shown');
+  assert.match(changed(added, 'features/uniforms/feature.rs'), /"sizes",\n[^\n]*\n\s+shown,\n/);
+  assert.match(file(added, 'features/uniforms/backend/exposed.rs'), /"uniforms\.view"/);
+  assert.match(changed(added, 'core/shell/frontend/runtime/exposes.ts'), /'files' \| 'sizes'/);
+  await refused(/--shown is what a page shows of what it exposes/, 'parking', '--shown');
+  await refused(
+    /--shown needs the permission that shows what it keeps/,
+    'lot',
+    '--mandatory',
+    '--contract',
+    'lot_spaces',
+    '--shown',
+  );
+  await assert.rejects(
+    planAdd(root, ['contract', 'counts', '--to', 'driver_match', '--shown']),
+    /driver_match\.view, which driver_match lacks/,
+  );
+  await assert.rejects(
+    planAdd(root, ['api', '--to', 'home', '--shown']),
+    /--shown is what a page shows of a contract/,
+  );
+});
+
 test('a preset stands for its options, and --tabs, --connection and --people own write theirs', async () => {
   // An option given beside a preset wins over the preset's own.
   const named = await feature('desk', '--preset', 'page-with-tabs', '--tabs', 'today,week');

@@ -29,23 +29,45 @@ pub struct Exposed {
     pub contract: fn() -> &'static str,
     /// The offering, a `&'static dyn Contract`, by whose type a feature asks for it.
     pub offered: &'static (dyn Any + Send + Sync),
+    /// For one a page shows, the offering as `Shown`: the app's export writes what it answers
+    /// to `core/manifest/api/generated/exposes.ts`, which a page reads with `offered(name)`.
+    pub shown: Option<fn() -> &'static dyn Shown>,
+}
+
+/// What a page shows of something exposed, which its contract extends: a page offers what it
+/// keeps by its name, to those holding its permission.
+pub trait Shown {
+    /// What it's called where members see it, as its page is named.
+    fn name(&self) -> &'static str;
+    /// The permission that shows what it keeps.
+    fn permission(&self) -> &'static str;
 }
 
 /// What a feature offers through the contract `$contract`, a trait: `$offered` fulfils it.
-/// `expose!(dyn Files, &backend::FILES, "files", "Somewhere to keep a DSP's files.")`.
+/// `expose!(dyn Files, &backend::FILES, "files", "Somewhere to keep a DSP's files.")`, ending
+/// `shown` for one a page shows, whose contract extends `Shown`.
 #[macro_export]
 macro_rules! expose {
-    ($contract:ty, $offered:expr, $name:literal, $about:literal $(,)?) => {
+    ($contract:ty, $offered:expr, $name:literal, $about:literal, shown $(,)?) => {{
+        static OFFERED: &'static $contract = $offered;
         $crate::manifest::exposes::Exposed {
             name: $name,
             about: $about,
             contract: ::std::any::type_name::<$contract>,
-            offered: {
-                static OFFERED: &'static $contract = $offered;
-                &OFFERED
-            },
+            offered: &OFFERED,
+            shown: Some(|| -> &'static dyn $crate::manifest::exposes::Shown { OFFERED }),
         }
-    };
+    }};
+    ($contract:ty, $offered:expr, $name:literal, $about:literal $(,)?) => {{
+        static OFFERED: &'static $contract = $offered;
+        $crate::manifest::exposes::Exposed {
+            name: $name,
+            about: $about,
+            contract: ::std::any::type_name::<$contract>,
+            offered: &OFFERED,
+            shown: None,
+        }
+    }};
 }
 
 impl Registry {

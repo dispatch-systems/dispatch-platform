@@ -177,6 +177,7 @@ exposes: &[dispatch_core::expose!(
     &backend::service::FILES,               // what fulfils it
     "files",                                // its name, as `dispatchdev list exposes` lists it
     "Somewhere to keep a DSP's files, in folders, in its Google Drive.",
+    shown,                                  // a page shows it
 )],
 ```
 
@@ -187,12 +188,13 @@ finds it in the build. `dispatchdev list exposes` lists each, with its feature, 
 where that is. Core's own is `directory` (`people/directory.rs`), who an ID is, which the People
 section above describes.
 
-What's exposed that a page shows is written to TypeScript too (`api/generated/exposes.ts`):
-`offered(name, view)` in the frontend's runtime (`exposes.ts`) answers a page using one whether
-the DSP has it, what it's called and the permission that shows what it keeps, without naming the
-feature offering it. A new one a page shows takes an entry in `exposes()` in
-`app/tests/backend/export.rs`, which names its contract, so the app depends on that contract's
-crate, and its name in `ExposedName` in `exposes.ts`.
+One a page shows ends its `expose!` with `shown`, and its contract extends `Shown`: what it's
+called where members see it, and the permission that shows what it keeps. The app's export
+writes each to TypeScript (`api/generated/exposes.ts`), and `offered(name, view)` in the
+frontend's runtime (`exposes.ts`) answers a page using one whether the DSP has it, its name and
+its permission, without naming the feature offering it. Its name is in `ExposedName` there, in
+every build, which the build's export is checked against; `--shown` on `add contract` or
+`new feature --contract` writes all of it.
 
 ### Events
 
