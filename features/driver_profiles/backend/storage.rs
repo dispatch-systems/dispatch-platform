@@ -7,7 +7,6 @@ use dispatch_core::{
     collection::registry::AddedStorage,
     db::{Db, DspLease, FromRow, Kind, Row, Store, at, now},
     ensure,
-    foundation::validate::token,
     manifest::people::Photo,
 };
 use dispatch_cortex::{
@@ -38,6 +37,8 @@ fn verify(db: &Db) -> Result<()> {
 /// How long a photo kept stands for its address before a collection downloads it again, in
 /// case the associate changed it.
 const PHOTO_REFRESH_MS: i64 = 30 * 24 * 3_600_000;
+/// The most transporter IDs one question about associates names.
+const MOST_ASKED: usize = 32;
 
 /// What a roster job carries while queued; the DSP's code is bound just before it runs.
 pub(crate) fn roster_request() -> Value {
@@ -75,7 +76,7 @@ pub trait DriverProfilesStore {
     /// bytes.
     fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<Photo>>;
     /// What the roster says of each of `transporters` it has listed, in their order. Refuses
-    /// one that isn't a transporter ID.
+    /// an empty ID, one over 128 characters, or more than `MOST_ASKED`.
     fn associates(&self, dsp: &str, transporters: &[String]) -> Result<Vec<Associate>>;
 }
 impl DriverProfilesStore for Store {
@@ -258,7 +259,10 @@ impl DriverProfilesStore for Store {
     }
     fn associates(&self, dsp: &str, transporters: &[String]) -> Result<Vec<Associate>> {
         ensure(
-            transporters.iter().all(|id| token(id, 64)),
+            transporters.len() <= MOST_ASKED
+                && transporters
+                    .iter()
+                    .all(|id| !id.is_empty() && id.chars().count() <= 128),
             "invalid_input",
             400,
         )?;

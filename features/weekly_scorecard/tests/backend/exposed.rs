@@ -7,7 +7,7 @@ use dispatch_core::{
 };
 use dispatch_cortex::{
     discovery::CollectionRequest,
-    weekly_scorecard::{self, Request},
+    weekly_scorecard::{self, Capture, Request},
 };
 use dispatch_weekly_scorecard_contract::{self as scorecards, Collected, PackageKind};
 use serde_json::json;
@@ -26,8 +26,8 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     testing::ready_connection(&db, &dsp, dispatch_cortex::PROVIDER).unwrap();
     (root, db, dsp)
 }
-/// Publishes the fixture's `week` as the outcome of a job queued as `key`.
-fn publish(db: &Store, dsp: &str, key: &str, week: &str) {
+/// Publishes the fixture's `week`, as `edit` changes it, as the outcome of a job queued as `key`.
+fn publish(db: &Store, dsp: &str, key: &str, week: &str, edit: fn(&mut Capture)) {
     let request = Request::parse(
         &json!({"collection":"weekly_scorecard","week":week,"station":"TST1",
             "timezone":"America/Los_Angeles","dspName":"Fixture Delivery","dspAbbreviation":"FXTR"}),
@@ -41,7 +41,8 @@ fn publish(db: &Store, dsp: &str, key: &str, week: &str) {
     let job = db
         .enqueue_weekly_scorecard(dsp, None, key, Some(week))
         .unwrap();
-    let capture = weekly_scorecard::fixture(&request).unwrap();
+    let mut capture = weekly_scorecard::fixture(&request).unwrap();
+    edit(&mut capture);
     db.publish_weekly_scorecard(dsp, s(&job, "id"), &capture, &scope)
         .unwrap();
 }
@@ -55,12 +56,21 @@ fn driver_scorecards_reads_the_drivers_asked_for_in_the_weeks_shown_only_while_o
     let offered = scorecards::for_dsp(&db, &dsp)
         .unwrap()
         .expect("Weekly Scorecard is on");
-    assert!(offered.source() == dispatch_cortex::SOURCE);
     assert_eq!(offered.collected(&db, &dsp).unwrap(), None);
-    publish(&db, &dsp, "w37", "2026-W37");
-    publish(&db, &dsp, "w38", "2026-W38");
-    // Collected again, a week is read from its newest publication alone.
-    publish(&db, &dsp, "w38-again", "2026-W38");
+    publish(&db, &dsp, "w37", "2026-W37", |_| {});
+    publish(&db, &dsp, "w38", "2026-W38", |_| {});
+    // Collected again, a week is read from its newest publication alone: here with flags as
+    // text and as a decimal, and a delivery timed in UTC the evening before, Pacific time.
+    publish(&db, &dsp, "w38-again", "2026-W38", |capture| {
+        let concessions = capture
+            .datasets
+            .iter_mut()
+            .find(|dataset| dataset.id == "da_dsp_station_daily_dsb_dnr_tba")
+            .unwrap();
+        concessions.rows[0]["dac_dnr_flag"] = json!("Y");
+        concessions.rows[0]["dac_loss_flag"] = json!(1.0);
+        concessions.rows[0]["delivery_datetime_iso"] = json!("2026-09-14T02:30:00.000Z");
+    });
     // A legacy publication of the week before, its scope unverified, stays quarantined.
     let storage = db.weekly_scorecard_db(&dsp).unwrap();
     storage
@@ -176,7 +186,7 @@ fn driver_scorecards_reads_the_drivers_asked_for_in_the_weeks_shown_only_while_o
                 "driver-3",
                 Some("2026-09-13"),
                 Some(true),
-                ids(&[])
+                ids(&["dac_dnr", "dac_loss"])
             ),
             (
                 PackageKind::Return,
@@ -222,7 +232,13 @@ fn driver_scorecards_refuses_bad_days_and_ids() {
             "invalid_input",
         ),
         (
-            ids(&["driver 1"]),
+            vec![String::new()],
+            "2026-09-13",
+            "2026-09-19",
+            "invalid_input",
+        ),
+        (
+            vec!["x".repeat(129)],
             "2026-09-13",
             "2026-09-19",
             "invalid_input",
@@ -234,8 +250,8 @@ fn driver_scorecards_refuses_bad_days_and_ids() {
         let refused = offered.packages(&db, &dsp, &asked, from, to).unwrap_err();
         assert_eq!(refused.code, code, "{from} to {to}");
     }
-    // 366 days are the most one read covers.
-    let asked = ids(&["driver-1"]);
+    // 366 days are the most one read covers, and an ID is matched as written, whatever it holds.
+    let asked = vec!["DA 1/é".to_owned(), "x".repeat(128)];
     assert!(
         offered
             .scorecards(&db, &dsp, &asked, "2025-09-19", "2026-09-19")

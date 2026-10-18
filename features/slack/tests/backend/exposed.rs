@@ -21,7 +21,7 @@ async fn chat_accounts_are_the_ones_asked_for_only_while_slack_is_on() {
             .unwrap();
     }
     let of = dsp.clone();
-    let accounts = state
+    let (accounts, refused) = state
         .run(move |db| {
             db.label_slack_workspace(&of, DRIVERS, Some("Drivers"))?;
             db.break_slack_workspace(&of, OPERATIONS)?;
@@ -32,11 +32,11 @@ async fn chat_accounts_are_the_ones_asked_for_only_while_slack_is_on() {
                 format!("{DRIVERS}:U0FIXCAM"),
                 format!("{DRIVERS}:U0FIXDREW"),
                 format!("{DRIVERS}:U0FIXGONE"),
-                // Nobody in a workspace the DSP has, and someone in one it hasn't.
+                // Nobody's account.
                 format!("{DRIVERS}:U0NOBODY"),
-                "T0FIXTURE3:U0FIXOWNER".to_owned(),
             ];
-            offered.accounts(db, &of, &asked)
+            let refused = offered.accounts(db, &of, &["U".repeat(129)]).unwrap_err();
+            Ok((offered.accounts(db, &of, &asked)?, refused.code))
         })
         .await
         .unwrap();
@@ -69,6 +69,8 @@ async fn chat_accounts_are_the_ones_asked_for_only_while_slack_is_on() {
             },
         ]
     );
+    // An ID over 128 characters is refused.
+    assert_eq!(refused, "invalid_input");
     let of = dsp.clone();
     let offered = state
         .run(move |db| {

@@ -10,7 +10,7 @@ fn ids(codes: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn timecards_read_a_drivers_days_by_their_ids_and_tell_uncollected_days_apart() {
+fn timecards_read_a_drivers_days_by_their_ids_telling_unknown_and_partial_days_apart() {
     testing::install(
         &[&dispatch_cortex::COLLECTOR, &dispatch_paycom::COLLECTOR],
         &[&crate::FEATURE],
@@ -19,14 +19,14 @@ fn timecards_read_a_drivers_days_by_their_ids_and_tell_uncollected_days_apart() 
     let offered = timecards::for_dsp(&db, &dsp)
         .unwrap()
         .expect("Timecard is on");
-    assert_eq!(offered.source(), dispatch_paycom::SOURCE);
     assert_eq!(offered.collected(&db, &dsp).unwrap(), None);
-    // The period of Sep 6-19, collected on the 12th: its days after then are still to come.
+    // The period of Sep 6-19, collected on the 12th: its days after then are still to come,
+    // and E002 hadn't punched in on the 12th by then.
     let mut workforce = fixtures::fixture_date("UTC", Some("2026-09-12".parse().unwrap())).unwrap();
     workforce["collectedAt"] = json!("2026-09-12T18:00:00Z");
     for card in workforce["timecards"].as_array_mut().unwrap() {
         match (card["employeeCode"].as_str(), card["date"].as_str()) {
-            (Some("E002"), Some("2026-09-07")) => {
+            (Some("E002"), Some("2026-09-07" | "2026-09-12")) => {
                 card["hours"] = json!(0);
                 card["status"] = json!("No punches");
                 card["punches"] = json!([]);
@@ -42,6 +42,31 @@ fn timecards_read_a_drivers_days_by_their_ids_and_tell_uncollected_days_apart() 
         }
     }
     db.publish_timecards(&dsp, &workforce).unwrap();
+    // Then E003's own sync of the period, on the 15th, with every day of it as Paycom lists them.
+    let mut sync = workforce.clone();
+    sync["employees"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|employee| employee["code"] == "E003");
+    let cards = sync["timecards"].as_array_mut().unwrap();
+    cards.retain(|card| card["employeeCode"] == "E003");
+    let mut thirteenth = cards.last().unwrap().clone();
+    thirteenth["date"] = json!("2026-09-13");
+    cards.push(thirteenth);
+    for day in 14..=19 {
+        cards.push(
+            json!({"employeeCode":"E003","date":format!("2026-09-{day}"),"hours":0,
+            "status":"No punches","punches":[]}),
+        );
+    }
+    db.collector(&dsp, dispatch_paycom::PROVIDER)
+        .unwrap()
+        .exec(
+            "INSERT INTO employee_timecard_syncs VALUES ('E003','2026-09-06','2026-09-19',?,?)",
+            rusqlite::params!["2026-09-15T12:00:00Z", sync.to_string()],
+        )
+        .unwrap();
+    // One employee's sync speaks for them alone.
     assert_eq!(
         offered.collected(&db, &dsp).unwrap(),
         Some(Collected {
@@ -53,11 +78,13 @@ fn timecards_read_a_drivers_days_by_their_ids_and_tell_uncollected_days_apart() 
     let read = offered
         .timecards(&db, &dsp, &ids(&["E002"]), "2026-09-04", "2026-09-14")
         .unwrap();
-    // Before the period and after its collection are unknown; the 7th, with nothing, a day off.
+    // Before the period and after its collection are unknown; the 12th, collected under way,
+    // partial; the 7th, with nothing, a day off.
     assert_eq!(
         read.unknown,
         ["2026-09-04", "2026-09-05", "2026-09-13", "2026-09-14"]
     );
+    assert_eq!(read.partial, ["2026-09-12"]);
     let dates: Vec<_> = read.days.iter().map(|day| day.date.as_str()).collect();
     assert_eq!(
         dates,
@@ -66,8 +93,7 @@ fn timecards_read_a_drivers_days_by_their_ids_and_tell_uncollected_days_apart() 
             "2026-09-08",
             "2026-09-09",
             "2026-09-10",
-            "2026-09-11",
-            "2026-09-12"
+            "2026-09-11"
         ]
     );
     assert!(read.days.iter().all(|day| day.id == "E002"));
@@ -103,7 +129,18 @@ fn timecards_read_a_drivers_days_by_their_ids_and_tell_uncollected_days_apart() 
         Some(PunchKind::InLunch)
     );
 
-    // Both of a driver's IDs, by day and then ID; an ID nobody holds reads nothing.
+    // E003's sync decides their days: known through the 14th, the 15th partial.
+    let synced = offered
+        .timecards(&db, &dsp, &ids(&["E003"]), "2026-09-04", "2026-09-16")
+        .unwrap();
+    assert_eq!(synced.unknown, ["2026-09-04", "2026-09-05", "2026-09-16"]);
+    assert_eq!(synced.partial, ["2026-09-15"]);
+    assert_eq!(
+        synced.days.last().map(|day| day.date.as_str()),
+        Some("2026-09-13")
+    );
+
+    // Both of a driver's IDs, by day and then ID; an ID nobody holds, or none, reads nothing.
     let both = offered
         .timecards(
             &db,
@@ -115,11 +152,16 @@ fn timecards_read_a_drivers_days_by_their_ids_and_tell_uncollected_days_apart() 
         .unwrap();
     let held: Vec<_> = both.days.iter().map(|day| day.id.as_str()).collect();
     assert_eq!(held, ["E002", "E003"]);
-    let nobody = offered
-        .timecards(&db, &dsp, &ids(&["E999"]), "2026-09-04", "2026-09-14")
-        .unwrap();
-    assert!(nobody.days.is_empty());
-    assert_eq!(nobody.unknown, read.unknown);
+    for asked in [ids(&["E999"]), vec![]] {
+        let nobody = offered
+            .timecards(&db, &dsp, &asked, "2026-09-04", "2026-09-14")
+            .unwrap();
+        assert!(nobody.days.is_empty());
+        assert_eq!(
+            (nobody.unknown, nobody.partial),
+            (read.unknown.clone(), read.partial.clone())
+        );
+    }
 }
 
 #[test]
@@ -148,17 +190,21 @@ fn timecards_refuse_bad_input_and_are_offered_only_while_timecard_is_on() {
         refused(&driver, "2026-09-01", "2026-10-02"),
         "invalid_input"
     );
-    assert_eq!(refused(&[], "2026-09-01", "2026-09-02"), "invalid_input");
     let many: Vec<_> = (1..=17).map(|n| format!("E{n:03}")).collect();
     assert_eq!(refused(&many, "2026-09-01", "2026-09-02"), "invalid_input");
     assert_eq!(
-        refused(&ids(&["E.002"]), "2026-09-01", "2026-09-02"),
+        refused(&ids(&[""]), "2026-09-01", "2026-09-02"),
         "invalid_input"
     );
-    // A month of 31 days is the most one read covers.
+    assert_eq!(
+        refused(&["x".repeat(129)], "2026-09-01", "2026-09-02"),
+        "invalid_input"
+    );
+    // A month of 31 days, and IDs written any way up to 128 characters, are read.
+    let odd = vec!["E.002 x".to_owned(), "x".repeat(128)];
     assert!(
         offered
-            .timecards(&db, &dsp, &driver, "2026-09-01", "2026-10-01")
+            .timecards(&db, &dsp, &odd, "2026-09-01", "2026-10-01")
             .is_ok()
     );
     let owner = testing::a_user(&db);

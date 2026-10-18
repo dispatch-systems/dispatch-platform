@@ -9,8 +9,9 @@ use dispatch_core::{Result, db::Store, manifest::people::Source};
 pub trait ChatAccounts: Send + Sync {
     /// The source whose IDs name the accounts, to find them among the DSP's people.
     fn source(&self) -> Source;
-    /// The accounts `ids` name, in their order. An ID of no account the DSP keeps, as one of a
-    /// workspace it no longer has, is left out.
+    /// The accounts `ids` name, in their order, leaving out an ID of no account the DSP keeps.
+    /// Slack refuses an empty ID, one over 128 characters, or more than 32 IDs with
+    /// `invalid_input`.
     fn accounts(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Vec<ChatAccount>>;
 }
 

@@ -17,6 +17,8 @@ use dispatch_timecard_contract::{Collected, Day, Days, Meal, Punch, PunchKind, T
 const LONGEST: i64 = 31;
 /// The most IDs one driver's read names.
 const IDS: usize = 16;
+/// The longest ID, in characters.
+const LONGEST_ID: usize = 128;
 
 /// Timecard's timecards, as `Timecards` reads them.
 pub(crate) struct Exposed;
@@ -29,13 +31,12 @@ impl Timecards for Exposed {
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>> {
         let (_, zone) = zone(db, dsp)?;
         let mut collected: Option<Collected> = None;
-        // Each period as its newest collection left it, of everyone or of one employee.
+        // Each period as its newest collection of everyone left it: one employee's sync speaks
+        // only for them.
         for (from, to, at) in db
             .collector(dsp, paycom::PROVIDER)?
             .query_as::<(String, String, String)>(
-                "SELECT period_from,period_to,max(collected_at) FROM (\
-                 SELECT period_from,period_to,collected_at FROM publications UNION ALL \
-                 SELECT period_from,period_to,collected_at FROM employee_timecard_syncs) \
+                "SELECT period_from,period_to,max(collected_at) FROM publications \
                  GROUP BY period_from,period_to",
                 [],
             )?
@@ -71,8 +72,10 @@ impl Timecards for Exposed {
         let span = (day(to) - day(from)).num_days();
         ensure(
             (0..LONGEST).contains(&span)
-                && (1..=IDS).contains(&ids.len())
-                && ids.iter().all(|id| validate::code(id).is_ok()),
+                && ids.len() <= IDS
+                && ids
+                    .iter()
+                    .all(|id| (1..=LONGEST_ID).contains(&id.chars().count())),
             "invalid_input",
             400,
         )?;
@@ -80,16 +83,22 @@ impl Timecards for Exposed {
         let mut read = Days {
             days: vec![],
             unknown: vec![],
+            partial: vec![],
         };
         for (date, source) in daily_sources(db, dsp, from, to, Some(ids))? {
-            // A day after the collection that covers it is still to come in Paycom's period.
+            // A day after the collection that covers it is still to come in Paycom's period,
+            // and the collection's own day was under way.
             let reached = source
                 .collected_at
                 .as_deref()
                 .and_then(|at| local_day(at, zone));
-            if reached.is_none_or(|reached| date > reached) {
-                read.unknown.push(date);
-                continue;
+            match reached {
+                Some(reached) if date < reached => {}
+                Some(reached) if date == reached => read.partial.push(date),
+                _ => {
+                    read.unknown.push(date);
+                    continue;
+                }
             }
             for row in source.rows.into_values() {
                 let card = serde_json::from_value::<Timecard>(row)?;

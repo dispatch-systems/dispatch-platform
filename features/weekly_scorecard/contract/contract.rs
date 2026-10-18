@@ -7,8 +7,8 @@ use dispatch_core::{Result, db::Store, manifest::people::Source};
 
 /// Reads a DSP's drivers' weekly scorecards, as Weekly Scorecard keeps them. It refuses a day
 /// that isn't YYYY-MM-DD with `invalid_date`; and with `invalid_input`, `from` after `to`, more
-/// than 366 days, more than 32 IDs, or an ID that isn't up to 128 letters, digits, `_`, `-` or
-/// `.`.
+/// than 366 days, more than 32 IDs, or an ID that's empty or over 128 characters. An ID matches
+/// exactly as written.
 pub trait DriverScorecards: Send + Sync {
     /// The source whose IDs name its drivers, to find them among the DSP's people.
     fn source(&self) -> Source;
@@ -86,8 +86,8 @@ pub struct Package {
     pub kind: PackageKind,
     /// The scorecard week it counts in.
     pub week: String,
-    /// Its own day, YYYY-MM-DD: the day delivered for a concession or feedback, or planned for a
-    /// return. None when Amazon leaves it out.
+    /// Its own day, YYYY-MM-DD in the DSP's own time: the day delivered for a concession or
+    /// feedback, or planned for a return. None when Amazon leaves it out.
     pub date: Option<String>,
     /// Its tracking ID, as Amazon writes it (TBA…).
     pub tracking_id: String,

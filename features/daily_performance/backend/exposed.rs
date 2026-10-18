@@ -45,6 +45,11 @@ const CONCERNS: &[&str] = &[
     "no_pod_bucket_count",
 ];
 
+/// The active publications of a station, `?1`, whose drivers' quality Amazon had posted: one
+/// whose datasets all came back empty is published too, but proves nothing.
+const OBSERVED: &str = "FROM daily_publications p JOIN daily_datasets d ON d.publication_id=p.id \
+    AND d.dataset='driver_quality' AND d.coverage='observed' WHERE p.station=?1 AND p.active=1";
+
 /// Daily Performance's daily metrics, as its contract says.
 pub(crate) struct Exposed;
 pub(crate) static EXPOSED: Exposed = Exposed;
@@ -56,7 +61,7 @@ impl DailyMetrics for Exposed {
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>> {
         let station = db.profile(dsp)?.station_code;
         let row = db.daily_performance_db(dsp)?.one(
-            "SELECT min(date) first,max(date) last FROM daily_publications WHERE station=? AND active=1",
+            &format!("SELECT min(p.date) first,max(p.date) last {OBSERVED}"),
             [&station],
         )?;
         Ok(row.and_then(|row| {
@@ -76,8 +81,10 @@ impl DailyMetrics for Exposed {
         ensure(
             from <= to
                 && (day(to)? - day(from)?).num_days() < 31
-                && (1..=20).contains(&ids.len())
-                && ids.iter().all(|id| validate::token(id, 128)),
+                && ids.len() <= 20
+                && ids
+                    .iter()
+                    .all(|id| !id.is_empty() && id.chars().count() <= 128),
             "invalid_input",
             400,
         )?;
@@ -85,8 +92,7 @@ impl DailyMetrics for Exposed {
         let data = db.daily_performance_db(dsp)?;
         let collected = data
             .all(
-                "SELECT date FROM daily_publications WHERE station=? AND active=1 \
-                 AND date>=? AND date<=? ORDER BY date",
+                &format!("SELECT p.date {OBSERVED} AND p.date>=?2 AND p.date<=?3 ORDER BY p.date"),
                 params![station, from, to],
             )?
             .iter()

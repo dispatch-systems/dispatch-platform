@@ -1,20 +1,21 @@
 //! Timecard's timecards, as any feature or agent tool reads them without depending on Timecard:
 //! each driver's day as Paycom records it, with its punches, the meal breaks punched, and the
 //! time worked, and the days collected. A Paycom period lists every day in it, so a day after
-//! its collection is unknown, as is a day outside what's collected; a known day a driver has
-//! no timecard on was a day off. Timecard exposes it as `timecards`.
+//! its collection is unknown, as is a day outside what's collected; the day of the collection
+//! is only so far; and a day before it a driver has no timecard on was a day off. Timecard
+//! exposes it as `timecards`.
 use dispatch_core::{Result, db::Store, manifest::people::Source};
 
 /// Reads a DSP's timecards, as Timecard keeps them.
 pub trait Timecards: Send + Sync {
     /// The source whose IDs name its drivers, to find them among the DSP's people.
     fn source(&self) -> Source;
-    /// The days collected, or none before the first collection.
+    /// The days collected of everyone, or none before the first such collection.
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>>;
     /// The timecards under a driver's `ids` from `from` through `to`, YYYY-MM-DD in the DSP's
-    /// own time. Timecard refuses a day that isn't YYYY-MM-DD with `invalid_date`; and with
-    /// `invalid_input`, `from` after `to`, over 31 days, no IDs or over 16, or an ID that isn't
-    /// 1 to 32 letters, digits, `_` or `-`.
+    /// own time, each ID matched exactly; no IDs read no timecards. Timecard refuses a day that
+    /// isn't YYYY-MM-DD with `invalid_date`; and with `invalid_input`, `from` after `to`, over
+    /// 31 days, over 16 IDs, or an ID that's empty or over 128 characters.
     fn timecards(
         &self,
         db: &Store,
@@ -36,11 +37,14 @@ pub struct Collected {
 /// A driver's timecards over the days asked for.
 #[derive(Clone, Debug)]
 pub struct Days {
-    /// Each day with punches or hours, by day and then ID. A known day missing from it had
-    /// neither: a day off.
+    /// Each day with punches or hours, by day and then ID. A day neither unknown nor partial
+    /// missing from it had neither: a day off.
     pub days: Vec<Day>,
     /// The days asked for that no collection has reached: unknown, rather than days off.
     pub unknown: Vec<String>,
+    /// The days a collection read while they were under way: a driver's day there is so far,
+    /// and one missing from it may not be a day off.
+    pub partial: Vec<String>,
 }
 
 /// A driver's timecard for one day.

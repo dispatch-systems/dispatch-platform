@@ -1,9 +1,12 @@
 //! What Slack exposes to every other feature and agent tool: its workspaces' members, as each
 //! person's accounts there (`chat_accounts`, through `dispatch_slack_contract`).
 use super::{people, storage::SlackStore};
-use dispatch_core::{Result, db::Store, manifest::people::Source};
+use dispatch_core::{Result, db::Store, ensure, manifest::people::Source};
 use dispatch_slack_contract::{ChatAccount, ChatAccounts};
 use std::collections::HashMap;
+
+/// The most IDs one question about accounts names.
+const MOST_ASKED: usize = 32;
 
 /// Slack's workspaces' members, as `ChatAccounts` reads them.
 pub(crate) struct Exposed;
@@ -14,8 +17,19 @@ impl ChatAccounts for Exposed {
         people::SOURCE
     }
     fn accounts(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Vec<ChatAccount>> {
-        // Each workspace the DSP has, by its name in Dispatch and whether its access broke: a
-        // member of one it no longer has is nobody's account.
+        ensure(
+            ids.len() <= MOST_ASKED
+                && ids
+                    .iter()
+                    .all(|id| !id.is_empty() && id.chars().count() <= 128),
+            "invalid_input",
+            400,
+        )?;
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // Each workspace the DSP has, by its name in Dispatch and whether its access broke. Its
+        // members go with it, so each member kept is in one.
         let workspaces: HashMap<String, (String, bool)> = db
             .slack_workspaces(dsp)?
             .into_iter()

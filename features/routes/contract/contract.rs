@@ -1,7 +1,8 @@
 //! Each driver's routes, as any feature or agent tool reads them without depending on Routes:
 //! the itineraries a driver drove day by day, with their stops, times and packages, the
 //! packages they didn't deliver, and the days collected. Routes collects a day's routes whole,
-//! so a collected day without a driver's itinerary is a day they didn't drive, and a day
+//! so a complete day without a driver's itinerary is a day they didn't drive; a day read while
+//! under way proves nothing by what it lacks, since it may be read before dispatch; and a day
 //! outside what's collected is unknown. Routes exposes it as `driver_routes`.
 use dispatch_core::{Result, db::Store, manifest::people::Source};
 
@@ -12,10 +13,10 @@ pub trait DriverRoutes: Send + Sync {
     /// The first and last days collected, or none before the first collection.
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>>;
     /// What the driver holding `ids` drove from `from` to `to`, YYYY-MM-DD in the DSP's own
-    /// time, and which of those days were collected. Routes refuses a day that isn't
-    /// YYYY-MM-DD with `invalid_date`; and with `invalid_input`, `from` after `to`, more than
-    /// 366 days, no IDs or more than 16, or an ID that isn't up to 64 letters, digits, `_`,
-    /// `-`, `.`, `:` or `#`.
+    /// time, and which of those days were collected; no IDs answer the days alone. An ID is
+    /// matched exactly. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`; and
+    /// with `invalid_input`, `from` after `to`, more than 366 days, more than 16 IDs, or an ID
+    /// that's empty or over 128 characters.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str)
     -> Result<Driven>;
 }
@@ -41,8 +42,8 @@ pub struct Driven {
 pub struct CollectedDay {
     /// YYYY-MM-DD in the DSP's own time.
     pub day: String,
-    /// False for a day read while still under way: its counts are so far, and a package not
-    /// delivered may still be out.
+    /// False for a day read while still under way: its counts are so far, a package not
+    /// delivered may still be out, and a driver without a route may not be dispatched yet.
     pub complete: bool,
 }
 

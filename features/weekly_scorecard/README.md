@@ -48,4 +48,5 @@ weeks they were scored, each showing them driving.
   asked when its Sunday-to-Saturday week overlaps them. It reads only the active, verified
   publications at the DSP's station, as its weeks do, and never gives raw rows, locations,
   addresses or coaching. It refuses a day that isn't YYYY-MM-DD (`invalid_date`), and
-  more than 366 days, more than 32 IDs or a malformed ID (`invalid_input`).
+  more than 366 days, more than 32 IDs or an ID that's empty or over 128 characters
+  (`invalid_input`).

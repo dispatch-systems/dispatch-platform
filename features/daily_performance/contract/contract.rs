@@ -1,24 +1,26 @@
 //! A driver's Amazon Daily Quality and Day Safety, as any feature or agent tool reads them without
 //! depending on Daily Performance: their numbers day by day, the packages they returned to the
-//! station and their safety events. Each day is collected whole or not at all, so a day collected
-//! without a driver's rows had nothing of theirs reported, and a day not collected is unknown.
-//! Daily Performance exposes it as `daily_metrics`.
+//! station and their safety events. A day counts as collected once Amazon had posted its drivers'
+//! quality, so a day collected without a driver's rows had nothing of theirs reported; any other
+//! day is unknown, even with rows, as when Amazon had posted only part of it. Daily Performance
+//! exposes it as `daily_metrics`.
 use dispatch_core::{Result, db::Store, manifest::people::Source};
 
 /// Reads a DSP's daily metrics, a driver's at a time, as Daily Performance keeps them.
 pub trait DailyMetrics: Send + Sync {
     /// The source whose IDs name its drivers, to find them among the DSP's people.
     fn source(&self) -> Source;
-    /// The first day collected and the last, or none before the first collection.
+    /// The first day collected and the last, or none before the first.
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>>;
     /// A driver's days from `from` to `to`, YYYY-MM-DD in the DSP's own time, under any of
-    /// `ids`. It refuses a day that isn't YYYY-MM-DD with `invalid_date`; and with
-    /// `invalid_input`, `from` after `to`, more than 31 days, none or more than 20 IDs, or an ID
-    /// that isn't up to 128 letters, digits, `_`, `-` or `.`.
+    /// `ids`, each matched exactly; none for none. It refuses a day that isn't YYYY-MM-DD with
+    /// `invalid_date`; and with `invalid_input`, `from` after `to`, more than 31 days, more than
+    /// 20 IDs, or an ID that's empty or over 128 characters.
     fn days(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Days>;
 }
 
-/// The days collected, YYYY-MM-DD in the DSP's own time.
+/// The days collected, YYYY-MM-DD in the DSP's own time: only the days Amazon had posted its
+/// drivers' quality.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Collected {
     pub from: String,
@@ -28,7 +30,8 @@ pub struct Collected {
 /// A driver's days over the days asked for.
 #[derive(Clone, Debug)]
 pub struct Days {
-    /// The days asked for that were collected: any other is unknown.
+    /// The days asked for whose drivers' quality Amazon had posted, where a driver without rows
+    /// had nothing reported: any other is unknown.
     pub collected: Vec<String>,
     /// Each day one of their IDs has rows, by day and then ID.
     pub days: Vec<Day>,

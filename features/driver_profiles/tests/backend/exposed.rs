@@ -95,12 +95,24 @@ fn amazon_roster_says_what_the_roster_listed_of_the_ids_asked_for_in_their_order
             format!("driver-1 true ACTIVE [Driver, Helper] [CDV, EDV] 2027-01-15 {second}"),
         ]
     );
-    // One ID that isn't a transporter ID refuses the whole question.
-    assert_eq!(
-        roster
-            .associates(&db, &dsp, &ids(&["driver-1", "driver 1"]))
-            .unwrap_err()
-            .code,
-        "invalid_input"
+    // Any ID the directory could hold is matched as written, up to 128 characters and 32 IDs.
+    let (longest, many) = (
+        "d".repeat(128),
+        (1..=33).map(|n| format!("driver-{n}")).collect::<Vec<_>>(),
     );
+    assert!(
+        roster
+            .associates(&db, &dsp, &ids(&["driver 1", &longest]))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(roster.associates(&db, &dsp, &many[..32]).unwrap().len(), 8);
+    // An empty ID, a longer one, or one more ID refuses the whole question.
+    let longer = "d".repeat(129);
+    for refused in [ids(&["driver-1", ""]), ids(&["driver-1", &longer]), many] {
+        assert_eq!(
+            roster.associates(&db, &dsp, &refused).unwrap_err().code,
+            "invalid_input"
+        );
+    }
 }

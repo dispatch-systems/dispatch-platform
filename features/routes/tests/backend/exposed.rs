@@ -93,17 +93,18 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
             .filter(|r| r.driver_id == "driver-1")
             .all(|r| r.delivered == 2 && r.undelivered.is_empty())
     );
-    let absent = offered
-        .routes(&db, &dsp, &ids(&["driver-9"]), &day(3), &day(0))
-        .unwrap();
-    assert_eq!(absent.days.len(), 2);
-    assert!(absent.routes.is_empty());
+    // Any ID up to 128 characters is matched exactly; none at all reads the days alone.
+    for asked in [vec!["driver 9".to_owned(), "A".repeat(128)], Vec::new()] {
+        let absent = offered.routes(&db, &dsp, &asked, &day(3), &day(0)).unwrap();
+        assert_eq!(absent.days.len(), 2);
+        assert!(absent.routes.is_empty());
+    }
 
     // Each refusal changes one thing from a read that's answered.
     let year = offered.routes(&db, &dsp, &driver, &day(365), &day(0));
     assert!(year.is_ok());
     let seventeen: Vec<String> = (0..17).map(|n| format!("driver-{n}")).collect();
-    let long = "A".repeat(65);
+    let long = "A".repeat(129);
     for (asked, from, to, code) in [
         (
             driver.clone(),
@@ -113,9 +114,8 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
         ),
         (driver.clone(), day(0), day(1), "invalid_input"),
         (driver.clone(), day(366), day(0), "invalid_input"),
-        (Vec::new(), day(3), day(0), "invalid_input"),
         (seventeen, day(3), day(0), "invalid_input"),
-        (ids(&["driver 2"]), day(3), day(0), "invalid_input"),
+        (ids(&[""]), day(3), day(0), "invalid_input"),
         (vec![long], day(3), day(0), "invalid_input"),
     ] {
         let refused = offered.routes(&db, &dsp, &asked, &from, &to).unwrap_err();

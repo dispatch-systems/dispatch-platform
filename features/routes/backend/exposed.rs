@@ -9,7 +9,6 @@ use dispatch_core::{
     foundation::validate,
     manifest::people::Source,
 };
-use dispatch_cortex::routes::token;
 use dispatch_routes_contract::{
     Collected, CollectedDay, Driven, DriverRoutes, RouteDay, Undelivered,
 };
@@ -19,8 +18,9 @@ use std::collections::HashMap;
 
 /// The most days one read covers.
 const LONGEST: i64 = 366;
-/// The most IDs one read names.
+/// The most IDs one read names, and the longest ID.
 const MOST_IDS: usize = 16;
+const LONGEST_ID: usize = 128;
 
 /// The days of a range with an active publication at the station, and whether each is final.
 const DAYS: &str = "SELECT day,min(mode='final') complete FROM route_publications \
@@ -80,8 +80,10 @@ impl DriverRoutes for Exposed {
         ensure(
             from <= to
                 && (date(to)? - date(from)?).num_days() < LONGEST
-                && (1..=MOST_IDS).contains(&ids.len())
-                && ids.iter().all(|id| token(id, 64)),
+                && ids.len() <= MOST_IDS
+                && ids
+                    .iter()
+                    .all(|id| !id.is_empty() && id.chars().count() <= LONGEST_ID),
             "invalid_input",
             400,
         )?;

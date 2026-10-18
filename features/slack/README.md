@@ -284,8 +284,8 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   Slack), the member's own ID there, the name they go by when it's another, whether it's active,
   whether they're a guest and whether the workspace's access broke. It repeats nothing Driver
   Match already has of them, as their names, email addresses and phone numbers, and never a
-  workspace's tokens or permissions. An ID of no account, or of a workspace the DSP no longer
-  has, is left out.
+  workspace's tokens or permissions. An ID of no account is left out; an empty ID, one over 128
+  characters, or more than 32 IDs is refused (`invalid_input`).
 
 ## Slack's app
 

@@ -61,6 +61,13 @@ fn a_drivers_days_are_read_for_their_ids_with_unknown_days_told_apart_while_it_i
         capture.datasets[0].rows[0]["delivered"] = json!("97");
         capture.datasets[0].rows[0]["dispatched"] = json!({"count": 99});
     });
+    // Collected before Amazon posted it, every dataset empty: unknown, not a day of nothing.
+    publish(&db, &dsp, "2026-10-04", |capture| {
+        capture
+            .datasets
+            .iter_mut()
+            .for_each(|dataset| dataset.rows.clear())
+    });
     assert_eq!(
         offered.collected(&db, &dsp).unwrap(),
         Some(Collected {
@@ -71,7 +78,7 @@ fn a_drivers_days_are_read_for_their_ids_with_unknown_days_told_apart_while_it_i
 
     let ids = ["driver-1".to_owned(), "driver-3".to_owned()];
     let read = offered
-        .days(&db, &dsp, &ids, "2026-09-30", "2026-10-03")
+        .days(&db, &dsp, &ids, "2026-09-30", "2026-10-04")
         .unwrap();
     assert_eq!(read.collected, ["2026-10-01", "2026-10-03"]);
     let days: Vec<_> = read
@@ -144,20 +151,24 @@ fn bad_days_and_ids_are_refused() {
     let (_root, db, dsp) = ready();
     let offered = metrics::for_dsp(&db, &dsp).unwrap().unwrap();
     let one = ["driver-1".to_owned()];
+    // Any ID a source holds, up to 128 characters, and none at all.
+    let odd = ["driver 1/é".to_owned(), "x".repeat(128)];
+    for ids in [&odd[..], &[][..]] {
+        let read = offered
+            .days(&db, &dsp, ids, "2026-09-03", "2026-10-03")
+            .unwrap();
+        assert!(read.days.is_empty());
+    }
     let many: Vec<String> = (0..21).map(|n| format!("driver-{n}")).collect();
-    let bad = ["driver 1".to_owned()];
-    assert!(
-        offered
-            .days(&db, &dsp, &one, "2026-09-03", "2026-10-03")
-            .is_ok()
-    );
+    let empty = ["driver-1".to_owned(), String::new()];
+    let long = ["x".repeat(129)];
     for (ids, from, to, code) in [
         (&one[..], "2026-10-1", "2026-10-03", "invalid_date"),
         (&one[..], "2026-10-03", "2026-10-01", "invalid_input"),
         (&one[..], "2026-09-02", "2026-10-03", "invalid_input"),
-        (&[][..], "2026-10-01", "2026-10-03", "invalid_input"),
         (&many[..], "2026-10-01", "2026-10-03", "invalid_input"),
-        (&bad[..], "2026-10-01", "2026-10-03", "invalid_input"),
+        (&empty[..], "2026-10-01", "2026-10-03", "invalid_input"),
+        (&long[..], "2026-10-01", "2026-10-03", "invalid_input"),
     ] {
         let error = offered.days(&db, &dsp, ids, from, to).unwrap_err();
         assert_eq!(error.code, code, "{ids:?} {from} {to}");

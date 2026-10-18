@@ -12,8 +12,8 @@ pub trait AmazonRoster: Send + Sync {
     /// When the roster was last collected, RFC 3339 in UTC, or none before the first collection.
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<String>>;
     /// The associates a roster has listed under `ids`, in their order, leaving out an ID no
-    /// roster has listed. Driver Profiles refuses an ID that isn't up to 64 letters, digits, `_`,
-    /// `-` or `.` with `invalid_input`.
+    /// roster has listed, each matched exactly. Driver Profiles refuses an empty ID, one over 128
+    /// characters, or more than 32 IDs with `invalid_input`.
     fn associates(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Vec<Associate>>;
 }
 

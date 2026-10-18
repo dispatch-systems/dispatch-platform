@@ -1,11 +1,11 @@
 //! What Weekly Scorecard exposes to every other feature and agent tool: each driver's weekly
 //! scorecards and the packages they list, from the weeks its own reads show
 //! (`dispatch_weekly_scorecard_contract`).
-use super::{WeeklyScorecardStore, text};
-use chrono::{Datelike, Duration, NaiveDate};
+use super::{WeeklyScorecardStore, flag, text, weekly_scorecard_timezone};
+use chrono::{DateTime, Datelike, Duration, NaiveDate};
 use dispatch_core::{
     Error, Result,
-    db::{Store, flag, s},
+    db::{Store, s},
     ensure,
     foundation::{validate, weeks::week_days},
     manifest::people::Source,
@@ -123,7 +123,8 @@ impl DriverScorecards for Exposed {
         from: &str,
         to: &str,
     ) -> Result<Vec<Scorecard>> {
-        rows(db, dsp, "driver_weekly_scorecards", ids, from, to)?
+        let weeks = overlapping(ids, from, to)?;
+        rows(db, dsp, "driver_weekly_scorecards", ids, &weeks)?
             .iter()
             .map(|row| {
                 let (sunday, saturday) = week_days(s(row, "week"))?;
@@ -136,7 +137,7 @@ impl DriverScorecards for Exposed {
                     name: text(&fields, "da_name").unwrap_or_default(),
                     overall_score: number(&fields, "da_overall_score"),
                     overall_tier: text(&fields, "da_overall_tier"),
-                    delivered: fields.get("delivered").and_then(Value::as_i64),
+                    delivered: number(&fields, "delivered").map(|n| n as i64),
                     metrics: METRICS
                         .iter()
                         .map(|(name, value, tier, score)| Metric {
@@ -159,20 +160,27 @@ impl DriverScorecards for Exposed {
         from: &str,
         to: &str,
     ) -> Result<Vec<Package>> {
+        let weeks = overlapping(ids, from, to)?;
+        let tz = weekly_scorecard_timezone(db, dsp)?;
         let mut packages = Vec::new();
         for (kind, table) in [
             (PackageKind::Concession, "delivery_concessions"),
             (PackageKind::Return, "returns_to_station"),
             (PackageKind::Feedback, "customer_feedback"),
         ] {
-            for row in rows(db, dsp, table, ids, from, to)? {
+            for row in rows(db, dsp, table, ids, &weeks)? {
                 let fields: Value = serde_json::from_str(s(&row, "row"))?;
+                let marked = |key: &str| flag(&fields[key]) == Some(true);
                 let (date, reasons) = match kind {
+                    // Its `data_date` is the day the concession was recorded, often days after
+                    // the delivery, which Amazon times in UTC.
                     PackageKind::Concession => (
-                        day(&row["data_date"]),
+                        DateTime::parse_from_rfc3339(s(&fields, "delivery_datetime_iso"))
+                            .ok()
+                            .map(|at| at.with_timezone(&tz).date_naive().to_string()),
                         CONCESSION_FLAGS
                             .iter()
-                            .filter(|field| flag(&fields, field))
+                            .filter(|field| marked(field))
                             .map(|field| field.trim_end_matches("_flag").to_owned())
                             .collect(),
                     ),
@@ -180,11 +188,13 @@ impl DriverScorecards for Exposed {
                         day(&fields["delivery_planned_date"]),
                         text(&fields, "rts_reason_code").into_iter().collect(),
                     ),
+                    // Amazon writes when it was delivered in the station's own time, with no
+                    // offset.
                     PackageKind::Feedback => (
                         day(&fields["delivery_time"]),
                         FEEDBACK_ANSWERS
                             .iter()
-                            .filter(|answer| flag(&fields, answer))
+                            .filter(|answer| marked(answer))
                             .map(|answer| (*answer).to_owned())
                             .collect(),
                     ),
@@ -205,17 +215,15 @@ impl DriverScorecards for Exposed {
     }
 }
 
-/// The rows of `table` naming any of `ids` in the weeks overlapping `from` to `to`: only the
-/// active, verified publications at the DSP's station, as its weeks show them.
+/// The rows of `table` naming any of `ids` in `weeks`: only the active, verified publications
+/// at the DSP's station, as its weeks show them.
 fn rows(
     db: &Store,
     dsp: &str,
     table: &str,
     ids: &[String],
-    from: &str,
-    to: &str,
+    weeks: &[String],
 ) -> Result<Vec<Value>> {
-    let weeks = overlapping(ids, from, to)?;
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -230,7 +238,7 @@ fn rows(
         ),
         [
             station,
-            serde_json::to_string(&weeks)?,
+            serde_json::to_string(weeks)?,
             serde_json::to_string(ids)?,
         ],
     )
@@ -247,7 +255,9 @@ fn overlapping(ids: &[String], from: &str, to: &str) -> Result<Vec<String>> {
         first <= last
             && (last - first).num_days() < LONGEST
             && ids.len() <= MOST_IDS
-            && ids.iter().all(|id| validate::token(id, 128)),
+            && ids
+                .iter()
+                .all(|id| !id.is_empty() && id.chars().count() <= 128),
         "invalid_input",
         400,
     )?;
