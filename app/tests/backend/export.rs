@@ -188,10 +188,7 @@ fn exposes() -> String {
             }),
         );
     }
-    generated(
-        "what features expose",
-        &[("exposes", offered.into())],
-    )
+    generated("what features expose", &[("exposes", offered.into())])
 }
 
 /// Runtime catalogs, exported from their actual values rather than Rust source formatting.

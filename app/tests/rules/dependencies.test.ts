@@ -24,7 +24,8 @@ import { lex, rust, useTree } from './support/rust.js';
  * that trait speaks in, on core alone. Any owner may use one without declaring its feature, as
  * it stays when the feature is left out of a build.
  */
-const contract = (file: string) => /^features\/[^/]+\/contract(\/|$)/.exec(file)?.[0].replace(/\/$/, '');
+const contract = (file: string) =>
+  /^features\/[^/]+\/contract(\/|$)/.exec(file)?.[0].replace(/\/$/, '');
 /** What an owner may use: core, itself and every contract always, and a feature what it declares. */
 function allowed(owner: Owner): Set<string> {
   const contracts = files.flatMap((file) => contract(file) ?? []);
@@ -55,7 +56,8 @@ test("each feature's and collector's Cargo.toml lists exactly what its manifest 
       if (!listed.has(dir)) disagree.push(`${manifest} lacks ${dir}, which its manifest declares`);
     // Its tests may use what it may: core's test helpers, its collectors and features.
     for (const dir of workspaceDependencies(crate, true))
-      if (!expected.has(dir) && !contract(dir)) disagree.push(`${manifest}'s dev-dependencies list ${dir}`);
+      if (!expected.has(dir) && !contract(dir))
+        disagree.push(`${manifest}'s dev-dependencies list ${dir}`);
   }
   holds('dependencies', 'cargo', disagree);
 });

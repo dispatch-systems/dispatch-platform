@@ -1,4 +1,5 @@
 //! What the registry refuses of what features declare about one another.
+use dispatch_core::expose;
 use dispatch_core::manifest::{
     Feature, Registry, ScheduleAlias, feature, optional,
     people::{KindInfo, People, Source, SourceInfo},
@@ -172,12 +173,12 @@ impl Greeting for Hello {}
 fn a_contract_two_features_offer_is_refused() {
     static FIRST: Feature = Feature {
         switch: optional("first", "First", &[]),
-        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
+        exposes: &[expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
         ..feature("first")
     };
     static SECOND: Feature = Feature {
         switch: optional("second", "Second", &[]),
-        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "welcome", "A welcome.")],
+        exposes: &[expose!(dyn Greeting, &Hello, "welcome", "A welcome.")],
         ..feature("second")
     };
     crate::install();
@@ -193,12 +194,12 @@ impl Farewell for Hello {}
 fn a_name_two_features_expose_is_refused() {
     static FIRST: Feature = Feature {
         switch: optional("first", "First", &[]),
-        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
+        exposes: &[expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
         ..feature("first")
     };
     static SECOND: Feature = Feature {
         switch: optional("second", "Second", &[]),
-        exposes: &[dispatch_core::expose!(dyn Farewell, &Hello, "greeting", "A farewell.")],
+        exposes: &[expose!(dyn Farewell, &Hello, "greeting", "A farewell.")],
         ..feature("second")
     };
     crate::install();
@@ -209,7 +210,7 @@ fn a_name_two_features_expose_is_refused() {
 fn a_contract_is_found_by_its_type_in_the_feature_offering_it() {
     static OFFERING: Feature = Feature {
         switch: optional("offering", "Offering", &[]),
-        exposes: &[dispatch_core::expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
+        exposes: &[expose!(dyn Greeting, &Hello, "greeting", "A greeting.")],
         ..feature("offering")
     };
     crate::install();
