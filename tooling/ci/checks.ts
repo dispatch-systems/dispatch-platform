@@ -12,7 +12,17 @@ import { workspaceCrates } from './workspace.js';
 // on its own runner: `build` packages the runtime, and the modes that need it download that
 // package into `.build` first.
 const mode = process.argv[2] ?? 'full';
-const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'benchmark', 'smoke'];
+const modes = [
+  'full',
+  'build',
+  'checks',
+  'browser',
+  'core',
+  'api',
+  'benchmark',
+  'smoke',
+  'scaffold',
+];
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
 const started = Date.now();
 const failures: string[] = [];
@@ -236,6 +246,7 @@ else if (mode === 'core') await core();
 else if (mode === 'api') await api();
 else if (mode === 'benchmark') await benchmark();
 else if (mode === 'smoke') await npm('test:smoke');
+else if (mode === 'scaffold') await npm('check:scaffold');
 else {
   // Locally, in sequence: CI's jobs share one machine here, and Cargo's build lock.
   await core();
@@ -245,6 +256,7 @@ else {
   if (!failures.length && (await installBrowsers())) await npm('test:ui');
   if (!failures.length) await benchmark();
   if (!failures.length) await npm('test:browseros');
+  if (!failures.length) await npm('check:scaffold');
 }
 process.stdout.write(`Validation ${mode}: ${((Date.now() - started) / 1000).toFixed(1)}s\n`);
 if (failures.length) {

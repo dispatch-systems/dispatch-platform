@@ -4,11 +4,13 @@ CREATE TABLE IF NOT EXISTS storage_identity (dsp_id TEXT NOT NULL, provider TEXT
 {{/ownDatabase}}
 -- What {{label}} keeps for a DSP. Shipped migrations never change: add the next one instead.
 -- TODO(scaffold): the columns it really keeps.
+{{#people}}
+-- person_id: who the row is about, by the ID {{peopleSource}} knows them by.
+{{/people}}
 CREATE TABLE IF NOT EXISTS {{table}} (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
 {{#people}}
-    -- Who the row is about: the ID {{peopleSource}} knows them by.
     person_id TEXT,
 {{/people}}
     created_at TEXT NOT NULL
