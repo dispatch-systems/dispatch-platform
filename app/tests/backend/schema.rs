@@ -42,7 +42,9 @@ fn private() -> tempfile::TempDir {
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     root
 }
-// What an older binary left behind: the schema without any record of migrations.
+// What an older binary left behind: the schema without any record of migrations. A test
+// building one from a new database's schema rather than the recorded one keeps only the
+// tables this build has, so a build that leaves a feature out has none of its.
 fn older(file: &Path, kind: Kind, schema: &str) {
     let db = rusqlite::Connection::open(file).unwrap();
     db.execute_batch(schema).unwrap();
@@ -167,7 +169,7 @@ fn platform_databases_from_before_each_added_column_gain_it() {
     let new = Db::create(&new, Kind::PLATFORM, "").unwrap();
     // v0.0.9 has no audit data or shown, nor member ids. Before v0.0.6 there was no
     // actor_name, and before roles no role_id or its indexes.
-    let v9 = recorded(Kind::PLATFORM)
+    let v9 = dump(&new)
         .replace(RECORD, "")
         .replace(", member_id TEXT)", ")")
         .replace(", data TEXT, shown INTEGER)", ")");
@@ -214,7 +216,7 @@ fn agent_keys_from_before_tools_use_every_tool_that_reads() {
     let root = private();
     let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
     // The release before tools were chosen: no choices, and no say in tools added later.
-    let before: String = recorded(Kind::PLATFORM)
+    let before: String = dump(&new)
         .replace(RECORD, "")
         .replace(ALL_TOOLS, "")
         .lines()
@@ -254,7 +256,7 @@ fn agent_keys_from_before_connected_apps_stay_keys() {
     let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
     // The release before Sign in with Dispatch: no OAuth tables, and keys of one kind
     // that read no differently.
-    let before: String = recorded(Kind::PLATFORM)
+    let before: String = dump(&new)
         .replace(RECORD, "")
         .replace(ALL_TOOLS, "")
         .replace(
@@ -300,7 +302,7 @@ fn agent_keys_from_before_reads_read_every_kind_with_their_addresses() {
     let new = Db::create(&root.path().join("new.sqlite"), Kind::PLATFORM, "").unwrap();
     // The release before reads: tools and addresses on each key, no DSP's own settings,
     // and calls never marked as bypassing features.
-    let before: String = recorded(Kind::PLATFORM)
+    let before: String = dump(&new)
         .replace(RECORD, "")
         .replace(ALL_TOOLS, "")
         .replace(
