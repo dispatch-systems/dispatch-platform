@@ -1,5 +1,5 @@
-//! An event reaches each feature that hears it while it's on for the DSP, in order, and no
-//! feature hearing another.
+//! An event reaches each feature that hears it while it's on for the DSP, in order; neither one
+//! that's off, which isn't run at all, nor one hearing another.
 use super::*;
 use crate::{manifest::feature, testing};
 use std::sync::Mutex;
@@ -13,8 +13,8 @@ fn heard(by: &'static str, dsp: String) -> Upkeep {
 fn first(_: Arc<State>, dsp: String, _: PeopleChanged) -> Upkeep {
     heard("first", dsp)
 }
-fn off(_: Arc<State>, dsp: String, _: PeopleChanged) -> Upkeep {
-    heard("off", dsp)
+fn off(_: Arc<State>, _: String, _: PeopleChanged) -> Upkeep {
+    panic!("a feature that's off isn't run at all")
 }
 fn collected(_: Arc<State>, dsp: String, event: CollectionSucceeded) -> Upkeep {
     assert_eq!(event.keeps, "dvic");

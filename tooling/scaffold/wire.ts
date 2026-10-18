@@ -192,6 +192,9 @@ export function tools(root: string, features: Crate[]): Tool[] {
     .sort()
     .map((file) => toolOf(file.slice(0, -3), read(root, `mcp/tools/${file}`), features));
 }
+/** Rust source without its comments, strings and characters, each matched from where it starts. */
+const code = (source: string) =>
+  source.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"\\]|\\.)*"|'(?:[^'\\\n]|\\.)'/g, '');
 /** What the wiring needs of the tool in the file `module`.rs. */
 export function toolOf(module: string, source: string, features: Crate[]): Tool {
   const type = /\bimpl\s+Tool\s+for\s+(\w+)/.exec(source)?.[1];
@@ -204,7 +207,9 @@ export function toolOf(module: string, source: string, features: Crate[]): Tool 
     if (!features.some((feature) => feature.name === name))
       throw new Error(`mcp/tools/${module}.rs needs ${name}, which is no feature in features/`);
   const reads = [
-    ...new Set([...source.matchAll(/\bdispatch_(\w+)_contract\b/g)].map((found) => found[1]!)),
+    ...new Set(
+      [...code(source).matchAll(/\bdispatch_(\w+)_contract\b/g)].map((found) => found[1]!),
+    ),
   ].sort();
   for (const name of reads)
     if (!features.some((feature) => feature.name === name))

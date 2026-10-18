@@ -35,14 +35,16 @@ pub struct Driver {
     pub first_date: String,
 }
 
-/// Which short inspections to read, a page at a time.
+/// Which short inspections to read, a page at a time. DVIC refuses with `invalid_input` a day
+/// that isn't YYYY-MM-DD, `from` after `to`, a driver's ID over 128 characters, `after` over
+/// 256, or a `limit` outside 1 to 500.
 pub struct Asked<'a> {
     /// The first day and the last, YYYY-MM-DD in the DSP's own time.
     pub from: &'a str,
     pub to: &'a str,
     /// One driver's, by ID, or everyone's.
     pub driver: Option<&'a str>,
-    /// Where the page before ended, or empty for the first.
+    /// Where the page before ended, as its `next` said, or empty for the first.
     pub after: &'a str,
     /// The most a page holds.
     pub limit: usize,

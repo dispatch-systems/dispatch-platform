@@ -135,8 +135,13 @@ fn today(timezone: &str) -> NaiveDate {
 
 /// The search, read at once.
 fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -> Answer<Found> {
+    // The toolbox refuses first where DVIC is off; this answers only for a DSP whose DVIC was
+    // switched off since, as the toolbox would.
     let Some(reader) = dvic::for_dsp(db, dsp)? else {
-        let message = format!("DVIC is switched off at {name}. Tell the user.");
+        let message = format!(
+            "DVIC is switched off at {name}. Tell the user; don't work the answer out from other \
+             tools."
+        );
         return Err(Refusal::new("switched_off", message).into());
     };
     let coverage = reader.collected(db, dsp)?;

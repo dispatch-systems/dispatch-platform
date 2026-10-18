@@ -33,19 +33,18 @@ only what was decided.
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
   platform (`driver_codes`). A person keeps their code for good; merged, both keep the code
   merged into.
-- **Matching:** after every collection that finishes and whenever the people a feature names
-  change outside one, as a feature whose data names people being switched on (it hears
-  `collection.succeeded` and `people.changed`); and hourly to catch up anything missed. Every
-  ID the DSP's data holds gets a code, source by source in their order. A new ID joins someone by, in turn: another ID its
-  source says is the same person's, as their account in another workspace, when one person
-  holds those and their names agree (`account`); an email
-  address or phone number only the two of them have, among every person of either source,
-  when their names agree; a name nobody else carries; the same name written another way, as
-  without a second surname or by a middle name. A nickname, as Alex for Alexander, joins
-  nobody: it suggests a pair to decide. Email addresses are compared in lower case and phone
-  numbers by their ten digits; a number that isn't North American is shown but matches
-  nobody. A contact two people of one source share, as a family's phone, joins nobody but
-  suggests a rehire. What counts as one name written two ways, and which first names are
+- **Matching:** after every collection that finishes and whenever the people a feature names change
+  outside one, as a feature whose data names people being switched on (it hears
+  `collection.succeeded` and `people.changed`); and hourly to catch up anything missed. Every ID the
+  DSP's data holds gets a code, source by source in their order. A new ID joins someone by, in turn:
+  another ID its source says is the same person's, as their account in another workspace, when one
+  person holds those and their names agree (`account`); an email address or phone number only the
+  two of them have, among every person of either source, when their names agree; a name nobody else
+  carries; the same name written another way, as without a second surname or by a middle name. A
+  nickname, as Alex for Alexander, joins nobody: it suggests a pair to decide. Email addresses are
+  compared in lower case and phone numbers by their ten digits; a number that isn't North American
+  is shown but matches nobody. A contact two people of one source share, as a family's phone, joins
+  nobody but suggests a rehire. What counts as one name written two ways, and which first names are
   short for others, is `backend/names.rs`: no other owner matches names.
 - **Names:** a person is shown by the name their first source writes, in the sources' order,
   so a payroll's legal name comes before Amazon's.

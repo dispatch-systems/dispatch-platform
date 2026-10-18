@@ -101,6 +101,13 @@ test("a tool reading a feature's contract brings the contract always, beside the
       () => toolOf('x', 'use dispatch_teleport_contract::Beam;\nimpl Tool for X {}', features),
       /reads dispatch_teleport_contract, and teleport is no feature/,
     );
+    // Named in a comment or a string, a contract isn't read.
+    const naming = toolOf(
+      'x',
+      '//! Unlike dispatch_timecard_contract, this reads nothing.\n/* dispatch_dvic_contract */\nconst S: &str = "dispatch_routes_contract // \\" and more";\nimpl Tool for X {}\n',
+      features,
+    );
+    assert.deepEqual(naming.reads, []);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

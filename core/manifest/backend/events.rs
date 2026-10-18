@@ -31,8 +31,10 @@ pub struct On {
     pub event: &'static str,
     /// The event's type, as Rust names it: `dispatch_core::manifest::events::PeopleChanged`.
     pub kind: fn() -> &'static str,
-    /// The work it does for the DSP named, if what happened is its event: none for another.
-    pub run: fn(Arc<State>, String, &(dyn Any + Send + Sync)) -> Option<Upkeep>,
+    /// Whether what happened is its event.
+    pub hears: fn(&(dyn Any + Send + Sync)) -> bool,
+    /// The work it does for the DSP named, once `hears` says it's its event.
+    pub run: fn(Arc<State>, String, &(dyn Any + Send + Sync)) -> Upkeep,
 }
 
 /// What a feature does when `$event` happens for a DSP: `$run(state, dsp, event)`, returning
@@ -43,10 +45,12 @@ macro_rules! on {
         $crate::manifest::events::On {
             event: <$event as $crate::manifest::events::Event>::NAME,
             kind: ::std::any::type_name::<$event>,
+            hears: |event| event.is::<$event>(),
             run: |state, dsp, event| {
-                event
+                let event = event
                     .downcast_ref::<$event>()
-                    .map(|event| $run(state, dsp, ::std::clone::Clone::clone(event)))
+                    .expect("an event is run only once it's heard as its own");
+                $run(state, dsp, ::std::clone::Clone::clone(event))
             },
         }
     };
@@ -73,9 +77,13 @@ impl Event for PeopleChanged {
 /// Tells every feature on for the DSP that hears `event` of it, one at a time, each in the
 /// registry's order, once the one before has done its work.
 pub async fn publish<E: Event>(state: &Arc<State>, dsp: &str, event: E) {
-    let on = |feature: &'static Feature| {
+    let is_on = |feature: &'static Feature| {
         let (state, at) = (state.clone(), dsp.to_owned());
         async move {
+            // Every DSP has a mandatory feature, so there's no switch to read.
+            if feature.switch.mandatory {
+                return true;
+            }
             let switch = feature.switch.id;
             let read = state.read(move |db| db.feature_enabled(&at, switch)).await;
             read.unwrap_or_else(|error| {
@@ -88,25 +96,22 @@ pub async fn publish<E: Event>(state: &Arc<State>, dsp: &str, event: E) {
             })
         }
     };
-    deliver(registry().features, state, dsp, &event, on).await;
+    deliver(registry().features, state, dsp, &event, is_on).await;
 }
 
-/// Tells each of `features` that hears `event` of it, in their order, while `on` says it's on
-/// for the DSP.
+/// Tells each of `features` that hears `event` of it, in their order, while `is_on` says it's
+/// on for the DSP: one that's off isn't run at all.
 async fn deliver<E: Event, On: Future<Output = bool>>(
     features: &[&'static Feature],
     state: &Arc<State>,
     dsp: &str,
     event: &E,
-    on: impl Fn(&'static Feature) -> On,
+    is_on: impl Fn(&'static Feature) -> On,
 ) {
     for feature in features {
-        for hears in feature.on {
-            let Some(work) = (hears.run)(state.clone(), dsp.to_owned(), event) else {
-                continue;
-            };
-            if on(feature).await {
-                work.await;
+        for it in feature.on {
+            if (it.hears)(event) && is_on(feature).await {
+                (it.run)(state.clone(), dsp.to_owned(), event).await;
             }
         }
     }
