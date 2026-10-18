@@ -41,11 +41,14 @@ pub struct Integration {
     /// disconnecting a Slack workspace does: before the connection clears its own, whether or
     /// not the feature is on. None for one keeping nothing of an account, or whose tables the
     /// connection's own feature declares, as Slack's own integrations' are.
-    pub forget: Option<fn(&Store, dsp: &str, account: &str) -> Result<()>>,
+    pub forget: Option<Forget>,
 }
 
 /// Fixture mode's answer to a method, for an account: none for a method it doesn't call.
 pub type Fixture = fn(account: &str, method: &str, args: &Value) -> Option<Result<Value>>;
+
+/// Clears what an integration keeps of the DSP's account.
+pub type Forget = fn(&Store, dsp: &str, account: &str) -> Result<()>;
 
 /// An integration that needs nothing and hears of nothing yet. A declaration starts here and
 /// names what it adds: `Integration { …, ..integration("slack", "x.what", "What") }`.
