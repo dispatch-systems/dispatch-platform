@@ -30,7 +30,9 @@ pub fn routes() -> Vec<Route> {
             VIEW,
             &[weekly_scorecard::JOB_KIND],
         ),
-        write("/api/dsp/weekly-scorecard/collect", COLLECT, collect),
+        // Queuing a collection writes only its job and its log entry, which no cached read
+        // uses: the caches stay as they are.
+        write("/api/dsp/weekly-scorecard/collect", COLLECT, collect).bookkeeping(),
         job_cancel(
             "/api/dsp/weekly-scorecard/jobs/{id}/cancel",
             COLLECT,

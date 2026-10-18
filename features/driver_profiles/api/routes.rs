@@ -18,7 +18,9 @@ const COLLECT: Dsp = Dsp("driver_profiles.collect");
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
         read("/api/dsp/driver-profiles/status", COLLECT, status),
-        write("/api/dsp/driver-profiles/collect", COLLECT, collect),
+        // Queuing a collection writes only its job and its log entry, which no cached read
+        // uses: the caches stay as they are.
+        write("/api/dsp/driver-profiles/collect", COLLECT, collect).bookkeeping(),
         job_cancel(
             "/api/dsp/driver-profiles/jobs/{id}/cancel",
             COLLECT,

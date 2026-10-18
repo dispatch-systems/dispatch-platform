@@ -7,7 +7,7 @@ GET /api/dsp/dvic/day Dsp("dvic.view") Read
 GET /api/dsp/dvic/inspection Dsp("dvic.view") Read
 GET /api/dsp/dvic/schedules Dsp("dvic.manage") Read
 GET /api/dsp/dvic/status Dsp("dvic.view") Read
-POST /api/dsp/dvic/collect Dsp("dvic.collect") Write
+POST /api/dsp/dvic/collect Dsp("dvic.collect") Bookkeeping
 POST /api/dsp/dvic/jobs/{id}/cancel Dsp("dvic.collect") Async
 POST /api/dsp/dvic/schedules Dsp("dvic.manage") Write wakes-scheduler
 POST /api/dsp/dvic/schedules/preview Dsp("dvic.manage") Write

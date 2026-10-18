@@ -5,7 +5,7 @@ GET /api/dsp/weekly-scorecard/jobs Dsp("weekly_scorecard.view") Read
 GET /api/dsp/weekly-scorecard/policy Dsp("weekly_scorecard.manage") Read
 GET /api/dsp/weekly-scorecard/schedules Dsp("weekly_scorecard.manage") Read
 GET /api/dsp/weekly-scorecard/weeks Dsp("weekly_scorecard.view") Read
-POST /api/dsp/weekly-scorecard/collect Dsp("weekly_scorecard.collect") Write
+POST /api/dsp/weekly-scorecard/collect Dsp("weekly_scorecard.collect") Bookkeeping
 POST /api/dsp/weekly-scorecard/jobs/{id}/cancel Dsp("weekly_scorecard.collect") Async
 POST /api/dsp/weekly-scorecard/policy Dsp("weekly_scorecard.manage") Write
 POST /api/dsp/weekly-scorecard/schedules Dsp("weekly_scorecard.manage") Write wakes-scheduler

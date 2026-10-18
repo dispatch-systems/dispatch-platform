@@ -20,7 +20,9 @@ const MANAGE: Dsp = Dsp("daily_performance.manage");
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
         read("/api/dsp/daily-performance", VIEW, summary),
-        write("/api/dsp/daily-performance/collect", COLLECT, collect),
+        // Queuing a collection writes only its job and its log entry, which no cached read
+        // uses: the caches stay as they are.
+        write("/api/dsp/daily-performance/collect", COLLECT, collect).bookkeeping(),
         job_list("/api/dsp/daily-performance/jobs", VIEW, &[JOB_KIND]),
         job_cancel(
             "/api/dsp/daily-performance/jobs/{id}/cancel",
