@@ -4,7 +4,7 @@ import { Empty } from '../../core/shell/frontend/ui/Empty.js';
 import { ErrorBox } from '../../core/shell/frontend/ui/ErrorBox.js';
 import { Loading } from '../../core/shell/frontend/ui/Loading.js';
 import { PageBoundary } from '../../core/shell/frontend/ui/PageBoundary.js';
-import { OpenPage, PageWithTabs } from '../../core/shell/frontend/shell/PageTabs.js';
+import { OpenPage, PageWithTabs } from '../../core/shell/frontend/runtime/PageTabs.js';
 import { hasFeature } from '../../core/shell/frontend/runtime/features.js';
 import { NavigationStateContext } from '../../core/shell/frontend/runtime/browser-update.js';
 import { prefetchRouteData } from '../../core/shell/frontend/runtime/route-prefetch.js';

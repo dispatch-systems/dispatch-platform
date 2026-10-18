@@ -1,6 +1,6 @@
 import { Suspense, createContext, use, useState, type ReactNode } from 'react';
-import { hashQuery, replaceHashQuery } from '../runtime/navigation.js';
-import { pageTabs, type DspPageContext, type PageTab } from '../runtime/slots.js';
+import { hashQuery, replaceHashQuery } from './navigation.js';
+import { pageTabs, type DspPageContext, type PageTab } from './slots.js';
 import { Loading } from '../ui/Loading.js';
 import { Tabs } from '../ui/Tabs.js';
 

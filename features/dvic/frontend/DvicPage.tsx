@@ -38,7 +38,7 @@ import {
   SearchInput,
   Tabs,
 } from '../../../core/shell/frontend/ui/index.js';
-import { HostedTab, usePageTabs } from '../../../core/shell/frontend/shell/PageTabs.js';
+import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import { CollectionSettings } from './settings/CollectionSettings.js';
 import { DayDigest } from './tabs/day/DayDigest.js';
 import { InspectionDetail } from './InspectionDetail.js';

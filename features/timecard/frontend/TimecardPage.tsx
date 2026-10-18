@@ -24,7 +24,7 @@ import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
-import { HostedTab, usePageTabs } from '../../../core/shell/frontend/shell/PageTabs.js';
+import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-prefetch.js';

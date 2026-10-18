@@ -4,7 +4,7 @@ import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
 import type { DspView, Membership, Role } from '../../../core/accounts/api/index.js';
 import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
-import { HostedTab, usePageTabs } from '../../../core/shell/frontend/shell/PageTabs.js';
+import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import {
   Badge,
   ConfirmDialog,
