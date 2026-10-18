@@ -265,6 +265,19 @@ test('a link to Settings opens the page that draws the settings tabs, and only o
     '#dsp/dsp_settings/options?tab=beta-panel',
   );
   assert.equal(settingsHash('dsp_settings', 'beta-panel', as(false)), undefined);
+  // A feature's tab, which a DSP without the feature has not.
+  const feature = featureCatalog.find((each) => each.kind !== 'sub');
+  if (feature) {
+    installFeatures([
+      { name: 'alpha', routes: [{ ...page('options'), hostsSettings: true }] },
+      { name: feature.id, settingsTabs: [tab('its-panel')] },
+    ]);
+    assert.equal(
+      settingsHash('dsp_settings', 'its-panel'),
+      '#dsp/dsp_settings/options?tab=its-panel',
+    );
+    assert.equal(settingsHash('dsp_settings', 'its-panel', as(true)), undefined);
+  }
   installFeatures([{ name: 'beta', routes: [page('board')], settingsTabs: [tab('beta-panel')] }]);
   assert.equal(settingsHash('dsp_settings'), undefined);
   assert.equal(settingsHash('dsp_settings', 'beta-panel'), undefined);
