@@ -425,16 +425,16 @@ impl SlackStore for Store {
     }
     fn remove_slack_workspace(&self, dsp: &str, team: &str) -> Result<Option<Workspace>> {
         let found = self.slack_workspace(dsp, team)?;
-        let path = self.area(dsp, "secrets")?.join(secret(team)?);
-        if path.exists() {
-            std::fs::remove_file(path)?;
-        }
         // What other features' integrations keep of it, which each clears first: should one
-        // fail, Slack keeps the workspace, and disconnecting again tries again.
+        // fail, Slack keeps the workspace and its tokens, and disconnecting again tries again.
         for (_, integration) in super::integrations::declared() {
             if let Some(forget) = integration.forget {
                 forget(self, dsp, team)?;
             }
+        }
+        let path = self.area(dsp, "secrets")?.join(secret(team)?);
+        if path.exists() {
+            std::fs::remove_file(path)?;
         }
         let db = self.dsp(dsp)?;
         db.transaction(|| {
