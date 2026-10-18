@@ -254,7 +254,10 @@ test('a link to Settings opens the page that draws the settings tabs, and only o
   assert.equal(settingsHash('dsp_settings', 'gone'), undefined);
   installFeatures([
     { name: 'alpha', routes: [{ ...page('options'), hostsSettings: true }] },
-    { name: 'beta', settingsTabs: [{ ...tab('beta-panel'), visible: (view) => !!view?.role.owner }] },
+    {
+      name: 'beta',
+      settingsTabs: [{ ...tab('beta-panel'), visible: (view) => !!view?.role.owner }],
+    },
   ]);
   const as = (owner: boolean) => ({ features: [], role: { owner } }) as unknown as DspView;
   assert.equal(
