@@ -239,6 +239,30 @@ export function isIcon(name: string) {
   const icons = createRequire(import.meta.url)('lucide-react') as Record<string, unknown>;
   return /^[A-Z][A-Za-z0-9]*$/.test(name) && !name.endsWith('Icon') && name in icons;
 }
+/**
+ * The order after a feature's own permissions', for those added to them: its next three are
+ * free, so a view, collect and manage permission each keep one no other feature holds.
+ */
+export function ownPermissionOrder(root: string, feature: string) {
+  const orders = (text: string) =>
+    [...text.matchAll(/\bperm\(\s*"[^"]*",\s*"[^"]*",\s*(\d+)\s*,?\s*\)/g)].map((match) =>
+      Number(match[1]),
+    );
+  const own = orders(read(root, `features/${feature}/feature.rs`));
+  if (!own.length) return nextPermissionOrder(root);
+  const used = new Set(rustSources(root).flatMap((file) => orders(read(root, file))));
+  let order = Math.max(...own) + 1;
+  while ([0, 1, 2].some((step) => used.has(order + step))) order++;
+  return order;
+}
+/** The next free tens in the one order the sources of people's IDs follow. */
+export function nextSourceOrder(root: string) {
+  let highest = 0;
+  for (const file of rustSources(root))
+    for (const match of read(root, file).matchAll(/\bSourceInfo \{[^}]*?\border:\s*(\d+),/g))
+      highest = Math.max(highest, Number(match[1]));
+  return (Math.floor(highest / 10) + 1) * 10;
+}
 /** The next free tens in the one order the kinds of data that name people follow. */
 export function nextPeopleOrder(root: string) {
   let highest = 0;
@@ -448,6 +472,8 @@ export type Plan = {
   changes: Map<string, string>;
   /** What to do next, printed last. */
   notes: string[];
+  /** Existing files it removes. */
+  removed?: string[];
 };
 export const emptyPlan = (): Plan => ({ files: new Map(), changes: new Map(), notes: [] });
 /** A file's content as the plan leaves it: changed already, or as it is. */
@@ -474,6 +500,8 @@ export type Made = {
   wrote: string[];
   /** Existing files it changed. */
   changed: string[];
+  /** Existing files it removed. */
+  removed: string[];
   /** What to do next. */
   next: string[];
 };
@@ -491,6 +519,7 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
       fs.mkdirSync(path.dirname(path.join(target, file)), { recursive: true });
       fs.writeFileSync(path.join(target, file), content);
     }
+  if (!options.dryRun) for (const file of plan.removed ?? []) fs.rmSync(path.join(root, file));
   const changed = [...plan.changes.keys()];
   // Builds run with --locked, which refuses a crate, or a crate's dependencies, Cargo.lock does
   // not list.
@@ -514,6 +543,7 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
     root,
     wrote: [...plan.files.keys()].sort(),
     changed: changed.sort(),
+    removed: [...(plan.removed ?? [])].sort(),
     next: plan.notes,
   };
 }
@@ -524,6 +554,9 @@ export function described(made: Made, next = true) {
     ...made.wrote.map((file) => `  ${file}`),
     `${made.dryRun ? 'Would change' : 'Changed'}:`,
     ...made.changed.map((file) => `  ${file}`),
+    ...(made.removed.length
+      ? [`${made.dryRun ? 'Would remove' : 'Removed'}:`, ...made.removed.map((file) => `  ${file}`)]
+      : []),
   ];
   if (next && made.next.length) lines.push(...nextLines(made.next));
   return lines.join('\n');

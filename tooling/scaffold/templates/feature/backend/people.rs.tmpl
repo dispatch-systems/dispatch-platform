@@ -4,8 +4,17 @@
 {{#ownDatabase}}
 use super::storage::STORAGE;
 {{/ownDatabase}}
-use dispatch_core::manifest::people::{self, KindInfo, People};
+use dispatch_core::manifest::people::{self, KindInfo, People{{#ownSource}}, Source, SourceInfo{{/ownSource}}};
 
+{{#ownSource}}
+/// The IDs {{label}} knows people by. Permanent: their IDs are kept under its id.
+pub const SOURCE: Source = Source::new(&SourceInfo {
+    id: "{{name}}",
+    label: "{{label}}",
+    order: {{sourceOrder}},
+});
+
+{{/ownSource}}
 /// Everyone `{{table}}` names by their {{peopleSource}} ID, counted in records.
 pub const PEOPLE: People = People::new(
     KindInfo {
@@ -14,7 +23,7 @@ pub const PEOPLE: People = People::new(
         label: "{{label}}",
         icon: "{{peopleIcon}}",
     },
-    {{peopleIdent}}::SOURCE,
+    {{#ownSource}}SOURCE{{/ownSource}}{{^ownSource}}{{peopleIdent}}::SOURCE{{/ownSource}},
     |store, dsp| {
         people::named(
             &*{{readPeople}},

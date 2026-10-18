@@ -66,6 +66,9 @@ pub const FEATURE: Feature = Feature {
 {{#people}}
     people: &[&backend::people::PEOPLE],
 {{/people}}
+{{#connection}}
+    dsp_connection: true,
+{{/connection}}
     ..feature("{{name}}")
 };
 {{#api}}

@@ -6,7 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import * as prettier from 'prettier';
 import { planCollector } from '../scaffold/new-collector.js';
-import { planFeature } from '../scaffold/new-feature.js';
+import { planAdd } from '../scaffold/add.js';
+import { planFeature, withPreset } from '../scaffold/new-feature.js';
 import { planSlot } from '../scaffold/new-slot.js';
 import { planTool } from '../scaffold/new-tool.js';
 import { crates, tools, wiredTools } from '../scaffold/wire.js';
@@ -948,4 +949,207 @@ test('without --dry-run it writes into the root, and refuses to write over an ow
   const usage = generate('new-feature', ['desk', '--wings']);
   assert.equal(usage.status, 1);
   assert.match(usage.stderr, /Unknown option --wings\n\nUsage: dispatchdev new feature/);
+});
+
+const add = async (...argv: string[]) => (await planAdd(root, argv)).plan;
+const changed = (plan: Plan, name: string) => {
+  const content = plan.changes.get(name);
+  assert(content !== undefined, `the plan changes no ${name}`);
+  return content;
+};
+
+test('add merges a piece into a feature that exists: its slot entries, fields and permissions', async () => {
+  // A Settings tab on Uniforms, which holds uniforms.manage already.
+  const settings = await add('settings', '--to', 'uniforms');
+  assert(settings.files.has('features/uniforms/frontend/settings/UniformsSettings.tsx'));
+  const manifest = changed(settings, 'features/uniforms/frontend/feature.ts');
+  assert.match(
+    manifest,
+    /settingsTabs: \[[^\]]*visible: \(view\) => can\(view, 'uniforms\.manage'\)/,
+  );
+  assert.equal(manifest.match(/^import .* from 'react';$/gm)?.length, 1);
+  assert(!settings.changes.has('features/uniforms/feature.rs'), 'it adds no permission it has');
+
+  // A tab of another's page, on Documents, whose comments hold apostrophes: one platformSlots,
+  // and no permission, since a tab needs none.
+  const tab = await add('tab-of', 'uniforms', '--to', 'documents');
+  const documents = changed(tab, 'features/documents/frontend/feature.ts');
+  assert.equal(documents.match(/^\s+platformSlots:/gm)?.length, 1);
+  assert.match(documents, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
+  assert(!tab.changes.has('features/documents/feature.rs'));
+
+  // An API on Home: its routes, its permission, its types' export, and the ts Cargo feature.
+  const api = await add('api', '--to', 'home');
+  const home = changed(api, 'features/home/feature.rs');
+  assert.match(home, /^mod api;$/m);
+  assert.match(home, /routes: api::routes::routes,/);
+  assert.match(home, /perm\("home\.view", /);
+  assert.match(home, /pub fn typescript\(/);
+  assert.match(
+    changed(api, 'features/home/Cargo.toml'),
+    /\[features\]\nts = \["dep:ts-rs", "dispatch-core\/ts"\]/,
+  );
+
+  // People of a table it has, by a collector's IDs: declared, with nothing of a new table's.
+  const people = await add('people', 'paycom', '--to', 'uniforms', '--table', 'uniform_events');
+  const uniforms = changed(people, 'features/uniforms/feature.rs');
+  assert.match(uniforms, /depends_on: &\["paycom"\],/);
+  assert.match(uniforms, /people: &\[&backend::people::PEOPLE\],/);
+  assert.doesNotMatch(
+    uniforms,
+    /UniformsStore|own_migrations: &\[OwnMigrations \{\s*kind: Kind::DSP,\s*list: &\[Migration \{\s*id: 1,/,
+  );
+  assert(![...people.files.keys()].some((file) => /storage|migrations/.test(file)));
+  // Its tests install it with the collector it now depends on, as the registry wants.
+  const installs = [...people.changes].filter(([file]) => file.includes('/tests/'));
+  assert(installs.length, 'no test of uniforms installs it');
+  for (const [, text] of installs)
+    assert.match(text, /testing::install\(&\[[^\]]*&dispatch_paycom::COLLECTOR\]/);
+
+  // A manage permission implies only what the feature has: Team has no team.view.
+  const team = changed(await add('settings', '--to', 'team'), 'features/team/feature.rs');
+  assert.match(team, /perm\("team\.manage", "Manage Team & Roles", \d+\),/);
+  // A name a nested use tree imports, as Documents' Sql, is not imported again; a module a
+  // feature declares without pub(crate), as Timecard's storage, is not declared again; and a
+  // piece without a screen writes no browser test.
+  const drive = await add('people', 'amazon', '--to', 'documents', '--table', 'documents_files');
+  assert.equal(changed(drive, 'features/documents/feature.rs').match(/\bSql\b[,}]/g)?.length, 1);
+  const punches = await add('people', 'paycom', '--to', 'timecard', '--table', 'employees');
+  assert.doesNotMatch(
+    changed(punches, 'features/timecard/backend/mod.rs'),
+    /pub\(crate\) mod storage;/,
+  );
+  assert(![...punches.files.keys()].some((file) => file.includes('/tests/browser/')));
+  // Its people read the table where the feature keeps it: Timecard's employees in Paycom's.
+  assert.match(
+    file(punches, 'features/timecard/backend/people.rs'),
+    /store\.collector\(dsp, dispatch_paycom::PROVIDER\)/,
+  );
+  // A constant the manifest has under the same name takes the feature's: Timecard's
+  // loadSettings loads its Paycom settings page.
+  const timecard = changed(
+    await add('settings', '--to', 'timecard'),
+    'features/timecard/frontend/feature.ts',
+  );
+  assert.match(
+    timecard,
+    /const loadTimecardSettings = \(\) => import\('\.\/settings\/TimecardSettings\.js'\);/,
+  );
+  assert.match(timecard, /load: loadTimecardSettings,/);
+  // A README's line goes after its last line of what the feature declares, however long.
+  assert.match(
+    changed(settings, 'features/uniforms/README.md'),
+    /deletes none of them\.\n- \*\*Settings:\*\*/,
+  );
+  // A permission named in another's retired list is not the feature's retired one.
+  assert(
+    !(await add('page', '--to', 'weekly_scorecard')).changes.has(
+      'features/weekly_scorecard/feature.rs',
+    ),
+  );
+  // An added permission's order is one no other feature holds.
+  const profiles = changed(
+    await add('page', '--to', 'driver_profiles'),
+    'features/driver_profiles/feature.rs',
+  );
+  const order = /perm\("driver_profiles\.view", "[^"]+", (\d+)\)/.exec(profiles)![1];
+  const others = fs
+    .readdirSync(path.join(root, 'features'))
+    .filter(
+      (name) =>
+        name !== 'driver_profiles' &&
+        fs.existsSync(path.join(root, 'features', name, 'feature.rs')),
+    )
+    .map((name) => fs.readFileSync(path.join(root, 'features', name, 'feature.rs'), 'utf8'));
+  assert(
+    !others.some((text) => new RegExp(`perm\\("[^"]+", "[^"]+", ${order}\\)`).test(text)),
+    `${order} is taken`,
+  );
+  // A README's line joins its list, whatever its last item's bold lead says.
+  assert.match(
+    changed(await add('api', '--to', 'home'), 'features/home/README.md'),
+    /\*\*[^\n]*\n- \*\*API:\*\*/,
+  );
+  // A permissions field it lacks holds only what the piece uses.
+  assert.doesNotMatch(
+    changed(await add('settings', '--to', 'home'), 'features/home/feature.rs'),
+    /home\.view/,
+  );
+
+  // A manifest alone's stamped test goes once a piece makes it more, with its module, which
+  // was the manifest's last item.
+  const bare = await planFeature(copy, ['bare_demo', '--mandatory']);
+  for (const [name, content] of bare.plan.files) {
+    fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
+    fs.writeFileSync(path.join(copy, name), content);
+  }
+  const grown = (await planAdd(copy, ['api', '--to', 'bare_demo'])).plan;
+  assert.deepEqual(grown.removed, [
+    'features/bare_demo/tests/backend/feature.rs',
+    'features/bare_demo/backend/mod.rs',
+  ]);
+  assert.doesNotMatch(changed(grown, 'features/bare_demo/feature.rs'), /mod (tests|backend);/);
+  // What the author wrote into either stays: their function, and their test without the
+  // stamped assertion.
+  const written = await planFeature(copy, ['bare_kept', '--mandatory']);
+  for (const [name, content] of written.plan.files) {
+    const own = name.endsWith('/backend/mod.rs')
+      ? `${content}pub(crate) fn greeting() {}\n`
+      : name.endsWith('/tests/backend/feature.rs')
+        ? `${content}\n#[test]\nfn greets() {}\n`
+        : content;
+    fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
+    fs.writeFileSync(path.join(copy, name), own);
+  }
+  const kept = (await planAdd(copy, ['api', '--to', 'bare_kept'])).plan;
+  assert.equal(kept.removed, undefined);
+  assert.match(changed(kept, 'features/bare_kept/feature.rs'), /^mod backend;$/m);
+  const stamped = changed(kept, 'features/bare_kept/tests/backend/feature.rs');
+  assert.match(stamped, /fn greets\(\)/);
+  assert.doesNotMatch(stamped, /permissions\.is_empty/);
+
+  await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
+  await assert.rejects(add('settings', '--to', 'driver_match'), /DriverMatchSettings\.tsx already/);
+  await assert.rejects(add('settings', '--to', 'documents'), /documents retired documents\.manage/);
+  await assert.rejects(add('page', '--to', 'documents'), /documents has a page already/);
+  await assert.rejects(add('people', 'paycom', '--to', 'uniforms'), /add --table/);
+  await assert.rejects(
+    add('people', 'paycom', '--to', 'uniforms', '--table', 'nowhere'),
+    /--table names one of uniforms's tables/,
+  );
+  await assert.rejects(
+    add('people', 'paycom', '--to', 'dvic', '--table', 'dvic_runs'),
+    /in dvic's own database/,
+  );
+  await assert.rejects(add('settings', '--to', 'routes'), /RoutesSettings\.tsx already/);
+  await assert.rejects(add('tab-of', 'dvic', '--to', 'dvic'), /own tabs/);
+  await assert.rejects(add('wings', '--to', 'uniforms'), /Name one piece/);
+  await assert.rejects(add('settings', '--to', 'nowhere'), /--to names a feature/);
+});
+
+test('a preset stands for its options, and --tabs, --connection and --people own write theirs', async () => {
+  // An option given beside a preset wins over the preset's own.
+  const named = await feature('desk', '--preset', 'page-with-tabs', '--tabs', 'today,week');
+  assert.match(
+    file(named, 'features/desk/frontend/DeskPage.tsx'),
+    /\['today', 'Today'\],\s*\['week', 'Week'\]/,
+  );
+  assert.throws(() => withPreset(['desk', '--preset', 'keeper']), /add --keeps/);
+  assert.throws(() => withPreset(['desk', '--preset', 'kiosk']), /--preset names one of/);
+
+  const tabs = await feature('desk', '--tabs', 'overview,history');
+  assert.match(file(tabs, 'features/desk/frontend/feature.ts'), /nav: true,\n\s+tabs: true,/);
+  assert.match(file(tabs, 'features/desk/frontend/DeskPage.tsx'), /usePageTabs\('desk', \[/);
+  await refused(/--tabs names each tab/, 'desk', '--tabs', 'Overview');
+
+  const connection = await feature('desk', '--connection', '--api');
+  assert(connection.files.has('features/desk/frontend/connection/DeskCard.tsx'));
+  assert.match(file(connection, 'features/desk/feature.rs'), /dsp_connection: true,/);
+  assert.match(file(connection, 'features/desk/frontend/feature.ts'), /reads: \[deskSummaryUrl\],/);
+
+  const source = await feature('desk', '--tables', 'dsp', '--people', 'own');
+  const people = file(source, 'features/desk/backend/people.rs');
+  assert.match(people, /pub const SOURCE: Source = Source::new\(&SourceInfo \{\s*id: "desk",/);
+  assert.match(people, /^\s+SOURCE,$/m);
+  assert.doesNotMatch(file(source, 'features/desk/Cargo.toml'), /\.\.\/\.\.\/collectors\//);
 });

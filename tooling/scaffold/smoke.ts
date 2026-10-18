@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { generator as piece } from './add.js';
 import { KINDS } from './cli.js';
 import { duration, failure, generate } from './generate.js';
 import { make, repositoryRoot as root } from './scaffold.js';
@@ -17,16 +18,12 @@ import { make, repositoryRoot as root } from './scaffold.js';
  * its collector first and a tool its feature. */
 const MADE: [string, ...string[]][] = [
   ['collector', 'smokesite'],
-  [
-    'feature',
-    'smoke_keeper',
-    '--keeps',
-    'smokesite.records',
-    '--tables',
-    'smoke_keeper',
-    '--page',
-    '--api',
-  ],
+  ['feature', 'smoke_keeper', '--preset', 'keeper', '--keeps', 'smokesite.records'],
+  // Each other preset.
+  ['feature', 'smoke_tabs', '--preset', 'page-with-tabs'],
+  ['feature', 'smoke_connection', '--preset', 'connection'],
+  ['feature', 'smoke_source', '--preset', 'people-source'],
+  ['feature', 'smoke_settings', '--preset', 'settings', '--mandatory'],
   [
     'feature',
     'smoke_people',
@@ -58,6 +55,31 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_badges', '--description', 'Its badges on the DSPs page.'],
   // A second slot, after the first.
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
+  // Features the pieces below are added to: one with a table, and one of a manifest alone,
+  // whose test module is its manifest's last item.
+  ['feature', 'smoke_rows', '--tables', 'dsp'],
+  ['feature', 'smoke_bare', '--mandatory'],
+];
+
+/**
+ * Pieces added to features that exist, after the app's people test has read what the features
+ * above declare: an added piece's people read a table the author has yet to fit them to.
+ */
+const ADDED: string[][] = [
+  ['people', 'paycom', '--to', 'smoke_rows', '--table', 'smoke_rows_items'],
+  ['tab-of', 'team', '--to', 'smoke_rows'],
+  ['page', '--to', 'smoke_people'],
+  ['api', '--to', 'smoke_front'],
+  ['api', '--to', 'smoke_bare'],
+  // The product's own, each a case add once broke: Team has no team.view for its manage
+  // permission to imply; Timecard has a loadSettings of its own, keeps its people's table in
+  // Paycom's database and declares a module without pub(crate); Weekly Scorecard's retired
+  // list names its permissions; Documents imports through a nested use tree.
+  ['settings', '--to', 'team'],
+  ['settings', '--to', 'timecard'],
+  ['people', 'paycom', '--to', 'timecard', '--table', 'employees'],
+  ['page', '--to', 'weekly_scorecard'],
+  ['people', 'amazon', '--to', 'documents', '--table', 'documents_files'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */
@@ -102,14 +124,24 @@ async function step(name: string, command: string[], cwd: string, logs: string) 
 /** Makes one of each kind in a copy at `copied`, then holds it to every check, in order. */
 async function check(copied: string, logs: string) {
   copy(copied);
+  const say = (text: string) => process.stdout.write(`${text}\n`);
   for (const [kind, ...args] of MADE) {
-    const generator = KINDS.find((each) => each.kind === kind)!;
-    await make(generator, [...args, '--root', copied]);
-    process.stdout.write(`ok            new ${kind} ${args[0]}\n`);
+    await make(
+      KINDS.find((each) => each.kind === kind)!,
+      [...args, '--root', copied],
+    );
+    say(`ok            new ${kind} ${args.join(' ')}`);
   }
   process.env.CARGO_TARGET_DIR ??= path.join(root, 'target');
-  const generated = await generate(copied, { say: (text) => process.stdout.write(`${text}\n`) });
-  if (!generated.ok) return false;
+  if (!(await generate(copied, { say })).ok) return false;
+  // The app's people test reads every kind of data from a new DSP: the queries written above.
+  const people = ['cargo', 'test', '--locked', '-p', 'dispatch-backend', '--lib', '--', 'people::'];
+  if (!(await step('people', people, copied, logs))) return false;
+  for (const args of ADDED) {
+    await make(piece, [...args, '--root', copied]);
+    say(`ok            add ${args.join(' ')}`);
+  }
+  if (!(await generate(copied, { say })).ok) return false;
   const tsx = path.join(root, 'node_modules/tsx/dist/cli.mjs');
   const plan = JSON.parse(
     fs.readFileSync(path.join(copied, 'tooling/ci/test-plan.json'), 'utf8'),
