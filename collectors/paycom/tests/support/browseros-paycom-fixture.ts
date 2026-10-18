@@ -42,11 +42,13 @@ const headers = [
   'missing-punch',
   'delete',
 ];
+// Its pay periods follow the demo's cycle (Sep 6–19, every two weeks), so a period collected is
+// never older than the seeded DSPs' demo one, and replaces its roster whichever week it is.
 const requestBody = {
   allocationCategories: [],
   approvalMode: 'pending',
   eeCodes: ['AA01', 'BB02'],
-  endDate: '2026-09-12',
+  endDate: '2026-09-19',
   getCount: true,
   highlighting: null,
   isAdvancedFilterApplied: true,
@@ -59,7 +61,7 @@ const requestBody = {
   selectedEarnings: ['REG'],
   skip: null,
   sortParams: [],
-  startDate: '2026-08-30',
+  startDate: '2026-09-06',
   take: null,
 };
 const employee = (code: string) => ({
