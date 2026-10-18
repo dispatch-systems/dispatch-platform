@@ -25,6 +25,7 @@ export const feature: FrontendFeature = {
       label: 'Team & Roles',
       icon: Users,
       nav: true,
+      tabs: true,
       permission: ({ view }) => manages(view),
       preload: load,
       render: ({ view, reopen }) => createElement(TeamPage, { view, reopen }),

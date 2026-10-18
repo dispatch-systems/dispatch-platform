@@ -36,8 +36,7 @@ const registry = ['app/backend/features.rs', 'app/backend/lib.rs'].find(
     fs.existsSync(candidate) && /pub static REGISTRY\b/.test(fs.readFileSync(candidate, 'utf8')),
 )!;
 
-// A copy of the repository's workspace, for what needs a collector that exists only there. Its
-// Timecard page draws the tabs other features add to it.
+// A copy of the repository's workspace, for what needs a collector that exists only there.
 let copy = '';
 before(() => {
   copy = temporary();
@@ -61,10 +60,6 @@ before(() => {
       recursive: true,
       filter: (source) => !/(^|\/)(node_modules|target)(\/|$)/.test(source),
     });
-  fs.writeFileSync(
-    path.join(copy, 'features/timecard/frontend/page-tabs.ts'),
-    "export const drawn = () => pageTabs('paycom');\n",
-  );
 });
 after(() => fs.rmSync(copy, { recursive: true, force: true }));
 
@@ -470,13 +465,13 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
     file(tab, 'features/notes/frontend/NotesTab.tsx'),
     /from '..\/..\/..\/core\/shell\/frontend\/ui\/index.js'/,
   );
-  // A page that does not draw the tabs other features add would never show it.
-  await refused(
-    /timecard's page does not draw the tabs other features add to it yet/,
-    'notes',
-    '--tab-of',
-    'timecard',
+  // Every page draws the tabs other features add to it, one without tabs of its own too.
+  const uniforms = file(
+    await feature('notes', '--tab-of', 'uniforms'),
+    'features/notes/frontend/feature.ts',
   );
+  assert.match(uniforms, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
+  await refused(/use --settings/, 'notes', '--tab-of', 'settings');
 
   const settings = await feature('notes', '--settings');
   assert(settings.files.has('features/notes/frontend/settings/NotesSettings.tsx'));

@@ -38,6 +38,7 @@ import {
   SearchInput,
   Tabs,
 } from '../../../core/shell/frontend/ui/index.js';
+import { HostedTab, usePageTabs } from '../../../core/shell/frontend/shell/PageTabs.js';
 import { CollectionSettings } from './settings/CollectionSettings.js';
 import { DayDigest } from './tabs/day/DayDigest.js';
 import { InspectionDetail } from './InspectionDetail.js';
@@ -107,6 +108,10 @@ export function DvicPage({ view }: { view: DspView }) {
   const tab = shownViews.some(([id]) => id === chosenTab)
     ? chosenTab
     : (shownViews[0]?.[0] ?? chosenTab);
+  const tabs = usePageTabs(
+    'dvic',
+    shownViews.map(([id, label]) => [id, label]),
+  );
   const [chosenWeek, setChosenWeek] = useUpdateState<string | undefined>('dvic-week', undefined);
   const [chosenDay, setChosenDay] = useUpdateState<string | undefined>('dvic-day', undefined);
   const [query, setQuery] = useUpdateState('dvic-query', '');
@@ -292,119 +297,126 @@ export function DvicPage({ view }: { view: DspView }) {
       )}
       <Tabs
         label="DVIC views"
-        value={tab}
-        onChange={(value) => setTab(value as 'day' | 'week')}
-        items={shownViews.map(([id, label]) => [id, label])}
+        value={tabs.open?.id ?? tab}
+        onChange={(id) => tabs.change(id, (own) => setTab(own as 'day' | 'week'))}
+        onIntent={tabs.warm}
+        items={tabs.items}
       />
-      {tab === 'day' && (
-        <nav className="dvic-week-strip" aria-label="Inspection days">
-          {days.map((date) => (
-            <button
-              key={date}
-              disabled={date > today || summary === undefined}
-              aria-pressed={day === date}
-              onClick={() => {
-                setChosenDay(date);
-                setSelected(undefined);
-              }}
-            >
-              <span>{inspectionWeekday(date)}</span>
-              <strong>{Number(date.slice(8))}</strong>
-              <small>
-                {summary === undefined || date > today
-                  ? '—'
-                  : counts.get(date) || collected(date)
-                    ? (counts.get(date) ?? 0) + ' short'
-                    : 'Not collected'}
-              </small>
-            </button>
-          ))}
-        </nav>
-      )}
-      <div className="dvic-filters">
-        <SearchInput
-          label="Search drivers"
-          placeholder="Search drivers…"
-          value={query}
-          onChange={(value) => {
-            setQuery(value);
-            setPage(0);
-          }}
-        />
-        <select
-          aria-label="Vehicle type"
-          value={vehicles}
-          onChange={(e) => {
-            setVehicles(e.target.value as VehicleClass);
-            setPage(0);
-          }}
-        >
-          <option value="">All vehicles</option>
-          <option value="dot">DOT</option>
-          <option value="non-dot">Non-DOT</option>
-        </select>
-        <span className="dvic-minimums">
-          Minimums: Non-DOT (CV, CDV) · 1m 30s &nbsp; DOT (SV) · 5m
-        </span>
-      </div>
-      <ErrorBox
-        message={
-          inspections.error
-            ? (summary ? 'Showing previously loaded inspections. ' : '') + inspections.error
-            : ''
-        }
-      />
-      {inspections.error && <button onClick={inspections.refresh}>Retry inspections</button>}
-      {summary === undefined ? (
-        !inspections.error &&
-        !status.error &&
-        (status.paused || inspections.paused ? (
-          <p className="muted">Inspections will load when you reconnect.</p>
-        ) : (
-          <Loading />
-        ))
+      {tabs.open ? (
+        <HostedTab tab={tabs.open} />
       ) : (
         <>
-          {tab === 'day' ? (
-            <>
-              <h2 className="dvic-day-heading">
-                {inspectionDate(day, true)}, {day.slice(0, 4)}
-              </h2>
-              <DayDigest
-                day={day}
-                summary={daySummary}
-                query={search}
-                publication={publication}
-                filtered={filtered}
-                collected={collected(day)}
-                onSelect={(row) => setSelected(row.id)}
-              />
-            </>
-          ) : (
-            <WeekGrid
-              days={days}
-              summary={summary}
-              today={today}
-              collected={collected}
-              filtered={filtered}
-              page={page}
-              onPageChange={setPage}
-              onSelect={setSelected}
-            />
+          {tab === 'day' && (
+            <nav className="dvic-week-strip" aria-label="Inspection days">
+              {days.map((date) => (
+                <button
+                  key={date}
+                  disabled={date > today || summary === undefined}
+                  aria-pressed={day === date}
+                  onClick={() => {
+                    setChosenDay(date);
+                    setSelected(undefined);
+                  }}
+                >
+                  <span>{inspectionWeekday(date)}</span>
+                  <strong>{Number(date.slice(8))}</strong>
+                  <small>
+                    {summary === undefined || date > today
+                      ? '—'
+                      : counts.get(date) || collected(date)
+                        ? (counts.get(date) ?? 0) + ' short'
+                        : 'Not collected'}
+                  </small>
+                </button>
+              ))}
+            </nav>
           )}
-          <footer className="dvic-footer">
-            <span>
-              {tab === 'week'
-                ? "Each cell is the driver's inspection time that day. "
-                : 'Sorted shortest first. '}
-              Only inspections below the required duration are collected, so this is not a
-              completion rate. Dates and times are as reported by Amazon.
+          <div className="dvic-filters">
+            <SearchInput
+              label="Search drivers"
+              placeholder="Search drivers…"
+              value={query}
+              onChange={(value) => {
+                setQuery(value);
+                setPage(0);
+              }}
+            />
+            <select
+              aria-label="Vehicle type"
+              value={vehicles}
+              onChange={(e) => {
+                setVehicles(e.target.value as VehicleClass);
+                setPage(0);
+              }}
+            >
+              <option value="">All vehicles</option>
+              <option value="dot">DOT</option>
+              <option value="non-dot">Non-DOT</option>
+            </select>
+            <span className="dvic-minimums">
+              Minimums: Non-DOT (CV, CDV) · 1m 30s &nbsp; DOT (SV) · 5m
             </span>
-            <span>
-              {shown} {shown === 1 ? 'record' : 'records'}
-              {tab === 'week' ? ' this week' : ''}
-            </span>
-          </footer>
+          </div>
+          <ErrorBox
+            message={
+              inspections.error
+                ? (summary ? 'Showing previously loaded inspections. ' : '') + inspections.error
+                : ''
+            }
+          />
+          {inspections.error && <button onClick={inspections.refresh}>Retry inspections</button>}
+          {summary === undefined ? (
+            !inspections.error &&
+            !status.error &&
+            (status.paused || inspections.paused ? (
+              <p className="muted">Inspections will load when you reconnect.</p>
+            ) : (
+              <Loading />
+            ))
+          ) : (
+            <>
+              {tab === 'day' ? (
+                <>
+                  <h2 className="dvic-day-heading">
+                    {inspectionDate(day, true)}, {day.slice(0, 4)}
+                  </h2>
+                  <DayDigest
+                    day={day}
+                    summary={daySummary}
+                    query={search}
+                    publication={publication}
+                    filtered={filtered}
+                    collected={collected(day)}
+                    onSelect={(row) => setSelected(row.id)}
+                  />
+                </>
+              ) : (
+                <WeekGrid
+                  days={days}
+                  summary={summary}
+                  today={today}
+                  collected={collected}
+                  filtered={filtered}
+                  page={page}
+                  onPageChange={setPage}
+                  onSelect={setSelected}
+                />
+              )}
+              <footer className="dvic-footer">
+                <span>
+                  {tab === 'week'
+                    ? "Each cell is the driver's inspection time that day. "
+                    : 'Sorted shortest first. '}
+                  Only inspections below the required duration are collected, so this is not a
+                  completion rate. Dates and times are as reported by Amazon.
+                </span>
+                <span>
+                  {shown} {shown === 1 ? 'record' : 'records'}
+                  {tab === 'week' ? ' this week' : ''}
+                </span>
+              </footer>
+            </>
+          )}
         </>
       )}
       {selected && (

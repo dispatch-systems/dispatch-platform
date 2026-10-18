@@ -28,6 +28,7 @@ export const feature: FrontendFeature = {
       label: 'DVIC',
       icon: ClipboardCheck,
       nav: true,
+      tabs: true,
       feature: 'dvic',
       permission: ({ view }) => can(view, 'dvic.view'),
       preload: load,

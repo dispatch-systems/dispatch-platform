@@ -4,8 +4,8 @@ import type { Feature } from '../../../../tenancy/api/index.js';
 import { present } from './installed.js';
 import type { DspPageContext, DspRouteId } from './pages.js';
 
-// The page tabs slot: a tab one feature adds to another's page, which that page draws among
-// its own tabs, as Settings draws its settings tabs.
+// The page tabs slot: a tab one feature adds to another's page. A page with tabs of its own
+// draws them among its own, and the app draws them above any other (`shell/PageTabs.tsx`).
 
 /** A tab one feature adds to another's page. */
 export type PageTab = {

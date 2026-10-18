@@ -24,6 +24,7 @@ import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
+import { HostedTab, usePageTabs } from '../../../core/shell/frontend/shell/PageTabs.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-prefetch.js';
@@ -103,9 +104,14 @@ export function PaycomPage({ view }: { view: DspView }) {
   const preferences = usePaycomSettings();
   useCollectionUpdates();
   const shownTabs = tabs.filter(([, , feature]) => hasFeature(view, feature));
-  const tab = shownTabs.some(([id]) => id === selectedTab)
+  const ownTab = shownTabs.some(([id]) => id === selectedTab)
     ? selectedTab!
     : (shownTabs[0]?.[0] ?? 'timecards');
+  const hosting = usePageTabs(
+    'paycom',
+    shownTabs.map(([id, label]) => [id, label]),
+  );
+  const tab = hosting.open?.id ?? ownTab;
   const [syncRevision, setSyncRevision] = useState(0);
   const [collecting, setCollecting] = useState(false);
   const meals = tab === 'meal-breaks';
@@ -235,15 +241,18 @@ export function PaycomPage({ view }: { view: DspView }) {
       <Tabs
         value={tab}
         onIntent={(value) => {
+          if (!shownTabs.some(([id]) => id === value)) return hosting.warm(value);
           void loadTab(value).catch(() => undefined);
           prefetchTimecardTab(value, date, view);
         }}
-        onChange={(value) => {
-          void loadTab(value).catch(() => undefined);
-          prefetchTimecardTab(value, date, view, true);
-          startTransition(() => setTab(value));
-        }}
-        items={shownTabs.map(([id, label]) => [id, label])}
+        onChange={(value) =>
+          hosting.change(value, (own) => {
+            void loadTab(own).catch(() => undefined);
+            prefetchTimecardTab(own, date, view, true);
+            startTransition(() => setTab(own));
+          })
+        }
+        items={hosting.items}
         label="Timecard"
       />
       {canCollect && syncUnavailable && (
@@ -251,7 +260,9 @@ export function PaycomPage({ view }: { view: DspView }) {
       )}
       <div aria-busy={pending || undefined} inert={pending}>
         <Suspense fallback={<Loading />}>
-          {tab === 'meal-breaks' ? (
+          {hosting.open ? (
+            <HostedTab tab={hosting.open} />
+          ) : tab === 'meal-breaks' ? (
             <CommittedTab tab={tab}>
               <MealBreaksPage
                 date={date}

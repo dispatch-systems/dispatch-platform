@@ -4,6 +4,7 @@ import { RefreshCw, Plus, Ellipsis } from 'lucide-react';
 import type { DspView, Membership, Role } from '../../../core/accounts/api/index.js';
 import { useUpdateState } from '../../../core/shell/frontend/runtime/browser-update.js';
 import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
+import { HostedTab, usePageTabs } from '../../../core/shell/frontend/shell/PageTabs.js';
 import {
   Badge,
   ConfirmDialog,
@@ -39,13 +40,19 @@ import { field } from '../../../core/shell/frontend/lib/form.js';
 type Invitation = { email: string; role: string; expiresAt: number; accepted: boolean };
 const actions = <span className="sr-only">Actions</span>;
 export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promise<void> }) {
-  const [tab, setTab] = useUpdateState('team-tab', 'members');
-  const { data, error, refresh } = useMembers(
-    tab === 'members' ? performancePolicy.teamPollMs : -1,
-  );
+  const [ownTab, setTab] = useUpdateState('team-tab', 'members');
   const canInvite = can(view, 'members.invite'),
     canManage = can(view, 'members.manage'),
     canRoles = can(view, 'roles.manage');
+  const tabs = usePageTabs('team', [
+    ['members', 'Members'],
+    ['roles', 'Roles'],
+    ...(canInvite ? [['invitations', 'Invitations'] as const] : []),
+  ]);
+  const tab = tabs.open?.id ?? ownTab;
+  const { data, error, refresh } = useMembers(
+    tab === 'members' ? performancePolicy.teamPollMs : -1,
+  );
   const invitations = useCachedData<Invitation[]>(
     canInvite && tab === 'invitations' ? '/api/dsp/invitations' : '',
     performancePolicy.teamPollMs,
@@ -233,14 +240,12 @@ export function TeamPage({ view, reopen }: { view: DspView; reopen: () => Promis
       </Header>
       <Tabs
         value={tab}
-        onChange={setTab}
-        items={[
-          ['members', 'Members'],
-          ['roles', 'Roles'],
-          ...(canInvite ? [['invitations', 'Invitations']] : []),
-        ]}
+        onChange={(id) => tabs.change(id, setTab)}
+        onIntent={tabs.warm}
+        items={tabs.items}
         label="Team"
       />
+      {tabs.open && <HostedTab tab={tabs.open} />}
       <ErrorBox message={error || roles.error || invitations.error} />
       {tab === 'members' && (
         <>

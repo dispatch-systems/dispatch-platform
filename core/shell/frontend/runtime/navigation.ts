@@ -86,9 +86,10 @@ export function consumeHashToken(kind: 'invite' | 'reset') {
 }
 /** Records a page's own state in the address without navigating. */
 export function replaceHashQuery(query: Record<string, string>) {
+  const search = new URLSearchParams(query).toString();
   history.replaceState(
     {},
     '',
-    `${location.pathname}${location.search}${location.hash.split('?')[0]}?${new URLSearchParams(query)}`,
+    `${location.pathname}${location.search}${location.hash.split('?')[0]}${search ? `?${search}` : ''}`,
   );
 }

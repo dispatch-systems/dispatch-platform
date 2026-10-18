@@ -278,14 +278,12 @@ export function keeperOf(root: string, site: string, collection: string) {
 export function pageOf(root: string, feature: string) {
   const file = `features/${feature}/frontend/feature.ts`;
   if (!exists(root, file)) return undefined;
-  const match = /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)'/.exec(read(root, file));
-  return match ? { id: match[1]!, label: match[2]! } : undefined;
+  const source = read(root, file);
+  const match = /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)'/.exec(source);
+  return match
+    ? { id: match[1]!, label: match[2]!, hostsSettings: /\bhostsSettings: true\b/.test(source) }
+    : undefined;
 }
-/** Whether a feature's page draws the tabs other features add to it, with `pageTabs(…)`. */
-export const drawsPageTabs = (root: string, feature: string) =>
-  files(root, `features/${feature}/frontend`, /\.tsx?$/).some((file) =>
-    /\bpageTabs\(/.test(read(root, file)),
-  );
 
 // ---- Edits that list a new owner in app/
 

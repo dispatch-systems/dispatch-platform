@@ -7,7 +7,6 @@ import {
   collectionsOf,
   collectors,
   coreParts,
-  drawsPageTabs,
   emptyPlan,
   exists,
   features,
@@ -154,12 +153,10 @@ export function featureValues(root: string, argv: string[]) {
       throw new UsageError(`--tab-of names a feature, and ${host} is none`);
     const found = pageOf(root, host);
     if (!found) throw new UsageError(`${host} has no page to hold a tab`);
-    // The pageTabs slot holds the tab; the host's page has to draw what it holds.
-    if (!drawsPageTabs(root, host))
-      throw new UsageError(
-        `${host}'s page does not draw the tabs other features add to it yet: ` +
-          `it needs pageTabs('${found.id}') among its own tabs first`,
-      );
+    // Every page draws the tabs other features add to it, but Settings' tabs are a slot of
+    // their own.
+    if (found.hostsSettings)
+      throw new UsageError(`${host}'s page draws Settings' tabs: use --settings for one`);
     hostPage = found;
   }
 
