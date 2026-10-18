@@ -5,17 +5,13 @@ import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefe
 import {
   settingsPieces,
   settingsTabs,
+  visibleSettingsTabs,
   type SettingsTab,
 } from '../../../core/shell/frontend/runtime/slots.js';
 
 // A DSP's Settings is made of the tabs its owners contribute: the account's own, and each
 // feature's settings panel, with the pieces other owners add to them. A feature's go with it.
 
-/** The tabs this person sees, in order. */
-export const visibleTabs = (view?: DspView) =>
-  settingsTabs(view)
-    .filter((tab) => !tab.visible || tab.visible(view))
-    .sort((a, b) => a.order - b.order);
 /** Loads a tab's code and its pieces'. */
 export const loadTab = (tab: SettingsTab, view?: DspView) =>
   Promise.all([tab.load(), ...settingsPieces(tab.id, view).map((piece) => piece.load())]);
@@ -34,7 +30,7 @@ export const loadBadge = (tab: SettingsTab) =>
 
 /** The code of the tab the address names, so the page opens on it, and the tabs' badges. */
 export function preloadSettingsTab(view?: DspView) {
-  const tabs = visibleTabs(view);
+  const tabs = visibleSettingsTabs(view);
   const id = hashQuery().get('tab') || tabs[0]?.id;
   const tab = tabs.find((each) => each.id === id);
   return Promise.all([...tabs.map(loadBadge), tab && loadTab(tab, view)]);
@@ -55,5 +51,5 @@ export function prefetchSettings(view: DspView, immediate: boolean) {
   const address = parseHash(location.hash);
   const tab =
     address.dspId === view.dsp.id && address.page === 'settings' ? hashQuery().get('tab') : null;
-  prefetchSettingsTab(tab ?? visibleTabs(view)[0]?.id ?? '', view, immediate);
+  prefetchSettingsTab(tab ?? visibleSettingsTabs(view)[0]?.id ?? '', view, immediate);
 }

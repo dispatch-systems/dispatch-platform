@@ -270,7 +270,6 @@ export function PaycomPage({ view }: { view: DspView }) {
                 onDateChange={selectDate}
                 refreshKey={refreshKey}
                 timezone={view.dsp.timezone}
-                dspId={view.dsp.id}
                 onOpenEmployee={
                   hasFeature(view, 'timecard.employees')
                     ? (code, date) => {
@@ -280,7 +279,7 @@ export function PaycomPage({ view }: { view: DspView }) {
                       }
                     : undefined
                 }
-                canMatch={can(view, 'driver_match.manage')}
+                driverMatch={settingsHash(view.dsp.id, 'driver-match', view)}
                 preferences={preferences.data?.values ?? paycomDefaults}
               />
             </CommittedTab>

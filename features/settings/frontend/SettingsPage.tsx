@@ -4,13 +4,14 @@ import { Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js'
 import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
 import {
   settingsPieces,
+  visibleSettingsTabs,
   type SettingsPiece,
   type SettingsTab,
 } from '../../../core/shell/frontend/runtime/slots.js';
-import { loadBadge, loadTab, loadedBadge, prefetchSettingsTab, visibleTabs } from './tabs.js';
+import { loadBadge, loadTab, loadedBadge, prefetchSettingsTab } from './tabs.js';
 
 export function SettingsPage({ session, view }: { session: SessionView; view?: DspView }) {
-  const tabs = visibleTabs(view);
+  const tabs = visibleSettingsTabs(view);
   const load = (tab?: SettingsTab) => void (tab && loadTab(tab, view).catch(() => undefined));
   const [requestedTab, setTab] = useState(hashQuery().get('tab') || tabs[0]!.id);
   const [pending, startTransition] = useTransition();

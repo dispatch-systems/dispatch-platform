@@ -1,7 +1,9 @@
 # Every route server registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
+# <live> is the permissions the features' `live` fields name: the build's features decide
+# them, and without any, collection updates have no route.
 GET /api/browser-update Public Memory
-GET /api/dsp/collection-updates Dsp("timecard.view|collections.run|dvic.view|driver_profiles.collect") Async
+GET /api/dsp/collection-updates Dsp(<live>) Async
 GET /api/health Public Memory
 POST /api/dsp/presence Dsp("access") Async

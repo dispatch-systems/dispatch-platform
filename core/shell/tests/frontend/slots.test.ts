@@ -234,7 +234,7 @@ test('a DSP opens on the page a feature declares it lands on, and names none wit
   assert.equal(parseHash('#dsp/dsp_landing/board').page, 'board');
 });
 
-test('a link to Settings opens the page that draws the settings tabs, and only on a tab it has', () => {
+test('a link to Settings opens the page that draws the settings tabs, and only on a tab it has and the person sees', () => {
   const tab = (id: string): SettingsTab => ({
     id,
     label: id,
@@ -252,6 +252,16 @@ test('a link to Settings opens the page that draws the settings tabs, and only o
     '#dsp/dsp_settings/options?tab=beta-panel',
   );
   assert.equal(settingsHash('dsp_settings', 'gone'), undefined);
+  installFeatures([
+    { name: 'alpha', routes: [{ ...page('options'), hostsSettings: true }] },
+    { name: 'beta', settingsTabs: [{ ...tab('beta-panel'), visible: (view) => !!view?.role.owner }] },
+  ]);
+  const as = (owner: boolean) => ({ features: [], role: { owner } }) as unknown as DspView;
+  assert.equal(
+    settingsHash('dsp_settings', 'beta-panel', as(true)),
+    '#dsp/dsp_settings/options?tab=beta-panel',
+  );
+  assert.equal(settingsHash('dsp_settings', 'beta-panel', as(false)), undefined);
   installFeatures([{ name: 'beta', routes: [page('board')], settingsTabs: [tab('beta-panel')] }]);
   assert.equal(settingsHash('dsp_settings'), undefined);
   assert.equal(settingsHash('dsp_settings', 'beta-panel'), undefined);

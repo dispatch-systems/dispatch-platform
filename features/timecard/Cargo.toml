@@ -16,8 +16,7 @@ doctest = false
 # name core's and Paycom's, whose definitions their own ts features bring.
 ts = ["dep:ts-rs", "dispatch-core/ts", "dispatch-paycom/ts"]
 
-# Core; Paycom and Cortex, whose timecards and meal breaks it keeps; and Driver Match, which
-# it declares it depends on.
+# Core; and Paycom and Cortex, whose timecards and meal breaks it keeps.
 [dependencies]
 dispatch-core = { path = "../../core" }
 dispatch-cortex = { path = "../../collectors/cortex" }
