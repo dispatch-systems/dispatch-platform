@@ -126,5 +126,5 @@ impl Queue for Imports {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/imports.rs"]
+#[path = "tests/backend/imports.rs"]
 mod tests;

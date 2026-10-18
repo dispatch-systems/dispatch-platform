@@ -2,6 +2,7 @@
 //! Its README says more.
 mod api;
 mod backend;
+mod integrations;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
@@ -83,12 +84,16 @@ pub const FEATURE: Feature = Feature {
                 Migration {
                     id: 5,
                     name: "slack_imports",
-                    apply: Sql(include_str!("migrations/dsp/0005_slack_imports.sql")),
+                    apply: Sql(include_str!(
+                        "integrations/import_files/migrations/dsp/0005_slack_imports.sql"
+                    )),
                 },
                 Migration {
                     id: 6,
                     name: "slack_canvases",
-                    apply: Sql(include_str!("migrations/dsp/0006_slack_canvases.sql")),
+                    apply: Sql(include_str!(
+                        "integrations/sync_canvases/migrations/dsp/0006_slack_canvases.sql"
+                    )),
                 },
             ],
         },
@@ -103,15 +108,15 @@ pub const FEATURE: Feature = Feature {
     // Canvases' minute's syncing and its check every ten minutes.
     maintenance: &[
         backend::maintenance::MAINTENANCE,
-        backend::imports::queue::MAINTENANCE,
-        backend::imports::catch_up::MAINTENANCE,
-        backend::canvases::queue::MAINTENANCE,
-        backend::canvases::check::MAINTENANCE,
+        integrations::import_files::queue::MAINTENANCE,
+        integrations::import_files::catch_up::MAINTENANCE,
+        integrations::sync_canvases::queue::MAINTENANCE,
+        integrations::sync_canvases::check::MAINTENANCE,
     ],
     // Its own: Import Files and Sync Canvases, switched on in each workspace's Integrations.
     integrations: &[
-        backend::imports::INTEGRATION,
-        backend::canvases::INTEGRATION,
+        integrations::import_files::INTEGRATION,
+        integrations::sync_canvases::INTEGRATION,
     ],
     audit: Audit {
         areas: &[("slack.", Connections)],

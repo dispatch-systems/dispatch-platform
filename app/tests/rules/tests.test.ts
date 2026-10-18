@@ -16,11 +16,15 @@ const toolTests = [
     .crates.filter((crate) => !ownerOf(crate.manifest))
     .map((crate) => `${crate.dir}/tests`),
 ];
-/** The owner's tests/ folder a file sits in, with its kind and the rest of its path. */
+/**
+ * The owner's tests/ folder a file sits in, its own or one of its integrations'
+ * (`integrations/<name>/tests/`), with its kind and the rest of its path.
+ */
 function placed(file: string) {
   const owner = ownerOf(file);
-  if (!owner || !file.startsWith(`${owner.dir}/tests/`)) return undefined;
-  const [kind, ...rest] = file.slice(owner.dir.length + '/tests/'.length).split('/');
+  const tests = owner && new RegExp(`^${owner.dir}/(integrations/[^/]+/)?tests/`).exec(file);
+  if (!owner || !tests) return undefined;
+  const [kind, ...rest] = file.slice(tests[0].length).split('/');
   return { owner, kind: kind!, rest: rest.join('/') };
 }
 

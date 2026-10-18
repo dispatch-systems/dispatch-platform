@@ -6,8 +6,8 @@ import {
   settingsPage,
   type FrontendFeature,
 } from '../../../core/shell/frontend/runtime/slots.js';
-import { syncCanvases, syncCanvasesSection } from './canvases/integration.js';
-import { importFiles, importFilesSection } from './imports/integration.js';
+import { syncCanvases, syncCanvasesSection } from '../integrations/sync_canvases/frontend/integration.js';
+import { importFiles, importFilesSection } from '../integrations/import_files/frontend/integration.js';
 import { CHANNELS, INTEGRATIONS } from './sections.js';
 
 // Slack's frontend manifest, loaded up front: it stays small and loads its cards and its page

@@ -1,7 +1,7 @@
 import { AlertCircle, Check, Clock, File, Film, Image, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { time } from '../../../../core/shell/frontend/lib/format.js';
-import type { SlackImportedFile } from '../../api/client.js';
+import { time } from '../../../../../core/shell/frontend/lib/format.js';
+import type { SlackImportedFile } from '../../../api/client.js';
 
 // The files noticed in linked channels latest, with who posted each where, and how saving it
 // went: saved, with where it opens, or why not yet, or not at all.

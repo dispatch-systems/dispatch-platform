@@ -2,13 +2,13 @@
 //! and the permission before a handler runs; the handlers that call Slack wait outside the
 //! database and check again before they write. Slack's own requests come to public addresses
 //! outside `/api/`, each checked against Slack's signature before anything else.
-use super::{canvases, imports};
 use crate::backend::{
     app::{EVENTS_PATH, INSTALL_PATH, INTERACTIONS_PATH, RETURN_PATH},
     channels,
     connection::{self, Started},
     inbound, integrations, link, pages, storage,
 };
+use crate::integrations::{import_files, sync_canvases};
 use axum::{
     extract::Request,
     http::Method,
@@ -31,7 +31,7 @@ use std::sync::Arc;
 /// Connections are.
 const CONNECTIONS: Dsp = Dsp("connections.manage");
 /// What Dispatch does in each of them, on its settings.
-pub(super) const SETTINGS: Dsp = Dsp("slack.manage");
+pub(crate) const SETTINGS: Dsp = Dsp("slack.manage");
 /// The workspaces themselves, for either.
 const WORKSPACES: Dsp = Dsp("connections.manage|slack.manage");
 
@@ -86,13 +86,13 @@ pub fn routes() -> Vec<Route> {
         }),
     ];
     // Import Files' own and Sync Canvases', each in a module of their own.
-    routes.extend(imports::routes());
-    routes.extend(canvases::routes());
+    routes.extend(import_files::api::routes());
+    routes.extend(sync_canvases::api::routes());
     routes
 }
 
 /// A folder's ID where the DSP keeps its files, as Google Drive writes them.
-pub(super) fn folder(id: &str) -> Result<String> {
+pub(crate) fn folder(id: &str) -> Result<String> {
     ensure(
         (1..=128).contains(&id.len())
             && id
@@ -104,12 +104,12 @@ pub(super) fn folder(id: &str) -> Result<String> {
     Ok(id.to_owned())
 }
 /// A Slack workspace's ID, as Slack writes them.
-pub(super) fn team(id: &str) -> Result<String> {
+pub(crate) fn team(id: &str) -> Result<String> {
     ensure(storage::team_id(id), "invalid_input", 400)?;
     Ok(id.to_owned())
 }
 /// A Slack channel's ID, as Slack writes them.
-pub(super) fn channel(id: &str) -> Result<String> {
+pub(crate) fn channel(id: &str) -> Result<String> {
     ensure(channels::channel_id(id), "invalid_input", 400)?;
     Ok(id.to_owned())
 }

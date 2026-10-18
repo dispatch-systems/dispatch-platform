@@ -20,8 +20,16 @@ const owners = [
   ),
   'mcp',
 ];
+/** Each owner's frontend, and each of its integrations' (`integrations/<name>/frontend`). */
 const frontends = owners
-  .map((directory) => path.join(directory, 'frontend'))
+  .flatMap((directory) => {
+    const integrations = path.join(directory, 'integrations');
+    const own = fs.existsSync(integrations) ? fs.readdirSync(integrations) : [];
+    return [
+      path.join(directory, 'frontend'),
+      ...own.map((name) => path.join(integrations, name, 'frontend')),
+    ];
+  })
   .filter((directory) => fs.existsSync(directory));
 const clients = owners
   .map((directory) => path.join(directory, 'api', 'client.ts'))
@@ -55,7 +63,8 @@ const root = path.resolve('.');
 function owner(file: string) {
   if (clients.includes(file)) return path.dirname(path.dirname(file));
   const frontend = frontends.find((directory) => file.startsWith(directory + path.sep));
-  return frontend && path.dirname(frontend);
+  // An integration's frontend is its owner's.
+  return frontend && frontend.replace(/[\\/](integrations[\\/][^\\/]+[\\/])?frontend$/, '');
 }
 /** The frontend modules among `specifiers`, as paths relative to the repository. */
 const frontendModules = (file: string, specifiers: string[]) =>
@@ -219,7 +228,9 @@ test('only the app lists the features, and core knows only core', () => {
 // A manifest is loaded up front, so it stays small: the pages it names load when opened.
 test('every owner with screens has a manifest, the app lists them all, and each loads its pages lazily', () => {
   const manifests = modules.filter(({ file }) => path.basename(file) === 'feature.ts');
-  for (const directory of frontends.filter((frontend) => ![SHELL, APP].includes(frontend)))
+  // An integration's screens are its owner's, declared in its owner's manifest.
+  const own = frontends.filter((frontend) => !/[\\/]integrations[\\/]/.test(frontend));
+  for (const directory of own.filter((frontend) => ![SHELL, APP].includes(frontend)))
     assert(
       fs.existsSync(path.join(directory, 'feature.ts')),
       `${directory} has screens; declare them in ${directory}/feature.ts`,

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { AlertCircle, FolderInput, Plus } from 'lucide-react';
-import type { ConnectionSectionContext } from '../../../../core/shell/frontend/runtime/slots.js';
-import { DataState } from '../../../../core/shell/frontend/ui/index.js';
-import { time } from '../../../../core/shell/frontend/lib/format.js';
-import { importLinking, useSlackImports, type SlackImportLink } from '../../api/client.js';
-import { ChannelLinks } from '../linked/ChannelLinks.js';
-import { LinkChannel } from '../linked/LinkChannel.js';
+import type { ConnectionSectionContext } from '../../../../../core/shell/frontend/runtime/slots.js';
+import { DataState } from '../../../../../core/shell/frontend/ui/index.js';
+import { time } from '../../../../../core/shell/frontend/lib/format.js';
+import { importLinking, useSlackImports, type SlackImportLink } from '../../../api/client.js';
+import { ChannelLinks } from '../../../frontend/linked/ChannelLinks.js';
+import { LinkChannel } from '../../../frontend/linked/LinkChannel.js';
 import { RecentImports } from './RecentImports.js';
 
 /** What a linked channel has saved, in a few words. */

@@ -3,10 +3,10 @@
 //! Each is for those who manage Slack, and the handlers check they see the folders where the
 //! DSP keeps its files; each waits outside the database, as it asks Slack and where the files
 //! are kept, and checks the member again before it writes.
-use super::routes::{SETTINGS, channel, folder, team};
-use crate::backend::{
-    canvases::{LINKING, choices, overview::overview},
-    channel_links,
+use super::{LINKING, choices, overview::overview};
+use crate::{
+    api::routes::{SETTINGS, channel, folder, team},
+    backend::channel_links,
 };
 use dispatch_core::{
     Error, Result, State, ensure,

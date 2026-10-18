@@ -1,12 +1,12 @@
 import { createElement, lazy } from 'react';
 import { Clock, Image, Mail, MessageSquareOff, NotebookText, PenOff } from 'lucide-react';
-import type { DspView } from '../../../../core/accounts/api/index.js';
-import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
-import { offered } from '../../../../core/shell/frontend/runtime/services.js';
+import type { DspView } from '../../../../../core/accounts/api/index.js';
+import { can } from '../../../../../core/shell/frontend/runtime/permissions.js';
+import { offered } from '../../../../../core/shell/frontend/runtime/services.js';
 import type {
   ConnectionIntegration,
   ConnectionSection,
-} from '../../../../core/shell/frontend/runtime/slots.js';
+} from '../../../../../core/shell/frontend/runtime/slots.js';
 
 // Sync Canvases, Slack's own integration, as Slack's manifest declares it: its card under a
 // workspace's Integrations, which says what it does for members who don't know, and its section,
@@ -14,7 +14,7 @@ import type {
 // files (core's Files service), the section only to those who see where they're kept. Its
 // screens load with the workspace's page.
 
-const loadPage = () => import('../page.js');
+const loadPage = () => import('../../../frontend/page.js');
 const SyncCanvasesSection = lazy(() =>
   loadPage().then((module) => ({ default: module.SyncCanvasesSection })),
 );

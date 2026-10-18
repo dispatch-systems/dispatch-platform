@@ -16,7 +16,16 @@ import { lexFile, testAttributes } from './support/rust.js';
 
 // What every feature, collector and core part is made of: the folders core/manifest/README.md
 // names, each holding one kind of piece.
-const featurePieces = ['backend', 'api', 'frontend', 'migrations', 'tooling', 'tests'];
+const featurePieces = [
+  'backend',
+  'api',
+  'frontend',
+  'migrations',
+  'tooling',
+  'tests',
+  // Its integrations through a connection, a folder each.
+  'integrations',
+];
 const collectorPieces = [
   'connection',
   'discovery',

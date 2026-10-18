@@ -2,11 +2,13 @@
 //! a linked channel's canvas, or one chosen on its own, is written as a document with its
 //! picture in it, then written over in place once it's edited, or anew once its document is
 //! gone; a change Slack tells of waits for the changes to stop; and one gone from Slack is left.
-use super::super::storage::{Canvas, Outcome};
+use super::super::{
+    ID, check,
+    storage::{Canvas, Outcome, Status},
+};
 use super::*;
 use crate::backend::{
     app,
-    canvases::{ID, check, storage::Status},
     channel_links::storage::{Link, LinkStore},
     fixture::{self, CANVAS},
     slack::Tokens,

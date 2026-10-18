@@ -1,7 +1,7 @@
-import type { DspView } from '../../../../core/accounts/api/index.js';
-import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
-import { offered } from '../../../../core/shell/frontend/runtime/services.js';
-import { useSlackCanvases } from '../../api/client.js';
+import type { DspView } from '../../../../../core/accounts/api/index.js';
+import { can } from '../../../../../core/shell/frontend/runtime/permissions.js';
+import { offered } from '../../../../../core/shell/frontend/runtime/services.js';
+import { useSlackCanvases } from '../../../api/client.js';
 
 // What Sync Canvases is doing in a workspace, on its card while it's on: how many channels are
 // linked and how many canvases have a document. Only for those who see where files are kept.

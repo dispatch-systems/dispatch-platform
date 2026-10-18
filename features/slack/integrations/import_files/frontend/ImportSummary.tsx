@@ -1,7 +1,7 @@
-import type { DspView } from '../../../../core/accounts/api/index.js';
-import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
-import { offered } from '../../../../core/shell/frontend/runtime/services.js';
-import { useSlackImports } from '../../api/client.js';
+import type { DspView } from '../../../../../core/accounts/api/index.js';
+import { can } from '../../../../../core/shell/frontend/runtime/permissions.js';
+import { offered } from '../../../../../core/shell/frontend/runtime/services.js';
+import { useSlackImports } from '../../../api/client.js';
 
 // What Import Files is doing in a workspace, on its card while it's on: how many channels are
 // linked and how many files they've saved. Only for those who see where files are kept.

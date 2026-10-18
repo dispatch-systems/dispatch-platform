@@ -245,5 +245,5 @@ fn escaped(text: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/canvas_page.rs"]
+#[path = "tests/backend/canvas_page.rs"]
 mod tests;

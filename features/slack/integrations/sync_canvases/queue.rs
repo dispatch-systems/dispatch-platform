@@ -154,5 +154,5 @@ fn folder(db: &Store, dsp: &str, canvas: &Canvas) -> Result<Option<String>> {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/canvases.rs"]
+#[path = "tests/backend/canvases.rs"]
 mod tests;

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { AlertCircle, ListChecks, NotebookText, Plus } from 'lucide-react';
-import type { ConnectionSectionContext } from '../../../../core/shell/frontend/runtime/slots.js';
-import { DataState } from '../../../../core/shell/frontend/ui/index.js';
-import { canvasLinking, useSlackCanvases, type SlackCanvasLink } from '../../api/client.js';
-import { ChannelLinks } from '../linked/ChannelLinks.js';
-import { LinkChannel } from '../linked/LinkChannel.js';
+import type { ConnectionSectionContext } from '../../../../../core/shell/frontend/runtime/slots.js';
+import { DataState } from '../../../../../core/shell/frontend/ui/index.js';
+import { canvasLinking, useSlackCanvases, type SlackCanvasLink } from '../../../api/client.js';
+import { ChannelLinks } from '../../../frontend/linked/ChannelLinks.js';
+import { LinkChannel } from '../../../frontend/linked/LinkChannel.js';
 import { ChooseCanvases } from './ChooseCanvases.js';
 import { KeptCanvases } from './KeptCanvases.js';
 

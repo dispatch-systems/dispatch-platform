@@ -5,13 +5,13 @@
 use crate::backend::{
     app,
     channel_links::storage::{Link, LinkStore},
-    imports::{
-        ID, LINKING, catch_up,
-        storage::{ImportStore, Status},
-    },
     slack::Tokens,
     storage::{Member, SlackStore, Workspace},
     support,
+};
+use crate::integrations::import_files::{
+    ID, LINKING, catch_up,
+    storage::{ImportStore, Status},
 };
 use dispatch_core::{
     State,

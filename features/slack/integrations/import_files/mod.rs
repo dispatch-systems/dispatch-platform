@@ -11,13 +11,14 @@
 //! - `save`: saving one file, and who posted it, as `author` says.
 //! - `catch_up`: the hourly pass that notices the files Slack didn't tell of.
 //! - `storage`: what's kept.
+pub(crate) mod api;
 pub mod catch_up;
 pub mod links;
 pub mod queue;
 mod save;
 pub mod storage;
 
-use super::channel_links::Linking;
+use crate::backend::channel_links::Linking;
 use dispatch_core::manifest::integrations::{Integration, integration};
 
 /// Its ID, as each workspace keeps it switched on.

@@ -6,9 +6,9 @@
 //! - `bot`: the app's bot in one DSP's workspace, through which everything acts in Slack.
 //! - `connection` and `link`: adding the app to a DSP's workspaces, and taking it out.
 //! - `channels`: the channels of a workspace Dispatch is in, on its settings.
-//! - `integrations`: what features do through Slack, switched on in each workspace's settings;
-//!   Slack's own, `imports` (Import Files) and `canvases` (Sync Canvases), each keeping what's in
-//!   the channels `channel_links` links to folders.
+//! - `integrations`: what features do through Slack, switched on in each workspace's settings.
+//!   Slack's own are a folder each in `integrations/`, at the crate's root, as Import Files and
+//!   Sync Canvases are, each keeping what's in the channels `channel_links` links to folders.
 //! - `members` and `people`: the members of its workspaces, and how Driver Match reads them;
 //!   `author`, who one is to the DSP.
 //! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`.
@@ -18,13 +18,11 @@
 pub(crate) mod app;
 pub(crate) mod author;
 pub(crate) mod bot;
-pub(crate) mod canvases;
 pub(crate) mod channel_links;
 pub(crate) mod channels;
 pub(crate) mod connection;
 pub(crate) mod fixture;
 pub(crate) mod home;
-pub(crate) mod imports;
 pub(crate) mod inbound;
 pub(crate) mod integrations;
 pub(crate) mod link;

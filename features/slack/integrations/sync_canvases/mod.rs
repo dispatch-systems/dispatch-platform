@@ -14,6 +14,7 @@
 //!   didn't tell of.
 //! - `sync`: syncing one canvas, and `page`, a canvas as a page to write.
 //! - `storage`: what's kept.
+pub(crate) mod api;
 pub mod check;
 pub mod choices;
 pub mod overview;
@@ -22,7 +23,7 @@ pub mod queue;
 pub mod storage;
 mod sync;
 
-use super::channel_links::Linking;
+use crate::backend::channel_links::Linking;
 use dispatch_core::{
     db::Db,
     manifest::integrations::{Integration, integration},

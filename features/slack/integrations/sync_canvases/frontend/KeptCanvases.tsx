@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { AlertCircle, Check, Clock, Ellipsis, Folder, NotebookText, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { time } from '../../../../core/shell/frontend/lib/format.js';
-import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { ConfirmDialog, Popover } from '../../../../core/shell/frontend/ui/index.js';
-import { unchooseSlackCanvas, type SlackCanvas } from '../../api/client.js';
+import { time } from '../../../../../core/shell/frontend/lib/format.js';
+import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
+import { ConfirmDialog, Popover } from '../../../../../core/shell/frontend/ui/index.js';
+import { unchooseSlackCanvas, type SlackCanvas } from '../../../api/client.js';
 
 // Every canvas Sync Canvases keeps, with its channel, and the folder it was chosen for on its
 // own; how syncing it goes, and where its document opens; and, for one chosen on its own, a menu
