@@ -7,12 +7,12 @@ import {
   collectionsOf,
   collectors,
   coreParts,
-  drawsPageTabs,
   emptyPlan,
   exists,
   features,
   format,
   formatRust,
+  isIcon,
   keeperOf,
   names as namesOf,
   nextPeopleOrder,
@@ -59,12 +59,14 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --no-backend                      no backend/: a frontend-only feature, with --page,
                                     --tab-of or --settings
   --label <label>                   its name as people read it (default: from <name>)
+  --icon <name>                     its icon on its page, its switch and its people: a
+                                    lucide-react icon, as Truck (default: LayoutGrid)
   --dry-run                         print what it would write and change nothing
   --out <dir>                       with --dry-run, write the files under <dir> instead
   --root <dir>                      the repository to write into (default: this one)`;
 
 const FLAGS = ['mandatory', 'api', 'page', 'settings', 'no-backend', 'dry-run'];
-const OPTIONS = ['tables', 'keeps', 'people', 'tab-of', 'label', 'out', 'root'];
+const OPTIONS = ['tables', 'keeps', 'people', 'tab-of', 'label', 'icon', 'out', 'root'];
 /** Where the shell's frontend reads a DSP view's type from, relative to the root. */
 const DSP_VIEW = 'core/accounts/api/index.js';
 
@@ -83,6 +85,12 @@ export function featureValues(root: string, argv: string[]) {
   if (taken.includes(name) || exists(root, `features/${name}`))
     throw new UsageError(
       `${name} is taken: features, collectors and core's parts each own their name`,
+    );
+
+  const icon = args.options.get('icon') ?? 'LayoutGrid';
+  if (args.options.has('icon') && !isIcon(icon))
+    throw new UsageError(
+      `--icon names a lucide-react icon, as Truck or ClipboardList: ${icon} is none`,
     );
 
   const mandatory = args.flags.has('mandatory');
@@ -154,18 +162,17 @@ export function featureValues(root: string, argv: string[]) {
       throw new UsageError(`--tab-of names a feature, and ${host} is none`);
     const found = pageOf(root, host);
     if (!found) throw new UsageError(`${host} has no page to hold a tab`);
-    // The pageTabs slot holds the tab; the host's page has to draw what it holds.
-    if (!drawsPageTabs(root, host))
-      throw new UsageError(
-        `${host}'s page does not draw the tabs other features add to it yet: ` +
-          `it needs pageTabs('${found.id}') among its own tabs first`,
-      );
+    // Every page draws the tabs other features add to it, but Settings' tabs are a slot of
+    // their own.
+    if (found.hostsSettings)
+      throw new UsageError(`${host}'s page draws Settings' tabs: use --settings for one`);
     hostPage = found;
   }
 
   const switched = !mandatory;
-  // A switch needs a permission to gate its screens and routes; so does an endpoint or a keeper.
-  const permission = switched || api || keeps;
+  // A switch needs a permission to gate its screens and routes; so does an endpoint, a keeper
+  // or a Settings tab, which those who manage it see.
+  const permission = switched || api || keeps || settings;
   const order = nextPermissionOrder(root);
   const crateOf = (collector: string) => `dispatch-${collector.replace(/_/g, '-')}`;
   const identOf = (collector: string) => `dispatch_${collector}`;
@@ -248,6 +255,12 @@ export function featureValues(root: string, argv: string[]) {
     permission,
     viewOrder: order,
     collectOrder: order + 1,
+    manageOrder: order + (keeps ? 2 : 1),
+    // What it uses beyond the collector whose collection it keeps: its database's, its people's.
+    dependsOn: used
+      .filter((collector) => collector !== site)
+      .map((collector) => `"${collector}"`)
+      .join(', '),
     place: nextPlace(root),
     manifestImports: `{${manifestImports.join(', ')}}`,
     requires: keeps && capabilitiesOf(root, site).includes(collection) ? `"${collection}"` : '',
@@ -274,6 +287,8 @@ export function featureValues(root: string, argv: string[]) {
     keeps,
     people: Boolean(source),
     peopleOrder: nextPeopleOrder(root),
+    icon,
+    peopleIcon: args.options.has('icon') ? icon : 'Users',
     peopleSource: source ? namesOf(source.id).label : '',
     peopleIdent: source ? identOf(source.site) : '',
     readPeople: open.replace(/^self\./, 'store.'),

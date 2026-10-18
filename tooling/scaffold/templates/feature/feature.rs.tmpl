@@ -1,4 +1,4 @@
-//! {{label}}: what it does for a DSP, in a sentence. Its README says more.
+//! {{label}}: TODO(scaffold): what it does for a DSP, in a sentence. Its README says more.
 {{#api}}
 mod api;
 {{/api}}
@@ -21,6 +21,9 @@ use dispatch_core::manifest::{{manifestImports}};
 
 pub const FEATURE: Feature = Feature {
     place: {{place}},
+{{#dependsOn}}
+    depends_on: &[{{dependsOn}}],
+{{/dependsOn}}
 {{#switch}}
     switch: optional("{{name}}", "{{label}}", &[{{requires}}]),
 {{/switch}}
@@ -33,6 +36,9 @@ pub const FEATURE: Feature = Feature {
 {{#keeps}}
         perm("{{name}}.collect", "Collect {{label}}", {{collectOrder}}).implies(&["{{name}}.view"]),
 {{/keeps}}
+{{#settings}}
+        perm("{{name}}.manage", "Manage {{label}}", {{manageOrder}}).implies(&["{{name}}.view"]),
+{{/settings}}
     ],
 {{/permission}}
 {{#api}}

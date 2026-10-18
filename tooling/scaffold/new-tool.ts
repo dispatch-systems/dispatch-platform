@@ -203,7 +203,7 @@ ${changing.length < actions.length ? '            _ => Effect::Reads,\n' : ''}  
     .map((action) =>
       changing.includes(action)
         ? `            ${pascal}Action::${variant(action)} {} => {
-                // Make the change here, and record it with \`w.audit\`.
+                // TODO(scaffold): make the change, and record it with \`w.audit\`.
                 cx.write(move |_w| Ok(())).await?;
             }`
         : `            ${pascal}Action::${variant(action)} {} => {}`,

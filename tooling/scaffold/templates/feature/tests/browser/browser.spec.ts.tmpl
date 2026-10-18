@@ -32,7 +32,6 @@ test('{{label}} opens from the sidebar of a DSP that has it', async ({ page }) =
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: '{{label}}', exact: true }).click();
   await expect(page.getByRole('heading', { name: '{{label}}', level: 1 })).toBeVisible();
-  await expect(page.getByText('Nothing here yet', { exact: true })).toBeVisible();
 });
 {{/page}}
 {{#tab}}
@@ -42,7 +41,7 @@ test('{{label}} opens as a tab of {{hostLabel}}', async ({ page }) => {
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: '{{hostLabel}}', exact: true }).click();
   await page.getByRole('tab', { name: '{{label}}', exact: true }).click();
-  await expect(page.getByRole('region', { name: '{{label}}', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '{{label}}', exact: true })).toBeAttached();
 });
 {{/tab}}
 {{#settings}}

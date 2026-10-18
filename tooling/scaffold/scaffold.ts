@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -233,6 +234,11 @@ export function nextPermissionOrder(root: string) {
       highest = Math.max(highest, Number(match[1]));
   return (Math.floor(highest / 10) + 1) * 10;
 }
+/** Whether lucide-react, which draws the dashboard's icons, has an icon of this name. */
+export function isIcon(name: string) {
+  const icons = createRequire(import.meta.url)('lucide-react') as Record<string, unknown>;
+  return /^[A-Z][A-Za-z0-9]*$/.test(name) && !name.endsWith('Icon') && name in icons;
+}
 /** The next free tens in the one order the kinds of data that name people follow. */
 export function nextPeopleOrder(root: string) {
   let highest = 0;
@@ -278,14 +284,12 @@ export function keeperOf(root: string, site: string, collection: string) {
 export function pageOf(root: string, feature: string) {
   const file = `features/${feature}/frontend/feature.ts`;
   if (!exists(root, file)) return undefined;
-  const match = /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)'/.exec(read(root, file));
-  return match ? { id: match[1]!, label: match[2]! } : undefined;
+  const source = read(root, file);
+  const match = /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)'/.exec(source);
+  return match
+    ? { id: match[1]!, label: match[2]!, hostsSettings: /\bhostsSettings: true\b/.test(source) }
+    : undefined;
 }
-/** Whether a feature's page draws the tabs other features add to it, with `pageTabs(…)`. */
-export const drawsPageTabs = (root: string, feature: string) =>
-  files(root, `features/${feature}/frontend`, /\.tsx?$/).some((file) =>
-    /\bpageTabs\(/.test(read(root, file)),
-  );
 
 // ---- Edits that list a new owner in app/
 

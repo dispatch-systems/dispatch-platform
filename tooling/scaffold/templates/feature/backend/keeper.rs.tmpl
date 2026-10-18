@@ -21,7 +21,7 @@ impl Keeper for {{pascal}}Keeper {
     /// Stores a finished collection: `collected.data` is what the collector returned.
     fn publish(&self, {{publishParameters}}) -> Result<()> {
 {{#tables}}
-        // The starter records the job; store the rows `collected.data` holds instead.
+        // TODO(scaffold): store the rows `collected.data` holds; the starter records the job.
         store.add_{{name}}_item(dsp, job)?;
 {{/tables}}
         Ok(())

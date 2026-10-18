@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
@@ -190,15 +191,19 @@ test('every HTTP route has a method and path of its own', () => {
 // and the owner's name. Every owner's frontend/feature.ts counts, listed in the app or not.
 type FrontendManifest = {
   name: string;
-  routes?: readonly { id: string; scope: string }[];
+  routes?: readonly { id: string; scope: string; tabs?: boolean; hostsSettings?: boolean }[];
   settingsTabs?: readonly { id: string }[];
   settingsPieces?: readonly { tab: string; id: string }[];
+  pageTabs?: readonly { page: string; id: string }[];
 };
+type DspPage = { id: string; file: string; tabs: boolean; hostsSettings: boolean };
 async function frontendContributions() {
   const addresses: Contribution[] = [];
   const settingsTabs: Contribution[] = [];
   const settingsPieces: Contribution[] = [];
   const names: { file: string; name: string }[] = [];
+  const pages: DspPage[] = [];
+  const pageTabs: (Contribution & { page: string })[] = [];
   const manifests = files.filter((file) =>
     /^((core|features|collectors)\/[^/]+|mcp)\/frontend\/feature\.ts$/.test(file),
   );
@@ -206,16 +211,52 @@ async function frontendContributions() {
     const { feature } = (await import(pathToFileURL(path.join(root, file)).href)) as {
       feature: FrontendManifest;
     };
-    for (const route of feature.routes ?? [])
+    for (const route of feature.routes ?? []) {
       addresses.push({ id: `${route.scope}/${route.id}`, at: ownerName(file) });
+      if (route.scope === 'dsp')
+        pages.push({
+          id: route.id,
+          file,
+          tabs: Boolean(route.tabs),
+          hostsSettings: Boolean(route.hostsSettings),
+        });
+    }
+    for (const tab of feature.pageTabs ?? [])
+      pageTabs.push({ id: tab.id, page: tab.page, at: ownerName(file) });
     for (const tab of feature.settingsTabs ?? [])
       settingsTabs.push({ id: tab.id, at: ownerName(file) });
     for (const piece of feature.settingsPieces ?? [])
       settingsPieces.push({ id: `${piece.tab}/${piece.id}`, at: ownerName(file) });
     names.push({ file, name: feature.name });
   }
-  return { addresses, settingsTabs, settingsPieces, names };
+  return { addresses, settingsTabs, settingsPieces, names, pages, pageTabs };
 }
+
+// A tab one feature adds to another's page shows where that page draws it: the app draws them
+// above every page but one with tabs of its own, which draws them among its own, and Settings,
+// whose tabs are a slot of their own.
+test("every tab a feature adds to another's page has a page that draws it", async () => {
+  const { pages, pageTabs } = await frontendContributions();
+  const drawsThem = (page: DspPage) =>
+    files
+      .filter((file) => file.startsWith(`${path.dirname(page.file)}/`) && /\.tsx?$/.test(file))
+      .some((file) =>
+        new RegExp(`usePageTabs\\(\\s*'${page.id}'`).test(
+          fs.readFileSync(path.join(root, file), 'utf8'),
+        ),
+      );
+  holds('slots', 'page tabs', [
+    ...pages
+      .filter((page) => page.tabs && !drawsThem(page))
+      .map(
+        (page) =>
+          `${ownerName(page.file)}'s ${page.id} page never calls usePageTabs('${page.id}', …)`,
+      ),
+    ...pageTabs
+      .filter((tab) => !pages.some((page) => page.id === tab.page && !page.hostsSettings))
+      .map((tab) => `${tab.at} adds the tab ${tab.id} to ${tab.page}, a page that never draws it`),
+  ]);
+});
 
 test("every page's address, Settings tab and piece of one has an id of its own", async () => {
   const { addresses, settingsTabs, settingsPieces } = await frontendContributions();

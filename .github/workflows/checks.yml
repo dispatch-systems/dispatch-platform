@@ -16,7 +16,7 @@ on:
         description: What to run. Anything but "all" skips the gate, so the run publishes nothing.
         type: choice
         default: all
-        options: [all, build, checks, browser, core, api, collectors, benchmark, smoke]
+        options: [all, build, checks, browser, core, api, collectors, benchmark, smoke, scaffold]
       spec:
         description: 'Browser suite only: spec files or a test name to run alone, as for npm run test:ui'
         type: string
@@ -306,6 +306,24 @@ jobs:
       - run: npm run check:ci -- core
       - uses: ./.github/actions/fail-queue-entry
         if: failure() && github.event_name == 'merge_group'
+  # What every generator writes, made in a copy of the checkout: it builds, passes clippy,
+  # TypeScript, the linter and the rules, and its own tests pass.
+  scaffold:
+    if: contains('all scaffold', inputs.suite || 'all')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: ./.github/actions/setup-build
+        with:
+          profile: debug
+          save: 'false'
+      - run: npm run check:ci -- scaffold
+      - uses: ./.github/actions/fail-queue-entry
+        if: failure() && github.event_name == 'merge_group'
   # The API tests against a debug backend, the Python tooling tests and the npm audit.
   api:
     if: contains('all api', inputs.suite || 'all')
@@ -431,7 +449,8 @@ jobs:
   platform:
     # Named apart in a run without the gate, since even skipped it would report a check.
     name: ${{ (github.event_name != 'workflow_dispatch' || (inputs.gate && inputs.suite == 'all')) && 'platform' || 'no gate' }}
-    needs: [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories]
+    needs:
+      [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories, scaffold]
     if: always() && (inputs.suite || 'all') == 'all' && (github.event_name != 'workflow_dispatch' || inputs.gate)
     runs-on: ubuntu-24.04
     timeout-minutes: 5

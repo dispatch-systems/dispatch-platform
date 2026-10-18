@@ -88,6 +88,24 @@ function before(text: string, anchor: string, addition: string, file: string) {
     throw new Error(`${file}: cannot place a line before ${anchor.trim()}; add it by hand`);
   return `${text.slice(0, at)}${addition}${text.slice(at)}`;
 }
+/**
+ * Inserts `addition` as the last lines inside the braces `opening` ends with, which must appear
+ * once: before the line that closes them.
+ */
+function beforeClosing(text: string, opening: string, addition: string, file: string) {
+  const at = text.indexOf(opening);
+  if (at < 0 || text.indexOf(opening, at + 1) >= 0)
+    throw new Error(`${file}: cannot find ${opening.split('\n')[0]}; add it by hand`);
+  let depth = 0;
+  for (let index = at + opening.length - 1; index < text.length; index++) {
+    if (text[index] === '{') depth++;
+    else if (text[index] === '}' && --depth === 0) {
+      const line = text.lastIndexOf('\n', index) + 1;
+      return `${text.slice(0, line)}${addition}${text.slice(line)}`;
+    }
+  }
+  throw new Error(`${file}: ${opening.split('\n')[0]} never closes; add it by hand`);
+}
 /** Inserts `row` after the last row of the table `heading` opens. */
 function tableRow(text: string, heading: string, row: string, file: string) {
   const start = text.indexOf(heading);
@@ -121,14 +139,18 @@ export async function planSlot(root: string, argv: string[]) {
         `pub use ${slot.name}::{${each.pascal}, ${each.name}};`,
         MANIFEST,
       );
-      // The last field and its empty value, after `services`.
-      next = before(next, '    pub services: Services,\n}', '', MANIFEST).replace(
-        '    pub services: Services,\n}',
-        `    pub services: Services,\n    /// ${description}\n    pub ${slot.name}: &'static [${each.pascal}],\n}`,
+      // The last field, and its empty value at the end of `feature()`.
+      next = beforeClosing(
+        next,
+        'pub struct Feature {',
+        `    /// ${description}\n    pub ${slot.name}: &'static [${each.pascal}],\n`,
+        MANIFEST,
       );
-      next = next.replace(
-        '        services: Services::NONE,\n    }',
-        `        services: Services::NONE,\n        ${slot.name}: &[],\n    }`,
+      next = beforeClosing(
+        next,
+        "pub const fn feature(name: &'static str) -> Feature {\n    Feature {",
+        `        ${slot.name}: &[],\n`,
+        MANIFEST,
       );
       return before(
         next,

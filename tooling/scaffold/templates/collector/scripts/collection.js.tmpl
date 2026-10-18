@@ -1,4 +1,5 @@
 // Reads {{collectionLabel}} from the signed-in page: plain data, never the page's other text.
+// TODO(scaffold): read what the site really shows.
 () => ({
   rows: [...document.querySelectorAll('[data-record]')].map((record) => ({
     id: record.dataset.record,

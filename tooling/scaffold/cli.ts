@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { described as diagnosis, doctor } from './doctor.js';
 import { generate, report } from './generate.js';
 import { LISTS, explain, fields, table } from './inventory.js';
 import { generator as collector } from './new-collector.js';
@@ -16,7 +17,7 @@ import {
   type Generator,
 } from './scaffold.js';
 
-// What `dispatchdev new`, `generate`, `list` and `explain` run, the checkout's own copy: making
+// What `dispatchdev new`, `generate`, `list`, `explain` and `doctor` run, the checkout's own copy: making
 // something, writing what is generated from it, and reading what the product has. Each takes
 // --json, which prints its answer as JSON on stdout and its progress on stderr.
 
@@ -86,6 +87,16 @@ const COMMANDS: Record<string, Command> = {
       const rows = list.rows(root);
       out(json ? JSON.stringify(rows) : table(rows));
       return true;
+    },
+  },
+  doctor: {
+    usage: () => 'Usage: dispatchdev doctor [--json]',
+    run: async (argv, json) => {
+      const { root, rest } = rooted(argv);
+      if (rest.length) throw new UsageError(`doctor takes no ${rest[0]}`);
+      const findings = doctor(root);
+      out(json ? JSON.stringify(findings) : diagnosis(findings));
+      return findings.every((finding) => finding.ok);
     },
   },
   explain: {

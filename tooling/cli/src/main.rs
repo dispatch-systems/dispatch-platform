@@ -232,6 +232,14 @@ const COMMANDS: &[Spec] = &[
     )
     .passed(),
     spec(
+        "doctor",
+        &["doctor [--json]"],
+        "Whether the checkout is ready to make and change things: its packages, the wiring, \
+         Cargo.lock, what a generator left to write, how far behind origin/main it is, and free \
+         disk, each with what fixes it.",
+    )
+    .passed(),
+    spec(
         "build",
         &["build [--release | --fixture]", "      [--cache-key]"],
         "Build the backend and support worker, or the browser tests' assessment fixture, \
@@ -251,7 +259,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
     ),
     (
         "Making things, and reading what the product has:",
-        &["new", "generate", "list", "explain"],
+        &["new", "generate", "list", "explain", "doctor"],
     ),
     ("", &["build", "help"]),
 ];
@@ -272,8 +280,8 @@ fn help() -> String {
     }
     lines.push(String::new());
     lines.push(
-        "test, check, build, new, generate, list and explain work on the checkout the current\n\
-         directory is in, or on --root <directory>. dispatchdev <command> --help shows one."
+        "test, check, build, new, generate, list, explain and doctor work on the checkout the\n\
+         current directory is in, or on --root <directory>. dispatchdev <command> --help shows one."
             .to_owned(),
     );
     lines.join("\n")

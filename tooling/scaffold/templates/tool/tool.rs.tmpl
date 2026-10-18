@@ -62,10 +62,11 @@ impl Tool for {{pascal}} {
 {{^actions}}
     async fn call(cx: Cx, _: Nothing) -> Answer<Reply<{{pascal}}Answer>> {
 {{#everyCall}}
-        // Make the change here, and record it with `w.audit`.
+        // TODO(scaffold): make the change, and record it with `w.audit`.
         cx.write(move |_w| Ok(())).await?;
 {{/everyCall}}
 {{/actions}}
+        // TODO(scaffold): answer with what it's for; the starter names what it answered for.
 {{#dsp}}
         let dsp = cx.dsp().name.clone();
         Ok({{pascal}}Answer { dsp }.into())

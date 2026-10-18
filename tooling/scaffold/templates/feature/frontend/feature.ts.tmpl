@@ -2,7 +2,7 @@
 import { createElement, lazy } from 'react';
 {{/screens}}
 {{#page}}
-import { LayoutGrid } from 'lucide-react';
+import { {{icon}} } from 'lucide-react';
 {{/page}}
 {{#canImport}}
 import { can } from '{{toRoot}}core/shell/frontend/runtime/permissions.js';
@@ -43,7 +43,7 @@ export const feature: FrontendFeature = {
       id: '{{slug}}',
       scope: 'dsp',
       label: '{{label}}',
-      icon: LayoutGrid,
+      icon: {{icon}},
       nav: true,
 {{#switch}}
       feature: '{{name}}',
@@ -79,9 +79,7 @@ export const feature: FrontendFeature = {
       id: '{{slug}}',
       label: '{{label}}',
       order: 100,
-{{#permission}}
-      visible: (view) => can(view, '{{name}}.view'),
-{{/permission}}
+      visible: (view) => can(view, '{{name}}.manage'),
       load: loadSettings,
       render: ({ view }) => view && createElement({{pascal}}Settings, { view }),
     },

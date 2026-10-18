@@ -44,6 +44,7 @@ export const feature: FrontendFeature = {
       label: 'Timecard',
       icon: CalendarDays,
       nav: true,
+      tabs: true,
       feature: 'timecard',
       // The link stays put while a view loads; the page itself waits for the view.
       permission: ({ view }) => !view || can(view, 'timecard.view'),

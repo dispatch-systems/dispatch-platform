@@ -54,6 +54,11 @@ export type DspRoute = Page<DspPageContext> & {
   landing?: boolean;
   /** Whether the page draws every owner's settings tabs, as a DSP's Settings; one at most does. */
   hostsSettings?: boolean;
+  /**
+   * Draws the tabs other owners add to it among its own, with `usePageTabs`; the app draws
+   * them above any other page.
+   */
+  tabs?: boolean;
   /** Called only for the admitted view. */
   prefetch?: (prefetch: RoutePrefetch & { view: DspView }) => void;
 };

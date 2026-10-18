@@ -1,6 +1,6 @@
 # {{label}}
 
-What {{label}} is for a DSP, and the data it shows, in a few lines. Write down any rule that
+TODO(scaffold): what {{label}} is for a DSP, and the data it shows, in a few lines. Write down any rule that
 isn't obvious from the code.
 
 {{#switch}}
@@ -10,7 +10,7 @@ isn't obvious from the code.
 - **Mandatory:** every DSP has it, with no switch to turn it off.
 {{/switch}}
 {{#permission}}
-- **Permissions:** `{{name}}.view`{{#keeps}}, `{{name}}.collect`{{/keeps}}. Only owners hold them until a role grants them.
+- **Permissions:** `{{name}}.view`{{#keeps}}, `{{name}}.collect`{{/keeps}}{{#settings}}, `{{name}}.manage`{{/settings}}. Only owners hold them until a role grants them.
 {{/permission}}
 {{#api}}
 - **API:** `GET {{apiPath}}`, behind `{{name}}.view`.
@@ -31,5 +31,5 @@ isn't obvious from the code.
 - **Tab:** {{label}}, on {{hostLabel}}'s page.
 {{/tab}}
 {{#settings}}
-- **Settings:** a {{label}} tab on a DSP's Settings page.
+- **Settings:** a {{label}} tab on a DSP's Settings page, for those holding `{{name}}.manage`.
 {{/settings}}

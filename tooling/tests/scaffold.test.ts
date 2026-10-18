@@ -36,8 +36,7 @@ const registry = ['app/backend/features.rs', 'app/backend/lib.rs'].find(
     fs.existsSync(candidate) && /pub static REGISTRY\b/.test(fs.readFileSync(candidate, 'utf8')),
 )!;
 
-// A copy of the repository's workspace, for what needs a collector that exists only there. Its
-// Timecard page draws the tabs other features add to it.
+// A copy of the repository's workspace, for what needs a collector that exists only there.
 let copy = '';
 before(() => {
   copy = temporary();
@@ -61,10 +60,6 @@ before(() => {
       recursive: true,
       filter: (source) => !/(^|\/)(node_modules|target)(\/|$)/.test(source),
     });
-  fs.writeFileSync(
-    path.join(copy, 'features/timecard/frontend/page-tabs.ts'),
-    "export const drawn = () => pageTabs('paycom');\n",
-  );
 });
 after(() => fs.rmSync(copy, { recursive: true, force: true }));
 
@@ -324,6 +319,8 @@ test('--people connects its table to Driver Match by the IDs of a source, and ne
     file(plan, 'features/fuel/Cargo.toml'),
     /^dispatch-cortex = \{ path = "..\/..\/collectors\/cortex" \}$/m,
   );
+  // The crate it uses for its people is one it declares, as the dependency rule holds it to.
+  assert.match(file(plan, 'features/fuel/feature.rs'), /^\s+depends_on: &\["cortex"\],$/m);
   await refused(/--people reads who it names from its table/, 'fuel', '--people', 'amazon');
   await refused(
     /--people names a source of IDs: one of amazon, paycom/,
@@ -468,19 +465,26 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
   assert.match(file(tab, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Timecard'/);
   assert.match(
     file(tab, 'features/notes/frontend/NotesTab.tsx'),
-    /from '..\/..\/..\/core\/shell\/frontend\/ui\/index.js'/,
+    /from '..\/..\/..\/core\/accounts\/api\/index.js'/,
   );
-  // A page that does not draw the tabs other features add would never show it.
-  await refused(
-    /timecard's page does not draw the tabs other features add to it yet/,
-    'notes',
-    '--tab-of',
-    'timecard',
+  // Every page draws the tabs other features add to it, one without tabs of its own too.
+  const uniforms = file(
+    await feature('notes', '--tab-of', 'uniforms'),
+    'features/notes/frontend/feature.ts',
   );
+  assert.match(uniforms, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
+  await refused(/use --settings/, 'notes', '--tab-of', 'settings');
 
-  const settings = await feature('notes', '--settings');
+  const settings = await feature('notes', '--settings', '--icon', 'Truck');
   assert(settings.files.has('features/notes/frontend/settings/NotesSettings.tsx'));
-  assert.match(file(settings, 'features/notes/frontend/feature.ts'), /settingsTabs: \[/);
+  // Its Settings tab is for those who manage it.
+  assert.match(
+    file(settings, 'features/notes/frontend/feature.ts'),
+    /settingsTabs: \[[^\]]*visible: \(view\) => can\(view, 'notes\.manage'\)/,
+  );
+  assert.match(file(settings, 'features/notes/feature.rs'), /perm\("notes\.manage", /);
+  assert.match(file(settings, 'features/notes/frontend/platform-slots.ts'), /icon: Truck \}/);
+  await refused(/--icon names a lucide-react icon/, 'notes', '--settings', '--icon', 'Truckk');
   assert.match(file(settings, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Settings'/);
 
   await refused(/choose one/, 'notes', '--page', '--tab-of', 'timecard');

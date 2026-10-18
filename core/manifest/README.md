@@ -173,7 +173,7 @@ them is `core/shell/frontend/runtime/slots/`, one module per slot, gathered by `
 | `dspSetup`               | `pages`        | Who may save a DSP's profile, and the route that saves it; opening a DSP that has none asks them for it.                          |
 | `settingsTabs`           | `settings`     | Its tabs on a DSP's Settings page.                                                                                                |
 | `settingsPieces`         | `settings`     | Its pieces of other owners' Settings tabs, drawn under the tab's own panel or above it.                                           |
-| `pageTabs`               | `page-tabs`    | Its tabs on another feature's page, which that page draws among its own.                                                          |
+| `pageTabs`               | `page-tabs`    | Its tabs on another feature's page: a page with tabs draws them among its own, the app above any other.                           |
 | `connectionCard`         | `connections`  | A collector's card on a DSP's Connections tab.                                                                                    |
 | `connectionPieces`       | `connections`  | Its cards on a DSP's Connections tab, beside the collectors': one of the DSP's accounts, or the member's own.                     |
 | `connectionSections`     | `connections`  | Its sections of a connection's settings, its own or another owner's.                                                              |
