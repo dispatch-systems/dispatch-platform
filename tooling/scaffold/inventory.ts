@@ -134,6 +134,26 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
         ),
       ),
   },
+  events: {
+    about: 'every event a feature hears, where it is, and who hears it',
+    rows: (root) => {
+      const heard = new Map<string, { kind: string; heardBy: string[] }>();
+      for (const [name, feature] of Object.entries(features(root)))
+        for (const on of (feature.slots.on ?? []) as { event: string; kind: string }[]) {
+          const event = heard.get(on.event) ?? { kind: on.kind, heardBy: [] };
+          event.heardBy.push(name);
+          heard.set(on.event, event);
+        }
+      return [...heard]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([event, { kind, heardBy }]) => ({
+          event,
+          type: kind,
+          in: contractDir(kind),
+          heardBy,
+        }));
+    },
+  },
   integrations: {
     about: "every integration: what a feature does through a connection's account",
     rows: (root) =>
@@ -232,6 +252,7 @@ export function explain(root: string, name: string): Row {
     tables: Object.entries(feature.tables).map(([db, tables]) => `${db}: ${tables.join(', ')}`),
     routes,
     exposes: ((feature.slots.exposes ?? []) as { name: string }[]).map((exposed) => exposed.name),
+    hears: ((feature.slots.on ?? []) as { event: string }[]).map((on) => on.event),
     integrations: (feature.slots.integrations as [string, string][]).map(
       ([id, connection]) => `${id} (through ${connection})`,
     ),

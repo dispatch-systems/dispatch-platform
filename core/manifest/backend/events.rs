@@ -15,6 +15,7 @@ use serde_json::json;
 use std::{
     any::Any,
     collections::{BTreeMap, BTreeSet},
+    future::Future,
     sync::Arc,
 };
 
@@ -72,20 +73,40 @@ impl Event for PeopleChanged {
 /// Tells every feature on for the DSP that hears `event` of it, one at a time, each in the
 /// registry's order, once the one before has done its work.
 pub async fn publish<E: Event>(state: &Arc<State>, dsp: &str, event: E) {
-    for feature in registry().features {
-        for on in feature.on {
-            let Some(work) = (on.run)(state.clone(), dsp.to_owned(), &event) else {
-                continue;
-            };
-            let (at, switch) = (dsp.to_owned(), feature.switch.id);
-            match state.read(move |db| db.feature_enabled(&at, switch)).await {
-                Ok(true) => work.await,
-                Ok(false) => {}
-                Err(error) => observability::event(
+    let on = |feature: &'static Feature| {
+        let (state, at) = (state.clone(), dsp.to_owned());
+        async move {
+            let switch = feature.switch.id;
+            let read = state.read(move |db| db.feature_enabled(&at, switch)).await;
+            read.unwrap_or_else(|error| {
+                observability::event(
                     "error",
                     "events.unheard",
-                    json!({"dspId":dsp,"event":E::NAME,"feature":feature.name,"error":error.code}),
-                ),
+                    json!({"event":E::NAME,"feature":feature.name,"error":error.code}),
+                );
+                false
+            })
+        }
+    };
+    deliver(registry().features, state, dsp, &event, on).await;
+}
+
+/// Tells each of `features` that hears `event` of it, in their order, while `on` says it's on
+/// for the DSP.
+async fn deliver<E: Event, On: Future<Output = bool>>(
+    features: &[&'static Feature],
+    state: &Arc<State>,
+    dsp: &str,
+    event: &E,
+    on: impl Fn(&'static Feature) -> On,
+) {
+    for feature in features {
+        for hears in feature.on {
+            let Some(work) = (hears.run)(state.clone(), dsp.to_owned(), event) else {
+                continue;
+            };
+            if on(feature).await {
+                work.await;
             }
         }
     }
@@ -113,3 +134,7 @@ pub(super) fn check(features: &[&'static Feature]) {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/events.rs"]
+mod tests;

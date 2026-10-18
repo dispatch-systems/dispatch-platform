@@ -33,9 +33,10 @@ only what was decided.
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
   platform (`driver_codes`). A person keeps their code for good; merged, both keep the code
   merged into.
-- **Matching:** after every collection that finishes, when a feature whose data names people
-  is switched on, and hourly to catch up anything missed, every ID the DSP's data holds gets a
-  code, source by source in their order. A new ID joins someone by, in turn: another ID its
+- **Matching:** after every collection that finishes and whenever the people a feature names
+  change outside one, as a feature whose data names people being switched on (it hears
+  `collection.succeeded` and `people.changed`); and hourly to catch up anything missed. Every
+  ID the DSP's data holds gets a code, source by source in their order. A new ID joins someone by, in turn: another ID its
   source says is the same person's, as their account in another workspace, when one person
   holds those and their names agree (`account`); an email
   address or phone number only the two of them have, among every person of either source,
