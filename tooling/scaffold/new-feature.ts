@@ -17,6 +17,8 @@ import {
   names as namesOf,
   nextPeopleOrder,
   nextPermissionOrder,
+  nextSourceOrder,
+  ownPermissionOrder,
   nextPlace,
   pageOf,
   parseArguments,
@@ -52,21 +54,57 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
                                     feature's own name with --keeps for a database of its own
   --keeps <collector>.<collection>  the keeper of a collector's collection
   --people <source>                 who its table names, connected to Driver Match by their
-                                    IDs of a collector's source, as amazon; needs --tables
+                                    IDs of a collector's source, as amazon, or by IDs of its
+                                    own with own; needs --tables
   --page                            a page in a DSP's sidebar
+  --tabs <ids>                      a page with tabs of its own, as overview,history, among
+                                    which it draws those other features add to it
   --tab-of <feature>                a tab of another feature's page
-  --settings                        a tab on a DSP's Settings page
+  --settings                        a tab on a DSP's Settings page, for those who manage it
+  --connection                      a card on a DSP's Connections tab, for one of the DSP's
+                                    own accounts
   --no-backend                      no backend/: a frontend-only feature, with --page,
                                     --tab-of or --settings
   --label <label>                   its name as people read it (default: from <name>)
   --icon <name>                     its icon on its page, its switch and its people: a
                                     lucide-react icon, as Truck (default: LayoutGrid)
+  --preset <name>                   a common shape, with the options above it stands for:
+                                    page-with-tabs  --tabs overview,history --api
+                                    settings        --settings --api
+                                    keeper          --keeps ... --tables <name> --page --api
+                                    connection      --connection --api
+                                    people-source   --tables dsp --people own --page --api
   --dry-run                         print what it would write and change nothing
   --out <dir>                       with --dry-run, write the files under <dir> instead
   --root <dir>                      the repository to write into (default: this one)`;
 
-const FLAGS = ['mandatory', 'api', 'page', 'settings', 'no-backend', 'dry-run'];
-const OPTIONS = ['tables', 'keeps', 'people', 'tab-of', 'label', 'icon', 'out', 'root'];
+/** The presets: each a common shape, as the options it stands for. */
+const PRESETS: Record<string, (name: string) => string[]> = {
+  'page-with-tabs': () => ['--tabs', 'overview,history', '--api'],
+  settings: () => ['--settings', '--api'],
+  keeper: (name) => ['--tables', name, '--page', '--api'],
+  connection: () => ['--connection', '--api'],
+  'people-source': () => ['--tables', 'dsp', '--people', 'own', '--page', '--api'],
+};
+/** `argv` with its preset, if it names one, as the options it stands for. */
+export function withPreset(argv: string[]) {
+  const at = argv.findIndex((arg) => arg === '--preset' || arg.startsWith('--preset='));
+  if (at < 0) return argv;
+  const inline = argv[at]!.includes('=') ? argv[at]!.split('=')[1] : undefined;
+  const preset = inline ?? argv[at + 1];
+  const rest = argv.filter((_, index) => index !== at && (inline || index !== at + 1));
+  const expand = preset ? PRESETS[preset] : undefined;
+  if (!expand) throw new UsageError(`--preset names one of ${Object.keys(PRESETS).join(', ')}`);
+  const name = rest.find((arg) => !arg.startsWith('--')) ?? '';
+  if (preset === 'keeper' && !rest.some((arg) => arg.startsWith('--keeps')))
+    throw new UsageError(
+      '--preset keeper keeps a collection: add --keeps <collector>.<collection>',
+    );
+  return [...rest, ...expand(name)];
+}
+
+const FLAGS = ['mandatory', 'api', 'page', 'settings', 'connection', 'no-backend', 'dry-run'];
+const OPTIONS = ['tables', 'keeps', 'people', 'tab-of', 'tabs', 'label', 'icon', 'out', 'root'];
 /** Where the shell's frontend reads a DSP view's type from, relative to the root. */
 const DSP_VIEW = 'core/accounts/api/index.js';
 
@@ -75,14 +113,18 @@ type Database =
   | { owner: 'collector'; name: string }
   | { owner: 'feature'; name: string };
 
-/** Everything the templates are filled with, and which pieces the feature has. */
-export function featureValues(root: string, argv: string[]) {
-  const args = parseArguments(argv, FLAGS, OPTIONS);
+/**
+ * Everything the templates are filled with, and which pieces the feature has. `adding` fills
+ * them for pieces added to a feature that exists (`dispatchdev add`): its permissions follow its
+ * own, and `--table` names the table its people are read from.
+ */
+export function featureValues(root: string, argv: string[], adding = false) {
+  const args = parseArguments(withPreset(argv), FLAGS, adding ? [...OPTIONS, 'table'] : OPTIONS);
   if (args.positional.length !== 1) throw new UsageError('Name one feature');
   const names = namesOf(args.positional[0]!, args.options.get('label'));
   const { name, slug, pascal } = names;
   const taken = [...features(root), ...collectors(root), ...coreParts(root)];
-  if (taken.includes(name) || exists(root, `features/${name}`))
+  if (!adding && (taken.includes(name) || exists(root, `features/${name}`)))
     throw new UsageError(
       `${name} is taken: features, collectors and core's parts each own their name`,
     );
@@ -95,7 +137,13 @@ export function featureValues(root: string, argv: string[]) {
 
   const mandatory = args.flags.has('mandatory');
   const api = args.flags.has('api');
-  const page = args.flags.has('page');
+  const ownTabs = args.options.get('tabs')?.split(',');
+  if (ownTabs && !ownTabs.every((id) => /^[a-z][a-z0-9-]*$/.test(id)))
+    throw new UsageError(
+      '--tabs names each tab as lowercase letters, digits and hyphens: overview,history',
+    );
+  const page = args.flags.has('page') || Boolean(ownTabs);
+  const connection = args.flags.has('connection');
   const settings = args.flags.has('settings');
   const host = args.options.get('tab-of');
   if (page && host)
@@ -148,10 +196,16 @@ export function featureValues(root: string, argv: string[]) {
   // Who its table names, by the IDs of a source a collector declares.
   const sources = peopleSources(root);
   const named = args.options.get('people');
-  const source = named === undefined ? undefined : sources.find((each) => each.id === named);
+  // `own`: IDs of a source of its own, which it declares beside its people.
+  const ownSource = named === 'own';
+  const source = ownSource
+    ? { id: name, site: '' }
+    : named === undefined
+      ? undefined
+      : sources.find((each) => each.id === named);
   if (named !== undefined && !source)
     throw new UsageError(
-      `--people names a source of IDs: one of ${sources.map((each) => each.id).join(', ')}`,
+      `--people names a source of IDs: one of ${sources.map((each) => each.id).join(', ')}, or own`,
     );
   if (source && !database)
     throw new UsageError('--people reads who it names from its table: add --tables');
@@ -173,7 +227,7 @@ export function featureValues(root: string, argv: string[]) {
   // A switch needs a permission to gate its screens and routes; so does an endpoint, a keeper
   // or a Settings tab, which those who manage it see.
   const permission = switched || api || keeps || settings;
-  const order = nextPermissionOrder(root);
+  const order = adding ? ownPermissionOrder(root, name) : nextPermissionOrder(root);
   const crateOf = (collector: string) => `dispatch-${collector.replace(/_/g, '-')}`;
   const identOf = (collector: string) => `dispatch_${collector}`;
   const used = [
@@ -240,7 +294,7 @@ export function featureValues(root: string, argv: string[]) {
   const parameters = (read: boolean, list: [string, string][]) =>
     list.map(([parameter, type]) => `${read ? parameter : `_${parameter}`}: ${type}`).join(', ');
 
-  const screens = page || Boolean(host) || settings;
+  const screens = page || Boolean(host) || settings || connection;
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
   const frontend = screens || switched;
   // backend/ holds its storage and keeper. A feature with neither, no API and no frontend, as
@@ -279,7 +333,7 @@ export function featureValues(root: string, argv: string[]) {
       : `{${database.owner === 'core' ? 'Kind, ' : ''}Migration, ${own ? 'Migrations' : 'OwnMigrations'}, migrations::Apply::Sql}`,
     kind,
     open,
-    table: `${name}_items`,
+    table: args.options.get('table') ?? `${name}_items`,
     migrationId,
     migrationName,
     migrationFile: `${String(migrationId).padStart(4, '0')}_${migrationName}.sql`,
@@ -289,7 +343,21 @@ export function featureValues(root: string, argv: string[]) {
     peopleOrder: nextPeopleOrder(root),
     icon,
     peopleIcon: args.options.has('icon') ? icon : 'Users',
-    peopleSource: source ? namesOf(source.id).label : '',
+    peopleSource: ownSource ? names.label : source ? namesOf(source.id).label : '',
+    ownSource,
+    sourceOrder: nextSourceOrder(root),
+    ownTabs: Boolean(ownTabs),
+    tabDefault: ownTabs?.[0] ?? '',
+    tabItems: (ownTabs ?? [])
+      .map((id) => `['${id}', '${namesOf(id.replace(/-/g, '_')).label}']`)
+      .join(', '),
+    tabBlocks: (ownTabs ?? [])
+      .map(
+        (id) =>
+          `      {tab === '${id}' && (\n        <>{/* TODO(scaffold): what the ${namesOf(id.replace(/-/g, '_')).label} tab shows. */}</>\n      )}`,
+      )
+      .join('\n'),
+    connection,
     peopleIdent: source ? identOf(source.site) : '',
     readPeople: open.replace(/^self\./, 'store.'),
     site,
@@ -351,13 +419,15 @@ function pieces(values: Values): [boolean, string, string][] {
       'frontend/Settings.tsx',
       `frontend/settings/${pascal}Settings.tsx`,
     ],
+    [values.connection as boolean, 'frontend/Card.tsx', `frontend/connection/${pascal}Card.tsx`],
     [values.platformSlots as boolean, 'frontend/platform-slots.ts', 'frontend/platform-slots.ts'],
     [values.frontend as boolean, 'tests/browser/browser.spec.ts', `tests/browser/${slug}.spec.ts`],
   ];
 }
 
-export async function planFeature(root: string, argv: string[]) {
-  const { args, names, values } = featureValues(root, argv);
+/** The feature's own files, as its templates fill them. */
+export async function renderFeature(root: string, argv: string[], adding = false) {
+  const { args, names, values } = featureValues(root, argv, adding);
   const { name } = names;
   const dir = `features/${name}`;
   const plan: Plan = emptyPlan();
@@ -369,6 +439,23 @@ export async function planFeature(root: string, argv: string[]) {
     plan.files.set(file, await format(file, content));
   }
   formatRust(plan);
+  // Its routes, and who may call each, in its own list, which the app's route test holds it to.
+  const routes = [...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : [])];
+  if (routes.length)
+    plan.files.set(
+      `${dir}/tests/api/routes.txt`,
+      `# Every route ${name} registers: its method and path, who may call it, the\n` +
+        '# database access its work runs under, and whether it wakes the scheduler.\n' +
+        '# Each changes with this file, so a reviewer sees who can reach what.\n' +
+        `${routes.sort().join('\n')}\n`,
+    );
+  return { plan, args, names, values };
+}
+
+export async function planFeature(root: string, argv: string[]) {
+  const { plan, args, names, values } = await renderFeature(root, argv);
+  const { name } = names;
+  const dir = `features/${name}`;
 
   // List it in app/, as `dispatchdev generate` does from its folder: its crate in the
   // app's Cargo manifest and its manifest in the registry's list. Its manifest brings its
@@ -382,16 +469,6 @@ export async function planFeature(root: string, argv: string[]) {
   const mcp = needed(tools(root, wired));
   await edit(appManifest, (text) => wiredManifest(text, wired, mcp));
   await edit(featureList, () => wiredList(wired));
-  // Its routes, and who may call each, in its own list, which the app's route test holds it to.
-  const routes = [...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : [])];
-  if (routes.length)
-    plan.files.set(
-      `${dir}/tests/api/routes.txt`,
-      `# Every route ${name} registers: its method and path, who may call it, the\n` +
-        '# database access its work runs under, and whether it wakes the scheduler.\n' +
-        '# Each changes with this file, so a reviewer sees who can reach what.\n' +
-        `${routes.sort().join('\n')}\n`,
-    );
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);
   const generated = [

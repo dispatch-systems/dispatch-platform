@@ -1,0 +1,475 @@
+import { spawnSync } from 'node:child_process';
+import { renderFeature } from './new-feature.js';
+import {
+  UsageError,
+  exists,
+  features,
+  format,
+  formatRust,
+  pageOf,
+  parseArguments,
+  read,
+  repositoryRoot,
+  type Generator,
+  type Plan,
+} from './scaffold.js';
+
+// `dispatchdev add <piece> --to <feature>`: a piece `dispatchdev new feature` writes, added to a
+// feature that exists. The piece is rendered as the feature's own templates would write it, and
+// what it adds to the feature's manifests is merged into them: imports, page declarations,
+// constants, slot entries, fields and permissions. An entry joins a list the feature fills
+// already; a field or function it declares already is left to its author, named in what to do
+// next.
+
+export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
+
+  page                a page in a DSP's sidebar
+  tab-of <feature>    a tab of another feature's page
+  settings            a tab on a DSP's Settings page, for those who manage it
+  api                 api/ with one endpoint behind the view permission
+  people <source>     who --table <table>, in each DSP's database, names, for Driver Match
+  --icon <name>       its page's icon, from lucide-react
+  --dry-run           print what it would write and change nothing
+  --out <dir>         with --dry-run, write the files under <dir> instead
+  --root <dir>        the repository to write into (default: this one)`;
+
+/**
+ * Each piece: whether it takes a value, its README line's label, and the permissions it uses,
+ * which it adds where the feature lacks them.
+ */
+const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }> = {
+  page: { valued: false, readme: 'Page', uses: ['view'] },
+  'tab-of': { valued: true, readme: 'Tab', uses: [] },
+  settings: { valued: false, readme: 'Settings', uses: ['manage'] },
+  api: { valued: false, readme: 'API', uses: ['view'] },
+  people: { valued: true, readme: 'People', uses: [] },
+};
+const FLAGS = ['dry-run'];
+const OPTIONS = ['to', 'table', 'icon', 'out', 'root'];
+/** The manifest's fields a piece adds: lists join the feature's, others are added whole. */
+const FIELDS = ['permissions', 'routes', 'people', 'depends_on'];
+
+/**
+ * The index just past the comment or string starting at `at`, or `at` if none does. A `'` opens
+ * a string unless it follows `&`, `<` or a letter, as Rust's `&'static` does.
+ */
+function past(text: string, at: number) {
+  const char = text[at]!;
+  if (text.startsWith('//', at)) {
+    const end = text.indexOf('\n', at);
+    return end < 0 ? text.length : end;
+  }
+  if (text.startsWith('/*', at)) return text.indexOf('*/', at) + 2;
+  const quote =
+    char === '"' || char === '`' || (char === "'" && !/[&<\w]/.test(text[at - 1] ?? ''));
+  if (!quote) return at;
+  let index = at + 1;
+  for (; index < text.length && text[index] !== char; index++) if (text[index] === '\\') index++;
+  return index + 1;
+}
+/** Walks `text` from `start` to `end`, past comments and strings, calling `each` on the rest. */
+function walk(
+  text: string,
+  start: number,
+  end: number,
+  each: (char: string, at: number) => boolean,
+) {
+  for (let index = start; index < end;) {
+    const next = past(text, index);
+    if (next !== index) {
+      index = next;
+      continue;
+    }
+    if (each(text[index]!, index)) return index;
+    index++;
+  }
+  return -1;
+}
+/** The index of the bracket closing the one at `at`. */
+function closing(text: string, at: number) {
+  const open = text[at]!;
+  const close = ({ '[': ']', '{': '}', '(': ')' } as Record<string, string>)[open]!;
+  let depth = 0;
+  const found = walk(text, at, text.length, (char) =>
+    char === open ? (depth++, false) : char === close && --depth === 0,
+  );
+  if (found < 0) throw new Error(`unbalanced ${open}`);
+  return found;
+}
+/** Where the entry or item starting at `start` ends: its comma at the top level, or `end`. */
+function entryEnd(text: string, start: number, end: number) {
+  let depth = 0;
+  const comma = walk(text, start, end, (char) => {
+    if ('[{('.includes(char)) depth++;
+    else if (']})'.includes(char)) depth--;
+    return char === ',' && depth === 0;
+  });
+  return comma < 0 ? end : comma;
+}
+/** The entries of the object or struct literal whose `{` is at `open`: each key and its text. */
+function entries(text: string, open: number) {
+  const end = closing(text, open);
+  const found: { name: string; start: number; end: number; text: string }[] = [];
+  let index = open + 1;
+  while (index < end) {
+    const match = /^(?:\s|\/\/[^\n]*\n)*(?:get )?(\w+)\s*[:(]/.exec(text.slice(index, end));
+    if (!match) break;
+    const at = entryEnd(text, index + match[0].length - 1, end);
+    found.push({ name: match[1]!, start: index, end: at + 1, text: text.slice(index, at + 1) });
+    index = at + 1;
+  }
+  return { entries: found, end };
+}
+/** The items of a list's `[...]` text, at its top level. */
+function items(list: string) {
+  const open = list.indexOf('[');
+  const close = closing(list, open);
+  const found: string[] = [];
+  for (let index = open + 1; index < close;) {
+    const end = entryEnd(list, index, close);
+    found.push(list.slice(index, end).trim());
+    index = end + 1;
+  }
+  return found.filter(Boolean);
+}
+/** `text` with `additions` appended to the list whose `[` is at `open`. */
+function appended(text: string, open: number, additions: string[]) {
+  const close = closing(text, open);
+  const before = text.slice(0, close).trimEnd();
+  const comma = before.endsWith('[') || before.endsWith(',') ? '' : ',';
+  return `${before}${comma}\n${additions.join(',\n')},\n${text.slice(close)}`;
+}
+
+// ---- Rust
+
+/** The whole top-level statements beginning with `start`. */
+function statements(source: string, start: RegExp) {
+  const found: string[] = [];
+  const lines = source.split('\n');
+  for (let index = 0; index < lines.length; index++) {
+    if (!start.test(lines[index]!)) continue;
+    let statement = lines[index]!;
+    while (!statement.trimEnd().endsWith(';') && index + 1 < lines.length)
+      statement += `\n${lines[++index]}`;
+    found.push(statement);
+  }
+  return found;
+}
+/** The names a `use` brings, with the path each comes from, for flat and one-level trees. */
+function useNames(statement: string): [string, string][] {
+  const flat = statement.replace(/\s+/g, ' ');
+  const tree = /^use ([\w:]+)::\{(.*)\};$/.exec(flat);
+  if (!tree) {
+    const one = /^use ([\w:]+)::(\w+);$/.exec(flat);
+    return one ? [[one[1]!, one[2]!]] : [];
+  }
+  return items(`[${tree[2]}]`).flatMap((item): [string, string][] => {
+    const nested = /^(\w+)::\{(.*)\}$/.exec(item);
+    if (nested)
+      return items(`[${nested[2]}]`).map((name): [string, string] => [
+        `${tree[1]}::${nested[1]}`,
+        name.split('::').at(-1)!,
+      ]);
+    const parts = item.split('::');
+    return [[[tree[1], ...parts.slice(0, -1)].join('::'), parts.at(-1)!]];
+  });
+}
+/** The feature's manifest with what the piece's adds; what it can't add goes in `left`. */
+export function mergeRust(
+  target: string,
+  piece: string,
+  left: string[],
+  uses: string[],
+  writes: (module: string) => boolean,
+) {
+  let text = target;
+  const struct = (source: string) => source.indexOf('{', source.indexOf('pub const FEATURE'));
+  // Its fields: a list's entries join the feature's list, and another field is added whole.
+  for (const field of entries(piece, struct(piece)).entries) {
+    if (!FIELDS.includes(field.name)) continue;
+    const have = entries(text, struct(text)).entries.find((each) => each.name === field.name);
+    if (!have && field.name === 'permissions' && !uses.length) continue;
+    if (!have) {
+      const at = text.search(/\n\s*\.\.feature\("/);
+      text = `${text.slice(0, at)}\n${field.text.replace(/^\n+/, '').trimEnd()}${text.slice(at)}`;
+      continue;
+    }
+    if (!field.text.includes('&[')) {
+      left.push(`its manifest declares ${field.name} already: ${field.text.trim()}`);
+      continue;
+    }
+    const id = (item: string) => /"([^"]+)"/.exec(item)?.[1] ?? item;
+    const there = items(have.text).map(id);
+    // Of the permissions, those the piece uses.
+    const added = items(field.text).filter(
+      (item) =>
+        !there.includes(id(item)) &&
+        (field.name !== 'permissions' || uses.some((use) => id(item).endsWith(`.${use}`))),
+    );
+    if (added.length) text = appended(text, text.indexOf('&[', have.start) + 1, added);
+  }
+  // Its modules and re-exports, after the feature's own.
+  for (const line of statements(piece, /^(pub )?mod \w+;|^pub use /)) {
+    // A re-export of what the piece writes, never of what it leaves out.
+    const from = /^pub use ([\w:]+)::/.exec(line)?.[1];
+    if (text.includes(line) || (from && !writes(from.replace(/::/g, '/')))) continue;
+    const last = [...text.matchAll(/^(?:pub )?mod \w+;$/gm)].at(-1);
+    const at = last ? last.index! + last[0].length + 1 : text.indexOf('\n\n') + 2;
+    text = `${text.slice(0, at)}${line}\n${text.slice(at)}`;
+  }
+  // Items after the manifest, as its API types' export: added whole unless one is there.
+  const tail = piece.slice(closing(piece, struct(piece)) + 2).trim();
+  for (const item of tail.split(/\n\n+/).filter(Boolean)) {
+    const name = /\bfn (\w+)/.exec(item)?.[1];
+    if (name && new RegExp(`\\bfn ${name}\\b`).test(text))
+      left.push(`its manifest has ${name}() already: give it what the piece's adds`);
+    else if (!text.includes(item)) text = `${text.trimEnd()}\n\n${item}\n`;
+  }
+  // Names it now uses and doesn't import, each from the path the piece imports it from.
+  const imported = new Set(
+    statements(text, /^use /).flatMap((line) => useNames(line).map(([, n]) => n)),
+  );
+  const body = text.replace(/^use [^;]*;$/gms, '');
+  const missing = statements(piece, /^use /)
+    .flatMap(useNames)
+    .filter(([, name]) => !imported.has(name) && new RegExp(`\\b${name}\\b`).test(body));
+  for (const [from, name] of missing) {
+    const at = text.indexOf('\npub const FEATURE');
+    text = `${text.slice(0, at)}\nuse ${from}::${name};${text.slice(at)}`;
+  }
+  return text;
+}
+
+// ---- TypeScript
+
+type Import = { from: string; type: boolean; names: string[]; whole: string };
+/** A module's imports: each with the names it imports, if it imports names. */
+function imports(source: string): Import[] {
+  return [...source.matchAll(/^import (type )?(\{[^}]*\}|[^;{]*?) from '([^']+)';$/gm)].map(
+    (match) => ({
+      from: match[3]!,
+      type: Boolean(match[1]),
+      names: match[2]!.startsWith('{') ? items(`[${match[2]!.slice(1, -1)}]`) : [],
+      whole: match[0],
+    }),
+  );
+}
+/** `text` importing what `piece` imports too: a name joins an import of its module. */
+function mergeImports(text: string, piece: string) {
+  const bare = (name: string) => name.replace(/^type /, '');
+  for (const wanted of imports(piece)) {
+    const from = imports(text).filter((each) => each.from === wanted.from);
+    if (from.some((each) => each.whole === wanted.whole)) continue;
+    const named =
+      from.find((each) => each.names.length && !each.type) ??
+      from.find((each) => each.names.length);
+    if (named && wanted.names.length) {
+      const have = named.names.map(bare);
+      const missing = wanted.names
+        .filter((name) => !have.includes(bare(name)))
+        .map((name) => (wanted.type && !named.type ? `type ${name}` : name));
+      if (!missing.length) continue;
+      text = text.replace(
+        named.whole,
+        `import ${named.type ? 'type ' : ''}{ ${[...named.names, ...missing].join(', ')} } from '${wanted.from}';`,
+      );
+    } else if (!from.length || !wanted.names.length) {
+      const last = imports(text).at(-1);
+      const at = last ? text.indexOf(last.whole) + last.whole.length : 0;
+      text = `${text.slice(0, at)}\n${wanted.whole}${text.slice(at)}`;
+    }
+  }
+  return text;
+}
+/** The feature's frontend manifest with what the piece's adds. */
+export function mergeTypeScript(target: string, piece: string) {
+  let text = mergeImports(target, piece);
+  const manifest = (source: string) =>
+    source.indexOf('{', source.indexOf('export const feature: FrontendFeature'));
+  // Its pages join DspPages.
+  for (const [, page] of piece.matchAll(/interface DspPages \{\s*([^}]*?)\s*\}/g)) {
+    if (text.includes(page!)) continue;
+    const declared = /interface DspPages \{\n/.exec(text);
+    if (declared) {
+      const at = declared.index + declared[0].length;
+      text = `${text.slice(0, at)}    ${page}\n${text.slice(at)}`;
+    } else {
+      const block = /declare module [^{]+\{[\s\S]*?\n\}\n/.exec(piece)![0];
+      const at = text.indexOf('\nexport const feature');
+      text = `${text.slice(0, at)}\n${block}${text.slice(at)}`;
+    }
+  }
+  // Its constants, before the manifest.
+  for (const [statement, name] of piece.matchAll(
+    /^const (\w+) =[\s\S]*?;\n(?=\n|const |export )/gm,
+  ))
+    if (!new RegExp(`^const ${name} =`, 'm').test(text)) {
+      const at = text.indexOf('\nexport const feature');
+      text = `${text.slice(0, at)}\n${statement.trimEnd()}\n${text.slice(at)}`;
+    }
+  // Its slots: entries join a list the feature fills already, and a new key goes last.
+  for (const key of entries(piece, manifest(piece)).entries) {
+    if (key.name === 'name') continue;
+    const { entries: own, end } = entries(text, manifest(text));
+    const have = own.find((each) => each.name === key.name);
+    if (!have)
+      text = `${text.slice(0, end).trimEnd()}\n${key.text.replace(/^\n+/, '').trim()}\n${text.slice(end)}`;
+    else if (key.text.includes('[') && text.slice(have.start, have.end).includes('['))
+      text = appended(
+        text,
+        text.indexOf('[', have.start),
+        items(key.text.slice(key.text.indexOf('['))),
+      );
+  }
+  return text;
+}
+
+/** Rust source as rustfmt leaves it, read from its input so it follows no `mod`. */
+function rustfmt(source: string) {
+  const formatted = spawnSync('rustfmt', ['--edition', '2024', '--emit', 'stdout', '-q'], {
+    cwd: repositoryRoot,
+    input: source,
+    encoding: 'utf8',
+  });
+  if (formatted.status !== 0)
+    throw new Error(`The merged Rust does not parse:\n${formatted.stderr}`);
+  return formatted.stdout;
+}
+
+// ---- Cargo.toml and the rest
+
+/** The manifest with each `key = value` the piece's lists that it lacks, in its section. */
+function mergeToml(target: string, piece: string) {
+  let text = target;
+  let section = '';
+  for (const line of piece.split('\n')) {
+    const header = /^\[([^\]]+)\]$/.exec(line);
+    if (header) {
+      section = header[1]!;
+      continue;
+    }
+    const key = /^([\w-]+) = /.exec(line)?.[1];
+    if (!key || !['dependencies', 'dev-dependencies', 'features'].includes(section)) continue;
+    const found = new RegExp(`(^|\\n)\\[${section}\\]\\n`).exec(text);
+    const start = found ? found.index : -1;
+    if (start < 0) {
+      text = `${text.trimEnd()}\n\n[${section}]\n${line}\n`;
+      continue;
+    }
+    const next = text.indexOf('\n[', start + 1);
+    const end = next < 0 ? text.length : next;
+    if (new RegExp(`^${key} = `, 'm').test(text.slice(start, end))) continue;
+    text = `${text.slice(0, end).trimEnd()}\n${line}\n${text.slice(end).replace(/^\n*/, next < 0 ? '' : '\n')}`;
+  }
+  return text;
+}
+
+export async function planAdd(root: string, argv: string[]) {
+  const args = parseArguments(argv, FLAGS, OPTIONS);
+  const [piece, value, ...extra] = args.positional;
+  const name = args.options.get('to');
+  const known = piece ? PIECES[piece] : undefined;
+  if (!known || extra.length || Boolean(value) !== known.valued)
+    throw new UsageError(`Name one piece: ${Object.keys(PIECES).join(', ')}, with its value`);
+  if (!name) throw new UsageError('Name the feature to add it to: --to <feature>');
+  if (!features(root).includes(name))
+    throw new UsageError(`--to names a feature, and ${name} is none`);
+  const dir = `features/${name}`;
+  if (piece === 'api' && exists(root, `${dir}/api`))
+    throw new UsageError(`${name} has api/ already: add its endpoints there`);
+  if (piece === 'page' && pageOf(root, name))
+    throw new UsageError(`${name} has a page already: add a tab of it with add tab-of ${name}`);
+  if (piece === 'people' && !args.options.has('table'))
+    throw new UsageError('people reads who a table names: add --table <table>');
+  const manifest = read(root, `${dir}/feature.rs`);
+  const label = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
+  // The piece as the feature's templates write it, for the feature as it is.
+  const { plan: rendered } = await renderFeature(
+    root,
+    [
+      name,
+      ...(label ? ['--label', label] : []),
+      ...(/\bswitch:\s*mandatory\(/.test(manifest) ? ['--mandatory'] : []),
+      `--${piece}`,
+      ...(value ? [value] : []),
+      ...(piece === 'people' ? ['--tables', 'dsp', '--table', args.options.get('table')!] : []),
+      ...(args.options.has('icon') ? ['--icon', args.options.get('icon')!] : []),
+    ],
+    true,
+  );
+  const plan: Plan = { files: new Map(), changes: new Map(), notes: [] };
+  const left: string[] = [];
+  // A new feature's own storage and first migration, which a piece added to one never needs.
+  const own = /\/(backend\/storage\.rs|tests\/backend\/(storage|feature)\.rs|migrations\/.*)$/;
+  const wanted = [...rendered.files].filter(([file]) => !own.test(file));
+  const wrote = (file: string) => exists(root, file) || wanted.some(([each]) => each === file);
+  const fresh = new Set(wanted.map(([file]) => file).filter((file) => !exists(root, file)));
+  for (const [file, content] of wanted) {
+    if (!exists(root, file)) {
+      plan.files.set(file, content);
+      continue;
+    }
+    const current = read(root, file);
+    let merged: string;
+    if (file === `${dir}/feature.rs`)
+      merged = mergeRust(current, content, left, known.uses, (module) =>
+        fresh.has(`${dir}/${module}.rs`),
+      );
+    else if (file === `${dir}/frontend/feature.ts`) merged = mergeTypeScript(current, content);
+    else if (file.endsWith('/Cargo.toml')) merged = mergeToml(current, content);
+    else if (/\/mod\.rs$/.test(file))
+      // Its modules whose files are there or written now.
+      merged = content
+        .split('\n')
+        .filter((line) => {
+          const module = /mod (\w+);/.exec(line)?.[1];
+          const at = `${file.slice(0, file.lastIndexOf('/'))}/${module}`;
+          return module && !current.includes(line) && (wrote(`${at}.rs`) || exists(root, at));
+        })
+        .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
+    else if (file.endsWith('/routes.txt'))
+      merged = content
+        .split('\n')
+        .filter((line) => /^[A-Z]+ \//.test(line) && !current.includes(line))
+        .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
+    else if (file.endsWith('/README.md'))
+      merged = content
+        .split('\n')
+        .filter((line) => line.startsWith(`- **${known.readme}:**`) && !current.includes(line))
+        .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
+    else if (/\/frontend\/index\.ts$/.test(file))
+      // What its page's code exports.
+      merged = content
+        .split('\n')
+        .filter((line) => line.startsWith('export ') && !current.includes(line))
+        .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
+    else if (file.endsWith('/platform-slots.ts')) continue;
+    else if (file.endsWith('.spec.ts') && !['page', 'tab-of', 'settings'].includes(piece!))
+      continue;
+    else if (file.endsWith('.spec.ts'))
+      merged = `${mergeImports(current, content).trimEnd()}\n${content.slice(content.search(/\ntest\(/)).trimEnd()}\n`;
+    else {
+      left.push(`${file} is there already, so the piece's own isn't written`);
+      continue;
+    }
+    if (merged !== current) plan.changes.set(file, await format(file, merged));
+  }
+  // Its Rust as rustfmt leaves it: the files it writes together, and each it changes alone,
+  // since that file's modules aren't beside it.
+  formatRust(plan);
+  for (const [file, content] of plan.changes)
+    if (file.endsWith('.rs')) plan.changes.set(file, rustfmt(content));
+  plan.notes.push(...left.map((note) => `By hand: ${note}.`));
+  plan.notes.push('`dispatchdev generate` writes what follows from it.');
+  return { plan, args };
+}
+
+export const generator: Generator = {
+  kind: 'piece',
+  about: 'a piece added to a feature that exists',
+  usage,
+  flags: FLAGS,
+  options: OPTIONS,
+  plan: planAdd,
+  generates: true,
+};

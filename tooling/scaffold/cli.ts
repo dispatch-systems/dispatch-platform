@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { generator as piece } from './add.js';
 import { described as diagnosis, doctor } from './doctor.js';
 import { generate, report } from './generate.js';
 import { LISTS, explain, fields, table } from './inventory.js';
@@ -56,6 +57,10 @@ const COMMANDS: Record<string, Command> = {
         'dispatchdev new <kind> lists its options.',
       ].join('\n'),
     run: create,
+  },
+  add: {
+    usage: () => piece.usage,
+    run: (argv, json) => makeThenGenerate(piece, argv, json),
   },
   generate: {
     usage: () => 'Usage: dispatchdev generate [--json]',
@@ -129,9 +134,14 @@ async function create(argv: string[], json: boolean) {
     out(kind.usage);
     return true;
   }
+  return makeThenGenerate(kind, rest, json);
+}
+
+/** Makes what `argv` asks of `kind`, then writes what is generated from it. */
+async function makeThenGenerate(kind: Generator, argv: string[], json: boolean) {
   let made;
   try {
-    made = await make(kind, rest);
+    made = await make(kind, argv);
   } catch (error) {
     err(failed(error, kind.usage).trimEnd());
     return false;

@@ -2,6 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { generator as piece } from './add.js';
 import { KINDS } from './cli.js';
 import { duration, failure, generate } from './generate.js';
 import { make, repositoryRoot as root } from './scaffold.js';
@@ -58,6 +59,13 @@ const MADE: [string, ...string[]][] = [
   ['slot', 'smoke_badges', '--description', 'Its badges on the DSPs page.'],
   // A second slot, after the first.
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],
+  // Pieces added to features that exist, made here and the product's own.
+  ['feature', 'smoke_rows', '--tables', 'dsp'],
+  ['add', 'people', 'paycom', '--to', 'smoke_rows', '--table', 'smoke_rows_items'],
+  ['add', 'tab-of', 'team', '--to', 'smoke_rows'],
+  ['add', 'page', '--to', 'smoke_people'],
+  ['add', 'api', '--to', 'smoke_front'],
+  ['add', 'settings', '--to', 'uniforms'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */
@@ -103,9 +111,11 @@ async function step(name: string, command: string[], cwd: string, logs: string) 
 async function check(copied: string, logs: string) {
   copy(copied);
   for (const [kind, ...args] of MADE) {
-    const generator = KINDS.find((each) => each.kind === kind)!;
+    const generator = kind === 'add' ? piece : KINDS.find((each) => each.kind === kind)!;
     await make(generator, [...args, '--root', copied]);
-    process.stdout.write(`ok            new ${kind} ${args[0]}\n`);
+    process.stdout.write(
+      `ok            ${kind === 'add' ? '' : 'new '}${kind} ${args.join(' ')}\n`,
+    );
   }
   process.env.CARGO_TARGET_DIR ??= path.join(root, 'target');
   const generated = await generate(copied, { say: (text) => process.stdout.write(`${text}\n`) });

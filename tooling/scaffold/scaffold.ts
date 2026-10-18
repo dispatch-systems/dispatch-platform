@@ -239,6 +239,22 @@ export function isIcon(name: string) {
   const icons = createRequire(import.meta.url)('lucide-react') as Record<string, unknown>;
   return /^[A-Z][A-Za-z0-9]*$/.test(name) && !name.endsWith('Icon') && name in icons;
 }
+/** The order after a feature's own permissions', for one added to them. */
+export function ownPermissionOrder(root: string, feature: string) {
+  const source = read(root, `features/${feature}/feature.rs`);
+  const orders = [...source.matchAll(/\bperm\(\s*"[^"]*",\s*"[^"]*",\s*(\d+)\s*,?\s*\)/g)].map(
+    (match) => Number(match[1]),
+  );
+  return orders.length ? Math.max(...orders) + 1 : nextPermissionOrder(root);
+}
+/** The next free tens in the one order the sources of people's IDs follow. */
+export function nextSourceOrder(root: string) {
+  let highest = 0;
+  for (const file of rustSources(root))
+    for (const match of read(root, file).matchAll(/\bSourceInfo \{[^}]*?\border:\s*(\d+),/g))
+      highest = Math.max(highest, Number(match[1]));
+  return (Math.floor(highest / 10) + 1) * 10;
+}
 /** The next free tens in the one order the kinds of data that name people follow. */
 export function nextPeopleOrder(root: string) {
   let highest = 0;
