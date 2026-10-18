@@ -369,10 +369,11 @@ impl Line {
         Workspace::find(&std::env::current_dir()?, &Native)
     }
 }
-/// The checkout to work on: `root`, or the one the current directory is in.
+/// The checkout to work on: `root`, or the one the current directory is in, by its real path, as
+/// git reports it.
 fn checkout(root: Option<&str>) -> Result<PathBuf> {
     if let Some(root) = root {
-        return Ok(PathBuf::from(root));
+        return Ok(std::fs::canonicalize(root).unwrap_or_else(|_| PathBuf::from(root)));
     }
     let here = std::env::current_dir()?;
     Ok(Native

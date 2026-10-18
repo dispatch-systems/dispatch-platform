@@ -57,7 +57,7 @@ pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Resul
 }
 /// The free space on the worktrees' disk, and when it's low, what each worktree's build takes.
 pub fn disk(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
-    let free = workspace::free_bytes(&ws.root.join("worktrees"))?;
+    let free = workspace::worktrees_free(&ws.root)?;
     if free >= LOW_DISK {
         println!("Disk: {} free.", workspace::human(free));
         return Ok(());

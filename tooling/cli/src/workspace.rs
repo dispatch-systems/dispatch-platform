@@ -174,6 +174,10 @@ pub fn logged(
         .status()?;
     Ok((status.success(), started.elapsed()))
 }
+/// Bytes free where the workspace `root`'s worktrees build: `worktrees/`, or the disk it links to.
+pub fn worktrees_free(root: &Path) -> Result<u64> {
+    free_bytes(&root.join("worktrees"))
+}
 /// Bytes free on the file system holding `path`, or what it links to.
 pub fn free_bytes(path: &Path) -> Result<u64> {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
