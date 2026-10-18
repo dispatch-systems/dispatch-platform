@@ -255,16 +255,20 @@ function checkout(root: string, removal: Plan) {
           moved.push(part);
         }
       }
+      // What's left of a feature whose contract stays has no crate, which a `features/*`
+      // member would name: the workspace names the features still there instead.
       if (excluded.length) {
         const members = path.join(root, workspaceManifest);
+        const features = path.join(root, 'features');
+        const there = fs
+          .readdirSync(features)
+          .filter((name) => fs.existsSync(path.join(features, name, 'Cargo.toml')))
+          .sort()
+          .map((name) => `"features/${name}", `)
+          .join('');
         fs.writeFileSync(
           members,
-          fs
-            .readFileSync(members, 'utf8')
-            .replace(
-              /^\[workspace\]\n/m,
-              `[workspace]\nexclude = [${excluded.map((dir) => `"${dir}"`).join(', ')}]\n`,
-            ),
+          fs.readFileSync(members, 'utf8').replace(/"features\/\*",\s*/, there),
         );
       }
       for (const file of manifests) {
