@@ -228,7 +228,7 @@ const COMMANDS: &[Spec] = &[
     spec(
         "list",
         &["list <what> [--json]"],
-        "What the product has, as the build lists it: features, collectors, slots, services, \
+        "What the product has, as the build lists it: features, collectors, slots, exposes, \
          integrations, tools, sources, permissions or pages.",
     )
     .passed(),

@@ -10,7 +10,6 @@ const FEATURES = 'app/generated/features.json';
 const SNAPSHOTS = 'app/tests/backend/snapshots';
 const PEOPLE = 'core/manifest/api/generated/people-data.ts';
 const CATALOGUE = 'core/manifest/README.md';
-const SERVICES = 'core/manifest/backend/services';
 
 type Feature = {
   collectors: string[];
@@ -38,6 +37,12 @@ export type Row = Record<string, string | number | boolean | string[] | null>;
 
 const read = (root: string, file: string) => fs.readFileSync(path.join(root, file), 'utf8');
 const json = <T>(root: string, file: string): T => JSON.parse(read(root, file)) as T;
+/** Where a contract's crate is, from its type's path: a feature's contract crate, or core. */
+const contractDir = (contract: string) => {
+  const crate = contract.split('::')[0]!;
+  const feature = /^dispatch_(\w+)_contract$/.exec(crate)?.[1];
+  return feature ? `features/${feature}/contract` : crate === 'dispatch_core' ? 'core' : crate;
+};
 const features = (root: string) => json<Record<string, Feature>>(root, FEATURES);
 const pages = (root: string) => {
   const catalog = json<{ pages: Page[]; subfeatures: Page[] }>(
@@ -114,27 +119,20 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
       ...slotTable(root, 'Frontend slots').map((row) => ({ side: 'frontend', ...row })),
     ],
   },
-  services: {
-    about: 'every service core defines a contract for, and the feature offering it',
+  exposes: {
+    about: 'what each feature exposes for others to use, and where its contract is',
     rows: (root) =>
-      fs
-        .readdirSync(path.join(root, SERVICES))
-        .filter((file) => file.endsWith('.rs') && file !== 'mod.rs')
-        .sort()
-        .map((file) => {
-          const name = file.slice(0, -3);
-          const about = read(root, `${SERVICES}/${file}`)
-            .split('\n')
-            .filter((line) => line.startsWith('//!'))
-            .map((line) => line.slice(3).trim())
-            .join(' ')
-            .split(/(?<=\.) /)[0]!;
-          const offeredBy =
-            Object.entries(features(root)).find(([, feature]) =>
-              (feature.slots.services as string[]).includes(name),
-            )?.[0] ?? null;
-          return { name, offeredBy, about };
-        }),
+      Object.entries(features(root)).flatMap(([name, feature]) =>
+        ((feature.slots.exposes ?? []) as { name: string; contract: string; about: string }[]).map(
+          (exposed) => ({
+            name: exposed.name,
+            feature: name,
+            contract: exposed.contract,
+            in: contractDir(exposed.contract),
+            about: exposed.about,
+          }),
+        ),
+      ),
   },
   integrations: {
     about: "every integration: what a feature does through a connection's account",
@@ -233,7 +231,7 @@ export function explain(root: string, name: string): Row {
     subfeatures: feature.subfeatures,
     tables: Object.entries(feature.tables).map(([db, tables]) => `${db}: ${tables.join(', ')}`),
     routes,
-    offers: feature.slots.services as string[],
+    exposes: ((feature.slots.exposes ?? []) as { name: string }[]).map((exposed) => exposed.name),
     integrations: (feature.slots.integrations as [string, string][]).map(
       ([id, connection]) => `${id} (through ${connection})`,
     ),

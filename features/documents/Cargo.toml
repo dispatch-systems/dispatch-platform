@@ -17,6 +17,7 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 
 # Core, the collectors it uses and the features it declares: nothing else compiles.
 [dependencies]
+dispatch-documents-contract = { path = "contract" }
 axum = { workspace = true }
 dispatch-core = { path = "../../core" }
 futures-util = { workspace = true }

@@ -605,6 +605,7 @@ dependencies = [
  "dispatch-cortex",
  "dispatch-daily-performance",
  "dispatch-documents",
+ "dispatch-documents-contract",
  "dispatch-driver-match",
  "dispatch-driver-profiles",
  "dispatch-dvic",
@@ -706,6 +707,7 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "dispatch-core",
+ "dispatch-documents-contract",
  "futures-util",
  "reqwest",
  "rusqlite",
@@ -714,6 +716,13 @@ dependencies = [
  "tokio",
  "ts-rs",
  "url",
+]
+
+[[package]]
+name = "dispatch-documents-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
@@ -870,6 +879,7 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "dispatch-core",
+ "dispatch-documents-contract",
  "futures-util",
  "hmac",
  "reqwest",

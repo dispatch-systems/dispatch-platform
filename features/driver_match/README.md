@@ -127,7 +127,7 @@ sheet lists their kinds in this order.
 ## Asking who someone is
 
 A feature that shows people, or uses what is known of them, asks core's directory, never Driver
-Match, which offers it as a service (`backend/directory.rs`): everyone as the tab lists them,
+Match, which exposes it (`backend/directory.rs`): everyone as the tab lists them,
 each with their code, the name they are shown by and every other way their sources write it,
 their role, every ID they hold by source, their email addresses and phone numbers, whether
 someone confirmed who they are and the version of their photo; and nobody in a build without

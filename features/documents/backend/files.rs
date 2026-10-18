@@ -21,9 +21,9 @@ use dispatch_core::{
     db::Store,
     ensure,
     foundation::observability,
-    manifest::services::files::Author,
     server::http::{route::Dsp, upload::Upload},
 };
+use dispatch_documents_contract::Author;
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},

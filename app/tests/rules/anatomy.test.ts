@@ -25,7 +25,11 @@ const featurePieces = [
   'tests',
   // Its integrations through a connection, a folder each.
   'integrations',
+  // The contract it exposes, a crate of its own on core alone.
+  'contract',
 ];
+/** What a part of core may have: a feature's pieces but what only a feature has. */
+const corePieces = featurePieces.filter((name) => !['integrations', 'contract'].includes(name));
 const collectorPieces = [
   'connection',
   'discovery',
@@ -170,7 +174,7 @@ test('core holds its parts, and each part only the folders a feature may have', 
     ...owners('core').flatMap(({ dir }) => [
       ...(isFile(`${dir}/README.md`) ? [] : [`${dir} has no README.md`]),
       ...entries(dir)
-        .filter((name) => ![...featurePieces, 'README.md'].includes(name))
+        .filter((name) => ![...corePieces, 'README.md'].includes(name))
         .map((name) => `${dir}/${name} is no folder a feature may have`),
     ]),
   ];

@@ -8,12 +8,8 @@ use super::{
     storage::{Described, Import, ImportStore, Outcome, Status},
 };
 use crate::backend::{author, bot::Bot, channel_links::storage::LinkStore, slack::Slack};
-use dispatch_core::{
-    Error, Result, State,
-    db::now,
-    manifest::services::files::{self, Incoming},
-    server::http::upload::Upload,
-};
+use dispatch_core::{Error, Result, State, db::now, server::http::upload::Upload};
+use dispatch_documents_contract::{self as files, Incoming};
 use serde_json::json;
 use std::sync::Arc;
 

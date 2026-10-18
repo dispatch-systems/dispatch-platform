@@ -16,7 +16,7 @@ use dispatch_core::{
         Kind, Migration, Migrations, OwnMigrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Audit, Feature, feature, optional, perm, services::Services},
+    manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 
@@ -96,7 +96,12 @@ pub const FEATURE: Feature = Feature {
         ..Audit::NONE
     },
     // Somewhere to keep a DSP's files, for any feature bringing files in, as Slack does.
-    services: Services::NONE.with_files(&backend::service::FILES),
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_documents_contract::Files,
+        &backend::service::FILES,
+        "files",
+        "Somewhere to keep a DSP's files, in folders, in its Google Drive.",
+    )],
     ..feature("documents")
 };
 

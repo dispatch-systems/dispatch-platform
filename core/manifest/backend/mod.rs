@@ -13,12 +13,12 @@ pub mod audit;
 pub mod caching;
 pub mod collectors;
 pub mod commands;
+pub mod exposes;
 pub mod integrations;
 pub mod keeping;
 pub mod people;
 pub mod permissions;
 pub(crate) mod retirement;
-pub mod services;
 pub mod settings;
 pub mod storage;
 pub mod switches;
@@ -44,7 +44,6 @@ use crate::{
 };
 use integrations::Integration;
 use people::People;
-use services::Services;
 use std::sync::{Arc, OnceLock};
 
 /// Everything this build is made of. The app builds one and installs it at startup.
@@ -121,7 +120,7 @@ impl Registry {
             }
         }
         integrations::check(self.features);
-        services::check(self.features);
+        exposes::check(self.features);
         people::check(self);
         permissions::check(self);
         storage::check(self);
@@ -206,9 +205,9 @@ pub struct Feature {
     /// What it does through other features' connections, which their settings switch on and
     /// off for each account: `integrations::Integration` says how to declare one.
     pub integrations: &'static [Integration],
-    /// What it offers every other feature, each through a contract in `services`: one feature
-    /// at most offers each.
-    pub services: Services,
+    /// What it offers every other feature, each through a contract, by `expose!`: one
+    /// feature at most offers each contract.
+    pub exposes: &'static [exposes::Exposed],
 }
 /// A feature that fills no slot yet. A manifest starts here and names what it adds:
 /// `Feature { …, ..feature("timecard") }`.
@@ -241,6 +240,6 @@ pub const fn feature(name: &'static str) -> Feature {
         commands: None,
         people: &[],
         integrations: &[],
-        services: Services::NONE,
+        exposes: &[],
     }
 }

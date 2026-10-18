@@ -1,8 +1,11 @@
-//! Files: somewhere to keep a DSP's files, in folders. A feature bringing files in from
-//! elsewhere saves them through it, never knowing which feature keeps them or where.
-use super::Answer;
-use crate::{Result, State, db::Store, manifest::registry, server::http::upload::Upload};
-use std::sync::Arc;
+//! Files, the contract Documents exposes: somewhere to keep a DSP's files, in folders. A feature
+//! bringing files in from elsewhere saves them through it, never knowing which feature keeps
+//! them or where; it uses this crate, which depends on core alone, and asks `for_dsp`.
+use dispatch_core::{Result, State, db::Store, server::http::upload::Upload};
+use std::{future::Future, pin::Pin, sync::Arc};
+
+/// What its asynchronous answers are: work done outside the database, as a call to Google is.
+pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /// What a feature that keeps files offers. Every call names the DSP, and works only inside the
 /// files it keeps for that DSP: a folder that isn't one of them is refused as
@@ -70,7 +73,7 @@ pub trait Files: Send + Sync {
 
 /// The feature keeping the DSP's files, while it's on for the DSP.
 pub fn for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn Files>> {
-    super::for_dsp(db, dsp, registry().files())
+    dispatch_core::manifest::exposes::for_dsp::<dyn Files>(db, dsp)
 }
 
 /// A folder of a DSP's files.

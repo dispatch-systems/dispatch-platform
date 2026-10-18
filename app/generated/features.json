@@ -59,7 +59,7 @@
         "POST /api/dsp/daily-performance/schedules/{key}/enabled",
         "POST /api/dsp/daily-performance/schedules/{key}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "daily_performance",
@@ -141,8 +141,12 @@
         "GET /api/documents/google/return",
         "GET /api/documents/google/picker"
       ],
-      "services": [
-        "files"
+      "exposes": [
+        {
+          "name": "files",
+          "contract": "dispatch_documents_contract::Files",
+          "about": "Somewhere to keep a DSP's files, in folders, in its Google Drive."
+        }
       ],
       "settings": [
         [
@@ -218,8 +222,12 @@
         "POST /api/dsp/driver-match/apart",
         "POST /api/dsp/driver-match/confirm"
       ],
-      "services": [
-        "directory"
+      "exposes": [
+        {
+          "name": "directory",
+          "contract": "dispatch_core::manifest::people::directory::Directory",
+          "about": "Who an ID is: everyone the DSP's features name, told apart."
+        }
       ],
       "settings": []
     },
@@ -296,7 +304,7 @@
         "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
         "POST /api/dsp/driver-profiles/schedules/{key}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "driver_profiles",
@@ -384,7 +392,7 @@
         "POST /api/dsp/dvic/schedules/{key}/enabled",
         "POST /api/dsp/dvic/schedules/{key}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "dvic",
@@ -427,7 +435,7 @@
       "maintenance": [],
       "people": [],
       "routes": [],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "home",
@@ -509,7 +517,7 @@
         "POST /api/dsp/routes/schedules/{key}/enabled",
         "POST /api/dsp/routes/schedules/{key}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "routes",
@@ -560,7 +568,7 @@
       "routes": [
         "POST /api/dsp/profile"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "settings",
@@ -644,7 +652,7 @@
         "POST /api/dsp/slack/workspaces/{team}/canvases/chosen",
         "POST /api/dsp/slack/workspaces/{team}/canvases/chosen/{canvas}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": [
         [
           "SLACK_CLIENT_ID",
@@ -711,7 +719,7 @@
         "POST /api/dsp/roles/{id}",
         "POST /api/dsp/roles/{id}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "team",
@@ -825,7 +833,7 @@
         "POST /api/dsp/schedules/{key}/enabled",
         "POST /api/dsp/schedules/{key}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "timecard",
@@ -902,7 +910,7 @@
         "POST /api/dsp/uniforms/{id}/archive",
         "POST /api/dsp/uniforms/stock/{id}"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "uniforms",
@@ -981,7 +989,7 @@
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
-      "services": [],
+      "exposes": [],
       "settings": []
     },
     "switch": "weekly_scorecard",

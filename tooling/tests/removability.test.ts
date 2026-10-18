@@ -13,6 +13,7 @@ import {
   readFeatures,
   repositoryRoot as root,
   typesConfig,
+  withMembers,
   withoutFeatures,
   type FeatureMap,
 } from '../ci/removability.js';
@@ -145,6 +146,55 @@ test("the app's manifest loses the left-out features' crates, and no list names 
     ].join('\n'),
   );
   assert.equal(withoutFeatures(manifest, []), manifest);
+});
+
+test("a left-out feature's contract stays: the app's manifest keeps its line", () => {
+  const manifest = [
+    '[features]',
+    'default = ["documents"]',
+    'documents = ["dep:dispatch-documents"]',
+    '',
+    '[dependencies]',
+    'dispatch-core = { path = "../../core" }',
+    'dispatch-documents = { path = "../../features/documents", optional = true }',
+    'dispatch-documents-contract = { path = "../../features/documents/contract" }',
+    '',
+  ].join('\n');
+  assert.equal(
+    withoutFeatures(manifest, ['documents']),
+    [
+      '[features]',
+      'default = []',
+      'documents = []',
+      '',
+      '[dependencies]',
+      'dispatch-core = { path = "../../core" }',
+      'dispatch-documents-contract = { path = "../../features/documents/contract" }',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('the workspace names the features still there, and none once every one is out', () => {
+  const manifest = [
+    '[workspace]',
+    'members = ["app/backend", "core", "features/*", "features/*/contract", "mcp"]',
+    '',
+  ].join('\n');
+  assert.equal(
+    withMembers(manifest, ['driver_match', 'slack']),
+    [
+      '[workspace]',
+      'members = ["app/backend", "core", "features/driver_match", "features/slack", "features/*/contract", "mcp"]',
+      '',
+    ].join('\n'),
+  );
+  assert.equal(
+    withMembers(manifest, []),
+    ['[workspace]', 'members = ["app/backend", "core", "features/*/contract", "mcp"]', ''].join(
+      '\n',
+    ),
+  );
 });
 
 test("the MCP's manifest loses a left-out feature's crate, and its feature reads as off", () => {

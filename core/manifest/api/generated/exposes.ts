@@ -1,6 +1,6 @@
-// Generated from the services features offer.
+// Generated from what features expose.
 // Run `npm run contracts:generate` after changing them.
-export const services = {
+export const exposes = {
   "files": {
     "feature": "documents",
     "name": "Documents",

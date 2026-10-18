@@ -161,7 +161,7 @@ and weeks, so it's best submitted well before the limit.
   in, so Undo, on the toast that says where it went, takes each back.
 - **Reconnecting** takes the same Google account only: the folder and its files are that
   account's.
-- **Files for other features:** Documents offers core's `files` service, somewhere for a
+- **Files for other features:** Documents exposes `files` (its contract, in `contract/`), somewhere for a
   feature bringing files in, as Slack does, to keep them. It says why it can't yet, in words a member
   reads: Google Drive isn't connected, or needs reconnecting. It browses the folders, from the main folder down, and finds a
   folder by its ID, the main folder or one inside it;

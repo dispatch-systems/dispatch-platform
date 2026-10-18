@@ -12,11 +12,8 @@ use crate::backend::{
     bot::Bot,
     slack::{Bytestream, Slack},
 };
-use dispatch_core::{
-    Error, Result, State,
-    db::now,
-    manifest::services::files::{self, Author, Page},
-};
+use dispatch_core::{Error, Result, State, db::now};
+use dispatch_documents_contract::{self as files, Author, Page};
 use futures_util::TryStreamExt;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Arc};

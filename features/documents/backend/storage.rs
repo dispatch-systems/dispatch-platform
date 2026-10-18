@@ -6,8 +6,8 @@ use dispatch_core::{
     Error, Result,
     db::{self, Db, FromRow, Row, Store, iso, migrations::add_column, now},
     foundation::crypto,
-    manifest::services::files::Author,
 };
+use dispatch_documents_contract::Author;
 use rusqlite::params;
 use serde_json::json;
 use std::collections::BTreeMap;

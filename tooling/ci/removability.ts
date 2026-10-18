@@ -76,6 +76,19 @@ export function leftOut(features: FeatureMap, feature: string): string[] {
 }
 
 /**
+ * The workspace's manifest naming the features still there, `there`, as its members, instead
+ * of `features/*`: a feature whose contract stays keeps a folder with no crate of its own, which
+ * `features/*` would name, and with every feature left out `features/*` names nothing, which
+ * Cargo refuses.
+ */
+export function withMembers(manifest: string, there: readonly string[]): string {
+  return manifest.replace(
+    /"features\/\*",\s*/,
+    there.map((name) => `"features/${name}", `).join(''),
+  );
+}
+
+/**
  * The app's manifest without the features `out`: their dependency and dev-dependency lines go,
  * and no feature list names them or their crates. Their own features stay declared, empty, so
  * the `cfg`s and `required-features` that name them read as off rather than unknown.
@@ -222,6 +235,10 @@ function generated(root: string): string[] {
  * all back as it was. It refuses to start over what an interrupted run left, which `restore`
  * would lose.
  */
+/** Whether the feature in `dir` has a contract, which stays when the feature is left out. */
+const keepsContract = (root: string, dir: string) =>
+  fs.existsSync(path.join(root, dir, 'contract'));
+
 function checkout(root: string, removal: Plan) {
   const store = path.join(root, workspace);
   if (fs.existsSync(store))
@@ -237,29 +254,33 @@ function checkout(root: string, removal: Plan) {
   const moved: string[] = [];
   return {
     leaveOut() {
+      // A feature's contract stays, as any crate may use it without the feature; everything
+      // else of the feature goes aside.
       for (const dir of removal.aside) {
-        fs.mkdirSync(path.dirname(path.join(store, dir)), { recursive: true });
-        fs.renameSync(path.join(root, dir), path.join(store, dir));
-        moved.push(dir);
+        const parts = keepsContract(root, dir)
+          ? fs
+              .readdirSync(path.join(root, dir))
+              .filter((name) => name !== 'contract')
+              .map((name) => `${dir}/${name}`)
+          : [dir];
+        for (const part of parts) {
+          fs.mkdirSync(path.dirname(path.join(store, part)), { recursive: true });
+          fs.renameSync(path.join(root, part), path.join(store, part));
+          moved.push(part);
+        }
       }
+      const features = path.join(root, 'features');
+      const there = fs
+        .readdirSync(features)
+        .filter((name) => fs.existsSync(path.join(features, name, 'Cargo.toml')))
+        .sort();
+      const members = path.join(root, workspaceManifest);
+      fs.writeFileSync(members, withMembers(fs.readFileSync(members, 'utf8'), there));
       for (const file of manifests) {
         const manifest = path.join(root, file);
         fs.writeFileSync(
           manifest,
           withoutFeatures(fs.readFileSync(manifest, 'utf8'), removal.leftOut),
-        );
-      }
-      // With every feature aside, the workspace's `features/*` names nothing, which Cargo
-      // refuses.
-      const features = path.join(root, 'features');
-      const left = fs
-        .readdirSync(features)
-        .some((name) => fs.existsSync(path.join(features, name, 'Cargo.toml')));
-      if (!left) {
-        const members = path.join(root, workspaceManifest);
-        fs.writeFileSync(
-          members,
-          fs.readFileSync(members, 'utf8').replace(/"features\/\*",\s*/, ''),
         );
       }
     },
@@ -291,7 +312,10 @@ export async function main(argv: string[], root = repositoryRoot) {
   const keeping = removal.kept.join(', ') || 'only core and the collectors';
   process.stdout.write(`Leaving out ${named}; keeping ${keeping}.\n`);
   if (argv.includes('--dry-run')) {
-    process.stdout.write(`(moves ${removal.aside.join(', ')} aside)\n`);
+    const aside = removal.aside.map((dir) =>
+      keepsContract(root, dir) ? `${dir} but its contract` : dir,
+    );
+    process.stdout.write(`(moves ${aside.join(', ')} aside)\n`);
     process.stdout.write(`(drops their crates from ${appManifest})\n`);
     for (const step of removal.steps) process.stdout.write(`${step.name}: ${commandLine(step)}\n`);
     return true;

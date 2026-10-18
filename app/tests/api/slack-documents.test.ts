@@ -1,4 +1,4 @@
-// What Slack's integrations keep in Documents, through core's Files service: Import Files' files,
+// What Slack's integrations keep in Documents, through the `files` contract it exposes: Import Files' files,
 // and Sync Canvases' canvases, as Google Docs.
 import test from 'node:test';
 import assert from 'node:assert/strict';

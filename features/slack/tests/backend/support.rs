@@ -9,14 +9,11 @@ use dispatch_core::{
         Feature, Upkeep, feature,
         integrations::{Heard, Integration, integration},
         optional,
-        services::{
-            Answer, Services,
-            files::{Author, Browsed, Files, Folder, Incoming, Page, Saved},
-        },
     },
     server::http::upload::UPLOAD_LIMIT,
     testing,
 };
+use dispatch_documents_contract::{Answer, Author, Browsed, Files, Folder, Incoming, Page, Saved};
 use futures_util::TryStreamExt;
 use std::{
     collections::BTreeSet,
@@ -76,7 +73,12 @@ pub struct Keeping;
 static KEEPING: Keeping = Keeping;
 static KEEPER: Feature = Feature {
     switch: optional("keeping", "Keeping", &[]),
-    services: Services::NONE.with_files(&KEEPING),
+    exposes: &[dispatch_core::expose!(
+        dyn Files,
+        &KEEPING,
+        "files",
+        "Where the stand-in keeps files."
+    )],
     ..feature("keeping")
 };
 impl Files for Keeping {
