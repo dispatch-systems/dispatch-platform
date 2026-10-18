@@ -30,7 +30,8 @@ pub struct Exposed {
     /// The offering, a `&'static dyn Contract`, by whose type a feature asks for it.
     pub offered: &'static (dyn Any + Send + Sync),
     /// For one a page shows, the offering as `Shown`: the app's export writes what it answers
-    /// to `core/manifest/api/generated/exposes.ts`, which a page reads with `offered(name)`.
+    /// to `core/manifest/api/generated/exposes.ts`, which a page reads with
+    /// `offered(name, view)`.
     pub shown: Option<fn() -> &'static dyn Shown>,
 }
 

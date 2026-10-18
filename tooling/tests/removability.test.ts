@@ -148,7 +148,7 @@ test("the app's manifest loses the left-out features' crates, and no list names 
   assert.equal(withoutFeatures(manifest, []), manifest);
 });
 
-test("a left-out feature's contract stays: the app's manifest keeps its line", () => {
+test("a left-out feature's contract stays: a manifest naming it keeps its line", () => {
   const manifest = [
     '[features]',
     'default = ["documents"]',

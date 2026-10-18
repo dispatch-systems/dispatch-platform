@@ -532,12 +532,11 @@ export async function renderFeature(root: string, argv: string[], adding = false
 
 /** Where a page reads what's exposed, whose `ExposedName` names each one a page shows. */
 const exposedNames = 'core/shell/frontend/runtime/exposes.ts';
-/** `ExposedName` naming `contract` too, as a page shows it in every build. */
+/** `ExposedName` naming `contract` too, as a page shows it in every build, unless it does. */
 export async function showing(root: string, plan: Plan, contract: string) {
   await change(plan, root, exposedNames, (text) =>
-    text.replace(
-      /export type ExposedName =([^;]+);/,
-      (_, names: string) => `export type ExposedName =${names} | '${contract}';`,
+    text.replace(/export type ExposedName =([^;]+);/, (type, names: string) =>
+      names.includes(`'${contract}'`) ? type : `export type ExposedName =${names} | '${contract}';`,
     ),
   );
 }

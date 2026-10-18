@@ -179,7 +179,8 @@ fn exposes() -> String {
     let mut offered = serde_json::Map::new();
     for feature in dispatch_core::manifest::registry().features {
         for exposed in feature.exposes {
-            if let Some(shown) = exposed.shown.map(|shown| shown()) {
+            if let Some(shown) = exposed.shown {
+                let shown = shown();
                 offered.insert(
                     exposed.name.into(),
                     serde_json::json!({
