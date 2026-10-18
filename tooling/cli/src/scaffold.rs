@@ -28,8 +28,11 @@ pub fn writes(command: &str, args: &[String]) -> bool {
 pub fn run(root: &Path, command: &str, args: &[String]) -> Result<bool> {
     if writes(command, args) {
         let ws = Workspace::find(root, &Native)?;
+        // By their real paths: worktrees/ may link to a disk of its own, where git finds the
+        // checkout.
+        let worktrees = std::fs::canonicalize(ws.root.join("worktrees"))?;
         require(
-            root.starts_with(ws.root.join("worktrees")),
+            std::fs::canonicalize(root)?.starts_with(worktrees),
             "Make it in a change's worktree: dispatchdev start <name>, then run this there.",
         )?;
     }

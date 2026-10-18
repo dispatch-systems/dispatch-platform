@@ -174,7 +174,7 @@ pub fn logged(
         .status()?;
     Ok((status.success(), started.elapsed()))
 }
-/// Bytes free on the file system holding `path`.
+/// Bytes free on the file system holding `path`, or what it links to.
 pub fn free_bytes(path: &Path) -> Result<u64> {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
     let path = CString::new(path.as_os_str().as_bytes())?;

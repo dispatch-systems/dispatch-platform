@@ -150,7 +150,7 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
     }
     println!(
         "Disk: {} free.",
-        workspace::human(workspace::free_bytes(&ws.root)?)
+        workspace::human(workspace::free_bytes(&ws.root.join("worktrees"))?)
     );
     Ok(())
 }

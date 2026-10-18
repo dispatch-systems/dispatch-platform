@@ -78,3 +78,52 @@ fn new_and_generate_write_nothing_in_devs_checkout() {
     assert!(!result.status.success());
     assert!(error.contains("Make it in a change's worktree"), "{error}");
 }
+
+#[test]
+fn generate_runs_in_a_worktree_on_a_disk_of_its_own() {
+    // worktrees/ links to another folder, where git makes the worktree and reports it.
+    let workspace = tempfile::tempdir().unwrap();
+    let (dev, elsewhere) = (
+        workspace.path().join("dev"),
+        workspace.path().join("elsewhere"),
+    );
+    let git = |args: &[&str]| {
+        let done = Command::new("git")
+            .args(args)
+            .current_dir(&dev)
+            .output()
+            .unwrap();
+        assert!(
+            done.status.success(),
+            "{}",
+            String::from_utf8_lossy(&done.stderr)
+        );
+    };
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, workspace.path().join("worktrees")).unwrap();
+    git(&["init", "-q"]);
+    git(&[
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@example.com",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "first",
+    ]);
+    git(&["worktree", "add", "-q", "-b", "one", "../worktrees/one"]);
+    let result = Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
+        .arg("generate")
+        .current_dir(workspace.path().join("worktrees/one"))
+        .output()
+        .unwrap();
+    let error = String::from_utf8_lossy(&result.stderr);
+    // It gets past where it's made, to the checkout's scaffolder, which this one lacks.
+    assert!(
+        error.contains("predates dispatchdev's scaffolder"),
+        "{error}"
+    );
+}
