@@ -607,18 +607,30 @@ export async function planAdd(root: string, argv: string[]) {
       );
       if (merged !== current) plan.changes.set(file, merged);
     }
-  // A test a generator stamped that only restates a manifest alone, which the piece makes more
-  // than that: it goes, with its module, for the feature's first real test.
+  // A test a generator stamped that only restates a manifest alone, with no permission, goes
+  // once the piece gives it one, with its module; and so does the empty backend/ a manifest
+  // alone keeps, which a piece with an API or a screen doesn't need.
   const stamped = `${dir}/tests/backend/feature.rs`;
   const declared = '#[cfg(test)]\n#[path = "tests/backend/feature.rs"]\nmod tests;\n';
   const rust = plan.changes.get(`${dir}/feature.rs`);
-  if (
-    rust?.includes(declared) &&
+  const restates =
     exists(root, stamped) &&
-    read(root, stamped).includes('fn declares_its_switch_and_permissions()')
-  ) {
-    plan.changes.set(`${dir}/feature.rs`, rust.replace(`\n${declared}`, '').replace(declared, ''));
-    plan.removed = [stamped];
+    read(root, stamped).includes('assert!(FEATURE.permissions.is_empty());');
+  if (rust?.includes(declared) && restates && !/\bperm\(/.test(manifest) && /\bperm\(/.test(rust)) {
+    let grown = rust.replace(`\n${declared}`, '').replace(declared, '');
+    const removed = [stamped];
+    const backend = files(root, `${dir}/backend`, /./);
+    const writesBackend = [...plan.files.keys()].some((file) => file.startsWith(`${dir}/backend/`));
+    if (
+      backend.length === 1 &&
+      !writesBackend &&
+      !/^\s*(pub(\([^)]*\))? )?mod /m.test(read(root, backend[0]!))
+    ) {
+      removed.push(backend[0]!);
+      grown = grown.replace(/^mod backend;\n/m, '');
+    }
+    plan.changes.set(`${dir}/feature.rs`, grown);
+    plan.removed = removed;
     plan.notes.push(`${stamped} restated the manifest it had alone: write its first real test.`);
   }
   // Its Rust as rustfmt leaves it: the files it writes together, and each it changes alone,

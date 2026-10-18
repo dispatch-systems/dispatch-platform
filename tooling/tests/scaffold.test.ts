@@ -1061,8 +1061,11 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
     fs.writeFileSync(path.join(copy, name), content);
   }
   const grown = (await planAdd(copy, ['api', '--to', 'bare_demo'])).plan;
-  assert.deepEqual(grown.removed, ['features/bare_demo/tests/backend/feature.rs']);
-  assert.doesNotMatch(changed(grown, 'features/bare_demo/feature.rs'), /mod tests;/);
+  assert.deepEqual(grown.removed, [
+    'features/bare_demo/tests/backend/feature.rs',
+    'features/bare_demo/backend/mod.rs',
+  ]);
+  assert.doesNotMatch(changed(grown, 'features/bare_demo/feature.rs'), /mod (tests|backend);/);
 
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
   await assert.rejects(add('settings', '--to', 'driver_match'), /DriverMatchSettings\.tsx already/);
