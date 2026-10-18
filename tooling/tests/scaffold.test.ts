@@ -1053,6 +1053,17 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
     /home\.view/,
   );
 
+  // A manifest alone's stamped test goes once a piece makes it more, with its module, which
+  // was the manifest's last item.
+  const bare = await planFeature(copy, ['bare_demo', '--mandatory']);
+  for (const [name, content] of bare.plan.files) {
+    fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
+    fs.writeFileSync(path.join(copy, name), content);
+  }
+  const grown = (await planAdd(copy, ['api', '--to', 'bare_demo'])).plan;
+  assert.deepEqual(grown.removed, ['features/bare_demo/tests/backend/feature.rs']);
+  assert.doesNotMatch(changed(grown, 'features/bare_demo/feature.rs'), /mod tests;/);
+
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
   await assert.rejects(add('settings', '--to', 'driver_match'), /DriverMatchSettings\.tsx already/);
   await assert.rejects(add('settings', '--to', 'documents'), /documents retired documents\.manage/);

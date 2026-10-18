@@ -464,6 +464,8 @@ export type Plan = {
   changes: Map<string, string>;
   /** What to do next, printed last. */
   notes: string[];
+  /** Existing files it removes. */
+  removed?: string[];
 };
 export const emptyPlan = (): Plan => ({ files: new Map(), changes: new Map(), notes: [] });
 /** A file's content as the plan leaves it: changed already, or as it is. */
@@ -490,6 +492,8 @@ export type Made = {
   wrote: string[];
   /** Existing files it changed. */
   changed: string[];
+  /** Existing files it removed. */
+  removed: string[];
   /** What to do next. */
   next: string[];
 };
@@ -507,6 +511,7 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
       fs.mkdirSync(path.dirname(path.join(target, file)), { recursive: true });
       fs.writeFileSync(path.join(target, file), content);
     }
+  if (!options.dryRun) for (const file of plan.removed ?? []) fs.rmSync(path.join(root, file));
   const changed = [...plan.changes.keys()];
   // Builds run with --locked, which refuses a crate, or a crate's dependencies, Cargo.lock does
   // not list.
@@ -530,6 +535,7 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
     root,
     wrote: [...plan.files.keys()].sort(),
     changed: changed.sort(),
+    removed: [...(plan.removed ?? [])].sort(),
     next: plan.notes,
   };
 }
@@ -540,6 +546,9 @@ export function described(made: Made, next = true) {
     ...made.wrote.map((file) => `  ${file}`),
     `${made.dryRun ? 'Would change' : 'Changed'}:`,
     ...made.changed.map((file) => `  ${file}`),
+    ...(made.removed.length
+      ? [`${made.dryRun ? 'Would remove' : 'Removed'}:`, ...made.removed.map((file) => `  ${file}`)]
+      : []),
   ];
   if (next && made.next.length) lines.push(...nextLines(made.next));
   return lines.join('\n');

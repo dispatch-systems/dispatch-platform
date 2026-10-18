@@ -607,6 +607,20 @@ export async function planAdd(root: string, argv: string[]) {
       );
       if (merged !== current) plan.changes.set(file, merged);
     }
+  // A test a generator stamped that only restates a manifest alone, which the piece makes more
+  // than that: it goes, with its module, for the feature's first real test.
+  const stamped = `${dir}/tests/backend/feature.rs`;
+  const declared = '#[cfg(test)]\n#[path = "tests/backend/feature.rs"]\nmod tests;\n';
+  const rust = plan.changes.get(`${dir}/feature.rs`);
+  if (
+    rust?.includes(declared) &&
+    exists(root, stamped) &&
+    read(root, stamped).includes('fn declares_its_switch_and_permissions()')
+  ) {
+    plan.changes.set(`${dir}/feature.rs`, rust.replace(`\n${declared}`, '').replace(declared, ''));
+    plan.removed = [stamped];
+    plan.notes.push(`${stamped} restated the manifest it had alone: write its first real test.`);
+  }
   // Its Rust as rustfmt leaves it: the files it writes together, and each it changes alone,
   // since that file's modules aren't beside it.
   formatRust(plan);
