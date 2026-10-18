@@ -22,6 +22,7 @@ pub mod page;
 pub mod queue;
 pub mod storage;
 mod sync;
+pub(crate) mod types;
 
 use crate::backend::channel_links::Linking;
 use dispatch_core::{

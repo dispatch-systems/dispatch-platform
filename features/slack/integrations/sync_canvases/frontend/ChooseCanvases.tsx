@@ -2,13 +2,8 @@ import { useState } from 'react';
 import { NotebookText } from 'lucide-react';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { DataState, ErrorBox, Modal } from '../../../../../core/shell/frontend/ui/index.js';
-import {
-  canvasLinking,
-  chooseSlackCanvases,
-  useSlackChannelCanvases,
-  useSlackChannels,
-  type SlackFolder,
-} from '../../../api/client.js';
+import { useSlackChannels, type SlackFolder } from '../../../api/client.js';
+import { canvasLinking, chooseSlackCanvases, useSlackChannelCanvases } from './client.js';
 import { ChannelChoice, NoChannels } from '../../../frontend/linked/ChannelChoice.js';
 import { FolderBrowser } from '../../../frontend/linked/FolderBrowser.js';
 import { SaveTo } from '../../../frontend/linked/SaveTo.js';

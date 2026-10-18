@@ -17,6 +17,7 @@ pub mod links;
 pub mod queue;
 mod save;
 pub mod storage;
+pub(crate) mod types;
 
 use crate::backend::channel_links::Linking;
 use dispatch_core::manifest::integrations::{Integration, integration};

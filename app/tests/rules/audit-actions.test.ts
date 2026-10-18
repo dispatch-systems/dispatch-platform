@@ -52,10 +52,16 @@ test('every audit action the backend records has wording in the audit log', () =
     'core/platform_owner/frontend/audit/wording.ts',
     'mcp/frontend/audit-wording.ts',
     ...['core', 'features', 'collectors'].flatMap((top) =>
-      fs
-        .readdirSync(top)
-        .map((name) => path.join(top, name, 'frontend', 'audit-wording.ts'))
-        .filter((file) => fs.existsSync(file)),
+      fs.readdirSync(top).flatMap((name) => {
+        // Its own, and each of its integrations' in its folder.
+        const integrations = path.join(top, name, 'integrations');
+        return [
+          path.join(top, name, 'frontend', 'audit-wording.ts'),
+          ...(fs.existsSync(integrations) ? fs.readdirSync(integrations) : []).map((each) =>
+            path.join(integrations, each, 'frontend', 'audit-wording.ts'),
+          ),
+        ].filter((file) => fs.existsSync(file));
+      }),
     ),
   ];
   const log = wordings.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
