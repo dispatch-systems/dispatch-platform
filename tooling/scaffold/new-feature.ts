@@ -28,7 +28,16 @@ import {
   type Plan,
   type Values,
 } from './scaffold.js';
-import { appManifest, crateOf, crates, featureList, wiredList, wiredManifest } from './wire.js';
+import {
+  appManifest,
+  crateOf,
+  crates,
+  featureList,
+  needed,
+  tools,
+  wiredList,
+  wiredManifest,
+} from './wire.js';
 
 // `dispatchdev new feature <name> [options]`: a feature that works as written. It is a crate of its
 // own, listed in app/, optional, with a switch that starts off for every DSP, which a browser test finds on
@@ -354,7 +363,9 @@ export async function planFeature(root: string, argv: string[]) {
   const wired = [...crates(root), crateOf(name, plan.files.get(`${dir}/Cargo.toml`)!)].sort(
     (a, b) => (a.name < b.name ? -1 : 1),
   );
-  await edit(appManifest, (text) => wiredManifest(text, wired));
+  // The MCP's tools keep the features they need on, as the wiring has them.
+  const mcp = needed(tools(root, wired));
+  await edit(appManifest, (text) => wiredManifest(text, wired, mcp));
   await edit(featureList, () => wiredList(wired));
   // Its routes, and who may call each, in its own list, which the app's route test holds it to.
   const routes = [...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : [])];

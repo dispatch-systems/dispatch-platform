@@ -860,6 +860,16 @@ test('new collector writes its connection, one collection with a fixture, a card
   );
 });
 
+test("listing a feature keeps on the features the MCP's tools need", async () => {
+  const links = (text: string) => text.match(/"dispatch-mcp\/\w+"/g) ?? [];
+  const before = links(fs.readFileSync(path.join(root, 'app/backend/Cargo.toml'), 'utf8'));
+  assert(before.length, 'no tool needs a feature');
+  assert.deepEqual(
+    links(file(await feature('parking', '--page'), 'app/backend/Cargo.toml')),
+    before,
+  );
+});
+
 /** Runs a generator as its own script. */
 const generate = (generator: string, args: string[]) =>
   spawnSync(process.execPath, [tsx, path.join(root, `tooling/scaffold/${generator}.ts`), ...args], {
