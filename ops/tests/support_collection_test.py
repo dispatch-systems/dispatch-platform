@@ -4,6 +4,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+import unittest.mock
 
 spec = importlib.util.spec_from_file_location(
     "support_collection", Path(__file__).resolve().parents[2] / "ops/launchers/support-collection.py"
@@ -46,6 +47,22 @@ class SupportCollectionTests(unittest.TestCase):
         for path in self.source.rglob("*"):
             if path.is_file():
                 path.chmod(0o600)
+
+    def test_an_assigned_worktree_is_found_through_a_linked_worktrees_folder(self):
+        # worktrees/ links to a disk of its own, where the worktree really is.
+        elsewhere = self.root / "elsewhere"
+        ticket = "support_" + "c" * 32
+        worktree = elsewhere / ("support-dev-" + "c" * 32)
+        worktree.mkdir(parents=True)
+        (self.root / "worktrees").symlink_to(elsewhere)
+        argv = ["support-collection.py", "--worktree", str(self.root / "worktrees" / worktree.name),
+                "--ticket", ticket, "--provider", "paycom", "--request", "{}"]
+        with unittest.mock.patch.dict(os.environ, {"SUPPORT_WORKSPACE_ROOT": str(self.root)}), \
+                unittest.mock.patch("sys.argv", argv), \
+                unittest.mock.patch.object(module.subprocess, "check_output", return_value="elsewhere\n"):
+            # Past the worktree's check, to its branch, which isn't the ticket's.
+            with self.assertRaisesRegex(ValueError, "Assigned support branch required"):
+                module.main()
 
     def test_selected_projection_excludes_other_accounts_providers_and_record_tables(self):
         broker = self.root / "broker/dev"

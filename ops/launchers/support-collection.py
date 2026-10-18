@@ -249,7 +249,9 @@ def main():
     os.umask(0o077)
     workspace = Path(os.environ.get("SUPPORT_WORKSPACE_ROOT", str(Path.home() / "dispatch-platform"))).resolve(strict=True)
     worktree = args.worktree.resolve(strict=True)
-    if worktree.parent != workspace / "worktrees" or not re.fullmatch(r"support_[0-9a-f]{32}", args.ticket):
+    # By its real path: worktrees/ may link to a disk of its own.
+    worktrees = (workspace / "worktrees").resolve(strict=True)
+    if worktree.parent != worktrees or not re.fullmatch(r"support_[0-9a-f]{32}", args.ticket):
         raise ValueError("Assigned support worktree and ticket required")
     branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=worktree, text=True).strip()
     ticket_hex = args.ticket.removeprefix("support_")

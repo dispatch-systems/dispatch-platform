@@ -49,7 +49,7 @@ impl Worktree {
         let root = config.workspace_root.join("dev");
         if !path.exists() {
             require(
-                dispatchdev_cli::workspace::free_bytes(&config.workspace_root)?
+                dispatchdev_cli::workspace::worktrees_free(&config.workspace_root)?
                     >= dispatchdev_cli::start::LOW_DISK,
                 "Host disk capacity must be restored before creating an isolated support build",
             )?;
@@ -174,7 +174,7 @@ impl Worktree {
     /// Keep an unmerged implementation intact while making room for another ticket's
     /// investigation. Only ignored, reproducible build products can be discarded.
     pub async fn relieve_disk_pressure(&self, config: &Config) -> Result<()> {
-        if dispatchdev_cli::workspace::free_bytes(&config.workspace_root)?
+        if dispatchdev_cli::workspace::worktrees_free(&config.workspace_root)?
             >= dispatchdev_cli::start::LOW_DISK
         {
             return Ok(());
