@@ -1,0 +1,16 @@
+import { useCallback } from 'react';
+import { useData } from '{{toRoot}}core/shell/frontend/runtime/api.js';
+import { call, workspaceUrl } from '../../../api/client.js';
+import type { Slack{{pascal}} } from '../../../api/generated/Slack{{pascal}}.js';
+
+// {{label}}'s endpoints, as its section calls them.
+
+/** {{label}} in the workspace `team`. */
+export function use{{pascal}}(team: string) {
+  const url = `${workspaceUrl(team)}/{{slug}}`;
+  const read = useCallback(
+    (signal: AbortSignal) => call<Slack{{pascal}}>(url, undefined, signal),
+    [url],
+  );
+  return useData<Slack{{pascal}}>(url, 0, undefined, undefined, false, read);
+}

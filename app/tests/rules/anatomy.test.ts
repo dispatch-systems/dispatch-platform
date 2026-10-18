@@ -16,7 +16,16 @@ import { lexFile, testAttributes } from './support/rust.js';
 
 // What every feature, collector and core part is made of: the folders core/manifest/README.md
 // names, each holding one kind of piece.
-const featurePieces = ['backend', 'api', 'frontend', 'migrations', 'tooling', 'tests'];
+const featurePieces = [
+  'backend',
+  'api',
+  'frontend',
+  'migrations',
+  'tooling',
+  'tests',
+  // Its integrations through a connection, a folder each.
+  'integrations',
+];
 const collectorPieces = [
   'connection',
   'discovery',
@@ -206,4 +215,30 @@ test('nothing a generator left to write is left', () => {
       .filter((file) => /\.(rs|tsx?|js|sql|md|toml)$/.test(file) && read(file).includes(marker))
       .map((file) => `${file} still holds what dispatchdev new left to write (${marker})`),
   );
+});
+
+// An owner's integrations are a folder each, which `integrations/mod.rs` lists: its declaration
+// and logic (`mod.rs` and its modules), its frontend, its migrations and its tests.
+test("each integration is a folder of its own, in an integration's shape", () => {
+  const wrong: string[] = [];
+  for (const { dir } of owners()) {
+    const integrations = `${dir}/integrations`;
+    if (!isDirectory(integrations)) continue;
+    if (!isFile(`${integrations}/mod.rs`)) wrong.push(`${integrations} has no mod.rs listing them`);
+    for (const name of entries(integrations).filter((entry) => entry !== 'mod.rs')) {
+      const at = `${integrations}/${name}`;
+      if (!isDirectory(at)) {
+        wrong.push(`${at} is no integration's folder`);
+        continue;
+      }
+      if (!isFile(`${at}/mod.rs`)) wrong.push(`${at} has no mod.rs declaring it`);
+      for (const piece of entries(at))
+        if (
+          !piece.endsWith('.rs') &&
+          !['frontend', 'migrations', 'tests', 'README.md'].includes(piece)
+        )
+          wrong.push(`${at}/${piece} is no piece of an integration`);
+    }
+  }
+  holds('anatomy', 'integrations', wrong);
 });

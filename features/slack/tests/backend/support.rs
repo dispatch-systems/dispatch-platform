@@ -26,13 +26,22 @@ use std::{
     },
 };
 
-/// The stand-in's integration: it needs to read files, and hears of files shared.
+/// The stand-in's integration: it needs to read files, hears of files shared, and answers
+/// fixture mode's Slack for `listening.ping`, a method only it calls.
 pub const LISTENING: Integration = Integration {
     needs: &["files:read"],
     hears: &["file_shared"],
     heard: Some(hear),
+    fixture: Some(answer),
     ..integration("slack", "listening.files", "Listening")
 };
+fn answer(
+    team: &str,
+    method: &str,
+    _: &serde_json::Value,
+) -> Option<dispatch_core::Result<serde_json::Value>> {
+    (method == "listening.ping").then(|| Ok(serde_json::json!({"ok": true, "team": team})))
+}
 /// A feature that works through Slack, switched off for every DSP until a test switches it on.
 static LISTENER: Feature = Feature {
     switch: optional("listening", "Listening", &[]),

@@ -1,0 +1,50 @@
+{{#own}}
+import { createElement, lazy } from 'react';
+{{/own}}
+import { {{icon}} } from 'lucide-react';
+import type {
+  ConnectionIntegration,
+{{#own}}
+  ConnectionSection,
+{{/own}}
+} from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+
+// {{label}}'s card under a workspace's Integrations{{#own}}, and its section of the workspace's
+// settings, listed under Integrations while it's on{{/own}}.
+
+{{#own}}
+const loadSection = () => import('./{{pascal}}Section.js');
+const {{pascal}}Section = lazy(() =>
+  loadSection().then((module) => ({ default: module.{{pascal}}Section })),
+);
+
+{{/own}}
+/** Its ID, as the backend declares it. */
+export const {{constant}} = '{{owner}}.{{name}}';
+
+export const {{camel}}: ConnectionIntegration = {
+  connection: 'slack',
+  id: {{constant}},
+  label: '{{label}}',
+  icon: {{icon}},
+  // TODO(scaffold): what it does in a sentence or two, how it's used step by step, what
+  // Dispatch sees through Slack while it's on, and what switching it on and off means.
+  description: '',
+  steps: [],
+  sees: [],
+  turningOn: [],
+  turningOff: [],
+  order: {{order}},
+};
+{{#own}}
+
+export const {{camel}}Section: ConnectionSection = {
+  connection: 'slack',
+  id: '{{slug}}',
+  label: '{{label}}',
+  icon: {{icon}},
+  order: {{sectionOrder}},
+  integration: {{constant}},
+  render: (context) => createElement({{pascal}}Section, context),
+};
+{{/own}}

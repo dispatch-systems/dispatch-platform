@@ -1,0 +1,14 @@
+//! What {{label}}'s endpoints answer with, written to TypeScript beside Slack's own in
+//! `api/generated/`, which its `frontend/client.ts` imports.
+use serde::Serialize;
+
+/// `GET /api/dsp/slack/workspaces/{team}/{{slug}}`: {{label}} in the workspace, as its section
+/// shows it.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "features/slack/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct Slack{{pascal}} {
+    /// Whether it's on in the workspace.
+    pub on: bool,
+}

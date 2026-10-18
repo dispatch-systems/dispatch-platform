@@ -51,7 +51,7 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
 const FLAGS = ['dry-run'];
 const OPTIONS = ['to', 'table', 'icon', 'out', 'root'];
 /** The manifest's fields a piece adds: lists join the feature's, others are added whole. */
-const FIELDS = ['permissions', 'routes', 'people', 'depends_on'];
+const FIELDS = ['permissions', 'routes', 'people', 'depends_on', 'integrations'];
 
 /**
  * The index just past the comment or string starting at `at`, or `at` if none does. A `'` opens
@@ -412,7 +412,7 @@ export function mergeTypeScript(target: string, piece: string, pascal: string) {
 }
 
 /** Rust source as rustfmt leaves it, read from its input so it follows no `mod`. */
-function rustfmt(source: string) {
+export function rustfmt(source: string) {
   const formatted = spawnSync('rustfmt', ['--edition', '2024', '--emit', 'stdout', '-q'], {
     cwd: repositoryRoot,
     input: source,
@@ -426,7 +426,7 @@ function rustfmt(source: string) {
 // ---- Cargo.toml and the rest
 
 /** The manifest with each `key = value` the piece's lists that it lacks, in its section. */
-function mergeToml(target: string, piece: string) {
+export function mergeToml(target: string, piece: string) {
   let text = target;
   let section = '';
   for (const line of piece.split('\n')) {
@@ -449,6 +449,35 @@ function mergeToml(target: string, piece: string) {
     text = `${text.slice(0, end).trimEnd()}\n${line}\n${text.slice(end).replace(/^\n*/, next < 0 ? '' : '\n')}`;
   }
   return text;
+}
+
+/**
+ * Has every test of the owner in `dir` that installs it with core's test registry install the
+ * collector or feature it now depends on too: `<helper>::install(&[collectors], &[features])`,
+ * with or without the crate's prefix.
+ */
+export function installing(
+  root: string,
+  plan: Plan,
+  dir: string,
+  dependency: { collector?: string; feature?: string },
+) {
+  const [name, list] = dependency.collector ? [dependency.collector, 0] : [dependency.feature!, 1];
+  const item = `&dispatch_${name}::${list === 0 ? 'COLLECTOR' : 'FEATURE'}`;
+  const there = new RegExp(`\\b(dispatch_)?${name}::${list === 0 ? 'COLLECTOR' : 'FEATURE'}\\b`);
+  for (const file of files(root, dir, /\.rs$/)) {
+    const current = plan.changes.get(file) ?? read(root, file);
+    const merged = current.replace(
+      /\b(\w+)::install\(\s*&\[([^\]]*)\],\s*&\[([^\]]*)\]/g,
+      (call, helper: string, collectors: string, features: string) => {
+        const lists = [collectors, features];
+        if (there.test(lists[list]!)) return call;
+        lists[list] = [...items(`[${lists[list]}]`), item].join(', ');
+        return `${helper}::install(&[${lists[0]}], &[${lists[1]}]`;
+      },
+    );
+    if (merged !== current) plan.changes.set(file, merged);
+  }
 }
 
 export async function planAdd(root: string, argv: string[]) {
@@ -593,20 +622,7 @@ export async function planAdd(root: string, argv: string[]) {
   // A collector its people come from is one its tests install it with, as the registry wants
   // each feature's dependencies installed.
   const site = peopleSources(root).find((source) => source.id === value)?.site;
-  if (piece === 'people' && site)
-    for (const file of files(root, dir, /\.rs$/)) {
-      const current = plan.changes.get(file) ?? read(root, file);
-      const collector = `&dispatch_${site}::COLLECTOR`;
-      const installed = new RegExp(`\\b(dispatch_)?${site}::COLLECTOR\\b`);
-      const merged = current.replace(
-        /\b(\w+)::install\(\s*&\[([^\]]*)\]/g,
-        (call, helper: string, list: string) =>
-          installed.test(list)
-            ? call
-            : `${helper}::install(&[${[...items(`[${list}]`), collector].join(', ')}]`,
-      );
-      if (merged !== current) plan.changes.set(file, merged);
-    }
+  if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
   // A test a generator stamped that only restates a manifest alone, with no permission, goes
   // once the piece gives it one, with its module; and so does the empty backend/ a manifest
   // alone keeps, which a piece with an API or a screen doesn't need. A test or a module the

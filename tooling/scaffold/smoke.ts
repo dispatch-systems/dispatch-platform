@@ -52,6 +52,9 @@ const MADE: [string, ...string[]][] = [
     'flag',
   ],
   ['tool', 'smoke_ping', '--scope', 'connection'],
+  // One of Slack's own integrations, and one of another feature's through Slack.
+  ['integration', 'smoke_alerts', '--needs', 'chat:write', '--hears', 'message'],
+  ['integration', 'smoke_notes', '--to', 'smoke_people'],
   ['slot', 'smoke_badges', '--description', 'Its badges on the DSPs page.'],
   // A second slot, after the first.
   ['slot', 'smoke_shortcuts', '--description', 'Its shortcuts on a page.'],

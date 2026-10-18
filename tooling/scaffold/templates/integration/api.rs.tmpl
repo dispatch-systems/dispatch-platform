@@ -1,0 +1,32 @@
+//! {{label}}'s endpoints, on each workspace's settings, for those who manage Slack.
+use super::{ID, types::Slack{{pascal}}};
+use crate::{
+    api::routes::{SETTINGS, team},
+    backend::storage::SlackStore,
+};
+use dispatch_core::{
+    Result,
+    db::Store,
+    foundation::validate as v,
+    server::http::{
+        input::{Input, Reply},
+        route::{Member, Route, read},
+    },
+};
+
+pub fn routes() -> Vec<Route> {
+    vec![read(
+        "/api/dsp/slack/workspaces/{team}/{{slug}}",
+        SETTINGS,
+        overview,
+    )]
+}
+
+/// {{label}} in the workspace, as its section shows it.
+fn overview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    let team = team(input.param("team"))?;
+    let on = db.slack_integrations(c.dsp_id(), &team)?.iter().any(|id| id == ID);
+    // TODO(scaffold): what else its section shows.
+    Reply::of(&Slack{{pascal}} { on })
+}

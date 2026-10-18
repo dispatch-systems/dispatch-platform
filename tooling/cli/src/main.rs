@@ -202,7 +202,7 @@ const COMMANDS: &[Spec] = &[
     spec(
         "new",
         &["new <kind> <name> [options]", "    [--dry-run] [--json]"],
-        "In a change's worktree, a feature, collector, agent tool or kind of slot that works as \
+        "In a change's worktree, a feature, collector, Slack integration, agent tool or kind of slot that works as \
          written, listed where it is read, then what is generated from it: dispatchdev new \
          lists the kinds, new <kind> a kind's options. --dry-run prints what it would write, \
          from any checkout.",

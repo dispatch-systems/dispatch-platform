@@ -7,6 +7,7 @@ import os from 'node:os';
 import { CHECKS, MARKER, described } from '../scaffold/doctor.js';
 import { duration, failure, report, writers } from '../scaffold/generate.js';
 import { LISTS, explain, fields, frontendSlots, table } from '../scaffold/inventory.js';
+import { KINDS } from '../scaffold/cli.js';
 import { repositoryRoot as root } from '../scaffold/scaffold.js';
 
 // What `dispatchdev new`, `generate`, `list` and `explain` run: the scaffolder's dispatcher,
@@ -22,8 +23,7 @@ const cli = (...args: string[]) =>
 test('each command answers its usage with success, and what it does not take with a failure', () => {
   const kinds = cli('new');
   assert.equal(kinds.status, 0, kinds.stderr);
-  for (const kind of ['feature', 'collector', 'tool', 'slot'])
-    assert.match(kinds.stdout, new RegExp(`^  ${kind} `, 'm'));
+  for (const { kind } of KINDS) assert.match(kinds.stdout, new RegExp(`^  ${kind} `, 'm'));
   const feature = cli('new', 'feature', '--help');
   assert.equal(feature.status, 0, feature.stderr);
   assert.match(feature.stdout, /^Usage: dispatchdev new feature <name>/);
@@ -35,7 +35,10 @@ test('each command answers its usage with success, and what it does not take wit
 
   const widget = cli('new', 'widget', 'thing');
   assert.equal(widget.status, 1);
-  assert.match(widget.stderr, /dispatchdev new makes feature, collector, tool, slot/);
+  assert.match(
+    widget.stderr,
+    new RegExp(`dispatchdev new makes ${KINDS.map(({ kind }) => kind).join(', ')}`),
+  );
   const wings = cli('new', 'feature', 'desk', '--wings');
   assert.equal(wings.status, 1);
   assert.match(wings.stderr, /Unknown option --wings\n\nUsage: dispatchdev new feature/);

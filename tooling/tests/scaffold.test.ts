@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as prettier from 'prettier';
 import { planCollector } from '../scaffold/new-collector.js';
+import { planIntegration } from '../scaffold/new-integration.js';
 import { planAdd } from '../scaffold/add.js';
 import { planFeature, withPreset } from '../scaffold/new-feature.js';
 import { planSlot } from '../scaffold/new-slot.js';
@@ -1152,4 +1153,42 @@ test('a preset stands for its options, and --tabs, --connection and --people own
   assert.match(people, /pub const SOURCE: Source = Source::new\(&SourceInfo \{\s*id: "desk",/);
   assert.match(people, /^\s+SOURCE,$/m);
   assert.doesNotMatch(file(source, 'features/desk/Cargo.toml'), /\.\.\/\.\.\/collectors\//);
+});
+
+test('new integration writes one in a folder of its own, listed where its owner lists them', async () => {
+  const own = (await planIntegration(root, ['post_reminders', '--hears', 'message'])).plan;
+  assert(own.files.has('features/slack/integrations/post_reminders/api.rs'));
+  assert.match(changed(own, 'features/slack/integrations/mod.rs'), /&post_reminders::OWN/);
+  assert.match(
+    changed(own, 'features/slack/feature.rs'),
+    /integrations::post_reminders::INTEGRATION,/,
+  );
+  assert.match(
+    changed(own, 'features/slack/tests/api/routes.txt'),
+    /^GET \/api\/dsp\/slack\/workspaces\/\{team\}\/post-reminders Dsp\("slack\.manage"\) Read$/m,
+  );
+  // Another feature's is its declaration and its card, in its own integrations/.
+  const other = (await planIntegration(root, ['notes', '--to', 'uniforms'])).plan;
+  assert.match(file(other, 'features/uniforms/integrations/notes/mod.rs'), /"uniforms\.notes"/);
+  const manifest = changed(other, 'features/uniforms/feature.rs');
+  assert.match(manifest, /^mod integrations;$/m);
+  assert.match(manifest, /integrations: &\[integrations::notes::INTEGRATION\],/);
+  // It works through Slack, which its feature declares and its crate lists, as the registry
+  // and the dependency rule hold them to.
+  assert.match(manifest, /depends_on: &\["slack"\],/);
+  assert.match(
+    changed(other, 'features/uniforms/Cargo.toml'),
+    /^dispatch-slack = \{ path = "\.\.\/slack" \}$/m,
+  );
+  // Its tests install it with Slack, as the registry wants each dependency installed.
+  assert.match(
+    changed(other, 'features/uniforms/tests/backend/storage.rs'),
+    /install\(&\[[^\]]*\], &\[[^\]]*&dispatch_slack::FEATURE\]/,
+  );
+  assert.match(
+    changed(other, 'features/uniforms/frontend/feature.ts'),
+    /connectionIntegrations: \[notes\]/,
+  );
+  await assert.rejects(planIntegration(root, ['notes', '--to', 'nowhere']), /--to names a feature/);
+  await assert.rejects(planIntegration(root, ['notes', '--hears', 'File Shared']), /--hears names/);
 });

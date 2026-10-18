@@ -342,7 +342,9 @@ pub fn refresh(refresh: &str) -> Result<Tokens> {
 }
 /// Slack's answer to a call with `args`: the workspace for `team.info`; its members, on one
 /// page, for `users.list`; the channels the bot sees, joins, leaves or is asked of for
-/// `conversations.*`; a file, or a channel's files, for `files.*`; and `ok` to anything else.
+/// `conversations.*`; a file, or a channel's files, for `files.*`; `ok` to publishing a Home
+/// tab; and an integration's own answer to a method only it calls. Any other method is a
+/// mistake: answering it would hide a call no test or preview tried.
 pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
     let team = workspace(token, "fixture-access:")?;
     let asked = args["channel"].as_str().unwrap_or("");
@@ -399,7 +401,24 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
                 .collect();
             json!({"ok": true, "files": listed, "paging": {"pages": 1}})
         }
-        _ => json!({"ok": true}),
+        "views.publish" => json!({"ok": true}),
+        _ => {
+            // An integration's own answer, whichever feature's it is.
+            for (_, integration) in super::integrations::declared() {
+                if let Some(answer) = integration
+                    .fixture
+                    .and_then(|fixture| fixture(team, method, args))
+                {
+                    return answer;
+                }
+            }
+            dispatch_core::foundation::observability::event(
+                "error",
+                "slack.fixture_unanswered",
+                json!({"method": method}),
+            );
+            return Err(Error::new("slack_fixture_unanswered", 500));
+        }
     })
 }
 
