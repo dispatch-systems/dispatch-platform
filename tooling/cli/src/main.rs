@@ -209,6 +209,14 @@ const COMMANDS: &[Spec] = &[
     )
     .passed(),
     spec(
+        "add",
+        &["add <piece> --to <feature>", "    [--dry-run] [--json]"],
+        "A piece new feature writes, added to a feature that exists: page, tab-of <feature>, \
+         settings, api or people <source>. Its slot entries, fields and permissions join the \
+         feature's; what it can't merge it names. dispatchdev add lists the pieces.",
+    )
+    .passed(),
+    spec(
         "generate",
         &["generate [--json]"],
         "Write everything generated from what the owners declare: the app's and the MCP's \
@@ -259,7 +267,7 @@ const SECTIONS: &[(&str, &[&str])] = &[
     ),
     (
         "Making things, and reading what the product has:",
-        &["new", "generate", "list", "explain", "doctor"],
+        &["new", "add", "generate", "list", "explain", "doctor"],
     ),
     ("", &["build", "help"]),
 ];
@@ -280,8 +288,8 @@ fn help() -> String {
     }
     lines.push(String::new());
     lines.push(
-        "test, check, build, new, generate, list, explain and doctor work on the checkout the\n\
-         current directory is in, or on --root <directory>. dispatchdev <command> --help shows one."
+        "test, check, build, new, add, generate, list, explain and doctor work on the checkout\n\
+         the current directory is in, or on --root <directory>. dispatchdev <command> --help shows one."
             .to_owned(),
     );
     lines.join("\n")

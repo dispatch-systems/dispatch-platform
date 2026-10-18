@@ -17,6 +17,7 @@ pub fn writes(command: &str, args: &[String]) -> bool {
     }
     match command {
         "new" => !asks("--dry-run") && args.iter().filter(|arg| !arg.starts_with('-')).count() >= 2,
+        "add" => !asks("--dry-run") && !args.is_empty(),
         "generate" => true,
         _ => false,
     }
@@ -56,11 +57,14 @@ mod tests {
         };
         assert!(writes("new", &args("feature parking --page")));
         assert!(writes("generate", &args("--json")));
+        assert!(writes("add", &args("settings --to uniforms")));
         for (command, line) in [
             ("new", ""),
             ("new", "feature"),
             ("new", "feature parking --dry-run"),
             ("new", "feature parking --help"),
+            ("add", "settings --to uniforms --dry-run"),
+            ("add", ""),
             ("generate", "--help"),
             ("list", "features"),
             ("explain", "slack"),
