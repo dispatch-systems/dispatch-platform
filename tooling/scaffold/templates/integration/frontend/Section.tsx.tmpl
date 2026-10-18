@@ -1,0 +1,14 @@
+import type { ConnectionSectionContext } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+import { DataState } from '{{toRoot}}core/shell/frontend/ui/index.js';
+import { use{{pascal}} } from './client.js';
+
+/** {{label}}'s section of a workspace's settings. */
+export function {{pascal}}Section({ account: team }: ConnectionSectionContext) {
+  const state = use{{pascal}}(team);
+  return (
+    <DataState data={state.data} error={state.error} retry={state.refresh}>
+      {/* TODO(scaffold): what its section shows of it, as (state) => … */}
+      {() => null}
+    </DataState>
+  );
+}

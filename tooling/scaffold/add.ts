@@ -51,7 +51,7 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
 const FLAGS = ['dry-run'];
 const OPTIONS = ['to', 'table', 'icon', 'out', 'root'];
 /** The manifest's fields a piece adds: lists join the feature's, others are added whole. */
-const FIELDS = ['permissions', 'routes', 'people', 'depends_on'];
+const FIELDS = ['permissions', 'routes', 'people', 'depends_on', 'integrations'];
 
 /**
  * The index just past the comment or string starting at `at`, or `at` if none does. A `'` opens
@@ -412,7 +412,7 @@ export function mergeTypeScript(target: string, piece: string, pascal: string) {
 }
 
 /** Rust source as rustfmt leaves it, read from its input so it follows no `mod`. */
-function rustfmt(source: string) {
+export function rustfmt(source: string) {
   const formatted = spawnSync('rustfmt', ['--edition', '2024', '--emit', 'stdout', '-q'], {
     cwd: repositoryRoot,
     input: source,

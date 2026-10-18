@@ -1,0 +1,50 @@
+//! {{label}}, {{#own}}one of Slack's own integrations{{/own}}{{^own}}{{ownerLabel}}'s integration through Slack{{/own}}: TODO(scaffold): what it does in a DSP's
+//! workspaces once someone who manages Slack switches it on there, in a sentence or two.
+{{#own}}
+pub(crate) mod api;
+pub(crate) mod types;
+{{/own}}
+
+{{#heard}}
+use dispatch_core::{
+    State,
+    manifest::{
+        Upkeep,
+        integrations::{Heard, Integration, integration},
+    },
+};
+use std::sync::Arc;
+{{/heard}}
+{{^heard}}
+use dispatch_core::manifest::integrations::{Integration, integration};
+{{/heard}}
+
+/// Its ID, as each workspace keeps it switched on. Permanent once shipped.
+pub const ID: &str = "{{owner}}.{{name}}";
+/// What it is to Slack: the permissions it needs of Slack, and the events it's told of.
+pub const INTEGRATION: Integration = Integration {
+    needs: &[{{needs}}],
+    hears: &[{{hears}}],
+{{#heard}}
+    heard: Some(heard),
+{{/heard}}
+    ..integration("slack", ID, "{{label}}")
+};
+{{#own}}
+/// Its endpoints, and fixture mode's answers: Slack's fixture answers each method it calls.
+pub(crate) const OWN: super::Own = super::Own {
+    routes: api::routes,
+    fixture: super::no_fixture,
+};
+{{/own}}
+{{#heard}}
+
+/// What it does with each event it's told of, while it's on in the workspace and its feature
+/// is on for the DSP{{^own}}: `dispatch_slack::kit::Bot` acts in the workspace{{/own}}.
+pub fn heard(state: Arc<State>, heard: Heard) -> Upkeep {
+    Box::pin(async move {
+        // TODO(scaffold): handle each event it hears of.
+        let _ = (state, heard);
+    })
+}
+{{/heard}}

@@ -109,6 +109,10 @@ mod retryable_codes;
 #[path = "../tests/backend/schedules.rs"]
 mod schedule_runs;
 #[cfg(test)]
+#[cfg(feature = "slack")]
+#[path = "../tests/backend/slack_app.rs"]
+mod slack_app;
+#[cfg(test)]
 #[path = "../tests/backend/schema.rs"]
 mod schema;
 #[cfg(test)]

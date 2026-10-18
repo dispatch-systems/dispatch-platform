@@ -5,6 +5,7 @@ import { generate, report } from './generate.js';
 import { LISTS, explain, fields, table } from './inventory.js';
 import { generator as collector } from './new-collector.js';
 import { generator as feature } from './new-feature.js';
+import { generator as integration } from './new-integration.js';
 import { generator as slot } from './new-slot.js';
 import { generator as tool } from './new-tool.js';
 import {
@@ -23,7 +24,7 @@ import {
 // --json, which prints its answer as JSON on stdout and its progress on stderr.
 
 /** Everything `dispatchdev new` makes, in the order it lists them. */
-export const KINDS: Generator[] = [feature, collector, tool, slot];
+export const KINDS: Generator[] = [feature, collector, integration, tool, slot];
 /** What `new` says last once it has generated too, in place of the notes naming generate. */
 const AGAIN = 'After changing what it declares, `dispatchdev generate` writes what follows again.';
 
