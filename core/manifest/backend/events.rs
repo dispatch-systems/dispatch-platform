@@ -77,26 +77,26 @@ impl Event for PeopleChanged {
 /// Tells every feature on for the DSP that hears `event` of it, one at a time, each in the
 /// registry's order, once the one before has done its work.
 pub async fn publish<E: Event>(state: &Arc<State>, dsp: &str, event: E) {
-    let is_on = |feature: &'static Feature| {
-        let (state, at) = (state.clone(), dsp.to_owned());
-        async move {
-            // Every DSP has a mandatory feature, so there's no switch to read.
-            if feature.switch.mandatory {
-                return true;
-            }
-            let switch = feature.switch.id;
-            let read = state.read(move |db| db.feature_enabled(&at, switch)).await;
-            read.unwrap_or_else(|error| {
-                observability::event(
-                    "error",
-                    "events.unheard",
-                    json!({"event":E::NAME,"feature":feature.name,"error":error.code}),
-                );
-                false
-            })
-        }
-    };
+    let is_on = |feature| on_for(state, dsp, feature, E::NAME);
     deliver(registry().features, state, dsp, &event, is_on).await;
+}
+
+/// Whether `feature` is on for the DSP as the event `event` reaches it. A mandatory one is,
+/// with no switch to read; one whose switch can't be read isn't, logged as `events.unheard`.
+async fn on_for(state: &Arc<State>, dsp: &str, feature: &'static Feature, event: &str) -> bool {
+    if feature.switch.mandatory {
+        return true;
+    }
+    let (switch, at) = (feature.switch.id, dsp.to_owned());
+    let read = state.read(move |db| db.feature_enabled(&at, switch)).await;
+    read.unwrap_or_else(|error| {
+        observability::event(
+            "error",
+            "events.unheard",
+            json!({"event":event,"feature":feature.name,"error":error.code}),
+        );
+        false
+    })
 }
 
 /// Tells each of `features` that hears `event` of it, in their order, while `is_on` says it's
