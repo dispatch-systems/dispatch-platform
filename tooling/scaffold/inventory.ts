@@ -37,6 +37,12 @@ export type Row = Record<string, string | number | boolean | string[] | null>;
 
 const read = (root: string, file: string) => fs.readFileSync(path.join(root, file), 'utf8');
 const json = <T>(root: string, file: string): T => JSON.parse(read(root, file)) as T;
+/** Where a contract's crate is, from its type's path: a feature's contract crate, or core. */
+const contractDir = (contract: string) => {
+  const crate = contract.split('::')[0]!;
+  const feature = /^dispatch_(\w+)_contract$/.exec(crate)?.[1];
+  return feature ? `features/${feature}/contract` : crate === 'dispatch_core' ? 'core' : crate;
+};
 const features = (root: string) => json<Record<string, Feature>>(root, FEATURES);
 const pages = (root: string) => {
   const catalog = json<{ pages: Page[]; subfeatures: Page[] }>(
@@ -117,14 +123,15 @@ export const LISTS: Record<string, { about: string; rows: (root: string) => Row[
     about: 'what each feature exposes for others to use, and where its contract is',
     rows: (root) =>
       Object.entries(features(root)).flatMap(([name, feature]) =>
-        ((feature.slots.exposes ?? []) as { name: string; about: string }[]).map((exposed) => ({
-          name: exposed.name,
-          feature: name,
-          contract: fs.existsSync(path.join(root, 'features', name, 'contract'))
-            ? `features/${name}/contract`
-            : 'core',
-          about: exposed.about,
-        })),
+        ((feature.slots.exposes ?? []) as { name: string; contract: string; about: string }[]).map(
+          (exposed) => ({
+            name: exposed.name,
+            feature: name,
+            contract: exposed.contract,
+            in: contractDir(exposed.contract),
+            about: exposed.about,
+          }),
+        ),
       ),
   },
   integrations: {

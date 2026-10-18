@@ -29,8 +29,8 @@ const AUDIT_SUBJECTS: &str = "core/tenancy/api/generated/audit-subjects.ts";
 const PEOPLE_DATA: &str = "core/manifest/api/generated/people-data.ts";
 /// The features whose data names people, which Driver Match's tab shows only while one is on.
 const PEOPLE_FEATURES: &str = "core/manifest/api/generated/people-features.ts";
-/// The services features offer, each with the feature offering it, for a page using one to ask
-/// whether a DSP has it.
+/// What features expose that a page shows, each with the feature offering it, for a page using
+/// one to ask whether a DSP has it.
 const EXPOSES: &str = "core/manifest/api/generated/exposes.ts";
 
 fn bindings(root: &Path) -> BTreeMap<PathBuf, String> {
@@ -522,7 +522,11 @@ fn feature_map(root: &Path) -> String {
                 .map(|route| format!("{} {}", route.method, route.path))
                 .collect::<Vec<_>>(),
             "exposes": feature.exposes.iter()
-                .map(|exposed| json!({"name": exposed.name, "about": exposed.about}))
+                .map(|exposed| json!({
+                    "name": exposed.name,
+                    "contract": (exposed.contract)().trim_start_matches("dyn "),
+                    "about": exposed.about,
+                }))
                 .collect::<Vec<_>>(),
             "settings": feature.settings,
         });

@@ -25,9 +25,9 @@ pub struct Exposed {
     pub name: &'static str,
     /// What it offers, in a sentence.
     pub about: &'static str,
-    /// The contract's type, as `&'static dyn Contract`: a feature asks for it by this.
-    pub contract: fn() -> TypeId,
-    /// The offering, a `&'static &'static dyn Contract`.
+    /// The contract's type, as Rust names it: `dyn dispatch_documents_contract::Files`.
+    pub contract: fn() -> &'static str,
+    /// The offering, a `&'static dyn Contract`, by whose type a feature asks for it.
     pub offered: &'static (dyn Any + Send + Sync),
 }
 
@@ -39,7 +39,7 @@ macro_rules! expose {
         $crate::manifest::exposes::Exposed {
             name: $name,
             about: $about,
-            contract: ::std::any::TypeId::of::<&'static $contract>,
+            contract: ::std::any::type_name::<$contract>,
             offered: {
                 static OFFERED: &'static $contract = $offered;
                 &OFFERED
@@ -56,8 +56,7 @@ impl Registry {
             feature
                 .exposes
                 .iter()
-                .find(|exposed| (exposed.contract)() == TypeId::of::<&'static C>())
-                .and_then(|exposed| exposed.offered.downcast_ref::<&'static C>())
+                .find_map(|exposed| exposed.offered.downcast_ref::<&'static C>())
                 .map(|offered| (*feature, *offered))
         })
     }
@@ -82,7 +81,7 @@ pub(super) fn check(features: &[&'static Feature]) {
     for feature in features {
         for exposed in feature.exposes {
             contracts
-                .entry((exposed.contract)())
+                .entry((*exposed.offered).type_id())
                 .or_default()
                 .push(feature.name);
             names.entry(exposed.name).or_default().push(feature.name);

@@ -62,6 +62,21 @@ test("each feature's and collector's Cargo.toml lists exactly what its manifest 
   holds('dependencies', 'cargo', disagree);
 });
 
+test("a contract's Cargo.toml lists core alone, and its feature's lists the contract", () => {
+  const wrong: string[] = [];
+  for (const dir of new Set(files.flatMap((file) => contract(file) ?? []))) {
+    const crate = readCrate(`${dir}/Cargo.toml`);
+    for (const dev of [false, true])
+      for (const unit of workspaceDependencies(crate, dev))
+        if (unit !== 'core' && unit !== dir)
+          wrong.push(`${dir}/Cargo.toml${dev ? "'s dev-dependencies" : ''} lists ${unit}`);
+    const feature = dir.replace(/\/contract$/, '');
+    if (!workspaceDependencies(readCrate(`${feature}/Cargo.toml`), false).includes(dir))
+      wrong.push(`${feature}/Cargo.toml lacks its own contract, ${dir}`);
+  }
+  assert.deepEqual(wrong, []);
+});
+
 test("core's Cargo.toml lists none of our crates", () => {
   const listed = isFile('core/Cargo.toml')
     ? [true, false].flatMap((dev) => workspaceDependencies(readCrate('core/Cargo.toml'), dev))
@@ -123,13 +138,15 @@ test("each owner's Rust names only core, itself and what it declares", () => {
   for (const file of rust().mounts.keys()) {
     const owner = ownerOf(file);
     if (!owner || owner.layer === 'app') continue;
-    const may = allowed(owner);
+    // A contract stays when its feature is left out, so it names core and itself alone.
+    const own = contract(file);
+    const may = own ? new Set(['core', own]) : allowed(owner);
     for (const reference of rust().references(file)) {
       const target = unitOfFile(reference.to);
       // Named by the part or owner that does it, its tests apart: different steps end them.
       const from = inTest(file, reference.offset)
-        ? `${owner.dir}'s tests name`
-        : `${owner.dir} names`;
+        ? `${own ?? owner.dir}'s tests name`
+        : `${own ?? owner.dir} names`;
       if (!may.has(target)) reaches.add(`${from} ${target}`);
     }
   }

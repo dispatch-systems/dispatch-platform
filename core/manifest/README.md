@@ -181,21 +181,16 @@ exposes: &[dispatch_core::expose!(
 One feature at most offers each contract and each name, as the registry checks. A feature using
 one asks for it for a DSP, `exposes::for_dsp::<dyn Files>(db, dsp)` (or the contract crate's own
 `for_dsp`), which answers only while the feature offering it is on there; `Registry::exposed`
-finds it in the build. `dispatchdev list exposes` lists each, with its feature and contract.
-
-- `files` (Documents, `features/documents/contract/`): somewhere to keep a DSP's files in
-  folders: its name and the permission that shows its folders, the largest file it takes, why
-  it can't keep files yet, browsing its folders, a folder by ID, making a folder, saving a file
-  streamed as it arrives (`Upload::streamed`) with who it came from, a member or someone known
-  only by name, and writing a page of HTML as a document members open and edit, then over it as
-  the page changes.
-- `directory` (Driver Match, core's `people/directory.rs`): who an ID is, which the People
-  section above describes.
+finds it in the build. `dispatchdev list exposes` lists each, with its feature, its contract and
+where that is. Core's own is `directory` (`people/directory.rs`), who an ID is, which the People
+section above describes.
 
 What's exposed that a page shows is written to TypeScript too (`api/generated/exposes.ts`):
 `offered(name, view)` in the frontend's runtime (`exposes.ts`) answers a page using one whether
 the DSP has it, what it's called and the permission that shows what it keeps, without naming the
-feature offering it.
+feature offering it. A new one a page shows takes an entry in `exposes()` in
+`app/tests/backend/export.rs`, which names its contract, so the app depends on that contract's
+crate, and its name in `ExposedName` in `exposes.ts`.
 
 ## Frontend slots
 

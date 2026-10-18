@@ -144,6 +144,7 @@
       "exposes": [
         {
           "name": "files",
+          "contract": "dispatch_documents_contract::Files",
           "about": "Somewhere to keep a DSP's files, in folders, in its Google Drive."
         }
       ],
@@ -224,6 +225,7 @@
       "exposes": [
         {
           "name": "directory",
+          "contract": "dispatch_core::manifest::people::directory::Directory",
           "about": "Who an ID is: everyone the DSP's features name, told apart."
         }
       ],
