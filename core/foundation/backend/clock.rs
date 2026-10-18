@@ -10,10 +10,14 @@ static PINNED: RwLock<Option<NaiveDate>> = RwLock::new(None);
 /// Today in `zone`, or the day the server pins, so a test collects and seeds the same days
 /// whatever the date.
 pub fn today(zone: Tz) -> NaiveDate {
-    let pinned = *PINNED.read().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let pinned = *PINNED
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     pinned.unwrap_or_else(|| Utc::now().with_timezone(&zone).date_naive())
 }
 
 pub(crate) fn pin(day: Option<NaiveDate>) {
-    *PINNED.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = day;
+    *PINNED
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = day;
 }

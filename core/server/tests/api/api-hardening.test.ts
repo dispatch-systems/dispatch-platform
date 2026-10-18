@@ -128,5 +128,8 @@ test('production rejects conflicting modes and unsafe defaults before opening st
     /invalid_provider_mode/,
   );
   assert.match(status({ ...f.env, DISPATCH_TRUSTED_PROXY: 'all' }).stderr, /invalid_trusted_proxy/);
-  assert.match(status({ ...f.env, DISPATCH_FIXTURE_TODAY: '14 Oct' }).stderr, /invalid_fixture_today/);
+  assert.match(
+    status({ ...f.env, DISPATCH_FIXTURE_TODAY: '14 Oct' }).stderr,
+    /invalid_fixture_today/,
+  );
 });
