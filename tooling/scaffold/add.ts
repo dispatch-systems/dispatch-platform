@@ -5,7 +5,9 @@ import {
   exists,
   features,
   format,
+  names,
   formatRust,
+  collectors,
   files,
   pageOf,
   peopleSources,
@@ -225,7 +227,22 @@ export function mergeRust(
   for (const field of entries(piece, struct(piece)).entries) {
     if (!FIELDS.includes(field.name)) continue;
     const have = entries(text, struct(text)).entries.find((each) => each.name === field.name);
-    if (!have && field.name === 'permissions' && !uses.length) continue;
+    if (!have && field.name === 'permissions') {
+      const used = items(field.text).filter((item) =>
+        uses.some((use) => id(item).endsWith(`.${use}`)),
+      );
+      if (!used.length) continue;
+      const known = new Set(used.map(id));
+      const list = used.map((item) =>
+        item.replace(/\s*\.implies\(&\[([^\]]*)\]\)/, (_, implied: string) => {
+          const kept = items(`[${implied}]`).filter((each) => known.has(id(each)));
+          return kept.length ? `.implies(&[${kept.join(', ')}])` : '';
+        }),
+      );
+      const at = text.search(/\n\s*\.\.feature\("/);
+      text = `${text.slice(0, at)}\n    permissions: &[${list.join(', ')}],${text.slice(at)}`;
+      continue;
+    }
     if (!have) {
       const at = text.search(/\n\s*\.\.feature\("/);
       text = `${text.slice(0, at)}\n${field.text.replace(/^\n+/, '').trimEnd()}${text.slice(at)}`;
@@ -255,7 +272,13 @@ export function mergeRust(
   for (const line of statements(piece, /^(pub(\([^)]*\))? )?mod \w+;/)) {
     const module = /mod (\w+);/.exec(line)![1];
     if (new RegExp(`^(pub(\\([^)]*\\))? )?mod ${module};`, 'm').test(text)) continue;
-    text = placed(text, line, /^(?:pub(?:\([^)]*\))? )?mod \w+;$/gm, /^(pub )?use /m);
+    // Among its own modules, never after one an attribute marks, as its test module.
+    text = placed(
+      text,
+      line,
+      /^(?<!#\[[^\n]*\n)(?:pub(?:\([^)]*\))? )?mod \w+;$/gm,
+      /^(pub )?use /m,
+    );
   }
   for (const line of statements(piece, /^pub use /)) {
     // A re-export of what the piece writes, never of what it leaves out.
@@ -326,7 +349,20 @@ function mergeImports(text: string, piece: string) {
   return text;
 }
 /** The feature's frontend manifest with what the piece's adds. */
-export function mergeTypeScript(target: string, piece: string) {
+export function mergeTypeScript(target: string, piece: string, pascal: string) {
+  // A constant of the piece's that the manifest has under the same name, differently, takes
+  // the feature's name: loadSettings becomes loadTimecardSettings.
+  for (const [statement, name] of piece.matchAll(
+    /^const (\w+) =[\s\S]*?;\n(?=\n|const |export )/gm,
+  )) {
+    const theirs = new RegExp(`^const ${name} =[\\s\\S]*?;\\n`, 'm').exec(target)?.[0];
+    if (!theirs || theirs.trim() === statement.trim()) continue;
+    const renamed = name!.replace(/^load/, `load${pascal}`);
+    piece = piece.replace(
+      new RegExp(`\\b${name}\\b`, 'g'),
+      renamed === name ? `${name}${pascal}` : renamed,
+    );
+  }
   let text = mergeImports(target, piece);
   const manifest = (source: string) =>
     source.indexOf('{', source.indexOf('export const feature: FrontendFeature'));
@@ -434,16 +470,39 @@ export async function planAdd(root: string, argv: string[]) {
     throw new UsageError('people reads who a table names: add --table <table>');
   const manifest = read(root, `${dir}/feature.rs`);
   // A permission the piece uses that the feature retired can't come back.
+  const retiredAt = manifest.indexOf('retired_identifiers: &[');
+  const retired =
+    retiredAt < 0 ? '' : manifest.slice(retiredAt, closing(manifest, retiredAt + 22) + 1);
   for (const use of known.uses) {
     const permission = `${name}.${use}`;
-    if (
-      new RegExp(`retired_identifiers:[^;]*\\("${permission.replace('.', '\\.')}"`).test(manifest)
-    )
+    if (retired.includes(`("${permission}"`))
       throw new UsageError(
         `${name} retired ${permission}, which the ${piece} would use: add it by hand`,
       );
   }
+  if (piece === 'tab-of' && value === name)
+    throw new UsageError(`A tab of ${name}'s own page is one of its own tabs: add it there`);
+  // Its people's table, by the database the feature keeps it in.
+  const tables =
+    (
+      JSON.parse(read(root, 'app/generated/features.json')) as Record<
+        string,
+        { tables: Record<string, string[]> }
+      >
+    )[name]?.tables ?? {};
+  const table = args.options.get('table');
+  const database = Object.entries(tables).find(([, list]) => table && list.includes(table))?.[0];
+  if (
+    piece === 'people' &&
+    (!database || (database !== 'dsp' && !collectors(root).includes(database)))
+  )
+    throw new UsageError(
+      database
+        ? `${table} is in ${name}'s own database: connect its people by hand`
+        : `--table names one of ${name}'s tables: ${Object.values(tables).flat().join(', ') || 'it has none'}`,
+    );
   const label = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
+  const { pascal } = names(name);
   // The piece as the feature's templates write it, for the feature as it is.
   const { plan: rendered } = await renderFeature(
     root,
@@ -453,7 +512,7 @@ export async function planAdd(root: string, argv: string[]) {
       ...(/\bswitch:\s*mandatory\(/.test(manifest) ? ['--mandatory'] : []),
       `--${piece}`,
       ...(value ? [value] : []),
-      ...(piece === 'people' ? ['--tables', 'dsp', '--table', args.options.get('table')!] : []),
+      ...(piece === 'people' ? ['--tables', database!, '--table', table!] : []),
       ...(args.options.has('icon') ? ['--icon', args.options.get('icon')!] : []),
     ],
     true,
@@ -469,6 +528,15 @@ export async function planAdd(root: string, argv: string[]) {
   );
   const wrote = (file: string) => exists(root, file) || wanted.some(([each]) => each === file);
   const fresh = new Set(wanted.map(([file]) => file).filter((file) => !exists(root, file)));
+  // What only the piece writes, as its screen or its people, is new: one there is the
+  // feature's own, which the piece won't wire in its place.
+  const merges =
+    /\/(feature\.rs|frontend\/feature\.ts|Cargo\.toml|mod\.rs|routes\.txt|README\.md|frontend\/index\.ts|frontend\/platform-slots\.ts|[^/]+\.spec\.ts)$/;
+  const there = wanted
+    .map(([file]) => file)
+    .filter((file) => !fresh.has(file) && !merges.test(file));
+  if (there.length)
+    throw new UsageError(`${name} has ${there.join(', ')} already: the ${piece} would write it`);
   for (const [file, content] of wanted) {
     if (!exists(root, file)) {
       plan.files.set(file, content);
@@ -480,7 +548,8 @@ export async function planAdd(root: string, argv: string[]) {
       merged = mergeRust(current, content, left, known.uses, (module) =>
         fresh.has(`${dir}/${module}.rs`),
       );
-    else if (file === `${dir}/frontend/feature.ts`) merged = mergeTypeScript(current, content);
+    else if (file === `${dir}/frontend/feature.ts`)
+      merged = mergeTypeScript(current, content, pascal);
     else if (file.endsWith('/Cargo.toml')) merged = mergeToml(current, content);
     else if (/\/mod\.rs$/.test(file))
       // Its modules whose files are there or written now.
@@ -504,7 +573,7 @@ export async function planAdd(root: string, argv: string[]) {
         .split('\n')
         .filter((line) => line.startsWith(`- **${known.readme}:**`) && !current.includes(line))
         .reduce((text, line) => {
-          const last = [...text.matchAll(/^- \*\*[^*]+:\*\*.*$/gm)].at(-1);
+          const last = [...text.matchAll(/^- \*\*[^*]+:\*\*.*(?:\n {2,}\S.*)*$/gm)].at(-1);
           if (!last) return `${text.trimEnd()}\n\n${line}\n`;
           const at = last.index! + last[0].length;
           return `${text.slice(0, at)}\n${line}${text.slice(at)}`;
@@ -518,10 +587,7 @@ export async function planAdd(root: string, argv: string[]) {
     else if (file.endsWith('/platform-slots.ts')) continue;
     else if (file.endsWith('.spec.ts'))
       merged = `${mergeImports(current, content).trimEnd()}\n${content.slice(content.search(/\ntest\(/)).trimEnd()}\n`;
-    else {
-      left.push(`${file} is there already, so the piece's own isn't written`);
-      continue;
-    }
+    else continue;
     if (merged !== current) plan.changes.set(file, await format(file, merged));
   }
   // A collector its people come from is one its tests install it with, as the registry wants
@@ -531,10 +597,13 @@ export async function planAdd(root: string, argv: string[]) {
     for (const file of files(root, dir, /\.rs$/)) {
       const current = plan.changes.get(file) ?? read(root, file);
       const collector = `&dispatch_${site}::COLLECTOR`;
-      const merged = current.replace(/testing::install\(&\[([^\]]*)\]/g, (call, list: string) =>
-        list.includes(collector)
-          ? call
-          : `testing::install(&[${[...items(`[${list}]`), collector].join(', ')}]`,
+      const installed = new RegExp(`\\b(dispatch_)?${site}::COLLECTOR\\b`);
+      const merged = current.replace(
+        /\b(\w+)::install\(\s*&\[([^\]]*)\]/g,
+        (call, helper: string, list: string) =>
+          installed.test(list)
+            ? call
+            : `${helper}::install(&[${[...items(`[${list}]`), collector].join(', ')}]`,
       );
       if (merged !== current) plan.changes.set(file, merged);
     }

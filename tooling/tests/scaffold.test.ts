@@ -1014,21 +1014,60 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   // piece without a screen writes no browser test.
   const drive = await add('people', 'amazon', '--to', 'documents', '--table', 'documents_files');
   assert.equal(changed(drive, 'features/documents/feature.rs').match(/\bSql\b[,}]/g)?.length, 1);
-  const punches = await add('people', 'amazon', '--to', 'timecard', '--table', 'timecard_punches');
+  const punches = await add('people', 'paycom', '--to', 'timecard', '--table', 'employees');
   assert.doesNotMatch(
     changed(punches, 'features/timecard/backend/mod.rs'),
     /pub\(crate\) mod storage;/,
   );
   assert(![...punches.files.keys()].some((file) => file.includes('/tests/browser/')));
+  // Its people read the table where the feature keeps it: Timecard's employees in Paycom's.
+  assert.match(
+    file(punches, 'features/timecard/backend/people.rs'),
+    /store\.collector\(dsp, dispatch_paycom::PROVIDER\)/,
+  );
+  // A constant the manifest has under the same name takes the feature's: Timecard's
+  // loadSettings loads its Paycom settings page.
+  const timecard = changed(
+    await add('settings', '--to', 'timecard'),
+    'features/timecard/frontend/feature.ts',
+  );
+  assert.match(
+    timecard,
+    /const loadTimecardSettings = \(\) => import\('\.\/settings\/TimecardSettings\.js'\);/,
+  );
+  assert.match(timecard, /load: loadTimecardSettings,/);
+  // A README's line goes after its last line of what the feature declares, however long.
+  assert.match(
+    changed(settings, 'features/uniforms/README.md'),
+    /deletes none of them\.\n- \*\*Settings:\*\*/,
+  );
+  // A permission named in another's retired list is not the feature's retired one.
+  assert(
+    !(await add('page', '--to', 'weekly_scorecard')).changes.has(
+      'features/weekly_scorecard/feature.rs',
+    ),
+  );
+  // A permissions field it lacks holds only what the piece uses.
+  assert.doesNotMatch(
+    changed(await add('settings', '--to', 'home'), 'features/home/feature.rs'),
+    /home\.view/,
+  );
 
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
-  await assert.rejects(
-    add('settings', '--to', 'driver_match'),
-    /settingsTabs holds driver-match already/,
-  );
+  await assert.rejects(add('settings', '--to', 'driver_match'), /DriverMatchSettings\.tsx already/);
   await assert.rejects(add('settings', '--to', 'documents'), /documents retired documents\.manage/);
   await assert.rejects(add('page', '--to', 'documents'), /documents has a page already/);
   await assert.rejects(add('people', 'paycom', '--to', 'uniforms'), /add --table/);
+  await assert.rejects(
+    add('people', 'paycom', '--to', 'uniforms', '--table', 'nowhere'),
+    /--table names one of uniforms's tables/,
+  );
+  await assert.rejects(
+    add('people', 'paycom', '--to', 'dvic', '--table', 'dvic_runs'),
+    /in dvic's own database/,
+  );
+  await assert.rejects(add('settings', '--to', 'routes'), /RoutesSettings\.tsx already/);
+  await assert.rejects(add('tab-of', 'dvic', '--to', 'dvic'), /own tabs/);
   await assert.rejects(add('wings', '--to', 'uniforms'), /Name one piece/);
   await assert.rejects(add('settings', '--to', 'nowhere'), /--to names a feature/);
 });
