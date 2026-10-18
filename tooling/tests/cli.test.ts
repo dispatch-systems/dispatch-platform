@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { CHECKS, MARKER, described } from '../scaffold/doctor.js';
 import { duration, failure, report, writers } from '../scaffold/generate.js';
 import { LISTS, explain, fields, frontendSlots, table } from '../scaffold/inventory.js';
 import { repositoryRoot as root } from '../scaffold/scaffold.js';
@@ -102,4 +104,22 @@ test('list and explain read what the build lists', () => {
     'name  uses\na     -\nlong  x, y',
   );
   assert.equal(fields({ name: 'a', uses: ['x'] }), 'name: a\nuses: x');
+});
+
+test('doctor names each file a generator left to write, and says what fixes it', () => {
+  const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-doctor-'));
+  try {
+    spawnSync('git', ['init', '-q'], { cwd: checkout });
+    fs.mkdirSync(path.join(checkout, 'features/desk'), { recursive: true });
+    fs.writeFileSync(path.join(checkout, 'features/desk/feature.rs'), `//! Desk: ${MARKER}: x\n`);
+    fs.writeFileSync(path.join(checkout, 'features/desk/README.md'), '# Desk\n');
+    const markers = CHECKS.find((check) => check.name === 'scaffold markers')!.run(checkout);
+    assert.deepEqual(markers.detail, ['features/desk/feature.rs']);
+    assert.match(
+      described([{ check: 'scaffold markers', ...markers }]),
+      /^FIX   scaffold markers: write what each .+ asks for\n {8}features\/desk\/feature\.rs$/,
+    );
+  } finally {
+    fs.rmSync(checkout, { recursive: true, force: true });
+  }
 });
