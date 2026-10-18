@@ -625,6 +625,23 @@ test('--reads writes a tool that needs a feature and reads what it exposes, neve
   const test = file(always, 'mcp/tests/backend/tools/directory_reader.rs');
   assert.doesNotMatch(test, /"driver_match", (true|false)/);
   assert.match(test, /db\.set_feature\(&dsp, "documents", true, &owner\)/);
+  // A part a manifest marks mandatory isn't switched either, while its feature is.
+  const dvic = path.join(copy, 'features/dvic/feature.rs');
+  const original = fs.readFileSync(dvic, 'utf8');
+  fs.writeFileSync(
+    dvic,
+    original.replace('tab("dvic.day", "Day")', 'tab("dvic.day", "Day").mandatory()'),
+  );
+  try {
+    const part = file(
+      (await planTool(copy, ['day_reader', '--features', 'dvic.day'])).plan,
+      'mcp/tests/backend/tools/day_reader.rs',
+    );
+    assert.match(part, /db\.set_feature\(&dsp, "dvic", true, &owner\)/);
+    assert.doesNotMatch(part, /"dvic\.day", (true|false)/);
+  } finally {
+    fs.writeFileSync(dvic, original);
+  }
 });
 
 test('a tool written into mcp/tools is listed by the wiring, and its name is then taken', async () => {

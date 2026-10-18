@@ -81,14 +81,23 @@ function switches(root: string) {
   }
   return found;
 }
-/** The switches every DSP has on, with no way to turn them off: mandatory features'. */
+/**
+ * The switches every DSP has on, with no way to turn them off: mandatory features', and the
+ * parts a manifest marks `.mandatory()`.
+ */
 function mandatorySwitches(root: string) {
   const found = new Set<string>();
-  for (const owner of features(root))
-    for (const match of read(root, `features/${owner}/feature.rs`).matchAll(
-      /\bmandatory\(\s*"([^"]+)"/g,
-    ))
-      found.add(match[1]!);
+  for (const owner of features(root)) {
+    const manifest = read(root, `features/${owner}/feature.rs`);
+    for (const match of manifest.matchAll(/\bmandatory\(\s*"([^"]+)"/g)) found.add(match[1]!);
+    // A part's declaration runs to the next part's, or the end of its list.
+    const parts = [...manifest.matchAll(/\b(?:tab|sub)\(\s*"([^"]+)"/g)];
+    parts.forEach((part, index) => {
+      const end = parts[index + 1]?.index ?? manifest.indexOf('],', part.index);
+      if (manifest.slice(part.index, end < 0 ? undefined : end).includes('.mandatory()'))
+        found.add(part[1]!);
+    });
+  }
   return found;
 }
 /** A comma-separated list of names, each one `pattern` takes, in the order given. */
@@ -192,8 +201,14 @@ export function toolValues(root: string, argv: string[]) {
   // What a test switches on, and off to see it refused: none of a mandatory feature's, which
   // every DSP has on.
   const mandatory = mandatorySwitches(root);
-  const switchable = needed.filter((id) => !mandatory.has(id));
-  const offFirst = switchable[0];
+  // Each feature, before its parts.
+  const toSwitch = [...new Set(needed.flatMap((id) => [id.split('.')[0]!, id]))].filter(
+    (id) => !mandatory.has(id),
+  );
+  // The first one's feature, or the part itself when its feature is mandatory.
+  const offFirst = needed
+    .map((id) => (mandatory.has(id.split('.')[0]!) ? id : id.split('.')[0]!))
+    .find((id) => !mandatory.has(id));
   const values: Values = {
     name,
     pascal: pascalOf(name),
@@ -204,23 +219,16 @@ export function toolValues(root: string, argv: string[]) {
     connection: scope === 'connection',
     features: needed.length > 0,
     featureList: needed.map((id) => `"${id}"`).join(', '),
-    switched: switchable.length > 0,
-    // Each feature switched on, before its parts.
-    switchOn: [...new Set(switchable.flatMap((id) => [id.split('.')[0]!, id]))]
-      .filter((id) => !mandatory.has(id))
+    switched: toSwitch.length > 0,
+    switchOn: toSwitch
       .map((id) => `    db.set_feature(&dsp, "${id}", true, &owner).unwrap();`)
       .join('\n'),
-    // The first feature it needs, or the part of a mandatory one.
-    firstFeature: !offFirst
-      ? ''
-      : mandatory.has(offFirst.split('.')[0]!)
-        ? offFirst
-        : offFirst.split('.')[0]!,
+    firstFeature: offFirst ?? '',
     actions: actions.length > 0,
     firstAction: actions[0] ?? '',
     changes: changes || changing.length > 0,
     reads: scope !== 'connection' && !changes && !changing.length,
-    refusals: changes || changing.length > 0 || switchable.length > 0,
+    refusals: changes || changing.length > 0 || toSwitch.length > 0,
     everyCall: changes,
     changingAction: changing[0] ?? '',
     reading: actions.find((action) => !changing.includes(action)) ?? '',
