@@ -251,6 +251,15 @@ pub trait SlackStore {
     /// Ends the DSP's install link, or the one with `hash` only: whether there was one.
     fn end_slack_link(&self, dsp: &str, hash: Option<&str>) -> Result<bool>;
 }
+/// The tables Slack declares in each DSP's database, which removing a workspace clears of it.
+fn workspace_tables() -> impl Iterator<Item = &'static str> {
+    crate::FEATURE
+        .tables
+        .iter()
+        .filter(|(database, _)| *database == "dsp")
+        .flat_map(|(_, tables)| tables.iter().copied())
+}
+
 impl SlackStore for Store {
     fn slack_workspaces(&self, dsp: &str) -> Result<Vec<Workspace>> {
         self.dsp(dsp)?.query_as(
@@ -422,13 +431,18 @@ impl SlackStore for Store {
         }
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            db.exec("DELETE FROM slack_members WHERE team_id=?", [team])?;
-            db.exec("DELETE FROM slack_integrations WHERE team_id=?", [team])?;
-            db.exec("DELETE FROM slack_import_links WHERE team_id=?", [team])?;
-            db.exec("DELETE FROM slack_imports WHERE team_id=?", [team])?;
-            db.exec("DELETE FROM slack_canvas_links WHERE team_id=?", [team])?;
-            db.exec("DELETE FROM slack_canvas_picks WHERE team_id=?", [team])?;
-            db.exec("DELETE FROM slack_canvases WHERE team_id=?", [team])?;
+            // Every table Slack declares in the DSP's database that keeps rows by workspace,
+            // its own and its integrations': a new one's go with the workspace too. The
+            // workspace itself goes last.
+            for table in workspace_tables() {
+                let keyed = db.count(
+                    "SELECT count(*) FROM pragma_table_info(?) WHERE name='team_id'",
+                    [table],
+                )? > 0;
+                if keyed && table != "slack_workspaces" {
+                    db.exec(&format!("DELETE FROM {table} WHERE team_id=?"), [team])?;
+                }
+            }
             db.exec("DELETE FROM slack_workspaces WHERE team_id=?", [team])
         })?;
         drop(db);

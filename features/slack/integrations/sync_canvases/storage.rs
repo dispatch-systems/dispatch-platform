@@ -1,7 +1,7 @@
 //! What Sync Canvases keeps in each DSP's own database: the canvases chosen on their own, and
 //! each canvas a linked channel or a choice covers, with when it was last edited, its document,
 //! and how syncing it goes; its linked channels are `channel_links`'. Only this module runs SQL
-//! on its tables; a workspace's rows go with it, in `storage::remove_slack_workspace`.
+//! on its tables; a workspace's rows go with it, as removing a workspace clears every table Slack declares by its `team_id`.
 use super::ID;
 use dispatch_core::{
     Result,

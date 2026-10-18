@@ -210,3 +210,24 @@ async fn the_hourly_catch_up_saves_what_slack_did_not_tell_of() {
     catch_up::catch_up(&state, &dsp).await.unwrap();
     assert_eq!(noticed(&state, &dsp).await, before);
 }
+
+// Removing a workspace clears every table Slack declares by its team, an integration's as well
+// as Slack's own, without the removal naming them.
+#[tokio::test]
+async fn a_removed_workspace_takes_its_linked_channels_and_files_with_it() {
+    let (_root, state, dsp, _) = importing().await;
+    shared(&state, &dsp, "F0FIXVAN", PHOTOS, 0).await;
+    assert!(!noticed(&state, &dsp).await.is_empty());
+    let at = dsp.clone();
+    state
+        .run(move |db| db.remove_slack_workspace(&at, TEAM))
+        .await
+        .unwrap();
+    assert!(noticed(&state, &dsp).await.is_empty());
+    let at = dsp.clone();
+    let links = state
+        .read(move |db| db.slack_channel_links(&at, &LINKING, TEAM))
+        .await
+        .unwrap();
+    assert!(links.is_empty());
+}

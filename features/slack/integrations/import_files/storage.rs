@@ -1,6 +1,6 @@
 //! What Import Files keeps in each DSP's own database: each file Slack told of in a linked
 //! channel, with how saving it went; its links are `linked`'s. Only this module runs SQL on its
-//! table; a workspace's rows go with it, in `storage::remove_slack_workspace`.
+//! table; a workspace's rows go with it, as removing a workspace clears every table Slack declares by its `team_id`.
 use dispatch_core::{
     Result,
     db::{Db, FromRow, Row, Store},

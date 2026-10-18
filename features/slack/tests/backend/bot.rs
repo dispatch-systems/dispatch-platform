@@ -61,3 +61,14 @@ async fn a_token_is_renewed_as_it_nears_its_end_and_kept_and_never_twice() {
     // One Slack refused with the token kept now is renewed, though it has time left.
     assert_ne!(bot.instead_of(&renewed).await.unwrap(), renewed);
 }
+
+// Fixture mode answers each method Dispatch calls; one it doesn't answer fails, so a new call
+// no fixture answers shows in a test or a preview rather than passing as if Slack agreed.
+#[tokio::test]
+async fn a_method_fixture_mode_does_not_answer_fails() {
+    let (_root, _state, bot) = bot();
+    kept_until(&bot, 2 * 60 * 60 * 1000).await;
+    let asked = serde_json::json!({"channel": "C0FIXGENERAL"});
+    let error = bot.call("chat.postMessage", &asked).await.unwrap_err();
+    assert_eq!(error.code, "slack_fixture_unanswered");
+}

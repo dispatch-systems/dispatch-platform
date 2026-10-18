@@ -22,6 +22,11 @@ pub(crate) mod types;
 use crate::backend::channel_links::Linking;
 use dispatch_core::manifest::integrations::{Integration, integration};
 
+/// Its endpoints, and fixture mode's answers: Slack's fixture answers each method it calls.
+pub(crate) const OWN: super::Own = super::Own {
+    routes: api::routes,
+    fixture: super::no_fixture,
+};
 /// Its ID, as each workspace keeps it switched on.
 pub const ID: &str = "slack.import_files";
 /// What it is to Slack: it reads the files in the channels Dispatch is in (`files:read`), and is

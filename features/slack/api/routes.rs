@@ -8,7 +8,7 @@ use crate::backend::{
     connection::{self, Started},
     inbound, integrations, link, pages, storage,
 };
-use crate::integrations::{import_files, sync_canvases};
+use crate::integrations as own;
 use axum::{
     extract::Request,
     http::Method,
@@ -86,8 +86,9 @@ pub fn routes() -> Vec<Route> {
         }),
     ];
     // Import Files' own and Sync Canvases', each in a module of their own.
-    routes.extend(import_files::api::routes());
-    routes.extend(sync_canvases::api::routes());
+    for integration in own::ALL {
+        routes.extend((integration.routes)());
+    }
     routes
 }
 
