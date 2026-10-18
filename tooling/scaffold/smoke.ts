@@ -180,7 +180,14 @@ async function check(copied: string, logs: string) {
       [
         process.execPath,
         'node_modules/eslint/bin/eslint.js',
-        ...owners.filter((dir) => !dir.startsWith('mcp/')),
+        // Each with TypeScript to lint: a feature of a contract alone has none.
+        ...owners.filter(
+          (dir) =>
+            !dir.startsWith('mcp/') &&
+            fs
+              .readdirSync(path.join(copied, dir), { recursive: true, encoding: 'utf8' })
+              .some((file) => /\.tsx?$/.test(file)),
+        ),
       ],
     ],
     // What a generator leaves its author to write is there on purpose, and a new browser test
