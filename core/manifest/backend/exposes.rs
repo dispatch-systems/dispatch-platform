@@ -76,13 +76,14 @@ pub fn for_dsp<C: ?Sized + 'static>(db: &Store, dsp: &str) -> Result<Option<&'st
 /// Panics unless each contract and each name is offered by one feature at most, as the
 /// registry is installed.
 pub(super) fn check(features: &[&'static Feature]) {
-    let mut contracts = BTreeMap::<TypeId, Vec<&str>>::new();
+    let mut contracts = BTreeMap::<TypeId, (&str, Vec<&str>)>::new();
     let mut names = BTreeMap::<&str, Vec<&str>>::new();
     for feature in features {
         for exposed in feature.exposes {
             contracts
                 .entry((*exposed.offered).type_id())
-                .or_default()
+                .or_insert(((exposed.contract)(), vec![]))
+                .1
                 .push(feature.name);
             names.entry(exposed.name).or_default().push(feature.name);
         }
@@ -94,10 +95,10 @@ pub(super) fn check(features: &[&'static Feature]) {
             by.join(" and ")
         );
     }
-    for by in contracts.values() {
+    for (contract, by) in contracts.values() {
         assert!(
             by.len() == 1,
-            "{} each offer the same contract; one feature at most may",
+            "{} each offer {contract}; one feature at most may",
             by.join(" and ")
         );
     }

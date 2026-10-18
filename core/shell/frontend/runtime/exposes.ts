@@ -3,9 +3,9 @@ import type { Feature } from '../../../tenancy/api/index.js';
 import { exposes } from '../../../manifest/api/generated/exposes.js';
 import { hasFeature } from './features.js';
 
-// What features expose each other (`core/manifest/backend/exposes.rs`) that a page shows, as a
-// page using one sees it: whether the DSP has it, what it's called, and who sees what it keeps.
-// A page never names the feature offering one.
+// What features expose to each other (`core/manifest/backend/exposes.rs`) that a page shows,
+// as a page using one sees it: whether the DSP has it, what it's called, and who sees what it
+// keeps. A page never names the feature offering one.
 
 /** What's exposed that a page shows, by name. */
 export type ExposedName = 'files';

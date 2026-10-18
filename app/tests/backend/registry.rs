@@ -169,7 +169,7 @@ struct Hello;
 impl Greeting for Hello {}
 
 #[test]
-#[should_panic(expected = "first and second each offer the same contract; one feature at most may")]
+#[should_panic(expected = "Greeting; one feature at most may")]
 fn a_contract_two_features_offer_is_refused() {
     static FIRST: Feature = Feature {
         switch: optional("first", "First", &[]),
