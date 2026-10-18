@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { renderFeature } from './new-feature.js';
+import { renderFeature, showing } from './new-feature.js';
 import {
   UsageError,
   exists,
@@ -34,6 +34,8 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
   people <source>     who --table <table>, in each DSP's database, names, for Driver Match
   contract <name>     what it exposes to other features and agent tools, named for what it
                       offers: its contract crate in contract/, what fulfils it, and a test
+  --shown             with contract, one a page shows: its name and the permission that shows
+                      what it keeps, the feature's view, which offered(<name>) reads
   --icon <name>       its page's icon, from lucide-react
   --dry-run           print what it would write and change nothing
   --out <dir>         with --dry-run, write the files under <dir> instead
@@ -51,7 +53,7 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
   people: { valued: true, readme: 'People', uses: [] },
   contract: { valued: true, readme: 'Exposed', uses: [] },
 };
-const FLAGS = ['dry-run'];
+const FLAGS = ['dry-run', 'shown'];
 const OPTIONS = ['to', 'table', 'icon', 'out', 'root'];
 /** The manifest's fields a piece adds: lists join the feature's, others are added whole. */
 const FIELDS = ['permissions', 'routes', 'people', 'depends_on', 'integrations', 'exposes'];
@@ -497,6 +499,9 @@ export async function planAdd(root: string, argv: string[]) {
   if (!known || extra.length || Boolean(value) !== known.valued)
     throw new UsageError(`Name one piece: ${Object.keys(PIECES).join(', ')}, with its value`);
   if (!name) throw new UsageError('Name the feature to add it to: --to <feature>');
+  const shown = args.flags.has('shown');
+  if (shown && piece !== 'contract')
+    throw new UsageError('--shown is what a page shows of a contract: add contract <name> --shown');
   if (!features(root).includes(name))
     throw new UsageError(`--to names a feature, and ${name} is none`);
   const dir = `features/${name}`;
@@ -509,6 +514,10 @@ export async function planAdd(root: string, argv: string[]) {
   if (piece === 'contract' && exists(root, `${dir}/contract`))
     throw new UsageError(`${name} has contract/ already: add to the contract it has`);
   const manifest = read(root, `${dir}/feature.rs`);
+  if (shown && !new RegExp(`\\bperm\\(\\s*"${name}\\.view"`).test(manifest))
+    throw new UsageError(
+      `A page shows ${value} to those holding ${name}.view, which ${name} lacks: add it, or show ${value} by hand`,
+    );
   // A permission the piece uses that the feature retired can't come back.
   const retiredAt = manifest.indexOf('retired_identifiers: &[');
   const retired =
@@ -554,6 +563,7 @@ export async function planAdd(root: string, argv: string[]) {
       ...(value ? [value] : []),
       ...(piece === 'people' ? ['--tables', database!, '--table', table!] : []),
       ...(args.options.has('icon') ? ['--icon', args.options.get('icon')!] : []),
+      ...(shown ? ['--shown'] : []),
     ],
     true,
   );
@@ -643,6 +653,7 @@ export async function planAdd(root: string, argv: string[]) {
   // each feature's dependencies installed.
   const site = peopleSources(root).find((source) => source.id === value)?.site;
   if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
+  if (shown) await showing(root, plan, value!);
   // The contract's test installs the feature with what it uses: the collectors and features
   // the feature map says it uses, what its other tests install, however they name it, and what
   // its manifest, as the piece leaves it, depends on.

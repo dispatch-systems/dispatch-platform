@@ -67,6 +67,9 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --contract <name>                 what it exposes to other features and agent tools, named
                                     for what it offers, as short_inspections: its contract
                                     crate in contract/, what fulfils it, and their test
+  --shown                           with --contract, one a page shows: its name and the
+                                    permission that shows what it keeps, which offered(<name>)
+                                    reads
   --no-backend                      no backend/: a frontend-only feature, with --page,
                                     --tab-of or --settings
   --label <label>                   its name as people read it (default: from <name>)
@@ -108,7 +111,16 @@ export function withPreset(argv: string[]) {
   return [...expand(name), ...rest];
 }
 
-const FLAGS = ['mandatory', 'api', 'page', 'settings', 'connection', 'no-backend', 'dry-run'];
+const FLAGS = [
+  'mandatory',
+  'api',
+  'page',
+  'settings',
+  'connection',
+  'no-backend',
+  'shown',
+  'dry-run',
+];
 const OPTIONS = [
   'tables',
   'keeps',
@@ -267,6 +279,9 @@ export function featureValues(root: string, argv: string[], adding = false) {
       );
     if (taken) throw new UsageError(`${taken} exposes ${contract} already`);
   }
+  const shown = args.flags.has('shown');
+  if (shown && contract === undefined)
+    throw new UsageError('--shown is what a page shows of what it exposes: add --contract <name>');
   const contractNames = contract ? namesOf(contract) : undefined;
   const contractCrate = `dispatch-${name.replace(/_/g, '-')}-contract`;
 
@@ -274,6 +289,10 @@ export function featureValues(root: string, argv: string[], adding = false) {
   // A switch needs a permission to gate its screens and routes; so does an endpoint, a keeper
   // or a Settings tab, which those who manage it see.
   const permission = switched || api || keeps || settings;
+  if (shown && !permission && !adding)
+    throw new UsageError(
+      '--shown needs the permission that shows what it keeps: add --api, or leave out --mandatory',
+    );
   const order = adding ? ownPermissionOrder(root, name) : nextPermissionOrder(root);
   const crateOf = (collector: string) => `dispatch-${collector.replace(/_/g, '-')}`;
   const identOf = (collector: string) => `dispatch_${collector}`;
@@ -439,6 +458,7 @@ export function featureValues(root: string, argv: string[], adding = false) {
     contractLabel: contractNames?.label ?? '',
     contractCrate,
     contractIdent: contractCrate.replace(/-/g, '_'),
+    shown,
   };
   return { args, names, values };
 }
@@ -510,6 +530,17 @@ export async function renderFeature(root: string, argv: string[], adding = false
   return { plan, args, names, values };
 }
 
+/** Where a page reads what's exposed, whose `ExposedName` names each one a page shows. */
+const exposedNames = 'core/shell/frontend/runtime/exposes.ts';
+/** `ExposedName` naming `contract` too, as a page shows it in every build, unless it does. */
+export async function showing(root: string, plan: Plan, contract: string) {
+  await change(plan, root, exposedNames, (text) =>
+    text.replace(/export type ExposedName =([^;]+);/, (type, names: string) =>
+      names.includes(`'${contract}'`) ? type : `export type ExposedName =${names} | '${contract}';`,
+    ),
+  );
+}
+
 export async function planFeature(root: string, argv: string[]) {
   const { plan, args, names, values } = await renderFeature(root, argv);
   const { name } = names;
@@ -527,6 +558,7 @@ export async function planFeature(root: string, argv: string[]) {
   const mcp = needed(tools(root, wired));
   await edit(appManifest, (text) => wiredManifest(text, wired, mcp));
   await edit(featureList, () => wiredList(wired));
+  if (values.shown) await showing(root, plan, values.contract as string);
 
   const declared = [values.switch && 'switch', values.permission && 'permissions'].filter(Boolean);
   const generated = [

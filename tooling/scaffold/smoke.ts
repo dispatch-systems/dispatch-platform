@@ -39,8 +39,8 @@ const MADE: [string, ...string[]][] = [
   ['feature', 'smoke_tab', '--tab-of', 'uniforms'],
   ['feature', 'smoke_team_tab', '--tab-of', 'team', '--mandatory'],
   ['feature', 'smoke_front', '--no-backend', '--page'],
-  // What one exposes, and a tool reading it.
-  ['feature', 'smoke_offer', '--contract', 'smoke_counts', '--api'],
+  // What one exposes, which a page shows, and a tool reading it.
+  ['feature', 'smoke_offer', '--contract', 'smoke_counts', '--api', '--shown'],
   ['feature', 'smoke_always', '--mandatory', '--contract', 'smoke_always_counts'],
   [
     'tool',
@@ -90,8 +90,8 @@ const ADDED: string[][] = [
   ['people', 'paycom', '--to', 'timecard', '--table', 'employees'],
   ['page', '--to', 'weekly_scorecard'],
   ['people', 'amazon', '--to', 'documents', '--table', 'documents_files'],
-  // Routes' tests install the collector it uses, as its contract's must.
-  ['contract', 'route_counts', '--to', 'routes'],
+  // Routes' tests install the collector it uses, as its contract's must; a page shows it.
+  ['contract', 'route_counts', '--to', 'routes', '--shown'],
   // Daily Performance's tests name Cortex by an alias.
   ['contract', 'daily_counts', '--to', 'daily_performance'],
 ];

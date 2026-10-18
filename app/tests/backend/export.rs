@@ -177,16 +177,20 @@ fn people_features() -> String {
 /// it's called where members see it, and the permission that shows what it keeps.
 fn exposes() -> String {
     let mut offered = serde_json::Map::new();
-    use dispatch_documents_contract::Files;
-    if let Some((feature, files)) = dispatch_core::manifest::registry().exposed::<dyn Files>() {
-        offered.insert(
-            "files".into(),
-            serde_json::json!({
-                "feature": feature.switch.id,
-                "name": files.name(),
-                "permission": files.permission(),
-            }),
-        );
+    for feature in dispatch_core::manifest::registry().features {
+        for exposed in feature.exposes {
+            if let Some(shown) = exposed.shown {
+                let shown = shown();
+                offered.insert(
+                    exposed.name.into(),
+                    serde_json::json!({
+                        "feature": feature.switch.id,
+                        "name": shown.name(),
+                        "permission": shown.permission(),
+                    }),
+                );
+            }
+        }
     }
     generated("what features expose", &[("exposes", offered.into())])
 }

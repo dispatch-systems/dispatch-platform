@@ -1,12 +1,28 @@
 //! What {{label}} exposes to every other feature and agent tool: `{{contract}}`, through its
 //! contract (`{{contractIdent}}`).
+{{#shown}}
+use dispatch_core::{Result, db::Store, manifest::exposes::Shown};
+{{/shown}}
+{{^shown}}
 use dispatch_core::{Result, db::Store};
+{{/shown}}
 use {{contractIdent}}::{{contractPascal}};
 
 /// {{label}}'s {{contractLabel}}, as its contract says.
 pub(crate) struct Exposed;
 pub(crate) static EXPOSED: Exposed = Exposed;
 
+{{#shown}}
+impl Shown for Exposed {
+    fn name(&self) -> &'static str {
+        "{{label}}"
+    }
+    fn permission(&self) -> &'static str {
+        "{{name}}.view"
+    }
+}
+
+{{/shown}}
 impl {{contractPascal}} for Exposed {
     fn ready(&self, _: &Store, _: &str) -> Result<bool> {
         // TODO(scaffold): answer from what it keeps.

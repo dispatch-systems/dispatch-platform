@@ -7,7 +7,10 @@ import { hasFeature } from './features.js';
 // as a page using one sees it: whether the DSP has it, what it's called, and who sees what it
 // keeps. A page never names the feature offering one.
 
-/** What's exposed that a page shows, by name. */
+/**
+ * What's exposed that a page shows, by name, in every build: a page names one whether or not
+ * the feature offering it is there. `dispatchdev add contract --shown` adds one.
+ */
 export type ExposedName = 'files';
 /** One as a page using it sees it. */
 export type Offered = {
@@ -20,6 +23,9 @@ export type Offered = {
 };
 
 const all: Partial<Record<ExposedName, Offered>> = exposes;
+/** Fails to typecheck while the build shows one missing from `ExposedName`. */
+const named: Exclude<keyof typeof exposes, ExposedName> extends never ? true : never = true;
+void named;
 
 /** What's exposed as `name` that the DSP's view has: only while the feature offering it is on there. */
 export function offered(name: ExposedName, view: DspView | undefined): Offered | undefined {

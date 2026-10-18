@@ -101,6 +101,7 @@ pub const FEATURE: Feature = Feature {
         &backend::service::FILES,
         "files",
         "Somewhere to keep a DSP's files, in folders, in its Google Drive.",
+        shown,
     )],
     ..feature("documents")
 };

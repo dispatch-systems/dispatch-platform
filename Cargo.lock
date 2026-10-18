@@ -605,7 +605,6 @@ dependencies = [
  "dispatch-cortex",
  "dispatch-daily-performance",
  "dispatch-documents",
- "dispatch-documents-contract",
  "dispatch-driver-match",
  "dispatch-driver-profiles",
  "dispatch-dvic",
