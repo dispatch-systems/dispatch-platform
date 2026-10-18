@@ -1,6 +1,6 @@
-//! What other features do through Slack: the app asks for what their integrations need, and an
+//! What other features do through Slack: the app asks for what their integrations need, an
 //! integration hears of what happens in a workspace only while it's on there and its feature is
-//! on for the DSP.
+//! on for the DSP, and it clears what it keeps of a workspace Slack forgets.
 use super::*;
 use crate::backend::{
     app,
@@ -113,4 +113,20 @@ async fn an_integration_hears_of_its_events_only_while_on_in_the_workspace_and_f
     assert!(switch(false).await);
     hear("file_shared").await;
     assert_eq!(support::heard(&dsp), once);
+}
+
+#[tokio::test]
+async fn an_integration_clears_what_it_keeps_of_a_workspace_slack_forgets_even_while_off() {
+    let (_root, state, bot) = connected().await;
+    let dsp = bot.dsp.clone();
+    let of = dsp.clone();
+    state
+        .run(move |db| {
+            let owner = testing::a_user(db);
+            db.set_feature(&of, "listening", false, &owner)?;
+            db.remove_slack_workspace(&of, TEAM)
+        })
+        .await
+        .unwrap();
+    assert_eq!(support::forgotten(&dsp), [TEAM]);
 }
