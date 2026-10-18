@@ -239,13 +239,21 @@ export function isIcon(name: string) {
   const icons = createRequire(import.meta.url)('lucide-react') as Record<string, unknown>;
   return /^[A-Z][A-Za-z0-9]*$/.test(name) && !name.endsWith('Icon') && name in icons;
 }
-/** The order after a feature's own permissions', for one added to them. */
+/**
+ * The order after a feature's own permissions', for those added to them: its next three are
+ * free, so a view, collect and manage permission each keep one no other feature holds.
+ */
 export function ownPermissionOrder(root: string, feature: string) {
-  const source = read(root, `features/${feature}/feature.rs`);
-  const orders = [...source.matchAll(/\bperm\(\s*"[^"]*",\s*"[^"]*",\s*(\d+)\s*,?\s*\)/g)].map(
-    (match) => Number(match[1]),
-  );
-  return orders.length ? Math.max(...orders) + 1 : nextPermissionOrder(root);
+  const orders = (text: string) =>
+    [...text.matchAll(/\bperm\(\s*"[^"]*",\s*"[^"]*",\s*(\d+)\s*,?\s*\)/g)].map((match) =>
+      Number(match[1]),
+    );
+  const own = orders(read(root, `features/${feature}/feature.rs`));
+  if (!own.length) return nextPermissionOrder(root);
+  const used = new Set(rustSources(root).flatMap((file) => orders(read(root, file))));
+  let order = Math.max(...own) + 1;
+  while ([0, 1, 2].some((step) => used.has(order + step))) order++;
+  return order;
 }
 /** The next free tens in the one order the sources of people's IDs follow. */
 export function nextSourceOrder(root: string) {

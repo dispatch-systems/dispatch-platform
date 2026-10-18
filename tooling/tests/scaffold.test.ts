@@ -1047,6 +1047,29 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
       'features/weekly_scorecard/feature.rs',
     ),
   );
+  // An added permission's order is one no other feature holds.
+  const profiles = changed(
+    await add('page', '--to', 'driver_profiles'),
+    'features/driver_profiles/feature.rs',
+  );
+  const order = /perm\("driver_profiles\.view", "[^"]+", (\d+)\)/.exec(profiles)![1];
+  const others = fs
+    .readdirSync(path.join(root, 'features'))
+    .filter(
+      (name) =>
+        name !== 'driver_profiles' &&
+        fs.existsSync(path.join(root, 'features', name, 'feature.rs')),
+    )
+    .map((name) => fs.readFileSync(path.join(root, 'features', name, 'feature.rs'), 'utf8'));
+  assert(
+    !others.some((text) => new RegExp(`perm\\("[^"]+", "[^"]+", ${order}\\)`).test(text)),
+    `${order} is taken`,
+  );
+  // A README's line joins its list, whatever its last item's bold lead says.
+  assert.match(
+    changed(await add('api', '--to', 'home'), 'features/home/README.md'),
+    /\*\*[^\n]*\n- \*\*API:\*\*/,
+  );
   // A permissions field it lacks holds only what the piece uses.
   assert.doesNotMatch(
     changed(await add('settings', '--to', 'home'), 'features/home/feature.rs'),
@@ -1066,6 +1089,24 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
     'features/bare_demo/backend/mod.rs',
   ]);
   assert.doesNotMatch(changed(grown, 'features/bare_demo/feature.rs'), /mod (tests|backend);/);
+  // What the author wrote into either stays: their function, and their test without the
+  // stamped assertion.
+  const written = await planFeature(copy, ['bare_kept', '--mandatory']);
+  for (const [name, content] of written.plan.files) {
+    const own = name.endsWith('/backend/mod.rs')
+      ? `${content}pub(crate) fn greeting() {}\n`
+      : name.endsWith('/tests/backend/feature.rs')
+        ? `${content}\n#[test]\nfn greets() {}\n`
+        : content;
+    fs.mkdirSync(path.dirname(path.join(copy, name)), { recursive: true });
+    fs.writeFileSync(path.join(copy, name), own);
+  }
+  const kept = (await planAdd(copy, ['api', '--to', 'bare_kept'])).plan;
+  assert.equal(kept.removed, undefined);
+  assert.match(changed(kept, 'features/bare_kept/feature.rs'), /^mod backend;$/m);
+  const stamped = changed(kept, 'features/bare_kept/tests/backend/feature.rs');
+  assert.match(stamped, /fn greets\(\)/);
+  assert.doesNotMatch(stamped, /permissions\.is_empty/);
 
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
   await assert.rejects(add('settings', '--to', 'driver_match'), /DriverMatchSettings\.tsx already/);

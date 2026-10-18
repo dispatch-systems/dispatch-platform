@@ -573,7 +573,7 @@ export async function planAdd(root: string, argv: string[]) {
         .split('\n')
         .filter((line) => line.startsWith(`- **${known.readme}:**`) && !current.includes(line))
         .reduce((text, line) => {
-          const last = [...text.matchAll(/^- \*\*[^*]+:\*\*.*(?:\n {2,}\S.*)*$/gm)].at(-1);
+          const last = [...text.matchAll(/^- \*\*[^*]+\*\*.*(?:\n {2,}\S.*)*$/gm)].at(-1);
           if (!last) return `${text.trimEnd()}\n\n${line}\n`;
           const at = last.index! + last[0].length;
           return `${text.slice(0, at)}\n${line}${text.slice(at)}`;
@@ -609,29 +609,38 @@ export async function planAdd(root: string, argv: string[]) {
     }
   // A test a generator stamped that only restates a manifest alone, with no permission, goes
   // once the piece gives it one, with its module; and so does the empty backend/ a manifest
-  // alone keeps, which a piece with an API or a screen doesn't need.
+  // alone keeps, which a piece with an API or a screen doesn't need. A test or a module the
+  // author wrote into stays: only the stamped assertion goes from a test of theirs.
   const stamped = `${dir}/tests/backend/feature.rs`;
   const declared = '#[cfg(test)]\n#[path = "tests/backend/feature.rs"]\nmod tests;\n';
+  const assertion = /^\s*assert!\(FEATURE\.permissions\.is_empty\(\)\);\n/m;
   const rust = plan.changes.get(`${dir}/feature.rs`);
-  const restates =
-    exists(root, stamped) &&
-    read(root, stamped).includes('assert!(FEATURE.permissions.is_empty());');
-  if (rust?.includes(declared) && restates && !/\bperm\(/.test(manifest) && /\bperm\(/.test(rust)) {
-    let grown = rust.replace(`\n${declared}`, '').replace(declared, '');
-    const removed = [stamped];
-    const backend = files(root, `${dir}/backend`, /./);
-    const writesBackend = [...plan.files.keys()].some((file) => file.startsWith(`${dir}/backend/`));
-    if (
-      backend.length === 1 &&
-      !writesBackend &&
-      !/^\s*(pub(\([^)]*\))? )?mod /m.test(read(root, backend[0]!))
-    ) {
-      removed.push(backend[0]!);
-      grown = grown.replace(/^mod backend;\n/m, '');
+  const test = exists(root, stamped) ? read(root, stamped) : '';
+  if (rust && assertion.test(test) && !/\bperm\(/.test(manifest) && /\bperm\(/.test(rust)) {
+    const alone = test.match(/#\[test\]/g)?.length === 1;
+    if (!alone || !rust.includes(declared)) {
+      plan.changes.set(stamped, test.replace(assertion, ''));
+      plan.notes.push(`${stamped} no longer asserts the feature has no permissions.`);
+    } else {
+      let grown = rust.replace(`\n${declared}`, '').replace(declared, '');
+      const removed = [stamped];
+      const backend = files(root, `${dir}/backend`, /./);
+      const writesBackend = [...plan.files.keys()].some((file) =>
+        file.startsWith(`${dir}/backend/`),
+      );
+      // Only comments and blank lines: the module the generator stamped, holding nothing.
+      const empty = (file: string) =>
+        read(root, file)
+          .split('\n')
+          .every((line) => !line.trim() || line.trim().startsWith('//'));
+      if (backend.length === 1 && !writesBackend && empty(backend[0]!)) {
+        removed.push(backend[0]!);
+        grown = grown.replace(/^mod backend;\n/m, '');
+      }
+      plan.changes.set(`${dir}/feature.rs`, grown);
+      plan.removed = removed;
+      plan.notes.push(`${stamped} restated the manifest it had alone: write its first real test.`);
     }
-    plan.changes.set(`${dir}/feature.rs`, grown);
-    plan.removed = removed;
-    plan.notes.push(`${stamped} restated the manifest it had alone: write its first real test.`);
   }
   // Its Rust as rustfmt leaves it: the files it writes together, and each it changes alone,
   // since that file's modules aren't beside it.
