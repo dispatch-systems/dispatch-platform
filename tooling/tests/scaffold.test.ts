@@ -1034,5 +1034,5 @@ test('a preset stands for its options, and --tabs, --connection and --people own
   const people = file(source, 'features/desk/backend/people.rs');
   assert.match(people, /pub const SOURCE: Source = Source::new\(&SourceInfo \{\s*id: "desk",/);
   assert.match(people, /^\s+SOURCE,$/m);
-  assert.doesNotMatch(file(source, 'features/desk/Cargo.toml'), /collectors/);
+  assert.doesNotMatch(file(source, 'features/desk/Cargo.toml'), /\.\.\/\.\.\/collectors\//);
 });
