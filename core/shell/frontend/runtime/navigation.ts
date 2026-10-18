@@ -3,10 +3,12 @@ import {
   routeOf,
   settingsPage,
   settingsTabs,
+  visibleSettingsTabs,
   type DspRouteId,
   type PlatformRouteId,
 } from './slots.js';
 import { siteDsp } from './site.js';
+import type { DspView } from '../../../accounts/api/index.js';
 
 const destinations = new Map<string, DspRouteId>();
 export function rememberDestination(dspId: string, page: DspRouteId) {
@@ -34,12 +36,13 @@ export const dspHash = (
   `${dspId === siteDsp() ? '#' : `#dsp/${dspId}/`}${page ?? ''}${query ? `?${new URLSearchParams(query)}` : ''}`;
 /**
  * A DSP's Settings, on `tab` if one is named: the page that draws the settings tabs. None
- * without that page, or without the tab, so a link to it is left out.
+ * without that page, or without the tab, so a link to it is left out; given the person's
+ * view, none unless the DSP has the tab and they see it.
  */
-export function settingsHash(dspId: string, tab?: string) {
+export function settingsHash(dspId: string, tab?: string, view?: DspView) {
   const page = settingsPage();
-  if (!page || (tab !== undefined && !settingsTabs().some((each) => each.id === tab)))
-    return undefined;
+  const tabs = view ? visibleSettingsTabs(view) : settingsTabs();
+  if (!page || (tab !== undefined && !tabs.some((each) => each.id === tab))) return undefined;
   return dspHash(dspId, page, tab === undefined ? undefined : { tab });
 }
 export const platformHash = (page: PlatformRouteId = 'dsps', query?: Record<string, string>) =>

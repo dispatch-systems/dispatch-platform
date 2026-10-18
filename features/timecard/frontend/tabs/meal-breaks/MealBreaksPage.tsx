@@ -8,7 +8,7 @@ import {
   useMealComparison,
   useMealPeriodGaps,
 } from '../../../api/client.js';
-import { navigate, settingsHash } from '../../../../../core/shell/frontend/runtime/navigation.js';
+import { navigate } from '../../../../../core/shell/frontend/runtime/navigation.js';
 import { useTableState } from '../../../../../core/shell/frontend/runtime/useTableState.js';
 import {
   DataState,
@@ -38,8 +38,7 @@ export function MealBreaksPage({
   onDateChange,
   refreshKey,
   timezone,
-  dspId,
-  canMatch,
+  driverMatch,
   preferences,
   onOpenEmployee,
 }: {
@@ -48,13 +47,11 @@ export function MealBreaksPage({
   onDateChange: (date: string) => void;
   refreshKey?: string | null;
   timezone: string;
-  dspId: string;
-  /** Whether the person may review matches in Settings → Driver Match. */
-  canMatch: boolean;
+  /** Driver Match's tab of Settings, while the person sees it. */
+  driverMatch?: string;
   preferences: PaycomPreferences;
   onOpenEmployee?: (code: string, date: string) => void;
 }) {
-  const driverMatch = settingsHash(dspId, 'driver-match');
   const [query, setQuery] = useUpdateState('meal-query', ''),
     [filter, setFilter] = useUpdateState('meal-filter', 'all');
   const state = useTableState('meal', { id: 'employee', desc: false });
@@ -234,7 +231,7 @@ export function MealBreaksPage({
             {unlinked} Flex {unlinked === 1 ? 'driver is' : 'drivers are'} not matched to a Paycom
             employee and {unlinked === 1 ? 'appears' : 'appear'} on their own.
           </span>
-          {canMatch && driverMatch && (
+          {driverMatch && (
             <button className="text-button" onClick={() => navigate(driverMatch)}>
               Review in Driver Match
               <ArrowRight size={15} />

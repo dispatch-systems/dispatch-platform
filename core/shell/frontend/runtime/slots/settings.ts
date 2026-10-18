@@ -69,6 +69,11 @@ export const settingsTabs = (view?: DspView) =>
   view
     ? present(view, (feature) => feature.settingsTabs)
     : manifests().flatMap((feature) => feature.settingsTabs ?? []);
+/** The tabs of a DSP's Settings the view has and the person sees, in their order. */
+export const visibleSettingsTabs = (view?: DspView) =>
+  settingsTabs(view)
+    .filter((tab) => !tab.visible || tab.visible(view))
+    .sort((a, b) => a.order - b.order);
 /** The pieces of a Settings tab the view has and sees, in their order. */
 export const settingsPieces = (tab: string, view: DspView | undefined) =>
   present(view, (feature) => feature.settingsPieces)

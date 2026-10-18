@@ -9,7 +9,7 @@ use dispatch_core::{
     },
     tenancy::roles,
 };
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::LazyLock};
 
 /// The route table, with the registry the permissions and routes are read from.
 fn table() -> Vec<Route> {
@@ -99,14 +99,27 @@ fn listing(owner: &str) -> std::path::PathBuf {
         .join(owner)
         .join("tests/api/routes.txt")
 }
-/// The routes an owner lists, without its comments.
+/// The permissions the features' `live` fields name, which a listing writes as `<live>`: the
+/// build's features decide them, so core's listing names none of theirs. None without any.
+static LIVE: LazyLock<Option<String>> = LazyLock::new(|| {
+    dispatch_backend::install();
+    let features = dispatch_core::manifest::registry().features.iter();
+    let permissions: Vec<_> = features.flat_map(|feature| feature.live).copied().collect();
+    (!permissions.is_empty()).then(|| format!("{:?}", permissions.join("|")))
+});
+/// The routes an owner lists, without its comments, and with what `<live>` stands for: a line
+/// naming it is left out when it stands for nothing, as its route is.
 fn listed(owner: &str) -> BTreeSet<String> {
     std::fs::read_to_string(listing(owner))
         .unwrap_or_default()
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(str::to_owned)
+        .filter_map(|line| match &*LIVE {
+            _ if !line.contains("<live>") => Some(line.to_owned()),
+            Some(live) => Some(line.replace("<live>", live)),
+            None => None,
+        })
         .collect()
 }
 

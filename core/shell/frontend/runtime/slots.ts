@@ -28,7 +28,7 @@ export type {
 } from './slots/pages.js';
 export { dspSetup, landingPage, routeOf, settingsPage } from './slots/pages.js';
 export type { SettingsContext, SettingsPiece, SettingsTab } from './slots/settings.js';
-export { settingsPieces, settingsTabs } from './slots/settings.js';
+export { settingsPieces, settingsTabs, visibleSettingsTabs } from './slots/settings.js';
 export type {
   ConnectionCard,
   ConnectionCardContext,
