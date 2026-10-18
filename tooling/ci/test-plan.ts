@@ -38,7 +38,14 @@ export const dashboardTests = allTests()
  * Source-wide rules that need no build: `npm run check:rules` runs them before a push. They
  * also run in CI, the dashboard ones in the checks job and the others in the api job.
  */
-export const ruleTests = [...dashboardTests, ...plan.rules];
+export const ruleTests = [
+  ...dashboardTests,
+  // The architecture's rules, found by where they live, so a new one runs without a list.
+  ...allTests().filter(
+    (file) => file.startsWith('app/tests/rules/') && !dashboardTests.includes(file),
+  ),
+  ...plan.rules,
+];
 /** Source policies run as lints by local rules and the CI checks job. */
 export const sourceLints = plan.lint;
 /** Native collector shards, run with a real browser by `npm run test:browseros`. */

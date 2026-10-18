@@ -31,7 +31,8 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
   tab-of <feature>    a tab of another feature's page
   settings            a tab on a DSP's Settings page, for those who manage it
   api                 api/ with one endpoint behind the view permission
-  people <source>     who --table <table>, in each DSP's database, names, for Driver Match
+  people <source>     who --table <table>, in the DSP's database or a collector's, names, for
+                      Driver Match
   contract <name>     what it exposes to other features and agent tools, named for what it
                       offers: its contract crate in contract/, what fulfils it, and a test
   --shown             with contract, one a page shows: its name and the permission that shows

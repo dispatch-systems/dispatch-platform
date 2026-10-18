@@ -252,6 +252,7 @@ else {
   await core();
   if (!failures.length) await api();
   if (!failures.length) await npm('build');
+  if (!failures.length) await npm('test:smoke');
   if (!failures.length) await checks();
   if (!failures.length && (await installBrowsers())) await npm('test:ui');
   if (!failures.length) await benchmark();

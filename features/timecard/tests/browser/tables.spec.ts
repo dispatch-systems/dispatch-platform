@@ -8,11 +8,15 @@ test('timecards export every column and row in the order shown', async ({ page, 
   // Export a changed order, so exporting unsorted backing rows fails.
   await page.getByRole('button', { name: 'Hours', exact: true }).first().click();
   await page.getByRole('button', { name: 'Hours', exact: true }).first().click();
-  const shown = await page
-    .locator('.paycom-timecard-table tbody tr')
-    .evaluateAll((rows) =>
-      rows.map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent!.trim())),
-    );
+  await expect(
+    page.getByRole('columnheader', { name: 'Hours', exact: true }).first(),
+  ).toHaveAttribute('aria-sort', 'descending');
+  const shown = () =>
+    page
+      .locator('.paycom-timecard-table tbody tr')
+      .evaluateAll((rows) =>
+        rows.map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent!.trim())),
+      );
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export timecards', exact: true }).click();
   const file = await download;
@@ -27,7 +31,8 @@ test('timecards export every column and row in the order shown', async ({ page, 
     .map((line) =>
       [...line.matchAll(/"((?:[^"]|"")*)"(?:,|$)/g)].map((cell) => cell[1]!.replaceAll('""', '"')),
     );
-  expect(exported).toEqual(shown);
+  // The rows may finish drawing the new order after the header says it.
+  await expect.poll(shown).toEqual(exported);
   await expect(page.getByLabel('Choose columns')).toHaveCount(0);
 });
 
