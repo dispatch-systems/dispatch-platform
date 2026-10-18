@@ -21,7 +21,9 @@ use dispatch_core::manifest::integrations::{Integration, integration};
 
 /// Its ID, as each workspace keeps it switched on. Permanent once shipped.
 pub const ID: &str = "{{owner}}.{{name}}";
-/// What it is to Slack: the permissions it needs of Slack, and the events it's told of.
+/// What it is to Slack: the permissions it needs of Slack, and the events it's told of. A
+/// Slack method only it calls is answered in fixture mode by its `fixture`, so previews and
+/// tests never reach Slack.
 pub const INTEGRATION: Integration = Integration {
     needs: &[{{needs}}],
     hears: &[{{hears}}],
@@ -31,10 +33,9 @@ pub const INTEGRATION: Integration = Integration {
     ..integration("slack", ID, "{{label}}")
 };
 {{#own}}
-/// Its endpoints, and fixture mode's answers: Slack's fixture answers each method it calls.
+/// Its endpoints, on a workspace's settings.
 pub(crate) const OWN: super::Own = super::Own {
     routes: api::routes,
-    fixture: super::no_fixture,
 };
 {{/own}}
 {{#heard}}

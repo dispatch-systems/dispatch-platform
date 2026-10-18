@@ -7,7 +7,7 @@
 //! of while it's on there and its feature is on for the DSP. The integration's feature keeps
 //! everything else it does, and its frontend says what it is in the connection's settings.
 use crate::{
-    State,
+    Result, State,
     manifest::{Feature, Registry, Upkeep},
 };
 use serde_json::Value;
@@ -30,6 +30,10 @@ pub struct Integration {
     pub hears: &'static [&'static str],
     /// What it does with each, once the connection's owner has answered the service.
     pub heard: Option<fn(Arc<State>, Heard) -> Upkeep>,
+    /// Fixture mode's answer to a method of the service's that only it calls, for the account
+    /// named first: the connection's fixture asks it of each method it doesn't answer itself,
+    /// so previews and tests never reach the service. None for one it doesn't call.
+    pub fixture: Option<fn(&str, &str, &Value) -> Option<Result<Value>>>,
 }
 
 /// An integration that needs nothing and hears of nothing yet. A declaration starts here and
@@ -46,6 +50,7 @@ pub const fn integration(
         needs: &[],
         hears: &[],
         heard: None,
+        fixture: None,
     }
 }
 

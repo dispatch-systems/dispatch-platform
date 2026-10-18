@@ -152,8 +152,9 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   workspace another DSP has, or an install cancelled at Slack ends on a page of its own, which
   says so in a line.
 - **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
-  and Sync Canvases linked, chose and noticed there (every table Slack declares in the DSP's
-  database that keeps rows by `team_id`, an integration's too), and its tokens, frees it for any DSP, and then has
+  and Sync Canvases linked, chose and noticed there, any reconnect of it started and not
+  finished (every table Slack declares in the DSP's database that keeps rows by `team_id`, an
+  integration's too), and its tokens, frees it for any DSP, and then has
   Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
   disconnecting, making and cancelling the install link, and, with no member as their actor,
   a workspace connected by the link, the app removed from a workspace in Slack, and Slack

@@ -432,8 +432,9 @@ impl SlackStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             // Every table Slack declares in the DSP's database that keeps rows by workspace,
-            // its own and its integrations': a new one's go with the workspace too. The
-            // workspace itself goes last.
+            // its own and its integrations': a new one's go with the workspace too, as does a
+            // reconnect someone started for it (`slack_connect_requests`), which finishing
+            // would answer as expired. The workspace itself goes last.
             for table in workspace_tables() {
                 let keyed = db.count(
                     "SELECT count(*) FROM pragma_table_info(?) WHERE name='team_id'",

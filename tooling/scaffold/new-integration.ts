@@ -6,6 +6,7 @@ import {
   emptyPlan,
   exists,
   features,
+  files,
   format,
   formatRust,
   isIcon,
@@ -73,9 +74,25 @@ export async function planIntegration(root: string, argv: string[]) {
   const hears = listed(args.options.get('hears'), 'hears');
   const ownerManifest = read(root, `features/${owner}/feature.rs`);
   const ownerLabel = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(ownerManifest)?.[1];
-  // Its card and section follow those listed already.
-  const slackFrontend = read(root, `${SLACK}/frontend/feature.ts`);
-  const orders = [...slackFrontend.matchAll(/\border: (\d+),/g)].map((match) => Number(match[1]));
+  // Its card and section follow those listed already: Slack's own sections in its manifest,
+  // and each integration's card and section in its folder.
+  const declared = [
+    read(root, `${SLACK}/frontend/feature.ts`),
+    ...files(root, `${SLACK}/integrations`, /frontend\/integration\.ts$/).map((file) =>
+      read(root, file),
+    ),
+  ].join('\n');
+  const after = (pattern: RegExp) =>
+    (Math.floor(
+      Math.max(0, ...[...declared.matchAll(pattern)].map((match) => Number(match[1]))) / 10,
+    ) +
+      1) *
+    10;
+  const cards = after(/: ConnectionIntegration = \{[\s\S]*?\border: (\d+),/g);
+  const sections = Math.max(
+    after(/: ConnectionSection = \{[\s\S]*?\border: (\d+),/g),
+    after(/connectionSections: \[[\s\S]*?\border: (\d+),/g),
+  );
   const values = {
     ...names,
     own,
@@ -85,8 +102,8 @@ export async function planIntegration(root: string, argv: string[]) {
     needs: listed(args.options.get('needs'), 'needs'),
     hears,
     heard: Boolean(hears),
-    order: (Math.floor(Math.max(0, ...orders.filter((order) => order < 1000)) / 10) + 1) * 10,
-    sectionOrder: (Math.floor(Math.max(0, ...orders) / 10) + 1) * 10,
+    order: cards,
+    sectionOrder: sections,
   };
 
   const plan: Plan = emptyPlan();
@@ -119,6 +136,11 @@ export async function planIntegration(root: string, argv: string[]) {
       const last = modules.at(-1)!;
       const at = last.index! + last[0].length;
       let next = `${text.slice(0, at)}\npub(crate) mod ${names.name};${text.slice(at)}`;
+      // Its line in the list of folders, which says what it does.
+      const bullets = [...next.matchAll(/^\/\/! - `\w+`: .*$/gm)];
+      const bullet = bullets.at(-1);
+      if (bullet)
+        next = `${next.slice(0, bullet.index! + bullet[0].length)}\n//! - \`${names.name}\`: ${names.label}, TODO(scaffold): what it does.${next.slice(bullet.index! + bullet[0].length)}`;
       if (own)
         next = next.replace(
           /pub\(crate\) const ALL: &\[&Own\] = &\[([^\]]*)\];/,
@@ -191,6 +213,16 @@ export async function planIntegration(root: string, argv: string[]) {
           `$1\n    ...Object.keys(${names.camel}),`,
         ),
     );
+    // Its line among Slack's own in Slack's README.
+    await edit(`${SLACK}/README.md`, (text) => {
+      const own = text.indexOf('## Its own integrations');
+      const next = text.indexOf('\n## ', own + 1);
+      const section = text.slice(own, next < 0 ? text.length : next);
+      const last = [...section.matchAll(/^- \*\*[^*]+\*\*[^\n]*(?:\n {2,}\S[^\n]*)*$/gm)].at(-1);
+      if (!last) return text;
+      const at = own + last.index! + last[0].length;
+      return `${text.slice(0, at)}\n- **${names.label},** Slack's own integration (\`slack.${names.name}\`, \`integrations/${names.name}/\`): TODO(scaffold): what it does, what it keeps and when it runs.${text.slice(at)}`;
+    });
     // Its route, in Slack's list of every route it registers.
     await edit(`${SLACK}/tests/api/routes.txt`, (text) => {
       const [comments, ...routes] = text.split(/\n(?=[A-Z]+ \/)/);

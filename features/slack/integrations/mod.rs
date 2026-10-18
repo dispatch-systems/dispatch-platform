@@ -10,20 +10,13 @@
 pub(crate) mod import_files;
 pub(crate) mod sync_canvases;
 
-use dispatch_core::{Result, server::http::route::Route};
-use serde_json::Value;
+use dispatch_core::server::http::route::Route;
 
-/// One of Slack's own integrations, as its folder declares it beside core's `Integration`.
+/// One of Slack's own integrations, as its folder declares it beside core's `Integration`,
+/// whose `fixture` answers fixture mode's Slack for a method only it calls.
 pub(crate) struct Own {
     /// Its endpoints, on a workspace's settings.
     pub routes: fn() -> Vec<Route>,
-    /// Fixture mode's answer to a Slack method only it calls, in the workspace `team`, or none
-    /// for a method Slack's fixture answers: previews and tests never reach Slack.
-    pub fixture: fn(team: &str, method: &str, args: &Value) -> Option<Result<Value>>,
-}
-/// What answers no method, for an integration whose calls Slack's fixture answers.
-pub(crate) fn no_fixture(_: &str, _: &str, _: &Value) -> Option<Result<Value>> {
-    None
 }
 
 /// Every one of Slack's own integrations.

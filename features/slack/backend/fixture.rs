@@ -403,8 +403,12 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
         }
         "views.publish" => json!({"ok": true}),
         _ => {
-            for own in crate::integrations::ALL {
-                if let Some(answer) = (own.fixture)(team, method, args) {
+            // An integration's own answer, whichever feature's it is.
+            for (_, integration) in super::integrations::declared() {
+                if let Some(answer) = integration
+                    .fixture
+                    .and_then(|fixture| fixture(team, method, args))
+                {
                     return answer;
                 }
             }
