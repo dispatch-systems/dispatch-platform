@@ -35,7 +35,8 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   with it.
 - **Integrations:** what other features do through Slack, each declared once in its own feature:
   in its backend manifest's `integrations` (core's `Integration`, with `connection: "slack"`,
-  the permissions it `needs`, the events it `hears` and what it does with each, `heard`), and in
+  the permissions it `needs`, the events it `hears` and what it does with each, `heard`, and
+  what it clears of a workspace Slack forgets, `forget`), and in
   its frontend's `connectionIntegrations`, under the same id, which says for members who don't
   know what it does, how it's used, what Dispatch sees, and what switching it on or off means.
   The feature depends on Slack; Slack names none of them. Integrations, shown while a feature
@@ -154,11 +155,13 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
 - **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
   and Sync Canvases linked, chose and noticed there, any reconnect of it started and not
   finished (every table Slack declares in the DSP's database that keeps rows by `team_id`, an
-  integration's too), and its tokens, frees it for any DSP, and then has
-  Slack remove the app from it. The activity log records connecting, reconnecting, renaming,
-  disconnecting, making and cancelling the install link, and, with no member as their actor,
-  a workspace connected by the link, the app removed from a workspace in Slack, and Slack
-  refusing a workspace's tokens.
+  integration's too), and its tokens, frees it for any DSP, and then has Slack remove the app
+  from it. Another feature's integration clears what it keeps of the workspace first, with its
+  `forget`, whether or not its feature is on; should one fail, the workspace stays. The
+  activity log records connecting, reconnecting, renaming, disconnecting, making and
+  cancelling the install link, and, with no member as their actor, a workspace connected by
+  the link, the app removed from a workspace in Slack, and Slack refusing a workspace's
+  tokens.
 
 ## Members
 

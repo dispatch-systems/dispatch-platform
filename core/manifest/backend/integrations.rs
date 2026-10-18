@@ -5,9 +5,12 @@
 //! The connection's owner reads them with `Registry::integrations`. It asks its service for
 //! what they need, keeps which are on for each of its accounts, and hands each what it hears
 //! of while it's on there and its feature is on for the DSP. The integration's feature keeps
-//! everything else it does, and its frontend says what it is in the connection's settings.
+//! everything else it does, and its frontend says what it is in the connection's settings. As
+//! the connection forgets an account, each integration clears what it keeps of it, with
+//! `forget`.
 use crate::{
     Result, State,
+    db::Store,
     manifest::{Feature, Registry, Upkeep},
 };
 use serde_json::Value;
@@ -34,10 +37,18 @@ pub struct Integration {
     /// named first: the connection's fixture asks it of each method it doesn't answer itself,
     /// so previews and tests never reach the service. None for one it doesn't call.
     pub fixture: Option<Fixture>,
+    /// Clears what it keeps of the DSP's account when the connection forgets it, as on
+    /// disconnecting a Slack workspace: before the connection clears its own, whether or not
+    /// its feature is on. None for one keeping nothing of an account, or whose tables the
+    /// connection's own feature declares, as Slack's own integrations' are.
+    pub forget: Option<Forget>,
 }
 
 /// Fixture mode's answer to a method, for an account: none for a method it doesn't call.
 pub type Fixture = fn(account: &str, method: &str, args: &Value) -> Option<Result<Value>>;
+
+/// Clears what an integration keeps of the DSP's account.
+pub type Forget = fn(&Store, dsp: &str, account: &str) -> Result<()>;
 
 /// An integration that needs nothing and hears of nothing yet. A declaration starts here and
 /// names what it adds: `Integration { …, ..integration("slack", "x.what", "What") }`.
@@ -54,6 +65,7 @@ pub const fn integration(
         hears: &[],
         heard: None,
         fixture: None,
+        forget: None,
     }
 }
 

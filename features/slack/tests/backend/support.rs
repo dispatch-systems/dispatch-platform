@@ -26,15 +26,36 @@ use std::{
     },
 };
 
-/// The stand-in's integration: it needs to read files, hears of files shared, and answers
-/// fixture mode's Slack for `listening.ping`, a method only it calls.
+/// The stand-in's integration: it needs to read files, hears of files shared, answers fixture
+/// mode's Slack for `listening.ping`, a method only it calls, and clears what it keeps of a
+/// workspace Slack forgets.
 pub const LISTENING: Integration = Integration {
     needs: &["files:read"],
     hears: &["file_shared"],
     heard: Some(hear),
     fixture: Some(answer),
+    forget: Some(forget),
     ..integration("slack", "listening.files", "Listening")
 };
+/// Each DSP and workspace whose files the stand-in cleared, in every test.
+static FORGOTTEN: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+fn forget(_: &dispatch_core::db::Store, dsp: &str, team: &str) -> dispatch_core::Result<()> {
+    let mut kept = FORGOTTEN
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    kept.push((dsp.to_owned(), team.to_owned()));
+    Ok(())
+}
+/// The workspaces of the DSP `dsp` whose files the stand-in cleared.
+pub fn forgotten(dsp: &str) -> Vec<String> {
+    let kept = FORGOTTEN
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    kept.iter()
+        .filter(|(at, _)| at == dsp)
+        .map(|(_, team)| team.clone())
+        .collect()
+}
 fn answer(
     team: &str,
     method: &str,
