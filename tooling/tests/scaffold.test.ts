@@ -589,6 +589,61 @@ test('a tool is a file and a test in mcp/tools, that works as written', async ()
   );
 });
 
+test('--reads writes a tool that needs a feature and reads what it exposes, never its storage', async () => {
+  const plan = await tool('dvic_days', '--reads', 'dvic');
+  const written = file(plan, 'mcp/tools/dvic_days.rs');
+  assert.match(written, /^use dispatch_dvic_contract as dvic;$/m);
+  assert.match(written, /const FEATURES: &'static \[&'static str\] = &\["dvic"\];/);
+  assert.match(written, /let Some\(_dvic\) = dvic::for_dsp\(db, &at\)\? else \{/);
+  assert.match(written, /"DVIC is switched off at this DSP\. Tell the user\."/);
+  assert.doesNotMatch(written, /DvicStore|dispatch_dvic::/);
+  // Named among its features already, it needs it once.
+  const both = file(
+    await tool('dvic_weeks', '--features', 'dvic', '--reads', 'dvic'),
+    'mcp/tools/dvic_weeks.rs',
+  );
+  assert.match(both, /const FEATURES: &'static \[&'static str\] = &\["dvic"\];/);
+  const refusedTool = async (pattern: RegExp, ...argv: string[]) =>
+    assert.rejects(planTool(root, argv), pattern);
+  await refusedTool(/--reads names a feature, and teleport is none/, 'beam', '--reads', 'teleport');
+  await refusedTool(
+    /home exposes no contract: `dispatchdev add contract/,
+    'beam',
+    '--reads',
+    'home',
+  );
+  await refusedTool(/--reads reads for one DSP/, 'beam', '--reads', 'dvic', '--scope', 'dsps');
+  // Driver Match is mandatory, on for every DSP: a tool needing it never switches it in its
+  // test, while it switches the optional feature whose contract it reads.
+  const always = await tool(
+    'directory_reader',
+    '--reads',
+    'documents',
+    '--features',
+    'driver_match',
+  );
+  const test = file(always, 'mcp/tests/backend/tools/directory_reader.rs');
+  assert.doesNotMatch(test, /"driver_match", (true|false)/);
+  assert.match(test, /db\.set_feature\(&dsp, "documents", true, &owner\)/);
+  // A part a manifest marks mandatory isn't switched either, while its feature is.
+  const dvic = path.join(copy, 'features/dvic/feature.rs');
+  const original = fs.readFileSync(dvic, 'utf8');
+  fs.writeFileSync(
+    dvic,
+    original.replace('tab("dvic.day", "Day")', 'tab("dvic.day", "Day").mandatory()'),
+  );
+  try {
+    const part = file(
+      (await planTool(copy, ['day_reader', '--features', 'dvic.day'])).plan,
+      'mcp/tests/backend/tools/day_reader.rs',
+    );
+    assert.match(part, /db\.set_feature\(&dsp, "dvic", true, &owner\)/);
+    assert.doesNotMatch(part, /"dvic\.day", (true|false)/);
+  } finally {
+    fs.writeFileSync(dvic, original);
+  }
+});
+
 test('a tool written into mcp/tools is listed by the wiring, and its name is then taken', async () => {
   const workspace = temporary();
   try {
@@ -1126,6 +1181,131 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   await assert.rejects(add('tab-of', 'dvic', '--to', 'dvic'), /own tabs/);
   await assert.rejects(add('wings', '--to', 'uniforms'), /Name one piece/);
   await assert.rejects(add('settings', '--to', 'nowhere'), /--to names a feature/);
+});
+
+test('--contract writes a contract crate on core alone, what fulfils it, its exposure and their test', async () => {
+  const plan = await feature('parking', '--contract', 'parking_spots');
+  assert.deepEqual(
+    writes(plan, 'features/parking').filter((name) =>
+      /^(contract\/|backend\/exposed|tests\/backend\/exposed)/.test(name),
+    ),
+    [
+      'backend/exposed.rs',
+      'contract/Cargo.toml',
+      'contract/contract.rs',
+      'tests/backend/exposed.rs',
+    ],
+  );
+  const crate = file(plan, 'features/parking/contract/Cargo.toml');
+  assert.match(crate, /^name = "dispatch-parking-contract"$/m);
+  assert.match(crate, /^path = "contract\.rs"$/m);
+  assert.deepEqual(crate.split('[dependencies]')[1]!.trim().split('\n'), [
+    'dispatch-core = { path = "../../../core" }',
+  ]);
+  const contract = file(plan, 'features/parking/contract/contract.rs');
+  assert.match(contract, /^pub trait ParkingSpots: Send \+ Sync \{$/m);
+  assert.match(contract, /exposes::for_dsp::<dyn ParkingSpots>\(db, dsp\)/);
+  assert.match(
+    file(plan, 'features/parking/backend/exposed.rs'),
+    /^impl ParkingSpots for Exposed \{$/m,
+  );
+  const manifest = file(plan, 'features/parking/feature.rs');
+  assert.match(
+    manifest,
+    /dyn dispatch_parking_contract::ParkingSpots,\n\s+&backend::exposed::EXPOSED,\n\s+"parking_spots",/,
+  );
+  assert.match(
+    file(plan, 'features/parking/Cargo.toml'),
+    /^dispatch-parking-contract = \{ path = "contract" \}$/m,
+  );
+  const test = file(plan, 'features/parking/tests/backend/exposed.rs');
+  assert.match(test, /fn parking_spots_is_offered_only_while_parking_is_on\(\)/);
+  assert.match(test, /db\.set_feature\(&dsp, "parking", false, &owner\)/);
+  // A mandatory feature's is offered to every DSP, with no switch to turn off.
+  const always = file(
+    await feature('lot', '--mandatory', '--contract', 'lot_spaces'),
+    'features/lot/tests/backend/exposed.rs',
+  );
+  assert.match(always, /fn lot_spaces_is_offered_to_every_dsp\(\)/);
+  assert.doesNotMatch(always, /set_feature/);
+  await refused(/documents exposes files already/, 'parking', '--contract', 'files');
+  await refused(
+    /--contract names what it offers in lowercase words/,
+    'parking',
+    '--contract',
+    'Spots',
+  );
+  await refused(
+    /--no-backend leaves out the Rust logic that --contract needs/,
+    'parking',
+    '--no-backend',
+    '--page',
+    '--contract',
+    'spots',
+  );
+
+  // Added to a feature that has none, with what its tests install.
+  const added = await add('contract', 'route_counts', '--to', 'routes');
+  assert(added.files.has('features/routes/contract/contract.rs'));
+  assert.match(
+    file(added, 'features/routes/tests/backend/exposed.rs'),
+    /testing::install\(&\[&dispatch_cortex::COLLECTOR\], &\[&crate::FEATURE\]\)/,
+  );
+  assert.match(
+    changed(added, 'features/routes/feature.rs'),
+    /exposes: &\[dispatch_core::expose!\(/,
+  );
+  assert.match(changed(added, 'features/routes/backend/mod.rs'), /^pub\(crate\) mod exposed;$/m);
+  assert.match(changed(added, 'features/routes/README.md'), /^- \*\*Exposed:\*\* `route_counts`/m);
+  await assert.rejects(
+    planAdd(root, ['contract', 'more', '--to', 'dvic']),
+    /dvic has contract\/ already/,
+  );
+  // Daily Performance's tests name Cortex by an alias, `cortex::COLLECTOR`, and its test
+  // installs it all the same.
+  assert.match(
+    file(
+      await add('contract', 'daily_counts', '--to', 'daily_performance'),
+      'features/daily_performance/tests/backend/exposed.rs',
+    ),
+    /testing::install\(&\[&dispatch_cortex::COLLECTOR\], &\[&crate::FEATURE\]\)/,
+  );
+  // Driver Match exposes the directory already, and is mandatory: a second entry joins it,
+  // offered to every DSP.
+  const second = await add('contract', 'match_counts', '--to', 'driver_match');
+  const driverMatch = changed(second, 'features/driver_match/feature.rs');
+  assert.match(driverMatch, /"directory",[\s\S]*"match_counts",/);
+  assert.equal(driverMatch.match(/^\s+exposes: &\[/gm)?.length, 1);
+  assert.doesNotMatch(
+    changed(second, 'features/driver_match/README.md'),
+    /`match_counts`.*while it's on/,
+  );
+  // Home has no backend/: it gains one, and core's test helpers for its test.
+  const home = await add('contract', 'home_counts', '--to', 'home');
+  assert(home.files.has('features/home/backend/mod.rs'));
+  assert.match(changed(home, 'features/home/feature.rs'), /^mod backend;$/m);
+  assert.match(
+    changed(home, 'features/home/Cargo.toml'),
+    /\[dev-dependencies\]\ndispatch-core = \{ path = "..\/..\/core", features = \["testing"\] \}/,
+  );
+  // A name a manifest exposes, not yet generated into the feature map, is taken too.
+  const homeManifest = path.join(copy, 'features/home/feature.rs');
+  const original = fs.readFileSync(homeManifest, 'utf8');
+  fs.writeFileSync(
+    homeManifest,
+    original.replace(
+      /\.\.feature\("home"\)/,
+      'exposes: &[dispatch_core::expose!(dyn X, &Y, "home_spots", "Its spots.")],\n    ..feature("home")',
+    ),
+  );
+  try {
+    await assert.rejects(
+      planFeature(copy, ['parking', '--contract', 'home_spots']),
+      /home exposes home_spots already/,
+    );
+  } finally {
+    fs.writeFileSync(homeManifest, original);
+  }
 });
 
 test('a preset stands for its options, and --tabs, --connection and --people own write theirs', async () => {

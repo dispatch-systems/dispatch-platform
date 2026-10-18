@@ -23,6 +23,7 @@ import {
   pageOf,
   parseArguments,
   peopleSources,
+  read,
   run,
   snapshotsNote,
   template,
@@ -63,6 +64,9 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --settings                        a tab on a DSP's Settings page, for those who manage it
   --connection                      a card on a DSP's Connections tab, for one of the DSP's
                                     own accounts
+  --contract <name>                 what it exposes to other features and agent tools, named
+                                    for what it offers, as short_inspections: its contract
+                                    crate in contract/, what fulfils it, and their test
   --no-backend                      no backend/: a frontend-only feature, with --page,
                                     --tab-of or --settings
   --label <label>                   its name as people read it (default: from <name>)
@@ -111,6 +115,7 @@ const OPTIONS = [
   'people',
   'tab-of',
   'tabs',
+  'contract',
   'label',
   'icon',
   'preset',
@@ -165,7 +170,7 @@ export function featureValues(root: string, argv: string[], adding = false) {
       throw new UsageError(
         '--no-backend leaves only a frontend: add --page, --tab-of or --settings',
       );
-    const logic = ['api', 'tables', 'keeps', 'people'].filter(
+    const logic = ['api', 'tables', 'keeps', 'people', 'contract'].filter(
       (piece) => args.flags.has(piece) || args.options.has(piece),
     );
     if (logic.length)
@@ -235,6 +240,36 @@ export function featureValues(root: string, argv: string[], adding = false) {
     hostPage = found;
   }
 
+  // What it exposes, by its name, as no other feature exposes anything.
+  const contract = args.options.get('contract');
+  if (contract !== undefined) {
+    if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/.test(contract))
+      throw new UsageError(
+        `--contract names what it offers in lowercase words, as short_inspections: ${contract} isn't`,
+      );
+    const map = exists(root, 'app/generated/features.json')
+      ? (JSON.parse(read(root, 'app/generated/features.json')) as Record<
+          string,
+          { slots: { exposes?: { name: string }[] } }
+        >)
+      : {};
+    // As generated, and as each manifest says now, which generate has yet to read.
+    const taken =
+      Object.entries(map).find(([, feature]) =>
+        (feature.slots.exposes ?? []).some((exposed) => exposed.name === contract),
+      )?.[0] ??
+      features(root).find((owner) =>
+        [
+          ...read(root, `features/${owner}/feature.rs`).matchAll(
+            /\bexpose!\(\s*[^,]+,\s*[^,]+,\s*"([^"]+)"/g,
+          ),
+        ].some((found) => found[1] === contract),
+      );
+    if (taken) throw new UsageError(`${taken} exposes ${contract} already`);
+  }
+  const contractNames = contract ? namesOf(contract) : undefined;
+  const contractCrate = `dispatch-${name.replace(/_/g, '-')}-contract`;
+
   const switched = !mandatory;
   // A switch needs a permission to gate its screens and routes; so does an endpoint, a keeper
   // or a Settings tab, which those who manage it see.
@@ -263,9 +298,10 @@ export function featureValues(root: string, argv: string[], adding = false) {
     ...(database ? ['rusqlite = { workspace = true }'] : []),
     ...(api || database ? ['serde = { workspace = true }'] : []),
     ...(api ? ['ts-rs = { workspace = true, optional = true }'] : []),
+    ...(contract ? [`${contractCrate} = { path = "contract" }`] : []),
   ];
   const devDependencies = [
-    ...(database || keeps
+    ...(database || keeps || contract
       ? ['dispatch-core = { path = "../../core", features = ["testing"] }']
       : []),
     ...(keeps ? ['serde_json = { workspace = true }'] : []),
@@ -312,10 +348,10 @@ export function featureValues(root: string, argv: string[], adding = false) {
   // backend/ holds its storage and keeper. A feature with neither, no API and no frontend, as
   // --mandatory alone, keeps an empty one and its manifest's test: the anatomy rule wants a
   // backend, an API or a frontend.
-  const manifestOnly = !api && !frontend && !database && !keeps;
+  const manifestOnly = !api && !frontend && !database && !keeps && !contract;
   const values: Values = {
     ...names,
-    backend: Boolean(database) || keeps || manifestOnly,
+    backend: Boolean(database) || keeps || manifestOnly || Boolean(contract),
     manifestTest: manifestOnly,
     switch: switched,
     permission,
@@ -398,6 +434,11 @@ export function featureValues(root: string, argv: string[], adding = false) {
     hostPage: hostPage.id,
     hostLabel: hostPage.label,
     dspView: DSP_VIEW,
+    contract: contract ?? '',
+    contractPascal: contractNames?.pascal ?? '',
+    contractLabel: contractNames?.label ?? '',
+    contractCrate,
+    contractIdent: contractCrate.replace(/-/g, '_'),
   };
   return { args, names, values };
 }
@@ -422,6 +463,10 @@ function pieces(values: Values): [boolean, string, string][] {
     [values.keeps as boolean, 'backend/keeper.rs', 'backend/keeper.rs'],
     [values.keeps as boolean, 'tests/backend/keeper.rs', 'tests/backend/keeper.rs'],
     [values.people as boolean, 'backend/people.rs', 'backend/people.rs'],
+    [Boolean(values.contract), 'contract/Cargo.toml', 'contract/Cargo.toml'],
+    [Boolean(values.contract), 'contract/contract.rs', 'contract/contract.rs'],
+    [Boolean(values.contract), 'backend/exposed.rs', 'backend/exposed.rs'],
+    [Boolean(values.contract), 'tests/backend/exposed.rs', 'tests/backend/exposed.rs'],
     [values.frontend as boolean, 'frontend/feature.ts', 'frontend/feature.ts'],
     [values.page as boolean, 'frontend/index.ts', 'frontend/index.ts'],
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],

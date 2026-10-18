@@ -32,6 +32,8 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
   settings            a tab on a DSP's Settings page, for those who manage it
   api                 api/ with one endpoint behind the view permission
   people <source>     who --table <table>, in each DSP's database, names, for Driver Match
+  contract <name>     what it exposes to other features and agent tools, named for what it
+                      offers: its contract crate in contract/, what fulfils it, and a test
   --icon <name>       its page's icon, from lucide-react
   --dry-run           print what it would write and change nothing
   --out <dir>         with --dry-run, write the files under <dir> instead
@@ -47,11 +49,12 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
   settings: { valued: false, readme: 'Settings', uses: ['manage'] },
   api: { valued: false, readme: 'API', uses: ['view'] },
   people: { valued: true, readme: 'People', uses: [] },
+  contract: { valued: true, readme: 'Exposed', uses: [] },
 };
 const FLAGS = ['dry-run'];
 const OPTIONS = ['to', 'table', 'icon', 'out', 'root'];
 /** The manifest's fields a piece adds: lists join the feature's, others are added whole. */
-const FIELDS = ['permissions', 'routes', 'people', 'depends_on', 'integrations'];
+const FIELDS = ['permissions', 'routes', 'people', 'depends_on', 'integrations', 'exposes'];
 
 /**
  * The index just past the comment or string starting at `at`, or `at` if none does. A `'` opens
@@ -461,12 +464,18 @@ export function installing(
   plan: Plan,
   dir: string,
   dependency: { collector?: string; feature?: string },
+  only?: string,
 ) {
   const [name, list] = dependency.collector ? [dependency.collector, 0] : [dependency.feature!, 1];
   const item = `&dispatch_${name}::${list === 0 ? 'COLLECTOR' : 'FEATURE'}`;
   const there = new RegExp(`\\b(dispatch_)?${name}::${list === 0 ? 'COLLECTOR' : 'FEATURE'}\\b`);
-  for (const file of files(root, dir, /\.rs$/)) {
-    const current = plan.changes.get(file) ?? read(root, file);
+  const written = [...plan.files.keys()].filter(
+    (file) => file.startsWith(`${dir}/`) && file.endsWith('.rs'),
+  );
+  for (const file of [...files(root, dir, /\.rs$/), ...written]) {
+    if (only && file !== only) continue;
+    const fresh = plan.files.has(file);
+    const current = fresh ? plan.files.get(file)! : (plan.changes.get(file) ?? read(root, file));
     const merged = current.replace(
       /\b(\w+)::install\(\s*&\[([^\]]*)\],\s*&\[([^\]]*)\]/g,
       (call, helper: string, collectors: string, features: string) => {
@@ -476,7 +485,7 @@ export function installing(
         return `${helper}::install(&[${lists[0]}], &[${lists[1]}]`;
       },
     );
-    if (merged !== current) plan.changes.set(file, merged);
+    if (merged !== current) (fresh ? plan.files : plan.changes).set(file, merged);
   }
 }
 
@@ -497,6 +506,8 @@ export async function planAdd(root: string, argv: string[]) {
     throw new UsageError(`${name} has a page already: add a tab of it with add tab-of ${name}`);
   if (piece === 'people' && !args.options.has('table'))
     throw new UsageError('people reads who a table names: add --table <table>');
+  if (piece === 'contract' && exists(root, `${dir}/contract`))
+    throw new UsageError(`${name} has contract/ already: add to the contract it has`);
   const manifest = read(root, `${dir}/feature.rs`);
   // A permission the piece uses that the feature retired can't come back.
   const retiredAt = manifest.indexOf('retired_identifiers: &[');
@@ -590,7 +601,16 @@ export async function planAdd(root: string, argv: string[]) {
           const declared = new RegExp(`^(pub(\\([^)]*\\))? )?mod ${module};`, 'm');
           return module && !declared.test(current) && (wrote(`${at}.rs`) || exists(root, at));
         })
-        .reduce((text, line) => `${text.trimEnd()}\n${line}\n`, current);
+        .reduce((text, line) => {
+          // After its last module, not one under an attribute as its tests are, or at its end
+          // when it has none.
+          const last = [...text.matchAll(/^(?:pub(?:\([^)]*\))? )?mod \w+;$/gm)]
+            .filter((found) => !/#\[[^\n]*\]\n$/.test(text.slice(0, found.index)))
+            .at(-1);
+          if (!last) return `${text.trimEnd()}\n${line}\n`;
+          const at = last.index! + last[0].length;
+          return `${text.slice(0, at)}\n${line}${text.slice(at)}`;
+        }, current);
     else if (file.endsWith('/routes.txt'))
       merged = content
         .split('\n')
@@ -623,6 +643,46 @@ export async function planAdd(root: string, argv: string[]) {
   // each feature's dependencies installed.
   const site = peopleSources(root).find((source) => source.id === value)?.site;
   if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
+  // The contract's test installs the feature with what it uses: the collectors and features
+  // the feature map says it uses, what its other tests install, however they name it, and what
+  // its manifest, as the piece leaves it, depends on.
+  if (piece === 'contract') {
+    const now = (file: string) => plan.changes.get(file) ?? read(root, file);
+    const used = new Map<string, 'collector' | 'feature'>();
+    const kindOf = (each: string) =>
+      exists(root, `collectors/${each}/collector.rs`)
+        ? 'collector'
+        : each !== name && exists(root, `features/${each}/feature.rs`)
+          ? 'feature'
+          : undefined;
+    const mapped = (
+      JSON.parse(read(root, 'app/generated/features.json')) as Record<
+        string,
+        { collectors: string[]; depends_on: string[] }
+      >
+    )[name];
+    for (const each of [...(mapped?.collectors ?? []), ...(mapped?.depends_on ?? [])]) {
+      const kind = kindOf(each);
+      if (kind) used.set(each, kind);
+    }
+    for (const file of files(root, dir, /\.rs$/))
+      for (const [, collectors, features] of now(file).matchAll(
+        /::install\(\s*&\[([^\]]*)\],\s*&\[([^\]]*)\]/g,
+      ))
+        for (const [, each] of `${collectors} ${features}`.matchAll(
+          /&(?:dispatch_)?(\w+)::(?:COLLECTOR|FEATURE)\b/g,
+        )) {
+          const kind = kindOf(each!);
+          if (kind) used.set(each!, kind);
+        }
+    const declared = /\bdepends_on:\s*&\[([^\]]*)\]/.exec(now(`${dir}/feature.rs`))?.[1] ?? '';
+    for (const [, each] of declared.matchAll(/"([^"]+)"/g)) {
+      const kind = kindOf(each!);
+      if (kind) used.set(each!, kind);
+    }
+    for (const [each, kind] of used)
+      installing(root, plan, dir, { [kind]: each }, `${dir}/tests/backend/exposed.rs`);
+  }
   // A test a generator stamped that only restates a manifest alone, with no permission, goes
   // once the piece gives it one, with its module; and so does the empty backend/ a manifest
   // alone keeps, which a piece with an API or a screen doesn't need. A test or a module the

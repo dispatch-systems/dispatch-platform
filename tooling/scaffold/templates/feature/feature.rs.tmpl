@@ -69,6 +69,15 @@ pub const FEATURE: Feature = Feature {
 {{#connection}}
     dsp_connection: true,
 {{/connection}}
+{{#contract}}
+    // What it offers every other feature and agent tool, through its contract.
+    exposes: &[dispatch_core::expose!(
+        dyn {{contractIdent}}::{{contractPascal}},
+        &backend::exposed::EXPOSED,
+        "{{contract}}",
+        "TODO(scaffold): what it offers, in a sentence.",
+    )],
+{{/contract}}
     ..feature("{{name}}")
 };
 {{#api}}

@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   UsageError,
   emptyPlan,
+  exists,
   features,
   files,
   formatRust,
@@ -29,6 +30,8 @@ export const usage = `Usage: dispatchdev new tool <name> [options]
   --features <ids>        the features, or their parts, it needs, by their switches, as
                           timecard,routes or timecard.meal_breaks: it runs at a DSP only
                           where every one is on
+  --reads <feature>       a feature whose contract it reads through, as dvic: it needs the
+                          feature, and reads what it exposes, never its storage
   --actions <names>       what it can be asked to do, as list,approve: one tool doing several
                           things, each action with arguments of its own
   --changes               every call changes something
@@ -42,7 +45,17 @@ export const usage = `Usage: dispatchdev new tool <name> [options]
 A key or app reads with it at most until the platform owner allows it to change something.`;
 
 const FLAGS = ['changes', 'dry-run'];
-const OPTIONS = ['scope', 'features', 'actions', 'changing', 'title', 'description', 'out', 'root'];
+const OPTIONS = [
+  'scope',
+  'features',
+  'reads',
+  'actions',
+  'changing',
+  'title',
+  'description',
+  'out',
+  'root',
+];
 const SCOPES = ['dsp', 'dsps', 'connection'] as const;
 type Scope = (typeof SCOPES)[number];
 /** Where the tools live, and the list that names them. */
@@ -65,6 +78,25 @@ function switches(root: string) {
     for (const match of manifest.matchAll(/(?:optional|mandatory)\(\s*"([^"]+)"/g))
       found.add(match[1]!);
     for (const match of manifest.matchAll(/\b(?:tab|sub)\(\s*"([^"]+)"/g)) found.add(match[1]!);
+  }
+  return found;
+}
+/**
+ * The switches every DSP has on, with no way to turn them off: mandatory features', and the
+ * parts a manifest marks `.mandatory()`.
+ */
+function mandatorySwitches(root: string) {
+  const found = new Set<string>();
+  for (const owner of features(root)) {
+    const manifest = read(root, `features/${owner}/feature.rs`);
+    for (const match of manifest.matchAll(/\bmandatory\(\s*"([^"]+)"/g)) found.add(match[1]!);
+    // A part's declaration runs to the next part's, or the end of its list.
+    const parts = [...manifest.matchAll(/\b(?:tab|sub)\(\s*"([^"]+)"/g)];
+    parts.forEach((part, index) => {
+      const end = parts[index + 1]?.index ?? manifest.indexOf('],', part.index);
+      if (manifest.slice(part.index, end < 0 ? undefined : end).includes('.mandatory()'))
+        found.add(part[1]!);
+    });
   }
   return found;
 }
@@ -127,6 +159,23 @@ export function toolValues(root: string, argv: string[]) {
   for (const id of needed)
     if (!known.has(id))
       throw new UsageError(`${id} is no feature or part of one: no manifest declares its switch`);
+  // The feature whose contract it reads through, which it then needs.
+  const through = args.options.get('reads');
+  let throughCrate = '';
+  if (through !== undefined) {
+    if (!features(root).includes(through))
+      throw new UsageError(`--reads names a feature, and ${through} is none`);
+    const contract = `features/${through}/contract`;
+    if (!exists(root, `${contract}/Cargo.toml`))
+      throw new UsageError(
+        `${through} exposes no contract: \`dispatchdev add contract <name> --to ${through}\` gives it one`,
+      );
+    if (!/\bpub fn for_dsp\b/.test(read(root, `${contract}/contract.rs`)))
+      throw new UsageError(`${contract}/contract.rs has no for_dsp to find it for a DSP by`);
+    if (scope !== 'dsp') throw new UsageError('--reads reads for one DSP, as --scope dsp does');
+    throughCrate = /^name\s*=\s*"([^"]+)"/m.exec(read(root, `${contract}/Cargo.toml`))![1]!;
+    if (!needed.some((id) => id.split('.')[0] === through)) needed.push(through);
+  }
   const actions = listOf(args.options.get('actions'), 'actions', WORD);
   const changing = listOf(args.options.get('changing'), 'changing', WORD);
   const changes = args.flags.has('changes');
@@ -149,6 +198,17 @@ export function toolValues(root: string, argv: string[]) {
   // As long as the registry lets a description be.
   if (description.trim().length > 120)
     throw new UsageError('--description is one short sentence, 120 characters at most');
+  // What a test switches on, and off to see it refused: none of a mandatory feature's, which
+  // every DSP has on.
+  const mandatory = mandatorySwitches(root);
+  // Each feature, before its parts.
+  const toSwitch = [...new Set(needed.flatMap((id) => [id.split('.')[0]!, id]))].filter(
+    (id) => !mandatory.has(id),
+  );
+  // The first one's feature, or the part itself when its feature is mandatory.
+  const offFirst = needed
+    .map((id) => (mandatory.has(id.split('.')[0]!) ? id : id.split('.')[0]!))
+    .find((id) => !mandatory.has(id));
   const values: Values = {
     name,
     pascal: pascalOf(name),
@@ -159,19 +219,28 @@ export function toolValues(root: string, argv: string[]) {
     connection: scope === 'connection',
     features: needed.length > 0,
     featureList: needed.map((id) => `"${id}"`).join(', '),
-    // Each feature switched on, before its parts.
-    switchOn: [...new Set(needed.flatMap((id) => [id.split('.')[0]!, id]))]
+    switched: toSwitch.length > 0,
+    switchOn: toSwitch
       .map((id) => `    db.set_feature(&dsp, "${id}", true, &owner).unwrap();`)
       .join('\n'),
-    firstFeature: needed[0] ? needed[0].split('.')[0]! : '',
+    firstFeature: offFirst ?? '',
     actions: actions.length > 0,
     firstAction: actions[0] ?? '',
     changes: changes || changing.length > 0,
     reads: scope !== 'connection' && !changes && !changing.length,
-    refusals: changes || changing.length > 0 || needed.length > 0,
+    refusals: changes || changing.length > 0 || toSwitch.length > 0,
     everyCall: changes,
     changingAction: changing[0] ?? '',
     reading: actions.find((action) => !changing.includes(action)) ?? '',
+    through: through ?? '',
+    throughMandatory: Boolean(through && mandatory.has(through)),
+    throughIdent: throughCrate.replace(/-/g, '_'),
+    // Its name as people read it, as its manifest's switch gives it.
+    throughLabel: through
+      ? (/\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(
+          read(root, `features/${through}/feature.rs`),
+        )?.[1] ?? labelOf(through))
+      : '',
   };
   return {
     args,
