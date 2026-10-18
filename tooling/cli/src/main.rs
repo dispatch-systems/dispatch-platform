@@ -147,9 +147,9 @@ const COMMANDS: &[Spec] = &[
     spec(
         "check",
         &["check [--plan] [--keep]", "      [--allow-concurrent]"],
-        "Before a push: what stops the branch, the rule checks and clippy, which passes again \
-         without running on Rust inputs it passed on; ci and the merge queue run the tests. \
-         --plan only names them.",
+        "Before a push: what stops the branch, the rule checks, the TypeScript linter and \
+         clippy, which passes again without running on Rust inputs it passed on; ci and the \
+         merge queue run the tests. --plan only names them.",
     )
     .flags(&["--plan", "--keep", "--allow-concurrent"]),
     spec(
@@ -203,9 +203,9 @@ const COMMANDS: &[Spec] = &[
         "new",
         &["new <kind> <name> [options]", "    [--dry-run] [--json]"],
         "In a change's worktree, a feature, collector, Slack integration, agent tool or kind of slot that works as \
-         written, listed where it is read, then what is generated from it: dispatchdev new \
-         lists the kinds, new <kind> a kind's options. --dry-run prints what it would write, \
-         from any checkout.",
+         written, listed where it is read, then what is generated from it, if anything is: \
+         dispatchdev new lists the kinds, new <kind> a kind's options. --dry-run prints what it \
+         would write, from any checkout.",
     )
     .passed(),
     spec(

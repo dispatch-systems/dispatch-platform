@@ -160,6 +160,15 @@ async function check(copied: string, logs: string) {
   const plan = JSON.parse(
     fs.readFileSync(path.join(copied, 'tooling/ci/test-plan.json'), 'utf8'),
   ) as { rules: string[] };
+  // Every architecture rule, found by where it lives, and the tooling's that the plan lists.
+  const rules = [
+    ...fs
+      .readdirSync(path.join(copied, 'app/tests/rules'))
+      .filter((name) => name.endsWith('.test.ts'))
+      .sort()
+      .map((name) => `app/tests/rules/${name}`),
+    ...plan.rules.filter((file) => file !== 'tooling/tests/scaffold.test.ts'),
+  ];
   const owners = ['features', 'collectors', 'mcp/tools']
     .flatMap((dir) => fs.readdirSync(path.join(copied, dir)).map((name) => `${dir}/${name}`))
     .filter((dir) => /\/smoke/.test(dir));
@@ -200,7 +209,7 @@ async function check(copied: string, logs: string) {
         '--test',
         '--test-skip-pattern=generator left',
         '--test-skip-pattern=the recorded times name the suite',
-        ...plan.rules.filter((file) => file !== 'tooling/tests/scaffold.test.ts'),
+        ...rules,
       ],
     ],
     ['owner tests', ['cargo', 'test', '--locked', ...crates.flatMap((crate) => ['-p', crate])]],

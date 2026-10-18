@@ -18,6 +18,7 @@ suite in sequence:
 | benchmark       | `benchmark`                                | The Rust workload budget; in the queue a break is rechecked beside the base.              |
 | core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
+| scaffold        | `scaffold`                                 | What every generator writes builds, lints, keeps the rules and passes its Rust tests.     |
 | collectors ×5   | `npm run test:browseros -- --shard <name>` | The native collectors with a real browser.                                                |
 | rust-advisories |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
 | platform        |                                            | The gate: the one required check.                                                         |

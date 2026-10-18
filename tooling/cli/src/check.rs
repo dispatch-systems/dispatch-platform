@@ -192,8 +192,8 @@ fn owner(file: &str) -> Option<String> {
 }
 /// The local commands that check what the diff touches: the Rust crates it changes, and the
 /// test files it changes or that watch a source it changes, from `tooling/ci/test-plan.json`.
-/// `npm run check:rules` already runs the rule and dashboard tests, so they are left out, and
-/// `npm run lint` the linter.
+/// `npm run check:rules` already runs the rule and dashboard tests, found by where they live and
+/// in the plan's `rules`, so they are left out, and `npm run lint` the linter.
 pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<String> {
     let list = |value: &Value| -> Vec<String> {
         value
@@ -254,7 +254,12 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
         let packages: Vec<_> = crates.iter().map(|name| format!("-p {name}")).collect();
         commands.push(format!("cargo test --locked {}", packages.join(" ")));
     }
-    let rules = [list(&plan["dashboard"]), list(&plan["rules"])].concat();
+    let listed = list(&plan["rules"]);
+    let rule = |test: &str| {
+        test.starts_with("app/tests/rules/")
+            || test.contains("/tests/frontend/")
+            || listed.iter().any(|file| file == test)
+    };
     let shard = |test: &str| {
         plan["native"]
             .as_object()
@@ -264,7 +269,7 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
             .map(|(shard, _)| shard.clone())
     };
     let (mut node, mut shards, mut specs) = (vec![], BTreeSet::new(), vec![]);
-    for test in tests.iter().filter(|test| !rules.contains(test)) {
+    for test in tests.iter().filter(|test| !rule(test)) {
         if test.contains("tests/browser/") {
             specs.push(test.as_str());
         } else if let Some(shard) = shard(test) {
@@ -779,7 +784,6 @@ mod tests {
             ],
         );
         let plan = json!({
-            "dashboard": ["core/tenancy/tests/frontend/features.test.ts"],
             "rules": ["tooling/tests/test-plan.test.ts"],
             "native": {"cortex": ["collectors/cortex/tests/native/cortex-worker.test.ts"]},
             "watch": [{"sources": ["core/tenancy/backend/roles.rs"], "tests": [
@@ -805,9 +809,14 @@ mod tests {
                 "npm run build -- --debug && npm run test:ui -- app/tests/browser/dsp-features.spec.ts",
             ]
         );
-        // A workspace input touches every crate; rule tests are check:rules' own.
+        // A workspace input touches every crate; rule tests are check:rules' own, listed or
+        // found where they live.
         assert_eq!(
-            changed(&["Cargo.lock", "tooling/tests/test-plan.test.ts"]),
+            changed(&[
+                "Cargo.lock",
+                "tooling/tests/test-plan.test.ts",
+                "app/tests/rules/names.test.ts"
+            ]),
             [
                 "cargo clippy --locked --all-targets -- -D warnings",
                 "cargo test --locked -p dispatch-backend -p dispatch-core -p dispatch-cortex -p dispatch-host -p dispatch-paycom -p dispatch-shared",

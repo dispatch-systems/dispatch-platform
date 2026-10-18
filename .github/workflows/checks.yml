@@ -39,8 +39,6 @@ env:
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
-  # Empty for the queue, so every job runs. A manual run names one suite or all.
-  SUITE: ${{ inputs.suite || 'all' }}
 jobs:
   # Packages the runtime: the release backend and support worker, built together or from the
   # exact-input cache when their sources are unchanged, and the dashboard from Vite.
@@ -53,7 +51,6 @@ jobs:
       attestations: write
       checks: write
     outputs:
-      rust-key: ${{ steps.tools.outputs.binary-key }}
       # Named by the attempt that built it. Rerunning only failed jobs keeps this job's
       # outputs, so the other jobs still find the bytes this job uploaded.
       candidate: ${{ steps.candidate.outputs.name }}
@@ -307,7 +304,7 @@ jobs:
       - uses: ./.github/actions/fail-queue-entry
         if: failure() && github.event_name == 'merge_group'
   # What every generator writes, made in a copy of the checkout: it builds, passes clippy,
-  # TypeScript, the linter and the rules, and its own tests pass.
+  # TypeScript, the linter and the rules, and its Rust tests and agent tools' tests pass.
   scaffold:
     if: contains('all scaffold', inputs.suite || 'all')
     runs-on: ubuntu-24.04
