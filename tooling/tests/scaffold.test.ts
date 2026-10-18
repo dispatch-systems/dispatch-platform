@@ -319,6 +319,8 @@ test('--people connects its table to Driver Match by the IDs of a source, and ne
     file(plan, 'features/fuel/Cargo.toml'),
     /^dispatch-cortex = \{ path = "..\/..\/collectors\/cortex" \}$/m,
   );
+  // The crate it uses for its people is one it declares, as the dependency rule holds it to.
+  assert.match(file(plan, 'features/fuel/feature.rs'), /^\s+depends_on: &\["cortex"\],$/m);
   await refused(/--people reads who it names from its table/, 'fuel', '--people', 'amazon');
   await refused(
     /--people names a source of IDs: one of amazon, paycom/,
@@ -463,7 +465,7 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
   assert.match(file(tab, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Timecard'/);
   assert.match(
     file(tab, 'features/notes/frontend/NotesTab.tsx'),
-    /from '..\/..\/..\/core\/shell\/frontend\/ui\/index.js'/,
+    /from '..\/..\/..\/core\/accounts\/api\/index.js'/,
   );
   // Every page draws the tabs other features add to it, one without tabs of its own too.
   const uniforms = file(
@@ -473,9 +475,16 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
   assert.match(uniforms, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
   await refused(/use --settings/, 'notes', '--tab-of', 'settings');
 
-  const settings = await feature('notes', '--settings');
+  const settings = await feature('notes', '--settings', '--icon', 'Truck');
   assert(settings.files.has('features/notes/frontend/settings/NotesSettings.tsx'));
-  assert.match(file(settings, 'features/notes/frontend/feature.ts'), /settingsTabs: \[/);
+  // Its Settings tab is for those who manage it.
+  assert.match(
+    file(settings, 'features/notes/frontend/feature.ts'),
+    /settingsTabs: \[[^\]]*visible: \(view\) => can\(view, 'notes\.manage'\)/,
+  );
+  assert.match(file(settings, 'features/notes/feature.rs'), /perm\("notes\.manage", /);
+  assert.match(file(settings, 'features/notes/frontend/platform-slots.ts'), /icon: Truck \}/);
+  await refused(/--icon names a lucide-react icon/, 'notes', '--settings', '--icon', 'Truckk');
   assert.match(file(settings, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Settings'/);
 
   await refused(/choose one/, 'notes', '--page', '--tab-of', 'timecard');

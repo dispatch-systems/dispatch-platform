@@ -1,5 +1,5 @@
 //! Who {{label}}'s data names, as Driver Match reads them, by their {{peopleSource}} IDs.
-//! Each query is a start: write it for what the feature really keeps. Core's manifest README
+//! TODO(scaffold): write each query for what the feature really keeps. Core's manifest README
 //! says what else a connection can tell Driver Match.
 {{#ownDatabase}}
 use super::storage::STORAGE;
@@ -12,7 +12,7 @@ pub const PEOPLE: People = People::new(
         id: "{{name}}",
         order: {{peopleOrder}},
         label: "{{label}}",
-        icon: "Users",
+        icon: "{{peopleIcon}}",
     },
     {{peopleIdent}}::SOURCE,
     |store, dsp| {

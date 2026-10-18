@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,6 +233,11 @@ export function nextPermissionOrder(root: string) {
     ))
       highest = Math.max(highest, Number(match[1]));
   return (Math.floor(highest / 10) + 1) * 10;
+}
+/** Whether lucide-react, which draws the dashboard's icons, has an icon of this name. */
+export function isIcon(name: string) {
+  const icons = createRequire(import.meta.url)('lucide-react') as Record<string, unknown>;
+  return /^[A-Z][A-Za-z0-9]*$/.test(name) && !name.endsWith('Icon') && name in icons;
 }
 /** The next free tens in the one order the kinds of data that name people follow. */
 export function nextPeopleOrder(root: string) {
