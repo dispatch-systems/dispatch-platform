@@ -23,6 +23,9 @@ pub struct Config {
     pub source: crate::accounts::api::types::RuntimeSource,
     pub fixture: bool,
     pub fixture_url: Option<String>,
+    /// The day a test server takes as today, `DISPATCH_FIXTURE_TODAY`: only with fixture
+    /// providers, while developing. Loading the config pins it for the process (`clock`).
+    pub today: Option<chrono::NaiveDate>,
     pub browser_capacity: usize,
     pub dashboard: PathBuf,
     pub browseros: PathBuf,
@@ -115,6 +118,13 @@ impl Config {
             source,
             fixture: provider == "fixture",
             fixture_url: env::var("DISPATCH_FIXTURE_PROVIDER_URL").ok(),
+            today: env::var("DISPATCH_FIXTURE_TODAY")
+                .ok()
+                .map(|day| {
+                    chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d")
+                        .map_err(|_| crate::Error::new("invalid_fixture_today", 400))
+                })
+                .transpose()?,
             browser_capacity: 2,
             dashboard: bundle.join("dashboard"),
             browseros: PathBuf::from(variable(
@@ -185,6 +195,11 @@ impl Config {
             )?;
         }
         ensure(
+            c.today.is_none() || (c.development && c.fixture),
+            "fixture_forbidden",
+            403,
+        )?;
+        ensure(
             ["capture", "cloudflare", "smtp", "disabled"].contains(&c.mail_mode.as_str()),
             "invalid_mail_mode",
             400,
@@ -228,6 +243,7 @@ impl Config {
             )?;
         }
         ensure(c.standalone, "independent_environment_required", 400)?;
+        crate::foundation::clock::pin(c.today);
         Ok(c)
     }
     /// Which of this server's addresses a request's `Host` names, if any. This machine's own

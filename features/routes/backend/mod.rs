@@ -392,7 +392,7 @@ pub(super) fn routes_today(store: &Store, id: &str) -> Result<NaiveDate> {
         .timezone
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))?;
-    Ok(chrono::Utc::now().with_timezone(&tz).date_naive())
+    Ok(dispatch_core::foundation::clock::today(tz))
 }
 /// The request for one day: the DSP's station and names, which the driver resolves
 /// to a service area and provider on Cortex.

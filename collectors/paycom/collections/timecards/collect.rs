@@ -455,7 +455,7 @@ impl Driver {
             .map_err(|_| Error::new("roster_not_complete", 409))?;
         let (body, period, codes) = selected_body(
             &body,
-            selected_date.unwrap_or_else(|| chrono::Utc::now().with_timezone(&zone).date_naive()),
+            selected_date.unwrap_or_else(|| dispatch_core::foundation::clock::today(zone)),
         )?;
         let mut headers = serde_json::Map::new();
         if let Some(values) = observed["headers"].as_object() {

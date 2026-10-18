@@ -126,11 +126,7 @@ impl Tool for DvicShortInspections {
 
 /// The DSP's own date today, in its time zone.
 fn today(timezone: &str) -> NaiveDate {
-    let now = chrono::Utc::now();
-    match timezone.parse::<chrono_tz::Tz>() {
-        Ok(zone) => now.with_timezone(&zone).date_naive(),
-        Err(_) => now.date_naive(),
-    }
+    dispatch_core::foundation::clock::today(timezone.parse().unwrap_or(chrono_tz::UTC))
 }
 
 /// The search, read at once.

@@ -44,6 +44,8 @@ const headers = [
 ];
 // Its pay periods follow the demo's cycle (Sep 6–19, every two weeks), so a period collected is
 // never older than the seeded DSPs' demo one, and replaces its roster whichever week it is.
+/** The day the platform takes as today, whatever the date: in the Oct 4–17 period. */
+export const today = '2026-10-14';
 const requestBody = {
   allocationCategories: [],
   approvalMode: 'pending',
@@ -387,6 +389,7 @@ export async function paycomFixture(
     platform = await fixture({
       env: {
         DISPATCH_FIXTURE_PROVIDER_URL: url,
+        DISPATCH_FIXTURE_TODAY: today,
         DISPATCH_BWRAP_EXECUTABLE:
           process.env.DISPATCH_BWRAP_EXECUTABLE ?? '/usr/local/libexec/dispatch-dev/bwrap',
       },

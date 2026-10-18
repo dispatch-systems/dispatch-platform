@@ -7,7 +7,7 @@ pub fn fixture_date(timezone: &str, selected: Option<chrono::NaiveDate>) -> Resu
     let tz: chrono_tz::Tz = timezone
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))?;
-    let today = selected.unwrap_or_else(|| chrono::Utc::now().with_timezone(&tz).date_naive());
+    let today = selected.unwrap_or_else(|| dispatch_core::foundation::clock::today(tz));
     // Demo periods follow the known Sep 6–19 cycle. Real collections use Paycom's bounds.
     let anchor = chrono::NaiveDate::from_ymd_opt(2026, 9, 6).unwrap();
     let start = anchor + chrono::Duration::days((today - anchor).num_days().div_euclid(14) * 14);

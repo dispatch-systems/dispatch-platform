@@ -16,7 +16,7 @@ pub(crate) fn request(db: &Store, dsp: &str, input: &Value) -> Result<Value> {
         .timezone
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))?;
-    let today = chrono::Utc::now().with_timezone(&timezone).date_naive();
+    let today = dispatch_core::foundation::clock::today(timezone);
     let date = input["date"].as_str().map_or(Ok(today), |date| {
         validate::date(date)?;
         date.parse::<chrono::NaiveDate>()

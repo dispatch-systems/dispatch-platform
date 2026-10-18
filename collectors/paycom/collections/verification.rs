@@ -9,7 +9,7 @@ pub(crate) fn request(db: &Store, dsp: &str, input: &Value) -> Result<Value> {
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))?;
     let date = crate::timecards::collection_date(input, &scope.timezone)?
-        .unwrap_or_else(|| chrono::Utc::now().with_timezone(&timezone).date_naive());
+        .unwrap_or_else(|| dispatch_core::foundation::clock::today(timezone));
     Ok(json!({"date":date.to_string()}))
 }
 

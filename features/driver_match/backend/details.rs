@@ -91,7 +91,7 @@ fn last_days(store: &Store, dsp: &str) -> Result<Vec<String>> {
         .timezone
         .parse()
         .unwrap_or(chrono_tz::UTC);
-    let today = chrono::Utc::now().with_timezone(&zone).date_naive();
+    let today = dispatch_core::foundation::clock::today(zone);
     Ok((0..DAYS)
         .rev()
         .map(|back| (today - chrono::Duration::days(back)).to_string())
