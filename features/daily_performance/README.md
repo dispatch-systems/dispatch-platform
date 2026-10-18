@@ -36,4 +36,12 @@ their field contract is not invented. Raw provider fields are retained for later
 Its drivers are Driver Match's `daily_performance` kind of data, counted in the days their
 quality was reported, each showing them driving.
 
-- **Exposed:** `daily_metrics`, through its contract in `contract/` (`dispatch-daily-performance-contract`), for any feature or agent tool, while it's on for the DSP.
+- **Exposed:** `daily_metrics`, through its contract in `contract/`
+  (`dispatch-daily-performance-contract`), for any feature or agent tool, while it's on for the
+  DSP: the days collected, and a driver's days under any of their Amazon IDs, from the active
+  publications of the DSP's station. Each day has its quality, safety, feedback, delivery
+  behavior and return numbers, its packages returned to the station, and its safety events, each
+  once and as assessed when Amazon reports it both ways. A day not collected is unknown. It
+  leaves out raw rows, locations, videos and vehicles, and refuses a day that isn't YYYY-MM-DD
+  (`invalid_date`) and more than 31 days, none or more than 20 IDs, or a malformed ID
+  (`invalid_input`).

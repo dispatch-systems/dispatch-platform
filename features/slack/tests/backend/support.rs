@@ -2,10 +2,18 @@
 //! the same: Slack; a stand-in feature with an integration through it, which hears of Slack's
 //! events as an integration would and keeps what it heard, and hears when the DSP's people
 //! change; and a stand-in for where a DSP keeps its files, which keeps what's saved and written
-//! there in memory.
-use crate::FEATURE;
+//! there in memory. And how a test starts: a platform with one DSP, and its workspaces connected.
+use crate::{
+    FEATURE,
+    backend::{
+        bot::Bot,
+        slack::Tokens,
+        storage::{SlackStore, Workspace},
+    },
+};
 use dispatch_core::{
     State,
+    db::now,
     manifest::{
         Feature, Upkeep,
         events::PeopleChanged,
@@ -313,4 +321,37 @@ pub fn ready(dsp: &str, ready: bool) {
 /// Installs Slack and the stand-ins.
 pub fn install() {
     testing::install(&[], &[&FEATURE, &LISTENER, &KEEPER]);
+}
+/// A platform with one DSP, and its server's state.
+pub fn platform() -> (impl Drop, Arc<State>, String) {
+    install();
+    let (root, store, dsp) = testing::bootstrapped();
+    let config = store.config.clone();
+    drop(store);
+    (root, State::new(config).unwrap(), dsp)
+}
+/// Connects the DSP's workspace `team`, its admin having let the bot do what `scopes` say.
+pub async fn connect(state: &Arc<State>, dsp: &str, team: &str, scopes: &[&str]) -> Bot {
+    let workspace = Workspace {
+        team: team.into(),
+        name: team.into(),
+        broken: false,
+        scopes: scopes.iter().map(|scope| (*scope).to_owned()).collect(),
+        bot_user: "U0FIXTUREBOT".into(),
+        app: "A0FIXTURE".into(),
+        connected_by: None,
+        connected_at: "2026-01-01T00:00:00Z".into(),
+        label: None,
+    };
+    let tokens = Tokens {
+        access: format!("fixture-access:{team}:test"),
+        refresh: None,
+        expires_at: Some(now() + 3_600_000),
+    };
+    let of = dsp.to_owned();
+    state
+        .run(move |db| db.save_slack_workspace(&of, &workspace, &tokens))
+        .await
+        .unwrap();
+    Bot::new(state, dsp, team)
 }

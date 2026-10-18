@@ -146,7 +146,7 @@ pub const FEATURE: Feature = Feature {
         dyn dispatch_slack_contract::ChatAccounts,
         &backend::exposed::EXPOSED,
         "chat_accounts",
-        "TODO(scaffold): what it offers, in a sentence.",
+        "Each person's accounts in the DSP's Slack workspaces: where, and whether each is active.",
     )],
     ..feature("slack")
 };

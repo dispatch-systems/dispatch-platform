@@ -197,7 +197,7 @@ pub const FEATURE: Feature = Feature {
         dyn dispatch_timecard_contract::Timecards,
         &backend::exposed::EXPOSED,
         "timecards",
-        "TODO(scaffold): what it offers, in a sentence.",
+        "Each driver's Paycom timecards by day: their punches, the meal breaks they punched, the time worked, and the days collected.",
     )],
     ..feature("timecard")
 };

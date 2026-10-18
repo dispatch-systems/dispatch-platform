@@ -52,7 +52,7 @@ pub const FEATURE: Feature = Feature {
         dyn dispatch_driver_profiles_contract::AmazonRoster,
         &backend::exposed::EXPOSED,
         "amazon_roster",
-        "TODO(scaffold): what it offers, in a sentence.",
+        "What Amazon's roster says of each associate: status, roles, qualifications, license expiry.",
     )],
     ..feature("driver_profiles")
 };

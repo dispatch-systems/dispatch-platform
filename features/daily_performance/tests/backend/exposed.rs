@@ -1,22 +1,165 @@
 //! What Daily Performance exposes, as a feature using it finds it: only while it's on for the
 //! DSP.
-use dispatch_core::testing;
+use crate::DailyPerformanceStore;
+use dispatch_core::{
+    db::{Store, s},
+    testing,
+};
+use dispatch_cortex::{
+    daily_performance::{self, Capture, Request},
+    discovery::CollectionRequest,
+};
+use dispatch_daily_performance_contract::{self as metrics, Collected};
+use serde_json::{Value, json};
+
+fn ready() -> (tempfile::TempDir, Store, String) {
+    testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
+    let (root, store, dsp) = testing::bootstrapped();
+    testing::set_dsp(&store, &dsp, "Fixture Delivery", "America/Los_Angeles").unwrap();
+    store
+        .set_profile(
+            &dsp,
+            json!({"stationCode":"TST1","abbreviation":"FXTR","setupRequired":false}),
+        )
+        .unwrap();
+    testing::ready_connection(&store, &dsp, dispatch_cortex::PROVIDER).unwrap();
+    store.enable_all_features(&dsp).unwrap();
+    (root, store, dsp)
+}
+/// Publishes the fixture's day, as `change` leaves it.
+fn publish(store: &Store, dsp: &str, date: &str, change: fn(&mut Capture)) {
+    let queued = store
+        .enqueue_daily_performance(dsp, None, date, date, date)
+        .unwrap();
+    let job = s(&queued[0], "id");
+    let request: Value =
+        serde_json::from_str(&store.job_row(job, Some(dsp)).unwrap().request).unwrap();
+    let keeper = dispatch_core::manifest::registry().keeper(daily_performance::JOB_KIND);
+    let request: Request =
+        serde_json::from_value(keeper.bind(store, dsp, &request).unwrap()).unwrap();
+    let CollectionRequest::Discover(discovery) = request.scope_request() else {
+        panic!("discover")
+    };
+    let scope = discovery.scope("area-fixture", "company-fixture").unwrap();
+    let mut capture = daily_performance::fixture(&request).unwrap();
+    change(&mut capture);
+    store
+        .publish_daily_performance(dsp, job, &capture, &scope)
+        .unwrap();
+}
 
 #[test]
-fn daily_metrics_is_offered_only_while_daily_performance_is_on() {
-    testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
-    let (_root, db, dsp) = testing::bootstrapped();
-    let offered = dispatch_daily_performance_contract::for_dsp(&db, &dsp)
+fn a_drivers_days_are_read_for_their_ids_with_unknown_days_told_apart_while_it_is_on() {
+    let (_root, db, dsp) = ready();
+    let offered = metrics::for_dsp(&db, &dsp)
         .unwrap()
         .expect("Daily Performance is on");
-    // TODO(scaffold): prove each of its readers and actions against what it keeps.
-    assert!(offered.ready(&db, &dsp).unwrap());
+    assert_eq!(offered.collected(&db, &dsp).unwrap(), None);
+    publish(&db, &dsp, "2026-10-01", |_| {});
+    // Amazon writes a number as text, or as something that isn't one.
+    publish(&db, &dsp, "2026-10-03", |capture| {
+        capture.datasets[0].rows[0]["delivered"] = json!("97");
+        capture.datasets[0].rows[0]["dispatched"] = json!({"count": 99});
+    });
+    assert_eq!(
+        offered.collected(&db, &dsp).unwrap(),
+        Some(Collected {
+            from: "2026-10-01".into(),
+            through: "2026-10-03".into(),
+        })
+    );
+
+    let ids = ["driver-1".to_owned(), "driver-3".to_owned()];
+    let read = offered
+        .days(&db, &dsp, &ids, "2026-09-30", "2026-10-03")
+        .unwrap();
+    assert_eq!(read.collected, ["2026-10-01", "2026-10-03"]);
+    let days: Vec<_> = read
+        .days
+        .iter()
+        .map(|day| (day.date.as_str(), day.id.as_str()))
+        .collect();
+    assert_eq!(
+        days,
+        [
+            ("2026-10-01", "driver-1"),
+            ("2026-10-01", "driver-3"),
+            ("2026-10-03", "driver-1"),
+            ("2026-10-03", "driver-3"),
+        ]
+    );
+    let first = &read.days[0];
+    assert_eq!(first.quality.as_ref().unwrap().delivered, Some(101.0));
+    assert!(first.feedback.as_ref().unwrap().negatives.is_empty());
+    let returned = &first.returned[0];
+    assert_eq!(
+        (
+            returned.tracking_id.as_deref(),
+            returned.reason.as_deref(),
+            returned.impacting,
+            returned.exempted,
+        ),
+        (
+            Some("TBA000000000001"),
+            Some("BUSINESS CLOSED"),
+            Some(true),
+            Some(false)
+        )
+    );
+    assert!(first.events.is_empty());
+    let third = &read.days[1];
+    assert_eq!(third.safety.as_ref().unwrap().speeding, Some(2.0));
+    let negatives = &third.feedback.as_ref().unwrap().negatives;
+    assert_eq!(negatives.len(), 1);
+    assert_eq!(
+        (negatives[0].what.as_str(), negatives[0].count),
+        ("driver_mishandled_package_cnt", 2.0)
+    );
+    // Reported both live and assessed, the event is told once, as assessed.
+    assert_eq!(third.events.len(), 1);
+    let event = &third.events[0];
+    assert!(event.assessed);
+    assert_eq!(
+        (event.kind.as_deref(), event.impacting),
+        (Some("Speeding"), Some(true))
+    );
+    let quality = read.days[2].quality.as_ref().unwrap();
+    assert_eq!((quality.delivered, quality.dispatched), (Some(97.0), None));
+
+    let other = ["driver-9".to_owned()];
+    let nobody = offered
+        .days(&db, &dsp, &other, "2026-10-01", "2026-10-03")
+        .unwrap();
+    assert_eq!(nobody.collected, ["2026-10-01", "2026-10-03"]);
+    assert!(nobody.days.is_empty());
+
     let owner = testing::a_user(&db);
     db.set_feature(&dsp, "daily_performance", false, &owner)
         .unwrap();
+    assert!(metrics::for_dsp(&db, &dsp).unwrap().is_none());
+}
+
+#[test]
+fn bad_days_and_ids_are_refused() {
+    let (_root, db, dsp) = ready();
+    let offered = metrics::for_dsp(&db, &dsp).unwrap().unwrap();
+    let one = ["driver-1".to_owned()];
+    let many: Vec<String> = (0..21).map(|n| format!("driver-{n}")).collect();
+    let bad = ["driver 1".to_owned()];
     assert!(
-        dispatch_daily_performance_contract::for_dsp(&db, &dsp)
-            .unwrap()
-            .is_none()
+        offered
+            .days(&db, &dsp, &one, "2026-09-03", "2026-10-03")
+            .is_ok()
     );
+    for (ids, from, to, code) in [
+        (&one[..], "2026-10-1", "2026-10-03", "invalid_date"),
+        (&one[..], "2026-10-03", "2026-10-01", "invalid_input"),
+        (&one[..], "2026-09-02", "2026-10-03", "invalid_input"),
+        (&[][..], "2026-10-01", "2026-10-03", "invalid_input"),
+        (&many[..], "2026-10-01", "2026-10-03", "invalid_input"),
+        (&bad[..], "2026-10-01", "2026-10-03", "invalid_input"),
+    ] {
+        let error = offered.days(&db, &dsp, ids, from, to).unwrap_err();
+        assert_eq!(error.code, code, "{ids:?} {from} {to}");
+    }
 }

@@ -41,4 +41,11 @@ requires restoring a consistent pre-transition snapshot of the platform, jobs an
 Its scorecards' drivers are Driver Match's `weekly_scorecard` kind of data, counted in the
 weeks they were scored, each showing them driving.
 
-- **Exposed:** `driver_scorecards`, through its contract in `contract/` (`dispatch-weekly-scorecard-contract`), for any feature or agent tool, while it's on for the DSP.
+- **Exposed:** `driver_scorecards`, through its contract in `contract/`
+  (`dispatch-weekly-scorecard-contract`), for any feature or agent tool, while it's on for the
+  DSP: the weeks collected and, for drivers' Amazon IDs, their scorecards and the packages they
+  list (concessions, returns and customer feedback). A scorecard or package counts in the days
+  asked when its Sunday-to-Saturday week overlaps them. It reads only the active, verified
+  publications at the DSP's station, as its weeks do, and never gives raw rows, locations,
+  addresses or coaching. It refuses a day that isn't YYYY-MM-DD (`invalid_date`), and
+  more than 366 days, more than 32 IDs or a malformed ID (`invalid_input`).

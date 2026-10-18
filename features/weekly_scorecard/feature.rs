@@ -121,7 +121,7 @@ pub const FEATURE: Feature = Feature {
         dyn dispatch_weekly_scorecard_contract::DriverScorecards,
         &backend::exposed::EXPOSED,
         "driver_scorecards",
-        "TODO(scaffold): what it offers, in a sentence.",
+        "Each driver's weekly scorecards, the packages they list, and the weeks collected.",
     )],
     ..feature("weekly_scorecard")
 };

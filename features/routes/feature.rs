@@ -89,7 +89,7 @@ pub const FEATURE: Feature = Feature {
         dyn dispatch_routes_contract::DriverRoutes,
         &backend::exposed::EXPOSED,
         "driver_routes",
-        "TODO(scaffold): what it offers, in a sentence.",
+        "Each driver's routes day by day, with their stops and packages, and the days collected.",
     )],
     ..feature("routes")
 };

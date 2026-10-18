@@ -27,4 +27,11 @@ name `routedata` on disk.
 - **Log:** `routes.collection_requested`, `routes.retention_changed` and `routes.data_expired`,
   under Collections.
 - **People:** its drivers and their days are Driver Match's `routes` kind of data.
-- **Exposed:** `driver_routes`, through its contract in `contract/` (`dispatch-routes-contract`), for any feature or agent tool, while it's on for the DSP.
+- **Exposed:** `driver_routes`, through its contract in `contract/` (`dispatch-routes-contract`),
+  for any feature or agent tool, while it's on for the DSP: the source whose IDs name its
+  drivers, the days collected, and a driver's itineraries over some days at the DSP's station,
+  each with its route, van, times, stops, packages delivered, not delivered and taken off, and
+  every package not delivered by tracking ID, with which of those days were collected and
+  which were read while under way. Never addresses, locations, order IDs or phone numbers. It
+  refuses a day that isn't YYYY-MM-DD (`invalid_date`); and `from` after `to`, more than 366
+  days, no IDs or more than 16, or an ID Cortex wouldn't send (`invalid_input`).

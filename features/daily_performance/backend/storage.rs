@@ -67,10 +67,23 @@ pub(crate) fn request(store: &Store, dsp: &str, date: &str) -> Result<Value> {
     let bound = bind(store, dsp, date)?;
     Ok(json!({"collection":"daily_performance", "date":date, "station":bound["station"]}))
 }
-fn text(row: &Value, key: &str) -> Option<String> {
+pub(crate) fn text(row: &Value, key: &str) -> Option<String> {
     match row.get(key)? {
         Value::String(value) if !value.is_empty() => Some(value.chars().take(256).collect()),
         Value::Number(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+/// A yes or no, however Amazon writes it, as 1 or 0.
+pub(crate) fn flag(value: &Value) -> Option<i64> {
+    match value {
+        Value::Bool(value) => Some(i64::from(*value)),
+        Value::Number(value) => value.as_i64().filter(|v| [0, 1].contains(v)),
+        Value::String(value) => match value.to_lowercase().as_str() {
+            "y" | "yes" | "true" | "1" => Some(1),
+            "n" | "no" | "false" | "0" => Some(0),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -227,16 +240,7 @@ impl DailyPerformanceStore for Store {
                     ],
                 )?;
                 for (index, row) in captured.rows.iter().enumerate() {
-                    let impact = dataset.impact.and_then(|field| match &row[field] {
-                        Value::Bool(value) => Some(i64::from(*value)),
-                        Value::Number(value) => value.as_i64().filter(|v| [0, 1].contains(v)),
-                        Value::String(value) => match value.to_lowercase().as_str() {
-                            "y" | "yes" | "true" | "1" => Some(1),
-                            "n" | "no" | "false" | "0" => Some(0),
-                            _ => None,
-                        },
-                        _ => None,
-                    });
+                    let impact = dataset.impact.and_then(|field| flag(&row[field]));
                     data.exec(
                         "INSERT INTO daily_rows(publication_id,dataset,row_index,date,transporter_id,tracking_id,event_id,impact,row) \
                          VALUES (?,?,?,?,?,?,?,?,?)",

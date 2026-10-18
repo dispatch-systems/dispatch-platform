@@ -62,7 +62,7 @@ pub const FEATURE: Feature = Feature {
         dyn dispatch_daily_performance_contract::DailyMetrics,
         &backend::exposed::EXPOSED,
         "daily_metrics",
-        "TODO(scaffold): what it offers, in a sentence.",
+        "A driver's Daily Quality and Day Safety day by day, the packages they returned and their safety events, and the days collected.",
     )],
     ..feature("daily_performance")
 };
