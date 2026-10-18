@@ -12,25 +12,24 @@ import {
   exists,
   forwardFeature,
   features,
-  finish,
   format,
   formatRust,
   holding,
   names as namesOf,
   parseArguments,
-  repositoryRoot,
   run,
   snapshotsNote,
   template,
+  type Generator,
   type Plan,
   type Values,
 } from './scaffold.js';
 
-// `npm run new:collector -- <site> [flags]`: a collector for one outside site, as a crate of its
+// `dispatchdev new collector <site> [options]`: a collector for one outside site, as a crate of its
 // own listed in app/: its connection, one collection with its fixture, its connection card and a
 // native test that signs in to a staged copy of the site.
 
-export const usage = `Usage: npm run new:collector -- <site> [options]
+export const usage = `Usage: dispatchdev new collector <site> [options]
 
   --collection <name>   its first collection (default: records)
   --host <host>         the site's host, the only one its browser may open
@@ -155,10 +154,10 @@ export async function planCollector(root: string, argv: string[]) {
   const { collection } = values;
   plan.notes.push(
     `Each collection has exactly one keeper, and the registry refuses ${name}.${collection} ` +
-      `without one: \`npm run new:feature -- <name> --keeps ${name}.${collection}\`.`,
+      `without one: \`dispatchdev new feature <name> --keeps ${name}.${collection}\`.`,
   );
   plan.notes.push(
-    '`npm run contracts:generate` writes the catalog with its connection switch, its job ' +
+    '`dispatchdev generate` writes the catalog with its connection switch, its job ' +
       "kind, schedule collection and labels into core's generated files, and the frontend's list.",
   );
   plan.notes.push(snapshotsNote);
@@ -168,14 +167,15 @@ export async function planCollector(root: string, argv: string[]) {
   return { plan, args };
 }
 
-export async function main(argv: string[]) {
-  const options = parseArguments(argv, FLAGS, OPTIONS);
-  const root = path.resolve(options.options.get('root') ?? repositoryRoot);
-  const { plan, args } = await planCollector(root, argv);
-  const dryRun = args.flags.has('dry-run');
-  if (args.options.has('out') && !dryRun) throw new UsageError('--out goes with --dry-run');
-  finish(plan, root, { dryRun, out: args.options.get('out') });
-}
+export const generator: Generator = {
+  kind: 'collector',
+  about: 'a collector for one outside site: its connection, a collection and its card',
+  usage,
+  flags: FLAGS,
+  options: OPTIONS,
+  plan: planCollector,
+  generates: true,
+};
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename))
-  await run(usage, main);
+  await run(generator);

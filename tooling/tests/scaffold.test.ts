@@ -449,7 +449,7 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
     /getByRole\('link', \{ name: 'Parking', exact: true \}\)/,
   );
   // The export writes the frontend's list from the registry, with the feature in its place.
-  assert.match(page.notes.join('\n'), /contracts:generate` writes [^\n]*the frontend's list/);
+  assert.match(page.notes.join('\n'), /`dispatchdev generate` writes [^\n]*the frontend's list/);
 
   const open = file(
     await feature('lobby', '--page', '--mandatory'),
@@ -743,7 +743,7 @@ test('everything written is formatted as the repository formats it, with no plac
   }
 });
 
-test('new:collector writes its connection, one collection with a fixture, a card and a native test in a shard of its own', async () => {
+test('new collector writes its connection, one collection with a fixture, a card and a native test in a shard of its own', async () => {
   const plan = await collector('fleet', '--host', 'portal.fleet.test');
   assert.deepEqual(writes(plan, 'collectors/fleet'), [
     'Cargo.toml',
@@ -835,7 +835,7 @@ test('new:collector writes its connection, one collection with a fixture, a card
     /collectors: &\[[^\]]*\n\s+&dispatch_fleet::COLLECTOR,\n\s*\],/,
   );
   // The export writes the frontend's list from the registry's collectors.
-  assert.match(plan.notes.join('\n'), /contracts:generate` writes [^\n]*the frontend's list/);
+  assert.match(plan.notes.join('\n'), /`dispatchdev generate` writes [^\n]*the frontend's list/);
   assert.match(
     file(plan, 'app/backend/Cargo.toml'),
     /^dispatch-fleet = \{ path = "..\/..\/collectors\/fleet" \}$/m,
@@ -860,7 +860,7 @@ test('new:collector writes its connection, one collection with a fixture, a card
   );
 });
 
-/** Runs a generator as `npm run` would. */
+/** Runs a generator as its own script. */
 const generate = (generator: string, args: string[]) =>
   spawnSync(process.execPath, [tsx, path.join(root, `tooling/scaffold/${generator}.ts`), ...args], {
     cwd: root,
@@ -895,14 +895,14 @@ test('--dry-run prints what it would write and changes nothing; --out receives i
       assert(fs.existsSync(path.join(out, name)), `${name} is not under --out`);
     assert.match(result.stdout, /^Next:\n/m);
     // The snapshots of the whole product are rewritten by a command, not by hand.
-    assert.match(result.stdout, /`npm run snapshots:update` rewrites the snapshots/);
+    assert.match(result.stdout, /`dispatchdev generate` rewrites the snapshots/);
     assert.doesNotMatch(result.stdout, /catalog\.rs|agent-keys|DISPATCH_UPDATE_/);
     assert(!fs.existsSync('features/parking'), 'a dry run wrote into the repository');
     assert.equal(fs.readFileSync(registry, 'utf8'), before);
     const site = generate('new-collector', ['fleet', '--dry-run']);
     assert.equal(site.status, 0, site.stderr);
     assert(listed(site.stdout, 'Would write').includes('collectors/fleet/collector.rs'));
-    assert.match(site.stdout, /`npm run snapshots:update` rewrites the snapshots/);
+    assert.match(site.stdout, /`dispatchdev generate` rewrites the snapshots/);
     assert.doesNotMatch(site.stdout, /catalog\.rs/);
     assert(!fs.existsSync('collectors/fleet'));
   } finally {
@@ -933,5 +933,5 @@ test('without --dry-run it writes into the root, and refuses to write over an ow
   assert.match(again.stderr, /desk is taken/);
   const usage = generate('new-feature', ['desk', '--wings']);
   assert.equal(usage.status, 1);
-  assert.match(usage.stderr, /Unknown option --wings\n\nUsage: npm run new:feature/);
+  assert.match(usage.stderr, /Unknown option --wings\n\nUsage: dispatchdev new feature/);
 });

@@ -101,11 +101,11 @@ test('only the app lists the features and collectors', () => {
 // Adding a feature is adding its folder: the app's list of them is written from features/.
 // Adding a tool is adding its file: the MCP's list of them, and the crates of the features they
 // need, are written from mcp/tools/.
-test('the app lists every feature, and the MCP every tool, as `npm run contracts:generate` writes them', () => {
+test('the app lists every feature, and the MCP every tool, as `dispatchdev generate` writes them', () => {
   const stale = [...wiring(root)]
     .filter(([file, text]) => read(file) !== text)
     .map(([file]) => file);
-  assert.deepEqual(stale, [], `${stale.join(' and ')} need \`npm run contracts:generate\``);
+  assert.deepEqual(stale, [], `${stale.join(' and ')} need \`dispatchdev generate\``);
 });
 
 test("a feature's or collector's tests list only itself and what it may use", () => {

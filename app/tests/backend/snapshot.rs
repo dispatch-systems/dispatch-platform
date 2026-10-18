@@ -2,12 +2,12 @@
 //! collectors it is made of, such as the catalog, the databases and their schemas. Each is a
 //! file, so that such a change shows in review as a change to it. With
 //! `DISPATCH_UPDATE_SNAPSHOTS` set, a test writes what it finds there instead of failing on a
-//! difference: `npm run snapshots:update` sets it, and names each file that changed.
+//! difference: `dispatchdev generate` sets it, and names each file that changed.
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 /// The command that rewrites the snapshots, which a test names when one differs.
-pub const UPDATE: &str = "npm run snapshots:update";
+pub const UPDATE: &str = "dispatchdev generate";
 
 /// Whether the tests write what they find, rather than compare it with their snapshots.
 pub fn updating() -> bool {

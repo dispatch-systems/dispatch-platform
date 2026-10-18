@@ -426,11 +426,11 @@ export const appBackend = ['app/backend/features.rs', 'app/backend/lib.rs'];
 export const routeInventory = 'app/tests/backend/integration/http_routes.rs';
 /**
  * The last step for a new owner: the app's tests hold the whole product to snapshots, which it
- * changes. Rewriting them needs a build, so the generators name the command rather than run it.
+ * changes. Rewriting them needs a build: `dispatchdev new` runs the command after writing.
  */
 export const snapshotsNote =
-  "Then `npm run snapshots:update` rewrites the snapshots of the whole product the app's tests " +
-  'hold, such as the catalog, the databases and the tools agents use, and names each one that ' +
+  "`dispatchdev generate` rewrites the snapshots of the whole product the app's tests hold, " +
+  'such as the catalog, the databases and the tools agents use, and names each file that ' +
   'changed: review them with the rest.';
 /** The app's test that writes every owner's API types to TypeScript, which lists each type. */
 export const typescriptExport = 'app/tests/backend/export.rs';
@@ -461,11 +461,24 @@ export async function change(
   else plan.changes.delete(file);
 }
 
+/** What a generator made, or with `dryRun` would make. */
+export type Made = {
+  dryRun: boolean;
+  /** The checkout it wrote into. */
+  root: string;
+  /** New files, by path from the root. */
+  wrote: string[];
+  /** Existing files it changed. */
+  changed: string[];
+  /** What to do next. */
+  next: string[];
+};
+
 /**
- * Writes the plan into the root, or with `dryRun` prints what it would write and changes
- * nothing; `out` then receives every file it would write, whole, under the same paths.
+ * Writes the plan into the root, or with `dryRun` changes nothing; `out` then receives every
+ * file it would write, whole, under the same paths. Answers what it made.
  */
-export function finish(plan: Plan, root: string, options: { dryRun: boolean; out?: string }) {
+export function finish(plan: Plan, root: string, options: { dryRun: boolean; out?: string }): Made {
   for (const file of plan.files.keys())
     if (exists(root, file)) throw new Error(`${file} exists already`);
   const target = options.dryRun ? options.out : root;
@@ -492,16 +505,26 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
           'it: run `cargo update --workspace`.',
       );
   }
-  const verb = options.dryRun ? 'Would write' : 'Wrote';
-  const lines = [
-    `${verb}:`,
-    ...[...plan.files.keys()].sort().map((file) => `  ${file}`),
-    `${options.dryRun ? 'Would change' : 'Changed'}:`,
-    ...changed.sort().map((file) => `  ${file}`),
-  ];
-  if (plan.notes.length) lines.push('Next:', ...plan.notes.map((note) => `  - ${note}`));
-  process.stdout.write(`${lines.join('\n')}\n`);
+  return {
+    dryRun: options.dryRun,
+    root,
+    wrote: [...plan.files.keys()].sort(),
+    changed: changed.sort(),
+    next: plan.notes,
+  };
 }
+/** What a generator made as people read it, its next steps last unless `next` is false. */
+export function described(made: Made, next = true) {
+  const lines = [
+    `${made.dryRun ? 'Would write' : 'Wrote'}:`,
+    ...made.wrote.map((file) => `  ${file}`),
+    `${made.dryRun ? 'Would change' : 'Changed'}:`,
+    ...made.changed.map((file) => `  ${file}`),
+  ];
+  if (next && made.next.length) lines.push(...nextLines(made.next));
+  return lines.join('\n');
+}
+export const nextLines = (notes: string[]) => ['Next:', ...notes.map((note) => `  - ${note}`)];
 /**
  * Has Cargo.lock list the workspace's crates as they now are, without the network: only the
  * workspace's own entries change, and every other crate keeps its locked version.
@@ -514,13 +537,44 @@ function lockWorkspace(root: string) {
   return !result.error && result.status === 0;
 }
 
-/** Runs a generator's entry point: usage errors print the usage, others their message. */
-export async function run(usage: string, main: (argv: string[]) => Promise<void>) {
+// ---- Generators
+
+/** A kind of thing `dispatchdev new` makes: its usage, its options and how it plans one. */
+export type Generator = {
+  kind: string;
+  /** What it makes, in a line. */
+  about: string;
+  usage: string;
+  flags: string[];
+  options: string[];
+  plan: (root: string, argv: string[]) => Promise<{ plan: Plan; args: Arguments }>;
+  /** Whether `dispatchdev generate` runs once it has written. */
+  generates: boolean;
+};
+/** Whether the arguments only ask for the usage: none, or --help. */
+export const asksUsage = (argv: string[]) =>
+  argv.length === 0 || argv.includes('--help') || argv.includes('-h');
+/** Plans what `argv` asks of the generator and writes it, or with --dry-run only says so. */
+export async function make(generator: Generator, argv: string[]): Promise<Made> {
+  const options = parseArguments(argv, generator.flags, generator.options);
+  const root = path.resolve(options.options.get('root') ?? repositoryRoot);
+  const { plan, args } = await generator.plan(root, argv);
+  const dryRun = args.flags.has('dry-run');
+  if (args.options.has('out') && !dryRun) throw new UsageError('--out goes with --dry-run');
+  return finish(plan, root, { dryRun, out: args.options.get('out') });
+}
+/** The message of a failure, with the usage after a usage error. */
+export const failed = (error: unknown, usage: string) =>
+  `${error instanceof Error ? error.message : String(error)}\n${error instanceof UsageError ? `\n${usage}\n` : ''}`;
+
+/** Runs a generator as its own script: the usage, or what it made, or why it failed. */
+export async function run(generator: Generator) {
+  const argv = process.argv.slice(2);
   try {
-    await main(process.argv.slice(2));
+    if (asksUsage(argv)) process.stdout.write(`${generator.usage}\n`);
+    else process.stdout.write(`${described(await make(generator, argv))}\n`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message}\n${error instanceof UsageError ? `\n${usage}\n` : ''}`);
+    process.stderr.write(failed(error, generator.usage));
     process.exitCode = 1;
   }
 }

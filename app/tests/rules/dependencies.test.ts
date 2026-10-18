@@ -65,7 +65,7 @@ test("core's Cargo.toml lists none of our crates", () => {
 
 // The MCP sits above the features. It uses core, and a feature's crate only as the features its
 // tools need bring it: an optional dependency that the MCP's Cargo feature of that feature turns
-// on, with the crates the MCP's tests install beside it, as `npm run contracts:generate` writes
+// on, with the crates the MCP's tests install beside it, as `dispatchdev generate` writes
 // them. Its tests use nothing else.
 test("the MCP's Cargo.toml lists core, and features and collectors only as its tools bring them", () => {
   if (!isFile('mcp/Cargo.toml')) return;

@@ -1,59 +1,71 @@
-//! `dispatchdev new feature <name> [options]`, `new collector <site> [options]`, `new tool
-//! <name> [options]` and `new slot <name> [options]`: a feature, a collector, an agent tool in
-//! the MCP, or a new kind of slot in core, each working as written, made in a worktree, listed
-//! where it is read, with what is generated from it written too. The checkout's own scaffolder makes it and says what each
-//! option adds (`tooling/scaffold/`); then the catalog, the API types and the snapshots are
-//! written for it, a line each, as `dispatchdev check` runs its steps.
-use crate::{Native, Result, require, test, workspace::Workspace};
+//! `dispatchdev new`, `generate`, `list` and `explain`: making a feature, a collector, an agent
+//! tool or a kind of slot, writing what is generated from what the owners declare, and reading
+//! what the product has. The checkout's own `tooling/scaffold/cli.ts` runs each, with its own
+//! options; here a change's worktree is required of what writes, since Dev's checkout stays as
+//! main has it.
+use crate::{Native, Result, require, workspace::Workspace};
 use std::{path::Path, process::Command};
 
-pub const USAGE: &str = "Usage: dispatchdev new feature <name> [options] | new collector <site> [options] | new tool <name> [options] | new slot <name> [options]. Each with no name lists its options.";
-/// What `new` makes, each with its scaffolder, and whether the catalog, the API types and the
-/// snapshots are written from it after.
-const KINDS: &[(&str, &str, bool)] = &[
-    ("feature", "tooling/scaffold/new-feature.ts", true),
-    ("collector", "tooling/scaffold/new-collector.ts", true),
-    ("tool", "tooling/scaffold/new-tool.ts", true),
-    ("slot", "tooling/scaffold/new-slot.ts", false),
-];
-/// What the scaffolder leaves to commands, run once it has written its files.
-const GENERATE: &[&str] = &["npm run contracts:generate", "npm run snapshots:update"];
+const CLI: &str = "tooling/scaffold/cli.ts";
 
-/// Makes a `kind` in the worktree `root`, the scaffolder taking `args` as they were given. It
-/// answers whether every step passed.
-pub fn run(root: &Path, kind: &str, args: &[String]) -> Result<bool> {
-    let (script, generates) = KINDS
-        .iter()
-        .find(|(name, _, _)| *name == kind)
-        .map(|(_, script, generates)| (*script, *generates))
-        .ok_or(USAGE)?;
-    // Dev's checkout stays as main has it; a change starts with `dispatchdev start`.
-    let ws = Workspace::find(root, &Native)?;
+/// Whether `command` with `args` writes into the checkout: `new` with a kind and a name, without
+/// --dry-run, and `generate`; neither when it only asks for its usage.
+pub fn writes(command: &str, args: &[String]) -> bool {
+    let asks = |flag: &str| args.iter().any(|arg| arg == flag);
+    if asks("--help") || asks("-h") {
+        return false;
+    }
+    match command {
+        "new" => !asks("--dry-run") && args.iter().filter(|arg| !arg.starts_with('-')).count() >= 2,
+        "generate" => true,
+        _ => false,
+    }
+}
+
+/// Runs `command` in the checkout `root`, its scaffolder taking `args` as they were given. It
+/// answers whether it passed.
+pub fn run(root: &Path, command: &str, args: &[String]) -> Result<bool> {
+    if writes(command, args) {
+        let ws = Workspace::find(root, &Native)?;
+        require(
+            root.starts_with(ws.root.join("worktrees")),
+            "Make it in a change's worktree: dispatchdev start <name>, then run this there.",
+        )?;
+    }
     require(
-        root.starts_with(ws.root.join("worktrees")),
-        "Make it in a change's worktree: dispatchdev start <name>, then run this there.",
+        root.join(CLI).is_file(),
+        "This checkout predates dispatchdev's scaffolder: rebase it onto origin/main.",
     )?;
-    let made = Command::new("node")
-        .args(["node_modules/tsx/dist/cli.mjs", script])
+    let status = Command::new("node")
+        .args(["node_modules/tsx/dist/cli.mjs", CLI, command])
         .args(args)
         .current_dir(root)
         .status()?;
-    if !made.success() {
-        return Ok(false);
+    Ok(status.success())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn only_what_writes_needs_a_worktree() {
+        let args = |line: &str| {
+            line.split_whitespace()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        };
+        assert!(writes("new", &args("feature parking --page")));
+        assert!(writes("generate", &args("--json")));
+        for (command, line) in [
+            ("new", ""),
+            ("new", "feature"),
+            ("new", "feature parking --dry-run"),
+            ("new", "feature parking --help"),
+            ("generate", "--help"),
+            ("list", "features"),
+            ("explain", "slack"),
+        ] {
+            assert!(!writes(command, &args(line)), "{command} {line}");
+        }
     }
-    if args.iter().any(|arg| arg == "--dry-run") {
-        return Ok(true);
-    }
-    if !generates {
-        println!("Made it: git status lists every file.");
-        return Ok(true);
-    }
-    let commands: Vec<String> = GENERATE.iter().map(|&command| command.to_owned()).collect();
-    let passed = test::run_commands(root, &commands, false)?;
-    if passed {
-        println!(
-            "Made it, with its catalog, API types and snapshots written: git status lists every file."
-        );
-    }
-    Ok(passed)
 }

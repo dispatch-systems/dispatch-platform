@@ -34,16 +34,25 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["check", "--release"]);
     assert!(!ok);
     assert!(error.contains("check takes no --release"), "{error}");
-    let (ok, _, error) = run(&["new", "widget"]);
+    let (ok, _, error) = run(&["build", "--scope=full"]);
     assert!(!ok);
-    assert!(error.contains("Usage: dispatchdev new feature"), "{error}");
+    assert!(error.contains("build takes no --scope=full"), "{error}");
+    let (ok, help, _) = run(&["ship", "--help"]);
+    assert!(ok);
+    assert!(
+        help.starts_with("Usage: dispatchdev ship <PR number>"),
+        "{help}"
+    );
+    let (ok, help, _) = run(&["help", "generate"]);
+    assert!(ok);
+    assert!(help.starts_with("Usage: dispatchdev generate"), "{help}");
     let (ok, _, error) = run(&["browser", "dev"]);
     assert!(!ok);
     assert!(error.contains("Usage: dispatchdev browser"), "{error}");
 }
 
 #[test]
-fn new_makes_nothing_in_devs_checkout() {
+fn new_and_generate_write_nothing_in_devs_checkout() {
     // A workspace whose Dev checkout has a scaffolder that would write if it ran.
     let workspace = tempfile::tempdir().unwrap();
     let dev = workspace.path().join("dev");
@@ -59,4 +68,13 @@ fn new_makes_nothing_in_devs_checkout() {
     assert!(!result.status.success());
     assert!(error.contains("Make it in a change's worktree"), "{error}");
     assert!(!dev.join("features").exists());
+    let result = Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
+        .args(["generate", "--root"])
+        .arg(&dev)
+        .current_dir(&dev)
+        .output()
+        .unwrap();
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(!result.status.success());
+    assert!(error.contains("Make it in a change's worktree"), "{error}");
 }

@@ -28,7 +28,7 @@ answers. `GET /api/v1/whoami` answers what the `whoami` tool does, over REST.
 
 Every tool lives in `tools/`, a file each, with its test in `tests/backend/tools/`; what they
 are made of is `backend/toolbox/`. Adding a tool is adding its file, which
-`npm run contracts:generate` lists in `tools::TOOLS`. `dispatchdev new tool <name>` makes one
+`dispatchdev generate` lists in `tools::TOOLS`. `dispatchdev new tool <name>` makes one
 that works as written, with its test, and runs that; its `--features`, `--scope`, `--actions`,
 `--changes` and `--changing` set what the list below describes. A tool is a type implementing
 `toolbox::Tool`:
@@ -42,7 +42,7 @@ that works as written, with its test, and runs that; its `--features`, `--scope`
 - `FEATURES`: the features, or their parts, it needs, by their switches, as
   `&["timecard", "routes"]`. It runs at a DSP only where every one is on. One it uses only where
   it is on, it asks about with `cx.has(dsp, "dvic")`. The tool may use each needed feature's
-  crate, as `dispatch_dvic::DvicStore`: `contracts:generate` makes each a Cargo feature of the
+  crate, as `dispatch_dvic::DvicStore`: `dispatchdev generate` makes each a Cargo feature of the
   MCP's that brings the crate, which the app's Cargo feature of the same name turns on, and
   keeps the tool in a build only while all of them are. A build that leaves a feature out
   leaves its tools out with it.
@@ -84,7 +84,7 @@ anything but an object.
 Tool names, arguments and answers are what agents rely on: app/tests/backend/snapshots/agent-tools.json
 holds every tool's, so a change to one shows in review. `testing::install` installs core's test
 registry with the MCP and the product's features its tools need, with what those use and keep
-(`tests/support/product.rs`, written by `contracts:generate`); `testing::agent` makes a key,
+(`tests/support/product.rs`, written by `dispatchdev generate`); `testing::agent` makes a key,
 `testing::serving` gives the server's state over a store, and `testing::call_tool` calls a tool
 as the server does. `npm run test:mcp` runs every test of the MCP's.
 

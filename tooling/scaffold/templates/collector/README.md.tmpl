@@ -7,4 +7,4 @@ How Dispatch reads {{host}}, and what to watch for there, in a few lines.
 - **Collections:** `{{collection}}` (job kind `{{name}}.{{collection}}.collect`), read by
   `scripts/{{collection}}.js`. Fixture mode returns `fixtures/{{collection}}.rs` instead.
 - **Database:** `{{name}}/{{name}}.sqlite` in each DSP's data.
-- **Kept by:** one feature's `keeps`, as `npm run new:feature -- <name> --keeps {{name}}.{{collection}}` writes it.
+- **Kept by:** one feature's `keeps`, as `dispatchdev new feature <name> --keeps {{name}}.{{collection}}` writes it.

@@ -78,7 +78,7 @@ fn ids(db: &Db) -> Vec<i64> {
 /// Startup and provisioning, exactly as the core runs them, for every database the
 /// registry declares. Every schema change shows up in review as a change to
 /// core/db/tests/backend/schema. After adding a migration or a database, rewrite the
-/// snapshots with `npm run snapshots:update`.
+/// snapshots with `dispatchdev generate`.
 #[cfg(feature = "default")]
 #[test]
 fn new_databases_match_the_recorded_schema() {

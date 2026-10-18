@@ -36,11 +36,12 @@ tests in `tests/<kind>/`: `npm test` discovers the TypeScript tests, and
 `python3 -m unittest discover -s tooling/tests -p '*_test.py'` and `-s ops/tests`.
 `dispatchdev new feature <name>` and `dispatchdev new collector <site>` start a feature or a
 collector that already builds and passes its checks, and `dispatchdev new tool <name>` a tool
-agents can use, in `mcp/tools/`.
+agents can use, in `mcp/tools/`. `dispatchdev list` and `dispatchdev explain <owner>` say what
+the product has and what an owner is made of.
 
-`npm run contracts:generate` lists the features in `app/`, then writes each owner's API types
-from Rust into its `api/generated/`,
-which the owner's `api/` narrows and checks. Normal Rust tests verify them without rewriting
+`dispatchdev generate` lists the features in `app/`, then writes each owner's API types from
+Rust into its `api/generated/`, which the owner's `api/` narrows and checks, and the snapshots
+the app's tests hold. Normal Rust tests verify them without rewriting
 files. Generated types, schema snapshots and approved artwork remain with their owners.
 
 Installed hosts run their installed copies of `ops/launchers/` and the built artifact, never
