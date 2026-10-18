@@ -643,27 +643,43 @@ export async function planAdd(root: string, argv: string[]) {
   // each feature's dependencies installed.
   const site = peopleSources(root).find((source) => source.id === value)?.site;
   if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
-  // The contract's test installs the feature with what it uses: what its other tests install,
-  // and what its manifest, as the piece leaves it, depends on.
+  // The contract's test installs the feature with what it uses: the collectors and features
+  // the feature map says it uses, what its other tests install, however they name it, and what
+  // its manifest, as the piece leaves it, depends on.
   if (piece === 'contract') {
     const now = (file: string) => plan.changes.get(file) ?? read(root, file);
-    const own = /^name\s*=\s*"dispatch-([^"]+)"/m
-      .exec(now(`${dir}/Cargo.toml`))?.[1]
-      ?.replace(/-/g, '_');
     const used = new Map<string, 'collector' | 'feature'>();
+    const kindOf = (each: string) =>
+      exists(root, `collectors/${each}/collector.rs`)
+        ? 'collector'
+        : each !== name && exists(root, `features/${each}/feature.rs`)
+          ? 'feature'
+          : undefined;
+    const mapped = (
+      JSON.parse(read(root, 'app/generated/features.json')) as Record<
+        string,
+        { collectors: string[]; depends_on: string[] }
+      >
+    )[name];
+    for (const each of [...(mapped?.collectors ?? []), ...(mapped?.depends_on ?? [])]) {
+      const kind = kindOf(each);
+      if (kind) used.set(each, kind);
+    }
     for (const file of files(root, dir, /\.rs$/))
       for (const [, collectors, features] of now(file).matchAll(
         /::install\(\s*&\[([^\]]*)\],\s*&\[([^\]]*)\]/g,
-      )) {
-        for (const [, each] of collectors!.matchAll(/&dispatch_(\w+)::COLLECTOR\b/g))
-          used.set(each!, 'collector');
-        for (const [, each] of features!.matchAll(/&dispatch_(\w+)::FEATURE\b/g))
-          // Its own crate's, as an integration test names it, is `crate::FEATURE` here.
-          if (each !== own) used.set(each!, 'feature');
-      }
+      ))
+        for (const [, each] of `${collectors} ${features}`.matchAll(
+          /&(?:dispatch_)?(\w+)::(?:COLLECTOR|FEATURE)\b/g,
+        )) {
+          const kind = kindOf(each!);
+          if (kind) used.set(each!, kind);
+        }
     const declared = /\bdepends_on:\s*&\[([^\]]*)\]/.exec(now(`${dir}/feature.rs`))?.[1] ?? '';
-    for (const [, each] of declared.matchAll(/"([^"]+)"/g))
-      used.set(each!, exists(root, `collectors/${each}`) ? 'collector' : 'feature');
+    for (const [, each] of declared.matchAll(/"([^"]+)"/g)) {
+      const kind = kindOf(each!);
+      if (kind) used.set(each!, kind);
+    }
     for (const [each, kind] of used)
       installing(root, plan, dir, { [kind]: each }, `${dir}/tests/backend/exposed.rs`);
   }

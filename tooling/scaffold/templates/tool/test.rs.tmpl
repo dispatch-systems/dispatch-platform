@@ -15,14 +15,14 @@ use serde_json::json;
 async fn answers_as_an_agent_calls_it() {
     testing::install();
     let (_root, db, dsp) = bootstrapped();
-{{#features}}
+{{#switched}}
     // What it needs is switched on where it answers.
     let owner = platform_owner(&db);
 {{switchOn}}
-{{/features}}
-{{^features}}
+{{/switched}}
+{{^switched}}
     let _owner = platform_owner(&db);
-{{/features}}
+{{/switched}}
 {{#changes}}
     let caller = agent(&db, &[&dsp], &[("{{name}}", ToolLevel::Change)]);
     let reader = agent(&db, &[&dsp], &[("{{name}}", ToolLevel::Read)]);
@@ -67,7 +67,7 @@ async fn answers_as_an_agent_calls_it() {
         other => panic!("a key that only reads changed something: {other:?}"),
     }
 {{/changes}}
-{{#features}}
+{{#switched}}
 
     // Switched off at the DSP, it is refused there.
     let owner = platform_owner_of(&state).await;
@@ -80,12 +80,12 @@ async fn answers_as_an_agent_calls_it() {
         Err(Failure::Refused(refusal)) => assert_eq!(refusal.code, "switched_off"),
         other => panic!("it ran with {{firstFeature}} off: {other:?}"),
     }
-{{/features}}
+{{/switched}}
 }
-{{#features}}
+{{#switched}}
 
 /// The platform owner, as the server's state reads them.
 async fn platform_owner_of(state: &std::sync::Arc<dispatch_core::State>) -> String {
     state.read(|db| Ok(platform_owner(db))).await.unwrap()
 }
-{{/features}}
+{{/switched}}

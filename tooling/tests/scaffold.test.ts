@@ -613,6 +613,18 @@ test('--reads writes a tool that needs a feature and reads what it exposes, neve
     'home',
   );
   await refusedTool(/--reads reads for one DSP/, 'beam', '--reads', 'dvic', '--scope', 'dsps');
+  // Driver Match is mandatory, on for every DSP: a tool needing it never switches it in its
+  // test, while it switches the optional feature whose contract it reads.
+  const always = await tool(
+    'directory_reader',
+    '--reads',
+    'documents',
+    '--features',
+    'driver_match',
+  );
+  const test = file(always, 'mcp/tests/backend/tools/directory_reader.rs');
+  assert.doesNotMatch(test, /"driver_match", (true|false)/);
+  assert.match(test, /db\.set_feature\(&dsp, "documents", true, &owner\)/);
 });
 
 test('a tool written into mcp/tools is listed by the wiring, and its name is then taken', async () => {
@@ -1232,6 +1244,51 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
     planAdd(root, ['contract', 'more', '--to', 'dvic']),
     /dvic has contract\/ already/,
   );
+  // Daily Performance's tests name Cortex by an alias, `cortex::COLLECTOR`, and its test
+  // installs it all the same.
+  assert.match(
+    file(
+      await add('contract', 'daily_counts', '--to', 'daily_performance'),
+      'features/daily_performance/tests/backend/exposed.rs',
+    ),
+    /testing::install\(&\[&dispatch_cortex::COLLECTOR\], &\[&crate::FEATURE\]\)/,
+  );
+  // Driver Match exposes the directory already, and is mandatory: a second entry joins it,
+  // offered to every DSP.
+  const second = await add('contract', 'match_counts', '--to', 'driver_match');
+  const driverMatch = changed(second, 'features/driver_match/feature.rs');
+  assert.match(driverMatch, /"directory",[\s\S]*"match_counts",/);
+  assert.equal(driverMatch.match(/^\s+exposes: &\[/gm)?.length, 1);
+  assert.doesNotMatch(
+    changed(second, 'features/driver_match/README.md'),
+    /`match_counts`.*while it's on/,
+  );
+  // Home has no backend/: it gains one, and core's test helpers for its test.
+  const home = await add('contract', 'home_counts', '--to', 'home');
+  assert(home.files.has('features/home/backend/mod.rs'));
+  assert.match(changed(home, 'features/home/feature.rs'), /^mod backend;$/m);
+  assert.match(
+    changed(home, 'features/home/Cargo.toml'),
+    /\[dev-dependencies\]\ndispatch-core = \{ path = "..\/..\/core", features = \["testing"\] \}/,
+  );
+  // A name a manifest exposes, not yet generated into the feature map, is taken too.
+  const homeManifest = path.join(copy, 'features/home/feature.rs');
+  const original = fs.readFileSync(homeManifest, 'utf8');
+  fs.writeFileSync(
+    homeManifest,
+    original.replace(
+      /\.\.feature\("home"\)/,
+      'exposes: &[dispatch_core::expose!(dyn X, &Y, "home_spots", "Its spots.")],\n    ..feature("home")',
+    ),
+  );
+  try {
+    await assert.rejects(
+      planFeature(copy, ['parking', '--contract', 'home_spots']),
+      /home exposes home_spots already/,
+    );
+  } finally {
+    fs.writeFileSync(homeManifest, original);
+  }
 });
 
 test('a preset stands for its options, and --tabs, --connection and --people own write theirs', async () => {

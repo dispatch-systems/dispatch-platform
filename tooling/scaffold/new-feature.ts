@@ -253,10 +253,19 @@ export function featureValues(root: string, argv: string[], adding = false) {
           { slots: { exposes?: { name: string }[] } }
         >)
       : {};
-    const taken = Object.entries(map).find(([, feature]) =>
-      (feature.slots.exposes ?? []).some((exposed) => exposed.name === contract),
-    );
-    if (taken) throw new UsageError(`${taken[0]} exposes ${contract} already`);
+    // As generated, and as each manifest says now, which generate has yet to read.
+    const taken =
+      Object.entries(map).find(([, feature]) =>
+        (feature.slots.exposes ?? []).some((exposed) => exposed.name === contract),
+      )?.[0] ??
+      features(root).find((owner) =>
+        [
+          ...read(root, `features/${owner}/feature.rs`).matchAll(
+            /\bexpose!\(\s*[^,]+,\s*[^,]+,\s*"([^"]+)"/g,
+          ),
+        ].some((found) => found[1] === contract),
+      );
+    if (taken) throw new UsageError(`${taken} exposes ${contract} already`);
   }
   const contractNames = contract ? namesOf(contract) : undefined;
   const contractCrate = `dispatch-${name.replace(/_/g, '-')}-contract`;

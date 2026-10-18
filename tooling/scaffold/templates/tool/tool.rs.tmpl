@@ -75,12 +75,21 @@ impl Tool for {{pascal}} {
         let dsp = cx.dsp().clone();
         let at = dsp.id.clone();
         cx.read(move |db| {
+{{^throughMandatory}}
             // The toolbox runs it only where {{throughLabel}} is on; this answers for a DSP whose
             // {{throughLabel}} was switched off since.
             let Some(_{{through}}) = {{through}}::for_dsp(db, &at)? else {
                 let message = "{{throughLabel}} is switched off at this DSP. Tell the user.";
                 return Err(Refusal::new("switched_off", message).into());
             };
+{{/throughMandatory}}
+{{#throughMandatory}}
+            // Every DSP has {{throughLabel}}, wherever the server has it.
+            let Some(_{{through}}) = {{through}}::for_dsp(db, &at)? else {
+                let message = "{{throughLabel}} isn't on this server. Tell the user.";
+                return Err(Refusal::new("not_offered", message).into());
+            };
+{{/throughMandatory}}
             // TODO(scaffold): read what it's for through `_{{through}}`, what {{throughLabel}} exposes.
             Ok(())
         })

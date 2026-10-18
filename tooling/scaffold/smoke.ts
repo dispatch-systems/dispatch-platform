@@ -41,6 +41,7 @@ const MADE: [string, ...string[]][] = [
   ['feature', 'smoke_front', '--no-backend', '--page'],
   // What one exposes, and a tool reading it.
   ['feature', 'smoke_offer', '--contract', 'smoke_counts', '--api'],
+  ['feature', 'smoke_always', '--mandatory', '--contract', 'smoke_always_counts'],
   [
     'tool',
     'smoke_lookup',
@@ -55,6 +56,8 @@ const MADE: [string, ...string[]][] = [
   ],
   ['tool', 'smoke_ping', '--scope', 'connection'],
   ['tool', 'smoke_reader', '--reads', 'smoke_offer'],
+  // A mandatory feature's, which no test can switch.
+  ['tool', 'smoke_always_reader', '--reads', 'smoke_always'],
   // One of Slack's own integrations, and one of another feature's through Slack.
   ['integration', 'smoke_alerts', '--needs', 'chat:write', '--hears', 'message'],
   ['integration', 'smoke_notes', '--to', 'smoke_people'],
@@ -89,6 +92,8 @@ const ADDED: string[][] = [
   ['people', 'amazon', '--to', 'documents', '--table', 'documents_files'],
   // Routes' tests install the collector it uses, as its contract's must.
   ['contract', 'route_counts', '--to', 'routes'],
+  // Daily Performance's tests name Cortex by an alias.
+  ['contract', 'daily_counts', '--to', 'daily_performance'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */

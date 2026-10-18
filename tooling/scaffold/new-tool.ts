@@ -81,6 +81,16 @@ function switches(root: string) {
   }
   return found;
 }
+/** The switches every DSP has on, with no way to turn them off: mandatory features'. */
+function mandatorySwitches(root: string) {
+  const found = new Set<string>();
+  for (const owner of features(root))
+    for (const match of read(root, `features/${owner}/feature.rs`).matchAll(
+      /\bmandatory\(\s*"([^"]+)"/g,
+    ))
+      found.add(match[1]!);
+  return found;
+}
 /** A comma-separated list of names, each one `pattern` takes, in the order given. */
 function listOf(value: string | undefined, option: string, pattern: RegExp) {
   if (value === undefined) return [];
@@ -179,6 +189,11 @@ export function toolValues(root: string, argv: string[]) {
   // As long as the registry lets a description be.
   if (description.trim().length > 120)
     throw new UsageError('--description is one short sentence, 120 characters at most');
+  // What a test switches on, and off to see it refused: none of a mandatory feature's, which
+  // every DSP has on.
+  const mandatory = mandatorySwitches(root);
+  const switchable = needed.filter((id) => !mandatory.has(id));
+  const offFirst = switchable[0];
   const values: Values = {
     name,
     pascal: pascalOf(name),
@@ -189,20 +204,28 @@ export function toolValues(root: string, argv: string[]) {
     connection: scope === 'connection',
     features: needed.length > 0,
     featureList: needed.map((id) => `"${id}"`).join(', '),
+    switched: switchable.length > 0,
     // Each feature switched on, before its parts.
-    switchOn: [...new Set(needed.flatMap((id) => [id.split('.')[0]!, id]))]
+    switchOn: [...new Set(switchable.flatMap((id) => [id.split('.')[0]!, id]))]
+      .filter((id) => !mandatory.has(id))
       .map((id) => `    db.set_feature(&dsp, "${id}", true, &owner).unwrap();`)
       .join('\n'),
-    firstFeature: needed[0] ? needed[0].split('.')[0]! : '',
+    // The first feature it needs, or the part of a mandatory one.
+    firstFeature: !offFirst
+      ? ''
+      : mandatory.has(offFirst.split('.')[0]!)
+        ? offFirst
+        : offFirst.split('.')[0]!,
     actions: actions.length > 0,
     firstAction: actions[0] ?? '',
     changes: changes || changing.length > 0,
     reads: scope !== 'connection' && !changes && !changing.length,
-    refusals: changes || changing.length > 0 || needed.length > 0,
+    refusals: changes || changing.length > 0 || switchable.length > 0,
     everyCall: changes,
     changingAction: changing[0] ?? '',
     reading: actions.find((action) => !changing.includes(action)) ?? '',
     through: through ?? '',
+    throughMandatory: Boolean(through && mandatory.has(through)),
     throughIdent: throughCrate.replace(/-/g, '_'),
     // Its name as people read it, as its manifest's switch gives it.
     throughLabel: through
