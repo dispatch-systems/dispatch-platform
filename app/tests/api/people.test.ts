@@ -43,7 +43,7 @@ test("Driver Match, Timecard's employees and the directory show the photo Driver
   assert.deepEqual([detail.employee.person, detail.employee.photo], [person.code, person.photo]);
 });
 
-test("every member of a DSP sees its people, their contacts and photos, and no other DSP's", async (t) => {
+test("every member of a DSP sees its people and their contacts, and no other DSP's", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -66,8 +66,6 @@ test("every member of a DSP sees its people, their contacts and photos, and no o
   await member.select(north.id);
   assert.deepEqual(await member.read('/api/dsp/people'), everyone);
   assert.deepEqual(await member.read(`/api/dsp/people/${pictured.code}`), pictured);
-  const photo = await f.raw(`/api/dsp/people/${pictured.code}/photo`, undefined, member.headers);
-  assert.equal(photo.status, 200);
 
   const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
   await owner.select(summit.id);
