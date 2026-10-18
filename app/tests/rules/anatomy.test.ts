@@ -10,6 +10,7 @@ import {
   isDirectory,
   isFile,
   owners,
+  read,
 } from './support/repo.js';
 import { lexFile, testAttributes } from './support/rust.js';
 
@@ -190,4 +191,19 @@ test("each tab sits in its feature's frontend/tabs/, and each folder there is a 
         `${file.slice(0, file.indexOf('tabs/') + 4)} is outside a feature's frontend/`,
       );
   holds('anatomy', 'tabs', misplaced);
+});
+
+// What `dispatchdev new` leaves for its author to write carries the scaffold's TODO marker, in a
+// comment or a README line: a branch merges once each is written. The generators' templates and tests
+// hold the marker on purpose.
+test('nothing a generator left to write is left', () => {
+  const marker = ['TODO', '(scaffold)'].join('');
+  holds(
+    'anatomy',
+    'scaffold markers',
+    files
+      .filter((file) => !file.startsWith('tooling/scaffold/') && !file.startsWith('tooling/tests/'))
+      .filter((file) => /\.(rs|tsx?|js|sql|md|toml)$/.test(file) && read(file).includes(marker))
+      .map((file) => `${file} still holds what dispatchdev new left to write (${marker})`),
+  );
 });
