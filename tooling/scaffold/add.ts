@@ -464,6 +464,7 @@ export function installing(
   plan: Plan,
   dir: string,
   dependency: { collector?: string; feature?: string },
+  only?: string,
 ) {
   const [name, list] = dependency.collector ? [dependency.collector, 0] : [dependency.feature!, 1];
   const item = `&dispatch_${name}::${list === 0 ? 'COLLECTOR' : 'FEATURE'}`;
@@ -472,6 +473,7 @@ export function installing(
     (file) => file.startsWith(`${dir}/`) && file.endsWith('.rs'),
   );
   for (const file of [...files(root, dir, /\.rs$/), ...written]) {
+    if (only && file !== only) continue;
     const fresh = plan.files.has(file);
     const current = fresh ? plan.files.get(file)! : (plan.changes.get(file) ?? read(root, file));
     const merged = current.replace(
@@ -641,16 +643,29 @@ export async function planAdd(root: string, argv: string[]) {
   // each feature's dependencies installed.
   const site = peopleSources(root).find((source) => source.id === value)?.site;
   if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
-  // The contract's test installs the feature with what it uses, as its other tests do.
+  // The contract's test installs the feature with what it uses: what its other tests install,
+  // and what its manifest, as the piece leaves it, depends on.
   if (piece === 'contract') {
-    const used = (
-      JSON.parse(read(root, 'app/generated/features.json')) as Record<
-        string,
-        { collectors: string[]; depends_on: string[] }
-      >
-    )[name];
-    for (const collector of used?.collectors ?? []) installing(root, plan, dir, { collector });
-    for (const feature of used?.depends_on ?? []) installing(root, plan, dir, { feature });
+    const now = (file: string) => plan.changes.get(file) ?? read(root, file);
+    const own = /^name\s*=\s*"dispatch-([^"]+)"/m
+      .exec(now(`${dir}/Cargo.toml`))?.[1]
+      ?.replace(/-/g, '_');
+    const used = new Map<string, 'collector' | 'feature'>();
+    for (const file of files(root, dir, /\.rs$/))
+      for (const [, collectors, features] of now(file).matchAll(
+        /::install\(\s*&\[([^\]]*)\],\s*&\[([^\]]*)\]/g,
+      )) {
+        for (const [, each] of collectors!.matchAll(/&dispatch_(\w+)::COLLECTOR\b/g))
+          used.set(each!, 'collector');
+        for (const [, each] of features!.matchAll(/&dispatch_(\w+)::FEATURE\b/g))
+          // Its own crate's, as an integration test names it, is `crate::FEATURE` here.
+          if (each !== own) used.set(each!, 'feature');
+      }
+    const declared = /\bdepends_on:\s*&\[([^\]]*)\]/.exec(now(`${dir}/feature.rs`))?.[1] ?? '';
+    for (const [, each] of declared.matchAll(/"([^"]+)"/g))
+      used.set(each!, exists(root, `collectors/${each}`) ? 'collector' : 'feature');
+    for (const [each, kind] of used)
+      installing(root, plan, dir, { [kind]: each }, `${dir}/tests/backend/exposed.rs`);
   }
   // A test a generator stamped that only restates a manifest alone, with no permission, goes
   // once the piece gives it one, with its module; and so does the empty backend/ a manifest
