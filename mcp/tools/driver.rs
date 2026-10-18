@@ -218,7 +218,7 @@ pub struct Package {
     /// What happened, in Amazon's words.
     pub reasons: Vec<String>,
 }
-/// concession: delivered, then reported missing or delivered badly; return: brought back to the station; feedback: the customer's, good or bad.
+/// concession: reported missing or delivered badly; return: brought back to the station; feedback: the customer's.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PackageKind {

@@ -191,7 +191,7 @@
           "required": ["kind", "week", "tracking_id", "reasons"]
         },
         "PackageKind": {
-          "description": "concession: delivered, then reported missing or delivered badly; return: brought back to the station; feedback: the customer's, good or bad.",
+          "description": "concession: reported missing or delivered badly; return: brought back to the station; feedback: the customer's.",
           "type": "string",
           "enum": ["concession", "return", "feedback"]
         },

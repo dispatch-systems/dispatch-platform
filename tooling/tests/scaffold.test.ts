@@ -647,7 +647,7 @@ test('--reads writes a tool that needs a feature and reads what it exposes, neve
 test('a tool written into mcp/tools is listed by the wiring, and its name is then taken', async () => {
   const workspace = temporary();
   try {
-    for (const entry of ['features/dvic', 'mcp/tools']) {
+    for (const entry of ['features', 'mcp/tools']) {
       fs.cpSync(entry, path.join(workspace, entry), { recursive: true });
     }
     const first = (await planTool(workspace, ['short_inspections', '--features', 'dvic'])).plan;
@@ -1244,8 +1244,26 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
     'spots',
   );
 
-  // Added to a feature that has none, with what its tests install.
-  const added = await add('contract', 'route_counts', '--to', 'routes');
+  // Added to a feature that has none, with what its tests install: Routes and Daily
+  // Performance, in the copy, as they were before their own contracts.
+  const uncontracted = (name: string) => {
+    const dir = path.join(copy, 'features', name);
+    for (const entry of ['contract', 'backend/exposed.rs', 'tests/backend/exposed.rs'])
+      fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
+    const strip = (file: string, pattern: RegExp) => {
+      const content = fs.readFileSync(path.join(dir, file), 'utf8');
+      assert.match(content, pattern, `features/${name}/${file} has its contract's lines`);
+      fs.writeFileSync(path.join(dir, file), content.replace(pattern, ''));
+    };
+    strip('Cargo.toml', /^dispatch-[\w-]+-contract = \{ path = "contract" \}\n/m);
+    strip('backend/mod.rs', /^pub\(crate\) mod exposed;\n/m);
+    strip('feature.rs', /\n\s*\/\/ What it offers[^\n]*\n\s*exposes: &\[dispatch_core::expose!\([\s\S]*?\n\s*\)\],/);
+    strip('README.md', /\n+- \*\*Exposed:\*\*[\s\S]*?(?=\n\n|\n- |\n#|\n?$)/);
+  };
+  uncontracted('routes');
+  uncontracted('daily_performance');
+  const addToCopy = async (...argv: string[]) => (await planAdd(copy, argv)).plan;
+  const added = await addToCopy('contract', 'route_counts', '--to', 'routes');
   assert(added.files.has('features/routes/contract/contract.rs'));
   assert.match(
     file(added, 'features/routes/tests/backend/exposed.rs'),
@@ -1265,11 +1283,13 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
   // installs it all the same.
   assert.match(
     file(
-      await add('contract', 'daily_counts', '--to', 'daily_performance'),
+      await addToCopy('contract', 'daily_counts', '--to', 'daily_performance'),
       'features/daily_performance/tests/backend/exposed.rs',
     ),
     /testing::install\(&\[&dispatch_cortex::COLLECTOR\], &\[&crate::FEATURE\]\)/,
   );
+  for (const name of ['routes', 'daily_performance'])
+    fs.cpSync(path.join('features', name), path.join(copy, 'features', name), { recursive: true });
   // Driver Match exposes the directory already, and is mandatory: a second entry joins it,
   // offered to every DSP.
   const second = await add('contract', 'match_counts', '--to', 'driver_match');
