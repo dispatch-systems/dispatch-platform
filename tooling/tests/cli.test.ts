@@ -117,7 +117,7 @@ test('doctor names each file a generator left to write, and says what fixes it',
     assert.deepEqual(markers.detail, ['features/desk/feature.rs']);
     assert.match(
       described([{ check: 'scaffold markers', ...markers }]),
-      /^FIX   scaffold markers: write what each .+ asks for\n {8}features\/desk\/feature\.rs$/,
+      /^FIX {3}scaffold markers: write what each .+ asks for\n {8}features\/desk\/feature\.rs$/,
     );
   } finally {
     fs.rmSync(checkout, { recursive: true, force: true });
