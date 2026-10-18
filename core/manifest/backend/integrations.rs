@@ -33,8 +33,11 @@ pub struct Integration {
     /// Fixture mode's answer to a method of the service's that only it calls, for the account
     /// named first: the connection's fixture asks it of each method it doesn't answer itself,
     /// so previews and tests never reach the service. None for one it doesn't call.
-    pub fixture: Option<fn(&str, &str, &Value) -> Option<Result<Value>>>,
+    pub fixture: Option<Fixture>,
 }
+
+/// Fixture mode's answer to a method, for an account: none for a method it doesn't call.
+pub type Fixture = fn(account: &str, method: &str, args: &Value) -> Option<Result<Value>>;
 
 /// An integration that needs nothing and hears of nothing yet. A declaration starts here and
 /// names what it adds: `Integration { …, ..integration("slack", "x.what", "What") }`.
