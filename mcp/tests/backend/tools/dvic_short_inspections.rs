@@ -9,8 +9,9 @@ use dispatch_core::testing::{self as common, bootstrapped, platform_owner};
 use dispatch_cortex::{
     self as cortex,
     discovery::{CollectionRequest, Scope},
-    dvic::{self, Capture, Request},
+    dvic::{Capture, Request},
 };
+use dispatch_dvic::DvicStore;
 use serde_json::{Value, json};
 
 fn day(value: &str) -> NaiveDate {
@@ -85,12 +86,10 @@ fn a_search_names_its_days_one_way_in_the_dsps_own_time() {
 #[test]
 fn a_driver_goes_by_every_name_id_and_contact_the_directory_has_for_them() {
     use dispatch_core::manifest::people::{Person, PersonRole};
-    let driver = |id: &str, name: &str| DvicDriver {
+    let driver = |id: &str, name: &str| dvic::Driver {
         id: id.into(),
         name: name.into(),
-        short_inspections: 1,
         first_date: "2026-09-19".into(),
-        last_date: "2026-09-19".into(),
     };
     let known = [
         driver("A1", "Cam Hayes"),
@@ -126,9 +125,14 @@ fn a_driver_goes_by_every_name_id_and_contact_the_directory_has_for_them() {
         BTreeMap::new(),
     );
     let ids = |asked: &str| {
-        matched(&known, &people, &[asked.to_owned()])
-            .map(|(found, _)| found.iter().map(|driver| driver.id.clone()).collect())
-            .map_err(|refusal| refusal.code)
+        matched(
+            dispatch_cortex::SOURCE,
+            &known,
+            &people,
+            &[asked.to_owned()],
+        )
+        .map(|(found, _)| found.iter().map(|driver| driver.id.clone()).collect())
+        .map_err(|refusal| refusal.code)
     };
     assert_eq!(ids("Cameron"), Ok(vec!["A1".to_owned(), "A2".to_owned()]));
     assert_eq!(
@@ -203,9 +207,9 @@ fn published(db: &Store, id: &str) {
         db,
         id,
         "older",
-        &dvic::fixture(&request(&["2026-W38"])).unwrap(),
+        &cortex::dvic::fixture(&request(&["2026-W38"])).unwrap(),
     );
-    let mut newer = dvic::fixture(&request(&["2026-W39"])).unwrap();
+    let mut newer = cortex::dvic::fixture(&request(&["2026-W39"])).unwrap();
     let rows = newer.reports[0].rows.as_mut().unwrap();
     rows[0].transporter_name = "Fixture Driver Jr".into();
     for (n, (name, fleet, start, end, seconds)) in [

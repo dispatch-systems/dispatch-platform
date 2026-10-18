@@ -401,7 +401,13 @@
         "POST /api/dsp/dvic/schedules/{key}/enabled",
         "POST /api/dsp/dvic/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "short_inspections",
+          "contract": "dispatch_dvic_contract::ShortInspections",
+          "about": "The pre-trip inspections shorter than the minimum, who made them, and the days collected."
+        }
+      ],
       "settings": []
     },
     "switch": "dvic",

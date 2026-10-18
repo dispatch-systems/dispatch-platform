@@ -46,6 +46,7 @@ url = { workspace = true }
 # Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.
 dispatch-cortex = { path = "../collectors/cortex", optional = true }
 dispatch-dvic = { path = "../features/dvic", optional = true }
+dispatch-dvic-contract = { path = "../features/dvic/contract" }
 
 [dev-dependencies]
 dispatch-core = { path = "../core", features = ["testing"] }

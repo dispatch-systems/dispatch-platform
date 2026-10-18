@@ -7,9 +7,9 @@ use chrono::{Datelike, Duration, NaiveDate};
 use dispatch_core::{
     db::Store,
     foundation::names,
-    manifest::people::{self, Everyone},
+    manifest::people::{self, Everyone, Source},
 };
-use dispatch_dvic::{DvicCoverage, DvicDriver, DvicInspection, DvicStore};
+use dispatch_dvic_contract::{self as dvic, Asked, ShortInspections};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -135,15 +135,19 @@ fn today(timezone: &str) -> NaiveDate {
 
 /// The search, read at once.
 fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -> Answer<Found> {
-    let coverage = db.dvic_coverage(dsp)?;
-    let known = db.dvic_drivers(dsp)?;
+    let Some(reader) = dvic::for_dsp(db, dsp)? else {
+        let message = format!("DVIC is switched off at {name}. Tell the user.");
+        return Err(Refusal::new("switched_off", message).into());
+    };
+    let coverage = reader.collected(db, dsp)?;
+    let known = reader.drivers(db, dsp)?;
     let asked = input.drivers.as_deref().unwrap_or_default();
     let people = if asked.is_empty() {
         Everyone::default()
     } else {
         people::read(db, dsp)?
     };
-    let (matched, not_found) = matched(&known, &people, asked)?;
+    let (matched, not_found) = matched(reader.source(), &known, &people, asked)?;
     let (from, to) = match range(input, today)? {
         Some(range) => range,
         // Every day DVIC has for the drivers asked for, or the last 7.
@@ -159,18 +163,17 @@ fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -
     let (from, to) = (from.to_string(), to.to_string());
     let mut read = Vec::new();
     if asked.is_empty() {
-        read_all(db, dsp, &from, &to, None, &mut read)?;
+        read_all(reader, db, dsp, &from, &to, None, &mut read)?;
     } else {
         for driver in &matched {
-            read_all(db, dsp, &from, &to, Some(&driver.id), &mut read)?;
+            read_all(reader, db, dsp, &from, &to, Some(&driver.id), &mut read)?;
         }
     }
     read.sort_by(|a, b| {
-        (b.start_date.as_str(), b.start_time.as_str())
-            .cmp(&(a.start_date.as_str(), a.start_time.as_str()))
+        (b.date.as_str(), b.start_time.as_str()).cmp(&(a.date.as_str(), a.start_time.as_str()))
     });
     let complete = coverage.as_ref().is_some_and(
-        |DvicCoverage {
+        |dvic::Collected {
              from: first,
              through,
          }| *first <= from && to <= *through,
@@ -181,7 +184,7 @@ fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -
         dsp: name.to_owned(),
         from,
         to,
-        collected: coverage.map(|DvicCoverage { from, through }| Collected { from, through }),
+        collected: coverage.map(|dvic::Collected { from, through }| Collected { from, through }),
         complete,
         drivers,
         inspections: read.into_iter().take(LISTED).map(inspection).collect(),
@@ -192,23 +195,31 @@ fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -
 
 /// Every short inspection from `from` to `to`, of `driver` or everyone, read a page at a time.
 fn read_all(
+    reader: &dyn ShortInspections,
     db: &Store,
     dsp: &str,
     from: &str,
     to: &str,
     driver: Option<&str>,
-    read: &mut Vec<DvicInspection>,
+    read: &mut Vec<dvic::Inspection>,
 ) -> Answer<()> {
     let mut after = String::new();
     loop {
-        let page = db.dvic_inspections(dsp, from, to, driver, &after, 500)?;
+        let asked = Asked {
+            from,
+            to,
+            driver,
+            after: &after,
+            limit: 500,
+        };
+        let page = reader.inspections(db, dsp, &asked)?;
         read.extend(page.inspections);
         if read.len() > READ {
             let message =
                 format!("More than {READ} short inspections match. Ask for fewer days or drivers.");
             return Err(Refusal::new("too_many", message).into());
         }
-        match page.next_cursor {
+        match page.next {
             Some(next) => after = next,
             None => return Ok(()),
         }
@@ -276,11 +287,12 @@ fn parse(value: &str) -> Option<NaiveDate> {
 /// The drivers each name asked for is, and the names DVIC has never recorded. A name that
 /// could be several people is refused, with their names to choose from.
 fn matched<'a>(
-    known: &'a [DvicDriver],
+    source: Source,
+    known: &'a [dvic::Driver],
     people: &Everyone,
     asked: &[String],
-) -> Result<(Vec<&'a DvicDriver>, Vec<String>), Refusal> {
-    let mut found: Vec<&DvicDriver> = Vec::new();
+) -> Result<(Vec<&'a dvic::Driver>, Vec<String>), Refusal> {
+    let mut found: Vec<&dvic::Driver> = Vec::new();
     let mut missing = Vec::new();
     for name in asked {
         let name = name.trim();
@@ -290,12 +302,12 @@ fn matched<'a>(
                 "Name each driver, in 100 characters at most.",
             ));
         }
-        let by_id: Vec<&DvicDriver> = known
+        let by_id: Vec<&dvic::Driver> = known
             .iter()
             .filter(|driver| driver.id.eq_ignore_ascii_case(name))
             .collect();
         let candidates = if by_id.is_empty() {
-            named(known, people, name)
+            named(source, known, people, name)
         } else {
             by_id
         };
@@ -304,7 +316,7 @@ fn matched<'a>(
             .iter()
             .map(|driver| {
                 people
-                    .holding(dispatch_cortex::SOURCE, &driver.id)
+                    .holding(source, &driver.id)
                     .map_or(driver.id.as_str(), |person| person.code.as_str())
             })
             .collect();
@@ -335,18 +347,21 @@ fn matched<'a>(
 /// email address or phone number it has for them, and anyone it has yet to tell apart by
 /// DVIC's own spelling. A name exactly as DVIC writes it is that driver, beside others it is
 /// part of.
-fn named<'a>(known: &'a [DvicDriver], people: &Everyone, name: &str) -> Vec<&'a DvicDriver> {
+fn named<'a>(
+    source: Source,
+    known: &'a [dvic::Driver],
+    people: &Everyone,
+    name: &str,
+) -> Vec<&'a dvic::Driver> {
     let found = people.find(name);
-    let named: Vec<&DvicDriver> = known
+    let named: Vec<&dvic::Driver> = known
         .iter()
-        .filter(
-            |driver| match people.holding(dispatch_cortex::SOURCE, &driver.id) {
-                Some(person) => found.iter().any(|one| one.code == person.code),
-                None => names::matches(name, &driver.name),
-            },
-        )
+        .filter(|driver| match people.holding(source, &driver.id) {
+            Some(person) => found.iter().any(|one| one.code == person.code),
+            None => names::matches(name, &driver.name),
+        })
         .collect();
-    let exact: Vec<&DvicDriver> = named
+    let exact: Vec<&dvic::Driver> = named
         .iter()
         .copied()
         .filter(|driver| names::same(name, &driver.name))
@@ -355,7 +370,7 @@ fn named<'a>(known: &'a [DvicDriver], people: &Everyone, name: &str) -> Vec<&'a 
 }
 
 /// Each driver's short inspections, the most first, then by name.
-fn drivers(read: &[DvicInspection]) -> Vec<Driver> {
+fn drivers(read: &[dvic::Inspection]) -> Vec<Driver> {
     let mut by: BTreeMap<&str, Driver> = BTreeMap::new();
     for row in read.iter().rev() {
         let driver = by.entry(row.driver_id.as_str()).or_insert_with(|| Driver {
@@ -368,8 +383,8 @@ fn drivers(read: &[DvicInspection]) -> Vec<Driver> {
         // Read newest last, so the name is the latest.
         driver.name.clone_from(&row.driver_name);
         driver.short_inspections += 1;
-        if driver.days.last() != Some(&row.start_date) {
-            driver.days.push(row.start_date.clone());
+        if driver.days.last() != Some(&row.date) {
+            driver.days.push(row.date.clone());
         }
         driver.most_short_by_seconds = driver.most_short_by_seconds.max(row.short_by_seconds);
     }
@@ -382,13 +397,13 @@ fn drivers(read: &[DvicInspection]) -> Vec<Driver> {
     drivers
 }
 
-fn inspection(row: DvicInspection) -> Inspection {
+fn inspection(row: dvic::Inspection) -> Inspection {
     Inspection {
-        date: row.start_date,
+        date: row.date,
         start_time: row.start_time,
         driver: row.driver_name,
         driver_id: row.driver_id,
-        vehicle_type: row.fleet_type,
+        vehicle_type: row.vehicle_type,
         vin: row.vin,
         duration_seconds: row.duration_seconds,
         minimum_seconds: row.minimum_seconds,
