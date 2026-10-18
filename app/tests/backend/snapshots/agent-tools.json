@@ -86,6 +86,11 @@
           "description": "Their weekly scorecards, each week Sunday to Saturday.",
           "type": "object",
           "properties": {
+            "ids": {
+              "description": "The IDs of theirs it was read under; with none, it knows nothing of them.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
             "collected": {
               "description": "The first week's Sunday and the last week's Saturday collected, or null for none yet.",
               "anyOf": [
@@ -115,7 +120,7 @@
               "minimum": 0
             }
           },
-          "required": ["unknown_weeks", "weeks", "packages", "more_packages"]
+          "required": ["ids", "unknown_weeks", "weeks", "packages", "more_packages"]
         },
         "Collected": {
           "description": "The first day and the last a feature has collected, YYYY-MM-DD in the DSP's own time.",
@@ -199,6 +204,11 @@
           "description": "Amazon's Daily Quality and Day Safety of theirs, day by day.",
           "type": "object",
           "properties": {
+            "ids": {
+              "description": "The IDs of theirs it was read under; with none, it knows nothing of them.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
             "collected": {
               "description": "The first day collected and the last, or null for none yet.",
               "anyOf": [
@@ -235,7 +245,7 @@
               "minimum": 0
             }
           },
-          "required": ["unknown_days", "days", "more_days", "more_returned", "more_events"]
+          "required": ["ids", "unknown_days", "days", "more_days", "more_returned", "more_events"]
         },
         "Day": {
           "description": "What Amazon reported of one of their IDs on one day. A part it reported nothing of is null or empty.",
@@ -397,6 +407,11 @@
           "description": "The routes they drove.",
           "type": "object",
           "properties": {
+            "ids": {
+              "description": "The IDs of theirs it was read under; with none, it knows nothing of them.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
             "collected": {
               "description": "The first day collected and the last, or null for none yet.",
               "anyOf": [
@@ -432,10 +447,17 @@
               "minimum": 0
             }
           },
-          "required": ["unknown_days", "partial_days", "routes", "more_routes", "more_undelivered"]
+          "required": [
+            "ids",
+            "unknown_days",
+            "partial_days",
+            "routes",
+            "more_routes",
+            "more_undelivered"
+          ]
         },
         "Route": {
-          "description": "A route they drove, its times HH:MM in the DSP's own time.",
+          "description": "A route they drove, its times HH:MM in the DSP's own time, with the date before one on a later day.",
           "type": "object",
           "properties": {
             "day": {"type": "string"},
@@ -501,7 +523,7 @@
               "type": ["string", "null"]
             },
             "attempted": {
-              "description": "When it was attempted, HH:MM in the DSP's own time.",
+              "description": "When it was attempted, as the route's times are.",
               "type": ["string", "null"]
             }
           }
@@ -510,6 +532,11 @@
           "description": "Their timecards, as Paycom records them.",
           "type": "object",
           "properties": {
+            "ids": {
+              "description": "The IDs of theirs it was read under; with none, it knows nothing of them.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
             "collected": {
               "description": "The first day collected and the last, or null for none yet.",
               "anyOf": [
@@ -539,7 +566,7 @@
               "minimum": 0
             }
           },
-          "required": ["unknown_days", "partial_days", "days", "more_days"]
+          "required": ["ids", "unknown_days", "partial_days", "days", "more_days"]
         },
         "Timecard": {
           "description": "Their timecard for one day.",
@@ -619,6 +646,11 @@
           "description": "What Amazon's roster says of them.",
           "type": "object",
           "properties": {
+            "ids": {
+              "description": "The IDs of theirs it was read under; with none, it knows nothing of them.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
             "collected": {
               "description": "When the roster was last collected, RFC 3339 in UTC, or null for never.",
               "type": ["string", "null"]
@@ -629,7 +661,7 @@
               "items": {"$ref": "#/$defs/Associate"}
             }
           },
-          "required": ["associates"]
+          "required": ["ids", "associates"]
         },
         "Associate": {
           "description": "One of their IDs, as the newest roster to list it did.",
@@ -665,8 +697,15 @@
         "Chat": {
           "description": "Their accounts in the DSP's chat workspaces.",
           "type": "object",
-          "properties": {"accounts": {"type": "array", "items": {"$ref": "#/$defs/ChatAccount"}}},
-          "required": ["accounts"]
+          "properties": {
+            "ids": {
+              "description": "The IDs of theirs it was read under; with none, it knows nothing of them.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "accounts": {"type": "array", "items": {"$ref": "#/$defs/ChatAccount"}}
+          },
+          "required": ["ids", "accounts"]
         },
         "ChatAccount": {
           "description": "One account in one of the DSP's workspaces.",
@@ -691,9 +730,14 @@
           "required": ["workspace", "user", "active", "guest", "broken"]
         },
         "Inspections": {
-          "description": "Their DVIC pre-trip inspections shorter than the minimum. DVIC records only those, so none\non a day collected means none fell short.",
+          "description": "Their DVIC pre-trip inspections shorter than the minimum: DVIC records only these, so none on a day collected is none short.",
           "type": "object",
           "properties": {
+            "ids": {
+              "description": "The IDs of theirs it was read under; with none, it knows nothing of them.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
             "collected": {
               "description": "The first day collected and the last, or null for none yet.",
               "anyOf": [
@@ -718,7 +762,7 @@
               "minimum": 0
             }
           },
-          "required": ["unknown_days", "inspections", "more_inspections"]
+          "required": ["ids", "unknown_days", "inspections", "more_inspections"]
         },
         "Inspection": {
           "description": "An inspection shorter than its minimum.",
@@ -811,7 +855,7 @@
           ]
         },
         "trimmed": {
-          "description": "Whether lists were cut short to fit, each counting what it left out: ask for fewer days or sections.",
+          "description": "Whether any list was cut short, each counting what it left out: ask for fewer days or sections to see the rest.",
           "type": "boolean"
         }
       }

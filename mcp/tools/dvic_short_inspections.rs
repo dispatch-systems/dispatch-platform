@@ -5,10 +5,9 @@
 use crate::toolbox::{Answer, Cx, Refusal, Reply, Tool};
 use chrono::{Datelike, Duration, NaiveDate};
 use dispatch_core::{
-    State,
     db::Store,
     foundation::names,
-    manifest::people::{self, Everyone, Source},
+    manifest::people::{Everyone, Source},
 };
 use dispatch_dvic_contract::{self as dvic, Asked, ShortInspections};
 use schemars::JsonSchema;
@@ -116,10 +115,14 @@ impl Tool for DvicShortInspections {
     type Output = Found;
     async fn call(cx: Cx, input: Search) -> Answer<Reply<Found>> {
         let dsp = cx.dsp().clone();
-        let state = cx.state().clone();
         let today = today(&dsp.timezone);
+        // The directory, to find the drivers asked for.
+        let people = match &input.drivers {
+            Some(drivers) if !drivers.is_empty() => cx.everyone(&dsp).await?,
+            _ => Arc::default(),
+        };
         let found = cx
-            .read(move |db| search(db, &state, &dsp.id, &dsp.name, today, &input))
+            .read(move |db| search(db, &people, &dsp.id, &dsp.name, today, &input))
             .await?;
         let text = summary(&found);
         Ok(Reply::new(found).text(text))
@@ -134,7 +137,7 @@ fn today(timezone: &str) -> NaiveDate {
 /// The search, read at once.
 fn search(
     db: &Store,
-    state: &State,
+    people: &Everyone,
     dsp: &str,
     name: &str,
     today: NaiveDate,
@@ -152,12 +155,7 @@ fn search(
     let coverage = reader.collected(db, dsp)?;
     let known = reader.drivers(db, dsp)?;
     let asked = input.drivers.as_deref().unwrap_or_default();
-    let people = if asked.is_empty() {
-        Arc::default()
-    } else {
-        people::everyone(db, state, dsp)?
-    };
-    let (matched, not_found) = matched(reader.source(), &known, &people, asked)?;
+    let (matched, not_found) = matched(reader.source(), &known, people, asked)?;
     let (from, to) = match range(input, today)? {
         Some(range) => range,
         // Every day DVIC has for the drivers asked for, or the last 7.

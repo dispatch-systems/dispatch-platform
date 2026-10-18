@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     api::types::ToolLevel,
     testing::{self, agent, call_tool, serving},
-    toolbox::{Answered, Failure},
+    toolbox::Answered,
 };
 use dispatch_core::{
     manifest::people::{PersonRole, SourceInfo},
@@ -46,10 +46,19 @@ fn known(from: &str, to: &str) -> Vec<String> {
     let collected = |day: &String| (FIRST..=LAST).contains(&day.as_str());
     span(from, to).each().filter(collected).collect()
 }
-/// `day` at `hour`:`minute` UTC, in epoch milliseconds.
-fn at(day: &str, hour: u32, minute: u32) -> i64 {
-    let time = parse(day).unwrap().and_hms_opt(hour, minute, 0).unwrap();
-    time.and_utc().timestamp_millis()
+/// `day` at `hour`:`minute` UTC, in epoch milliseconds: an hour past 23 is on a later day.
+fn at(day: &str, hour: i64, minute: i64) -> i64 {
+    let midnight = parse(day).unwrap().and_hms_opt(0, 0, 0).unwrap();
+    (midnight + Duration::minutes(hour * 60 + minute))
+        .and_utc()
+        .timestamp_millis()
+}
+/// Each of `days` under the first of `ids`, as a stand-in feature has rows: none for no IDs.
+fn rows_of(ids: &[String], days: &[String]) -> Vec<(String, String)> {
+    let first = ids.first().into_iter();
+    first
+        .flat_map(|id| days.iter().map(|day| (id.clone(), day.clone())))
+        .collect()
 }
 fn person(code: &str, name: &str, ids: &[(&'static SourceInfo, &[&str])]) -> Person {
     Person {
@@ -77,20 +86,14 @@ fn at_a_dsp() -> (tempfile::TempDir, Store, Dsp) {
 }
 
 #[test]
-fn finds_one_person_by_code_name_id_or_contact_and_asks_which_of_several() {
-    let cam = Person {
-        names: strings(&["Cameron Hayes", "Cam Hayes"]),
-        emails: strings(&["cam@example.com"]),
-        phones: strings(&["(555) 010-2030"]),
-        ..person("K7QH3M", "Cameron Hayes", &[(&AMAZON, &["A1", "A2"])])
-    };
+fn finds_one_person_by_code_or_a_choice_and_asks_which_of_several() {
     let mut people = vec![
-        cam,
+        person("K7QH3M", "Cam Hayes", &[]),
         person("R2VX8N", "Avery Morgan", &[]),
         person("T5WB9C", "Avery Mendez", &[]),
     ];
     let jordans = (b'A'..b'M').map(|last| format!("Jordan {}ates", last as char));
-    people.extend(jordans.map(|name| person(&name[7..], &name, &[])));
+    people.extend(jordans.map(|name| person(&name[7..].to_ascii_uppercase(), &name, &[])));
     let everyone = Everyone::new(people, BTreeMap::new());
     let found = |asked: &str| {
         find(&everyone, "Fixture Delivery", asked)
@@ -98,29 +101,55 @@ fn finds_one_person_by_code_name_id_or_contact_and_asks_which_of_several() {
             .map_err(|refusal| (refusal.code, refusal.choices))
     };
 
-    for asked in [
-        "K7QH3M",
-        "k7qh3m",
-        "Cameron",
-        "cam hayes",
-        "a2",
-        "CAM@example.com",
-        "555.010.2030",
-    ] {
+    for asked in ["K7QH3M", " k7qh3m "] {
         assert_eq!(found(asked), Ok("K7QH3M".to_owned()), "{asked}");
     }
-    assert_eq!(
-        found("Avery"),
-        Err((
-            "driver_ambiguous".to_owned(),
-            strings(&["Avery Mendez (T5WB9C)", "Avery Morgan (R2VX8N)"])
-        ))
-    );
+    let (code, choices) = found("Avery").unwrap_err();
+    assert_eq!(code, "driver_ambiguous");
+    assert_eq!(choices, ["Avery Mendez (T5WB9C)", "Avery Morgan (R2VX8N)"]);
+    // A choice, given back as it is, is the one it names.
+    for (choice, code) in choices.iter().zip(["T5WB9C", "R2VX8N"]) {
+        assert_eq!(found(choice), Ok(code.to_owned()), "{choice}");
+    }
     // Twelve to choose from are offered ten.
     let (code, choices) = found("Jordan").unwrap_err();
     assert_eq!((code.as_str(), choices.len()), ("driver_ambiguous", 10));
     assert_eq!(found("Nobody Here").unwrap_err().0, "driver_not_found");
     assert_eq!(found(" ").unwrap_err().0, "invalid_input");
+}
+
+#[test]
+fn a_lookup_names_31_days_at_most_one_way() {
+    let today = "2026-10-07";
+    let ranged = |from: Option<&str>, to: Option<&str>, last_days: Option<i64>| {
+        let lookup = Lookup {
+            driver: "Cam".into(),
+            from: from.map(Into::into),
+            to: to.map(Into::into),
+            last_days,
+            sections: None,
+        };
+        range(&lookup, parse(today).unwrap())
+            .map(|span| (span.from.to_string(), span.to.to_string()))
+            .map_err(|refusal| refusal.message)
+    };
+    let days = |from: &str, to: &str| Ok((from.to_owned(), to.to_owned()));
+    assert_eq!(ranged(None, None, None), days("2026-10-01", today));
+    assert_eq!(ranged(None, None, Some(31)), days("2026-09-07", today));
+    assert_eq!(
+        ranged(Some("2026-09-07"), None, None),
+        days("2026-09-07", today)
+    );
+    for (from, to, last_days, refused) in [
+        (Some("2026-09-06"), Some(today), None, "31 days at most"),
+        (None, None, Some(32), "1 to 31"),
+        (Some("2026-10-01"), Some("2026-10-08"), None, "after today"),
+        (None, Some("2026-10-01"), None, "`to` ends a range"),
+        (Some("2026-10-01"), None, Some(3), "not both"),
+    ] {
+        let message = ranged(from, to, last_days).unwrap_err();
+        assert!(message.contains(refused), "{refused}: {message}");
+    }
 }
 
 /// Every feature at once, as each would answer for the IDs it's asked about: `rows` of each
@@ -189,16 +218,21 @@ impl DriverScorecards for Fake {
         _: &str,
     ) -> Result<Vec<scorecard::Package>> {
         self.ask("packages", ids);
-        let package = |n| scorecard::Package {
+        let package = |(id, n): (String, usize)| scorecard::Package {
             kind: scorecard::PackageKind::Return,
             week: "2026-W38".into(),
             date: None,
             tracking_id: format!("TBA{n:012}"),
-            driver_id: ids[0].clone(),
+            driver_id: id,
             impacting: Some(true),
             reasons: strings(&["BUSINESS CLOSED"]),
         };
-        Ok((0..self.rows).map(package).collect())
+        let first = ids.first().into_iter();
+        Ok(
+            (first.flat_map(|id| (0..self.rows).map(|n| (id.clone(), n))))
+                .map(package)
+                .collect(),
+        )
     }
 }
 impl DailyMetrics for Fake {
@@ -221,38 +255,41 @@ impl DailyMetrics for Fake {
     ) -> Result<performance::Days> {
         self.ask("daily", ids);
         let collected = known(from, to);
-        let day = |date: &String| performance::Day {
-            date: date.clone(),
-            id: ids[0].clone(),
-            quality: None,
-            safety: None,
-            feedback: None,
-            behaviors: None,
-            returns: None,
-            returned: (0..self.rows)
-                .map(|n| performance::Returned {
-                    tracking_id: Some(format!("TBA{n:012}")),
-                    reason: Some("BUSINESS CLOSED".into()),
-                    impacting: Some(false),
-                    exempted: Some(true),
-                    exemption_reason: None,
-                    coaching: None,
-                })
-                .collect(),
-            events: (0..self.rows)
-                .map(|n| performance::SafetyEvent {
-                    event_id: Some(format!("event-{n}")),
-                    kind: Some("Speeding".into()),
-                    subtype: None,
-                    severity: Some("LOW".into()),
-                    started: Some(format!("{date} 10:00:00")),
-                    impacting: Some(true),
-                    assessed: true,
-                })
-                .collect(),
+        let day = |(id, date): (String, String)| {
+            let started = Some(format!("{date} 10:00:00"));
+            performance::Day {
+                date,
+                id,
+                quality: None,
+                safety: None,
+                feedback: None,
+                behaviors: None,
+                returns: None,
+                returned: (0..self.rows)
+                    .map(|n| performance::Returned {
+                        tracking_id: Some(format!("TBA{n:012}")),
+                        reason: Some("BUSINESS CLOSED".into()),
+                        impacting: Some(false),
+                        exempted: Some(true),
+                        exemption_reason: None,
+                        coaching: None,
+                    })
+                    .collect(),
+                events: (0..self.rows)
+                    .map(|n| performance::SafetyEvent {
+                        event_id: Some(format!("event-{n}")),
+                        kind: Some("Speeding".into()),
+                        subtype: None,
+                        severity: Some("LOW".into()),
+                        started: started.clone(),
+                        impacting: Some(true),
+                        assessed: true,
+                    })
+                    .collect(),
+            }
         };
         Ok(performance::Days {
-            days: collected.iter().map(day).collect(),
+            days: rows_of(ids, &collected).into_iter().map(day).collect(),
             collected,
         })
     }
@@ -278,18 +315,26 @@ impl DriverRoutes for Fake {
     ) -> Result<route::Driven> {
         self.ask("routes", ids);
         let days = known(from, to);
-        let driven = |day: &String| route::RouteDay {
-            day: day.clone(),
-            driver_id: ids[0].clone(),
+        let driven = |(driver_id, day): (String, String)| route::RouteDay {
+            departed_at: Some(at(&day, 15, 30)),
+            session_end_at: Some(at(&day, 31, 40)),
+            undelivered: (0..self.rows)
+                .map(|n| route::Undelivered {
+                    tracking_id: Some(format!("TBA{n:012}")),
+                    state: Some("UNDELIVERABLE".into()),
+                    reason: Some("BUSINESS_CLOSED".into()),
+                    attempted_at: Some(at(&day, 20, 5)),
+                })
+                .collect(),
+            day,
+            driver_id,
             route_code: Some("CX12".into()),
             status: Some("COMPLETE".into()),
             progress: Some("ON_TIME".into()),
             vin: None,
             planned_departure_at: None,
-            departed_at: Some(at(day, 15, 30)),
             first_delivery_at: None,
             last_delivery_at: None,
-            session_end_at: None,
             stops: 120,
             stops_completed: 118,
             delivered: 200,
@@ -297,14 +342,6 @@ impl DriverRoutes for Fake {
             removed: 0,
             breaks_secs: Some(1800),
             overtime_secs: None,
-            undelivered: (0..self.rows)
-                .map(|n| route::Undelivered {
-                    tracking_id: Some(format!("TBA{n:012}")),
-                    state: Some("UNDELIVERABLE".into()),
-                    reason: Some("BUSINESS_CLOSED".into()),
-                    attempted_at: Some(at(day, 20, 5)),
-                })
-                .collect(),
         };
         Ok(route::Driven {
             days: (days.iter())
@@ -313,7 +350,7 @@ impl DriverRoutes for Fake {
                     complete: day != LAST,
                 })
                 .collect(),
-            routes: days.iter().map(driven).collect(),
+            routes: rows_of(ids, &days).into_iter().map(driven).collect(),
         })
     }
 }
@@ -343,9 +380,9 @@ impl timecard::Timecards for Fake {
             (timecard::PunchKind::InLunch, "12:30"),
             (timecard::PunchKind::OutDay, "17:00"),
         ];
-        let card = |date: &String| timecard::Day {
-            date: date.clone(),
-            id: ids[0].clone(),
+        let card = |(id, date): (String, String)| timecard::Day {
+            date,
+            id,
             status: "Complete".into(),
             hours: 9.5,
             worked_minutes: Some(570),
@@ -369,7 +406,7 @@ impl timecard::Timecards for Fake {
                 .filter(|day| !days.contains(day))
                 .collect(),
             partial: days.iter().filter(|day| *day == LAST).cloned().collect(),
-            days: days.iter().map(card).collect(),
+            days: rows_of(ids, &days).into_iter().map(card).collect(),
         })
     }
 }
@@ -455,48 +492,49 @@ fn asks_each_feature_about_the_persons_ids_of_its_source_and_says_what_it_hasnt_
         roster: None,
         ..every(&fake)
     };
-    // DVIC takes only IDs of letters, digits, `_`, `-` or `.`; the rest take any.
+    // No Paycom ID. DVIC takes only IDs of letters, digits, `_`, `-` or `.`; the rest take any.
     let cam = person(
         "K7QH3M",
         "Cam Hayes",
-        &[(&AMAZON, &["A1", "A2", "A 3"]), (&PAYCOM, &["P1"])],
+        &[(&AMAZON, &["A1", "A2", "A 3"]), (&SLACK, &["S1"])],
     );
     let found = answer(&readers, &db, &dsp, &cam, span("2026-09-06", "2026-09-19")).unwrap();
 
-    let (amazon, paycom) = (strings(&["A1", "A2", "A 3"]), strings(&["P1"]));
+    let amazon = strings(&["A1", "A2", "A 3"]);
     assert_eq!(
         fake.asked(),
         [
+            ("chat", strings(&["S1"])),
             ("daily", amazon.clone()),
             ("inspections", strings(&["A1"])),
             ("inspections", strings(&["A2"])),
             ("packages", amazon.clone()),
             ("routes", amazon.clone()),
             ("scorecards", amazon.clone()),
-            ("timecards", paycom.clone()),
+            ("timecards", vec![]),
         ]
     );
-    assert_eq!(
-        found.person.ids,
-        BTreeMap::from([("amazon".to_owned(), amazon), ("paycom".to_owned(), paycom)])
-    );
-    // Holding no chat ID, they have no accounts; the roster's feature is off, so it's null.
-    assert!(found.chat.unwrap().accounts.is_empty());
+    assert_eq!(found.scorecards.unwrap().ids, amazon);
+    assert_eq!(found.inspections.as_ref().unwrap().ids, ["A1", "A2"]);
+    assert_eq!(found.chat.unwrap().accounts.len(), 1);
     assert!(found.roster.is_none());
 
-    // What isn't collected is unknown: the week between two collected, and the day after the
-    // last.
-    assert_eq!(found.scorecards.unwrap().unknown_weeks, ["2026-W37"]);
-    let (routes, timecards) = (found.routes.unwrap(), found.timecards.unwrap());
-    // Read on the DSP's clock: 15:30 UTC is 08:30 in Los Angeles in September.
-    assert_eq!(routes.routes[0].departed.as_deref(), Some("08:30"));
+    // Known by no Paycom ID, they have no timecards; the days are still known or not, and so far.
+    let timecards = found.timecards.unwrap();
+    assert!(timecards.ids.is_empty() && timecards.days.is_empty());
+    assert_eq!(timecards.unknown_days, ["2026-09-19"]);
+    assert_eq!(timecards.partial_days, [LAST]);
+
+    let routes = found.routes.unwrap();
+    assert_eq!(routes.partial_days, [LAST]);
+    // Read on the DSP's clock, 15:30 UTC being 08:30 in Los Angeles; one past midnight has its date.
+    let first = &routes.routes[0];
     assert_eq!(
-        (&routes.partial_days, &timecards.partial_days),
-        (&strings(&[LAST]), &strings(&[LAST]))
+        (first.departed.as_deref(), first.ended.as_deref()),
+        (Some("08:30"), Some("2026-09-07 00:40"))
     );
     for unknown in [
         routes.unknown_days,
-        timecards.unknown_days,
         found.daily.unwrap().unknown_days,
         found.inspections.unwrap().unknown_days,
     ] {
@@ -551,6 +589,19 @@ fn cuts_long_lists_to_fit_keeping_the_newest_and_counting_the_rest() {
     assert!(within(&routes.routes, |route| &route.undelivered) <= 30);
     let timecards = month.timecards.unwrap();
     assert_eq!(timecards.days.len() + timecards.more_days, 30);
+
+    // A cap alone trims too: of 35 short inspections on one day, the newest 30 are kept.
+    let fake = Fake::new(35);
+    let readers = Readers {
+        inspections: Some(&fake),
+        ..Readers::default()
+    };
+    let mut day = answer(&readers, &db, &dsp, &cam, span(LAST, LAST)).unwrap();
+    fit(&mut day);
+    assert!(day.trimmed);
+    let short = day.inspections.unwrap();
+    assert_eq!((short.inspections.len(), short.more_inspections), (30, 5));
+    assert_eq!(short.inspections[0].start_time, format!("{LAST} 06:34:00"));
 }
 
 fn reply(answer: Answer<Answered>) -> (Value, String) {
@@ -581,23 +632,28 @@ async fn an_agent_looks_up_a_driver_with_what_the_features_on_know_of_them() {
     assert_eq!(found["person"]["name"], "Fixture Driver");
     assert_eq!(found["person"]["ids"], json!({"amazon": ["driver-1"]}));
     let short = &found["inspections"];
+    assert_eq!(short["ids"], json!(["driver-1"]));
     assert_eq!(short["unknown_days"], json!([]));
     assert_eq!(short["inspections"][0]["date"], "2026-09-19");
-    assert_eq!(short["inspections"][0]["id"], "driver-1");
-    // Routes isn't in this build.
-    assert_eq!(found["routes"], Value::Null);
+    assert!(text.contains("1 short DVIC inspection"), "{text}");
+    // Each other section is null where nothing at the DSP offers its feature's contract.
+    let at = id.clone();
+    let offered = (state.read(move |db| {
+        Ok([
+            ("scorecards", scorecard::for_dsp(db, &at)?.is_some()),
+            ("daily", performance::for_dsp(db, &at)?.is_some()),
+            ("routes", route::for_dsp(db, &at)?.is_some()),
+            ("timecards", timecard::for_dsp(db, &at)?.is_some()),
+            ("roster", profiles::for_dsp(db, &at)?.is_some()),
+            ("chat", slack::for_dsp(db, &at)?.is_some()),
+        ])
+    }))
+    .await
+    .unwrap();
+    for (section, offered) in offered {
+        assert_eq!(found[section].is_null(), !offered, "{section}");
+    }
     let code = found["person"]["code"].as_str().unwrap().to_owned();
-    assert!(
-        text.starts_with(&format!("Fixture Driver ({code}), ")),
-        "{text}"
-    );
-    assert!(
-        text.ends_with(
-            ": 1 short DVIC inspection. Off at Fixture Delivery: chat, daily, roster, routes, \
-             scorecards, timecards."
-        ),
-        "{text}"
-    );
 
     // By their code, the last 7 days, and only the sections asked for.
     let (week, _) = reply(call(json!({"driver": code, "sections": ["roster"]})).await);
@@ -608,11 +664,4 @@ async fn an_agent_looks_up_a_driver_with_what_the_features_on_know_of_them() {
         (&json!(first.to_string()), &json!(today.to_string()))
     );
     assert_eq!(week["inspections"], Value::Null);
-    match call(json!({"driver": code, "from": "2026-08-01", "to": "2026-09-19"})).await {
-        Err(Failure::Refused(refusal)) => assert_eq!(
-            (refusal.code.as_str(), refusal.message.as_str()),
-            ("invalid_input", "Ask for 31 days at most.")
-        ),
-        other => panic!("not refused: {other:?}"),
-    }
 }

@@ -4,7 +4,11 @@
 use super::{Answer, AnyTool, Effect, Failure, Refusal, db_caller, has_all, permitted};
 use crate::Caller;
 use dispatch_core::{
-    Error, State, accounts::api::types::Dsp, db::Store, tenancy::audit::AuditChange,
+    Error, State,
+    accounts::api::types::Dsp,
+    db::Store,
+    manifest::people::{self, Everyone},
+    tenancy::audit::AuditChange,
 };
 use std::sync::Arc;
 
@@ -56,10 +60,6 @@ impl Cx {
     pub fn dsps(&self) -> &[Dsp] {
         &self.dsps
     }
-    /// The server's state, for what a read keeps between calls, as `people::everyone` does.
-    pub(crate) fn state(&self) -> &Arc<State> {
-        &self.state
-    }
 
     /// Reads, with the connection checked again first: it still stands, may still use the
     /// tool, and still reaches the call's DSPs with the tool's features on.
@@ -98,6 +98,13 @@ impl Cx {
             })
             .await
             .unwrap_or_else(|error| Err(error.into()))
+    }
+
+    /// Everyone at `dsp`, as `people::everyone` keeps them, read as `read` reads.
+    pub(crate) async fn everyone(&self, dsp: &Dsp) -> Answer<Arc<Everyone>> {
+        let (state, dsp) = (self.state.clone(), dsp.id.clone());
+        self.read(move |db| Ok(people::everyone(db, &state, &dsp)?))
+            .await
     }
 
     /// Whether `switch`, a feature or its part, is on at `dsp`, hidden from its members or
