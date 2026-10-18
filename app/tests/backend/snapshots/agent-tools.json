@@ -1,5 +1,823 @@
 [
   {
+    "name": "driver",
+    "title": "Driver",
+    "description": "Look up one driver: who they are, their IDs and contacts, and their scorecards, routes, timecards and more.",
+    "features": ["driver_match"],
+    "changes": false,
+    "scope": "dsp",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "Section": {
+          "description": "A section of the answer, from one feature's data.",
+          "type": "string",
+          "enum": ["scorecards", "daily", "routes", "timecards", "roster", "chat", "inspections"]
+        }
+      },
+      "required": ["driver"],
+      "type": "object",
+      "properties": {
+        "driver": {
+          "description": "The driver: a name or part of one, an ID, email address, phone number, or their code.",
+          "type": "string"
+        },
+        "from": {
+          "description": "The first day, YYYY-MM-DD, in the DSP's own time; the range ends today unless `to` says otherwise.",
+          "type": ["string", "null"]
+        },
+        "to": {
+          "description": "The last day, YYYY-MM-DD; only with `from`.",
+          "type": ["string", "null"]
+        },
+        "last_days": {
+          "description": "The last this many days, today included, 1 to 31; the last 7 when no days are given.",
+          "type": ["integer", "null"],
+          "format": "int64"
+        },
+        "sections": {
+          "description": "The sections to answer; every one when left out.",
+          "type": ["array", "null"],
+          "items": {"$ref": "#/$defs/Section"}
+        },
+        "dsp": {
+          "type": "string",
+          "description": "The DSP, by its name or ID. Leave it out when this connection reaches one DSP."
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "Identity": {
+          "description": "Who they are, as the DSP's directory tells people apart.",
+          "type": "object",
+          "properties": {
+            "code": {
+              "description": "Theirs for good: give it as `driver` to ask about them again.",
+              "type": "string"
+            },
+            "name": {"type": "string"},
+            "names": {
+              "description": "Every way their sources write their name, the one shown first.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "role": {
+              "description": "driver, helper, office, or former for someone who has left.",
+              "type": "string"
+            },
+            "ids": {
+              "description": "Every ID they hold, by its source, such as amazon for transporter IDs.",
+              "type": "object",
+              "additionalProperties": {"type": "array", "items": {"type": "string"}}
+            },
+            "emails": {"type": "array", "items": {"type": "string"}},
+            "phones": {"type": "array", "items": {"type": "string"}},
+            "confirmed": {
+              "description": "Whether someone confirmed who they are, rather than a match.",
+              "type": "boolean"
+            }
+          },
+          "required": ["code", "name", "names", "role", "ids", "emails", "phones", "confirmed"]
+        },
+        "Scorecards": {
+          "description": "Their weekly scorecards, each week Sunday to Saturday.",
+          "type": "object",
+          "properties": {
+            "collected": {
+              "description": "The first week's Sunday and the last week's Saturday collected, or null for none yet.",
+              "anyOf": [
+                {"$ref": "#/$defs/Collected"},
+                {"type": "null"}
+              ]
+            },
+            "unknown_weeks": {
+              "description": "The weeks overlapping the days that aren't collected, as Amazon names them: unknown, not missing.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "weeks": {
+              "description": "Their scorecard for each week overlapping the days, the oldest first.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Scorecard"}
+            },
+            "packages": {
+              "description": "The packages those scorecards list for them, the oldest week first, the newest 40 at most.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Package"}
+            },
+            "more_packages": {
+              "description": "How many more packages there are than listed.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": ["unknown_weeks", "weeks", "packages", "more_packages"]
+        },
+        "Collected": {
+          "description": "The first day and the last a feature has collected, YYYY-MM-DD in the DSP's own time.",
+          "type": "object",
+          "properties": {"from": {"type": "string"}, "through": {"type": "string"}},
+          "required": ["from", "through"]
+        },
+        "Scorecard": {
+          "description": "Their scorecard for one week.",
+          "type": "object",
+          "properties": {
+            "week": {"description": "Its week, as Amazon names it (2026-W38).", "type": "string"},
+            "from": {"description": "Its Sunday and Saturday.", "type": "string"},
+            "through": {"type": "string"},
+            "id": {"description": "Their ID it's under.", "type": "string"},
+            "overall_score": {"type": ["number", "null"], "format": "double"},
+            "overall_tier": {
+              "description": "As Amazon writes it, such as Platinum.",
+              "type": ["string", "null"]
+            },
+            "delivered": {
+              "description": "The packages they delivered that week.",
+              "type": ["integer", "null"],
+              "format": "int64"
+            },
+            "metrics": {
+              "description": "Each metric it grades, in the scorecard's order.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Metric"}
+            }
+          },
+          "required": ["week", "from", "through", "id", "metrics"]
+        },
+        "Metric": {
+          "description": "A metric a scorecard grades.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "seatbelt, speeding, distractions, following_distance, sign_signal_violations, cdf_dpmo, ced, rts, dsb or pod.",
+              "type": "string"
+            },
+            "value": {
+              "description": "What it measured, a rate, DPMO or count, as Amazon writes it.",
+              "type": ["number", "null"],
+              "format": "double"
+            },
+            "tier": {"type": ["string", "null"]},
+            "score": {"type": ["number", "null"], "format": "double"}
+          },
+          "required": ["name"]
+        },
+        "Package": {
+          "description": "A package a scorecard lists for them.",
+          "type": "object",
+          "properties": {
+            "kind": {"$ref": "#/$defs/PackageKind"},
+            "week": {"description": "The scorecard week it counts in.", "type": "string"},
+            "date": {
+              "description": "Its own day: delivered for a concession or feedback, planned for a return.",
+              "type": ["string", "null"]
+            },
+            "tracking_id": {"type": "string"},
+            "impacting": {
+              "description": "Whether it counts against the scorecard, or null when Amazon doesn't say.",
+              "type": ["boolean", "null"]
+            },
+            "reasons": {
+              "description": "What happened, in Amazon's words.",
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          },
+          "required": ["kind", "week", "tracking_id", "reasons"]
+        },
+        "PackageKind": {
+          "description": "concession: delivered, then reported missing or delivered badly; return: brought back to the station; feedback: the customer's, good or bad.",
+          "type": "string",
+          "enum": ["concession", "return", "feedback"]
+        },
+        "Daily": {
+          "description": "Amazon's Daily Quality and Day Safety of theirs, day by day.",
+          "type": "object",
+          "properties": {
+            "collected": {
+              "description": "The first day collected and the last, or null for none yet.",
+              "anyOf": [
+                {"$ref": "#/$defs/Collected"},
+                {"type": "null"}
+              ]
+            },
+            "unknown_days": {
+              "description": "The days asked that aren't collected: unknown, rather than nothing reported.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "days": {
+              "description": "Each day Amazon reported something of theirs, by day and then ID, the oldest first.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Day"}
+            },
+            "more_days": {
+              "description": "How many older days are left out to fit.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "more_returned": {
+              "description": "How many more returned packages there are than listed.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "more_events": {
+              "description": "How many more safety events there are than listed.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": ["unknown_days", "days", "more_days", "more_returned", "more_events"]
+        },
+        "Day": {
+          "description": "What Amazon reported of one of their IDs on one day. A part it reported nothing of is null or empty.",
+          "type": "object",
+          "properties": {
+            "date": {"type": "string"},
+            "id": {"description": "Their ID it's reported under.", "type": "string"},
+            "quality": {"anyOf": [{"$ref": "#/$defs/Quality"}, {"type": "null"}]},
+            "safety": {"anyOf": [{"$ref": "#/$defs/Safety"}, {"type": "null"}]},
+            "feedback": {"anyOf": [{"$ref": "#/$defs/Feedback"}, {"type": "null"}]},
+            "behaviors": {"anyOf": [{"$ref": "#/$defs/Behaviors"}, {"type": "null"}]},
+            "returns": {"anyOf": [{"$ref": "#/$defs/Returns"}, {"type": "null"}]},
+            "returned": {
+              "description": "Each package they returned to the station.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Returned"}
+            },
+            "events": {
+              "description": "Each safety event, as assessed once Amazon has, else as reported live.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Event"}
+            }
+          },
+          "required": ["date", "id", "returned", "events"]
+        },
+        "Quality": {
+          "description": "The day's Daily Quality, each number as Amazon gives it; a rate is a fraction of one.",
+          "type": "object",
+          "properties": {
+            "dispatched": {"type": ["number", "null"], "format": "double"},
+            "delivered": {"type": ["number", "null"], "format": "double"},
+            "delivery_success_rate": {"type": ["number", "null"], "format": "double"},
+            "completed_routes": {"type": ["number", "null"], "format": "double"},
+            "dnr": {
+              "description": "Packages delivered but not received.",
+              "type": ["number", "null"],
+              "format": "double"
+            },
+            "returned": {
+              "description": "Packages returned to the station.",
+              "type": ["number", "null"],
+              "format": "double"
+            },
+            "pod_opportunities": {
+              "description": "Deliveries that needed a photo, and those that had a good one.",
+              "type": ["number", "null"],
+              "format": "double"
+            },
+            "pod_successes": {"type": ["number", "null"], "format": "double"},
+            "pod_success_rate": {"type": ["number", "null"], "format": "double"},
+            "pod_bypassed": {"type": ["number", "null"], "format": "double"},
+            "not_on_van": {"type": ["number", "null"], "format": "double"},
+            "transferred_out": {"type": ["number", "null"], "format": "double"}
+          }
+        },
+        "Safety": {
+          "description": "The day's safety events, counted by kind.",
+          "type": "object",
+          "properties": {
+            "speeding": {"type": ["number", "null"], "format": "double"},
+            "seatbelt": {"type": ["number", "null"], "format": "double"},
+            "distraction": {"type": ["number", "null"], "format": "double"},
+            "sign_signal": {"type": ["number", "null"], "format": "double"},
+            "following_distance": {"type": ["number", "null"], "format": "double"}
+          }
+        },
+        "Feedback": {
+          "description": "The customers' feedback on the day's deliveries.",
+          "type": "object",
+          "properties": {
+            "positive": {"type": ["number", "null"], "format": "double"},
+            "negative": {"type": ["number", "null"], "format": "double"},
+            "negatives": {
+              "description": "Each reason for negative feedback that isn't zero.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Count"}
+            }
+          },
+          "required": ["negatives"]
+        },
+        "Count": {
+          "description": "A count, named by Amazon's field for it, such as never_received_delivery_cnt.",
+          "type": "object",
+          "properties": {
+            "what": {"type": "string"},
+            "count": {"type": "number", "format": "double"}
+          },
+          "required": ["what", "count"]
+        },
+        "Behaviors": {
+          "description": "The day's delivery success behaviors.",
+          "type": "object",
+          "properties": {
+            "dsb": {"type": ["number", "null"], "format": "double"},
+            "concerns": {
+              "description": "Each kind of behavior that isn't zero.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Count"}
+            }
+          },
+          "required": ["concerns"]
+        },
+        "Returns": {
+          "description": "The day's packages returned to the station: in all, those they could have delivered, and those exempted.",
+          "type": "object",
+          "properties": {
+            "all": {"type": ["number", "null"], "format": "double"},
+            "controllable": {"type": ["number", "null"], "format": "double"},
+            "exempted": {"type": ["number", "null"], "format": "double"}
+          }
+        },
+        "Returned": {
+          "description": "A package returned to the station.",
+          "type": "object",
+          "properties": {
+            "tracking_id": {"type": ["string", "null"]},
+            "reason": {
+              "description": "Why, as Amazon codes it, such as BUSINESS CLOSED.",
+              "type": ["string", "null"]
+            },
+            "impacting": {
+              "description": "Whether it counts against their delivery completion.",
+              "type": ["boolean", "null"]
+            },
+            "exempted": {"type": ["boolean", "null"]},
+            "exemption_reason": {"type": ["string", "null"]},
+            "coaching": {
+              "description": "What Amazon coaches them to do about it.",
+              "type": ["string", "null"]
+            }
+          }
+        },
+        "Event": {
+          "description": "A safety event.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "description": "What happened, as Amazon names it, such as Speeding.",
+              "type": ["string", "null"]
+            },
+            "subtype": {"type": ["string", "null"]},
+            "severity": {"type": ["string", "null"]},
+            "started": {
+              "description": "When it started, in local time, as Amazon writes it.",
+              "type": ["string", "null"]
+            },
+            "impacting": {
+              "description": "Whether it counts against them, once assessed.",
+              "type": ["boolean", "null"]
+            },
+            "assessed": {
+              "description": "Whether Amazon has assessed it, rather than only reporting it live.",
+              "type": "boolean"
+            }
+          },
+          "required": ["assessed"]
+        },
+        "Routes": {
+          "description": "The routes they drove.",
+          "type": "object",
+          "properties": {
+            "collected": {
+              "description": "The first day collected and the last, or null for none yet.",
+              "anyOf": [
+                {"$ref": "#/$defs/Collected"},
+                {"type": "null"}
+              ]
+            },
+            "unknown_days": {
+              "description": "The days asked that aren't collected: unknown, rather than days they didn't drive.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "partial_days": {
+              "description": "The days read while under way: their counts are so far, and a day without a route proves nothing.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "routes": {
+              "description": "Each route they drove, the oldest first; a day may have several, and any other day collected whole they didn't drive.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Route"}
+            },
+            "more_routes": {
+              "description": "How many older routes are left out to fit.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "more_undelivered": {
+              "description": "How many more undelivered packages there are than listed.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": ["unknown_days", "partial_days", "routes", "more_routes", "more_undelivered"]
+        },
+        "Route": {
+          "description": "A route they drove, its times HH:MM in the DSP's own time.",
+          "type": "object",
+          "properties": {
+            "day": {"type": "string"},
+            "id": {"description": "Their ID that drove it.", "type": "string"},
+            "route_code": {"type": ["string", "null"]},
+            "status": {
+              "description": "How Amazon says it went, such as COMPLETE.",
+              "type": ["string", "null"]
+            },
+            "progress": {
+              "description": "How Amazon says it kept up, such as ON_TIME or BEHIND.",
+              "type": ["string", "null"]
+            },
+            "vin": {"description": "The van driven.", "type": ["string", "null"]},
+            "planned_departure": {"type": ["string", "null"]},
+            "departed": {"type": ["string", "null"]},
+            "first_delivery": {"type": ["string", "null"]},
+            "last_delivery": {"type": ["string", "null"]},
+            "ended": {"type": ["string", "null"]},
+            "stops": {"type": "integer", "format": "int64"},
+            "stops_completed": {"type": "integer", "format": "int64"},
+            "delivered": {
+              "description": "The packages to drop off that were delivered, and that weren't.",
+              "type": "integer",
+              "format": "int64"
+            },
+            "not_delivered": {"type": "integer", "format": "int64"},
+            "removed": {
+              "description": "The packages taken off the route, as when another driver rescued them.",
+              "type": "integer",
+              "format": "int64"
+            },
+            "break_minutes": {"type": ["integer", "null"], "format": "int64"},
+            "overtime_minutes": {"type": ["integer", "null"], "format": "int64"},
+            "undelivered": {
+              "description": "Each package to drop off that wasn't delivered, in the order attempted.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Undelivered"}
+            }
+          },
+          "required": [
+            "day",
+            "id",
+            "stops",
+            "stops_completed",
+            "delivered",
+            "not_delivered",
+            "removed",
+            "undelivered"
+          ]
+        },
+        "Undelivered": {
+          "description": "A package to drop off that wasn't delivered.",
+          "type": "object",
+          "properties": {
+            "tracking_id": {"type": ["string", "null"]},
+            "state": {
+              "description": "Where Amazon says it ended, such as UNDELIVERABLE.",
+              "type": ["string", "null"]
+            },
+            "reason": {
+              "description": "Why, as Amazon gives it, such as BUSINESS_CLOSED.",
+              "type": ["string", "null"]
+            },
+            "attempted": {
+              "description": "When it was attempted, HH:MM in the DSP's own time.",
+              "type": ["string", "null"]
+            }
+          }
+        },
+        "Timecards": {
+          "description": "Their timecards, as Paycom records them.",
+          "type": "object",
+          "properties": {
+            "collected": {
+              "description": "The first day collected and the last, or null for none yet.",
+              "anyOf": [
+                {"$ref": "#/$defs/Collected"},
+                {"type": "null"}
+              ]
+            },
+            "unknown_days": {
+              "description": "The days asked that no collection has reached: unknown, rather than days off.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "partial_days": {
+              "description": "The days read while under way: a timecard there is so far, and a day without one may not be a day off.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "days": {
+              "description": "Each day with punches or hours, by day and then ID, the oldest first; any other day neither unknown nor partial was a day off.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Timecard"}
+            },
+            "more_days": {
+              "description": "How many older days are left out to fit.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": ["unknown_days", "partial_days", "days", "more_days"]
+        },
+        "Timecard": {
+          "description": "Their timecard for one day.",
+          "type": "object",
+          "properties": {
+            "date": {"type": "string"},
+            "id": {"description": "Their Paycom ID it's under.", "type": "string"},
+            "status": {
+              "description": "Paycom's word for it, such as Complete, Missing punch or No punches.",
+              "type": "string"
+            },
+            "hours": {
+              "description": "The hours Paycom reports, which leave out meals and may include paid leave.",
+              "type": "number",
+              "format": "double"
+            },
+            "worked_minutes": {
+              "description": "The minutes on the clock between complete punches, meals left out; null when the punches can't say.",
+              "type": ["integer", "null"],
+              "format": "int32"
+            },
+            "punches": {
+              "description": "Every punch, in order.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Punch"}
+            },
+            "meals": {
+              "description": "Each meal break, as punched out and back in.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Meal"}
+            },
+            "review": {
+              "description": "Whether the punches need someone to look: unlabeled, unreadable or out of order.",
+              "type": "boolean"
+            }
+          },
+          "required": ["date", "id", "status", "hours", "punches", "meals", "review"]
+        },
+        "Punch": {
+          "description": "One punch on a timecard.",
+          "type": "object",
+          "properties": {
+            "kind": {"$ref": "#/$defs/PunchKind"},
+            "time": {
+              "description": "HH:MM in the DSP's own time, or null when Paycom's isn't a clock.",
+              "type": ["string", "null"]
+            },
+            "next_day": {
+              "description": "Whether it fell on the day after the timecard's, as at the end of a night's shift.",
+              "type": "boolean"
+            }
+          },
+          "required": ["kind", "next_day"]
+        },
+        "PunchKind": {
+          "description": "What a punch says: in or out for the day, out or back in for a meal, or unlabeled.",
+          "type": "string",
+          "enum": ["in_day", "out_lunch", "in_lunch", "out_day", "unlabeled"]
+        },
+        "Meal": {
+          "description": "A meal break, as punched.",
+          "type": "object",
+          "properties": {
+            "out": {
+              "description": "When it started and ended, HH:MM; null for a punch missing.",
+              "type": ["string", "null"]
+            },
+            "back": {"type": ["string", "null"]},
+            "minutes": {
+              "description": "How long it was; null unless both punches are there and in order.",
+              "type": ["integer", "null"],
+              "format": "int32"
+            }
+          }
+        },
+        "Roster": {
+          "description": "What Amazon's roster says of them.",
+          "type": "object",
+          "properties": {
+            "collected": {
+              "description": "When the roster was last collected, RFC 3339 in UTC, or null for never.",
+              "type": ["string", "null"]
+            },
+            "associates": {
+              "description": "Each of their IDs a roster has listed, as the newest to list it did.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Associate"}
+            }
+          },
+          "required": ["associates"]
+        },
+        "Associate": {
+          "description": "One of their IDs, as the newest roster to list it did.",
+          "type": "object",
+          "properties": {
+            "id": {"type": "string"},
+            "listed": {
+              "description": "Whether the newest roster lists them; one it stopped listing keeps what the last to list them said.",
+              "type": "boolean"
+            },
+            "status": {"description": "ACTIVE or INACTIVE, as Amazon writes it.", "type": "string"},
+            "roles": {
+              "description": "What they may do, such as Driver or Helper.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "qualifications": {
+              "description": "The vans and kinds of work they're qualified for, such as CDV or EDV.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "license_expires": {
+              "description": "The day their driver's license expires, when Amazon has it.",
+              "type": ["string", "null"]
+            },
+            "last_listed": {
+              "description": "When a roster last listed them, RFC 3339 in UTC.",
+              "type": "string"
+            }
+          },
+          "required": ["id", "listed", "status", "roles", "qualifications", "last_listed"]
+        },
+        "Chat": {
+          "description": "Their accounts in the DSP's chat workspaces.",
+          "type": "object",
+          "properties": {"accounts": {"type": "array", "items": {"$ref": "#/$defs/ChatAccount"}}},
+          "required": ["accounts"]
+        },
+        "ChatAccount": {
+          "description": "One account in one of the DSP's workspaces.",
+          "type": "object",
+          "properties": {
+            "workspace": {"type": "string"},
+            "user": {
+              "description": "Their member ID in the workspace, U…, as a mention (<@U…>) names them.",
+              "type": "string"
+            },
+            "display_name": {
+              "description": "The name they go by there, when it isn't the name on their profile.",
+              "type": ["string", "null"]
+            },
+            "active": {"type": "boolean"},
+            "guest": {"type": "boolean"},
+            "broken": {
+              "description": "Whether the workspace's access broke: the rest is as it last stood.",
+              "type": "boolean"
+            }
+          },
+          "required": ["workspace", "user", "active", "guest", "broken"]
+        },
+        "Inspections": {
+          "description": "Their DVIC pre-trip inspections shorter than the minimum. DVIC records only those, so none\non a day collected means none fell short.",
+          "type": "object",
+          "properties": {
+            "collected": {
+              "description": "The first day collected and the last, or null for none yet.",
+              "anyOf": [
+                {"$ref": "#/$defs/Collected"},
+                {"type": "null"}
+              ]
+            },
+            "unknown_days": {
+              "description": "The days asked outside what's collected: unknown, rather than none short.",
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "inspections": {
+              "description": "Each short inspection, the newest first, 30 at most.",
+              "type": "array",
+              "items": {"$ref": "#/$defs/Inspection"}
+            },
+            "more_inspections": {
+              "description": "How many more short inspections there are than listed.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": ["unknown_days", "inspections", "more_inspections"]
+        },
+        "Inspection": {
+          "description": "An inspection shorter than its minimum.",
+          "type": "object",
+          "properties": {
+            "date": {"type": "string"},
+            "start_time": {
+              "description": "When it started, as Amazon's report gives it, with no time zone.",
+              "type": "string"
+            },
+            "id": {"description": "Their ID it's under.", "type": "string"},
+            "vehicle_type": {
+              "description": "CV, CDV or SV: 90 seconds is the minimum for the first two, 300 for a step van.",
+              "type": "string"
+            },
+            "vin": {"type": "string"},
+            "duration_seconds": {"type": "number", "format": "double"},
+            "minimum_seconds": {"type": "integer", "format": "uint", "minimum": 0},
+            "short_by_seconds": {"type": "number", "format": "double"}
+          },
+          "required": [
+            "date",
+            "start_time",
+            "id",
+            "vehicle_type",
+            "vin",
+            "duration_seconds",
+            "minimum_seconds",
+            "short_by_seconds"
+          ]
+        }
+      },
+      "required": ["dsp", "from", "to", "person", "trimmed"],
+      "type": "object",
+      "properties": {
+        "dsp": {"description": "The DSP searched.", "type": "string"},
+        "from": {
+          "description": "The first day, YYYY-MM-DD, in the DSP's own time.",
+          "type": "string"
+        },
+        "to": {"description": "The last day, YYYY-MM-DD, in the DSP's own time.", "type": "string"},
+        "person": {"$ref": "#/$defs/Identity"},
+        "scorecards": {
+          "description": "Their weekly scorecards.",
+          "anyOf": [
+            {"$ref": "#/$defs/Scorecards"},
+            {"type": "null"}
+          ]
+        },
+        "daily": {
+          "description": "Amazon's Daily Quality and Day Safety of theirs, day by day.",
+          "anyOf": [
+            {"$ref": "#/$defs/Daily"},
+            {"type": "null"}
+          ]
+        },
+        "routes": {
+          "description": "The routes they drove.",
+          "anyOf": [
+            {"$ref": "#/$defs/Routes"},
+            {"type": "null"}
+          ]
+        },
+        "timecards": {
+          "description": "Their timecards, as Paycom records them.",
+          "anyOf": [
+            {"$ref": "#/$defs/Timecards"},
+            {"type": "null"}
+          ]
+        },
+        "roster": {
+          "description": "What Amazon's roster says of them.",
+          "anyOf": [
+            {"$ref": "#/$defs/Roster"},
+            {"type": "null"}
+          ]
+        },
+        "chat": {
+          "description": "Their accounts in the DSP's chat workspaces.",
+          "anyOf": [
+            {"$ref": "#/$defs/Chat"},
+            {"type": "null"}
+          ]
+        },
+        "inspections": {
+          "description": "Their DVIC pre-trip inspections shorter than the minimum.",
+          "anyOf": [
+            {"$ref": "#/$defs/Inspections"},
+            {"type": "null"}
+          ]
+        },
+        "trimmed": {
+          "description": "Whether lists were cut short to fit, each counting what it left out: ask for fewer days or sections.",
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
     "name": "dvic_short_inspections",
     "title": "DVIC short inspections",
     "description": "Find drivers whose DVIC pre-trip inspections were shorter than the minimum.",

@@ -17,8 +17,10 @@ doctest = false
 # the app, which has no default of the MCP's, turns on each it has.
 # Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.
 default = [
+    "driver_match",
     "dvic",
 ]
+driver_match = ["dep:dispatch-driver-match"]
 dvic = ["dep:dispatch-cortex", "dep:dispatch-dvic"]
 
 # `dispatch_mcp::testing`, for the app's tests through its dev-dependencies.
@@ -45,8 +47,15 @@ ts-rs = { workspace = true, optional = true }
 url = { workspace = true }
 # Every feature the MCP's tools need: written from mcp/tools/ by `npm run contracts:generate`, to the blank line.
 dispatch-cortex = { path = "../collectors/cortex", optional = true }
+dispatch-daily-performance-contract = { path = "../features/daily_performance/contract" }
+dispatch-driver-match = { path = "../features/driver_match", optional = true }
+dispatch-driver-profiles-contract = { path = "../features/driver_profiles/contract" }
 dispatch-dvic = { path = "../features/dvic", optional = true }
 dispatch-dvic-contract = { path = "../features/dvic/contract" }
+dispatch-routes-contract = { path = "../features/routes/contract" }
+dispatch-slack-contract = { path = "../features/slack/contract" }
+dispatch-timecard-contract = { path = "../features/timecard/contract" }
+dispatch-weekly-scorecard-contract = { path = "../features/weekly_scorecard/contract" }
 
 [dev-dependencies]
 dispatch-core = { path = "../core", features = ["testing"] }

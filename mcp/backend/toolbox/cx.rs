@@ -56,6 +56,10 @@ impl Cx {
     pub fn dsps(&self) -> &[Dsp] {
         &self.dsps
     }
+    /// The server's state, for what a read keeps between calls, as `people::everyone` does.
+    pub(crate) fn state(&self) -> &Arc<State> {
+        &self.state
+    }
 
     /// Reads, with the connection checked again first: it still stands, may still use the
     /// tool, and still reaches the call's DSPs with the tool's features on.

@@ -45,10 +45,13 @@ read through that feature's contract. A tool is a type implementing
   is on, it asks about with `cx.has(dsp, "dvic")`. The tool reads a feature through what it exposes,
   its contract crate, as `dispatch_dvic_contract::for_dsp(db, dsp)`, so it never depends on the
   feature's storage; `dispatchdev list exposes` lists them, and `dispatchdev generate` gives the MCP
-  each contract its tools name. It may still use a needed feature's own crate, as its tests do to
-  fill DVIC: `dispatchdev generate` makes each needed feature a Cargo feature of the MCP's that
-  brings the crate, which the app's Cargo feature of the same name turns on, and keeps the tool in a
-  build only while all of them are. A build that leaves a feature out leaves its tools out with it.
+  each contract its tools name. A contract's `for_dsp` answers none where its feature is off or
+  out of the build, so a tool can read what it doesn't need where it's there: `driver` needs only
+  Driver Match, and answers each other feature's part null where that feature isn't on. It may
+  still use a needed feature's own crate, as its tests do to fill DVIC: `dispatchdev generate`
+  makes each needed feature a Cargo feature of the MCP's that brings the crate, which the app's
+  Cargo feature of the same name turns on, and keeps the tool in a build only while all of them
+  are. A build that leaves a feature out leaves its tools out with it.
 - `Input` and `Output`: what it takes and answers, Rust types whose JSON Schema the server
   publishes (`schemars::JsonSchema`). `Input` refuses fields it doesn't name. It can be a choice
   of actions, an enum with `#[serde(tag = "action")]`, each with its own arguments, so one tool

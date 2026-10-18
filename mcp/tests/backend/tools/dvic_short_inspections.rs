@@ -145,7 +145,7 @@ fn a_driver_goes_by_every_name_id_and_contact_the_directory_has_for_them() {
 }
 
 /// DVIC, at a DSP whose station and Cortex connection are set, with DVIC switched on.
-fn ready() -> (tempfile::TempDir, Store, String) {
+pub(crate) fn ready() -> (tempfile::TempDir, Store, String) {
     testing::install();
     let (root, db, id) = bootstrapped();
     common::set_dsp(&db, &id, "Fixture Delivery", "America/Los_Angeles").unwrap();
@@ -160,7 +160,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     (root, db, id)
 }
 /// The request a collection of `weeks` carries, dated today as publication binds it.
-fn request(weeks: &[&str]) -> Request {
+pub(crate) fn request(weeks: &[&str]) -> Request {
     let date = chrono::Utc::now()
         .with_timezone(&chrono_tz::America::Los_Angeles)
         .date_naive()
@@ -172,7 +172,7 @@ fn request(weeks: &[&str]) -> Request {
     .unwrap()
 }
 /// Publishes `capture` as DVIC's collection of its weeks does.
-fn publish(db: &Store, id: &str, key: &str, capture: &Capture) {
+pub(crate) fn publish(db: &Store, id: &str, key: &str, capture: &Capture) {
     let job = db
         .enqueue_dvic(
             id,

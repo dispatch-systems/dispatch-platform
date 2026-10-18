@@ -40,7 +40,7 @@ default = [
 ]
 daily_performance = ["dep:dispatch-daily-performance"]
 documents = ["dep:dispatch-documents"]
-driver_match = ["dep:dispatch-driver-match"]
+driver_match = ["dep:dispatch-driver-match", "dispatch-mcp/driver_match"]
 driver_profiles = ["dep:dispatch-driver-profiles"]
 dvic = ["dep:dispatch-dvic", "dispatch-mcp/dvic"]
 home = ["dep:dispatch-home"]
