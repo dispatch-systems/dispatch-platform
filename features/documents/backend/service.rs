@@ -1,5 +1,5 @@
-//! What Documents offers every other feature: somewhere to keep a DSP's files (core's
-//! `services::files`), in its Google Drive, as Slack keeps the files posted in a channel. A file
+//! What Documents offers every other feature: somewhere to keep a DSP's files (the Files
+//! contract, in its `contract/` crate), in its Google Drive, as Slack keeps the files posted in a channel. A file
 //! saved through it is Documents' like any other, shown, opened and moved as an upload is, with
 //! who it came from as who added it. A page is written as a Google Doc, and over it as the page
 //! changes. Every call works only inside the DSP's own folder.
@@ -9,14 +9,8 @@ use super::{
     storage::DocumentsStore,
     tree::{Mime, Row},
 };
-use dispatch_core::{
-    Result, State, ensure,
-    manifest::services::{
-        Answer,
-        files::{Author, Browsed, Files, Folder, Incoming, Page, Saved},
-    },
-    server::http::upload::UPLOAD_LIMIT,
-};
+use dispatch_core::{Result, State, ensure, server::http::upload::UPLOAD_LIMIT};
+use dispatch_documents_contract::{Answer, Author, Browsed, Files, Folder, Incoming, Page, Saved};
 use std::sync::Arc;
 
 /// How the service refuses a folder that isn't one of the DSP's.

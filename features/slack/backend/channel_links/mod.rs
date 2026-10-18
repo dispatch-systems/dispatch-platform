@@ -17,9 +17,9 @@ use dispatch_core::{
     accounts::Context,
     db::{Db, Store, now},
     ensure,
-    manifest::services::files::{self, Author, Files, Folder},
     server::http::route::Dsp,
 };
+use dispatch_documents_contract::{self as files, Author, Files, Folder};
 use serde_json::json;
 use std::sync::Arc;
 use storage::{Link, LinkStore};

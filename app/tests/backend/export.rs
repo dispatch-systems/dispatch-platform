@@ -177,7 +177,8 @@ fn people_features() -> String {
 /// it's called where members see it, and the permission that shows what it keeps.
 fn services() -> String {
     let mut offered = serde_json::Map::new();
-    if let Some((feature, files)) = dispatch_core::manifest::registry().files() {
+    use dispatch_documents_contract::Files;
+    if let Some((feature, files)) = dispatch_core::manifest::registry().exposed::<dyn Files>() {
         offered.insert(
             "files".into(),
             serde_json::json!({
@@ -523,7 +524,9 @@ fn feature_map(root: &Path) -> String {
             "routes": (feature.routes)().iter()
                 .map(|route| format!("{} {}", route.method, route.path))
                 .collect::<Vec<_>>(),
-            "services": feature.services.offered(),
+            "exposes": feature.exposes.iter()
+                .map(|exposed| json!({"name": exposed.name, "about": exposed.about}))
+                .collect::<Vec<_>>(),
             "settings": feature.settings,
         });
         let dir = format!("features/{}", feature.name);

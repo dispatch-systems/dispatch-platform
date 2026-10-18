@@ -7,7 +7,8 @@ use super::{
     members,
     storage::{Member, SlackStore},
 };
-use dispatch_core::{Result, manifest::services::files::Author};
+use dispatch_core::Result;
+use dispatch_documents_contract::Author;
 use serde_json::json;
 
 /// Who the workspace's member `user` is to the DSP, and the name they're shown by: Slack itself

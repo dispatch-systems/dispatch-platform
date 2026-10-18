@@ -19,14 +19,21 @@ import { lex, rust, useTree } from './support/rust.js';
 // same, and its Rust reaches nothing else.
 // What a feature's TypeScript may import is encapsulation.test.ts's rule, from the same list.
 
-/** What an owner may use: core and itself always, and a feature what it declares. */
+/**
+ * A feature's contract crate, `features/<name>/contract/`: the trait it exposes and the types
+ * that trait speaks in, on core alone. Any owner may use one without declaring its feature, as
+ * it stays when the feature is left out of a build.
+ */
+const contract = (file: string) => /^features\/[^/]+\/contract(\/|$)/.exec(file)?.[0].replace(/\/$/, '');
+/** What an owner may use: core, itself and every contract always, and a feature what it declares. */
 function allowed(owner: Owner): Set<string> {
-  return new Set(['core', unitOf(owner), ...declared(owner)]);
+  const contracts = files.flatMap((file) => contract(file) ?? []);
+  return new Set(['core', unitOf(owner), ...contracts, ...declared(owner)]);
 }
-/** The owner or other top folder a file belongs to, as a dependency names it. */
+/** The owner or other top folder a file belongs to, as a dependency names it: a contract apart. */
 const unitOfFile = (file: string) => {
   const owner = ownerOf(file);
-  return owner ? unitOf(owner) : file.split('/').slice(0, 2).join('/');
+  return contract(file) ?? (owner ? unitOf(owner) : file.split('/').slice(0, 2).join('/'));
 };
 
 /** The owners of the workspace crates a Cargo.toml lists. */
@@ -42,13 +49,13 @@ test("each feature's and collector's Cargo.toml lists exactly what its manifest 
     const listed = new Set(workspaceDependencies(crate, false));
     const expected = new Set(['core', ...declared(owner)]);
     for (const dir of listed)
-      if (!expected.has(dir))
+      if (!expected.has(dir) && !contract(dir))
         disagree.push(`${manifest} lists ${dir}, which its manifest does not declare`);
     for (const dir of expected)
       if (!listed.has(dir)) disagree.push(`${manifest} lacks ${dir}, which its manifest declares`);
     // Its tests may use what it may: core's test helpers, its collectors and features.
     for (const dir of workspaceDependencies(crate, true))
-      if (!expected.has(dir)) disagree.push(`${manifest}'s dev-dependencies list ${dir}`);
+      if (!expected.has(dir) && !contract(dir)) disagree.push(`${manifest}'s dev-dependencies list ${dir}`);
   }
   holds('dependencies', 'cargo', disagree);
 });

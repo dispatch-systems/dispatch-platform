@@ -1,17 +1,10 @@
 //! The directory: everyone a DSP's features name, each told apart under a code of their own,
-//! for any feature that shows people or uses what is known of them. The feature that tells
-//! people apart offers it; `people::everyone`, `people::photo` and `people::changed` ask it,
-//! and answer nothing in a build without one.
-use crate::{
-    Result, State,
-    db::Store,
-    foundation::names,
-    manifest::{
-        Upkeep,
-        people::{Photo, Source},
-    },
-    text_enum,
-};
+//! for any feature that shows people or uses what is known of them. A contract core keeps, as
+//! its people helpers use it: the feature that tells people apart exposes it, and
+//! `people::everyone`, `people::photo` and `people::changed` ask it, answering nothing in a
+//! build without one.
+use super::{Photo, Source};
+use crate::{Result, State, db::Store, foundation::names, manifest::Upkeep, text_enum};
 use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc};
 

@@ -2,10 +2,11 @@
 //! A feature reads only its own storage; that feature joins what every feature names by ID.
 //! The directory answers the other way round: everyone, told apart, for any feature that shows
 //! people or uses what is known of them. The README's "People" section is the guide.
+mod directory;
 mod ids;
 mod rows;
 
-pub use crate::manifest::services::directory::{Directory, Everyone, Person, PersonRole};
+pub use directory::{Directory, Everyone, Person, PersonRole};
 pub use ids::{Kind, KindInfo, Source, SourceInfo};
 pub use rows::{Named, Records, Workdays, named, records, worked};
 
@@ -173,22 +174,22 @@ pub fn everyone(store: &Store, state: &State, dsp: &str) -> Result<Arc<Everyone>
 /// Everyone, read afresh, for work without the server's state at hand, as an agent's tool or a
 /// test: `everyone` keeps what this reads.
 pub fn read(store: &Store, dsp: &str) -> Result<Everyone> {
-    registry().directory().map_or_else(
+    registry().exposed::<dyn Directory>().map_or_else(
         || Ok(Everyone::default()),
-        |directory| directory.everyone(store, dsp),
+        |(_, directory)| directory.everyone(store, dsp),
     )
 }
 /// The photo of the person `code` names, the one their `Person` names the version of; none in
 /// a build without the directory.
 pub fn photo(store: &Store, dsp: &str, code: &str) -> Result<Option<Photo>> {
     registry()
-        .directory()
-        .map_or(Ok(None), |directory| directory.photo(store, dsp, code))
+        .exposed::<dyn Directory>()
+        .map_or(Ok(None), |(_, directory)| directory.photo(store, dsp, code))
 }
 /// Has the DSP's people told apart again now, as new IDs may be there outside a collection,
 /// as when a workspace's members are read: a collection's are after it ends.
 pub async fn changed(state: Arc<State>, dsp: String) {
-    if let Some(directory) = registry().directory() {
+    if let Some((_, directory)) = registry().exposed::<dyn Directory>() {
         directory.changed(state, dsp).await;
     }
 }

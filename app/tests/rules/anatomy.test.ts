@@ -25,6 +25,8 @@ const featurePieces = [
   'tests',
   // Its integrations through a connection, a folder each.
   'integrations',
+  // The contract it exposes, a crate of its own on core alone.
+  'contract',
 ];
 const collectorPieces = [
   'connection',

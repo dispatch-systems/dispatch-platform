@@ -237,10 +237,35 @@ function checkout(root: string, removal: Plan) {
   const moved: string[] = [];
   return {
     leaveOut() {
+      // A feature's contract stays, as any crate may use it without the feature; everything
+      // else of the feature goes aside, and the workspace leaves out what's left of its folder.
+      const excluded: string[] = [];
       for (const dir of removal.aside) {
-        fs.mkdirSync(path.dirname(path.join(store, dir)), { recursive: true });
-        fs.renameSync(path.join(root, dir), path.join(store, dir));
-        moved.push(dir);
+        const keeps = fs.existsSync(path.join(root, dir, 'contract'));
+        const parts = keeps
+          ? fs
+              .readdirSync(path.join(root, dir))
+              .filter((name) => name !== 'contract')
+              .map((name) => `${dir}/${name}`)
+          : [dir];
+        if (keeps) excluded.push(dir);
+        for (const part of parts) {
+          fs.mkdirSync(path.dirname(path.join(store, part)), { recursive: true });
+          fs.renameSync(path.join(root, part), path.join(store, part));
+          moved.push(part);
+        }
+      }
+      if (excluded.length) {
+        const members = path.join(root, workspaceManifest);
+        fs.writeFileSync(
+          members,
+          fs
+            .readFileSync(members, 'utf8')
+            .replace(
+              /^\[workspace\]\n/m,
+              `[workspace]\nexclude = [${excluded.map((dir) => `"${dir}"`).join(', ')}]\n`,
+            ),
+        );
       }
       for (const file of manifests) {
         const manifest = path.join(root, file);

@@ -15,7 +15,8 @@ use crate::backend::{
     storage::{Member, SlackStore, Workspace},
     support,
 };
-use dispatch_core::{manifest::services::files::Author, testing};
+use dispatch_core::testing;
+use dispatch_documents_contract::Author;
 
 const TEAM: &str = "T0FIXTURE1";
 /// The workspace whose canvas a test edits, which no other test reads.

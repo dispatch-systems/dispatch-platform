@@ -4,12 +4,8 @@
 use super::*;
 use crate::backend::{google::Google, storage::Connection, tree::Mime};
 use axum::body::Bytes;
-use dispatch_core::{
-    db::iso,
-    manifest::services::files::{self, Files, Page},
-    server::http::upload::Upload,
-    testing,
-};
+use dispatch_core::{db::iso, server::http::upload::Upload, testing};
+use dispatch_documents_contract::{self as files, Files, Page};
 use futures_util::stream;
 use serde_json::json;
 

@@ -13,12 +13,8 @@ use crate::integrations::import_files::{
     ID, LINKING, catch_up,
     storage::{ImportStore, Status},
 };
-use dispatch_core::{
-    State,
-    db::now,
-    manifest::{integrations::Heard, services::files::Author},
-    testing,
-};
+use dispatch_core::{State, db::now, manifest::integrations::Heard, testing};
+use dispatch_documents_contract::Author;
 use serde_json::json;
 use std::sync::Arc;
 
