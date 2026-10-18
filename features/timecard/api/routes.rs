@@ -1,6 +1,9 @@
 //! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
 //! preferences, and the jobs and schedules that collect them.
-use crate::{api::settings::PaycomSettings, backend::TimecardStore};
+use crate::{
+    api::settings::PaycomSettings,
+    backend::{TimecardStore, punches::employees::identify},
+};
 use dispatch_core::{
     Error, Result,
     accounts::api::requests::CollectionRequest,
@@ -55,7 +58,6 @@ pub fn routes() -> Vec<Route> {
         )
         .logged(),
         read("/api/dsp/employees/{code}", VIEW, employee).logged(),
-        read("/api/dsp/employees/{code}/photo", VIEW, employee_photo),
         write(
             "/api/dsp/employees/{code}/sync",
             Dsp("collections.run"),
@@ -162,7 +164,11 @@ fn employees(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
             .load(std::sync::atomic::Ordering::Relaxed),
         || crate::backend::punches::employees::roster(db, c.dsp_id()),
     )?;
-    let page = roster.page(query, offset, limit, desc, active);
+    let mut page = roster.page(query, offset, limit, desc, active);
+    let people = people::everyone(db, c.state, c.dsp_id())?;
+    for employee in &mut page.employees {
+        identify(employee, &people);
+    }
     Reply::of(&page)
 }
 
@@ -194,17 +200,12 @@ fn employee(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     } else {
         period
     };
-    Reply::of(&db.employee_timecard(c.dsp_id(), input.param("code"), period.as_ref())?)
-}
-
-/// An employee's photo, from whoever Driver Match finds they are. The address carries its
-/// version, so the browser keeps it until the photo changes.
-fn employee_photo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    tab(c, EMPLOYEES)?;
-    let (kind, bytes) =
-        people::photo(db, c.dsp_id(), dispatch_paycom::SOURCE, input.param("code"))?
-            .ok_or_else(|| Error::new("not_found", 404))?;
-    Ok(Reply::picture(kind, bytes.into()))
+    let mut timecard = db.employee_timecard(c.dsp_id(), input.param("code"), period.as_ref())?;
+    identify(
+        &mut timecard.employee,
+        &*people::everyone(db, c.state, c.dsp_id())?,
+    );
+    Reply::of(&timecard)
 }
 
 fn timecards(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -327,7 +328,10 @@ fn meal_page(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     .unwrap_or("employee");
     let desc = descending(q)?;
     let (offset, limit) = page_bounds(q)?;
-    let load = || db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str());
+    let load = || {
+        let people = people::everyone(db, c.state, c.dsp_id())?;
+        db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str(), &people)
+    };
     let live = db.any_active_job(c.dsp_id(), KINDS)?;
     let day = if live {
         std::sync::Arc::new(load()?)
@@ -458,10 +462,14 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     tab(c, MEAL_BREAKS)?;
     v::fields(&input.query, &["date"])?;
     let date = v::text(&input.query, "date", 10, 10)?;
+    let load = || {
+        let people = people::everyone(db, c.state, c.dsp_id())?;
+        db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str(), &people)
+    };
     // Live pages depend on current job leases, actor permissions and connection revision.
     // Check them afresh during collection rather than caching that moving visibility.
     if db.any_active_job(c.dsp_id(), KINDS)? {
-        return Reply::of(&db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str())?);
+        return Reply::of(&load()?);
     }
     let comparison = c.state.read_cache.json(
         dispatch_core::server::cache::Scope::tenant(crate::backend::meals::CACHED, c.dsp_id()),
@@ -469,7 +477,7 @@ fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         c.state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed),
-        || db.meal_comparison(c.dsp_id(), date, c.dsp.timezone.as_str()),
+        load,
     )?;
     Ok(Reply::encoded(comparison))
 }
@@ -499,6 +507,7 @@ fn meal_period(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         date,
         requested.as_ref(),
         c.dsp.timezone.as_str(),
+        &*people::everyone(db, c.state, c.dsp_id())?,
     )?)
 }
 
@@ -508,8 +517,9 @@ fn meal_period_gaps(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let date = v::text(&input.query, "date", 10, 10)?;
     let timezone = c.dsp.timezone.as_str();
     // As the day's comparison: read afresh while a collection runs, and cached otherwise.
+    let people = || people::everyone(db, c.state, c.dsp_id());
     if db.any_active_job(c.dsp_id(), KINDS)? {
-        return Reply::of(&db.meal_period_gaps(c.dsp_id(), date, timezone)?);
+        return Reply::of(&db.meal_period_gaps(c.dsp_id(), date, timezone, &*people()?)?);
     }
     let period = crate::backend::meals::period::gap_period(db, c.dsp_id(), date)?;
     let gaps = c.state.read_cache.json(
@@ -522,7 +532,7 @@ fn meal_period_gaps(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         c.state
             .data_revision
             .load(std::sync::atomic::Ordering::Relaxed),
-        || crate::backend::meals::period::gaps_for(db, c.dsp_id(), period, timezone),
+        || crate::backend::meals::period::gaps_for(db, c.dsp_id(), period, timezone, &*people()?),
     )?;
     Ok(Reply::encoded(gaps))
 }

@@ -1,4 +1,5 @@
 use dispatch_core::db::{Store, s};
+use dispatch_core::manifest::people;
 use dispatch_core::testing as common;
 use dispatch_cortex::{self as cortex, discovery::Scope, meals};
 use dispatch_paycom::fixtures;
@@ -76,7 +77,7 @@ fn a_driver_whose_meal_punches_cant_be_read_is_unknown_not_absent() {
     db.publish_meals(&id, "unreadable", &capture, &scope)
         .unwrap();
     let data = db
-        .meal_comparison(&id, &date, "UTC")
+        .meal_comparison(&id, &date, "UTC", &people::read(&db, &id).unwrap())
         .map(|value| serde_json::to_value(value).unwrap())
         .unwrap();
     // Timecard alone knows nobody's employee, so the driver has a row of their own.
@@ -118,7 +119,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
         .unwrap();
     db.collector(&id,cortex::PROVIDER).unwrap().exec("UPDATE meal_publications SET collected_at='2099-01-01T00:00:00.000Z' WHERE job_id='new-scope'",[]).unwrap();
     let data = db
-        .meal_comparison(&id, &date, "UTC")
+        .meal_comparison(&id, &date, "UTC", &people::read(&db, &id).unwrap())
         .map(|value| serde_json::to_value(value).unwrap())
         .unwrap();
     assert_eq!(data["rows"].as_array().unwrap().len(), 11);
@@ -134,7 +135,7 @@ fn newer_empty_scope_suppresses_stale_meals_and_latest_paycom_period_wins() {
     newer["timecards"] = json!([]);
     db.publish_timecards(&id, &newer).unwrap();
     assert_eq!(
-        db.meal_comparison(&id, &date, "UTC")
+        db.meal_comparison(&id, &date, "UTC", &people::read(&db, &id).unwrap())
             .map(|value| serde_json::to_value(value).unwrap())
             .unwrap()["rows"],
         json!([])
@@ -193,6 +194,7 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
             Some("2026-09-07"),
             None,
             "America/Los_Angeles",
+            &people::read(&db, &id).unwrap(),
         )
         .unwrap();
     assert_eq!(result.period.from, "2026-09-06");
@@ -216,7 +218,12 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
     assert_eq!(result.excess_milliseconds, 17 * 60_000);
     // Everyone's counts, as the page shows them, count the same gaps over the same period.
     let everyone = db
-        .meal_period_gaps(&id, "2026-09-07", "America/Los_Angeles")
+        .meal_period_gaps(
+            &id,
+            "2026-09-07",
+            "America/Los_Angeles",
+            &people::read(&db, &id).unwrap(),
+        )
         .unwrap();
     assert_eq!(everyone.period.as_ref(), Some(&result.period));
     assert_eq!(everyone.counts[&driver], 5);
@@ -227,20 +234,31 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
             Some("2026-09-05"),
             None,
             "America/Los_Angeles",
+            &people::read(&db, &id).unwrap(),
         )
         .unwrap();
     assert_eq!(previous.period.from, "2026-08-23");
     assert_eq!(previous.period.to, "2026-09-05");
     assert_eq!(previous.gaps.len(), 2);
     assert_eq!(
-        db.meal_period_gaps(&id, "2026-09-05", "America/Los_Angeles")
-            .unwrap()
-            .counts[&driver],
+        db.meal_period_gaps(
+            &id,
+            "2026-09-05",
+            "America/Los_Angeles",
+            &people::read(&db, &id).unwrap()
+        )
+        .unwrap()
+        .counts[&driver],
         2
     );
     // A day past Paycom's latest period has no period to count over.
     let unpublished = db
-        .meal_period_gaps(&id, "2026-09-20", "America/Los_Angeles")
+        .meal_period_gaps(
+            &id,
+            "2026-09-20",
+            "America/Los_Angeles",
+            &people::read(&db, &id).unwrap(),
+        )
         .unwrap();
     assert!(unpublished.period.is_none() && unpublished.counts.is_empty());
     assert_eq!(
@@ -253,7 +271,14 @@ fn meal_period_counts_each_verified_gap_and_only_time_beyond_five_minutes() {
         to: "2026-09-20".into(),
     };
     assert!(
-        db.meal_period(&id, driver.as_str(), None, Some(&invalid), "UTC")
-            .is_err()
+        db.meal_period(
+            &id,
+            driver.as_str(),
+            None,
+            Some(&invalid),
+            "UTC",
+            &people::read(&db, &id).unwrap()
+        )
+        .is_err()
     );
 }

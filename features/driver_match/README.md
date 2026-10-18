@@ -19,14 +19,14 @@ only what was decided.
 - **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
 - **Its screen** is the Driver Match tab of a DSP's Settings, shown while the DSP has a feature
   on whose data names people: the questions the backend sends, asked one at a time, then
-  everyone as a card with their photo and the sources that have them, by role or a source
+  everyone as a card with their photo, from core's `/api/dsp/people/{code}/photo`, and the
+  sources that have them, by role or a source
   lacking them. Its badge counts the same questions. Driver Profiles draws its roster bar above
   it.
 - **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on, the
   questions waiting, as pairs that may be one person or name variants to confirm, by people's
   codes, and everyone), `…/counts` (how many questions wait), `…/people/{code}` (one person's
-  IDs, what they appear in, their days and history), `…/people/{code}/photo` (their photo),
-  and the decisions `POST …/merge` (two codes become one), `…/split` (one ID moves to a new
+  IDs, what they appear in, their days and history), and the decisions `POST …/merge` (two codes become one), `…/split` (one ID moves to a new
   person), `…/apart` (two people are kept apart) and `…/confirm` (a match by a name or a
   contact was right), which answer with nothing. A decision made on stale data is refused
   (`person_changed`), as is splitting a person's only ID (`person_single_id`).
@@ -126,8 +126,12 @@ sheet lists their kinds in this order.
 
 ## Asking who someone is
 
-A feature that shows people asks core's directory, never Driver Match, which offers it as a
-service: `people::who(store, dsp, source)` answers, for each ID of `source` someone holds, every
-ID they hold by source, whether someone confirmed who they are and the version of their photo,
-and nobody in a build without Driver Match. Timecard's meal breaks find each driver's employee
-so (`person.ids_of(dispatch_paycom::SOURCE)`).
+A feature that shows people, or uses what is known of them, asks core's directory, never Driver
+Match, which offers it as a service (`backend/directory.rs`): everyone as the tab lists them,
+each with their code, the name they are shown by and every other way their sources write it,
+their role, every ID they hold by source, their email addresses and phone numbers, whether
+someone confirmed who they are and the version of their photo; and nobody in a build without
+Driver Match. Core keeps it until a decision or a collection changes it (`people::everyone`), and
+serves it to every member of the DSP. Timecard's employees name their person by it, and its meal
+breaks find each driver's employee (`people.holding(cortex::SOURCE, id)`, then
+`person.ids_of(dispatch_paycom::SOURCE)`).

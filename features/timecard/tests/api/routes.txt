@@ -4,7 +4,6 @@
 GET /api/dsp/cortex/meal-breaks Dsp("timecard.view") Read
 GET /api/dsp/employees Dsp("timecard.view") Read
 GET /api/dsp/employees/{code} Dsp("timecard.view") Read
-GET /api/dsp/employees/{code}/photo Dsp("timecard.view") Read
 GET /api/dsp/jobs Dsp("collections.run") Read
 GET /api/dsp/jobs/employees Dsp("timecard.view") Read
 GET /api/dsp/jobs/meal-breaks Dsp("timecard.view") Read

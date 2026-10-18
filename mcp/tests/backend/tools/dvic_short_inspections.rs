@@ -83,16 +83,61 @@ fn a_search_names_its_days_one_way_in_the_dsps_own_time() {
 }
 
 #[test]
-fn a_driver_is_named_by_a_name_part_of_one_or_an_initial() {
-    assert!(names("Avery Morgan", "Avery M."));
-    assert!(names("avery m", "Avery Morgan"));
-    assert!(names("Morgan", "Martin Morgan"));
-    // A joined surname holds both of its names.
-    assert!(names("Molinero", "Bryan MolineroMartinez"));
-    assert!(names("Bryan Martinez", "Bryan MolineroMartinez"));
-    assert!(!names("Ann", "Andrew Trujillo"));
-    assert!(!names("Avery Avery", "Avery Morgan"));
-    assert!(!names("", "Avery Morgan"));
+fn a_driver_goes_by_every_name_id_and_contact_the_directory_has_for_them() {
+    use dispatch_core::manifest::people::{Person, PersonRole};
+    let driver = |id: &str, name: &str| DvicDriver {
+        id: id.into(),
+        name: name.into(),
+        short_inspections: 1,
+        first_date: "2026-09-19".into(),
+        last_date: "2026-09-19".into(),
+    };
+    let known = [
+        driver("A1", "Cam Hayes"),
+        driver("A2", "Cam Hayes"),
+        driver("B1", "Avery Morgan"),
+        driver("C1", "Avery Mendez"),
+    ];
+    let person = |code: &str, names: &[&str], ids: &[&str], email: &str| Person {
+        code: code.into(),
+        name: names[0].into(),
+        names: names.iter().map(|name| (*name).to_owned()).collect(),
+        role: PersonRole::Driver,
+        ids: BTreeMap::from([(
+            dispatch_cortex::SOURCE,
+            ids.iter().map(|id| (*id).to_owned()).collect(),
+        )]),
+        emails: vec![email.into()],
+        phones: vec![],
+        confirmed: false,
+        photo: None,
+    };
+    // Cam's two transporter IDs are one person, whom another system writes in full.
+    let people = Everyone::new(
+        vec![
+            person(
+                "CAMHAY",
+                &["Cameron Hayes", "Cam Hayes"],
+                &["A1", "A2"],
+                "cam@example.com",
+            ),
+            person("AVEMOR", &["Avery Morgan"], &["B1"], "avery@example.com"),
+        ],
+        BTreeMap::new(),
+    );
+    let ids = |asked: &str| {
+        matched(&known, &people, &[asked.to_owned()])
+            .map(|(found, _)| found.iter().map(|driver| driver.id.clone()).collect())
+            .map_err(|refusal| refusal.code)
+    };
+    assert_eq!(ids("Cameron"), Ok(vec!["A1".to_owned(), "A2".to_owned()]));
+    assert_eq!(
+        ids("CAM@example.com"),
+        Ok(vec!["A1".to_owned(), "A2".to_owned()])
+    );
+    // Whom the directory has yet to tell apart goes by DVIC's own spelling.
+    assert_eq!(ids("Mendez"), Ok(vec!["C1".to_owned()]));
+    assert_eq!(ids("Avery"), Err("driver_ambiguous".to_owned()));
 }
 
 /// DVIC, at a DSP whose station and Cortex connection are set, with DVIC switched on.

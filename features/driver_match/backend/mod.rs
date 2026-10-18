@@ -30,7 +30,7 @@ use dispatch_core::{
     Error, Result,
     accounts::Context,
     db::{Db, FromRow, Row, Store},
-    manifest::people::{Photo, Source},
+    manifest::people::Source,
     server::cache::DataDomain,
 };
 use sources::Key;
@@ -98,8 +98,6 @@ pub trait DriverMatchStore {
     /// How many questions wait, for the tab's badge, without the roster.
     fn match_counts(&self, dsp: &str) -> Result<MatchCounts>;
     fn person_details(&self, dsp: &str, code: &str) -> Result<PersonDetails>;
-    /// The photo of `code`'s person, from whichever feature holds one: its kind and its bytes.
-    fn person_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>>;
     fn merge_people(&self, c: &Context, code: &str, into: &str) -> Result<()>;
     fn split_off(&self, c: &Context, code: &str, source: Source, id: &str) -> Result<()>;
     fn keep_apart(&self, c: &Context, code: &str, other: &str) -> Result<()>;
@@ -121,9 +119,6 @@ impl DriverMatchStore for Store {
     }
     fn person_details(&self, dsp: &str, code: &str) -> Result<PersonDetails> {
         details::details(self, dsp, code)
-    }
-    fn person_photo(&self, dsp: &str, code: &str) -> Result<Option<Photo>> {
-        photos::photo_of(self, dsp, code)
     }
     fn merge_people(&self, c: &Context, code: &str, into: &str) -> Result<()> {
         decisions::merge(self, c, code, into)

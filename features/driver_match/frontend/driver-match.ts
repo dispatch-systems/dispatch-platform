@@ -9,7 +9,6 @@ import type {
   PersonId,
   PersonRole,
 } from '../api/index.js';
-import { personPath } from '../api/client.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { peopleKinds, peopleSources } from '../../../core/manifest/api/generated/people-data.js';
 
@@ -123,9 +122,6 @@ export const toneOf = (code: string) => [...code].reduce((sum, c) => sum + c.cha
 /** Long IDs, as Amazon's transporter IDs, by their start and end, which tell them apart. */
 export const shortId = (id: PersonId) =>
   id.id.length > 12 ? `${id.id.slice(0, 4)}…${id.id.slice(-4)}` : id.id;
-/** The address of a person's photo, at the version they have. */
-export const photoUrl = (person: Pick<Person, 'code' | 'photo'>) =>
-  person.photo ? `${personPath(person.code)}/photo?v=${person.photo.slice(0, 16)}` : undefined;
 
 /**
  * The first name another source knows someone by, when it differs from the name shown, which

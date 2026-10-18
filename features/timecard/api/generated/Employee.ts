@@ -2,6 +2,7 @@
 
 export type Employee = { code: string, name: string, department: string, position: string, station: string, active: boolean,
 /**
- * The version of their photo, from whoever Driver Match finds they are; none without one.
+ * The code of the person the directory finds they are, and the version of that person's
+ * photo; none before anyone is.
  */
-photo: string | null, };
+person: string | null, photo: string | null, };

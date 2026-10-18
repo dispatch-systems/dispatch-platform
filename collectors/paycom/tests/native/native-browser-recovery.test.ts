@@ -158,6 +158,12 @@ test(
     };
     const full = await owner.post('/api/dsp/jobs', { requestId: 'baseline' });
     await complete(full.value.id, 'succeeded');
+    // Driver Match names each employee's person once the collection is in.
+    await until(async () =>
+      (await owner.read('/api/dsp/employees?limit=all')).employees.every(
+        (employee: { person: string | null }) => employee.person,
+      ),
+    );
     const latest = (await owner.get('/api/dsp/employees/BB02')).value;
     const period = latest.previousPeriod;
     const url = `/api/dsp/employees/BB02?from=${period.from}&to=${period.to}`;

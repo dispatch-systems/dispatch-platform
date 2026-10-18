@@ -1,5 +1,7 @@
 //! What Driver Match's endpoints answer with. Each type is written to TypeScript in
 //! `generated/`, which `client.ts` imports.
+/// What a person does for the DSP, as core's directory says.
+pub use dispatch_core::manifest::people::PersonRole;
 use dispatch_core::{
     manifest::people::{Kind, Source},
     text_enum,
@@ -68,26 +70,6 @@ text_enum! {
         Apart => "apart",
     }
 }
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
-    /// What a person does for the DSP: a driver or a helper, as their sources' roles say or
-    /// their records show; office staff, outside the departments the DSP counts as drivers;
-    /// or someone who has left, whom no source lists and nothing has seen lately.
-    pub enum PersonRole {
-        Driver => "driver",
-        Helper => "helper",
-        Office => "office",
-        Former => "former",
-    }
-}
-impl PersonRole {
-    /// Whether they have left: nobody asks about them, and only Former lists them.
-    pub fn left(self) -> bool {
-        self == Self::Former
-    }
-}
-
 /// One ID a person is known by, as its source wrote it.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

@@ -7,20 +7,29 @@ const initials = (name: string) =>
     .map((word) => [...word][0]!.toLocaleUpperCase('en-US'))
     .join('') || '?';
 
+/** The address of the photo of the person `code` names, at its `version`, which it carries. */
+const personPhoto = (code: string, version: string) =>
+  `/api/dsp/people/${encodeURIComponent(code)}/photo?v=${version.slice(0, 16)}`;
+
 /**
- * A person: the photo at `photo`, an address carrying its version, once it nears the screen,
- * and their initials until it comes or without one. Its owner's `className` sizes and colors it.
+ * A person: the photo of the person `code` names, at the version `photo` names, once it nears
+ * the screen, and their initials until it comes or without one. Its owner's `className` sizes
+ * and colors it.
  */
 export function PersonAvatar({
   name,
+  code,
   photo,
   className,
 }: {
   name: string;
-  photo?: string;
+  code?: string | null;
+  photo?: string | null;
   className?: string;
 }) {
-  const [box, src, lost] = usePicture<HTMLSpanElement>(photo);
+  const [box, src, lost] = usePicture<HTMLSpanElement>(
+    code && photo ? personPhoto(code, photo) : undefined,
+  );
   return (
     <span
       ref={box}

@@ -4,7 +4,11 @@
 //! collected; and a day outside what it has collected is unknown, which every answer says.
 use crate::toolbox::{Answer, Cx, Refusal, Reply, Tool};
 use chrono::{Datelike, Duration, NaiveDate};
-use dispatch_core::db::Store;
+use dispatch_core::{
+    db::Store,
+    foundation::names,
+    manifest::people::{self, Everyone},
+};
 use dispatch_dvic::{DvicCoverage, DvicDriver, DvicInspection, DvicStore};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,7 +25,7 @@ const LONGEST: i64 = 366;
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Search {
-    /// Drivers, each by name, part of a name, or Amazon transporter ID; none for everyone.
+    /// Drivers, each by name, part of one, an ID, email address or phone number; none for everyone.
     pub drivers: Option<Vec<String>>,
     /// One day, YYYY-MM-DD, in the DSP's own time.
     pub date: Option<String>,
@@ -134,7 +138,12 @@ fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -
     let coverage = db.dvic_coverage(dsp)?;
     let known = db.dvic_drivers(dsp)?;
     let asked = input.drivers.as_deref().unwrap_or_default();
-    let (matched, not_found) = matched(&known, asked)?;
+    let people = if asked.is_empty() {
+        Everyone::default()
+    } else {
+        people::read(db, dsp)?
+    };
+    let (matched, not_found) = matched(&known, &people, asked)?;
     let (from, to) = match range(input, today)? {
         Some(range) => range,
         // Every day DVIC has for the drivers asked for, or the last 7.
@@ -265,9 +274,10 @@ fn parse(value: &str) -> Option<NaiveDate> {
 }
 
 /// The drivers each name asked for is, and the names DVIC has never recorded. A name that
-/// could be several drivers is refused, with their names to choose from.
+/// could be several people is refused, with their names to choose from.
 fn matched<'a>(
     known: &'a [DvicDriver],
+    people: &Everyone,
     asked: &[String],
 ) -> Result<(Vec<&'a DvicDriver>, Vec<String>), Refusal> {
     let mut found: Vec<&DvicDriver> = Vec::new();
@@ -285,29 +295,32 @@ fn matched<'a>(
             .filter(|driver| driver.id.eq_ignore_ascii_case(name))
             .collect();
         let candidates = if by_id.is_empty() {
-            let named: Vec<&DvicDriver> = known
-                .iter()
-                .filter(|driver| names(name, &driver.name))
-                .collect();
-            // A name exactly as DVIC writes it is that driver, beside others it is part of.
-            let exact: Vec<&DvicDriver> = named
-                .iter()
-                .copied()
-                .filter(|driver| words(&driver.name) == words(name))
-                .collect();
-            if exact.len() == 1 { exact } else { named }
+            named(known, people, name)
         } else {
             by_id
         };
-        match candidates.as_slice() {
-            [] => missing.push(name.to_owned()),
-            [one] => {
-                if !found.iter().any(|driver| driver.id == one.id) {
-                    found.push(one);
+        // One person may hold several transporter IDs.
+        let mut whom: Vec<&str> = candidates
+            .iter()
+            .map(|driver| {
+                people
+                    .holding(dispatch_cortex::SOURCE, &driver.id)
+                    .map_or(driver.id.as_str(), |person| person.code.as_str())
+            })
+            .collect();
+        whom.sort_unstable();
+        whom.dedup();
+        match whom.len() {
+            0 => missing.push(name.to_owned()),
+            1 => {
+                for one in candidates {
+                    if !found.iter().any(|driver| driver.id == one.id) {
+                        found.push(one);
+                    }
                 }
             }
-            several => {
-                let choices = several
+            _ => {
+                let choices = candidates
                     .iter()
                     .map(|driver| format!("{} ({})", driver.name, driver.id))
                     .collect();
@@ -318,29 +331,27 @@ fn matched<'a>(
     }
     Ok((found, missing))
 }
-
-/// A name's words, lowercase, without punctuation.
-fn words(name: &str) -> Vec<String> {
-    name.split(|c: char| !c.is_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .map(str::to_lowercase)
-        .collect()
-}
-/// Whether `asked` names `name`: each of its words is the start of one of the name's, or one
-/// of the name's is the start of it, as an initial is, or it is within one, as a joined
-/// surname holds both.
-fn names(asked: &str, name: &str) -> bool {
-    let asked = words(asked);
-    let mut name = words(name);
-    !asked.is_empty()
-        && asked.iter().all(|word| {
-            let at = name.iter().position(|part| {
-                part.starts_with(word.as_str())
-                    || word.starts_with(part.as_str())
-                    || (word.len() >= 3 && part.contains(word.as_str()))
-            });
-            at.map(|at| name.remove(at)).is_some()
-        })
+/// The drivers DVIC knows whom `name` names: whoever the directory finds by any name, ID,
+/// email address or phone number it has for them, and anyone it has yet to tell apart by
+/// DVIC's own spelling. A name exactly as DVIC writes it is that driver, beside others it is
+/// part of.
+fn named<'a>(known: &'a [DvicDriver], people: &Everyone, name: &str) -> Vec<&'a DvicDriver> {
+    let found = people.find(name);
+    let named: Vec<&DvicDriver> = known
+        .iter()
+        .filter(
+            |driver| match people.holding(dispatch_cortex::SOURCE, &driver.id) {
+                Some(person) => found.iter().any(|one| one.code == person.code),
+                None => names::matches(name, &driver.name),
+            },
+        )
+        .collect();
+    let exact: Vec<&DvicDriver> = named
+        .iter()
+        .copied()
+        .filter(|driver| names::same(name, &driver.name))
+        .collect();
+    if exact.len() == 1 { exact } else { named }
 }
 
 /// Each driver's short inspections, the most first, then by name.

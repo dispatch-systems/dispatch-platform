@@ -138,11 +138,26 @@ which imports the icons from lucide-react), loaded only by the lists of people; 
 features whose data names people, by their switches (`people-features.ts`), small enough for a
 frontend manifest to ask whether a DSP has one on.
 
-The other way round, a feature showing people asks the directory, a service
-(`services/directory.rs`) the feature that tells people apart offers: `people::who` says who
-holds each ID of a source, with every ID they hold and the version of their photo,
-`people::photo` gives that photo for the feature to serve behind its own permission, and both
-answer nothing in a build without it. The dashboard draws a person with `PersonAvatar`.
+The other way round, any feature that shows people or uses what is known of them asks the
+directory, a service (`services/directory.rs`) the feature that tells people apart offers. Each
+`Person` has their code, theirs for good and the same in every feature, so it is what a feature
+keeps to name them; the name they are shown by and every other way their sources write it; their
+role (driver, helper, office or former); every ID they hold, by source; their email addresses
+and phone numbers; whether someone confirmed who they are; and the version of their photo.
+
+```rust
+let people = people::everyone(db, c.state, c.dsp_id())?; // everyone, by name
+let person = people.person(code);                        // by code, a merged one too
+let theirs = people.holding(dispatch_paycom::SOURCE, id); // by any source's ID
+let found = people.find("cam hayes");                    // by name, ID, email or phone
+```
+
+`people::everyone` keeps what it reads until a collection, a decision or the DSP's settings
+change it; `people::read` reads afresh, for work without the server's state, as an agent's
+tool. `people::photo` serves a person's photo by their code. Each answers nothing in a build
+without the directory. Every member of a DSP reads its people, whatever their role, from
+`GET /api/dsp/people`, `…/people/{code}` and `…/people/{code}/photo` (`api/routes.rs`). The
+dashboard draws a person with `PersonAvatar`, from their name, code and photo version.
 
 ### Services
 

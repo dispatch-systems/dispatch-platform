@@ -12,7 +12,7 @@ use dispatch_core::{
     Result,
     db::{Store, s},
     foundation::names,
-    manifest::people::{self, Person},
+    manifest::people::Everyone,
 };
 use dispatch_cortex as cortex;
 use serde_json::{Value, json};
@@ -23,9 +23,10 @@ pub(crate) fn meal_comparison(
     id: &str,
     date: &str,
     timezone: &str,
+    people: &Everyone,
 ) -> Result<MealComparison> {
     Ok(store
-        .meal_comparisons(id, date, date, timezone, None)?
+        .meal_comparisons(id, date, date, timezone, None, people)?
         .remove(date)
         .unwrap())
 }
@@ -38,8 +39,17 @@ pub(crate) fn meal_comparisons(
     to: &str,
     timezone: &str,
     selected: Option<&[String]>,
+    people: &Everyone,
 ) -> Result<BTreeMap<String, MealComparison>> {
-    comparisons(store, id, from, to, timezone, Read::Comparison(selected))
+    comparisons(
+        store,
+        id,
+        from,
+        to,
+        timezone,
+        Read::Comparison(selected),
+        people,
+    )
 }
 
 /// Gap counts need complete identity context and Cortex observations, without
@@ -50,8 +60,9 @@ pub(crate) fn gap_comparisons(
     from: &str,
     to: &str,
     timezone: &str,
+    people: &Everyone,
 ) -> Result<BTreeMap<String, MealComparison>> {
-    comparisons(store, id, from, to, timezone, Read::Gaps)
+    comparisons(store, id, from, to, timezone, Read::Gaps, people)
 }
 #[derive(Clone, Copy)]
 enum Read<'a> {
@@ -65,6 +76,7 @@ fn comparisons(
     to: &str,
     timezone: &str,
     read: Read<'_>,
+    people: &Everyone,
 ) -> Result<BTreeMap<String, MealComparison>> {
     let cortex = store.collector(id, cortex::PROVIDER)?;
     let mut live = store.live_results_range(id, cortex::PROVIDER, from, to)?;
@@ -147,7 +159,7 @@ fn comparisons(
     };
     let mut context = ComparisonContext {
         timezone, selected, meals, itineraries, late,
-        known: people::who(store, id, cortex::SOURCE)?,
+        people,
         latest_zone: cortex.one(
             "SELECT timezone FROM meal_publications WHERE active=1                  ORDER BY collected_at DESC,id DESC LIMIT 1", [],
         )?,
@@ -171,7 +183,7 @@ struct ComparisonContext<'a> {
     timezone: &'a str,
     selected: Option<&'a [String]>,
     /// Who each driver is, by their transporter ID.
-    known: BTreeMap<String, Person>,
+    people: &'a Everyone,
     late: LateRule,
     latest_zone: Option<Value>,
     meals: HashMap<(String, String), Vec<Value>>,
@@ -261,7 +273,7 @@ impl ComparisonContext<'_> {
         // Driver Match says who each driver is: their employee on today's roster, if any.
         let listed: HashSet<&str> = roster.iter().map(|e| s(e, "code")).collect();
         for (transporter, driver) in drivers.iter_mut() {
-            let person = self.known.get(transporter);
+            let person = self.people.holding(cortex::SOURCE, transporter);
             let code = person
                 .map_or(&[][..], |person| person.ids_of(dispatch_paycom::SOURCE))
                 .iter()
