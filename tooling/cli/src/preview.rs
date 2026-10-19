@@ -163,17 +163,55 @@ fn state(name: &str, runner: &dyn Runner) -> Result<String> {
         }))
 }
 
+/// Where the link opens: a page, in a DSP, on a tab of the page.
+pub struct Open<'a> {
+    pub page: Option<&'a str>,
+    /// The DSP, by its id or a unique part of its name.
+    pub dsp: Option<&'a str>,
+    pub tab: Option<&'a str>,
+}
+/// The link's fragment, as the app reads its address: `#<page>`, or a DSP's page
+/// `#dsp/<id>/<page>`, with `?tab=<tab>` for a tab of it.
+pub fn fragment(page: Option<&str>, dsp: Option<&str>, tab: Option<&str>) -> String {
+    let page = page.map(|page| page.trim_start_matches('#'));
+    let mut fragment = match (dsp, page) {
+        (Some(id), page) => format!("#dsp/{}/{}", encoded(id), page.unwrap_or("")),
+        (None, Some(page)) => format!("#{page}"),
+        (None, None) => String::new(),
+    };
+    if let Some(tab) = tab {
+        fragment.push_str(&format!("?tab={}", encoded(tab)));
+    }
+    fragment
+}
+/// A value as an address holds it, each byte but the unreserved ones escaped.
+fn encoded(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 pub fn run(
     ws: &Workspace,
     name: &str,
     action: Action,
-    page: Option<&str>,
+    open: &Open<'_>,
     runner: &dyn Runner,
 ) -> Result<()> {
     workspace::valid_name(name)?;
     require(
         ws.worktree(name).is_dir(),
         &format!("worktrees/{name} doesn't exist. Start it with dispatchdev start {name}."),
+    )?;
+    require(
+        open.tab.is_none() || open.page.is_some(),
+        "--tab is a tab of a page: name the page with --page too.",
     )?;
     let systemctl = |verb: &str| {
         runner
@@ -231,9 +269,17 @@ pub fn run(
         }
         std::thread::sleep(Duration::from_secs(2));
     };
-    let fragment = page.map_or(String::new(), |page| {
-        format!("#{}", page.trim_start_matches('#'))
-    });
+    // The DSP by its id, from the DSPs the owner the link signs in sees.
+    let dsp = match open.dsp {
+        Some(wanted) => Some(
+            crate::api::dsp(&crate::api::dsps(ws, name, runner)?, wanted)?["id"]
+                .as_str()
+                .ok_or("A DSP without an id")?
+                .to_owned(),
+        ),
+        None => None,
+    };
+    let fragment = fragment(open.page, dsp.as_deref(), open.tab);
     println!("{name}'s preview, on {host}:{port}, signs in by itself:");
     println!("{link}{fragment}");
     Ok(())
@@ -265,5 +311,15 @@ mod tests {
         assert_eq!(password(log).as_deref(), Some("Demo-pass!"));
         assert_eq!(link("starting"), None);
         assert_eq!(password("Manual sign-in: http://x (no password)"), None);
+    }
+    #[test]
+    fn a_link_opens_a_page_in_a_dsp_on_its_tab_as_the_app_reads_its_address() {
+        assert_eq!(fragment(Some("dvic"), None, None), "#dvic");
+        assert_eq!(
+            fragment(Some("settings"), Some("dsp_2"), Some("uniform data")),
+            "#dsp/dsp_2/settings?tab=uniform%20data"
+        );
+        assert_eq!(fragment(None, Some("dsp_2"), None), "#dsp/dsp_2/");
+        assert_eq!(fragment(None, None, None), "");
     }
 }

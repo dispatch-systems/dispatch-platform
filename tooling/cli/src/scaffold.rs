@@ -9,7 +9,7 @@ use std::{path::Path, process::Command};
 const CLI: &str = "tooling/scaffold/cli.ts";
 
 /// Whether `command` with `args` writes into the checkout: `new` with a kind and a name, without
-/// --dry-run, and `generate`; neither when it only asks for its usage.
+/// --dry-run, and `generate` without --check; neither when it only asks for its usage.
 pub fn writes(command: &str, args: &[String]) -> bool {
     let asks = |flag: &str| args.iter().any(|arg| arg == flag);
     if asks("--help") || asks("-h") {
@@ -18,7 +18,7 @@ pub fn writes(command: &str, args: &[String]) -> bool {
     match command {
         "new" => !asks("--dry-run") && args.iter().filter(|arg| !arg.starts_with('-')).count() >= 2,
         "add" => !asks("--dry-run") && !args.is_empty(),
-        "generate" => true,
+        "generate" => !asks("--check"),
         _ => false,
     }
 }
@@ -69,6 +69,7 @@ mod tests {
             ("add", "settings --to uniforms --dry-run"),
             ("add", ""),
             ("generate", "--help"),
+            ("generate", "--check"),
             ("list", "features"),
             ("explain", "slack"),
         ] {

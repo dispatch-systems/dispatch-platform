@@ -56,6 +56,11 @@ API tests, one at a time, a line each. Each run builds in a folder of its own un
 and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
 builds and several can test at once. Its commands run in a systemd scope with a low CPU
 weight, a soft memory ceiling and a high out-of-memory score, so Dev keeps priority.
+`dispatchdev test --owner <owner>` runs one owner's tests of every kind the same way, as
+`tooling/testing/owner-tests.ts` lists them, with the debug package for its browser tests;
+`--only` keeps one kind and `--file` one file. `dispatchdev verify <feature>` looks at a feature
+in progress, committed or not: `generate --check`, what a generator left to write, the rules,
+TypeScript, the changed files' format and lint, then its own tests as `test --owner` runs them.
 `dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks and
 clippy the same way. A clippy pass is kept, in the repository's shared Git folder, for the
 Rust inputs it ran on, so clippy passes again without running until one of them changes;
@@ -65,6 +70,9 @@ preview is tried, so the queue run is rarely the first to fail. It pushes the br
 `checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed so it
 reports no `platform` check on the PR's head, is skipped. It follows the run every 10 seconds
 and stops at the first failed job; a newer run of the branch replaces it.
+`--removability <feature>` starts and follows `removability.yml` the same way, for that
+feature alone, and `verify --removability` does when the branch is pushed as it is, or else
+runs the check in a copy of the checkout, built in a folder of its own.
 `dispatchdev ship <number>` reads the PR from GitHub's API every 10 seconds, adds it to the
 merge queue once its admission check passed and GitHub knows it merges cleanly, and waits
 until GitHub merges it, printing the squash commit. A newer push is queued
@@ -116,7 +124,9 @@ runs leave real wall-clock waits out. Live Rust operator probes require the expl
 `operator-probes` feature; core CI typechecks them without executing them.
 
 `removability.yml` proves weekly, and on manual dispatch, that each feature can be removed:
-one job per feature in `app/generated/features.json`, named for it. Each feature is a Cargo
+one job per feature in `app/generated/features.json`, named for it. Dispatched with its
+`feature` input, it runs that feature's job alone, in a run named `Removability without
+<feature>`, which a run of another feature on the branch doesn't cancel. Each feature is a Cargo
 feature of the app, on by default. A job leaves its feature out, with every feature that
 declares it: their directories are moved aside and the app's manifest drops their crates
 (unlocked, so `Cargo.lock` loses them too), so nothing, product or test, can still use

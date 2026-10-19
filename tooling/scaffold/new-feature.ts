@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { changeOf } from './generate.js';
 import {
   UsageError,
   addWorkspaceMember,
@@ -84,6 +85,7 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
                                     connection      --connection --api
                                     people-source   --tables dsp --people own --page --api
   --dry-run                         print what it would write and change nothing
+  --json                            print what it made, or would make, as JSON
   --out <dir>                       with --dry-run, write the files under <dir> instead
   --root <dir>                      the repository to write into (default: this one)`;
 
@@ -160,7 +162,16 @@ export function featureValues(root: string, argv: string[], adding = false) {
       `${name} is taken: features, collectors and core's parts each own their name`,
     );
 
-  const icon = args.options.get('icon') ?? 'LayoutGrid';
+  // A piece added to a feature takes the icon it shows already, on a page or its switch.
+  const manifestFile = `features/${name}/frontend/feature.ts`;
+  const manifest = adding && exists(root, manifestFile) ? read(root, manifestFile) : '';
+  const slotsFile = `features/${name}/frontend/platform-slots.ts`;
+  const shows = (text: string) => /\bicon: ([A-Z]\w*)\b/.exec(text)?.[1];
+  const icon =
+    args.options.get('icon') ??
+    shows(manifest) ??
+    (adding && exists(root, slotsFile) ? shows(read(root, slotsFile)) : undefined) ??
+    'LayoutGrid';
   if (args.options.has('icon') && !isIcon(icon))
     throw new UsageError(
       `--icon names a lucide-react icon, as Truck or ClipboardList: ${icon} is none`,
@@ -178,7 +189,9 @@ export function featureValues(root: string, argv: string[], adding = false) {
   const settings = args.flags.has('settings');
   const host = args.options.get('tab-of');
   if (page && host)
-    throw new UsageError('--page and --tab-of each give it its own screen: choose one');
+    throw new UsageError(
+      `${args.flags.has('page') ? '--page' : '--tabs'} and --tab-of each give it its own screen: choose one`,
+    );
   if (args.flags.has('no-backend')) {
     if (!page && !host)
       throw new UsageError('--no-backend leaves only a frontend: add --page or --tab-of');
@@ -367,6 +380,13 @@ export function featureValues(root: string, argv: string[], adding = false) {
   const screens = page || Boolean(host) || connection;
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
   const frontend = screens || switched;
+  // Its page of Settings shows the icon of the page its switch gates, or else its manifest's,
+  // which a feature with settings gives when it has no such page.
+  const pageIcon =
+    (page && switched) ||
+    (new RegExp(`\\bfeature: '${name}'`).test(manifest) && /\bicon: /.test(manifest)) ||
+    /^ {2}icon: /m.test(manifest);
+  const settingsIcon = settings && (frontend || Boolean(manifest)) && !pageIcon;
   // backend/ holds its storage, keeper and settings. A feature with none of them, no API and
   // no frontend, as --mandatory alone, keeps an empty one and its manifest's test: the anatomy
   // rule wants a backend, an API or a frontend.
@@ -444,6 +464,8 @@ export function featureValues(root: string, argv: string[], adding = false) {
     frontend,
     screens,
     platformSlots: switched,
+    settingsIcon,
+    iconImport: page || settingsIcon,
     canImport: permission && page,
     labelPattern: names.label.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
     page,
@@ -492,7 +514,11 @@ function pieces(values: Values): [boolean, string, string][] {
     [Boolean(values.contract), 'contract/contract.rs', 'contract/contract.rs'],
     [Boolean(values.contract), 'backend/exposed.rs', 'backend/exposed.rs'],
     [Boolean(values.contract), 'tests/backend/exposed.rs', 'tests/backend/exposed.rs'],
-    [values.frontend as boolean, 'frontend/feature.ts', 'frontend/feature.ts'],
+    [
+      (values.frontend || values.settingsIcon) as boolean,
+      'frontend/feature.ts',
+      'frontend/feature.ts',
+    ],
     [values.page as boolean, 'frontend/index.ts', 'frontend/index.ts'],
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],
     // frontend/tabs/ holds the tabs of its own page, which its manifest declares.
@@ -535,6 +561,30 @@ export const settingsNote = (name: string, slug: string) =>
   `Settings draws its section on a page of its own (\`?tab=${slug}\`) for each DSP that has ` +
   `${name}: read \`backend::settings::general\` where ${name} acts on it, and remove the ` +
   '`expect` its TODO names.';
+
+/**
+ * The commands that open what the feature shows in its change's preview, as the fixtures' Dev DSP
+ * has it: the first restarts the preview, since the feature changed its backend.
+ */
+export function previewNote(root: string, values: Values) {
+  const { slug, hostPage, hostLabel } = values;
+  const opens = (
+    [
+      [values.page, `--page ${slug}`, 'its page'],
+      [values.tab, `--page ${hostPage} --tab ${slug}`, `its tab of ${hostLabel}`],
+      [values.settings, `--page settings --tab ${slug}`, 'its page of Settings'],
+      [values.connection, '--page settings --tab connections', 'its card on Connections'],
+    ] as [unknown, string, string][]
+  ).filter(([shown]) => shown);
+  if (!opens.length) return undefined;
+  const preview = `dispatchdev preview ${changeOf(root)} --dsp dev`;
+  const opened = opens.map(([, args, what], index) =>
+    index
+      ? `\`${preview} ${args}\` opens ${what}`
+      : `\`${preview} ${args} --restart\` rebuilds its preview and opens ${what}`,
+  );
+  return `${opened.join('; ')}.`;
+}
 
 /** Where a page reads what's exposed, whose `ExposedName` names each one a page shows. */
 const exposedNames = 'core/shell/frontend/runtime/exposes.ts';
@@ -586,7 +636,9 @@ export async function planFeature(root: string, argv: string[]) {
       `Its people are Driver Match's \`${name}\` kind of data; the app's people test reads them ` +
         'from a new DSP, so its queries are tried without a test of its own.',
     );
-  plan.notes.push(`\`npm run test:feature ${name}\` runs its tests of every kind.`);
+  const preview = previewNote(root, values);
+  if (preview) plan.notes.push(preview);
+  plan.notes.push(`\`dispatchdev test --owner feature:${name}\` runs its tests of every kind.`);
   return { plan, args };
 }
 

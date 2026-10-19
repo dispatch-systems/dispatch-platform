@@ -125,6 +125,44 @@ test("the MCP's list, which takes no name, names its crate's tests, API tests an
   );
 });
 
+test('--only keeps one kind of tests and the build it needs, --file one test, --debug the debug package', () => {
+  const api = owned('features/dvic/tests/api', /\.test\.ts$/);
+  assert.deepEqual(list('feature', 'dvic', '--only', 'api').commands, [
+    'tooling/cli/dispatchdev build',
+    `node node_modules/tsx/dist/cli.mjs --test ${api.join(' ')}`,
+  ]);
+  // The frontend's tests need no backend.
+  assert.deepEqual(list('feature', 'dvic', '--only', 'frontend').commands, [
+    `node node_modules/tsx/dist/cli.mjs --test ${owned('features/dvic/tests/frontend', /\.test\.ts$/).join(' ')}`,
+  ]);
+  const spec = 'features/dvic/tests/browser/dvic.spec.ts';
+  assert.deepEqual(list('feature', 'dvic', '--file', spec, '--debug').commands, [
+    'npm run build -- --debug',
+    `npm run test:ui -- ${spec}`,
+  ]);
+  assert.deepEqual(list('feature', 'dvic', '--file', path.join(root, api[0]!)).commands.slice(1), [
+    `node node_modules/tsx/dist/cli.mjs --test ${api[0]}`,
+  ]);
+  // A path through a link to the checkout, as a worktree's often is, names the same test.
+  const links = fs.mkdtempSync(path.join(os.tmpdir(), 'owner-tests-'));
+  try {
+    fs.symlinkSync(root, path.join(links, 'checkout'));
+    const linked = path.join(links, 'checkout', api[0]!);
+    assert.deepEqual(list('feature', 'dvic', '--file', linked).commands.slice(1), [
+      `node node_modules/tsx/dist/cli.mjs --test ${api[0]}`,
+    ]);
+  } finally {
+    fs.rmSync(links, { recursive: true, force: true });
+  }
+  const only = list('feature', 'dvic', '--only', 'api,frontend');
+  assert.equal(only.status, 1);
+  assert.equal(only.stderr, '--only takes rust, api, frontend, browser or native.\n');
+  const source = list('feature', 'dvic', '--file', 'features/dvic/feature.rs');
+  assert.equal(source.status, 1);
+  assert.match(source.stderr, /--file names one of features\/dvic's tests/);
+  assert.equal(list('feature', 'dvic', '--only', 'api', '--file', spec).status, 1);
+});
+
 test('an owner that does not exist is named with the ones that do', () => {
   const missing = list('feature', 'nowhere');
   assert.equal(missing.status, 1);
@@ -160,6 +198,42 @@ test("once an owner is a crate, its Rust tests are the crate's", () => {
       'cargo test --locked -p dispatch-parking',
       'node node_modules/tsx/dist/cli.mjs --test features/parking/tests/api/parking.test.ts',
     ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('one Rust test file runs as its program, or as the module of the program or library it is', () => {
+  const dir = repository({
+    'features/parking/Cargo.toml':
+      '[package]\nname = "dispatch-parking"\n\n[lib]\npath = "feature.rs"\n\n' +
+      '[[test]]\nname = "parking"\npath = "tests/backend/integration/parking.rs"\n',
+    'features/parking/feature.rs': 'mod backend;\n',
+    'features/parking/backend/mod.rs': 'pub(crate) mod storage;\n',
+    'features/parking/backend/storage.rs':
+      '#[cfg(test)]\n#[path = "../tests/backend/storage.rs"]\nmod tests;\n',
+    'features/parking/tests/backend/storage.rs': '',
+    'features/parking/tests/backend/integration/parking.rs': 'mod rules;\n',
+    'features/parking/tests/backend/integration/rules.rs': '',
+    'features/parking/tests/backend/stray.rs': '',
+  });
+  try {
+    const run = (file: string) =>
+      ownerTests(dir, 'feature', 'parking', { file: `features/parking/tests/backend/${file}` });
+    const cargo = 'cargo test --locked -p dispatch-parking';
+    assert.deepEqual(run('storage.rs').commands.map(shell), [
+      `${cargo} --lib -- backend::storage::tests::`,
+    ]);
+    assert.deepEqual(run('integration/parking.rs').commands.map(shell), [
+      `${cargo} --test parking`,
+    ]);
+    assert.deepEqual(run('integration/rules.rs').commands.map(shell), [
+      `${cargo} --test parking -- rules::`,
+    ]);
+    // A file no module is runs with the rest, which it says.
+    const stray = run('stray.rs');
+    assert.deepEqual(stray.commands.map(shell), [cargo]);
+    assert.match(stray.notes.join('\n'), /stray\.rs/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

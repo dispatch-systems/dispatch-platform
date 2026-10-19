@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { generator as piece } from './add.js';
 import { described as diagnosis, doctor } from './doctor.js';
-import { generate, report } from './generate.js';
+import { followUp, generate, report } from './generate.js';
 import { LISTS, explain, fields, table } from './inventory.js';
 import { generator as collector } from './new-collector.js';
 import { generator as feature } from './new-feature.js';
@@ -18,10 +18,12 @@ import {
   repositoryRoot,
   type Generator,
 } from './scaffold.js';
+import { known, leftLines, listed, named, todos } from './todo.js';
 
-// What `dispatchdev new`, `generate`, `list`, `explain` and `doctor` run, the checkout's own copy: making
-// something, writing what is generated from it, and reading what the product has. Each takes
-// --json, which prints its answer as JSON on stdout and its progress on stderr.
+// What `dispatchdev new`, `add`, `generate`, `list`, `explain`, `doctor` and `todo` run, the
+// checkout's own copy: making something, writing what is generated from it, and reading what the
+// product has and what is left to write. Each takes --json, which prints its answer as JSON on
+// stdout and its progress on stderr.
 
 /** Everything `dispatchdev new` makes, in the order it lists them. */
 export const KINDS: Generator[] = [feature, collector, integration, tool, slot];
@@ -64,12 +66,21 @@ const COMMANDS: Record<string, Command> = {
     run: (argv, json) => makeThenGenerate(piece, argv, json),
   },
   generate: {
-    usage: () => 'Usage: dispatchdev generate [--json]',
+    usage: () =>
+      [
+        'Usage: dispatchdev generate [--check] [--json]',
+        '',
+        '  --check   write nothing, and fail naming what it would change',
+      ].join('\n'),
     run: async (argv, json) => {
       const { root, rest } = rooted(argv);
-      if (rest.length) throw new UsageError(`generate takes no ${rest[0]}`);
-      const generated = await generate(root, { quiet: json, say: json ? err : out });
-      out(json ? JSON.stringify(generated) : report(generated));
+      const check = rest.includes('--check');
+      const extra = rest.find((arg) => arg !== '--check');
+      if (extra) throw new UsageError(`generate takes no ${extra}`);
+      const generated = await generate(root, { quiet: json, say: json ? err : out, check });
+      const next = followUp(root, generated, check);
+      if (json) out(JSON.stringify({ ...generated, next }));
+      else out([report(generated, check), ...(next.length ? nextLines(next) : [])].join('\n'));
       return generated.ok;
     },
   },
@@ -103,6 +114,25 @@ const COMMANDS: Record<string, Command> = {
       const findings = doctor(root);
       out(json ? JSON.stringify(findings) : diagnosis(findings));
       return findings.every((finding) => finding.ok);
+    },
+  },
+  todo: {
+    usage: () =>
+      [
+        'Usage: dispatchdev todo [<owner>] [--json]',
+        '',
+        "What the generators left to write, by owner, or only <owner>'s: a name, as parking, or",
+        'a kind and a name, as feature:parking, integration:<name>, core:<part> or mcp.',
+      ].join('\n'),
+    run: async (argv, json) => {
+      const { root, rest } = rooted(argv);
+      const [owner, extra] = rest;
+      if (extra || owner?.startsWith('-')) throw new UsageError(`todo takes no ${extra ?? owner}`);
+      if (owner && !known(root, owner)) throw new UsageError(`No owner is named ${owner}`);
+      const owned = todos(root).filter((each) => !owner || named(owner, each.owner));
+      const nothing = `Nothing is left to write${owner ? ` in ${owner}` : ''}.`;
+      out(json ? JSON.stringify(owned) : owned.length ? listed(owned) : nothing);
+      return true;
     },
   },
   explain: {
@@ -156,7 +186,10 @@ async function makeThenGenerate(kind: Generator, argv: string[], json: boolean) 
   const generated = await generate(made.root, { quiet: json, say: json ? err : out });
   const next = [...made.next.filter((note) => !note.includes('`dispatchdev generate`')), AGAIN];
   if (json) out(JSON.stringify({ made: { ...made, next }, generated }));
-  else out([report(generated), ...(generated.ok ? nextLines(next) : [])].join('\n'));
+  else {
+    const after = generated.ok ? [...nextLines(next), ...leftLines(made.todos)] : [];
+    out([report(generated), ...after].join('\n'));
+  }
   return generated.ok;
 }
 

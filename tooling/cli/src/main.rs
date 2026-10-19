@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
     Native, Result, Runner, api, build, check, ci, finish, logs, observation, pr, preview,
-    scaffold, ship, start, status, test, workspace::Workspace,
+    scaffold, ship, start, status, test, verify, workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -104,13 +104,16 @@ const COMMANDS: &[Spec] = &[
         "preview",
         &[
             "preview <name> [--page <page>]",
+            "        [--tab <tab>]",
+            "        [--dsp <dsp>]",
             "        [--restart | --stop]",
         ],
         "Start its preview, or with --restart after a backend edit, and print the link that \
-         signs in by itself.",
+         signs in by itself: to --page, in the DSP --dsp names by its name or id, on the \
+         page's --tab.",
     )
     .flags(&["--restart", "--stop"])
-    .options(&["--page"])
+    .options(&["--page", "--dsp", "--tab"])
     .arguments(1),
     spec(
         "api",
@@ -138,12 +141,30 @@ const COMMANDS: &[Spec] = &[
     .arguments(1),
     spec(
         "test",
-        &["test [--all] [--keep]"],
+        &[
+            "test [--all | --owner <owner>]",
+            "     [--only <kind>]",
+            "     [--file <path>] [--keep]",
+        ],
         "The tests the diff touches, or --all of them, one line each, stopping at the first \
-         failure: for fixing a test, as the merge queue runs them. Each run builds in a folder \
-         of its own, deleted when it ends unless --keep.",
+         failure: for fixing a test, as the merge queue runs them. --owner runs one owner's of \
+         every kind, as feature:<name>, collector:<site>, core:<part>, mcp or a name alone, or \
+         --only its rust, api, frontend, browser or native ones, or one --file of them. Each \
+         run builds in a folder of its own, deleted when it ends unless --keep.",
     )
-    .flags(&["--all", "--keep"]),
+    .flags(&["--all", "--keep"])
+    .options(&["--owner", "--only", "--file"]),
+    spec(
+        "verify",
+        &["verify <feature>", "       [--removability]"],
+        "A feature in progress, committed or not: whether generate would change anything, \
+         what a generator left to write, the rules, TypeScript, the changed files' format and \
+         lint, then its own tests as test --owner runs them. --removability also leaves it \
+         out as the weekly check does: on GitHub once the branch is pushed as it is, else in a \
+         copy of the checkout.",
+    )
+    .flags(&["--removability"])
+    .arguments(1),
     spec(
         "check",
         &["check [--plan] [--keep]", "      [--allow-concurrent]"],
@@ -154,17 +175,22 @@ const COMMANDS: &[Spec] = &[
     .flags(&["--plan", "--keep", "--allow-concurrent"]),
     spec(
         "ci",
-        &["ci <name>"],
+        &["ci <name>", "   [--removability <feature>]"],
         "The full checks on GitHub on its committed branch, while its preview is tried: push \
          it, run them without the gate, and follow them to the first failure. ship stops on a \
-         head they failed and cancels them if still running.",
+         head they failed and cancels them if still running. --removability runs the weekly \
+         removability check instead, for that feature alone.",
     )
+    .options(&["--removability"])
     .arguments(1),
     spec(
         "pr",
-        &["pr <name> --title <title>", "   --body <file>"],
-        "Check the title and body, push the branch, and open the PR or update it.",
+        &["pr <name> --title <title>", "   --body <file> | --skeleton"],
+        "Check the title and body, push the branch, and open the PR or update it. --skeleton \
+         instead writes the sections the title's type needs to the scratch folder's \
+         pr-body.md, unless it's there already.",
     )
+    .flags(&["--skeleton"])
     .options(&["--title", "--body"])
     .arguments(1),
     spec(
@@ -219,11 +245,12 @@ const COMMANDS: &[Spec] = &[
     .passed(),
     spec(
         "generate",
-        &["generate [--json]"],
+        &["generate [--check] [--json]"],
         "Write everything generated from what the owners declare: the app's and the MCP's \
          lists, the API types and the snapshots the app's tests hold, from one incremental \
          build in the worktree's own target folder. It names each file it changed; after a \
-         failure, fix it and run it again.",
+         failure, fix it and run it again. --check writes nothing, and fails naming what would \
+         change.",
     )
     .passed(),
     spec(
@@ -249,6 +276,14 @@ const COMMANDS: &[Spec] = &[
     )
     .passed(),
     spec(
+        "todo",
+        &["todo [<owner>] [--json]"],
+        "What a generator left to write, by owner: each scaffold marker's file, line and what \
+         it asks for, or one owner's: a name, or feature:, collector:, integration:, core: \
+         or mcp with it.",
+    )
+    .passed(),
+    spec(
         "build",
         &["build [--release | --fixture]", "      [--cache-key]"],
         "Build the backend and support worker, or the browser tests' assessment fixture, \
@@ -262,13 +297,15 @@ const SECTIONS: &[(&str, &[&str])] = &[
     (
         "A change, from start to finish:",
         &[
-            "start", "preview", "api", "logs", "test", "check", "ci", "pr", "ship", "finish",
-            "status", "browser",
+            "start", "preview", "api", "logs", "verify", "test", "check", "ci", "pr", "ship",
+            "finish", "status", "browser",
         ],
     ),
     (
         "Making things, and reading what the product has:",
-        &["new", "add", "generate", "list", "explain", "doctor"],
+        &[
+            "new", "add", "generate", "list", "explain", "doctor", "todo",
+        ],
     ),
     ("", &["build", "help"]),
 ];
@@ -289,8 +326,9 @@ fn help() -> String {
     }
     lines.push(String::new());
     lines.push(
-        "test, check, build, new, add, generate, list, explain and doctor work on the checkout\n\
-         the current directory is in, or on --root <directory>. dispatchdev <command> --help shows one."
+        "verify, test, check, build, new, add, generate, list, explain, doctor and todo work on the\n\
+         checkout the current directory is in, or on --root <directory>. dispatchdev <command>\n\
+         --help shows one."
             .to_owned(),
     );
     lines.join("\n")
@@ -450,13 +488,12 @@ fn run() -> Result<()> {
                 (false, true) => preview::Action::Stop,
                 (false, false) => preview::Action::Start,
             };
-            preview::run(
-                &line.workspace()?,
-                line.name()?,
-                action,
-                line.option("--page"),
-                &Native,
-            )
+            let open = preview::Open {
+                page: line.option("--page"),
+                dsp: line.option("--dsp"),
+                tab: line.option("--tab"),
+            };
+            preview::run(&line.workspace()?, line.name()?, action, &open, &Native)
         }
         "api" => {
             let [name, method, path] = line.arguments.as_slice() else {
@@ -483,15 +520,37 @@ fn run() -> Result<()> {
             logs::run(line.name()?, &options, &Native)
         }
         "test" => {
-            let passed = test::run(
+            let (only, file) = (line.option("--only"), line.option("--file"));
+            let tests = match (line.flag("--all"), line.option("--owner")) {
+                (true, Some(_)) => return Err("Choose --all or --owner.".into()),
+                (_, Some(_)) if only.is_some() && file.is_some() => {
+                    return Err("Choose --only or --file.".into());
+                }
+                (_, Some(owner)) => test::Tests::Owner { owner, only, file },
+                (_, None) if only.is_some() || file.is_some() => {
+                    return Err("--only and --file choose among an --owner's tests.".into());
+                }
+                (true, None) => test::Tests::All,
+                (false, None) => test::Tests::Affected,
+            };
+            match test::run(&line.root()?, tests, line.flag("--keep"), &Native)? {
+                true => Ok(()),
+                false => Err("A test failed.".into()),
+            }
+        }
+        "verify" => {
+            let feature = line.name()?;
+            let passed = verify::run(
                 &line.root()?,
-                line.flag("--all"),
-                line.flag("--keep"),
+                feature,
+                line.flag("--removability"),
                 &Native,
+                &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
+                &mut |text| println!("{text}"),
             )?;
             match passed {
                 true => Ok(()),
-                false => Err("A test failed.".into()),
+                false => Err(Quiet.into()),
             }
         }
         "check" => {
@@ -509,16 +568,19 @@ fn run() -> Result<()> {
         }
         "pr" => {
             let name = line.name()?;
-            let (Some(title), Some(body)) = (line.option("--title"), line.option("--body")) else {
-                return Err(line.usage());
-            };
-            pr::run(
-                &line.workspace()?,
-                name,
-                title,
-                std::path::Path::new(body),
-                &Native,
-            )
+            let title = line.option("--title").ok_or_else(|| line.usage())?;
+            match (line.option("--body"), line.flag("--skeleton")) {
+                (Some(_), true) => Err("Choose --body or --skeleton.".into()),
+                (None, true) => pr::start_body(&line.workspace()?, name, title),
+                (Some(body), false) => pr::run(
+                    &line.workspace()?,
+                    name,
+                    title,
+                    std::path::Path::new(body),
+                    &Native,
+                ),
+                (None, false) => Err(line.usage()),
+            }
         }
         "ship" => {
             let number = match line.arguments.as_slice() {
@@ -550,6 +612,7 @@ fn run() -> Result<()> {
             let verdict = ci::run(
                 &line.workspace()?,
                 line.name()?,
+                line.option("--removability"),
                 &Native,
                 &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
                 &mut |text| println!("{text}"),

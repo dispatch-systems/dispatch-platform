@@ -11,7 +11,7 @@ import { mergeTypeScript, planAdd } from '../scaffold/add.js';
 import { planFeature, withPreset } from '../scaffold/new-feature.js';
 import { planSlot } from '../scaffold/new-slot.js';
 import { planTool } from '../scaffold/new-tool.js';
-import { crates, tools, wiredTools } from '../scaffold/wire.js';
+import { crates, featureList, tools, wiredTools } from '../scaffold/wire.js';
 import { render, repositoryRoot as root, type Plan } from '../scaffold/scaffold.js';
 
 // The generators, run with --dry-run: the files each flag writes, what they say, and how the
@@ -449,6 +449,11 @@ test('--page and --tab-of write frontend/feature.ts, the screen and a browser te
   );
   // The export writes the frontend's list from the registry, with the feature in its place.
   assert.match(page.notes.join('\n'), /`dispatchdev generate` writes [^\n]*the frontend's list/);
+  // Its preview, rebuilt, opens on its page.
+  assert.match(
+    page.notes.join('\n'),
+    /`dispatchdev preview \S+ --dsp dev --page parking --restart` rebuilds its preview and opens its page\./,
+  );
 
   const open = file(
     await feature('lobby', '--page', '--mandatory'),
@@ -466,6 +471,10 @@ test('--page and --tab-of write frontend/feature.ts, the screen and a browser te
   assert.doesNotMatch(tabManifest, /visible|permissions\.js/);
   assert.match(file(tab, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Timecard'/);
   assert.match(
+    tab.notes.join('\n'),
+    /`dispatchdev preview \S+ --dsp dev --page paycom --tab notes --restart`/,
+  );
+  assert.match(
     file(tab, 'features/notes/frontend/NotesTab.tsx'),
     /from '..\/..\/..\/core\/accounts\/api\/index.js'/,
   );
@@ -477,7 +486,14 @@ test('--page and --tab-of write frontend/feature.ts, the screen and a browser te
   assert.match(uniforms, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
   await refused(/use --settings/, 'notes', '--tab-of', 'settings');
 
-  await refused(/choose one/, 'notes', '--page', '--tab-of', 'timecard');
+  await refused(
+    /--page and --tab-of each give it its own screen/,
+    'notes',
+    '--page',
+    '--tab-of',
+    'timecard',
+  );
+  await refused(/--tabs and --tab-of/, 'notes', '--tabs', 'a,b', '--tab-of', 'timecard');
   await refused(/--tab-of names a feature/, 'notes', '--tab-of', 'nowhere');
   await refused(/scorecard has no page/, 'notes', '--tab-of', 'weekly_scorecard');
 });
@@ -496,9 +512,32 @@ test('--settings declares a section its backend reads, which Settings draws: no 
       'tests/browser/notes.spec.ts',
     ],
   );
-  assert.doesNotMatch(file(plan, 'features/notes/frontend/feature.ts'), /settings/i);
+  const frontend = file(plan, 'features/notes/frontend/feature.ts');
+  assert.doesNotMatch(frontend, /settingsSections/);
   assert.doesNotMatch(file(plan, 'features/notes/tests/browser/notes.spec.ts'), /'Settings'/);
   assert.match(file(plan, 'features/notes/frontend/platform-slots.ts'), /icon: Truck \}/);
+  // With no page of its own, its manifest gives the icon its page of Settings shows.
+  assert.match(frontend, /^import \{ Truck \} from 'lucide-react';$/m);
+  assert.match(frontend, /^ {2}\/\/ The icon its page of Settings shows\.\n {2}icon: Truck,$/m);
+  assert.match(
+    plan.notes.join('\n'),
+    /`dispatchdev preview \S+ --dsp dev --page settings --tab notes --restart` rebuilds its preview and opens its page of Settings\./,
+  );
+  // Its page gives it, once its switch gates the page; else its manifest still does.
+  const manifestIcon = /^ {2}icon: /m;
+  const paged = file(
+    await feature('notes', '--page', '--settings'),
+    'features/notes/frontend/feature.ts',
+  );
+  assert.doesNotMatch(paged, manifestIcon);
+  for (const shape of [
+    ['--page', '--mandatory'],
+    ['--tab-of', 'uniforms'],
+  ])
+    assert.match(
+      file(await feature('notes', '--settings', ...shape), 'features/notes/frontend/feature.ts'),
+      manifestIcon,
+    );
   await refused(/--icon names a lucide-react icon/, 'notes', '--settings', '--icon', 'Truckk');
   // Its manifest lists the section, for those holding the manage permission it declares.
   const manifest = file(plan, 'features/notes/feature.rs');
@@ -967,12 +1006,12 @@ const generate = (generator: string, args: string[]) =>
     cwd: root,
     encoding: 'utf8',
   });
-const listed = (stdout: string, heading: string) =>
-  stdout
-    .split(`${heading}:\n`)[1]!
-    .split('\n')
-    .filter((line) => line.startsWith('  ') && !line.startsWith('  - '))
-    .map((line) => line.trim());
+/** The files listed under a heading, up to the next. */
+const listed = (stdout: string, heading: string) => {
+  const lines = stdout.split(`${heading}:\n`)[1]!.split('\n');
+  const end = lines.findIndex((line) => !line.startsWith('  '));
+  return lines.slice(0, end < 0 ? undefined : end).map((line) => line.trim());
+};
 
 test('--dry-run prints what it would write and changes nothing; --out receives it whole', () => {
   const before = fs.readFileSync(registry, 'utf8');
@@ -1035,6 +1074,42 @@ test('without --dry-run it writes into the root, and refuses to write over an ow
   const usage = generate('new-feature', ['desk', '--wings']);
   assert.equal(usage.status, 1);
   assert.match(usage.stderr, /Unknown option --wings\n\nUsage: dispatchdev new feature/);
+});
+
+test('generate --check writes nothing, and fails naming what generate would change', () => {
+  const list = path.join(copy, featureList);
+  const wired = fs.readFileSync(list, 'utf8');
+  const stale = `${wired}// A line the wiring doesn't write.\n`;
+  fs.writeFileSync(list, stale);
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        tsx,
+        path.join(root, 'tooling/scaffold/cli.ts'),
+        'generate',
+        '--check',
+        '--json',
+        '--root',
+        copy,
+      ],
+      { cwd: root, encoding: 'utf8' },
+    );
+    assert.equal(result.status, 1, result.stderr);
+    const checked = JSON.parse(result.stdout) as {
+      ok: boolean;
+      steps: { ok: boolean }[];
+      changed: string[];
+      next: string[];
+    };
+    assert.equal(checked.ok, false);
+    assert(checked.steps.every((step) => step.ok));
+    assert.deepEqual(checked.changed, [featureList]);
+    assert.match(checked.next.join('\n'), /`dispatchdev generate` writes it/);
+    assert.equal(fs.readFileSync(list, 'utf8'), stale);
+  } finally {
+    fs.writeFileSync(list, wired);
+  }
 });
 
 const add = async (...argv: string[]) => (await planAdd(root, argv)).plan;
@@ -1106,7 +1181,10 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
 
   // A manage permission implies only what the feature has: Team has no team.view. Nor has it
   // a backend/, which its settings bring.
-  const team = changed(await add('settings', '--to', 'team'), 'features/team/feature.rs');
+  const teamSettings = await add('settings', '--to', 'team');
+  const team = changed(teamSettings, 'features/team/feature.rs');
+  // Its page is no switch's, so its manifest gives its page of Settings the page's icon.
+  assert.match(changed(teamSettings, 'features/team/frontend/feature.ts'), /^ {2}icon: Users,$/m);
   assert.match(team, /perm\("team\.manage", "Manage Team & Roles", \d+\),/);
   assert.match(team, /^mod backend;$/m);
   // A name a nested use tree imports, as Documents' Sql, is not imported again; a module a

@@ -5,22 +5,30 @@ name: Removability
 # out, proving core depends on none. A failed job is named for the feature it left out, and
 # says what reached into it. Weekly rather than in the queue, since
 # it takes a build per feature; `npm run check:removability -- --feature <name>` runs one
-# job's steps locally.
+# job's steps locally. Dispatched with a feature, as `dispatchdev ci <name> --removability
+# <feature>` does, it runs that feature's job alone, in a run named for it.
+run-name: ${{ inputs.feature && format('Removability without {0}', inputs.feature) || '' }}
 on:
   schedule:
     - cron: '37 6 * * 1'
   workflow_dispatch:
+    inputs:
+      feature:
+        description: One feature to leave out, alone; every feature when empty
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: removability-${{ github.ref }}
+  # One feature's run replaces only an earlier run of that feature.
+  group: removability-${{ github.ref }}${{ inputs.feature && format('-{0}', inputs.feature) || '' }}
   cancel-in-progress: true
 env:
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
 jobs:
-  # Every feature, as the feature map the app's export writes lists them.
+  # Every feature, as the feature map the app's export writes lists them, or the one asked for.
   features:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -32,7 +40,13 @@ jobs:
           persist-credentials: false
       - name: List the features
         id: list
-        run: echo "features=$(jq -c 'keys' app/generated/features.json)" >> "$GITHUB_OUTPUT"
+        env:
+          FEATURE: ${{ inputs.feature }}
+        # A feature the map doesn't name fails in its job, where the script names the features.
+        run: >-
+          echo "features=$(jq -c --arg feature "$FEATURE"
+          'if $feature == "" then keys else [$feature] end' app/generated/features.json)"
+          >> "$GITHUB_OUTPUT"
   remove:
     needs: features
     name: without ${{ matrix.feature }}
@@ -57,6 +71,7 @@ jobs:
         run: npm run check:removability -- --feature "$FEATURE"
   every:
     name: without every feature
+    if: ${{ !inputs.feature }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

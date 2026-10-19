@@ -1,9 +1,9 @@
 {{#screens}}
 import { createElement, lazy } from 'react';
 {{/screens}}
-{{#page}}
+{{#iconImport}}
 import { {{icon}} } from 'lucide-react';
-{{/page}}
+{{/iconImport}}
 {{#canImport}}
 import { can } from '{{toRoot}}core/shell/frontend/runtime/permissions.js';
 {{/canImport}}
@@ -35,6 +35,10 @@ const {{pascal}}Card = lazy(() => loadCard().then((module) => ({ default: module
 
 export const feature: FrontendFeature = {
   name: '{{name}}',
+{{#settingsIcon}}
+  // The icon its page of Settings shows.
+  icon: {{icon}},
+{{/settingsIcon}}
 {{#page}}
   routes: [
     {

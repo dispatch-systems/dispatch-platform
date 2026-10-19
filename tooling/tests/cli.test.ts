@@ -5,7 +5,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { CHECKS, MARKER, described } from '../scaffold/doctor.js';
-import { duration, failure, report, writers } from '../scaffold/generate.js';
+import {
+  differing,
+  duration,
+  failedOtherwise,
+  failure,
+  followUp,
+  report,
+  writers,
+} from '../scaffold/generate.js';
 import { LISTS, explain, fields, frontendSlots, table } from '../scaffold/inventory.js';
 import { KINDS } from '../scaffold/cli.js';
 import { repositoryRoot as root } from '../scaffold/scaffold.js';
@@ -50,12 +58,30 @@ test('new --dry-run --json answers what it would write, and writes nothing', () 
   const result = cli('new', 'feature', 'parking', '--page', '--dry-run', '--json');
   assert.equal(result.status, 0, result.stderr);
   const { made } = JSON.parse(result.stdout) as {
-    made: { dryRun: boolean; wrote: string[]; changed: string[]; next: string[] };
+    made: {
+      dryRun: boolean;
+      wrote: string[];
+      changed: string[];
+      next: string[];
+      todos: { file: string; line: number; text: string }[];
+    };
   };
   assert.equal(made.dryRun, true);
   assert(made.wrote.includes('features/parking/feature.rs'), made.wrote.join('\n'));
   assert(made.changed.includes('app/backend/features.rs'));
   assert(made.next.some((note) => note.includes('`dispatchdev generate`')));
+  // What it leaves to write, by file and line, each in what it would write.
+  assert.deepEqual(
+    made.todos.find((todo) => todo.file === 'features/parking/feature.rs'),
+    {
+      file: 'features/parking/feature.rs',
+      line: 1,
+      text: 'what it does for a DSP, in a sentence. Its README says more.',
+    },
+  );
+  assert(
+    made.todos.every((todo) => made.wrote.includes(todo.file) || made.changed.includes(todo.file)),
+  );
   assert(!fs.existsSync(path.join(root, 'features/parking')));
 });
 
@@ -79,6 +105,52 @@ test('generate writes with the module tests that write: the API types and every 
     /Fix what failed and run dispatchdev generate again: \/tmp\/x\.log/,
   );
   assert.equal(report({ ok: true, steps: [], changed: [] }), 'Nothing generated changed.');
+
+  // --check names each file a module test would write that differs, from what the test says.
+  const differs =
+    "---- catalog::pages stdout ----\nthread 'catalog::pages' panicked at app/tests/backend/snapshot.rs:40:5:\n" +
+    'app/tests/backend/snapshots/catalog.json differs from what the test finds: `dispatchdev generate` rewrites it\n' +
+    '- "x is out of date: no"\n' +
+    "an owner's api/generated/ is out of date: run `npm run contracts:generate`\n";
+  assert.deepEqual(differing(differs), [
+    "an owner's api/generated/",
+    'app/tests/backend/snapshots/catalog.json',
+  ]);
+  // A test failing for another reason beside them is still named.
+  assert.deepEqual(failedOtherwise(differs), []);
+  const broken = `${differs}---- catalog::roles stdout ----\nthread 'catalog::roles' panicked at a.rs:1:2\n`;
+  assert.deepEqual(failedOtherwise(broken), ['catalog::roles']);
+  const step = { name: 'check', ok: true, seconds: 1 };
+  assert.equal(
+    report({ ok: false, steps: [step], changed: ['app/frontend/features.ts'] }, true),
+    'Would change:\n  app/frontend/features.ts',
+  );
+  assert.deepEqual(followUp(root, { ok: false, steps: [step], changed: ['x'] }, true), [
+    '`dispatchdev generate` writes it, and what follows from it.',
+  ]);
+  assert.deepEqual(followUp(root, { ok: true, steps: [step], changed: [] }, true), []);
+});
+
+test("a standalone generate's next steps restart the preview only after a backend change", () => {
+  const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-generate-'));
+  try {
+    spawnSync('git', ['init', '-q'], { cwd: checkout });
+    const write = (file: string) => {
+      fs.mkdirSync(path.dirname(path.join(checkout, file)), { recursive: true });
+      fs.writeFileSync(path.join(checkout, file), '');
+    };
+    const generated = { ok: true, steps: [], changed: [] };
+    write('app/tests/backend/snapshots/catalog.json');
+    write('features/desk/tests/backend/storage.rs');
+    assert.deepEqual(followUp(checkout, generated), [
+      'Commit it with the change, then `dispatchdev check`.',
+    ]);
+    write('features/desk/backend/storage.rs');
+    assert.match(followUp(checkout, generated)[0]!, /`dispatchdev preview <name> --restart`/);
+    assert.deepEqual(followUp(checkout, { ...generated, ok: false }), []);
+  } finally {
+    fs.rmSync(checkout, { recursive: true, force: true });
+  }
 });
 
 test('list and explain read what the build lists', () => {
@@ -107,6 +179,82 @@ test('list and explain read what the build lists', () => {
     'name  uses\na     -\nlong  x, y',
   );
   assert.equal(fields({ name: 'a', uses: ['x'] }), 'name: a\nuses: x');
+});
+
+test('todo lists what each marker asks for, by owner, and one owner alone', () => {
+  const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-todo-'));
+  try {
+    spawnSync('git', ['init', '-q'], { cwd: checkout });
+    for (const [file, text] of Object.entries({
+      'features/desk/feature.rs': `//! Desk: ${MARKER}: what it does.\nmod backend;\n`,
+      'features/desk/backend/settings.rs': `// ${MARKER}: read it, then remove this\n// \`expect\`.\n#![x]\n`,
+      'features/desk/frontend/DeskPage.tsx': `<>{/* ${MARKER}: what the page shows. */}</>\n`,
+      'features/slack/integrations/intake/mod.rs': `//! Intake: ${MARKER}: what it does.\n`,
+      'collectors/fleet/README.md': `# Fleet\n\n${MARKER}: how Dispatch reads it, and\nwhat to watch.\n\nMore.\n`,
+      'tooling/scaffold/templates/x.tmpl': `${MARKER}: a template's own\n`,
+    })) {
+      fs.mkdirSync(path.dirname(path.join(checkout, file)), { recursive: true });
+      fs.writeFileSync(path.join(checkout, file), text);
+    }
+    const todo = (...args: string[]) => cli('todo', '--root', checkout, ...args);
+    const all = todo('--json');
+    assert.equal(all.status, 0, all.stderr);
+    assert.deepEqual(JSON.parse(all.stdout), [
+      {
+        owner: 'collector:fleet',
+        kind: 'collector',
+        name: 'fleet',
+        todos: [
+          {
+            file: 'collectors/fleet/README.md',
+            line: 3,
+            text: 'how Dispatch reads it, and what to watch.',
+          },
+        ],
+      },
+      {
+        owner: 'feature:desk',
+        kind: 'feature',
+        name: 'desk',
+        todos: [
+          {
+            file: 'features/desk/backend/settings.rs',
+            line: 1,
+            text: 'read it, then remove this `expect`.',
+          },
+          { file: 'features/desk/feature.rs', line: 1, text: 'what it does.' },
+          { file: 'features/desk/frontend/DeskPage.tsx', line: 1, text: 'what the page shows.' },
+        ],
+      },
+      {
+        owner: 'integration:intake',
+        kind: 'integration',
+        name: 'intake',
+        todos: [
+          { file: 'features/slack/integrations/intake/mod.rs', line: 1, text: 'what it does.' },
+        ],
+      },
+    ]);
+    const desk = todo('feature:desk');
+    assert.equal(desk.status, 0, desk.stderr);
+    assert.equal(
+      desk.stdout,
+      'feature desk:\n' +
+        '  features/desk/backend/settings.rs:1: read it, then remove this `expect`.\n' +
+        '  features/desk/feature.rs:1: what it does.\n' +
+        '  features/desk/frontend/DeskPage.tsx:1: what the page shows.\n',
+    );
+    assert.deepEqual(
+      JSON.parse(todo('intake', '--json').stdout).map(({ owner }: { owner: string }) => owner),
+      ['integration:intake'],
+    );
+    assert.equal(todo('slack').stdout, 'Nothing is left to write in slack.\n');
+    const nowhere = todo('nowhere');
+    assert.equal(nowhere.status, 1);
+    assert.match(nowhere.stderr, /^No owner is named nowhere\n/);
+  } finally {
+    fs.rmSync(checkout, { recursive: true, force: true });
+  }
 });
 
 test('doctor names each file a generator left to write, and says what fixes it', () => {

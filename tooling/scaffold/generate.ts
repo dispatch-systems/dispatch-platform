@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { wire } from './wire.js';
+import { unwired, wire } from './wire.js';
 
 // `dispatchdev generate`: writes everything generated from what the owners declare, after any
 // change to a feature, collector, tool or slot. The wiring first (wire.ts): the app's and the
@@ -12,6 +12,8 @@ import { wire } from './wire.js';
 // types in TypeScript (`export`) and the snapshots the app's tests hold the whole product to,
 // such as the catalog and the databases. A second run, without writing, shows they settled. It
 // names each file it changed, and after a failure, fixing it and running it again finishes.
+// `generate --check` writes nothing: it compares the wiring, then runs the same module tests once
+// without writing, each naming the file it would write that differs.
 
 /** The app's crate, which mounts its module tests from app/tests/backend/. */
 const LIB = 'app/backend/lib.rs';
@@ -81,6 +83,26 @@ export function failure(log: string) {
   const shown = found.length ? found.slice(0, 30) : lines.slice(-25).map((line) => line.trimEnd());
   // An assertion's two sides can be whole files: their starts say which.
   return shown.map((line) => (line.length > LONG ? `${line.slice(0, LONG)}...` : line));
+}
+
+/** The files a module test says differ from what it would write, from its output. */
+export function differing(log: string) {
+  const named = stripVTControlCharacters(log)
+    .split('\n')
+    .filter((line) => !/^[+-] /.test(line))
+    .map((line) => /^(.+?) (?:differs from what the test finds|is out of date):/.exec(line)?.[1])
+    .filter((file) => file !== undefined);
+  return [...new Set(named)].sort();
+}
+
+/** The tests of a cargo log that failed for a reason other than a file they found out of date. */
+export function failedOtherwise(log: string) {
+  const parts = stripVTControlCharacters(log).split(/^---- (\S+) stdout ----$/m);
+  const failed: string[] = [];
+  for (let at = 1; at < parts.length; at += 2)
+    if (!/(?:differs from what the test finds|is out of date):/.test(parts[at + 1] ?? ''))
+      failed.push(parts[at]!);
+  return failed;
 }
 
 /** Where a checkout keeps what it makes outside itself: its change's scratch folder. */
@@ -178,30 +200,64 @@ function changes(root: string) {
 export const line = (step: Step) =>
   `${step.ok ? 'ok  ' : 'FAIL'}  ${duration(step.seconds).padStart(7)}  ${step.name}`;
 
-/** The run as people read it: a line a step, why one failed, then the files it changed. */
-export function report(generated: Generated) {
+/**
+ * The run as people read it: the files it changed, or with `check` would change, and how to go
+ * on after a step failed.
+ */
+export function report(generated: Generated, check = false) {
   const lines: string[] = [];
   const failed = generated.steps.find((step) => !step.ok);
   if (generated.changed.length)
-    lines.push('Generated:', ...generated.changed.map((file) => `  ${file}`));
-  else if (!failed) lines.push('Nothing generated changed.');
+    lines.push(
+      check ? 'Would change:' : 'Generated:',
+      ...generated.changed.map((file) => `  ${file}`),
+    );
+  else if (!failed)
+    lines.push(check ? 'Nothing generated would change.' : 'Nothing generated changed.');
   if (failed)
     lines.push(
-      `Fix what failed and run dispatchdev generate again${failed.log ? `: ${failed.log}` : '.'}`,
+      `Fix what failed and run dispatchdev generate${check ? ' --check' : ''} again${failed.log ? `: ${failed.log}` : '.'}`,
     );
   return lines.join('\n');
 }
 
+/** The change a checkout is: its worktree's name, or a stand-in outside worktrees/. */
+export const changeOf = (root: string) =>
+  path.basename(path.dirname(root)) === 'worktrees' ? path.basename(root) : '<name>';
+/** Whether a file changed is one the backend is built from, rather than its tests'. */
+const backend = (file: string) =>
+  /\.(rs|sql)$|(^|\/)Cargo\.(toml|lock)$/.test(file) && !/(^|\/)tests\//.test(file);
+/**
+ * What to do after a standalone run, given every file the checkout now has changed: write what
+ * would change after a check; after writing, restart a preview of a changed backend, then commit
+ * and check.
+ */
+export function followUp(root: string, generated: Generated, check = false) {
+  if (check)
+    return generated.ok || generated.steps.some((step) => !step.ok)
+      ? []
+      : ['`dispatchdev generate` writes it, and what follows from it.'];
+  if (!generated.ok) return [];
+  return [
+    ...([...changes(root).keys()].some(backend)
+      ? [`The backend changed: \`dispatchdev preview ${changeOf(root)} --restart\` serves it.`]
+      : []),
+    'Commit it with the change, then `dispatchdev check`.',
+  ];
+}
+
 /**
  * Writes everything generated in `root`, printing a line a step as it ends unless `quiet`, and
- * `say`ing that a long step still runs.
+ * `say`ing that a long step still runs. With `check` it writes nothing, and `changed` is what it
+ * would change.
  */
 export async function generate(
   root: string,
-  options: { quiet?: boolean; say?: (text: string) => void } = {},
+  options: { quiet?: boolean; say?: (text: string) => void; check?: boolean } = {},
 ): Promise<Generated> {
   const say = options.say ?? ((text: string) => process.stdout.write(`${text}\n`));
-  const before = changes(root);
+  const checking = options.check ?? false;
+  const before = checking ? new Map<string, string>() : changes(root);
   const steps: Step[] = [];
   const done = (step: Step) => {
     steps.push(step);
@@ -212,6 +268,7 @@ export async function generate(
     return step.ok;
   };
   const end = (): Generated => {
+    if (checking) return { ok: steps.every((step) => step.ok), steps, changed: [] };
     const after = changes(root);
     const changed = [...new Set([...before.keys(), ...after.keys()])]
       .filter((file) => before.get(file) !== after.get(file))
@@ -220,8 +277,11 @@ export async function generate(
   };
 
   const started = Date.now();
+  // The wiring as it should read; what is generated from it follows once it does.
+  let stale: string[] = [];
   try {
-    wire(root);
+    if (checking) stale = unwired(root);
+    else wire(root);
     done({ name: 'wire', ok: true, seconds: Math.round((Date.now() - started) / 1000) });
   } catch (error) {
     done({
@@ -232,11 +292,22 @@ export async function generate(
     });
     return end();
   }
+  if (stale.length) return { ok: false, steps, changed: stale };
   const logs = scratch(root);
   const filters = writers(root).map((module) => `${module}::`);
   const step = (name: string, command: string[], env?: Record<string, string>) =>
     run(name, command, { root, log: path.join(logs, `generate-${name}.log`), env, say });
   if (!done(await step('build', [...CARGO, '--no-run']))) return end();
+  if (checking) {
+    const compared = await step('check', [...CARGO, '--', ...filters]);
+    const log = compared.ok ? '' : fs.readFileSync(compared.log!, 'utf8');
+    const differ = differing(log);
+    // A test that differs did what it is for; one failing for another reason says why, even
+    // beside others that differ.
+    const explained = differ.length > 0 && failedOtherwise(log).length === 0;
+    done(explained ? { ...compared, ok: true, why: undefined } : compared);
+    return { ok: compared.ok, steps, changed: differ };
+  }
   // A test can read a snapshot another writes in the same pass, and fail on what it read
   // before: only the check after a pass says whether they agree, and a second pass settles them.
   // A write that still fails then failed for its own reason, which it says.

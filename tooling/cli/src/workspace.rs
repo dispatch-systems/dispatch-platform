@@ -60,6 +60,16 @@ impl Workspace {
     }
 }
 
+/// Whether `feature` names one of the checkout's features at `root`: a folder of `features/`
+/// whose name is lowercase letters, digits and underscores.
+pub fn has_feature(root: &Path, feature: &str) -> bool {
+    !feature.is_empty()
+        && feature
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && root.join("features").join(feature).is_dir()
+}
+
 /// A change's name, which is its worktree's folder, its branch and its preview's unit: lowercase
 /// letters, digits and hyphens.
 pub fn valid_name(name: &str) -> Result<()> {
@@ -219,6 +229,22 @@ pub fn duration(elapsed: Duration) -> String {
         format!("{seconds}s")
     } else {
         format!("{}m {:02}s", seconds / 60, seconds % 60)
+    }
+}
+/// What to do after a command, as the scaffolder prints it: `Next:`, then a line each.
+pub fn next(notes: &[String]) -> String {
+    std::iter::once("Next:".to_owned())
+        .chain(notes.iter().map(|note| format!("  - {note}")))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+/// An argument as the shell reads it back: as it is when that's safe, else in single quotes.
+pub fn quote(arg: &str) -> String {
+    let plain = |b: u8| b.is_ascii_alphanumeric() || b"@%+=:,./_-".contains(&b);
+    if !arg.is_empty() && arg.bytes().all(plain) {
+        arg.to_owned()
+    } else {
+        format!("'{}'", arg.replace('\'', r"'\''"))
     }
 }
 

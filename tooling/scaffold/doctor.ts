@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { wiring } from './wire.js';
+import { unwired } from './wire.js';
 
 // `dispatchdev doctor`: whether a checkout is ready to make and change things, each check a line
 // with what fixes it. Each check is a function of the checkout, in CHECKS: a new one is a line
@@ -22,6 +22,12 @@ function tracked(root: string) {
     .stdout.split('\0')
     .filter((file) => file && fs.existsSync(path.join(root, file)));
 }
+/** Every file holding the marker, as the anatomy rule finds them: the generators' own aside. */
+export const marked = (root: string) =>
+  tracked(root)
+    .filter((file) => !file.startsWith('tooling/scaffold/') && !file.startsWith('tooling/tests/'))
+    .filter((file) => /\.(rs|tsx?|js|sql|md|toml)$/.test(file))
+    .filter((file) => read(root, file).includes(MARKER));
 
 export const CHECKS: Check[] = [
   {
@@ -43,11 +49,7 @@ export const CHECKS: Check[] = [
   {
     name: 'wiring',
     run: (root) => {
-      const stale = [...wiring(root)]
-        .filter(
-          ([file, text]) => !fs.existsSync(path.join(root, file)) || read(root, file) !== text,
-        )
-        .map(([file]) => file);
+      const stale = unwired(root);
       return stale.length
         ? { ok: false, fix: 'dispatchdev generate', detail: stale }
         : { ok: true };
@@ -69,12 +71,7 @@ export const CHECKS: Check[] = [
   {
     name: 'scaffold markers',
     run: (root) => {
-      const left = tracked(root)
-        .filter(
-          (file) => !file.startsWith('tooling/scaffold/') && !file.startsWith('tooling/tests/'),
-        )
-        .filter((file) => /\.(rs|tsx?|js|sql|md|toml)$/.test(file))
-        .filter((file) => read(root, file).includes(MARKER));
+      const left = marked(root);
       return left.length
         ? { ok: false, fix: `write what each ${MARKER} asks for`, detail: left }
         : { ok: true };

@@ -1,11 +1,13 @@
 //! `dispatchdev pr <name> --title <title> --body <file>`: the change's PR, opened or updated
 //! once its title and body follow the rules: they become the squash commit on `main`, and
-//! the release notes take its summary.
+//! the release notes take its summary. `--skeleton` in place of `--body` starts the body with
+//! the sections the title's type needs.
 use crate::{
     REPOSITORY, Result, Runner, require,
     workspace::{self, Workspace},
 };
 use serde_json::Value;
+use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 const TYPES: &[&str] = &[
     "feat", "fix", "perf", "refactor", "test", "docs", "ci", "build", "chore",
@@ -112,6 +114,48 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
     ] {
         require(!lower.contains(sign), rule)?;
     }
+    Ok(())
+}
+
+/// Writes the body a PR of `title` starts from to `path`, its sections' headings in order, and
+/// answers them. It never writes over a body begun already.
+pub fn skeleton(title: &str, path: &Path) -> Result<&'static [&'static str]> {
+    let wanted = sections(title)?;
+    let text: Vec<String> = wanted.iter().map(|name| format!("## {name}\n")).collect();
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|error| match error.kind() {
+            std::io::ErrorKind::AlreadyExists => format!(
+                "{} exists already: write in it, or delete it to start again.",
+                path.display()
+            ),
+            _ => format!("Couldn't write {}: {error}", path.display()),
+        })?;
+    file.write_all(text.join("\n").as_bytes())?;
+    Ok(wanted)
+}
+/// `dispatchdev pr <name> --skeleton --title <title>`: the body's sections, in the change's
+/// scratch folder, where `pr` reads it from.
+pub fn start_body(ws: &Workspace, name: &str, title: &str) -> Result<()> {
+    workspace::valid_name(name)?;
+    require(
+        ws.worktree(name).is_dir(),
+        &format!("worktrees/{name} doesn't exist."),
+    )?;
+    let body = workspace::scratch_dir(name)?.join("pr-body.md");
+    let wanted = skeleton(title, &body)?;
+    println!("Wrote {}: {}.", body.display(), wanted.join(", "));
+    println!(
+        "{}",
+        workspace::next(&[format!(
+            "Write each section, then `dispatchdev pr {name} --title {} --body {}`.",
+            workspace::quote(title),
+            body.display()
+        )])
+    );
     Ok(())
 }
 
@@ -237,6 +281,19 @@ mod tests {
             assert!(sections(bad).is_err(), "{bad}");
         }
         assert!(sections(&format!("fix: {}", "a".repeat(67))).is_ok());
+    }
+    #[test]
+    fn a_skeleton_never_writes_over_a_body_begun_already() {
+        let temp = tempfile::tempdir().unwrap();
+        let body = temp.path().join("pr-body.md");
+        skeleton("fix(dvic): keep the week when paging", &body).unwrap();
+        std::fs::write(&body, "## Summary\n\nKept the week.\n").unwrap();
+        let refused = skeleton("fix(dvic): keep the week when paging", &body).unwrap_err();
+        assert!(refused.to_string().contains("exists already"), "{refused}");
+        assert_eq!(
+            std::fs::read_to_string(&body).unwrap(),
+            "## Summary\n\nKept the week.\n"
+        );
     }
     #[test]
     fn a_body_holds_its_kinds_sections_in_order_and_nothing_it_never_may() {

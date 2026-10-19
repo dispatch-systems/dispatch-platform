@@ -31,6 +31,7 @@ export const usage = `Usage: dispatchdev new slot <name> [options]
   --backend-only          the backend module alone, for what no page draws
   --frontend-only         the frontend module alone, for what the backend never reads
   --dry-run               print what it would write and change nothing
+  --json                  print what it made, or would make, as JSON
   --out <dir>             with --dry-run, write the files under <dir> instead
   --root <dir>            the repository to write into (default: this one)
 
