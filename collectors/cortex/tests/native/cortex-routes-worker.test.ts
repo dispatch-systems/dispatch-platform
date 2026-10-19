@@ -7,8 +7,9 @@ import { fixture, until } from '../../../../core/shell/tests/support/support.js'
 // The real Rust driver against a staged execution site: discovery finds the service
 // area and provider, and the itinerary list is read as the page's own data response.
 // The list's application then signs every itinerary and the newer routes page's list,
-// which the driver downloads itself; the one itinerary whose download keeps failing is
-// read by moving the application to it. The day is published from them.
+// which the driver downloads itself; the itinerary and the routes page's list whose
+// downloads keep failing are read by moving the application to them. The day is
+// published from them.
 test(
   'Cortex BrowserOS collects a day of routes the application signs, moving to what will not download',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 240000 },
@@ -330,8 +331,12 @@ test(
           res.writeHead(400);
           return res.end();
         }
-        // The second driver's itinerary never downloads; the page's own request reads it.
-        if (!page && url.searchParams.get('itineraryId') === 'itinerary-2') {
+        // The second driver's itinerary and the routes page's list never download; the
+        // page's own requests read them.
+        const failing =
+          url.searchParams.get('itineraryId') === 'itinerary-2' ||
+          url.pathname === '/operations/execution/api/route-summaries';
+        if (!page && failing) {
           res.writeHead(503);
           return res.end();
         }
@@ -427,10 +432,10 @@ test(
       ],
     );
     // Every data request was signed for its own address, for this day and area. Lists
-    // were the pages' own as discovery and the list loaded them; the routes page's list
-    // and the first itinerary were each downloaded once, with nothing of the page's but
-    // the signature; the second itinerary's download was signed again once, then the
-    // page itself read it.
+    // were the pages' own as discovery and the list loaded them; the first itinerary was
+    // downloaded once, with nothing of the page's but the signature; the second
+    // itinerary's and the routes page list's downloads were each signed again once, then
+    // the page itself read them.
     assert.deepEqual(unsigned, []);
     for (const { url } of requests) assert.equal(url.searchParams.get('serviceAreaId'), area);
     const sent = (path: string, id?: string) =>
@@ -440,10 +445,11 @@ test(
         .map(({ page }) => (page ? 'page' : 'driver'));
     assert.ok(sent('/operations/execution/api/summaries').length > 0);
     assert.ok(sent('/operations/execution/api/summaries').every((by) => by === 'page'));
-    assert.deepEqual(
-      sent('/operations/execution/api/route-summaries').filter((by) => by === 'driver'),
-      ['driver'],
-    );
+    assert.deepEqual(sent('/operations/execution/api/route-summaries').slice(-3), [
+      'driver',
+      'driver',
+      'page',
+    ]);
     assert.deepEqual(sent('/operations/execution/api/itineraries/', 'itinerary-1'), ['driver']);
     assert.deepEqual(sent('/operations/execution/api/itineraries/', 'itinerary-2'), [
       'driver',

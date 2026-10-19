@@ -20,7 +20,7 @@
     if (!run || run.stopped) return { started: false };
     run.reads.push(...input.reads);
     run.fill();
-    return { started: true };
+    return { started: !run.stopped };
   }
   if (run && run.running > 0) return { started: false, busy: true };
   const isStore = (v) =>
@@ -88,5 +88,6 @@
     while (!state.stopped && state.running < input.lanes && state.next < state.reads.length) lane();
   };
   state.fill();
-  return { started: true };
+  // An action that did not wait has stopped every lane already.
+  return { started: !state.stopped };
 };

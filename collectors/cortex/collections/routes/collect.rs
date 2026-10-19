@@ -7,8 +7,8 @@
 //! list would change it, and the application fetches just that itinerary. An itinerary
 //! the application does not answer for is read by loading its own page instead.
 use super::capture::{
-    Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request, add_capture_bytes,
-    listed,
+    Capture, Collection, ItineraryCapture, MAX_BODY, MAX_CAPTURE_BYTES, MAX_ITINERARIES, Request,
+    add_capture_bytes, listed, token,
 };
 use crate::{codes, connection::Driver, discovery::Scope};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -134,6 +134,10 @@ pub(super) struct CaptureBudget(AtomicUsize);
 impl CaptureBudget {
     fn new(bytes: usize) -> Result<Self> {
         Ok(Self(AtomicUsize::new(add_capture_bytes(0, bytes)?)))
+    }
+    /// What the day may still hold.
+    pub(super) fn remaining(&self) -> usize {
+        MAX_CAPTURE_BYTES.saturating_sub(self.0.load(Ordering::SeqCst))
     }
     pub(super) fn add(&self, bytes: usize) -> Result<()> {
         self.0
@@ -409,6 +413,14 @@ impl Driver {
         ensure(
             listed.len() <= MAX_ITINERARIES,
             "routes_source_too_large",
+            502,
+        )?;
+        // As the capture is checked at the end; every read asks by these.
+        ensure(
+            listed
+                .iter()
+                .all(|(id, transporter)| token(id, 128) && token(transporter, 64)),
+            "routes_scope_mismatch",
             502,
         )?;
         // Loading the routes page leaves the list's application; the original reading

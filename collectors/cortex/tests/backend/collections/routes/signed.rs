@@ -54,6 +54,12 @@ fn a_paused_request_is_used_only_as_the_read_asked_for_with_only_its_signature()
         day.signed(ORIGIN, &request(second)).map(|(r, _)| r),
         Some(Read::Itinerary(1))
     );
+    // Or unescaped: the server reads both as the same itinerary.
+    let unescaped = second.replacen("it%3A2?", "it:2?", 1);
+    assert_eq!(
+        day.signed(ORIGIN, &request(&unescaped)).map(|(r, _)| r),
+        Some(Read::Itinerary(1))
+    );
     let routes = concat!(
         "/operations/execution/api/route-summaries",
         "?historicalDay=false&localDate=2026-10-18&serviceAreaId=area-1&statsFromSummaries=true"
@@ -63,7 +69,20 @@ fn a_paused_request_is_used_only_as_the_read_asked_for_with_only_its_signature()
         Some(Read::Routes)
     );
 
+    let query = "?documentType=Itinerary&itineraryId=it-1&serviceAreaId=area-1";
     let refused: Vec<(&str, Value)> = vec![
+        (
+            "a deeper path",
+            request(&format!(
+                "/operations/execution/api/itineraries/it-1/x{query}"
+            )),
+        ),
+        (
+            "a broken escape",
+            request(&format!(
+                "/operations/execution/api/itineraries/it%G1{query}"
+            )),
+        ),
         ("another origin", {
             let mut r = request(FIRST);
             r["url"] = json!(format!("https://logistics.amazon.co.uk{FIRST}"));
