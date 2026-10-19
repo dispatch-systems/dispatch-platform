@@ -34,7 +34,7 @@ Timecard's collections. It names drivers through Driver Match.
   `timecard.manage` and saved through core's settings: `timecard.schedules`, Sync schedules,
   drawn by its own component, as one schedule may run both collections, which core's
   schedule editor doesn't offer, though its sheet asks Save or Discard for unsaved edits as
-  core's does (`useUnsavedSchedule`) before the page moves on; `timecard.roster`, Employees:
+  core's does (`useUnsavedEdits`) before the page moves on; `timecard.roster`, Employees:
   the department and delivery station the Daily tab and Employee Search list (none for all)
   and the name order Meal Breaks writes and sorts names in; `timecard.drivers`, Driver
   departments: all, or those chosen, whom alone the Daily tab lists and Driver Match counts as

@@ -80,9 +80,9 @@ fn deleted(db: &Store, dsp: &str, after: &Value, at: i64) -> Result<Option<Strin
 }
 
 /// Moves the window a DSP chose before Settings kept it, its route data's `route_retention`
-/// row, into `RETENTION` as the DSP's first value, at startup (`settings::carry_over`). Once
-/// the section holds one, saved or moved, nothing moves again; the table stays as it was, read
-/// only here.
+/// row, into `RETENTION` as the DSP's first value, at startup (`settings::carry_over`). The
+/// table is read as the DSP first opens since, whatever it holds, and not again; it stays as it
+/// was, read only here.
 pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
     settings::carry_over(store, id, &RETENTION, || {
         // A DSP whose route data isn't made yet chose no window.

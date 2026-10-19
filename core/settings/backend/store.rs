@@ -1,7 +1,8 @@
 //! Where a DSP's settings are kept: a record per section in the DSP's own `settings` table,
 //! `section:<id>` for the DSP's and `section:<id>:<user>` for a member's own, holding
-//! `{revision, values, at, by}`. Only the DSP's own database is read or written, so one DSP's
-//! values never reach another's.
+//! `{revision, values, at, by}`. One at revision 0, of no values, is a section its feature had
+//! nothing to carry over into, whose defaults hold as for one with no record. Only the DSP's
+//! own database is read or written, so one DSP's values never reach another's.
 use super::kinds;
 use crate::{
     Result,
@@ -85,7 +86,7 @@ pub(crate) fn current(db: &Store, dsp: &str, section: &Section, record: &Value) 
     })
 }
 
-/// Records a save of `section` at `revision` by `actor`, none for values a feature adopted,
+/// Records a save of `section` at `revision` by `actor`, none for what a feature carried over,
 /// with its values unless they're kept elsewhere.
 pub(crate) fn write(
     people: &Db,

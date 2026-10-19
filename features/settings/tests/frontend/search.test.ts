@@ -81,7 +81,12 @@ const sections = [
     sources: ['Paycom', 'Cortex'],
     fields: [field('runs', 'Collection schedules', { kind: 'schedules' })],
   }),
-  section('dvic.inspections', 'dvic', 'Inspections', { sources: ['Cortex'] }),
+  section('dvic.inspections', 'dvic', 'Inspections', {
+    sources: ['Cortex'],
+    fields: [
+      field('shift', 'Shift', { kind: 'choice', options: [{ value: 'am', label: 'Morning' }] }),
+    ],
+  }),
 ];
 
 /** Marked text as it reads, with what matched in brackets. */
@@ -115,8 +120,11 @@ test('Settings search finds each page once, by the best of what it holds that ev
   ]);
   assert.deepEqual(found('hedule'), []);
   assert.deepEqual(found('pass'), ['security Security | [Pass]word | accounts.security']);
-  // Every word typed, in any order; an option's label and a value read after their field's.
+  // Every word typed, in any order; an option's label, whatever its kind offers, and a value
+  // read after their field's.
   assert.deepEqual(found('day every'), ['data Data | Keep for: [Every] [day] | routes.retention']);
+  assert.deepEqual(found('30'), ['data Data | Keep for: [30] days | routes.retention']);
+  assert.deepEqual(found('morning'), ['dvic DVIC | Shift: [Morning] | dvic.inspections']);
   assert.deepEqual(found('northline'), [
     'dsp DSP profile | Name: [Northline] Logistics | settings.profile',
   ]);

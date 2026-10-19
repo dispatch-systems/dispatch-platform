@@ -1,9 +1,16 @@
 import { OptionSelect } from './choice.js';
 import type { FieldKind, FieldProps } from './kind.js';
 
-function Pick({ field, id, value, change }: FieldProps<'pick'>) {
+function Pick({ field, id, value, before, change }: FieldProps<'pick'>) {
   return (
-    <OptionSelect id={id} options={field.options} none={field.none} value={value} change={change} />
+    <OptionSelect
+      id={id}
+      options={field.options}
+      none={field.none}
+      value={value}
+      before={before}
+      change={change}
+    />
   );
 }
 

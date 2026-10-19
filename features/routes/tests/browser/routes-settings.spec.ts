@@ -42,6 +42,20 @@ test('Settings draws route data from its declaration, and a window that deletes 
   const days = section.getByLabel('Days', { exact: true });
   await days.fill('10');
   await expect(save).toBeDisabled();
+  // Unsaved, the page asks before it moves on, as closing the tab does; an edit that can't be
+  // saved is discarded, or kept by staying.
+  expect(
+    await page.evaluate(
+      () => !window.dispatchEvent(new Event('beforeunload', { cancelable: true })),
+    ),
+  ).toBe(true);
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  const ask = page.getByRole('dialog', { name: 'Save changes?' });
+  await expect(ask.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  await ask.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(page).toHaveURL(/\/settings\?tab=data$/);
+  await expect(days).toHaveValue('10');
   await days.fill('120');
   await expect(save).toBeEnabled();
   // Thirty days passes the stored day: the server's words ask before anything is kept.
@@ -69,6 +83,30 @@ test('Settings draws route data from its declaration, and a window that deletes 
     .click();
   await expect(page.getByText('Route data saved', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Edits begin at the section as read then: a save another session made since isn't
+  // overwritten, though the page has read it again meanwhile, as it does when its tab shows.
+  await keep.selectOption('90');
+  const { revision } = (await owner.read('/api/dsp/settings')).sections.find(
+    (each: { id: string }) => each.id === 'routes.retention',
+  );
+  const other = await owner.post('/api/dsp/settings/routes.retention', {
+    values: { days: 365 },
+    revision,
+  });
+  expect(other.status, other.body).toBe(200);
+  const reread = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings') && response.request().method() === 'GET',
+  );
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await reread;
+  await save.click();
+  await expect(
+    section.getByText(
+      'These settings changed in another session and have been reloaded. Make your change again.',
+    ),
+  ).toBeVisible();
+  await expect(keep).toHaveValue('365');
 });
 
 test('a member without management permissions never sees the Data page or Driver Match', async ({

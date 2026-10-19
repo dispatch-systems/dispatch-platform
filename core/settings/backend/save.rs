@@ -121,26 +121,26 @@ pub(crate) fn save_listing<'a>(
 
 /// Moves values a feature kept itself into its declared `section`, as the DSP's first, from
 /// its `upgrade_storage` as each DSP opens: `old` reads them as the feature kept them, none
-/// when it kept none. They're kept only while nothing of the section was ever saved, checked
-/// as a save checks them but against no list a field takes as it's read, which may have
-/// dropped what was chosen then; at revision 1, and not recorded in the log, whose entries
-/// from before already say how they came to be. Values its fields refuse now leave the
-/// defaults, as do none or the defaults themselves.
+/// when it kept none. It does so once, while the section has no record, never saved nor
+/// carried over before. What it moves is checked as a save checks it, but against no list a
+/// field takes as it's read, which may have dropped what was chosen then; kept at revision 1,
+/// and not recorded in the log, whose entries from before already say how it came to be. With
+/// nothing to move, none, the defaults themselves or values its fields refuse now, it keeps a
+/// record of no values at revision 0: the defaults keep applying as the section declares them,
+/// and the first save is at revision 0 still.
 ///
-/// It never stops a DSP opening: what else fails, reading the old values or keeping them, is
-/// noted in the server's log as `settings.carry_over_failed`, with the DSP, the section and
-/// the error's code but never a value, and tried again as the DSP next opens, as nothing was
-/// kept. Once the section holds values, moved or saved, it's one keyed read of its record and
-/// `old` isn't called. Only `dsp`'s own database is read and written.
+/// It never stops a DSP opening: what fails, reading the old values or keeping them, is noted
+/// in the server's log as `settings.carry_over_failed`, with the DSP, the section and the
+/// error's code but never a value, and tried again as the DSP next opens, as nothing was kept.
+/// Once the section has a record, carried over or saved, it's one keyed read of it and `old`
+/// isn't called. Only `dsp`'s own database is read and written.
 pub fn carry_over(
     db: &Store,
     dsp: &str,
     section: &Section,
     old: impl FnOnce() -> Result<Option<Value>>,
 ) {
-    if let Err(error) = adopt(db, dsp, section, old)
-        && error.code != "invalid_input"
-    {
+    if let Err(error) = adopt(db, dsp, section, old) {
         observability::event(
             "error",
             "settings.carry_over_failed",
@@ -160,22 +160,25 @@ fn adopt(
         "settings_scope",
         500,
     )?;
-    let now = store::current(db, dsp, section, &store::record(db, dsp, section, None)?)?;
-    if now.revision != 0 {
+    let record = store::record(db, dsp, section, None)?;
+    if !record.is_null() {
         return Ok(());
     }
-    let Some(values) = old()? else {
-        return Ok(());
+    let defaults = store::current(db, dsp, section, &record)?.values;
+    let moved = match old()? {
+        Some(Value::Object(given)) => match merged(section, &defaults, &given, None) {
+            Ok(moved) => Some(moved).filter(|moved| *moved != defaults),
+            Err(refused) if refused.code == "invalid_input" => None,
+            Err(error) => return Err(error),
+        },
+        _ => None,
     };
-    let given = values
-        .as_object()
-        .ok_or_else(|| Error::new("invalid_input", 400))?;
-    let after = merged(section, &now.values, given, None)?;
-    if after != now.values {
-        let people = db.dsp(dsp)?;
-        store::write(&people, section, None, 1, &Value::Object(after), None)?;
-    }
-    Ok(())
+    let (revision, values) = match moved {
+        Some(moved) => (1, Value::Object(moved)),
+        None => (0, json!({})),
+    };
+    let people = db.dsp(dsp)?;
+    store::write(&people, section, None, revision, &values, None)
 }
 
 /// `now` with each of the `given` fields' values, each checked as its kind says and against

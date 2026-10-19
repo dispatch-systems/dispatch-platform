@@ -212,7 +212,8 @@ fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
     let (_root, store, dsp) = ready();
     let actor = testing::a_user(&store);
     let other = store.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
-    // Each DSP's policy as the release before kept it, in its own database.
+    // Each DSP's policy as the release before kept it, in its own database, and its settings
+    // as they were then.
     for (id, lookback) in [(&dsp, 3), (&other, 14)] {
         store
             .daily_performance_db(id)
@@ -222,6 +223,7 @@ fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
                 &json!({"lookbackDays": lookback, "refreshHours": 12}),
             )
             .unwrap();
+        testing::before_settings(&store, id).unwrap();
     }
     let upgrade = dispatch_daily_performance::FEATURE.upgrade_storage.unwrap();
     let policy = |id: &str| settings::read::<Value>(&store, id, collection()).unwrap();

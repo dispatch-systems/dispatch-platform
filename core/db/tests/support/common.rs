@@ -248,6 +248,15 @@ pub fn set_dsp(db: &Store, dsp: &str, name: &str, timezone: &str) -> Result<()> 
     Ok(())
 }
 
+/// Leaves a DSP's settings as they were before Settings kept them, with no section's record,
+/// for a test of what a feature carries over from where it kept its values then: a DSP made
+/// since has carried over what it had as it opened, which was nothing.
+pub fn before_settings(db: &Store, dsp: &str) -> Result<()> {
+    db.dsp(dsp)?
+        .exec("DELETE FROM settings WHERE key GLOB 'section:*'", [])?;
+    Ok(())
+}
+
 /// Switches a DSP's connection to `provider` on, without checking its credentials.
 pub fn enable_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()> {
     db.collector(dsp, provider)?

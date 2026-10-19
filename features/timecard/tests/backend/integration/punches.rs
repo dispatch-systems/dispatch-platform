@@ -433,6 +433,7 @@ fn preferences_kept_in_paycoms_database_move_into_its_settings_once() {
     let paycom = db.collector(id, paycom::PROVIDER).unwrap();
     paycom.set("paycom.preferences", &kept).unwrap();
     drop(paycom);
+    common::before_settings(&db, id).unwrap();
     db.open_collectors(id).unwrap();
     assert_eq!(
         values(&db, id, "timecard.roster"),

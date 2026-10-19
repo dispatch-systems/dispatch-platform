@@ -325,12 +325,9 @@ fn a_section_kept_elsewhere_reads_and_saves_there_and_core_keeps_its_revision() 
 fn values_a_feature_kept_itself_move_in_once_never_over_a_save_and_a_failure_waits() {
     let (_root, db, dsp, owner) = northline();
     let carry = |old: Result<Option<Value>>| carry_over(&db, &dsp, &POLICY, || old);
-    // What can't be read now, what its fields refuse, and its defaults, keep nothing and leave
-    // the DSP opening; what failed moves as it next opens.
+    // What can't be read now keeps nothing and leaves the DSP opening; it moves as it next
+    // opens.
     carry(Err(Error::new("storage_busy", 503)));
-    carry(Ok(Some(json!({"days": 29}))));
-    carry(Ok(Some(json!({"days": null, "mode": "final"}))));
-    carry(Ok(None));
     let record = store::record(&db, &dsp, &POLICY, None).unwrap();
     assert_eq!(record, Value::Null);
     // A department its list has dropped since is kept as it was chosen.
@@ -352,4 +349,92 @@ fn values_a_feature_kept_itself_move_in_once_never_over_a_save_and_a_failure_wai
     assert_eq!(read::<Policy>(&db, &dsp, &POLICY).unwrap().days, Some(90));
     let logged = testing::audit_actions(&db, &dsp, "settings.");
     assert_eq!(logged, ["settings.changed"]);
+}
+
+#[test]
+fn a_section_with_nothing_to_carry_over_is_read_once_and_its_declared_defaults_keep_applying() {
+    // Its days as a later release may declare them, defaulting otherwise.
+    const LATER: &[Field] = &[number("days", "Keep", 30, 3650, Some(365)).none("Every day")];
+    let (_root, db, dsp, owner) = northline();
+    let summit = db
+        .new_dsp("Summit", "America/Denver", &owner, false)
+        .unwrap()
+        .id;
+    // None, the defaults themselves, and values its fields refuse now.
+    let nothing = [
+        (
+            section("stand_in.none", "None", "stand_in.manage", FIELDS),
+            None,
+        ),
+        (
+            section("stand_in.defaults", "Defaults", "stand_in.manage", FIELDS),
+            Some(json!({"days": null, "mode": "final"})),
+        ),
+        (
+            section("stand_in.refused", "Refused", "stand_in.manage", FIELDS),
+            Some(json!({"days": 29})),
+        ),
+    ];
+    for (each, old) in &nothing {
+        let mut reads = 0;
+        carry_over(&db, &dsp, each, || {
+            reads += 1;
+            Ok(old.clone())
+        });
+        assert_eq!(reads, 1, "{}", each.id);
+        // As the DSP opens again, the old value isn't read.
+        carry_over(&db, &dsp, each, || panic!("{} read again", each.id));
+        // Its defaults are the ones it declares now, not a copy of those it had then.
+        let later = section(each.id, each.label, each.permission, LATER);
+        assert_eq!(read::<Value>(&db, &dsp, &later).unwrap()["days"], 365);
+        // Settings shows it unsaved, and the first save is at that revision.
+        let record = store::record(&db, &dsp, each, None).unwrap();
+        let shown = store::current(&db, &dsp, each, &record).unwrap().revision;
+        assert_eq!(shown, 0);
+        let first = save(&db, &dsp, &owner, each, &json!({"days": 90}), shown, false);
+        assert!(matches!(first.unwrap(), Saved::Saved { revision: 1, .. }));
+        assert_eq!(read::<Policy>(&db, &dsp, each).unwrap().days, Some(90));
+    }
+    // What Northline had nothing of, Summit's own still moves as it opens.
+    let (none, _) = &nothing[0];
+    carry_over(&db, &summit, none, || Ok(Some(json!({"days": 120}))));
+    assert_eq!(read::<Policy>(&db, &summit, none).unwrap().days, Some(120));
+}
+
+#[test]
+fn a_listed_many_keeps_what_its_list_dropped_until_removed_and_refuses_a_new_one() {
+    const LISTED: Section = section(
+        "stand_in.listed",
+        "Listed",
+        "stand_in.manage",
+        &[many(
+            "departments",
+            "Departments",
+            Options::Listed(departments),
+            &[],
+        )],
+    );
+    let (_root, db, dsp, owner) = northline();
+    // Chosen while its list still had "gone".
+    carry_over(&db, &dsp, &LISTED, || {
+        Ok(Some(json!({"departments": ["gone", "ops"]})))
+    });
+    let save = |departments: Value, revision| {
+        let values = json!({ "departments": departments });
+        super::save(&db, &dsp, &owner, &LISTED, &values, revision, false)
+    };
+    let departments = || read::<Value>(&db, &dsp, &LISTED).unwrap()["departments"].clone();
+    // One the list hasn't is refused, beside what it keeps or not.
+    for refused in [json!(["gone", "ops", "hr"]), json!(["hr"])] {
+        assert_eq!(save(refused, 1).unwrap_err().code, "invalid_input");
+    }
+    // Saving others keeps the dropped one; once removed, it can't be chosen again.
+    save(json!(["gone", "dsp"]), 1).unwrap();
+    assert_eq!(departments(), json!(["gone", "dsp"]));
+    save(json!(["dsp"]), 2).unwrap();
+    assert_eq!(
+        save(json!(["gone", "dsp"]), 3).unwrap_err().code,
+        "invalid_input"
+    );
+    assert_eq!(departments(), json!(["dsp"]));
 }

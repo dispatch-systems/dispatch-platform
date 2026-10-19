@@ -2,12 +2,16 @@ import type { SettingsOption, SettingsValue } from '../../../../core/settings/ap
 import type { FieldKind, FieldProps } from './kind.js';
 import { listed } from './options.js';
 
-/** One of the options from a list, a saved one the list no longer has kept in it. */
+/**
+ * One of the options from a list, a saved one the list no longer has kept in it, chosen or not,
+ * until another is saved.
+ */
 export function OptionSelect({
   id,
   options,
   none,
   value,
+  before,
   change,
 }: {
   id: string;
@@ -15,6 +19,7 @@ export function OptionSelect({
   /** What no option is called, when none may be chosen. */
   none: string | null;
   value: SettingsValue;
+  before: SettingsValue;
   change: (value: SettingsValue) => void;
 }) {
   return (
@@ -28,7 +33,7 @@ export function OptionSelect({
           {none ?? ''}
         </option>
       )}
-      {listed(options, [value]).map((option) => (
+      {listed(options, [before, value]).map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
         </option>
@@ -40,10 +45,17 @@ export function OptionSelect({
 // A few options side by side; more, in a list.
 const few = (options: readonly SettingsOption[]) => options.length <= 3;
 
-function Choice({ field, id, value, change }: FieldProps<'choice'>) {
+function Choice({ field, id, value, before, change }: FieldProps<'choice'>) {
   if (!few(field.options))
     return (
-      <OptionSelect id={id} options={field.options} none={null} value={value} change={change} />
+      <OptionSelect
+        id={id}
+        options={field.options}
+        none={null}
+        value={value}
+        before={before}
+        change={change}
+      />
     );
   return (
     <div className="settings-field" role="radiogroup" aria-labelledby={`${id}-label`}>

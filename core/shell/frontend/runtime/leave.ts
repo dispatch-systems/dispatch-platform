@@ -3,9 +3,10 @@ import { createContext, use, useEffect, type RefObject } from 'react';
 // Unsaved edits on a page, as a schedule's in its editor, are saved or discarded before the page
 // moves on, never lost without asking: the page asks each editor open on it in turn, whether it
 // moves by its own controls or the address moves, as Back, the browser's Back or Forward, a link
-// followed or a hash typed move it, which it hears through `holdAddress` (navigation.ts).
+// followed or a hash typed move it, which it hears through `holdAddress` (navigation.ts). An
+// editor asks with `useUnsavedEdits`.
 
-/** Runs `then` at once, or after the member chooses Save or Discard for unsaved edits. */
+/** Runs `then` at once, after the member chooses Save or Discard for unsaved edits, or never. */
 export type Leave = (then: () => void) => void;
 /** The editors open on a page, each asked through its ref. */
 export type Guards = Set<RefObject<Leave | null>>;

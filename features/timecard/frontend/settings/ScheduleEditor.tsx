@@ -6,7 +6,7 @@ import type { CollectionSchedule, ScheduleInput } from '../../../../core/collect
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { nextCollection } from './nextCollection.js';
 import { saveSchedule, removeSchedule } from '../../../../core/collection/api/client.js';
-import { useUnsavedSchedule } from '../../../../core/collection/frontend/schedules.js';
+import { useUnsavedEdits } from '../../../../core/shell/frontend/runtime/useUnsavedEdits.js';
 import { previewSchedule, schedules } from '../../api/client.js';
 
 const newSchedule = (): ScheduleInput => ({
@@ -54,7 +54,8 @@ export function ScheduleEditor({
   const { cadence, intervalMinutes, localTime, enabled } = draft;
   // Edits leave only through Save or Discard as its page of Settings moves on; Cancel or
   // closing the sheet drops them.
-  const { asking } = useUnsavedSchedule({
+  const { asking } = useUnsavedEdits({
+    what: 'This schedule',
     dirty:
       (['name', 'cadence', 'intervalMinutes', 'localTime', 'enabled'] as const).some(
         (key) => draft[key] !== initial[key],

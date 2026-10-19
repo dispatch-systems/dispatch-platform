@@ -684,7 +684,8 @@ fn a_window_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
     let (_root, db, id) = ready();
     let actor = common::a_user(&db);
     let other = db.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
-    // Each DSP's window as the release before kept it, in its own route data.
+    // Each DSP's window as the release before kept it, in its own route data, and its settings
+    // as they were then.
     for (dsp, days) in [(&id, 90), (&other, 365)] {
         db.routes_db(dsp)
             .unwrap()
@@ -693,6 +694,7 @@ fn a_window_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
                 rusqlite::params![days, actor, dispatch_core::db::iso()],
             )
             .unwrap();
+        common::before_settings(&db, dsp).unwrap();
     }
     let upgrade = dispatch_routes::FEATURE.upgrade_storage.unwrap();
     let days = |dsp: &str| settings::read::<Value>(&db, dsp, retention()).unwrap()["days"].clone();

@@ -11,7 +11,8 @@ import { drawnPages, loadPage, openPage, prefetchPage } from './pages.js';
  * Which of Settings' pages is open, as the address names it: the pages there are, and the one
  * open, which follows the address as it moves, once the next page's code and reads are in.
  * `pending` until they are. The address leaves the page open, by Back, the browser's Back or
- * Forward, a link or a hash typed, only once its editors let it, as its own moves do.
+ * Forward, a link or a hash typed, and the page is drawn anew, as for another role viewed as,
+ * only once its editors let it, as its own moves do.
  */
 export function useOpenPage(settings: SettingsAnswer, view: DspView) {
   const [requested, setRequested] = useState(addressedPage);
@@ -29,18 +30,19 @@ export function useOpenPage(settings: SettingsAnswer, view: DspView) {
       }),
     [settings, view],
   );
-  useEffect(
-    () =>
-      holdAddress((to, then) => {
-        const at = parseHash(to);
-        const stays =
-          at.dspId === view.dsp.id &&
-          at.page === settingsPage() &&
-          openPage(settings, view, pageIn(to)) === page;
-        if (stays) then();
-        else leaving(guards, then);
-      }),
-    [settings, view, page],
-  );
+  useEffect(() => {
+    const stays = (to: string) => {
+      const at = parseHash(to);
+      return (
+        at.dspId === view.dsp.id &&
+        at.page === settingsPage() &&
+        openPage(settings, view, pageIn(to)) === page
+      );
+    };
+    // Drawn anew where it is, or moved to another page, it asks its editors first.
+    return holdAddress((to, then) =>
+      to !== undefined && stays(to) ? then() : leaving(guards, then),
+    );
+  }, [settings, view, page]);
   return { pages: drawnPages(settings, view), page, pending };
 }

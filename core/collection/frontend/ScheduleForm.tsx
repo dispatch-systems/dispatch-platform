@@ -6,7 +6,7 @@ import { previewSchedule, removeSchedule, saveSchedule } from '../api/client.js'
 import { messageOf } from '../../shell/frontend/lib/errors.js';
 import { time } from '../../shell/frontend/lib/format.js';
 import { ErrorBox } from '../../shell/frontend/ui/index.js';
-import { useUnsavedSchedule } from './useUnsavedSchedule.js';
+import { useUnsavedEdits } from '../../shell/frontend/runtime/useUnsavedEdits.js';
 
 /** What a new schedule starts as: its name and the time it collects at. */
 export type ScheduleDefaults = { name: string; localTime: string };
@@ -56,8 +56,9 @@ export function ScheduleForm({
   const dirty = (['name', 'cadence', 'intervalMinutes', 'localTime', 'enabled'] as const).some(
     (key) => draft[key] !== initial.current[key],
   );
-  // Edits leave only through Save or Discard; closing the tab drops them silently.
-  const { leave, asking } = useUnsavedSchedule({
+  // Edits leave only through Save or Discard.
+  const { leave, asking } = useUnsavedEdits({
+    what: 'This schedule',
     dirty,
     saveable: !busy && !stale && Boolean(draft.name.trim()),
     save,

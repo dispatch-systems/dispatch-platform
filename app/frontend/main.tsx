@@ -29,6 +29,7 @@ import {
 } from '../../core/shell/frontend/runtime/feedback.js';
 import {
   askHolds,
+  askToLeave,
   dspHash,
   followMoved,
   forgetDestination,
@@ -411,11 +412,14 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       sidebar={sidebarOf(scope, page, { session, view })}
       logout={() => void perform(logout)}
       exitView={() => navigate(platformHash())}
-      viewAs={(roleId) => {
-        clearNavigationState();
-        saveRole(dspId, roleId);
-        void perform(reopen);
-      }}
+      // The page drawn anew for the role asks about unsaved edits first, as leaving it does.
+      viewAs={(roleId) =>
+        askToLeave(() => {
+          clearNavigationState();
+          saveRole(dspId, roleId);
+          void perform(reopen);
+        })
+      }
     >
       <FeedbackMessages />
       {!online && (

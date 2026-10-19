@@ -55,8 +55,9 @@ Core's own sections are custom ones its screens draw: accounts' `accounts.profil
 
 Each section's record is a row of the DSP's own `settings` table: `section:<id>`, or a member's
 own `section:<id>:<user>`, holding `{revision, values, at, by}`. A section `kept` elsewhere keeps
-only its revision here. `settings::read` is one keyed lookup; Settings reads all of a member's
-records of a DSP in one query.
+only its revision here. One at revision 0 with no values is a section its feature had nothing
+to carry over into: its defaults hold, as for one with no record. `settings::read` is one keyed
+lookup; Settings reads all of a member's records of a DSP in one query.
 
 `settings::save` takes any of a section's fields, refuses one it hasn't or a value its kind
 doesn't hold (`invalid_input`) and a revision another save passed
@@ -69,12 +70,14 @@ profile's timezone does: retiming them marks the work, and the server wakes the 
 the work is done.
 
 `settings::carry_over` is how a feature moves values it kept itself into its declared section,
-once, from its `upgrade_storage`: checked as a save checks them, kept at revision 1 only while
-nothing of the section was ever saved, and not recorded in the log; values its fields refuse
-now leave the defaults. It never stops a DSP opening: a failure reading the old values or
-keeping them is noted in the server's log as `settings.carry_over_failed` (its DSP, section and
-error code, never values) and tried again as the DSP next opens. Once the section holds values,
-it costs each start one keyed read of its record.
+once, from its `upgrade_storage`: checked as a save checks them, kept at revision 1 while the
+section has no record, never saved nor carried over, and not recorded in the log. With nothing
+to move (none, the defaults themselves, or values its fields refuse now) it keeps a record of
+no values at revision 0, so the defaults keep applying as the section declares them, and the
+first save is at revision 0 still. It never stops a DSP opening: a failure reading the old
+values or keeping them is noted in the server's log as `settings.carry_over_failed` (its DSP,
+section and error code, never values) and tried again as the DSP next opens. Once the section
+has a record, it costs each start one keyed read of it, and the old values aren't read.
 
 ## API
 

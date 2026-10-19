@@ -1,4 +1,8 @@
-import type { SettingsPage, SettingsSection } from '../../../../core/settings/api/index.js';
+import type {
+  SettingsField,
+  SettingsPage,
+  SettingsSection,
+} from '../../../../core/settings/api/index.js';
 
 // Settings' search: what a member types, matched against what each page of theirs holds: its
 // name, its sections' names, their fields' and options' labels, the words they are also known
@@ -69,19 +73,17 @@ function matches(section: SettingsSection, typed: readonly string[]): Match[] {
   return found;
 }
 
-/** The labels of what a field may be set to. */
-function options(field: SettingsSection['fields'][number]) {
-  switch (field.kind) {
-    case 'choice':
-    case 'many':
-      return field.options.map((option) => option.label);
-    case 'pick':
-      return [...field.options.map((option) => option.label), ...(field.none ? [field.none] : [])];
-    case 'number':
-      return [...field.presets.map((preset) => preset.label), ...(field.none ? [field.none] : [])];
-    default:
-      return [];
-  }
+/**
+ * The labels of what a field may be set to, whatever its kind: its options, its presets and what
+ * none is called, where it has them.
+ */
+function options(field: SettingsField) {
+  const offered = [
+    ...('options' in field ? field.options : []),
+    ...('presets' in field ? field.presets : []),
+  ];
+  const none = 'none' in field && field.none ? [field.none] : [];
+  return [...offered.map((option) => option.label), ...none];
 }
 
 /** The first of the best matches. */

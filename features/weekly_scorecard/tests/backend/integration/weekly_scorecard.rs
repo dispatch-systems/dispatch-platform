@@ -509,7 +509,8 @@ fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
     let (_root, db, id) = ready();
     let actor = common::a_user(&db);
     let other = db.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
-    // Each DSP's policy as the release before kept it, in its own database.
+    // Each DSP's policy as the release before kept it, in its own database, and its settings
+    // as they were then.
     for (dsp, lookback) in [(&id, 2), (&other, 6)] {
         db.weekly_scorecard_db(dsp)
             .unwrap()
@@ -518,6 +519,7 @@ fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
                 &json!({"lookbackWeeks": lookback, "refreshHours": 12}),
             )
             .unwrap();
+        common::before_settings(&db, dsp).unwrap();
     }
     let upgrade = dispatch_weekly_scorecard::FEATURE.upgrade_storage.unwrap();
     let policy = |dsp: &str| settings::read::<Value>(&db, dsp, collection()).unwrap();

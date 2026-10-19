@@ -17,6 +17,8 @@ part. Mandatory: every DSP has it.
   through moves among Settings' pages), a search, and each page the server lists that has a
   section to draw, under its group (Personal, DSP, Features) with its icon: a shared page's own,
   a feature's page that of its feature's pages. It is the navigation drawer on a narrow screen.
+  Shared pages are core's, and few: a new one's icon goes in `frontend/sidebar/icons.ts`, by its
+  id, or it shows a plain one.
 - **Its search** runs over what the server answered for the open DSP: page and section names,
   field and option labels, a section's `keywords`, its `sources` (the collectors its data comes
   from) and values held as text. Every word typed begins a word there, in any case; it finds a
@@ -30,11 +32,14 @@ part. Mandatory: every DSP has it.
   changed values with the revision they were read at; one the server says would lose something
   asks first in its words, and one another session beat is refused and the section read again.
   A `schedules` field draws core's schedule editor inline.
-- **Unsaved edits:** an editor open on the page with unsaved edits, as a schedule's, a custom
-  section's included (core's `useLeaveGuard`), asks Save or Discard before the page moves on,
-  however it moves: to another of its pages, by Back or the browser's Back or Forward, or by a
-  link followed or a hash typed (core's `holdAddress`). The address stays where it was while it
-  asks, and a save that fails keeps the page.
+- **Unsaved edits:** a declared section with unsaved edits, or an editor open on the page with
+  some, as a schedule's, a custom section's included (core's `useUnsavedEdits`), asks before the
+  page moves on, however it moves: to another of its pages, by Back or the browser's Back or
+  Forward, or by a link followed or a hash typed (core's `holdAddress`), and before it is drawn
+  anew for another role viewed as. Each with edits asks in turn, in the page's order: Save, only
+  for edits that may be saved, Discard, or Cancel (or Escape), which stays. The address stays
+  where it was while it asks, and a save that fails keeps the page. Closing or reloading the tab
+  has the browser ask.
 - **A custom section** is drawn by the component its owner registers in the `settingsSections`
   slot under the section's id, with `refresh` to read Settings again; with `visible` it says
   whether the member has anything there, and a page with nothing to draw isn't listed.
