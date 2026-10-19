@@ -33,11 +33,14 @@ export function Section({
   section,
   refresh,
   reveal,
+  named = false,
 }: {
   section: SettingsSection;
   refresh: () => void;
   /** Points the section out, as a search result opening it does. */
   reveal?: RefCallback<HTMLElement>;
+  /** Whether the page's heading already names it, as the only section of a page of its name. */
+  named?: boolean;
 }) {
   const [draft, setDraft] = useState<Record<string, SettingsValue>>({});
   const [warning, setWarning] = useState<string>();
@@ -86,11 +89,14 @@ export function Section({
       value={holds(field)}
       before={before(field)}
       change={(value) => setDraft((old) => ({ ...old, [field.id]: value }))}
+      alone={section.fields.length === 1}
     />
   );
   return (
     <section className="settings-section" aria-labelledby={heading} {...element}>
-      <h2 id={heading}>{section.label}</h2>
+      <h2 id={heading} className={named ? 'sr-only' : undefined}>
+        {section.label}
+      </h2>
       {values.length > 0 && (
         <form
           onSubmit={(event) => {

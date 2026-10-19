@@ -106,11 +106,21 @@ declare module './installed.js' {
     /** Its pages, in sidebar order. */
     routes?: readonly Route[];
     /**
+     * Its icon where none of its pages shows one, as for its page of Settings when it has no
+     * page in the sidebar.
+     */
+    icon?: LucideIcon;
+    /**
      * Who may save a DSP's profile, and the route it serves that saves it, when the owner saves
      * it: opening a DSP that has none asks them for it. One owner at most says so; without one,
      * nobody is asked.
      */
     dspSetup?: { permission: Permission; save: string };
+    /**
+     * Its DSP pages that are pages of Settings now, each by its id with the page of Settings
+     * it is (`?tab=`): a link to one opens that page, with the rest of the link's query.
+     */
+    movedToSettings?: Readonly<Record<string, string>>;
   }
 }
 
@@ -136,9 +146,15 @@ function dspPage(says: (route: DspRoute) => boolean | undefined) {
 export const landingPage = () => dspPage((route) => route.landing);
 /** The page that draws a DSP's Settings, as a feature declares it; none without one. */
 export const settingsPage = () => dspPage((route) => route.hostsSettings);
-/** The DSP page a link to `page` with `query` leads to now, if one was once there. */
-export const movedTo = (page: string, query: URLSearchParams) =>
-  dspPage((route) =>
+/**
+ * Where a link to `page` with `query` leads now, if a page was once there: the DSP page, and
+ * the query it opens with, for a page of Settings its `tab` and the rest of the link's.
+ */
+export function movedTo(
+  page: string,
+  query: URLSearchParams,
+): { page: DspRouteId; query?: Record<string, string> } | undefined {
+  const formerly = dspPage((route) =>
     route.formerly?.some((address) => {
       const [at, asked] = address.split('?');
       return (
@@ -147,6 +163,15 @@ export const movedTo = (page: string, query: URLSearchParams) =>
       );
     }),
   );
+  if (formerly) return { page: formerly };
+  const host = settingsPage();
+  const tab = manifests().find((feature) => feature.movedToSettings?.[page])?.movedToSettings?.[
+    page
+  ];
+  if (!host || !tab) return undefined;
+  const rest = [...query].filter(([key]) => key !== 'tab');
+  return { page: host, query: Object.fromEntries([['tab', tab], ...rest]) };
+}
 
 /** The page whose own sidebar is drawn while `page` is open: the page itself, or the one it is under. */
 export function sidebarOwner(scope: Route['scope'], page: string) {
@@ -164,12 +189,15 @@ export const loadSidebar = (sidebar: Sidebar) =>
   });
 export const loadedSidebar = (sidebar: Sidebar) => sidebars.get(sidebar);
 
-/** The icon a feature's pages have in the sidebar: that of the first of its DSP pages with one. */
+/**
+ * A feature's icon: that of the first of its DSP pages with one in the sidebar, else the one its
+ * manifest gives (its switch's id is its owner's name).
+ */
 export function featureIcon(feature: string) {
   for (const owner of manifests())
     for (const route of owner.routes ?? [])
       if (route.scope === 'dsp' && route.feature === feature && route.icon) return route.icon;
-  return undefined;
+  return manifests().find((owner) => owner.name === feature)?.icon;
 }
 
 /** Who may save a DSP's profile when it is first opened, and where, as the owner that saves it says. */

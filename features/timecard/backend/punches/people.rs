@@ -1,6 +1,5 @@
 //! Paycom's employees, as Driver Match reads them: each as the newest roster lists them,
 //! seen on the days they worked.
-use super::preferences::preferences;
 use dispatch_core::{
     Result,
     db::{Store, n, s},
@@ -88,12 +87,6 @@ fn workdays(store: &Store, dsp: &str) -> Result<Workdays> {
     Ok(Workdays { worked, collected })
 }
 fn driver_departments(store: &Store, dsp: &str) -> Result<Option<BTreeSet<String>>> {
-    let paycom = store.collector(dsp, paycom::PROVIDER)?;
-    Ok(preferences(&paycom)?["values"]["driver_departments"]
-        .as_array()
-        .map(|list| {
-            list.iter()
-                .filter_map(|d| d.as_str().map(str::to_owned))
-                .collect()
-        }))
+    let drivers = crate::backend::settings::driver_departments(store, dsp)?;
+    Ok(drivers.map(|list| list.into_iter().collect()))
 }

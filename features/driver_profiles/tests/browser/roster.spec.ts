@@ -20,7 +20,10 @@ test('an open roster bar shows a collection that ran elsewhere, as a schedule ru
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('tab', { name: /Driver Match/ }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Driver Profiles', exact: true })
+    .click();
   const roster = page.locator('.driver-roster');
   await expect(roster).toContainText('Not collected yet');
   // Started by another session, as a schedule starts it, the page hears only that it finished.

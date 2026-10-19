@@ -3,4 +3,5 @@
 pub(crate) mod exposed;
 pub(crate) mod keeper;
 pub(crate) mod people;
+pub(crate) mod settings;
 pub(crate) mod storage;

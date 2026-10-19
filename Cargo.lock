@@ -900,6 +900,7 @@ name = "dispatch-settings"
 version = "0.0.0"
 dependencies = [
  "dispatch-core",
+ "serde_json",
 ]
 
 [[package]]

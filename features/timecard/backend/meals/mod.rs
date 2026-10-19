@@ -26,7 +26,7 @@ use std::collections::HashSet;
 /// Cortex's meal breaks, as Timecard keeps them.
 pub const DOMAIN: DataDomain = DataDomain::new("meals");
 /// A DSP's meal-break reads: Paycom (including live pages), Cortex meals, driver links and
-/// preferences.
+/// settings.
 pub const CACHED: &str = "meals";
 
 struct Boundaries {

@@ -698,20 +698,19 @@ fn a_window_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
             .unwrap();
     }
     let upgrade = dispatch_routes::FEATURE.upgrade_storage.unwrap();
-    let days = |dsp: &str| {
-        settings::read::<Value>(&db, dsp, retention()).unwrap()["days"].clone()
-    };
+    let days = |dsp: &str| settings::read::<Value>(&db, dsp, retention()).unwrap()["days"].clone();
     upgrade(&db, &id).unwrap();
     assert_eq!(days(&id), json!(90));
     assert_eq!(days(&other), Value::Null);
     upgrade(&db, &other).unwrap();
     assert_eq!(days(&other), json!(365));
     // Changed in Settings since, it isn't moved again; and the move itself recorded nothing.
-    settings::save(&db, &id, &actor, retention(), &json!({"days": null}), 1, true).unwrap();
+    let every = json!({"days": null});
+    settings::save(&db, &id, &actor, retention(), &every, 1, true).unwrap();
     upgrade(&db, &id).unwrap();
     assert_eq!(days(&id), Value::Null);
     assert_eq!(days(&other), json!(365));
-    assert_eq!(common::audit_actions(&db, &other, "settings."), Vec::<String>::new());
+    assert!(common::audit_actions(&db, &other, "settings.").is_empty());
 }
 
 #[test]

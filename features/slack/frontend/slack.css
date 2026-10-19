@@ -1,5 +1,6 @@
-/* What several of Slack's screens share: its mark, a section of a workspace's settings, and a
-   list of channels or of what's kept in them, grouped under a heading with a count. */
+/* What several of Slack's screens share: its mark, a link that reads as a button, a section of
+   a workspace's settings, and a list of channels or of what's kept in them, grouped under a
+   heading with a count. */
 .slack-logo {
   flex-shrink: 0;
 }
@@ -11,6 +12,23 @@
   height: 40px;
   border-radius: 10px;
   background: var(--muted);
+}
+/* A link that reads as a button, as a card's Settings. */
+.slack-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.slack-link-button:hover {
+  background: var(--accent);
 }
 .slack-section {
   display: flex;

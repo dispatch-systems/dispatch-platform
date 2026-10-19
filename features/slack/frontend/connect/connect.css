@@ -70,19 +70,3 @@
     grid-template-columns: 1fr;
   }
 }
-.slack-link-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: var(--control-height);
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--foreground);
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-}
-.slack-link-button:hover {
-  background: var(--accent);
-}

@@ -1,7 +1,6 @@
 //! Atomic daily publication history, indexed independently from weekly data.
-use crate::api::types::{
-    DailyPerformanceDataset, DailyPerformanceDay, DailyPerformancePolicy, DailyPerformanceSummary,
-};
+use super::settings::{COLLECTION, Policy};
+use crate::api::types::{DailyPerformanceDataset, DailyPerformanceDay, DailyPerformanceSummary};
 use dispatch_core::{
     Error, Result,
     collection::registry::AddedStorage,
@@ -90,12 +89,6 @@ pub(crate) fn flag(value: &Value) -> Option<i64> {
 pub trait DailyPerformanceStore {
     fn daily_performance_db(&self, dsp: &str) -> Result<DspLease<'_>>;
     fn daily_performance_days(&self, dsp: &str) -> Result<DailyPerformanceSummary>;
-    fn daily_performance_policy(&self, dsp: &str) -> Result<DailyPerformancePolicy>;
-    fn set_daily_performance_policy(
-        &self,
-        dsp: &str,
-        policy: &DailyPerformancePolicy,
-    ) -> Result<()>;
     fn daily_performance_jobs(&self, dsp: &str) -> Result<Vec<(String, Value)>>;
     fn enqueue_daily_performance(
         &self,
@@ -117,29 +110,8 @@ impl DailyPerformanceStore for Store {
     fn daily_performance_db(&self, dsp: &str) -> Result<DspLease<'_>> {
         self.added_storage(dsp, dispatch_cortex::PROVIDER, &STORAGE)
     }
-    fn daily_performance_policy(&self, dsp: &str) -> Result<DailyPerformancePolicy> {
-        Ok(serde_json::from_value(
-            self.daily_performance_db(dsp)?.setting(
-                "collection_policy",
-                serde_json::to_value(DailyPerformancePolicy::default())?,
-            )?,
-        )?)
-    }
-    fn set_daily_performance_policy(
-        &self,
-        dsp: &str,
-        policy: &DailyPerformancePolicy,
-    ) -> Result<()> {
-        ensure(
-            (1..=30).contains(&policy.lookback_days) && (1..=168).contains(&policy.refresh_hours),
-            "invalid_input",
-            400,
-        )?;
-        self.daily_performance_db(dsp)?
-            .set("collection_policy", &serde_json::to_value(policy)?)
-    }
     fn daily_performance_jobs(&self, dsp: &str) -> Result<Vec<(String, Value)>> {
-        let policy = self.daily_performance_policy(dsp)?;
+        let policy: Policy = dispatch_core::settings::read(self, dsp, &COLLECTION)?;
         let station = self.profile(dsp)?.station_code;
         let yesterday = today(self, dsp)? - chrono::Duration::days(1);
         let data = self.daily_performance_db(dsp)?;

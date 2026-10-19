@@ -15,6 +15,7 @@
 //! - `storage`, `maintenance` and `pages`: what's kept, the hourly check, and the install
 //!   link's own page; `work`, what the passes share: the DSPs Slack works for, and the work
 //!   an integration keeps until it's done.
+//! - `settings`: its section of Settings, where its workspaces' settings are.
 pub(crate) mod app;
 pub(crate) mod author;
 pub(crate) mod bot;
@@ -31,6 +32,7 @@ pub(crate) mod maintenance;
 pub(crate) mod members;
 pub(crate) mod pages;
 pub(crate) mod people;
+pub(crate) mod settings;
 pub(crate) mod slack;
 pub(crate) mod storage;
 pub(crate) mod work;

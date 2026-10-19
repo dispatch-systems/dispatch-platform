@@ -1,14 +1,15 @@
 //! Daily isolation, publication safety and scheduling.
 use dispatch_core::{
-    db::{Store, s},
-    testing,
+    db::{Store, at, now, s},
+    manifest::Section,
+    settings, testing,
 };
 use dispatch_cortex::{
     self as cortex,
     daily_performance::{self, Request},
     discovery::CollectionRequest,
 };
-use dispatch_daily_performance::{DailyPerformancePolicy, DailyPerformanceStore};
+use dispatch_daily_performance::DailyPerformanceStore;
 use serde_json::{Value, json};
 fn ready() -> (tempfile::TempDir, Store, String) {
     testing::install(
@@ -26,6 +27,13 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     testing::ready_connection(&store, &dsp, cortex::PROVIDER).unwrap();
     store.enable_all_features(&dsp).unwrap();
     (root, store, dsp)
+}
+/// Which dates its schedules recheck, as Daily Performance declares it.
+fn collection() -> &'static Section {
+    let mut sections = dispatch_daily_performance::FEATURE.settings.iter();
+    sections
+        .find(|s| s.id == "daily_performance.collection")
+        .unwrap()
 }
 fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance::Capture {
     let queued = store
@@ -167,26 +175,21 @@ fn cross_date_and_cross_company_rows_are_rejected_before_any_publication_changes
 #[test]
 fn schedules_refresh_configured_dates_and_manual_backfills_are_bounded_and_idempotent() {
     let (_root, store, dsp) = ready();
-    store
-        .set_daily_performance_policy(
-            &dsp,
-            &DailyPerformancePolicy {
-                lookback_days: 3,
-                refresh_hours: 20,
-            },
-        )
-        .unwrap();
+    let actor = testing::a_user(&store);
+    let policy = json!({"lookback_days": 3, "refresh_hours": 12});
+    settings::save(&store, &dsp, &actor, collection(), &policy, 0, false).unwrap();
     let jobs = store.daily_performance_jobs(&dsp).unwrap();
     assert_eq!(jobs.len(), 3);
     let date = s(&jobs[0].1, "date").to_owned();
     publish(&store, &dsp, &date, "recent");
     assert_eq!(store.daily_performance_jobs(&dsp).unwrap().len(), 2);
+    // Collected 15 hours ago, past the policy's 12 though within the default 20, it's due.
     store
         .daily_performance_db(&dsp)
         .unwrap()
         .exec(
-            "UPDATE daily_publications SET collected_at='2020-01-01'",
-            [],
+            "UPDATE daily_publications SET collected_at=?",
+            [at(now() - 15 * 3_600_000)],
         )
         .unwrap();
     assert_eq!(store.daily_performance_jobs(&dsp).unwrap().len(), 3);
@@ -203,15 +206,47 @@ fn schedules_refresh_configured_dates_and_manual_backfills_are_bounded_and_idemp
             .enqueue_daily_performance(&dsp, None, "huge", "2026-01-01", "2026-10-03")
             .is_err()
     );
-    assert!(
+}
+#[test]
+fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
+    let (_root, store, dsp) = ready();
+    let actor = testing::a_user(&store);
+    let other = store.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
+    // Each DSP's policy as the release before kept it, in its own database.
+    for (id, lookback) in [(&dsp, 3), (&other, 14)] {
         store
-            .set_daily_performance_policy(
-                &dsp,
-                &DailyPerformancePolicy {
-                    lookback_days: 0,
-                    refresh_hours: 20
-                }
+            .daily_performance_db(id)
+            .unwrap()
+            .set(
+                "collection_policy",
+                &json!({"lookbackDays": lookback, "refreshHours": 12}),
             )
-            .is_err()
+            .unwrap();
+    }
+    let upgrade = dispatch_daily_performance::FEATURE.upgrade_storage.unwrap();
+    let policy = |id: &str| settings::read::<Value>(&store, id, collection()).unwrap();
+    upgrade(&store, &dsp).unwrap();
+    assert_eq!(
+        policy(&dsp),
+        json!({"lookback_days": 3, "refresh_hours": 12})
     );
+    assert_eq!(
+        policy(&other),
+        json!({"lookback_days": 7, "refresh_hours": 20})
+    );
+    upgrade(&store, &other).unwrap();
+    assert_eq!(
+        policy(&other),
+        json!({"lookback_days": 14, "refresh_hours": 12})
+    );
+    assert_eq!(store.daily_performance_jobs(&dsp).unwrap().len(), 3);
+    // Changed in Settings since, it isn't moved again; and the move itself recorded nothing.
+    let changed = json!({"lookback_days": 5});
+    settings::save(&store, &dsp, &actor, collection(), &changed, 1, false).unwrap();
+    upgrade(&store, &dsp).unwrap();
+    assert_eq!(
+        policy(&dsp),
+        json!({"lookback_days": 5, "refresh_hours": 12})
+    );
+    assert!(testing::audit_actions(&store, &other, "settings.").is_empty());
 }

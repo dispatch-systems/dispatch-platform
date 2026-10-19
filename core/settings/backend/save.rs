@@ -47,7 +47,7 @@ pub fn save(
         "settings_changed_reload_before_saving",
         409,
     )?;
-    let (after, offered) = merged(db, dsp, section, &now.values, given)?;
+    let (after, offered) = merged(db, dsp, section, &now.values, given, true)?;
     let changes: Vec<AuditChange> = section
         .fields
         .iter()
@@ -105,7 +105,8 @@ pub fn save(
 
 /// Keeps `values` as the DSP's first of `section` when nothing of it was ever saved: what a
 /// feature does once, from its `upgrade_storage`, as it moves values it kept itself into its
-/// declared section. Checked as a save checks them (`invalid_input` otherwise), kept at
+/// declared section. Checked as a save checks them (`invalid_input` otherwise), but against
+/// no list a field takes as it's read, which may have dropped what was chosen then; kept at
 /// revision 1, and not recorded in the log, whose entries from before already say how they
 /// came to be. Answers whether it kept them: not when the section was ever saved, or the
 /// values are its defaults. Only `dsp`'s own database is read and written.
@@ -122,7 +123,7 @@ pub fn adopt(db: &Store, dsp: &str, section: &Section, values: &Value) -> Result
     if now.revision != 0 {
         return Ok(false);
     }
-    let (after, _) = merged(db, dsp, section, &now.values, given)?;
+    let (after, _) = merged(db, dsp, section, &now.values, given, false)?;
     if after == now.values {
         return Ok(false);
     }
@@ -140,14 +141,15 @@ pub fn adopt(db: &Store, dsp: &str, section: &Section, values: &Value) -> Result
 /// The options of a field sent, listed once, for checking it and showing its change.
 type Offered = Vec<(&'static str, Option<Vec<(String, String)>>)>;
 /// `now` with each of the `given` fields' values, each checked as its kind says, and the
-/// options of each: refused as `invalid_input` for a field the section hasn't, or a schedules
-/// field, which holds no value.
+/// options of each, `listing` them: refused as `invalid_input` for a field the section hasn't,
+/// or a schedules field, which holds no value.
 fn merged(
     db: &Store,
     dsp: &str,
     section: &Section,
     now: &Map<String, Value>,
     given: &Map<String, Value>,
+    listing: bool,
 ) -> Result<(Map<String, Value>, Offered)> {
     let mut after = now.clone();
     let mut offered = Vec::with_capacity(given.len());
@@ -157,7 +159,11 @@ fn merged(
             .iter()
             .find(|field| field.id == id && kinds::default(field).is_some())
             .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let options = kinds::options(db, dsp, field)?;
+        let options = if listing {
+            kinds::options(db, dsp, field)?
+        } else {
+            None
+        };
         let checked = kinds::checked(field, value, &now[field.id], options.as_deref())?;
         after.insert(field.id.to_owned(), checked);
         offered.push((field.id, options));

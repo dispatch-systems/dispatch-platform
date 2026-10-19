@@ -3,7 +3,6 @@ import {
   lazy,
   Suspense,
   useEffect,
-  useReducer,
   useRef,
   useState,
   type ComponentType,
@@ -66,22 +65,26 @@ function PageSidebar({
   fallback,
   ...props
 }: SidebarProps & { sidebar: Sidebar; fallback: ReactNode }) {
-  const [, redraw] = useReducer((drawn: number) => drawn + 1, 0);
-  const [failed, setFailed] = useState<Sidebar>();
-  const Drawn = loadedSidebar(sidebar);
+  const [loaded, setLoaded] = useState(() => ({
+    of: sidebar,
+    Drawn: loadedSidebar(sidebar),
+    failed: false,
+  }));
+  const ours = loaded.of === sidebar;
   useEffect(() => {
-    if (Drawn) return;
+    if (ours && loaded.Drawn) return;
     let live = true;
     loadSidebar(sidebar).then(
-      () => live && redraw(),
-      () => live && setFailed(sidebar),
+      (Drawn) => live && setLoaded({ of: sidebar, Drawn, failed: false }),
+      () => live && setLoaded({ of: sidebar, Drawn: undefined, failed: true }),
     );
     return () => {
       live = false;
     };
-  }, [sidebar, Drawn]);
-  if (Drawn) return <Drawn {...props} />;
-  return failed === sidebar ? fallback : null;
+  }, [sidebar, ours, loaded.Drawn]);
+  const { Drawn } = loaded;
+  if (ours && Drawn) return <Drawn {...props} />;
+  return ours && loaded.failed ? fallback : null;
 }
 
 export function Shell({

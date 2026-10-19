@@ -675,7 +675,6 @@ async fn every_access_kind_refuses_and_admits_the_right_callers() {
         ("/api/dsp/jobs/job_x/cancel", json!({})),
         ("/api/dsp/profile", json!({})),
         ("/api/dsp/schedules/preview", json!({})),
-        ("/api/dsp/paycom/settings", json!({})),
         ("/api/dsp/roles", json!({})),
         ("/api/dsp/members/invite", json!({})),
         ("/api/dsp/members/mem_x", json!({})),

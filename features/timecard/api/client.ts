@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
-import { useCachedData, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { cancelPrefetches, prefetchData } from '../../../core/shell/frontend/runtime/prefetch.js';
 import type {
@@ -14,7 +14,6 @@ import type {
   EmployeesResponse,
   MealPeriod,
   MealPeriodGaps,
-  PaycomPreferences,
   PaycomSettings,
 } from './index.js';
 import type { ScheduleInput } from '../../../core/collection/api/index.js';
@@ -26,6 +25,7 @@ import {
   mealComparisonUrl,
   mealPeriodGapsUrl,
   mealPeriodUrl,
+  paycomSettingsPath,
   schedules,
 } from './urls.js';
 
@@ -144,15 +144,5 @@ export const useMealPeriodGaps = (date: string, refreshKey?: string | null) =>
     refreshKey,
   );
 
-const paycomSettings = '/api/dsp/paycom/settings';
-/** Editors use a fresh DSP-scoped read; the timecard view shares its session cache. */
-export const usePaycomSettings = (dspId?: string) =>
-  useData<PaycomSettings>(
-    paycomSettings,
-    120000,
-    dspId,
-    dspId ?? paycomSettings,
-    dspId === undefined,
-  );
-export const savePaycomSettings = (revision: number, values: PaycomPreferences) =>
-  api<PaycomSettings>(paycomSettings, { revision, values });
+/** What the page shows by, of the DSP's settings, which Settings saves. */
+export const usePaycomSettings = () => useCachedData<PaycomSettings>(paycomSettingsPath, 120000);

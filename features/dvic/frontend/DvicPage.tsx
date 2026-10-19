@@ -17,7 +17,11 @@ import {
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import { dspHash } from '../../../core/shell/frontend/runtime/navigation.js';
+import {
+  dspHash,
+  navigate,
+  settingsHash,
+} from '../../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   inspectionDate,
@@ -39,7 +43,6 @@ import {
   Tabs,
 } from '../../../core/shell/frontend/ui/index.js';
 import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
-import { CollectionSettings } from './settings/CollectionSettings.js';
 import { DayDigest } from './tabs/day/DayDigest.js';
 import { InspectionDetail } from './InspectionDetail.js';
 import { WeekGrid } from './tabs/week/WeekGrid.js';
@@ -126,7 +129,6 @@ export function DvicPage({ view }: { view: DspView }) {
   const [vehicles, setVehicles] = useUpdateState<VehicleClass>('dvic-vehicles', '');
   const [page, setPage] = useUpdateState('dvic-week-page', 0);
   const [selected, setSelected] = useState<string>();
-  const [settings, setSettings] = useState(false);
   const [pending, setPending] = useState<Job>();
   // A retry keeps its request's id, so a lost reply can't queue it twice; another week is
   // another request.
@@ -174,6 +176,7 @@ export function DvicPage({ view }: { view: DspView }) {
   const shown = tab === 'day' ? (daySummary?.count ?? 0) : (summary?.totalInspections ?? 0);
   const newest = jobs[0];
   const canCollect = can(view, 'dvic.collect');
+  const settings = can(view, 'dvic.manage') ? settingsHash(view.dsp.id, 'dvic', view) : undefined;
   const active = Boolean(running);
   useEffect(() => setCollecting(active), [active]);
   const sync = useAction(
@@ -208,8 +211,8 @@ export function DvicPage({ view }: { view: DspView }) {
   return (
     <div className="dvic-page">
       <Header title="DVIC">
-        {can(view, 'dvic.manage') && (
-          <button onClick={() => setSettings(true)}>
+        {settings && (
+          <button onClick={() => navigate(settings)}>
             <Settings2 size={16} />
             Collection settings
           </button>
@@ -428,9 +431,6 @@ export function DvicPage({ view }: { view: DspView }) {
           onClose={() => setSelected(undefined)}
           onSelect={setSelected}
         />
-      )}
-      {settings && can(view, 'dvic.manage') && (
-        <CollectionSettings onClose={() => setSettings(false)} />
       )}
     </div>
   );

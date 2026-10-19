@@ -185,6 +185,11 @@ pub struct SettingsSave {
 #[cfg_attr(feature = "ts", ts(export_to = "core/settings/api/generated/"))]
 #[serde(untagged)]
 pub enum SettingsSaved {
-    Section { section: Box<SettingsSection> },
+    Section {
+        section: Box<SettingsSection>,
+        /// Whether the save changed the DSP itself, as its name or timezone, which the member's
+        /// view of it holds: the view is to be opened again.
+        reopen: bool,
+    },
     Warning { warning: String },
 }

@@ -1,18 +1,16 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Building2, Globe2, Pencil, Plus } from 'lucide-react';
+import { Globe2, Pencil, Plus } from 'lucide-react';
 import {
   DataState,
   DataTable,
   ErrorBox,
-  Header,
   useDataTable,
   type TableColumn,
 } from '../../../../core/shell/frontend/ui/index.js';
+import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { scheduleIssue } from '../../../../core/shell/frontend/runtime/schedule-issues.js';
 import type { CollectionSchedule, ScheduleInput } from '../../../../core/collection/api/index.js';
-import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
-import { LateDas } from './LateDas.js';
 import { nextCollection } from './nextCollection.js';
 import { ScheduleEditor } from './ScheduleEditor.js';
 import './timecard-schedules.css';
@@ -44,13 +42,18 @@ function CollectionLabels({ collection }: Pick<ScheduleInput, 'collection'>) {
     </div>
   );
 }
-export function PaycomSettingsPage({ dspId }: { dspId: string }) {
+/**
+ * Its sync schedules, its custom section of Settings: each with what it collects, Paycom's
+ * timecards, Flex's meal breaks or both, when it runs next, and a switch to pause it; one to
+ * edit or add in a sheet.
+ */
+export function TimecardSchedules({ dspId }: { dspId: string }) {
   const query = useSchedules(served, dspId);
+  const { notify } = useFeedback();
   const [editing, setEditing] = useState<CollectionSchedule | null | undefined>();
   const [busyId, setBusyId] = useState<string>();
   const [updated, setUpdated] = useState<CollectionSchedule>();
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   const schedules = useMemo(
     () =>
       (query.data?.schedules ?? []).map((schedule) =>
@@ -58,7 +61,6 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
       ),
     [query.data, updated],
   );
-  const active = schedules.filter((schedule) => schedule.enabled).length;
   async function toggle(schedule: CollectionSchedule) {
     setBusyId(schedule.id);
     setError('');
@@ -76,7 +78,7 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
         schedule.revision,
       );
       setUpdated(result);
-      setMessage(schedule.enabled ? 'Schedule paused' : 'Schedule enabled');
+      notify(schedule.enabled ? 'Schedule paused' : 'Schedule enabled');
     } catch (cause) {
       setUpdated(undefined);
       setError(messageOf(cause));
@@ -167,31 +169,29 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
   ];
   const table = useDataTable({ columns, rows: schedules, rowId: (schedule) => schedule.id });
   return (
-    <div className="timecard-schedules">
-      <a className="schedule-back" href={dspHash(dspId, 'paycom')}>
-        <ArrowLeft size={14} aria-hidden="true" />
-        Back
-      </a>
-      <Header title="Timecard Settings">
-        <button className="primary" disabled={!query.data} onClick={() => setEditing(null)}>
-          <Plus size={16} aria-hidden="true" />
-          New schedule
-        </button>
-      </Header>
+    <section className="timecard-schedules" aria-labelledby="timecard-schedules-heading">
+      <div className="schedule-section-heading">
+        <div>
+          <h2 id="timecard-schedules-heading">Sync schedules</h2>
+          <span className="schedule-count">{schedules.length}</span>
+        </div>
+        <div>
+          {query.data && (
+            <span className="schedule-timezone">
+              <Globe2 size={14} aria-hidden="true" />
+              DSP time zone · {query.data.timezone}
+            </span>
+          )}
+          <button className="primary" disabled={!query.data} onClick={() => setEditing(null)}>
+            <Plus size={16} aria-hidden="true" />
+            New schedule
+          </button>
+        </div>
+      </div>
       <ErrorBox message={error || query.error} />
       <DataState data={query.data} failed={Boolean(query.error)}>
         {(data) => (
           <>
-            <div className="schedule-section-heading">
-              <div>
-                <h2>Sync schedules</h2>
-                <span className="schedule-count">{schedules.length}</span>
-              </div>
-              <span className="schedule-timezone">
-                <Globe2 size={14} aria-hidden="true" />
-                DSP time zone · {data.timezone}
-              </span>
-            </div>
             {schedules.length ? (
               <div className="schedule-table-wrap">
                 <DataTable table={table} className="schedule-table" caption="Sync schedules" />
@@ -199,22 +199,8 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
             ) : (
               <div className="schedule-empty">
                 <h3>No schedules</h3>
-                <button onClick={() => setEditing(null)}>
-                  <Plus size={16} aria-hidden="true" />
-                  New schedule
-                </button>
               </div>
             )}
-            <LateDas dspId={dspId} onSaved={setMessage} onError={setError} />
-            <footer className="schedule-footer">
-              <span>
-                <Building2 size={14} aria-hidden="true" />
-                Applies to {data.dspName}
-              </span>
-              <span role="status">
-                {message || `${active} ${active === 1 ? 'schedule' : 'schedules'} active`}
-              </span>
-            </footer>
             {editing !== undefined && (
               <ScheduleEditor
                 key={`${editing?.id ?? 'new'}-${editing?.revision ?? 0}`}
@@ -223,7 +209,7 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
                 onClose={() => setEditing(undefined)}
                 onSaved={(text) => {
                   setEditing(undefined);
-                  setMessage(text);
+                  notify(text);
                   query.refresh();
                 }}
                 onReload={async () => {
@@ -237,6 +223,6 @@ export function PaycomSettingsPage({ dspId }: { dspId: string }) {
           </>
         )}
       </DataState>
-    </div>
+    </section>
   );
 }

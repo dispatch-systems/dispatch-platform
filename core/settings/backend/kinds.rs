@@ -123,13 +123,16 @@ pub(crate) fn described(
 
 /// `given` as `field` keeps it, given what it holds now and the options it offers: made the
 /// one way it's kept, and refused as `invalid_input` unless it fits, is one of the options
-/// listed now, and leaves a locked text as it was set.
+/// listed now, and leaves a locked text as it was set. Given no options, what a field lists as
+/// it's read is checked only as `fits` checks it, as for values a feature adopts, which its
+/// list may have dropped since they were kept.
 pub(crate) fn checked(
     field: &Field,
     given: &Value,
     now: &Value,
     options: Option<&[(String, String)]>,
 ) -> Result<Value> {
+    let listing = options;
     let options = options.unwrap_or_default();
     let offered = |value: &Value| {
         let value = value.as_str();
@@ -159,12 +162,15 @@ pub(crate) fn checked(
         }
         _ => given.clone(),
     };
-    let listed = match field.kind {
-        Kind::Pick { .. } => value.is_null() || offered(&value),
-        Kind::Many {
-            options: Options::Listed(_),
-            ..
-        } => value
+    let listed = match (field.kind, listing) {
+        (Kind::Pick { .. }, Some(_)) => value.is_null() || offered(&value),
+        (
+            Kind::Many {
+                options: Options::Listed(_),
+                ..
+            },
+            Some(_),
+        ) => value
             .as_array()
             .is_some_and(|values| values.iter().all(offered)),
         _ => true,

@@ -6,16 +6,26 @@ with their own permissions, schedules and storage.
 
 The current names are `weekly_scorecard`, `cortex.weekly_scorecard.collect`,
 `weekly_scorecard.view/collect/manage` and `/api/dsp/weekly-scorecard`. There is no
-dedicated page.
+page of its own: Settings draws its section.
 
 Storage is `weekly_scorecard/weekly_scorecard.sqlite`. Historical publications and source
 rows are retained when a week is collected again. Provider daily datasets inside a weekly
 capture are details of that week's publication; they do not become Daily Performance data.
 
 Weekly schedules refresh recent completed weeks, including already posted weeks whose
-dispute outcomes can change. `/policy` defaults to one recent week and a 20-hour refresh,
-configurable from 1–8 weeks and 1–168 hours. Schedule times and cadence are independent of
-daily schedules. Manual recollection can target older weeks.
+dispute outcomes can change. Schedule times and cadence are independent of daily schedules.
+Manual recollection can target older weeks.
+
+Its Settings page (`?tab=weekly-scorecard`) holds one section, `weekly_scorecard.collection`
+"Collection", behind `weekly_scorecard.manage` (`backend/settings.rs`): `lookback_weeks` (1–8,
+default 1) and `refresh_hours` (1–168, default 20), the weeks a scheduled run rechecks and how
+long one checked stays fresh, then its schedules, kept by core's schedule routes at
+`/api/dsp/weekly-scorecard/schedules`. Scheduled runs read the values with `settings::read`;
+core keeps them in the DSP's settings and records each change as `settings.changed`. A policy
+kept before in its database's `settings` (`collection_policy`) moves in once as the server
+starts, after the import below (`upgrade_storage`), unless the section was saved already; the
+old value stays, read only by that move. `weekly_scorecard.policy_updated`, from before, still
+reads in the log.
 
 Startup retires old Dispatch identifiers: saved switches (including disabled states), role
 permissions, collection schedules, job kinds/requests and audit action prefixes migrate to

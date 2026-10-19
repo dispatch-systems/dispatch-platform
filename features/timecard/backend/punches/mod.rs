@@ -1,10 +1,9 @@
-//! Workforce preferences, employees, timecards and collection publication.
+//! Employees, timecards and collection publication.
 pub(crate) mod assessment;
 pub(crate) mod daily;
 pub(crate) mod employees;
 pub(crate) mod keeper;
 pub(crate) mod people;
-pub(crate) mod preferences;
 pub(crate) mod publication;
 pub(crate) mod queue;
 mod range;
@@ -20,11 +19,10 @@ pub fn demo(
     store.publish_timecards(dsp, &dispatch_paycom::fixtures::fixture(timezone)?)?;
     Ok(())
 }
-/// Paycom's employees, timecards and preferences, as Timecard keeps them.
+/// Paycom's employees and timecards, as Timecard keeps them.
 pub const DOMAIN: dispatch_core::server::cache::DataDomain =
     dispatch_core::server::cache::DataDomain::new("paycom");
 
 use super::TimecardStore;
 pub(crate) use daily::cards;
-pub use preferences::defaults;
 pub(crate) use range::{DailySource, daily_sources};

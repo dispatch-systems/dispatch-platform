@@ -14,3 +14,7 @@ doctest = false
 # Core alone: it declares no collector or feature.
 [dependencies]
 dispatch-core = { path = "../../core" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }

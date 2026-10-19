@@ -136,6 +136,7 @@ pub(crate) fn save_as(
             let record = store::record(db, &c.dsp.id, section, member)?;
             SettingsSaved::Section {
                 section: Box::new(view(db, c, feature, section, page, &record)?),
+                reopen: db.find_dsp(&c.dsp.id)?.revision != c.dsp.revision,
             }
         }
         Saved::Confirm(warning) => SettingsSaved::Warning { warning },

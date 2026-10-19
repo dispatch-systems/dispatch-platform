@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import type { SettingsAnswer } from '../../../core/settings/api/index.js';
 import { useSettings } from '../../../core/settings/api/client.js';
@@ -44,6 +45,12 @@ function Page({
 }) {
   const open = useOpenPage(settings, view);
   const found = useFound();
+  // Another page opens at its top, but one opening on a section to point out, which scrolls there.
+  const shown = useRef(open.page);
+  useLayoutEffect(() => {
+    if (shown.current !== open.page && !found) window.scrollTo(0, 0);
+    shown.current = open.page;
+  }, [open.page, found]);
   return (
     <>
       <Header title={open.pages.find((page) => page.id === open.page)?.label ?? 'Settings'} />

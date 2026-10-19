@@ -8,7 +8,7 @@ import { drawnPages, openPage } from '../../frontend/tabs.js';
 // Settings draws the pages the server says the member has, each with a section on it to draw:
 // a custom section only with the component its owner registers, while that has something to
 // show them.
-test('Settings has a tab for each page with a section it draws, and opens on the one named or else the first', () => {
+test('Settings lists each page with a section it draws, and opens on the one named or else the first', () => {
   const drawn = { load: () => Promise.resolve(), render: () => null };
   installFeatures([
     {

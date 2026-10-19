@@ -3,13 +3,16 @@ import { ScheduleSettings, type Leave } from '../../../../core/collection/fronte
 import { useLeaveGuard } from '../leave.js';
 import type { FieldKind, FieldProps } from './kind.js';
 
-/** Core's schedule editor, in the page: the page asks it before moving to another of its pages. */
-function Schedules({ field }: FieldProps<'schedules'>) {
+/**
+ * Core's schedule editor, in the page, under its own heading unless it's all its section holds:
+ * the page asks it before moving to another of its pages.
+ */
+function Schedules({ field, alone }: FieldProps<'schedules'>) {
   const leave = useRef<Leave | null>(null);
   useLeaveGuard(leave);
   return (
     <div className="settings-field settings-wide settings-schedules">
-      <h3>{field.label}</h3>
+      {!alone && <h3>{field.label}</h3>}
       <ScheduleSettings
         inline
         endpoint={field.path}

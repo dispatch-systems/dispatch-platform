@@ -14,10 +14,7 @@ pub use api::{
         MealCounts, MealDriver, MealEmployee, MealPaycom, MealPeriod, MealPeriodGaps, MealSource,
         PeriodMealGap,
     },
-    settings::{
-        DepartmentOption, NameOrder, PaycomColumn, PaycomOptions, PaycomPage, PaycomPreferences,
-        PaycomSettings, PaycomSort, PreferenceRevision,
-    },
+    settings::{NameOrder, PaycomSettings},
     types::{
         DailyTimecard, DailyTimecardPage, DailyTimecards, Employee, EmployeeTimecard,
         EmployeeTimecardResponse, EmployeesResponse, InPunchKind, OutPunchKind, Punch, Timecard,
@@ -26,13 +23,9 @@ pub use api::{
 /// What its integration tests and its offline fixture builder use beside: how a meal break
 /// is assessed, and the comparison row a Cortex meal becomes.
 pub use backend::meals::{assessment::assess_meal, comparison_meal};
-/// What the app uses: its storage, the cache domain of the Paycom data it keeps, its cached
-/// meal-break reads, and the preferences a DSP starts with.
-pub use backend::{
-    TimecardStore,
-    meals::CACHED,
-    punches::{DOMAIN, defaults},
-};
+/// What the app uses: its storage, the cache domain of the Paycom data it keeps, and its
+/// cached meal-break reads.
+pub use backend::{TimecardStore, meals::CACHED, punches::DOMAIN};
 
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
@@ -76,6 +69,15 @@ pub const FEATURE: Feature = Feature {
             .legacy_role("manager"),
     ],
     routes: api::routes::routes,
+    // Its schedules, which employees it lists, the departments that drive and when a DA is
+    // late, on its page of Settings.
+    settings: &[
+        backend::settings::SCHEDULES,
+        backend::settings::ROSTER,
+        backend::settings::DRIVERS,
+        backend::settings::LATE_DAS,
+    ],
+    upgrade_storage: Some(backend::settings::upgrade),
     // Collection progress refreshes both the timecard pages and the collections page.
     live: &["timecard.view", "collections.run"],
     keeps: &[&punches::keeper::Timecards, &meals::keeper::MealBreaks],
@@ -207,14 +209,7 @@ pub const FEATURE: Feature = Feature {
 pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     dispatch_core::typescript!(
         cfg,
-        PaycomPreferences,
-        PaycomPage,
-        PaycomSort,
-        PaycomColumn,
         NameOrder,
-        PreferenceRevision,
-        DepartmentOption,
-        PaycomOptions,
         PaycomSettings,
         Employee,
         Punch,

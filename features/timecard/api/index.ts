@@ -28,8 +28,8 @@ export type { DeliveryGap } from './generated/DeliveryGap.js';
 export type { MealAssessment } from './generated/MealAssessment.js';
 export type { MealStatus } from './generated/MealStatus.js';
 export type { LateRule } from './generated/LateRule.js';
-export type { PaycomPreferences } from './generated/PaycomPreferences';
-export type { PaycomSettings } from './generated/PaycomSettings';
+export type { NameOrder } from './generated/NameOrder.js';
+export type { PaycomSettings } from './generated/PaycomSettings.js';
 
 export type { MealComparisonPage } from './generated/MealComparisonPage.js';
 export type { MealCounts } from './generated/MealCounts.js';

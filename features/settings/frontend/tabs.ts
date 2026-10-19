@@ -10,8 +10,8 @@ import {
   settingsSection,
 } from '../../../core/shell/frontend/runtime/slots.js';
 
-// A DSP's Settings is what the server says the member has: its pages, each a tab, and the
-// sections on them, which the page draws from their declarations. A custom section is drawn by
+// A DSP's Settings is what the server says the member has: its pages, which its sidebar lists,
+// and the sections on them, which the page draws from their declarations. A custom section is drawn by
 // the component its owner registers, and only while it has one with something to show.
 
 /** The sections the page draws, in their order on their pages, as the server lists them. */

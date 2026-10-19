@@ -25,12 +25,16 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   own, under its name: whether it works, its name in Slack, who connected it and when, and what
   can be done to it. The install link has one while it works, and an install Slack just sent
   the browser back from has one while it finishes. A DSP with none has no Slack card at all.
-- **Settings:** each workspace's Settings opens its settings, a page of their own (`slack`,
-  with the workspace and the section open in its address, outside the sidebar, Settings lit
-  while it's open): the workspace at the top, and its sections down the side, one shown at a
-  time. They're Slack's own, Channels and Integrations, and those other features add for each
-  workspace through the `connectionSections` slot under the connection `slack`, each drawn for
-  the workspace's ID. A section that names an `integration` is listed under Integrations, and
+- **Settings:** each workspace's Settings opens its settings on Slack's own page of Settings
+  (`?tab=slack`), its one section there, `slack.workspaces`, behind `slack.manage`, which its
+  own component draws (declared in `backend/settings.rs`, drawn by `frontend/workspace/`): the
+  DSP's workspaces chosen from one at a time when there are several, the one open at the top,
+  and its sections down the side, one shown at a time; with none, a link to Connections. The
+  address names the workspace and the section open (`&workspace=<team>&section=<id>`), beside
+  Settings' own page, and old links to its page of its own (`#dsp/<id>/slack?workspace=…`)
+  land there, keeping both. Its sections are Slack's own, Channels and Integrations, and those
+  other features add for each workspace through the `connectionSections` slot under the
+  connection `slack`, each drawn for the workspace's ID. A section that names an `integration` is listed under Integrations, and
   only while that's on in the workspace. A feature switched off for the DSP takes its sections
   with it.
 - **Integrations:** what other features do through Slack, each declared once in its own feature:

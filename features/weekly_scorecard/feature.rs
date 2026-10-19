@@ -4,8 +4,8 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    WeeklyScorecardDatasetCount, WeeklyScorecardPolicy, WeeklyScorecardPublication,
-    WeeklyScorecardWeek, WeeklyScorecardWeeks,
+    WeeklyScorecardDatasetCount, WeeklyScorecardPublication, WeeklyScorecardWeek,
+    WeeklyScorecardWeeks,
 };
 /// What the app uses: its storage and its database.
 pub use backend::{DATABASE, WeeklyScorecardStore};
@@ -46,7 +46,9 @@ pub const FEATURE: Feature = Feature {
             .implies(&["weekly_scorecard.view"]),
     ],
     routes: api::routes::routes,
-    upgrade_storage: Some(backend::retirement::upgrade),
+    // Which weeks its schedules recheck, and the schedules, on its own Settings page.
+    settings: &[backend::settings::COLLECTION],
+    upgrade_storage: Some(backend::upgrade),
     keeps: &[&backend::keeper::WeeklyScorecard],
     tables: &[(
         "weekly_scorecard",
@@ -135,6 +137,5 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         WeeklyScorecardPublication,
         WeeklyScorecardWeek,
         WeeklyScorecardWeeks,
-        WeeklyScorecardPolicy,
     )
 }

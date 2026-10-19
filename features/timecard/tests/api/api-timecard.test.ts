@@ -42,27 +42,27 @@ test('employee directory can load the full roster beyond the API page limit', as
     assert.equal((await owner.get(`/api/dsp/employees?limit=${limit}`)).status, 400);
 });
 
-test('Rust workforce settings enforce revisions, filter employees and timecards, and retain history', async (t) => {
+test("its settings, saved from Settings at their revision, filter its DSP's employees and timecards alone", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(north.id);
-  const before = (await owner.get('/api/dsp/paycom/settings')).value;
-  const values = {
-    ...before.values,
-    name_order: 'last_first',
-    department: 'Delivery',
-    driver_departments: ['Delivery'],
-  };
-  assert.equal(
-    (await owner.post('/api/dsp/paycom/settings', { revision: before.revision, values })).status,
-    200,
+  const section = async (id: string) =>
+    (await owner.read('/api/dsp/settings')).sections.find((each: { id: string }) => each.id === id);
+  const roster = await section('timecard.roster');
+  const save = (id: string, values: object, revision: number) =>
+    owner.post(`/api/dsp/settings/${id}`, { values, revision });
+  const values = { name_order: 'last_first', department: 'Delivery' };
+  assert.equal((await save(roster.id, values, roster.revision)).status, 200);
+  const stale = await save(roster.id, values, roster.revision);
+  assert.deepEqual(
+    [stale.status, stale.value.error],
+    [409, 'settings_changed_reload_before_saving'],
   );
-  assert.equal(
-    (await owner.post('/api/dsp/paycom/settings', { revision: before.revision, values })).status,
-    409,
-  );
+  const drivers = await section('timecard.drivers');
+  const only = { all_departments: false, departments: ['Delivery'] };
+  assert.equal((await save(drivers.id, only, drivers.revision)).status, 200);
   const employees = (await owner.get('/api/dsp/employees?limit=5')).value;
   assert.equal(employees.total, 11);
   assert.equal(employees.employees.length, 5);
@@ -112,6 +112,13 @@ test('Rust workforce settings enforce revisions, filter employees and timecards,
   const member = await f.client('member@dispatch.test');
   await member.select(north.id);
   assert.equal((await member.get('/api/dsp/employees/E002')).status, 200);
+  // Everyone who sees the page reads what it shows by; only those who manage it change it.
+  assert.deepEqual((await member.read('/api/dsp/paycom/settings')).driverDepartments, ['Delivery']);
+  const refused = await member.post(`/api/dsp/settings/${roster.id}`, {
+    values: { department: null },
+    revision: roster.revision + 1,
+  });
+  assert.deepEqual([refused.status, refused.value.error], [403, 'permission_denied']);
   const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
   await owner.select(summit.id);
   assert.equal(
@@ -119,9 +126,8 @@ test('Rust workforce settings enforce revisions, filter employees and timecards,
       .status,
     404,
   );
-  await owner.select(north.id);
-  assert.deepEqual((await member.get('/api/dsp/paycom/settings')).value.history, []);
-  assert.equal((await owner.get('/api/dsp/paycom/settings')).value.history.length, 1);
+  // Northline's settings are its own: Summit's read as none were saved.
+  assert.deepEqual((await owner.read('/api/dsp/paycom/settings')).nameOrder, 'first_last');
 });
 
 test('Unicode employee sorting agrees with the dashboard locale and preserves display-name behavior', async (t) => {

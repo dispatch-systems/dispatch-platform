@@ -223,10 +223,15 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
         .unwrap();
     assert_eq!((reyes.0, reyes.2), (tony.as_str(), Strength::Strong));
     // The Timecard settings' driver departments set the rest apart as office staff.
-    let mut values = db.timecard_preference_values(&id).unwrap()["values"].clone();
-    values["driver_departments"] = json!(["Delivery"]);
-    db.save_timecard_preferences(&id, &context.auth.user.id, 0, &values)
+    let drivers = (dispatch_timecard::FEATURE.settings.iter())
+        .find(|section| section.id == "timecard.drivers")
         .unwrap();
+    let drive = |departments: &[&str], revision| {
+        let values = json!({"all_departments": false, "departments": departments});
+        let actor = &context.auth.user.id;
+        dispatch_core::settings::save(&db, &id, actor, drivers, &values, revision, false).unwrap();
+    };
+    drive(&["Delivery"], 0);
     let staffed = db.driver_match(&id).unwrap();
     assert_eq!(person(&staffed, &avery).role, PersonRole::Office);
     assert_eq!(with_role(&staffed, PersonRole::Office), 1);
@@ -235,12 +240,10 @@ fn every_id_gets_one_code_and_only_certain_names_join_on_their_own() {
         staffed.people.len() - 1
     );
     // Whoever the meal breaks show driving drives, whatever department Paycom has them in.
-    values["driver_departments"] = json!(["Warehouse"]);
-    db.save_timecard_preferences(&id, &context.auth.user.id, 1, &values)
-        .unwrap();
-    let warehouse = db.driver_match(&id).unwrap();
-    assert_eq!(person(&warehouse, &luis).role, PersonRole::Driver);
-    assert_eq!(person(&warehouse, &avery).role, PersonRole::Office);
+    drive(&[], 1);
+    let undriven = db.driver_match(&id).unwrap();
+    assert_eq!(person(&undriven, &luis).role, PersonRole::Driver);
+    assert_eq!(person(&undriven, &avery).role, PersonRole::Office);
     // Nothing new the second time, and nobody's code changes.
     assert_eq!(pass(&db, &id).unwrap(), 0);
     let again = db.driver_match(&id).unwrap();

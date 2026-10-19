@@ -22,7 +22,7 @@ import {
 } from '../../../../../core/shell/frontend/ui/index.js';
 import { time } from '../../../../../core/shell/frontend/lib/format.js';
 import { clockLabel, displayMeal, personName } from '../../meal-breaks.js';
-import type { MealEmployee, PaycomPreferences } from '../../../api/index.js';
+import type { MealEmployee, PaycomSettings } from '../../../api/index.js';
 import { PaycomDateControls } from '../../DateControls.js';
 import { mealColumns, mealLines, type MealLine } from './mealColumns.js';
 import { useAdjacentDays } from '../../useAdjacentDays.js';
@@ -39,7 +39,7 @@ export function MealBreaksPage({
   refreshKey,
   timezone,
   driverMatch,
-  preferences,
+  settings,
   onOpenEmployee,
 }: {
   date: string;
@@ -49,7 +49,7 @@ export function MealBreaksPage({
   timezone: string;
   /** Driver Match's page, while the person may open it. */
   driverMatch?: string;
-  preferences: PaycomPreferences;
+  settings: PaycomSettings;
   onOpenEmployee?: (code: string, date: string) => void;
 }) {
   const [query, setQuery] = useUpdateState('meal-query', ''),
@@ -90,9 +90,8 @@ export function MealBreaksPage({
     if (current && page && page * 100 >= current.total)
       setPage(Math.max(0, Math.ceil(current.total / 100) - 1));
   }, [current, page, setPage]);
-  const nameOrder = preferences.name_order;
-  const lateTime = preferences.late_da_time,
-    lateDepartments = preferences.late_da_departments;
+  const nameOrder = settings.nameOrder;
+  const { time: lateTime, departments: lateDepartments } = settings.late;
   const rows = useMemo<MealLine[]>(
     () =>
       (data?.rows ?? []).map((row: MealEmployee) => {

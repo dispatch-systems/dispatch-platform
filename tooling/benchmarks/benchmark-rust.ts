@@ -188,10 +188,11 @@ async function run(app: Awaited<ReturnType<typeof prepare>>, databaseWork: Datab
     // A real settings write invalidates derived reads without changing this dataset
     // or expiring its DSP admission. Each cold sample starts from a fresh revision.
     const invalidate = async () => {
-      const settings = await json('/api/dsp/paycom/settings', undefined, clients[0]);
+      const { sections } = await json('/api/dsp/settings', undefined, clients[0]);
+      const roster = sections.find((section: { id: string }) => section.id === 'timecard.roster');
       await json(
-        '/api/dsp/paycom/settings',
-        { revision: settings.revision, values: settings.values },
+        `/api/dsp/settings/${roster.id}`,
+        { values: {}, revision: roster.revision },
         clients[0],
       );
     };

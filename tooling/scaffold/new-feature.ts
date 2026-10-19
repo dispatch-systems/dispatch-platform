@@ -61,7 +61,9 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --tabs <ids>                      a page with tabs of its own, as overview,history, among
                                     which it draws those other features add to it
   --tab-of <feature>                a tab of another feature's page
-  --settings                        a tab on a DSP's Settings page, for those who manage it
+  --settings                        a section of a DSP's Settings, on a page of its own,
+                                    that its backend declares and reads: for those who
+                                    manage it
   --connection                      a card on a DSP's Connections tab, for one of the DSP's
                                     own accounts
   --contract <name>                 what it exposes to other features and agent tools, named
@@ -70,8 +72,8 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --shown                           with --contract, one a page shows: its name and the
                                     permission that shows what it keeps, which offered(<name>)
                                     reads
-  --no-backend                      no backend/: a frontend-only feature, with --page,
-                                    --tab-of or --settings
+  --no-backend                      no backend/: a frontend-only feature, with --page or
+                                    --tab-of
   --label <label>                   its name as people read it (default: from <name>)
   --icon <name>                     its icon on its page, its switch and its people: a
                                     lucide-react icon, as Truck (default: LayoutGrid)
@@ -178,11 +180,9 @@ export function featureValues(root: string, argv: string[], adding = false) {
   if (page && host)
     throw new UsageError('--page and --tab-of each give it its own screen: choose one');
   if (args.flags.has('no-backend')) {
-    if (!page && !host && !settings)
-      throw new UsageError(
-        '--no-backend leaves only a frontend: add --page, --tab-of or --settings',
-      );
-    const logic = ['api', 'tables', 'keeps', 'people', 'contract'].filter(
+    if (!page && !host)
+      throw new UsageError('--no-backend leaves only a frontend: add --page or --tab-of');
+    const logic = ['api', 'settings', 'tables', 'keeps', 'people', 'contract'].filter(
       (piece) => args.flags.has(piece) || args.options.has(piece),
     );
     if (logic.length)
@@ -245,10 +245,12 @@ export function featureValues(root: string, argv: string[], adding = false) {
       throw new UsageError(`--tab-of names a feature, and ${host} is none`);
     const found = pageOf(root, host);
     if (!found) throw new UsageError(`${host} has no page to hold a tab`);
-    // Every page draws the tabs other features add to it, but Settings' tabs are a slot of
-    // their own.
+    // Every page draws the tabs other features add to it but Settings, which draws what
+    // features declare.
     if (found.hostsSettings)
-      throw new UsageError(`${host}'s page draws Settings' tabs: use --settings for one`);
+      throw new UsageError(
+        `${host}'s page is Settings, drawn from what features declare: use --settings`,
+      );
     hostPage = found;
   }
 
@@ -287,7 +289,7 @@ export function featureValues(root: string, argv: string[], adding = false) {
 
   const switched = !mandatory;
   // A switch needs a permission to gate its screens and routes; so does an endpoint, a keeper
-  // or a Settings tab, which those who manage it see.
+  // or a section of Settings, which those who manage it change.
   const permission = switched || api || keeps || settings;
   if (shown && !permission && !adding)
     throw new UsageError(
@@ -315,15 +317,15 @@ export function featureValues(root: string, argv: string[], adding = false) {
       (collector) => `${crateOf(collector)} = { path = "../../collectors/${collector}" }`,
     ),
     ...(database ? ['rusqlite = { workspace = true }'] : []),
-    ...(api || database ? ['serde = { workspace = true }'] : []),
+    ...(api || database || settings ? ['serde = { workspace = true }'] : []),
     ...(api ? ['ts-rs = { workspace = true, optional = true }'] : []),
     ...(contract ? [`${contractCrate} = { path = "contract" }`] : []),
   ];
   const devDependencies = [
-    ...(database || keeps || contract
+    ...(database || keeps || contract || settings
       ? ['dispatch-core = { path = "../../core", features = ["testing"] }']
       : []),
-    ...(keeps ? ['serde_json = { workspace = true }'] : []),
+    ...(keeps || settings ? ['serde_json = { workspace = true }'] : []),
   ];
   const databaseFile = !database
     ? ''
@@ -361,16 +363,17 @@ export function featureValues(root: string, argv: string[], adding = false) {
   const parameters = (read: boolean, list: [string, string][]) =>
     list.map(([parameter, type]) => `${read ? parameter : `_${parameter}`}: ${type}`).join(', ');
 
-  const screens = page || Boolean(host) || settings || connection;
+  // Settings draws its sections itself, from what its backend declares: no screen of its own.
+  const screens = page || Boolean(host) || connection;
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
   const frontend = screens || switched;
-  // backend/ holds its storage and keeper. A feature with neither, no API and no frontend, as
-  // --mandatory alone, keeps an empty one and its manifest's test: the anatomy rule wants a
-  // backend, an API or a frontend.
-  const manifestOnly = !api && !frontend && !database && !keeps && !contract;
+  // backend/ holds its storage, keeper and settings. A feature with none of them, no API and
+  // no frontend, as --mandatory alone, keeps an empty one and its manifest's test: the anatomy
+  // rule wants a backend, an API or a frontend.
+  const manifestOnly = !api && !frontend && !database && !keeps && !contract && !settings;
   const values: Values = {
     ...names,
-    backend: Boolean(database) || keeps || manifestOnly || Boolean(contract),
+    backend: Boolean(database) || keeps || settings || manifestOnly || Boolean(contract),
     manifestTest: manifestOnly,
     switch: switched,
     permission,
@@ -441,7 +444,7 @@ export function featureValues(root: string, argv: string[], adding = false) {
     frontend,
     screens,
     platformSlots: switched,
-    canImport: permission && (page || settings),
+    canImport: permission && page,
     labelPattern: names.label.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
     page,
     tab: Boolean(host),
@@ -483,6 +486,8 @@ function pieces(values: Values): [boolean, string, string][] {
     [values.keeps as boolean, 'backend/keeper.rs', 'backend/keeper.rs'],
     [values.keeps as boolean, 'tests/backend/keeper.rs', 'tests/backend/keeper.rs'],
     [values.people as boolean, 'backend/people.rs', 'backend/people.rs'],
+    [values.settings as boolean, 'backend/settings.rs', 'backend/settings.rs'],
+    [values.settings as boolean, 'tests/backend/settings.rs', 'tests/backend/settings.rs'],
     [Boolean(values.contract), 'contract/Cargo.toml', 'contract/Cargo.toml'],
     [Boolean(values.contract), 'contract/contract.rs', 'contract/contract.rs'],
     [Boolean(values.contract), 'backend/exposed.rs', 'backend/exposed.rs'],
@@ -492,11 +497,6 @@ function pieces(values: Values): [boolean, string, string][] {
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],
     // frontend/tabs/ holds the tabs of its own page, which its manifest declares.
     [values.tab as boolean, 'frontend/Tab.tsx', `frontend/${pascal}Tab.tsx`],
-    [
-      values.settings as boolean,
-      'frontend/Settings.tsx',
-      `frontend/settings/${pascal}Settings.tsx`,
-    ],
     [values.connection as boolean, 'frontend/Card.tsx', `frontend/connection/${pascal}Card.tsx`],
     [values.platformSlots as boolean, 'frontend/platform-slots.ts', 'frontend/platform-slots.ts'],
     [values.frontend as boolean, 'tests/browser/browser.spec.ts', `tests/browser/${slug}.spec.ts`],
@@ -529,6 +529,12 @@ export async function renderFeature(root: string, argv: string[], adding = false
     );
   return { plan, args, names, values };
 }
+
+/** What to do once its section is declared: Settings draws it, and nothing reads it yet. */
+export const settingsNote = (name: string, slug: string) =>
+  `Settings draws its section on a page of its own (\`?tab=${slug}\`) for each DSP that has ` +
+  `${name}: read \`backend::settings::general\` where ${name} acts on it, and remove the ` +
+  '`expect` its TODO names.';
 
 /** Where a page reads what's exposed, whose `ExposedName` names each one a page shows. */
 const exposedNames = 'core/shell/frontend/runtime/exposes.ts';
@@ -574,6 +580,7 @@ export async function planFeature(root: string, argv: string[]) {
       `Its migration to the ${values.database} database is its own number 1, recorded under its ` +
         "name, apart from every other owner's.",
     );
+  if (values.settings) plan.notes.push(settingsNote(name, values.slug as string));
   if (values.people)
     plan.notes.push(
       `Its people are Driver Match's \`${name}\` kind of data; the app's people test reads them ` +

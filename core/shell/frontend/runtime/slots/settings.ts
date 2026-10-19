@@ -22,7 +22,7 @@ export type CustomSection = {
   render: (context: CustomSectionContext) => ReactNode;
   /**
    * Whether it has anything to show the person, beyond the permission the server checked;
-   * omitted, it always has. A page with nothing to show is left out of the tab strip.
+   * omitted, it always has. A page with nothing to show is left out of Settings.
    */
   visible?: (view: DspView) => boolean;
   /** The reads to warm, for the admitted view, while its page is about to open. */

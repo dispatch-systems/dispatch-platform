@@ -14,6 +14,8 @@ export type FieldProps<K extends SettingsField['kind']> = {
   /** Its value as saved. */
   before: SettingsValue;
   change: (value: SettingsValue) => void;
+  /** Its section's only field, which the section's heading already names. */
+  alone?: boolean;
 };
 /** A kind of field: its control, and what it holds once saved and whether that may be. */
 export type FieldKind<K extends SettingsField['kind']> = {

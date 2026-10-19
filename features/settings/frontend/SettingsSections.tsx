@@ -34,11 +34,13 @@ export function SettingsSections({
   found?: Found;
 }) {
   const reveal = (id: string) => (found?.section === id ? found.reveal : undefined);
+  const sections = sectionsOn(settings, view, page);
+  const label = settings.pages.find((each) => each.id === page)?.label;
   return (
     <LeaveGuards value={guards}>
       <div className="settings-page" aria-busy={busy || undefined} inert={busy}>
         <Suspense fallback={<Loading />}>
-          {sectionsOn(settings, view, page).map((section) =>
+          {sections.map((section) =>
             section.custom ? (
               <div key={section.id} {...sectionElement(section.id, reveal(section.id))}>
                 {settingsSection(section.id)?.render({ session, view, refresh })}
@@ -49,6 +51,7 @@ export function SettingsSections({
                 section={section}
                 refresh={refresh}
                 reveal={reveal(section.id)}
+                named={sections.length === 1 && section.label === label}
               />
             ),
           )}

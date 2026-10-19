@@ -43,6 +43,8 @@ pub const FEATURE: Feature = Feature {
     // Its workspaces are among the DSP's own accounts, on Settings' DSP Connections.
     dsp_connection: true,
     routes: api::routes::routes,
+    // Its workspaces' settings, on its own page of Settings.
+    settings: &[backend::settings::WORKSPACES],
     tables: &[
         ("platform", &["slack_teams"]),
         (

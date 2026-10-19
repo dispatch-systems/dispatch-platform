@@ -1,15 +1,18 @@
 import { createElement, lazy } from 'react';
 import { CalendarDays } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
-import { begins, collectionData, path } from '../../../core/shell/frontend/runtime/data-policy.js';
+import { begins, path } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
-import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
+import {
+  settingsRead,
+  type Access,
+  type FrontendFeature,
+} from '../../../core/shell/frontend/runtime/slots.js';
 import {
   employeesPath,
   mealBreaksPath,
   mealPeriodGapsPath,
   mealPeriodPath,
-  paycomSettingsPath,
   paycomStatusPath,
   schedules,
 } from '../api/urls.js';
@@ -18,7 +21,6 @@ import { isTimecardDataReady, prefetchTimecard } from './prefetch.js';
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {
     paycom: true;
-    'paycom-settings': true;
   }
 }
 
@@ -31,8 +33,8 @@ const load = (access?: Access) =>
   });
 const loadSettings = () => import('./settings/index.js');
 const PaycomPage = lazy(() => load().then((module) => ({ default: module.PaycomPage })));
-const PaycomSettingsPage = lazy(() =>
-  loadSettings().then((module) => ({ default: module.PaycomSettingsPage })),
+const TimecardSchedules = lazy(() =>
+  loadSettings().then((module) => ({ default: module.TimecardSchedules })),
 );
 
 export const feature: FrontendFeature = {
@@ -53,22 +55,18 @@ export const feature: FrontendFeature = {
       ready: (view) => Boolean(pageReady?.(view) && isTimecardDataReady(view)),
       prefetch: ({ view, immediate }) => prefetchTimecard(view, immediate),
     },
+  ],
+  // Its sync schedules, its custom section of its page of Settings, where its own settings
+  // page once was.
+  settingsSections: [
     {
-      id: 'paycom-settings',
-      scope: 'dsp',
-      label: 'Timecard',
-      parent: 'paycom',
-      nav: false,
-      remembered: false,
-      feature: 'timecard',
-      permission: ({ view }) => can(view, 'timecard.manage'),
-      preload: loadSettings,
-      render: ({ view }) => createElement(PaycomSettingsPage, { dspId: view.dsp.id }),
-      prefetch: ({ view, warm }) => {
-        if (can(view, 'timecard.manage')) warm(['/api/dsp/schedules']);
-      },
+      id: 'timecard.schedules',
+      load: loadSettings,
+      render: ({ view }) => view && createElement(TimecardSchedules, { dspId: view.dsp.id }),
+      prefetch: () => [schedules],
     },
   ],
+  movedToSettings: { 'paycom-settings': 'timecard' },
   platformSlots: () => import('./platform-slots.js'),
   replies: () => import('../api/runtime.js'),
   scheduleIssues: {
@@ -80,8 +78,8 @@ export const feature: FrontendFeature = {
       '/api/dsp/timecards',
       employeesPath,
       mealBreaksPath,
-      paycomSettingsPath,
       paycomStatusPath,
+      settingsRead,
     ],
     collection: (url, changes) => {
       const route = path(url);
@@ -91,7 +89,8 @@ export const feature: FrontendFeature = {
         if (change.provider === 'cortex' && !route.startsWith(mealBreaksPath)) return false;
         // A day's publication or match can change any summary whose pay period contains it.
         if (route === mealPeriodPath || route === mealPeriodGapsPath) return true;
-        if (route === paycomSettingsPath) return Boolean(change.roster);
+        // Its settings list the roster's departments and stations.
+        if (route === settingsRead) return Boolean(change.roster);
         if (route === employeesPath) return Boolean(change.roster);
         if (route.startsWith(`${employeesPath}/`))
           return (
@@ -106,7 +105,6 @@ export const feature: FrontendFeature = {
     connections: [schedules],
     write: (write, url) => {
       if (write.startsWith(schedules)) return begins(url, schedules);
-      if (write === paycomSettingsPath) return collectionData(url) || path(url) === write;
       // A Driver Match decision moves drivers between rows of the meal-break comparison, and
       // changes whose photo an employee shows.
       if (write.startsWith('/api/dsp/driver-match'))

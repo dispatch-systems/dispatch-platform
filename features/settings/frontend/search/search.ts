@@ -1,7 +1,4 @@
-import type {
-  SettingsPage,
-  SettingsSection,
-} from '../../../../core/settings/api/index.js';
+import type { SettingsPage, SettingsSection } from '../../../../core/settings/api/index.js';
 
 // Settings' search: what a member types, matched against what each page of theirs holds: its
 // name, its sections' names, their fields' and options' labels, the words they are also known
@@ -89,7 +86,10 @@ function options(field: SettingsSection['fields'][number]) {
 
 /** The first of the best matches. */
 const best = (found: readonly Match[]) =>
-  found.reduce<Match | undefined>((one, other) => (one && one.rank <= other.rank ? one : other), undefined);
+  found.reduce<Match | undefined>(
+    (one, other) => (one && one.rank <= other.rank ? one : other),
+    undefined,
+  );
 
 /** A page's sections, but one named as the page is, as the line under a page whose name matched. */
 function listed(page: SettingsPage, on: readonly SettingsSection[]) {

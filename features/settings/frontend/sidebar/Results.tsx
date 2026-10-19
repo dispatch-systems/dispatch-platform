@@ -32,7 +32,7 @@ export function Results({
   warm: (page: string) => void;
 }) {
   return (
-    <ul id={id} role="listbox" aria-label="Settings" className="settings-results">
+    <ul id={id} role="listbox" aria-label="Found" className="settings-results">
       {found.map((each, at) => {
         const Icon = pageIcon(each.page);
         return (

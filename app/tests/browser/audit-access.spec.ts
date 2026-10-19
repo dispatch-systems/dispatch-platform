@@ -16,11 +16,11 @@ test('audit access is only in the Platform Owner Dashboard, including old DSP li
   await openDsp(page, 'Northline Logistics');
   const dspId = new URL(page.url()).hash.split('/')[1]!;
   await page.goto(dspHash(dspId, 'settings', { tab: 'audit' }));
-  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expect(page.getByRole('tab', { name: 'Audit log', exact: true })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Settings', exact: true })
+      .getByRole('link', { name: 'Profile', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Search activity')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -52,7 +52,7 @@ test('audit access is only in the Platform Owner Dashboard, including old DSP li
 test('DSP members cannot open the platform audit page', async ({ page }) => {
   await login(page, 'member@dispatch.test');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Audit log', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
   // At their DSP's address, every page is the DSP's: its activity, which their role can't open.
   await page.goto(new URL(platformHash('audit'), page.url()).href);

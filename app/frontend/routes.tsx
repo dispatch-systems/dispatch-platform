@@ -36,7 +36,7 @@ function placed(routes: readonly Route[]) {
 }
 const allowed = (route: Route, access: Access) => !route.permission || route.permission(access);
 /** Whether the DSP open has the page's feature, as far as its view says yet. */
-const present = (route: Route, access: Access) =>
+const available = (route: Route, access: Access) =>
   route.scope !== 'dsp' || !route.feature || !access.view || hasFeature(access.view, route.feature);
 
 export const findRoute = (scope: Route['scope'], page: string) =>
@@ -69,7 +69,7 @@ export function prepareRoute(
  */
 export function sidebarOf(scope: Route['scope'], page: string, access: Access) {
   const owner = sidebarOwner(scope, page);
-  return owner && allowed(owner, access) && present(owner, access) ? owner.sidebar : undefined;
+  return owner && allowed(owner, access) && available(owner, access) ? owner.sidebar : undefined;
 }
 export const navigation = (scope: Route['scope'], access: Access) =>
   table

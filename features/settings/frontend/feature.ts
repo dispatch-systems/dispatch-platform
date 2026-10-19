@@ -10,7 +10,7 @@ declare module '../../../core/shell/frontend/runtime/slots.js' {
 }
 
 // The page, what the member has in Settings and the code of the page it opens on load
-// together, so the page opens whole.
+// together, so the page opens whole. Its sidebar is in the same code.
 const load = (access?: Access) =>
   Promise.all([import('./index.js'), preloadSettings(access?.view)]).then(([module]) => module);
 const SettingsPage = lazy(() => load().then((module) => ({ default: module.SettingsPage })));
@@ -27,6 +27,8 @@ export const feature: FrontendFeature = {
       icon: Settings,
       nav: true,
       hostsSettings: true,
+      // Its pages and their search, in place of the app's while it is open.
+      sidebar: { load: () => import('./index.js').then((module) => module.SettingsSidebar) },
       preload: load,
       render: ({ session, view }) => createElement(SettingsPage, { session, view }),
       prefetch: ({ view, immediate }) => prefetchSettings(view, immediate),

@@ -333,9 +333,14 @@ fn values_a_feature_kept_itself_are_adopted_once_and_never_over_a_save() {
         !adopt(json!({"days": null, "mode": "final"})).unwrap(),
         "its defaults"
     );
-    assert!(adopt(json!({"days": 120})).unwrap());
+    // A department its list has dropped since is kept as it was chosen; a save would refuse it.
+    assert!(adopt(json!({"days": 120, "department": "gone"})).unwrap());
     assert!(!adopt(json!({"days": 365})).unwrap(), "adopted already");
-    assert_eq!(read::<Policy>(&db, &dsp, &POLICY).unwrap().days, Some(120));
+    let adopted = read::<Policy>(&db, &dsp, &POLICY).unwrap();
+    assert_eq!(
+        (adopted.days, adopted.department.as_deref()),
+        (Some(120), Some("gone"))
+    );
     // It's at revision 1, which a save then reads at, and the log has nothing of it.
     saved(&db, &dsp, &owner, json!({"days": 90}), 1).unwrap();
     assert!(!adopt(json!({"days": 365})).unwrap());

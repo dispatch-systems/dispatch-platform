@@ -28,6 +28,7 @@ import {
   settingsRead,
   auditWording,
   loadPlatformSlots,
+  movedTo,
   switchIcon,
   type ConnectionCard,
   type ConnectionIntegration,
@@ -240,6 +241,11 @@ test('a link to Settings opens the page that draws the settings, on the page it 
   // Which pages a person has is the server's to say: until Settings is read, a link names it.
   const view = { dsp: { id: 'dsp_settings' } } as DspView;
   assert.equal(settingsHash('dsp_settings', 'data', view), '#dsp/dsp_settings/options?tab=data');
+  // What the page opens on goes beside it.
+  assert.equal(
+    settingsHash('dsp_settings', 'data', view, { workspace: 'T1' }),
+    '#dsp/dsp_settings/options?tab=data&workspace=T1',
+  );
   dataCache.put(settingsRead, {
     pages: [{ id: 'data', label: 'Data', group: 'dsp', order: 50 }],
     sections: [],
@@ -252,6 +258,24 @@ test('a link to Settings opens the page that draws the settings, on the page it 
   installFeatures([{ name: 'beta', routes: [page('board')] }]);
   assert.equal(settingsHash('dsp_settings'), undefined);
   assert.equal(settingsHash('dsp_settings', 'data'), undefined);
+});
+
+test('a link to where a page once was opens it where it is now, and a page of Settings with the rest of the link', () => {
+  installFeatures([
+    { name: 'alpha', routes: [{ ...page('options'), hostsSettings: true }] },
+    { name: 'beta', routes: [{ ...page('match'), formerly: ['options?tab=match'] }] },
+    { name: 'gamma', movedToSettings: { gamma: 'gamma' } },
+  ]);
+  const moved = (page: string, query = '') => movedTo(page, new URLSearchParams(query));
+  assert.deepEqual(moved('options', 'tab=match'), { page: 'match' });
+  assert.equal(moved('options', 'tab=data'), undefined);
+  assert.deepEqual(moved('gamma', 'workspace=T1&section=channels'), {
+    page: 'options',
+    query: { tab: 'gamma', workspace: 'T1', section: 'channels' },
+  });
+  // Without a page that draws Settings, a page of it is nowhere.
+  installFeatures([{ name: 'gamma', movedToSettings: { gamma: 'gamma' } }]);
+  assert.equal(moved('gamma'), undefined);
 });
 
 test("a page's tabs from other features come in their order, ties in the order they are listed", () => {

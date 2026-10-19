@@ -14,7 +14,10 @@ test('DSP settings keep recovery codes up until they are saved', async ({ page }
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('tab', { name: 'Security', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Security', exact: true })
+    .click();
   const recoveryHeading = page.getByRole('heading', { name: 'Save your recovery codes' });
   const keepsCodesUntilSaved = async (enroll: () => Promise<void>) => {
     sessionLoads = 0;

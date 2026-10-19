@@ -4,13 +4,10 @@ import type { DvicSummary, DvicInspectionPage, DvicInspectionDetail } from './in
 import { useCachedData } from '../../../core/shell/frontend/runtime/api.js';
 import { performancePolicy } from '../../../core/shell/frontend/lib/performance-policy.js';
 
-// DVIC's endpoints, as its page and its settings call them. Only its own screens raise this,
-// so its words load with them; a station's absence a schedule meets too, so the manifest
-// words that.
+// DVIC's endpoints, as its page calls them. Only its own screens raise this, so its words load
+// with them; a station's absence a schedule meets too, so the manifest words that.
 const api = wordedApi({ dvic_week_not_available: 'That report week is not available yet.' });
 
-/** Where its schedules are served, as core's schedule calls take it. */
-export const schedules = '/api/dsp/dvic/schedules';
 /** Starts collecting the latest weeks and the week of `viewing`, once for `requestId`. */
 export const collectDvic = (requestId: string, viewing: string) =>
   api<Job>('/api/dsp/dvic/collect', { requestId, viewing });

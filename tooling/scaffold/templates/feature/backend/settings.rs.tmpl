@@ -1,0 +1,41 @@
+//! {{label}}'s settings, on its own page of a DSP's Settings, which draws them from this
+//! declaration alone.
+// TODO(scaffold): read `general` where {{label}} acts on what the DSP chose, then remove this
+// `expect`, which keeps the compiler quiet until something does.
+#![cfg_attr(not(test), expect(dead_code))]
+use dispatch_core::{
+    Result,
+    db::Store,
+    manifest::{Section, section, toggle},
+};
+use serde::Deserialize;
+
+/// What a DSP chooses for {{label}}, for those holding `{{name}}.manage`. Its id and its
+/// fields' are permanent once shipped: each DSP's values are kept under them.
+pub const GENERAL: Section = section(
+    "{{name}}.general",
+    "General",
+    "{{name}}.manage",
+    &[
+        // TODO(scaffold): its fields, each made by a builder of `dispatch_core::manifest`:
+        // toggle, choice, pick, many, number, text, time, timezone or schedules.
+        toggle("example", "Example", false),
+    ],
+);
+
+/// `GENERAL`'s values, each field by its id: its default until the DSP saves one.
+#[derive(Deserialize)]
+pub struct General {
+    /// Whether the DSP turned `example` on.
+    pub example: bool,
+}
+
+/// The DSP's `GENERAL`, as {{label}} reads it: one keyed lookup, of the DSP the caller was
+/// authorized for.
+pub(crate) fn general(db: &Store, dsp: &str) -> Result<General> {
+    dispatch_core::settings::read(db, dsp, &GENERAL)
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/settings.rs"]
+mod tests;

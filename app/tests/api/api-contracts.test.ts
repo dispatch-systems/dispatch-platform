@@ -5,6 +5,7 @@ import '../support/manifests.js';
 import { parseApiResponse } from '../../../core/shell/frontend/runtime/replies.js';
 import type { AuditPage, PlatformHealth } from '../../../core/platform_owner/api/index.js';
 import type { DspSummary } from '../../../core/accounts/api/index.js';
+import type { SettingsAnswer } from '../../../core/settings/api/index.js';
 import type { PaycomSettings } from '../../../features/timecard/api/index.js';
 
 test('recovery-code responses accept the active and previous rollout formats', async () => {
@@ -29,7 +30,7 @@ test('Driver Match badge counts reject malformed responses without exposing thei
   await assert.rejects(parseApiResponse(route, 'GET', {}), /^Error: invalid_api_response$/);
 });
 
-test('generated platform contracts validate real responses and settings round trips preserve every preference', async (t) => {
+test('generated platform contracts validate real responses', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -48,49 +49,21 @@ test('generated platform contracts validate real responses and settings round tr
     read<PlatformHealth>('/api/platform/health'),
     read<DspSummary[]>('/api/platform/dsps'),
   ]);
-  const values: PaycomSettings['values'] = {
-    ...settings.values,
-    opening_page: 'employees',
-    rows_per_page: 25,
-    name_order: 'last_first',
-    default_sort: 'condition',
-    department: 'Operations',
-    station: 'DEMO1',
-    columns: ['condition', 'totalHours'],
-    driver_departments: [],
-    late_da_time: '09:45',
-    late_da_departments: ['Operations'],
-  };
-  const saved = await owner.post(settingsRoute, { revision: settings.revision, values });
-  assert.equal(saved.status, 200);
-  const parsed = (await parseApiResponse(settingsRoute, 'POST', saved.value)) as PaycomSettings;
-  assert.deepEqual(parsed.values, values);
-  assert.deepEqual(parsed.history[0]!.values, settings.values);
-  assert.deepEqual((await read<PaycomSettings>(settingsRoute)).values, values);
-  // A later UI edit must preserve the preferences its form does not display.
-  const changed = await owner.post(settingsRoute, {
-    revision: parsed.revision,
-    values: { ...parsed.values, late_da_time: '10:30' },
+  // Settings saves what the page reads, and the page reads it as saved.
+  const { sections } = await read<SettingsAnswer>('/api/dsp/settings');
+  const roster = sections.find((section) => section.id === 'timecard.roster')!;
+  const saved = await owner.post(`/api/dsp/settings/${roster.id}`, {
+    values: { name_order: 'last_first', department: 'Operations' },
+    revision: roster.revision,
   });
-  assert.equal(changed.status, 200);
-  assert.deepEqual(
-    ((await parseApiResponse(settingsRoute, 'POST', changed.value)) as PaycomSettings).values,
-    { ...values, late_da_time: '10:30' },
-  );
+  assert.equal(saved.status, 200, saved.body);
+  const parsed = await read<PaycomSettings>(settingsRoute);
+  assert.deepEqual(parsed, { ...settings, nameOrder: 'last_first' });
   const member = await f.client('member@dispatch.test');
   await member.select(dsp.id);
-  const memberSettings = await member.get(settingsRoute);
-  assert.deepEqual(
-    ((await parseApiResponse(settingsRoute, 'GET', memberSettings.value)) as PaycomSettings)
-      .history,
-    [],
-  );
+  assert.deepEqual((await member.get(settingsRoute)).value, parsed);
   const audit = await read<AuditPage>('/api/platform/audit');
-  assert(
-    audit.events.some(
-      (event) => event.action === 'paycom.settings_updated' && event.changes.length,
-    ),
-  );
+  assert(audit.events.some((event) => event.action === 'settings.changed' && event.changes.length));
   const exported = await owner.post('/api/platform/audit/export', {});
   assert.equal(exported.status, 200);
   assert.deepEqual(
@@ -116,6 +89,6 @@ test('generated platform contracts validate real responses and settings round tr
   };
   await invalid('/api/platform/audit', badAudit);
   const badSettings = structuredClone(parsed);
-  (badSettings.values as unknown as Record<string, unknown>).columns = ['invented-column'];
+  (badSettings as unknown as Record<string, unknown>).nameOrder = 'invented-order';
   await invalid(settingsRoute, badSettings);
 });

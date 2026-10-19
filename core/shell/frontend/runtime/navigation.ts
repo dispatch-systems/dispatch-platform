@@ -43,15 +43,21 @@ export const dspHash = (
  * None without that page, so a link to it is left out. Which of its pages a person has is the
  * server's to say, so a link names the page whether or not they have it, and Settings opens on
  * its first page for one who hasn't; given the person's view, it is left out once Settings has
- * been read and is known not to have it.
+ * been read and is known not to have it. `query` is what the page opens on, beside its `tab`,
+ * as the workspace a section shows.
  */
-export function settingsHash(dspId: string, page?: string, view?: DspView) {
+export function settingsHash(
+  dspId: string,
+  page?: string,
+  view?: DspView,
+  query?: Record<string, string>,
+) {
   const host = settingsPage();
   if (!host) return undefined;
   if (page === undefined) return dspHash(dspId, host);
   const pages = view?.dsp.id === dspId ? readSettings()?.pages : undefined;
   if (pages && !pages.some((each) => each.id === page)) return undefined;
-  return dspHash(dspId, host, { tab: page });
+  return dspHash(dspId, host, { tab: page, ...query });
 }
 /**
  * A page of the DSP's, as another owner's, by its id: none while the DSP lacks it or the
@@ -128,8 +134,9 @@ export function parseHash(hash: string) {
 }
 export const hashQuery = () => new URLSearchParams(window.location.hash.split('?')[1]);
 /**
- * Moves a link to where a page once was, as a tab of Settings it was, to the page, in place
- * in the browser's history, so the app reads the address the page is at now.
+ * Moves a link to where a page once was, as a tab of Settings it was or a page now a page of
+ * Settings, to where it is, in place in the browser's history, so the app reads the address
+ * the page is at now.
  */
 export function followMoved() {
   const { dspId, page } = parseHash(location.hash);
@@ -138,7 +145,7 @@ export function followMoved() {
     history.replaceState(
       history.state,
       '',
-      `${location.pathname}${location.search}${dspHash(dspId, moved)}`,
+      `${location.pathname}${location.search}${dspHash(dspId, moved.page, moved.query)}`,
     );
 }
 const linkTokens: { invite?: string; reset?: string } = {};

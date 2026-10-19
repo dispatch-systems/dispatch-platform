@@ -232,6 +232,7 @@ them is `core/shell/frontend/runtime/slots/`, one module per slot, gathered by `
 | `name`                   | `installed`    | The owner's directory name, as its switch is.                                                                                     |
 | `routes`                 | `pages`        | Its pages, inside a DSP or outside, in sidebar order; which one a DSP opens on (`landing`) or draws Settings (`hostsSettings`).   |
 | `dspSetup`               | `pages`        | Who may save a DSP's profile, and the route that saves it; opening a DSP that has none asks them for it.                          |
+| `movedToSettings`        | `pages`        | Its DSP pages that are pages of Settings now, each with the page of Settings it is: a link to one opens there, with its query.    |
 | `settingsSections`       | `settings`     | The components of its custom sections of a DSP's Settings, by the section's id, as its backend declares them `custom`.            |
 | `pageTabs`               | `page-tabs`    | Its tabs on another feature's page: a page with tabs draws them among its own, the app above any other.                           |
 | `connectionCard`         | `connections`  | A collector's card on a DSP's Connections tab.                                                                                    |

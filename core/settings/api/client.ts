@@ -16,7 +16,7 @@ export const getSettings = (signal?: AbortSignal) =>
 /**
  * Saves the values of a section that changed. Once saved, the section as saved takes its place
  * in what Settings read, so the page shows it at once, unless another view opened meanwhile; a
- * warning saves nothing.
+ * save that changed the DSP itself, as its name, opens its view again; a warning saves nothing.
  */
 export async function saveSettings(section: string, save: SettingsSave) {
   const session = dataCache.session;
@@ -27,5 +27,7 @@ export async function saveSettings(section: string, save: SettingsSave) {
       ...current,
       sections: current.sections.map((each) => (each.id === section ? answer.section : each)),
     });
+  if ('section' in answer && answer.reopen)
+    window.dispatchEvent(new Event('dispatch-view-expired'));
   return answer;
 }

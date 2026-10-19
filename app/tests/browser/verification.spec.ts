@@ -82,7 +82,10 @@ test('Paycom window scales input, supports drag/scroll/keyboard, and only contin
     await signIn(page);
     await openDsp(page, 'Northline Logistics');
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
-    await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings', exact: true })
+      .getByRole('link', { name: 'Connections', exact: true })
+      .click();
     const dialog = page.getByRole('dialog', { name: 'Complete Paycom verification' });
     const window = dialog.getByRole('application', { name: 'Paycom verification browser' });
     await expect(dialog).toBeVisible();

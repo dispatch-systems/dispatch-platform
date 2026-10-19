@@ -44,6 +44,10 @@ pub const FEATURE: Feature = Feature {
 {{#api}}
     routes: api::routes::routes,
 {{/api}}
+{{#settings}}
+    // What a DSP chooses for it, on its own page of Settings.
+    settings: &[backend::settings::GENERAL],
+{{/settings}}
 {{#keeps}}
     keeps: &[&backend::keeper::{{pascal}}Keeper],
 {{/keeps}}

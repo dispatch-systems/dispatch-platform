@@ -179,11 +179,11 @@ fn a_member_sees_the_sections_of_features_on_whose_permissions_they_hold() {
         ("invalid_input".into(), 400)
     );
     let saved = at.save(&member, "stand_in.limits", body).unwrap();
-    let SettingsSaved::Section { section } = saved else {
+    let SettingsSaved::Section { section, reopen } = saved else {
         panic!("saved")
     };
     assert_eq!(
-        (section.revision, &section.values["days"]),
-        (1, &json!(120))
+        (section.revision, &section.values["days"], reopen),
+        (1, &json!(120), false)
     );
 }

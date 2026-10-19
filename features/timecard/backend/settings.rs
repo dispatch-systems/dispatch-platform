@@ -2,7 +2,10 @@
 //! employees it lists and how Meal Breaks names them, the departments that drive, and when a
 //! DA is late; and the preferences a DSP kept in Paycom's database before Settings kept them,
 //! moved in once.
-use crate::api::{assessment::LateRule, settings::NameOrder};
+use crate::api::{
+    assessment::LateRule,
+    settings::{NameOrder, PaycomSettings},
+};
 use dispatch_core::{
     Result,
     db::Store,
@@ -45,15 +48,17 @@ pub const ROSTER: Section = section(
 .order(20);
 /// `ROSTER`'s values, as Timecard reads them: none lists every department or station.
 #[derive(Deserialize)]
-pub(crate) struct Roster {
+pub(crate) struct Listing {
     pub department: Option<String>,
     pub station: Option<String>,
     pub name_order: NameOrder,
 }
-impl Roster {
+impl Listing {
     /// Whether it lists an employee of `department` at `station`.
     pub(crate) fn lists(&self, department: &str, station: &str) -> bool {
-        self.department.as_deref().is_none_or(|own| own == department)
+        self.department
+            .as_deref()
+            .is_none_or(|own| own == department)
             && self.station.as_deref().is_none_or(|own| own == station)
     }
 }
@@ -106,10 +111,10 @@ pub const LATE_DAS: Section = section(
 .order(40);
 
 /// What the Timecard page shows by, of the DSP's settings, for everyone who sees it.
-pub(crate) fn shown(db: &Store, dsp: &str) -> Result<crate::api::settings::PaycomSettings> {
-    let roster: Roster = read(db, dsp, &ROSTER)?;
-    Ok(crate::api::settings::PaycomSettings {
-        name_order: roster.name_order,
+pub(crate) fn shown(db: &Store, dsp: &str) -> Result<PaycomSettings> {
+    let listing: Listing = read(db, dsp, &ROSTER)?;
+    Ok(PaycomSettings {
+        name_order: listing.name_order,
         driver_departments: driver_departments(db, dsp)?,
         late: read::<LateRule>(db, dsp, &LATE_DAS)?,
     })
@@ -161,9 +166,15 @@ mod filters {
 
 /// Moves the preferences a DSP kept in Paycom's database before Settings kept them,
 /// `paycom.preferences`, into its sections as their first values, at startup. A section that
-/// holds values, saved or moved, keeps them. What the page no longer reads (its opening tab,
-/// rows per page, sort and columns) stays behind; the record stays as it was, read only here.
+/// holds values, saved or moved, keeps them; one whose values its fields refuse now keeps its
+/// defaults, rather than the DSP failing to open. What the page no longer reads (its opening
+/// tab, rows per page, sort and columns) stays behind; the record stays as it was, read only
+/// here.
 pub(crate) fn upgrade(store: &Store, dsp: &str) -> Result<()> {
+    let adopt = |section: &Section, values: Value| match adopt(store, dsp, section, &values) {
+        Err(error) if error.code == "invalid_input" => Ok(()),
+        moved => moved.map(drop),
+    };
     let kept = store
         .collector(dsp, paycom::PROVIDER)?
         .setting("paycom.preferences", Value::Null)?;
@@ -173,25 +184,33 @@ pub(crate) fn upgrade(store: &Store, dsp: &str) -> Result<()> {
     let mut roster = Map::new();
     // An empty filter listed everyone, as none does now.
     for key in ["department", "station"] {
-        if let Some(value) = kept.get(key).and_then(Value::as_str).filter(|v| !v.is_empty()) {
+        if let Some(value) = kept
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+        {
             roster.insert(key.to_owned(), json!(value));
         }
     }
     if let Some(order) = kept.get("name_order") {
         roster.insert("name_order".to_owned(), order.clone());
     }
-    adopt(store, dsp, &ROSTER, &Value::Object(roster))?;
+    adopt(&ROSTER, Value::Object(roster))?;
     // None drove every department; a list, only those, an empty one none.
     if let Some(departments) = kept.get("driver_departments").filter(|v| v.is_array()) {
-        let drivers = json!({"all_departments": false, "departments": departments});
-        adopt(store, dsp, &DRIVERS, &drivers)?;
+        adopt(
+            &DRIVERS,
+            json!({"all_departments": false, "departments": departments}),
+        )?;
     }
     let mut late = Map::new();
-    for (from, to) in [("late_da_time", "time"), ("late_da_departments", "departments")] {
+    for (from, to) in [
+        ("late_da_time", "time"),
+        ("late_da_departments", "departments"),
+    ] {
         if let Some(value) = kept.get(from) {
             late.insert(to.to_owned(), value.clone());
         }
     }
-    adopt(store, dsp, &LATE_DAS, &Value::Object(late))?;
-    Ok(())
+    adopt(&LATE_DAS, Value::Object(late))
 }

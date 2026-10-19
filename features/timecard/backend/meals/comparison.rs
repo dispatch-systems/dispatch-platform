@@ -152,11 +152,8 @@ fn comparisons(
         itinerary.as_object_mut().unwrap().remove("publication_id");
         itineraries.entry(publication).or_default().push(itinerary);
     }
-    let preferences = store.timecard_preference_values(id)?;
-    let late = LateRule {
-        time: s(&preferences["values"], "late_da_time").into(),
-        departments: serde_json::from_value(preferences["values"]["late_da_departments"].clone())?,
-    };
+    let late: LateRule =
+        dispatch_core::settings::read(store, id, &crate::backend::settings::LATE_DAS)?;
     let mut context = ComparisonContext {
         timezone, selected, meals, itineraries, late,
         people,

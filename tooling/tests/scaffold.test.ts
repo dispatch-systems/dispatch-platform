@@ -7,7 +7,7 @@ import path from 'node:path';
 import * as prettier from 'prettier';
 import { planCollector } from '../scaffold/new-collector.js';
 import { planIntegration } from '../scaffold/new-integration.js';
-import { planAdd } from '../scaffold/add.js';
+import { mergeTypeScript, planAdd } from '../scaffold/add.js';
 import { planFeature, withPreset } from '../scaffold/new-feature.js';
 import { planSlot } from '../scaffold/new-slot.js';
 import { planTool } from '../scaffold/new-tool.js';
@@ -424,7 +424,7 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
   );
 });
 
-test('--page, --tab-of and --settings write frontend/feature.ts, the screen and a browser test', async () => {
+test('--page and --tab-of write frontend/feature.ts, the screen and a browser test', async () => {
   const page = await feature('parking', '--page', '--api');
   assert.deepEqual(
     writes(page, 'features/parking').filter((name) => /frontend|browser/.test(name)),
@@ -477,21 +477,55 @@ test('--page, --tab-of and --settings write frontend/feature.ts, the screen and 
   assert.match(uniforms, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
   await refused(/use --settings/, 'notes', '--tab-of', 'settings');
 
-  const settings = await feature('notes', '--settings', '--icon', 'Truck');
-  assert(settings.files.has('features/notes/frontend/settings/NotesSettings.tsx'));
-  // Its Settings tab is for those who manage it.
-  assert.match(
-    file(settings, 'features/notes/frontend/feature.ts'),
-    /settingsTabs: \[[^\]]*visible: \(view\) => can\(view, 'notes\.manage'\)/,
-  );
-  assert.match(file(settings, 'features/notes/feature.rs'), /perm\("notes\.manage", /);
-  assert.match(file(settings, 'features/notes/frontend/platform-slots.ts'), /icon: Truck \}/);
-  await refused(/--icon names a lucide-react icon/, 'notes', '--settings', '--icon', 'Truckk');
-  assert.match(file(settings, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Settings'/);
-
   await refused(/choose one/, 'notes', '--page', '--tab-of', 'timecard');
   await refused(/--tab-of names a feature/, 'notes', '--tab-of', 'nowhere');
   await refused(/scorecard has no page/, 'notes', '--tab-of', 'weekly_scorecard');
+});
+
+test('--settings declares a section its backend reads, which Settings draws: no screen of its own', async () => {
+  const plan = await feature('notes', '--settings', '--icon', 'Truck');
+  // Its frontend is its switch's alone, and so is its browser test.
+  assert.deepEqual(
+    writes(plan, 'features/notes').filter((name) => /^(backend|frontend|tests)\//.test(name)),
+    [
+      'backend/mod.rs',
+      'backend/settings.rs',
+      'frontend/feature.ts',
+      'frontend/platform-slots.ts',
+      'tests/backend/settings.rs',
+      'tests/browser/notes.spec.ts',
+    ],
+  );
+  assert.doesNotMatch(file(plan, 'features/notes/frontend/feature.ts'), /settings/i);
+  assert.doesNotMatch(file(plan, 'features/notes/tests/browser/notes.spec.ts'), /'Settings'/);
+  assert.match(file(plan, 'features/notes/frontend/platform-slots.ts'), /icon: Truck \}/);
+  await refused(/--icon names a lucide-react icon/, 'notes', '--settings', '--icon', 'Truckk');
+  // Its manifest lists the section, for those holding the manage permission it declares.
+  const manifest = file(plan, 'features/notes/feature.rs');
+  assert.match(manifest, /^mod backend;$/m);
+  assert.match(
+    manifest,
+    /perm\("notes\.manage", "Manage Notes", \d+\)\.implies\(&\["notes\.view"\]\)/,
+  );
+  assert.match(manifest, /settings: &\[backend::settings::GENERAL\],/);
+  assert.match(file(plan, 'features/notes/backend/mod.rs'), /^pub\(crate\) mod settings;$/m);
+  const settings = file(plan, 'features/notes/backend/settings.rs');
+  assert.match(settings, /section\(\s*"notes\.general",\s*"General",\s*"notes\.manage",/);
+  // Its backend reads it typed, in one keyed lookup, which its test reads back from a save.
+  assert.match(settings, /dispatch_core::settings::read\(db, dsp, &GENERAL\)/);
+  assert.match(file(plan, 'features/notes/tests/backend/settings.rs'), /settings::save\(/);
+  assert.match(file(plan, 'features/notes/Cargo.toml'), /^serde = \{ workspace = true \}$/m);
+  assert.match(file(plan, 'features/notes/README.md'), /^- \*\*Settings:\*\* `notes\.general`/m);
+  assert.match(plan.notes.join('\n'), /`\?tab=notes`/);
+  // Mandatory, it has no frontend, and its settings' test is its backend's: no manifest test.
+  assert.deepEqual(writes(await feature('lobby', '--mandatory', '--settings'), 'features/lobby'), [
+    'Cargo.toml',
+    'README.md',
+    'backend/mod.rs',
+    'backend/settings.rs',
+    'feature.rs',
+    'tests/backend/settings.rs',
+  ]);
 });
 
 test('--no-backend writes a frontend-only feature, and refuses the pieces that need Rust logic', async () => {
@@ -510,13 +544,9 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
   assert.doesNotMatch(manifest, /mod backend|mod tests/);
   assert.match(manifest, /switch: optional\(/);
   assert.match(file(plan, 'app/backend/features.rs'), /&dispatch_front::FEATURE,/);
-  assert(
-    writes(await feature('front', '--settings', '--no-backend'), 'features/front').includes(
-      'frontend/settings/FrontSettings.tsx',
-    ),
-  );
-  await refused(/add --page, --tab-of or --settings/, 'front', '--no-backend');
-  for (const piece of [['--api'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
+  await refused(/add --page or --tab-of/, 'front', '--no-backend');
+  await refused(/add --page or --tab-of/, 'front', '--settings', '--no-backend');
+  for (const piece of [['--api'], ['--settings'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
     await refused(
       new RegExp(`Rust logic that ${piece[0]} needs`),
       'front',
@@ -984,7 +1014,7 @@ test('--dry-run prints what it would write and changes nothing; --out receives i
 test('without --dry-run it writes into the root, and refuses to write over an owner', () => {
   const wrote = generate('new-feature', ['desk', '--settings', '--root', copy]);
   assert.equal(wrote.status, 0, wrote.stderr);
-  assert(fs.existsSync(path.join(copy, 'features/desk/frontend/settings/DeskSettings.tsx')));
+  assert(fs.existsSync(path.join(copy, 'features/desk/backend/settings.rs')));
   assert.match(
     fs.readFileSync(path.join(copy, 'app/backend/features.rs'), 'utf8'),
     /&dispatch_desk::FEATURE,/,
@@ -1015,22 +1045,34 @@ const changed = (plan: Plan, name: string) => {
 };
 
 test('add merges a piece into a feature that exists: its slot entries, fields and permissions', async () => {
-  // A Settings tab on Uniforms, which holds uniforms.manage already.
+  // Settings on Uniforms, which holds uniforms.manage already: its section joins the backend
+  // and the manifest it has, and nothing of its frontend.
   const settings = await add('settings', '--to', 'uniforms');
-  assert(settings.files.has('features/uniforms/frontend/settings/UniformsSettings.tsx'));
-  const manifest = changed(settings, 'features/uniforms/frontend/feature.ts');
-  assert.match(
-    manifest,
-    /settingsTabs: \[[^\]]*visible: \(view\) => can\(view, 'uniforms\.manage'\)/,
+  assert.deepEqual(writes(settings, 'features/uniforms'), [
+    'backend/settings.rs',
+    'tests/backend/settings.rs',
+  ]);
+  assert(![...settings.changes.keys()].some((name) => name.includes('/frontend/')));
+  const manifest = changed(settings, 'features/uniforms/feature.rs');
+  assert.match(manifest, /settings: &\[backend::settings::GENERAL\],/);
+  assert.equal(
+    manifest.match(/perm\("uniforms\.manage"/g)?.length,
+    1,
+    'it adds no permission it has',
   );
-  assert.equal(manifest.match(/^import .* from 'react';$/gm)?.length, 1);
-  assert(!settings.changes.has('features/uniforms/feature.rs'), 'it adds no permission it has');
+  // Its build lists what the section and its test need already.
+  assert(!settings.changes.has('features/uniforms/Cargo.toml'));
+  assert.match(
+    changed(settings, 'features/uniforms/backend/mod.rs'),
+    /^pub\(crate\) mod settings;$/m,
+  );
 
   // A tab of another's page, on Documents, whose comments hold apostrophes: one platformSlots,
   // and no permission, since a tab needs none.
   const tab = await add('tab-of', 'uniforms', '--to', 'documents');
   const documents = changed(tab, 'features/documents/frontend/feature.ts');
   assert.equal(documents.match(/^\s+platformSlots:/gm)?.length, 1);
+  assert.equal(documents.match(/^import .* from 'react';$/gm)?.length, 1);
   assert.match(documents, /pageTabs: \[\s*\{\s*page: 'uniforms',/);
   assert(!tab.changes.has('features/documents/feature.rs'));
 
@@ -1062,9 +1104,11 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   for (const [, text] of installs)
     assert.match(text, /testing::install\(&\[[^\]]*&dispatch_paycom::COLLECTOR\]/);
 
-  // A manage permission implies only what the feature has: Team has no team.view.
+  // A manage permission implies only what the feature has: Team has no team.view. Nor has it
+  // a backend/, which its settings bring.
   const team = changed(await add('settings', '--to', 'team'), 'features/team/feature.rs');
   assert.match(team, /perm\("team\.manage", "Manage Team & Roles", \d+\),/);
+  assert.match(team, /^mod backend;$/m);
   // A name a nested use tree imports, as Documents' Sql, is not imported again; a module a
   // feature declares without pub(crate), as Timecard's storage, is not declared again; and a
   // piece without a screen writes no browser test.
@@ -1081,17 +1125,16 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
     file(punches, 'features/timecard/backend/people.rs'),
     /store\.collector\(dsp, dispatch_paycom::PROVIDER\)/,
   );
-  // A constant the manifest has under the same name takes the feature's: Timecard's
-  // loadSettings loads its Paycom settings page.
-  const timecard = changed(
-    await add('settings', '--to', 'timecard'),
-    'features/timecard/frontend/feature.ts',
+  // A constant the manifest has under the same name takes the feature's: a loadTab of its own
+  // stays, and the tab's loads as loadNotesTab.
+  const merged = mergeTypeScript(
+    "const loadTab = () => import('./mine.js');\n\nexport const feature: FrontendFeature = {\n  name: 'notes',\n};\n",
+    "const loadTab = () => import('./NotesTab.js');\n\nexport const feature: FrontendFeature = {\n  name: 'notes',\n  pageTabs: [{ id: 'notes', load: loadTab }],\n};\n",
+    'Notes',
   );
-  assert.match(
-    timecard,
-    /const loadTimecardSettings = \(\) => import\('\.\/settings\/TimecardSettings\.js'\);/,
-  );
-  assert.match(timecard, /load: loadTimecardSettings,/);
+  assert.match(merged, /^const loadTab = \(\) => import\('\.\/mine\.js'\);$/m);
+  assert.match(merged, /^const loadNotesTab = \(\) => import\('\.\/NotesTab\.js'\);$/m);
+  assert.match(merged, /load: loadNotesTab \}/);
   // A README's line goes after its last line of what the feature declares, however long.
   assert.match(
     changed(settings, 'features/uniforms/README.md'),
@@ -1165,7 +1208,6 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
   assert.doesNotMatch(stamped, /permissions\.is_empty/);
 
   await assert.rejects(add('api', '--to', 'uniforms'), /uniforms has api\/ already/);
-  await assert.rejects(add('settings', '--to', 'driver_match'), /DriverMatchSettings\.tsx already/);
   await assert.rejects(add('settings', '--to', 'documents'), /documents retired documents\.manage/);
   await assert.rejects(add('page', '--to', 'documents'), /documents has a page already/);
   await assert.rejects(add('people', 'paycom', '--to', 'uniforms'), /add --table/);
@@ -1177,7 +1219,10 @@ test('add merges a piece into a feature that exists: its slot entries, fields an
     add('people', 'paycom', '--to', 'dvic', '--table', 'dvic_runs'),
     /in dvic's own database/,
   );
-  await assert.rejects(add('settings', '--to', 'routes'), /RoutesSettings\.tsx already/);
+  await assert.rejects(
+    add('settings', '--to', 'routes'),
+    /routes declares its settings in backend/,
+  );
   await assert.rejects(add('tab-of', 'dvic', '--to', 'dvic'), /own tabs/);
   await assert.rejects(add('wings', '--to', 'uniforms'), /Name one piece/);
   await assert.rejects(add('settings', '--to', 'nowhere'), /--to names a feature/);

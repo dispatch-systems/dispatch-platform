@@ -1,24 +1,7 @@
-/* Option A: compact schedule rows and the shared side sheet. */
+/* Compact schedule rows and the shared side sheet. */
 .timecard-schedules {
-  width: 100%;
-  max-width: 1080px;
-  margin: 0 auto;
-}
-.schedule-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 24px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.timecard-schedules > .page-heading {
-  margin-bottom: 34px;
-  align-items: center;
-}
-.timecard-schedules > .page-heading h1 {
-  font-size: 26px;
-  letter-spacing: -0.6px;
+  max-width: 900px;
+  margin-top: 24px;
 }
 .schedule-section-heading,
 .schedule-section-heading > div {
@@ -31,6 +14,9 @@
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 18px;
+}
+.schedule-section-heading button {
+  white-space: nowrap;
 }
 .schedule-section-heading h2 {
   margin: 0;
@@ -138,21 +124,6 @@
 }
 .schedule-toggle input[role='switch'] {
   flex-shrink: 0;
-}
-.schedule-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding-top: 18px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.schedule-footer > span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 .schedule-empty {
   display: grid;
@@ -311,83 +282,6 @@
   gap: 12px;
   font-size: 13px;
 }
-.late-das {
-  margin-top: 36px;
-}
-.late-das .schedule-section-heading {
-  min-height: 36px;
-  margin-bottom: 12px;
-}
-.late-das-actions {
-  display: flex;
-  gap: 8px;
-}
-.late-das-actions button {
-  min-height: 32px;
-  padding: 5px 12px;
-  font-size: 13px;
-}
-.late-das-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-}
-.late-das-field {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
-  padding: 14px 18px 16px;
-  border: 0;
-}
-.late-das-field + .late-das-field {
-  border-left: 1px solid var(--border);
-}
-.late-das-field > :is(span, legend) {
-  padding: 0;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 500;
-}
-.late-das-field > legend {
-  float: left;
-  width: 100%;
-}
-.late-das-field input[type='time'] {
-  width: 140px;
-  min-height: 34px;
-  padding: 5px 10px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.late-das-departments {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 2px 20px;
-  clear: both;
-}
-.late-das-departments label {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  font-size: 13px;
-  font-weight: 400;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.late-das-departments small,
-.late-das-field p {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.late-das-field p {
-  margin: 0;
-  clear: both;
-}
 @media (max-width: 1100px) {
   .schedule-table :is(th, td) {
     padding-inline: 12px;
@@ -396,13 +290,6 @@
 @media (max-width: 800px) {
   .schedule-section-heading {
     align-items: flex-start;
-  }
-  .late-das-card {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .late-das-field + .late-das-field {
-    border-left: 0;
-    border-top: 1px solid var(--border);
   }
   .schedule-table,
   .schedule-table tbody {
@@ -449,22 +336,12 @@
   }
 }
 @media (max-width: 480px) {
-  .timecard-schedules > .page-heading {
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-  .timecard-schedules > .page-heading h1 {
-    font-size: 23px;
-  }
   .schedule-editor {
     padding-inline: 16px;
   }
   .schedule-time-fields {
     gap: 12px;
   }
-}
-.timecard-schedules > .page-heading h1 {
-  font-weight: 500;
 }
 .schedule-table thead th {
   background: color-mix(in srgb, var(--background) 96%, var(--foreground));

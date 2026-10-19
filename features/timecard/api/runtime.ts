@@ -15,7 +15,6 @@ import type {
   MealPeriodGaps,
   MealEmployee,
   MealAssessment,
-  PaycomPreferences,
   PaycomSettings,
 } from './index.js';
 import { jobSchema, jobsSchema } from '../../../core/collection/api/runtime.js';
@@ -231,26 +230,12 @@ export const mealPeriodGapsSchema = z.object({
   period: z.nullable(period),
   counts: z.record(text, count),
 }) satisfies z.ZodMiniType<MealPeriodGaps>;
-const preferences = z.object({
-  opening_page: z.enum(['timecards', 'meal-breaks', 'employees']),
-  rows_per_page: z.union([z.literal(25), z.literal(50), z.literal(100)]),
-  name_order: z.enum(['first_last', 'last_first']),
-  default_sort: z.enum(['employeeName', 'condition', 'inDay']),
-  department: z.nullable(text),
-  station: z.nullable(text),
-  columns: z.array(z.enum(['inDay', 'outLunch', 'inLunch', 'outDay', 'totalHours', 'condition'])),
-  driver_departments: z.nullable(z.array(text)),
-  late_da_time: text.check(z.regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)),
-  late_da_departments: z.array(text),
-}) satisfies z.ZodMiniType<PaycomPreferences>;
-
 export const paycomSettingsSchema = z.object({
-  revision: count,
-  values: preferences,
-  history: z.array(z.object({ revision: count, at: text, values: preferences })),
-  options: z.object({
-    departments: z.array(z.object({ value: text, count })),
-    stations: z.array(text),
+  nameOrder: z.enum(['first_last', 'last_first']),
+  driverDepartments: z.nullable(z.array(text)),
+  late: z.object({
+    time: text.check(z.regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/)),
+    departments: z.array(text),
   }),
 }) satisfies z.ZodMiniType<PaycomSettings>;
 
@@ -272,7 +257,6 @@ export const replies: Replies = (route, method) => {
     return undefined;
   }
   if (route === '/api/dsp/jobs') return jobSchema;
-  if (route === paycomSettingsPath) return paycomSettingsSchema;
   if (route === '/api/dsp/cortex/meal-breaks/collect') return jobSchema;
   if (route === '/api/dsp/jobs/meal-breaks') return z.object({ date: text, jobs: jobsSchema });
   return undefined;

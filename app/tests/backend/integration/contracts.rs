@@ -2,8 +2,6 @@ use dispatch_core::{
     accounts::api::types::DspProfile,
     collection::{api::metrics::JobMetrics, metrics::Recorder},
 };
-#[cfg(feature = "timecard")]
-use dispatch_timecard::{NameOrder, PaycomPreferences, PaycomSettings};
 use serde_json::{Value, json};
 
 #[test]
@@ -72,30 +70,4 @@ fn partial_profiles_keep_defaults_and_reject_mistyped_flags() {
     for value in [json!("false"), json!(0), Value::Null] {
         assert!(serde_json::from_value::<DspProfile>(json!({"removed":value})).is_err());
     }
-}
-
-#[cfg(feature = "timecard")]
-#[test]
-fn older_preference_history_gains_new_defaults_and_keeps_empty_filters() {
-    let settings: PaycomSettings = serde_json::from_value(json!({
-        "revision":1, "values":PaycomPreferences::default(),
-        "options":{"departments":[],"stations":["DEMO1"]},
-        "history":[{"revision":0,"at":"2026-09-21T00:00:00Z","values":{
-            "name_order":"last_first", "driver_departments":[],
-            "automatic_sync":true,"sync_interval_seconds":300
-        }}]
-    }))
-    .unwrap();
-    let old = &settings.history[0].values;
-    assert_eq!(old.name_order, NameOrder::LastFirst);
-    assert_eq!(old.driver_departments, Some(vec![]));
-    assert_eq!(old.late_da_time, "10:01");
-    assert!(settings.values.driver_departments.is_none());
-    assert_eq!(settings.options.stations, vec!["DEMO1"]);
-    assert!(
-        serde_json::to_value(old)
-            .unwrap()
-            .get("automatic_sync")
-            .is_none()
-    );
 }

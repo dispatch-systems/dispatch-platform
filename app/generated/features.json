@@ -50,8 +50,6 @@
         "POST /api/dsp/daily-performance/collect",
         "GET /api/dsp/daily-performance/jobs",
         "POST /api/dsp/daily-performance/jobs/{id}/cancel",
-        "GET /api/dsp/daily-performance/policy",
-        "POST /api/dsp/daily-performance/policy",
         "GET /api/dsp/daily-performance/schedules",
         "POST /api/dsp/daily-performance/schedules",
         "POST /api/dsp/daily-performance/schedules/preview",
@@ -67,7 +65,9 @@
         }
       ],
       "env": [],
-      "settings": []
+      "settings": [
+        "daily_performance.collection"
+      ]
     },
     "switch": "daily_performance",
     "mandatory": false,
@@ -330,7 +330,10 @@
         }
       ],
       "env": [],
-      "settings": []
+      "settings": [
+        "driver_profiles.roster",
+        "driver_profiles.collection"
+      ]
     },
     "switch": "driver_profiles",
     "mandatory": false,
@@ -425,7 +428,9 @@
         }
       ],
       "env": [],
-      "settings": []
+      "settings": [
+        "dvic.collection"
+      ]
     },
     "switch": "dvic",
     "mandatory": false,
@@ -610,7 +615,9 @@
       ],
       "exposes": [],
       "env": [],
-      "settings": []
+      "settings": [
+        "settings.profile"
+      ]
     },
     "switch": "settings",
     "mandatory": true,
@@ -707,7 +714,9 @@
           "SLACK_SIGNING_SECRET"
         ]
       ],
-      "settings": []
+      "settings": [
+        "slack.workspaces"
+      ]
     },
     "switch": "slack",
     "mandatory": false,
@@ -861,7 +870,6 @@
         "GET /api/dsp/timecards/punches/{code}",
         "GET /api/dsp/paycom/status",
         "GET /api/dsp/paycom/settings",
-        "POST /api/dsp/paycom/settings",
         "GET /api/dsp/paycom/meal-breaks",
         "GET /api/dsp/paycom/meal-breaks/page",
         "GET /api/dsp/paycom/meal-breaks/period",
@@ -890,7 +898,12 @@
         }
       ],
       "env": [],
-      "settings": []
+      "settings": [
+        "timecard.schedules",
+        "timecard.roster",
+        "timecard.drivers",
+        "timecard.late_das"
+      ]
     },
     "switch": "timecard",
     "mandatory": false,
@@ -1033,8 +1046,6 @@
         "weekly_scorecard"
       ],
       "routes": [
-        "GET /api/dsp/weekly-scorecard/policy",
-        "POST /api/dsp/weekly-scorecard/policy",
         "GET /api/dsp/weekly-scorecard/weeks",
         "GET /api/dsp/weekly-scorecard/jobs",
         "POST /api/dsp/weekly-scorecard/collect",
@@ -1054,7 +1065,9 @@
         }
       ],
       "env": [],
-      "settings": []
+      "settings": [
+        "weekly_scorecard.collection"
+      ]
     },
     "switch": "weekly_scorecard",
     "mandatory": false,

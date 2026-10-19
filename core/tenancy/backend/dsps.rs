@@ -444,33 +444,6 @@ impl Store {
         )?;
         self.find_dsp(id)
     }
-    fn update_dsp_details(&self, id: &str, actor: &str, name: &str, timezone: &str) -> Result<Dsp> {
-        let before = self.find_dsp(id)?;
-        self.platform.exec(
-            "UPDATE dsps SET name=?,timezone=?,revision=revision+1 WHERE id=?",
-            [name, timezone, id],
-        )?;
-        if before.timezone != timezone {
-            self.retime_schedules(id, timezone)?;
-        }
-        let changes: Vec<_> = [
-            ("name", before.name.as_str(), name),
-            ("timezone", before.timezone.as_str(), timezone),
-        ]
-        .into_iter()
-        .filter(|(_, before, value)| before != value)
-        .map(|(field, before, value)| (field, Some(before.to_owned()), Some(value.to_owned())))
-        .collect();
-        self.audit_with(
-            Some(actor),
-            Some(id),
-            "dsp.settings_updated",
-            "",
-            None,
-            &changes,
-        )?;
-        self.find_dsp(id)
-    }
     /// Whether `profile` can set `id` up: the abbreviation is the DSP's short code, which
     /// names its address, chosen once, and free.
     pub fn ensure_dsp_profile(&self, id: &str, profile: &DspSetupRequest) -> Result<()> {
@@ -487,17 +460,22 @@ impl Store {
             }
         }
     }
-    pub fn complete_dsp_profile(
-        &self,
-        id: &str,
-        actor: &str,
-        profile: &DspSetupRequest,
-    ) -> Result<()> {
+    /// Keeps `profile` as the DSP's: its name, its timezone, retiming its schedules when that
+    /// changes, its station code, and its short code, given once. Records nothing in the log,
+    /// which is its caller's to say; the DSP's open views expire.
+    pub fn keep_dsp_profile(&self, id: &str, profile: &DspSetupRequest) -> Result<()> {
         self.ensure_dsp_profile(id, profile)?;
-        if self.find_dsp(id)?.code.is_none() {
+        let before = self.find_dsp(id)?;
+        if before.code.is_none() {
             self.set_code(id, &profile.abbreviation)?;
         }
-        self.update_dsp_details(id, actor, &profile.name, &profile.timezone)?;
+        self.platform.exec(
+            "UPDATE dsps SET name=?,timezone=?,revision=revision+1 WHERE id=?",
+            [&profile.name, &profile.timezone, id],
+        )?;
+        if before.timezone != profile.timezone {
+            self.retime_schedules(id, &profile.timezone)?;
+        }
         self.set_profile(
             id,
             json!({
@@ -505,6 +483,37 @@ impl Store {
                 "stationCode": profile.station_code,
                 "setupRequired": false
             }),
+        )?;
+        Ok(())
+    }
+    /// Keeps the profile a DSP is set up with, as its onboarding asks for it, and records it.
+    pub fn complete_dsp_profile(
+        &self,
+        id: &str,
+        actor: &str,
+        profile: &DspSetupRequest,
+    ) -> Result<()> {
+        let before = self.find_dsp(id)?;
+        self.keep_dsp_profile(id, profile)?;
+        let changes: Vec<_> = [
+            ("name", before.name.as_str(), profile.name.as_str()),
+            (
+                "timezone",
+                before.timezone.as_str(),
+                profile.timezone.as_str(),
+            ),
+        ]
+        .into_iter()
+        .filter(|(_, before, value)| before != value)
+        .map(|(field, before, value)| (field, Some(before.to_owned()), Some(value.to_owned())))
+        .collect();
+        self.audit_with(
+            Some(actor),
+            Some(id),
+            "dsp.settings_updated",
+            "",
+            None,
+            &changes,
         )?;
         self.audit_with(
             Some(actor),

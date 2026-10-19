@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
-import { dspHash } from '../../../../core/shell/frontend/runtime/navigation.js';
+import { settingsHash } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Badge, ConfirmDialog, DataState } from '../../../../core/shell/frontend/ui/index.js';
@@ -19,7 +19,8 @@ import { WorkspaceCard } from './WorkspaceCard.js';
 // Slack's cards on Settings' DSP Connections: one for each of the DSP's workspaces, and for
 // those who manage the DSP's connections, one for its install link while it works and one for an
 // install Slack just sent the browser back from. New there adds a workspace. Those who manage
-// Slack, alone, see the workspaces' cards with their settings, each a page of its own.
+// Slack, alone, see the workspaces' cards with a link to each one's settings, on Slack's page of
+// Settings.
 
 export function SlackCards({ view }: { view: DspView }) {
   const manages = can(view, 'connections.manage');
@@ -68,7 +69,9 @@ export function SlackCards({ view }: { view: DspView }) {
                 manages={manages}
                 configures={configures}
                 busy={install.busy || returned.busy}
-                settings={dspHash(view.dsp.id, 'slack', { workspace: workspace.teamId })}
+                settings={settingsHash(view.dsp.id, 'slack', view, {
+                  workspace: workspace.teamId,
+                })}
                 install={(team) => void install.run(team)}
                 disconnect={setLeaving}
               />

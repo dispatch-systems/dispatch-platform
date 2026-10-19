@@ -123,14 +123,7 @@ async function mockComparison(page: Page, data = sample, unavailableDate?: strin
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('**/api/dsp/paycom/settings', (route) =>
-    route.fulfill({
-      json: {
-        revision: 0,
-        values: paycomDefaults,
-        history: [],
-        options: { departments: [], stations: [] },
-      },
-    }),
+    route.fulfill({ json: paycomDefaults }),
   );
   await page.route('**/api/dsp/paycom/meal-breaks/page?*', async (route) => {
     const selected = new URL(route.request().url()).searchParams.get('date');
@@ -606,14 +599,7 @@ test('shared date and sync controls survive tabs, navigation, reload and collect
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('**/api/dsp/paycom/settings', (route) =>
-    route.fulfill({
-      json: {
-        revision: 0,
-        values: paycomDefaults,
-        history: [],
-        options: { departments: [], stations: [] },
-      },
-    }),
+    route.fulfill({ json: paycomDefaults }),
   );
   await page.route('**/api/dsp/paycom/status', (route) =>
     route.fulfill({
@@ -779,14 +765,7 @@ test.describe('DSP calendar dates', () => {
   test.use({ timezoneId: 'America/New_York' });
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/dsp/paycom/settings', (route) =>
-      route.fulfill({
-        json: {
-          revision: 0,
-          values: paycomDefaults,
-          history: [],
-          options: { departments: [], stations: [] },
-        },
-      }),
+      route.fulfill({ json: paycomDefaults }),
     );
   });
 

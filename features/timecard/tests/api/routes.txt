@@ -23,7 +23,6 @@ POST /api/dsp/jobs Dsp("collections.run") Bookkeeping
 POST /api/dsp/jobs/employees Dsp("collections.run") Bookkeeping
 POST /api/dsp/jobs/meal-breaks Dsp("collections.run") Bookkeeping
 POST /api/dsp/jobs/{id}/cancel Dsp("collections.run") Async
-POST /api/dsp/paycom/settings Dsp("timecard.manage") Write
 POST /api/dsp/schedules Dsp("timecard.manage") Write wakes-scheduler
 POST /api/dsp/schedules/preview Dsp("timecard.manage") Write
 POST /api/dsp/schedules/{key} Dsp("timecard.manage") Write wakes-scheduler
