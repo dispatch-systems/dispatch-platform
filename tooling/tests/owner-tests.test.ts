@@ -143,6 +143,17 @@ test('--only keeps one kind of tests and the build it needs, --file one test, --
   assert.deepEqual(list('feature', 'dvic', '--file', path.join(root, api[0]!)).commands.slice(1), [
     `node node_modules/tsx/dist/cli.mjs --test ${api[0]}`,
   ]);
+  // A path through a link to the checkout, as a worktree's often is, names the same test.
+  const links = fs.mkdtempSync(path.join(os.tmpdir(), 'owner-tests-'));
+  try {
+    fs.symlinkSync(root, path.join(links, 'checkout'));
+    const linked = path.join(links, 'checkout', api[0]!);
+    assert.deepEqual(list('feature', 'dvic', '--file', linked).commands.slice(1), [
+      `node node_modules/tsx/dist/cli.mjs --test ${api[0]}`,
+    ]);
+  } finally {
+    fs.rmSync(links, { recursive: true, force: true });
+  }
   const only = list('feature', 'dvic', '--only', 'api,frontend');
   assert.equal(only.status, 1);
   assert.equal(only.stderr, '--only takes rust, api, frontend, browser or native.\n');

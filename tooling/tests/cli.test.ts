@@ -5,7 +5,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { CHECKS, MARKER, described } from '../scaffold/doctor.js';
-import { differing, duration, failure, followUp, report, writers } from '../scaffold/generate.js';
+import {
+  differing,
+  duration,
+  failedOtherwise,
+  failure,
+  followUp,
+  report,
+  writers,
+} from '../scaffold/generate.js';
 import { LISTS, explain, fields, frontendSlots, table } from '../scaffold/inventory.js';
 import { KINDS } from '../scaffold/cli.js';
 import { repositoryRoot as root } from '../scaffold/scaffold.js';
@@ -108,6 +116,10 @@ test('generate writes with the module tests that write: the API types and every 
     "an owner's api/generated/",
     'app/tests/backend/snapshots/catalog.json',
   ]);
+  // A test failing for another reason beside them is still named.
+  assert.deepEqual(failedOtherwise(differs), []);
+  const broken = `${differs}---- catalog::roles stdout ----\nthread 'catalog::roles' panicked at a.rs:1:2\n`;
+  assert.deepEqual(failedOtherwise(broken), ['catalog::roles']);
   const step = { name: 'check', ok: true, seconds: 1 };
   assert.equal(
     report({ ok: false, steps: [step], changed: ['app/frontend/features.ts'] }, true),

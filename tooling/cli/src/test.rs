@@ -110,6 +110,10 @@ pub fn owner(root: &Path, given: &str) -> Result<(String, String)> {
         return Ok(("mcp".into(), String::new()));
     }
     if let Some((kind, name)) = given.split_once(':') {
+        require(
+            ["feature", "collector", "core"].contains(&kind) && !name.is_empty(),
+            "An owner is kind:name with kind feature, collector or core, or mcp.",
+        )?;
         return Ok((kind.into(), name.into()));
     }
     require(
@@ -479,6 +483,22 @@ mod tests {
         .map(str::to_owned)
         .to_vec();
         assert_eq!(steps(&owned), packaged);
+    }
+    #[test]
+    fn an_owner_is_named_by_its_kind_and_name_or_found_by_its_name() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("features/parking")).unwrap();
+        let owner = |given: &str| owner(temp.path(), given).map_err(|error| error.to_string());
+        assert_eq!(owner("parking"), Ok(("feature".into(), "parking".into())));
+        assert_eq!(
+            owner("collector:paycom"),
+            Ok(("collector".into(), "paycom".into()))
+        );
+        assert_eq!(owner("mcp"), Ok(("mcp".into(), String::new())));
+        // A kind there is no owner of is refused in one line, as an empty name is.
+        for given in ["page:parking", "feature:", "x:y:z"] {
+            assert!(owner(given).unwrap_err().contains("kind:name"), "{given}");
+        }
     }
     #[test]
     fn a_long_list_of_test_files_reads_as_its_count() {

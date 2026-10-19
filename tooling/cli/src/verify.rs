@@ -174,6 +174,8 @@ fn removed_in_copy(
     let done = run.step_in(&checkout, &step, log, &[]);
     run.end()?;
     fs::remove_dir_all(&copy_root)?;
+    // The folder of copies goes once no run has one there.
+    let _ = fs::remove_dir(&copies);
     done
 }
 
@@ -187,11 +189,7 @@ pub fn run(
     say: &mut dyn FnMut(&str),
 ) -> Result<bool> {
     require(
-        !feature.is_empty()
-            && feature
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-            && root.join("features").join(feature).is_dir(),
+        workspace::has_feature(root, feature),
         &format!("This checkout has no feature named {feature}: features/{feature} isn't there."),
     )?;
     let name = root

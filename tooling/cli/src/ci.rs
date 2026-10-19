@@ -121,11 +121,7 @@ pub fn removability(
     say: &mut dyn FnMut(&str),
 ) -> Result<String> {
     require(
-        !feature.is_empty()
-            && feature
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-            && path.join("features").join(feature).is_dir(),
+        workspace::has_feature(path, feature),
         &format!("{name} has no feature named {feature}."),
     )?;
     follow(

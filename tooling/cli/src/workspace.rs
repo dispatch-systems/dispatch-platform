@@ -60,6 +60,16 @@ impl Workspace {
     }
 }
 
+/// Whether `feature` names one of the checkout's features at `root`: a folder of `features/`
+/// whose name is lowercase letters, digits and underscores.
+pub fn has_feature(root: &Path, feature: &str) -> bool {
+    !feature.is_empty()
+        && feature
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && root.join("features").join(feature).is_dir()
+}
+
 /// A change's name, which is its worktree's folder, its branch and its preview's unit: lowercase
 /// letters, digits and hyphens.
 pub fn valid_name(name: &str) -> Result<()> {

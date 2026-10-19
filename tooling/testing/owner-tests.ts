@@ -28,6 +28,14 @@ const usage = `Usage: npm run test:feature -- <name> [options]
   --no-build       skip the builds`;
 const homes = { feature: 'features', collector: 'collectors', core: 'core', mcp: 'mcp' } as const;
 export type Kind = keyof typeof homes;
+/** `at` as the file system resolves it, through any link, or as given when it doesn't exist. */
+const real = (at: string) => {
+  try {
+    return fs.realpathSync(at);
+  } catch {
+    return at;
+  }
+};
 /** The kinds of an owner's tests, each by the folder of its tests/ they sit in. */
 const LAYERS = {
   rust: 'backend',
@@ -238,7 +246,8 @@ export function ownerTests(
   if (only && !layers.includes(only))
     throw new Error(`--only takes ${layers.slice(0, -1).join(', ')} or ${layers.at(-1)}.`);
   const picked =
-    file && path.posix.normalize(path.isAbsolute(file) ? path.relative(root, file) : file);
+    file &&
+    path.posix.normalize(path.isAbsolute(file) ? path.relative(real(root), real(file)) : file);
   const layer = picked ? layerOf(root, dir, picked) : only;
   /** The owner's tests of a kind, as many as it runs. */
   const tests = (each: Layer, pattern: RegExp) =>

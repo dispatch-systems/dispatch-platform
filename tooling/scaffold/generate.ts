@@ -95,6 +95,16 @@ export function differing(log: string) {
   return [...new Set(named)].sort();
 }
 
+/** The tests of a cargo log that failed for a reason other than a file they found out of date. */
+export function failedOtherwise(log: string) {
+  const parts = stripVTControlCharacters(log).split(/^---- (\S+) stdout ----$/m);
+  const failed: string[] = [];
+  for (let at = 1; at < parts.length; at += 2)
+    if (!/(?:differs from what the test finds|is out of date):/.test(parts[at + 1] ?? ''))
+      failed.push(parts[at]!);
+  return failed;
+}
+
 /** Where a checkout keeps what it makes outside itself: its change's scratch folder. */
 function scratch(root: string) {
   const dir = `/tmp/dispatch-${path.basename(root)}`;
@@ -290,9 +300,12 @@ export async function generate(
   if (!done(await step('build', [...CARGO, '--no-run']))) return end();
   if (checking) {
     const compared = await step('check', [...CARGO, '--', ...filters]);
-    const differ = compared.ok ? [] : differing(fs.readFileSync(compared.log!, 'utf8'));
-    // A test that differs did what it is for; one failing for another reason says why.
-    done(differ.length ? { ...compared, ok: true, why: undefined } : compared);
+    const log = compared.ok ? '' : fs.readFileSync(compared.log!, 'utf8');
+    const differ = differing(log);
+    // A test that differs did what it is for; one failing for another reason says why, even
+    // beside others that differ.
+    const explained = differ.length > 0 && failedOtherwise(log).length === 0;
+    done(explained ? { ...compared, ok: true, why: undefined } : compared);
     return { ok: compared.ok, steps, changed: differ };
   }
   // A test can read a snapshot another writes in the same pass, and fail on what it read

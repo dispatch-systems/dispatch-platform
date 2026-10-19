@@ -219,10 +219,6 @@ pub fn run(
             .map(|_| ())
     };
     if let Action::Stop = action {
-        require(
-            open.page.is_none() && open.dsp.is_none(),
-            "--stop opens no page.",
-        )?;
         systemctl("stop")?;
         println!(
             "Stopped {name}'s preview; it keeps port {}.",
