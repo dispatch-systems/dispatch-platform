@@ -57,8 +57,13 @@ export const budgets = {
   // first on a runner reads higher than the same build after it: this leaves them room, so
   // only growth fails it.
   peakRssBytes: 384 * 1024 ** 2,
-  p95Ms: 2000,
-  requestsPerSecond: 10,
+  // The read workloads and cold reads: about half of what main measures, so a change that
+  // halves them fails here. After the read cache's fix (#544), main's queue runs in October
+  // 2026 served 81-170 requests a second, their slowest 5% within 48-396 ms, and cold reads
+  // within 372 ms. #528 made reads three times slower and still passed budgets of 10 a second
+  // and 2 s. As the platform grows, reset these from main's measurements the same way.
+  p95Ms: 800,
+  requestsPerSecond: 40,
   dailyPageBytes: 200 * 1024,
   mealPageBytes: 500 * 1024,
 };
@@ -78,8 +83,11 @@ export const tolerances = {
   /** Each workload's p95: up to this many times the base's, and this many milliseconds more. */
   p95: 3,
   p95Ms: 100,
-  /** Each workload's throughput: at least this share of the base's. */
-  throughput: 0.4,
+  /**
+   * Each workload's throughput: at least this share of the base's. Same-runner pairs of one
+   * build differ by up to a fifth; #528's fell to under half.
+   */
+  throughput: 0.6,
 };
 /**
  * Whether the budget holds `value`. A base that broke the same budget on the same runner
