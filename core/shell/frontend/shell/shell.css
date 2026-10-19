@@ -333,10 +333,7 @@
 .navigation-backdrop {
   display: none;
 }
-@media (max-width: 760px) {
-  .desktop-sidebar {
-    display: none;
-  }
+@media (width <= 980px) {
   .desktop-sidebar.navigation-open {
     display: flex;
     width: 280px;
@@ -361,11 +358,5 @@
     top: 24px;
     border: 0;
     background: transparent;
-  }
-  .mobile-menu {
-    display: inline-flex;
-  }
-  .main-area {
-    margin-left: 0;
   }
 }
