@@ -6,7 +6,7 @@ import { dspHash, navigate, wayBack } from '../../../../core/shell/frontend/runt
 import { settingsPage, type SidebarProps } from '../../../../core/shell/frontend/runtime/slots.js';
 import { moveTo, useAddressedPage } from '../address.js';
 import { search, type Found } from '../search/search.js';
-import { drawnPages, drawnSections, loadPage, openPage, prefetchPage } from '../tabs.js';
+import { drawnPages, drawnSections, loadPage, openPage, prefetchPage } from '../pages.js';
 import { PageList } from './PageList.js';
 import { Results, resultId } from './Results.js';
 import { SearchField } from './SearchField.js';

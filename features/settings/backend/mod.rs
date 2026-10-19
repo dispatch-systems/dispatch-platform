@@ -2,7 +2,6 @@
 //! keeps it, as onboarding first sets it.
 use dispatch_core::{
     Result,
-    accounts::api::requests::DspSetupRequest,
     db::Store,
     manifest::{Kept, Section, section, text, timezone},
 };
@@ -41,16 +40,19 @@ impl Kept for Profile {
             "timezone": own.timezone,
         }))
     }
-    /// Keeps it as onboarding does, checked as onboarding checks it, without its record in the
-    /// log: Settings records the change.
+    /// Keeps it where onboarding does, without its record in the log, as Settings records the
+    /// change: its name and timezone, and its station code and short code once given, each
+    /// left unset until then. Settings checked each as its field holds it.
     fn keep(&self, db: &Store, dsp: &str, _: &str, values: &Value) -> Result<()> {
-        let profile = DspSetupRequest::parse(&json!({
-            "name": values["name"],
-            "abbreviation": values["abbreviation"],
-            "stationCode": values["station_code"],
-            "timezone": values["timezone"],
-        }))?;
-        db.keep_dsp_profile(dsp, &profile)
+        let text = |id: &str| values[id].as_str().unwrap_or_default();
+        let given = |id: &str| Some(text(id)).filter(|text| !text.is_empty());
+        db.keep_dsp_profile(
+            dsp,
+            text("name"),
+            text("timezone"),
+            given("station_code"),
+            given("abbreviation"),
+        )
     }
 }
 

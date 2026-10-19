@@ -7,7 +7,7 @@ use crate::{
     collection::api::types::ScheduleCollection,
     db::Store,
     ensure,
-    manifest::settings::{Field, Kind, Options},
+    manifest::settings::{Field, Kind, Listed, Options},
 };
 use serde_json::Value;
 
@@ -26,32 +26,56 @@ pub(crate) fn default(field: &Field) -> Option<Value> {
     })
 }
 
-/// The options a field offers as it's read, each a value and its label: none for a kind
-/// without options. A listed kind's are its feature's to list for `dsp` alone.
-pub(crate) fn options(
-    db: &Store,
-    dsp: &str,
-    field: &Field,
-) -> Result<Option<Vec<(String, String)>>> {
-    let fixed = |options: &[(&str, &str)]| {
-        options
+/// The options fields offer as they're read for one answer, `dsp`'s alone: each list a
+/// feature makes read once, however many fields offer it, as a DSP's departments may be by
+/// several sections.
+pub(crate) struct Lists<'a> {
+    db: &'a Store,
+    dsp: &'a str,
+    read: Vec<(Listed, Vec<(String, String)>)>,
+}
+impl<'a> Lists<'a> {
+    pub(crate) fn new(db: &'a Store, dsp: &'a str) -> Self {
+        let read = Vec::new();
+        Self { db, dsp, read }
+    }
+    /// The options `field` offers, each a value and its label: none for a kind without
+    /// options. A listed kind's are its feature's to list.
+    pub(crate) fn options(&mut self, field: &Field) -> Result<Option<Vec<(String, String)>>> {
+        let fixed = |options: &[(&str, &str)]| {
+            options
+                .iter()
+                .map(|(value, label)| ((*value).to_owned(), (*label).to_owned()))
+                .collect()
+        };
+        Ok(match field.kind {
+            Kind::Choice { options, .. }
+            | Kind::Many {
+                options: Options::Fixed(options),
+                ..
+            } => Some(fixed(options)),
+            Kind::Pick { options, .. }
+            | Kind::Many {
+                options: Options::Listed(options),
+                ..
+            } => Some(self.listed(options)?),
+            _ => None,
+        })
+    }
+    /// What `list` lists, read once. One that fails isn't kept, so the next field that offers
+    /// it reads it again.
+    fn listed(&mut self, list: Listed) -> Result<Vec<(String, String)>> {
+        let read = self
+            .read
             .iter()
-            .map(|(value, label)| ((*value).to_owned(), (*label).to_owned()))
-            .collect()
-    };
-    Ok(match field.kind {
-        Kind::Choice { options, .. } => Some(fixed(options)),
-        Kind::Many {
-            options: Options::Fixed(options),
-            ..
-        } => Some(fixed(options)),
-        Kind::Pick { options, .. }
-        | Kind::Many {
-            options: Options::Listed(options),
-            ..
-        } => Some(options(db, dsp)?),
-        _ => None,
-    })
+            .find(|(read, _)| std::ptr::fn_addr_eq(*read, list));
+        if let Some((_, options)) = read {
+            return Ok(options.clone());
+        }
+        let options = list(self.db, self.dsp)?;
+        self.read.push((list, options.clone()));
+        Ok(options)
+    }
 }
 
 /// What Settings draws `field` with, given the options it offers now.
@@ -123,9 +147,9 @@ pub(crate) fn described(
 
 /// `given` as `field` keeps it, given what it holds now and the options it offers: made the
 /// one way it's kept, and refused as `invalid_input` unless it fits, is one of the options
-/// listed now, and leaves a locked text as it was set. Given no options, what a field lists as
-/// it's read is checked only as `fits` checks it, as for values a feature adopts, which its
-/// list may have dropped since they were kept.
+/// listed now, and neither empties a text once set nor changes a locked one. Given no options,
+/// what a field lists as it's read is checked only as `fits` checks it, as for values a
+/// feature adopts, which its list may have dropped since they were kept.
 pub(crate) fn checked(
     field: &Field,
     given: &Value,
@@ -176,12 +200,11 @@ pub(crate) fn checked(
         _ => true,
     };
     let set = now.as_str().is_some_and(|now| !now.is_empty());
-    let locked = matches!(field.kind, Kind::Text { locked: true, .. }) && set && *now != value;
-    ensure(
-        fits(field, &value) && listed && !locked,
-        "invalid_input",
-        400,
-    )?;
+    let kept = match field.kind {
+        Kind::Text { locked, .. } if set => value != "" && !(locked && *now != value),
+        _ => true,
+    };
+    ensure(fits(field, &value) && listed && kept, "invalid_input", 400)?;
     Ok(value)
 }
 

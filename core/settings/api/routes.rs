@@ -9,7 +9,7 @@ use crate::{
     accounts::Context,
     db::Store,
     ensure,
-    foundation::crypto,
+    foundation::{crypto, observability},
     manifest::{
         Feature, registry,
         settings::{self as declared, Group, Scope, Section},
@@ -24,12 +24,14 @@ use crate::{
     settings::{self, Saved, kinds, store},
     tenancy::roles,
 };
+use serde_json::json;
 
 pub fn routes() -> Vec<Route> {
     vec![
         read("/api/dsp/settings", Dsp(roles::ACCESS), answer),
-        // A section's `saved` may move what the DSP's schedules wait on, as its timezone.
-        write("/api/dsp/settings/{section}", Dsp(roles::ACCESS), save).invalidates_schedules(),
+        // A save that retimes the DSP's schedules, as its timezone does, wakes the scheduler
+        // itself; any other leaves it be.
+        write("/api/dsp/settings/{section}", Dsp(roles::ACCESS), save),
     ]
 }
 
@@ -58,7 +60,8 @@ type Declared = (Option<&'static Feature>, &'static Section);
 type OnPage = (String, &'static str, Group, u16);
 
 /// Every section of `declared` the member may see, with the pages they're on, read from the
-/// DSP's stored settings at once.
+/// DSP's stored settings at once. One that can't be read now, as when its options can't be
+/// listed, is left out, and noted in the server's log; the rest are as they are.
 pub(crate) fn sections(
     db: &Store,
     c: &Context,
@@ -74,30 +77,44 @@ pub(crate) fn sections(
             (group_a, at_a, page_a, a.order, a.id).cmp(&(group_b, at_b, page_b, b.order, b.id))
         },
     );
+    let records = store::Records::load(db, &c.dsp.id, c.actor())?;
+    let mut lists = kinds::Lists::new(db, &c.dsp.id);
     let mut pages: Vec<SettingsPage> = Vec::new();
-    for (_, (id, label, group, order)) in &seen {
-        if pages.last().is_none_or(|page| page.id != *id) {
+    let mut sections = Vec::with_capacity(seen.len());
+    for ((feature, section), (page, label, group, order)) in seen {
+        let member = (section.scope == Scope::Member).then(|| c.actor());
+        let record = records.of(section, member);
+        let shown = match view(db, c, &mut lists, feature, section, page.clone(), record) {
+            Ok(shown) => shown,
+            Err(error) => {
+                skipped(c, section, &error);
+                continue;
+            }
+        };
+        if pages.last().is_none_or(|last| last.id != page) {
             pages.push(SettingsPage {
-                id: id.clone(),
-                label: (*label).to_owned(),
+                id: page,
+                label: label.to_owned(),
                 group: match group {
                     Group::Personal => SettingsGroup::Personal,
                     Group::Dsp => SettingsGroup::Dsp,
                     Group::Features => SettingsGroup::Features,
                 },
-                order: *order,
+                order,
             });
         }
+        sections.push(shown);
     }
-    let records = store::Records::load(db, &c.dsp.id, c.actor())?;
-    let sections = seen
-        .into_iter()
-        .map(|((feature, section), (page, ..))| {
-            let member = (section.scope == Scope::Member).then(|| c.actor());
-            view(db, c, feature, section, page, records.of(section, member))
-        })
-        .collect::<Result<_>>()?;
     Ok(SettingsAnswer { pages, sections })
+}
+/// Notes in the server's log a section left out of a member's Settings: which, of which DSP,
+/// and why, never its values.
+fn skipped(c: &Context, section: &Section, error: &Error) {
+    observability::event(
+        "error",
+        "settings.section_skipped",
+        json!({"dspId": c.dsp.id, "section": section.id, "error": error.code}),
+    );
 }
 
 /// Saves the section `id` of `declared` as `body` asks, once the member may see it and holds
@@ -134,8 +151,9 @@ pub(crate) fn save_as(
             let (page, ..) = declared::page(feature, section);
             let member = (section.scope == Scope::Member).then(|| c.actor());
             let record = store::record(db, &c.dsp.id, section, member)?;
+            let mut lists = kinds::Lists::new(db, &c.dsp.id);
             SettingsSaved::Section {
-                section: Box::new(view(db, c, feature, section, page, &record)?),
+                section: Box::new(view(db, c, &mut lists, feature, section, page, &record)?),
                 reopen: db.find_dsp(&c.dsp.id)?.revision != c.dsp.revision,
             }
         }
@@ -155,10 +173,12 @@ fn shown(c: &Context, feature: Option<&Feature>, section: &Section) -> bool {
         && section.part.is_none_or(|part| c.has(part))
 }
 
-/// `section` as the member sees it, on `page`, by its `record`.
+/// `section` as the member sees it, on `page`, by its `record`, its fields' options from
+/// `lists`.
 fn view(
     db: &Store,
     c: &Context,
+    lists: &mut kinds::Lists,
     feature: Option<&Feature>,
     section: &Section,
     page: String,
@@ -172,7 +192,7 @@ fn view(
             Ok(SettingsField {
                 id: field.id.to_owned(),
                 label: field.label.to_owned(),
-                kind: kinds::described(field, kinds::options(db, &c.dsp.id, field)?)?,
+                kind: kinds::described(field, lists.options(field)?)?,
             })
         })
         .collect::<Result<_>>()?;

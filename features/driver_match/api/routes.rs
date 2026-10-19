@@ -7,9 +7,12 @@ use dispatch_core::{
     db::Store,
     foundation::validate as v,
     manifest::people::Source,
-    server::http::{
-        input::{Input, Reply},
-        route::{Dsp, Member, Route, read, write},
+    server::{
+        cache::{PEOPLE, Scope},
+        http::{
+            input::{Input, Reply},
+            route::{Dsp, Member, Route, coalesced_read, read, write},
+        },
     },
 };
 
@@ -17,7 +20,8 @@ const MANAGE: Dsp = Dsp("driver_match.manage");
 pub fn routes() -> Vec<Route> {
     vec![
         read("/api/dsp/driver-match", MANAGE, overview),
-        read("/api/dsp/driver-match/counts", MANAGE, counts),
+        // Every manager's sidebar asks for it on every page: they wait for one count, not one each.
+        coalesced_read("/api/dsp/driver-match/counts", MANAGE, counts),
         read("/api/dsp/driver-match/people/{code}", MANAGE, details),
         write("/api/dsp/driver-match/merge", MANAGE, merge),
         write("/api/dsp/driver-match/split", MANAGE, split),
@@ -28,8 +32,18 @@ pub fn routes() -> Vec<Route> {
 fn overview(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     Reply::of(&db.driver_match(c.dsp_id())?)
 }
+/// The same for each of the DSP's managers, so kept among the DSP's people, under its own name:
+/// a decision, or whatever a collection brings in, evicts it.
 fn counts(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.match_counts(c.dsp_id())?)
+    let bytes = c.state.read_cache.json(
+        Scope::tenant(PEOPLE, c.dsp_id()),
+        "driver_match.counts".to_owned(),
+        c.state
+            .data_revision
+            .load(std::sync::atomic::Ordering::Relaxed),
+        || db.match_counts(c.dsp_id()),
+    )?;
+    Ok(Reply::encoded(bytes))
 }
 fn details(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&db.person_details(c.dsp_id(), input.param("code"))?)

@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import type { SettingsAnswer, SettingsSection } from '../../../../core/settings/api/index.js';
 import { installFeatures } from '../../../../core/shell/frontend/runtime/slots.js';
-import { drawnPages, openPage } from '../../frontend/tabs.js';
+import { drawnPages, openPage } from '../../frontend/pages.js';
 
 // Settings draws the pages the server says the member has, each with a section on it to draw:
 // a custom section only with the component its owner registers, while that has something to

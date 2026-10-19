@@ -62,3 +62,31 @@ fn the_profile_is_the_dsps_own_its_short_code_given_once_and_a_save_reads_as_a_c
     .unwrap();
     assert_eq!(db.find_dsp(&dev).unwrap().code.as_deref(), Some("devq7"));
 }
+
+#[test]
+fn a_dsp_without_a_station_code_or_short_code_saves_any_change_and_leaves_them_unset() {
+    testing::install(&[], &[&crate::FEATURE]);
+    let (_root, db) = testing::seeded();
+    let actor = testing::platform_owner(&db);
+    let (north, dev) = (dsp(&db, "Northline Logistics"), dsp(&db, "Dev DSP"));
+    let save = |dsp: &str, values: Value, revision| {
+        settings::save(&db, dsp, &actor, &PROFILE, &values, revision, false)
+    };
+    save(&north, json!({"name": "Northline Freight"}), 0).unwrap();
+    save(&dev, json!({"timezone": "Asia/Tokyo"}), 0).unwrap();
+    assert_eq!(db.find_dsp(&north).unwrap().name, "Northline Freight");
+    assert_eq!(db.profile(&north).unwrap().station_code, "");
+    let kept = db.find_dsp(&dev).unwrap();
+    assert_eq!((kept.timezone.as_str(), kept.code), ("Asia/Tokyo", None));
+    // Once given, a station code changes as Amazon writes it, and stays given.
+    save(&north, json!({"station_code": "xyz9"}), 1).unwrap();
+    for values in [
+        json!({"station_code": ""}),
+        json!({"station_code": "X9"}),
+        json!({"name": " "}),
+    ] {
+        let refused = save(&north, values.clone(), 2).unwrap_err();
+        assert_eq!(refused.code, "invalid_input", "{values}");
+    }
+    assert_eq!(db.profile(&north).unwrap().station_code, "XYZ9");
+}

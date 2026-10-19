@@ -1,0 +1,5 @@
+/* The tab open: its section keeps no space above it of its own, as on a DSP's Settings, so the
+   tabs leave it. */
+.platform-settings-tab {
+  padding-top: 24px;
+}

@@ -142,7 +142,8 @@ pub fn adopt(db: &Store, dsp: &str, section: &Section, values: &Value) -> Result
 type Offered = Vec<(&'static str, Option<Vec<(String, String)>>)>;
 /// `now` with each of the `given` fields' values, each checked as its kind says, and the
 /// options of each, `listing` them: refused as `invalid_input` for a field the section hasn't,
-/// or a schedules field, which holds no value.
+/// or a schedules field, which holds no value. Listing, it reads every list the section
+/// offers, so a section Settings leaves out, as one of them fails, isn't saved either.
 fn merged(
     db: &Store,
     dsp: &str,
@@ -153,17 +154,19 @@ fn merged(
 ) -> Result<(Map<String, Value>, Offered)> {
     let mut after = now.clone();
     let mut offered = Vec::with_capacity(given.len());
+    let mut lists = kinds::Lists::new(db, dsp);
+    if listing {
+        for field in section.fields {
+            lists.options(field)?;
+        }
+    }
     for (id, value) in given {
         let field = section
             .fields
             .iter()
             .find(|field| field.id == id && kinds::default(field).is_some())
             .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let options = if listing {
-            kinds::options(db, dsp, field)?
-        } else {
-            None
-        };
+        let options = if listing { lists.options(field)? } else { None };
         let checked = kinds::checked(field, value, &now[field.id], options.as_deref())?;
         after.insert(field.id.to_owned(), checked);
         offered.push((field.id, options));

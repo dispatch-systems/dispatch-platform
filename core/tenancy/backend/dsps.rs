@@ -460,33 +460,63 @@ impl Store {
             }
         }
     }
-    /// Keeps `profile` as the DSP's: its name, its timezone, retiming its schedules when that
-    /// changes, its station code, and its short code, given once. Records nothing in the log,
-    /// which is its caller's to say; the DSP's open views expire.
-    pub fn keep_dsp_profile(&self, id: &str, profile: &DspSetupRequest) -> Result<()> {
-        self.ensure_dsp_profile(id, profile)?;
+    /// Keeps the DSP's name and its timezone, retiming its schedules when that changes, and its
+    /// station code and its short code when given, each in capitals and digits: the short code
+    /// only while it has none, as it then names the DSP's address for good. One not given
+    /// stays as it is, unset until it's given. Records nothing in the log, which is its
+    /// caller's to say; the DSP's open views expire.
+    pub fn keep_dsp_profile(
+        &self,
+        id: &str,
+        name: &str,
+        timezone: &str,
+        station_code: Option<&str>,
+        short_code: Option<&str>,
+    ) -> Result<()> {
+        ensure(
+            !name.trim().is_empty()
+                && name.chars().count() <= 100
+                && timezone.parse::<chrono_tz::Tz>().is_ok()
+                && station_code.is_none_or(|code| {
+                    (3..=8).contains(&code.len())
+                        && code
+                            .bytes()
+                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+                }),
+            "invalid_input",
+            400,
+        )?;
         let before = self.find_dsp(id)?;
-        if before.code.is_none() {
-            self.set_code(id, &profile.abbreviation)?;
+        match (&before.code, short_code) {
+            (Some(code), Some(given)) => {
+                ensure(code.eq_ignore_ascii_case(given), "short_code_locked", 409)?;
+            }
+            (None, Some(given)) => {
+                self.set_code(id, given)?;
+            }
+            (_, None) => {}
         }
         self.platform.exec(
             "UPDATE dsps SET name=?,timezone=?,revision=revision+1 WHERE id=?",
-            [&profile.name, &profile.timezone, id],
+            [name, timezone, id],
         )?;
-        if before.timezone != profile.timezone {
-            self.retime_schedules(id, &profile.timezone)?;
+        if before.timezone != timezone {
+            self.retime_schedules(id, timezone)?;
         }
-        self.set_profile(
-            id,
-            json!({
-                "abbreviation": profile.abbreviation,
-                "stationCode": profile.station_code,
-                "setupRequired": false
-            }),
-        )?;
+        let mut given = serde_json::Map::new();
+        if let Some(code) = station_code {
+            given.insert("stationCode".into(), json!(code));
+        }
+        if let Some(code) = short_code {
+            given.insert("abbreviation".into(), json!(code.to_ascii_uppercase()));
+        }
+        if !given.is_empty() {
+            self.set_profile(id, Value::Object(given))?;
+        }
         Ok(())
     }
-    /// Keeps the profile a DSP is set up with, as its onboarding asks for it, and records it.
+    /// Keeps the profile a DSP is set up with, as its onboarding asks for it, every part of it
+    /// given, and records it.
     pub fn complete_dsp_profile(
         &self,
         id: &str,
@@ -494,7 +524,14 @@ impl Store {
         profile: &DspSetupRequest,
     ) -> Result<()> {
         let before = self.find_dsp(id)?;
-        self.keep_dsp_profile(id, profile)?;
+        self.keep_dsp_profile(
+            id,
+            &profile.name,
+            &profile.timezone,
+            Some(&profile.station_code),
+            Some(&profile.abbreviation),
+        )?;
+        self.set_profile(id, json!({"setupRequired": false}))?;
         let changes: Vec<_> = [
             ("name", before.name.as_str(), profile.name.as_str()),
             (

@@ -1,7 +1,6 @@
 /* A DSP's Settings: each declared section a card, a row for each of its fields. */
 .settings-section {
   max-width: 900px;
-  margin-top: 24px;
   padding: 22px 25px 20px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -234,12 +233,11 @@
   }
 }
 
-/* A page's sections, under its name: each keeps 24px above it, as a margin or its own padding,
-   which the name's own margin already gives the first. Its own formatting context keeps a
-   section's margin from merging with this one. */
-.settings-page {
-  display: flow-root;
-  margin-top: -24px;
+/* A page's sections, under its name: the name's own margin above the first, and 24px between
+   each and the next. A section keeps no space above it of its own; a margin one keeps all the
+   same merges into these rather than adding to them. */
+.settings-page > * + * {
+  margin-top: 24px;
 }
 
 /* A section a search result opened, pointed out for a few seconds, then let go of slowly. */
@@ -418,12 +416,12 @@ div[data-settings-section][data-found] {
   color: var(--muted-foreground);
   stroke-width: 1.75;
 }
-.settings-nav-item[aria-current='page'] {
+.settings-nav-item:is([aria-current='page'], [data-current]) {
   background: var(--selection);
   color: var(--primary);
   font-weight: 550;
 }
-.settings-nav-item[aria-current='page'] svg {
+.settings-nav-item:is([aria-current='page'], [data-current]) svg {
   color: var(--primary);
 }
 
@@ -459,10 +457,10 @@ div[data-settings-section][data-found] {
   color: var(--foreground);
   font-weight: 650;
 }
-.settings-result[aria-current='page'] mark {
+.settings-result[data-current] mark {
   color: var(--primary);
 }
-.settings-result[aria-current='page'] small {
+.settings-result[data-current] small {
   color: color-mix(in srgb, var(--primary) 70%, var(--muted-foreground));
 }
 /* The one Enter opens, while the search field has the keys. */
@@ -471,6 +469,6 @@ div[data-settings-section][data-found] {
 }
 .settings-find:focus-within
   + .settings-nav
-  .settings-result[aria-selected='true']:not([aria-current]) {
+  .settings-result[aria-selected='true']:not([data-current]) {
   background: var(--accent);
 }

@@ -203,7 +203,8 @@ pub enum Group {
 /// the member's view authorized, and reads and writes that DSP's data alone.
 pub trait Kept: Sync {
     /// Its values as they are now, by field id; a field it leaves out reads as its default.
-    /// Settings loads it each time it's read, so it's one indexed query.
+    /// Settings loads it each time it's read, so it's one indexed query. One that fails leaves
+    /// just its section out of the member's Settings, and fails a save of it.
     fn load(&self, db: &Store, dsp: &str) -> Result<Value>;
     /// Keeps `values`, every field's, in the same write as the save, before its `saved` and
     /// its record in the log; it records nothing in the log itself.
@@ -218,8 +219,10 @@ pub type OnSave = fn(&Store, dsp: &str, values: &Value) -> Result<()>;
 /// from its stored data, as it runs for each member's Settings.
 pub type Found = fn(c: &Context) -> Vec<String>;
 /// The options a field lists as it's read, each a value and its label, as a DSP's
-/// departments: `dsp`'s alone. It runs for each member's Settings that shows its section, and
-/// for each save of it, so it's one indexed query, never a scan of collected data.
+/// departments: `dsp`'s alone. It runs once for each member's Settings that shows a section
+/// offering it, however many do, and for each save of one, so it's one indexed query, never a
+/// scan of collected data. One that fails leaves just the sections offering it out of the
+/// member's Settings, and fails a save of them.
 pub type Listed = fn(&Store, dsp: &str) -> Result<Vec<(String, String)>>;
 
 /// One value of a section, or for `schedules`, what Settings draws in its place.
@@ -263,8 +266,8 @@ pub enum Kind {
         presets: &'static [(i64, &'static str)],
         none: Option<&'static str>,
     },
-    /// `min` to `max` characters; empty only when its default is. A `code` is uppercase
-    /// letters and digits, and a `locked` one can't change once set.
+    /// `min` to `max` characters; empty only when its default is, and only until it's set. A
+    /// `code` is uppercase letters and digits, and a `locked` one can't change once set.
     Text {
         min: usize,
         max: usize,
@@ -586,9 +589,9 @@ fn shared_page(id: &str) -> Option<&'static SharedPage> {
 }
 
 /// Panics unless every section is as the slot asks, as the registry is installed: an id of
-/// its own under its feature's name, on a page that exists, under a permission its owner
-/// declares and with a part its feature has; fields only a custom one may lack, each with an
-/// id of its own and a default its kind holds.
+/// its own under its feature's name, snake_case after it, on a page that exists, under a
+/// permission its owner declares and with a part its feature has; fields only a custom one
+/// may lack, each with an id of its own and a default its kind holds.
 pub(crate) fn check(registry: &Registry) {
     let mut ids = BTreeSet::new();
     for (feature, section) in registry.sections() {
@@ -603,6 +606,12 @@ pub(crate) fn check(registry: &Registry) {
             Some(feature) => check_feature(feature, section),
             None => check_core(registry, section),
         }
+        // Its record is kept as `section:<id>`, a member's own as `section:<id>:<user>`: an
+        // id with a `:` in it would read as someone's own.
+        assert!(
+            id.split_once('.').is_some_and(|(_, what)| snake_case(what)),
+            "{owner}'s section {id} isn't named <owner>.<what> with its what snake_case"
+        );
         if let Page::Shared(page) = section.page {
             assert!(
                 shared_page(page).is_some(),
@@ -620,11 +629,7 @@ pub(crate) fn check(registry: &Registry) {
         let mut fields = BTreeSet::new();
         for field in section.fields {
             assert!(
-                field.id.starts_with(|c: char| c.is_ascii_lowercase())
-                    && field
-                        .id
-                        .bytes()
-                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
+                snake_case(field.id),
                 "{id}'s field {} isn't snake_case",
                 field.id
             );
@@ -639,6 +644,13 @@ pub(crate) fn check(registry: &Registry) {
             }
         }
     }
+}
+/// Whether `name` is snake_case: lowercase letters, digits and `_`, from a letter.
+fn snake_case(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_lowercase())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 /// A feature's section: named under it, under its own permission, with one of its parts, on
 /// a page of its own whose id no shared page takes.

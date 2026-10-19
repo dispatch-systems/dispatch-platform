@@ -6,7 +6,7 @@ import { Loading } from '../../../core/shell/frontend/ui/index.js';
 import type { Found } from './find.js';
 import { LeaveGuards, type Guards } from './leave.js';
 import { Section, sectionElement } from './Section.js';
-import { sectionsOn } from './tabs.js';
+import { sectionsOn } from './pages.js';
 
 /**
  * One page of Settings: its sections in their order, a declared one drawn from what the server

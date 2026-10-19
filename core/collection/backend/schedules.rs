@@ -428,6 +428,8 @@ impl Store {
     pub(crate) fn retime_feature_schedules(&self, id: &str, tz: &str, feature: &str) -> Result<()> {
         self.retime_schedules_for(id, tz, Some(feature))
     }
+    /// Runs the DSP's schedules, or a feature's, in `tz` from now on, and wakes the scheduler
+    /// once the work is done, whichever route or job it's part of.
     fn retime_schedules_for(&self, id: &str, tz: &str, feature: Option<&str>) -> Result<()> {
         let db = self.dsp(id)?;
         db.transaction(|| {
@@ -451,7 +453,9 @@ impl Store {
                 db.exec(RETIME, params![row.anchor, deadline, row.schedule.id])?;
             }
             Ok(())
-        })
+        })?;
+        self.schedules_moved();
+        Ok(())
     }
     pub fn schedule_deadlines(&self) -> Result<Vec<(String, i64)>> {
         let mut deadlines = Vec::new();

@@ -36,6 +36,17 @@ fn a_section_not_named_under_its_feature_is_refused() {
 }
 
 #[test]
+#[should_panic(expected = "x's section x.a:b isn't named <owner>.<what> with its what snake_case")]
+fn a_section_whose_id_could_read_as_a_members_own_is_refused() {
+    static X: Feature = Feature {
+        switch: optional("x", "X", &[]),
+        settings: &[section("x.a:b", "Policy", "access", FIELDS)],
+        ..feature("x")
+    };
+    checked(&X);
+}
+
+#[test]
 #[should_panic(expected = "x's section x.empty has no fields, so it must be custom")]
 fn a_section_with_no_fields_that_its_owner_does_not_draw_is_refused() {
     static X: Feature = Feature {

@@ -36,11 +36,14 @@ part. Mandatory: every DSP has it.
   whether the member has anything there, and a page with nothing to draw isn't listed.
 - **Its section:** `settings.profile`, DSP profile, on the DSP's page (`?tab=dsp`): the DSP's
   name, its short code, which names its address and can't change once given, its station code
-  and its timezone. Settings draws it from its declaration (`backend/mod.rs`); it's kept where
-  onboarding keeps it, in core's tables, through a `Kept` adapter around core's profile save,
-  checked as onboarding checks it. A save is logged as Settings' `settings.changed`, not as
-  the DSP's setup; a timezone changed retimes its schedules, and the save wakes the scheduler.
-  The DSP's open views expire with it, so the next one opened, the Profile badge's, shows it.
+  and its timezone. Settings draws it from its declaration (`backend/mod.rs`) and checks each
+  field as it's declared; it's kept where onboarding keeps it, in core's tables, through a
+  `Kept` adapter around core's profile save. A DSP without a short code or a station code yet
+  saves any change without them, and they stay unset until given; a station code once given
+  can change but not go. A save is logged as Settings' `settings.changed`, not as the DSP's
+  setup, and doesn't complete it; a timezone changed retimes its schedules and wakes the
+  scheduler. The DSP's open views expire with it, so the next one opened, the Profile badge's,
+  shows it.
 - **Permission:** `settings.manage` (Manage DSP Settings), listed under DSP on the role sheet.
   It gates only the DSP's profile, there and through onboarding, not the page.
 - **API:** `POST /api/dsp/profile`, behind `settings.manage`: the DSP's name, abbreviation,

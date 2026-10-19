@@ -1,7 +1,7 @@
 import { createElement, lazy } from 'react';
 import { Settings } from 'lucide-react';
 import type { Access, FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
-import { prefetchSettings, preloadSettings } from './tabs.js';
+import { prefetchSettings, preloadSettings } from './pages.js';
 
 declare module '../../../core/shell/frontend/runtime/slots.js' {
   interface DspPages {

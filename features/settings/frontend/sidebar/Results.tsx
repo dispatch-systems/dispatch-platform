@@ -14,7 +14,8 @@ function Marks({ text }: { text: Marked }) {
 
 /**
  * The pages a search found, best first, each with what on it matched: the options of the search
- * field's list, `active` the one Enter opens. The one open is marked current.
+ * field's list, `active` the one Enter opens, which is the one selected. The page open looks as it
+ * does among the pages.
  */
 export function Results({
   id,
@@ -41,7 +42,7 @@ export function Results({
             id={resultId(id, each.page.id)}
             role="option"
             aria-selected={at === active}
-            aria-current={each.page.id === current ? 'page' : undefined}
+            data-current={each.page.id === current || undefined}
             className="settings-nav-item settings-result"
             // The search field keeps the focus, and with it the keys that move through these.
             onMouseDown={(event) => event.preventDefault()}

@@ -13,7 +13,10 @@ import { manifests } from './installed.js';
 export type SettingsContext = { session: SessionView; view?: DspView };
 /** What a custom section is drawn with: its context, and `refresh`, which reads Settings again. */
 export type CustomSectionContext = SettingsContext & { refresh: () => void };
-/** The component of a section its owner's backend declares `custom`. */
+/**
+ * The component of a section its owner's backend declares `custom`. The page puts the space
+ * between its sections: what it draws keeps none above it of its own.
+ */
 export type CustomSection = {
   /** The section it draws, as declared: `<owner>.<what>`. It never changes. */
   id: string;

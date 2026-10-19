@@ -1,17 +1,20 @@
 //! What a member sees and saves of a DSP's Settings: the sections of features on for the DSP
-//! under permissions they hold, on the pages those sections are on. Which DSP's and whose
-//! values they are, over HTTP, is `integration/isolation.rs`'s.
+//! under permissions they hold, on the pages those sections are on, but for one that can't be
+//! read now, each list their fields offer read once. Which DSP's and whose values they are,
+//! over HTTP, is `integration/isolation.rs`'s.
 use super::*;
 use crate::{
     accounts::{Auth, api::types::PublicUser},
     foundation::config::Site,
     manifest::{
         feature, mandatory, optional, perm,
-        settings::{Field, number, section},
+        settings::{Field, Kept, Options, many, number, pick, section, toggle},
     },
+    settings::api::types::SettingsKind,
     testing,
 };
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const DAYS: &[Field] = &[number("days", "Keep", 30, 3650, Some(90))];
 /// On for every DSP, as the one feature core's own registry has.
@@ -49,9 +52,12 @@ fn named(c: &Context) -> Vec<String> {
     vec![c.dsp.name.clone()]
 }
 fn declared() -> Vec<Declared> {
-    [&ON, &OFF]
-        .into_iter()
-        .flat_map(|feature| feature.settings.iter().map(move |s| (Some(feature), s)))
+    of(&[&ON, &OFF])
+}
+/// The sections of `features`, each with its feature.
+fn of(features: &[&'static Feature]) -> Vec<Declared> {
+    (features.iter())
+        .flat_map(|feature| feature.settings.iter().map(move |s| (Some(*feature), s)))
         .collect()
 }
 
@@ -113,7 +119,11 @@ impl Seeded {
             .unwrap()
     }
     fn sees(&self, c: &Context) -> (Vec<String>, Vec<String>) {
-        let answer = sections(&self.db, c, declared()).unwrap();
+        self.sees_of(c, declared())
+    }
+    /// The pages and sections of `declared` the member sees, by id.
+    fn sees_of(&self, c: &Context, declared: Vec<Declared>) -> (Vec<String>, Vec<String>) {
+        let answer = sections(&self.db, c, declared).unwrap();
         (
             answer.pages.iter().map(|page| page.id.clone()).collect(),
             answer.sections.iter().map(|s| s.id.clone()).collect(),
@@ -186,4 +196,117 @@ fn a_member_sees_the_sections_of_features_on_whose_permissions_they_hold() {
         (section.revision, &section.values["days"], reopen),
         (1, &json!(120), false)
     );
+}
+
+/// Fails as a list does while the file it's read from is missing.
+fn missing(_: &Store, _: &str) -> Result<Vec<(String, String)>> {
+    Err(Error::new("storage_file_missing", 503))
+}
+/// Keeps its values where they can't be read now.
+struct Unreadable;
+impl Kept for Unreadable {
+    fn load(&self, _: &Store, _: &str) -> Result<Value> {
+        Err(Error::new("storage_file_missing", 503))
+    }
+    fn keep(&self, _: &Store, _: &str, _: &str, _: &Value) -> Result<()> {
+        unreachable!("a section that can't be read isn't saved")
+    }
+}
+/// Beside `ON`'s, a section whose options can't be listed now and one, alone on Theme, whose
+/// values can't be loaded.
+static UNREADABLE: Feature = Feature {
+    switch: mandatory("stand_in", "Stand-in"),
+    settings: &[
+        section(
+            "stand_in.listed",
+            "Listed",
+            roles::ACCESS,
+            &[
+                toggle("enabled", "Collects", true),
+                pick("department", "Department", missing, None).none("All departments"),
+            ],
+        ),
+        section("stand_in.kept", "Kept", roles::ACCESS, DAYS)
+            .kept(&Unreadable)
+            .on("theme"),
+    ],
+    ..feature("stand_in")
+};
+
+#[test]
+fn a_section_that_cant_be_read_now_is_left_out_and_not_saved_and_the_rest_are_shown() {
+    let at = seeded();
+    let owner = at.owner(&at.northline);
+    let pages = |ids: &[&str]| ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>();
+    assert_eq!(
+        at.sees_of(&owner, of(&[&ON, &OFF, &UNREADABLE])),
+        (
+            pages(&["general", "data", "stand-in"]),
+            pages(&["stand_in.mine", "stand_in.limits", "stand_in.policy"])
+        )
+    );
+    // Saving one fails as reading it does, whichever of its fields it sends.
+    for (id, values) in [
+        ("stand_in.listed", json!({"enabled": false})),
+        ("stand_in.kept", json!({"days": 120})),
+    ] {
+        let body = json!({"values": values, "revision": 0});
+        let saved = save_as(&at.db, &owner, of(&[&UNREADABLE]), id, &body);
+        assert_eq!(refused(saved), ("storage_file_missing".into(), 503), "{id}");
+    }
+    let listed = store::record(&at.db, &at.northline, &UNREADABLE.settings[0], None);
+    assert_eq!(listed.unwrap(), Value::Null, "nothing of it was kept");
+}
+
+static LISTED: AtomicUsize = AtomicUsize::new(0);
+/// The DSP's departments, counting each time they're listed.
+fn departments(_: &Store, _: &str) -> Result<Vec<(String, String)>> {
+    LISTED.fetch_add(1, Ordering::Relaxed);
+    Ok(vec![("dsp".into(), "Delivery".into())])
+}
+/// Two sections whose fields offer one list, as a DSP's departments may be by several.
+static DEPARTMENTS: Feature = Feature {
+    switch: mandatory("stand_in", "Stand-in"),
+    settings: &[
+        section(
+            "stand_in.drivers",
+            "Drivers",
+            roles::ACCESS,
+            &[many(
+                "departments",
+                "Departments",
+                Options::Listed(departments),
+                &[],
+            )],
+        ),
+        section(
+            "stand_in.roster",
+            "Roster",
+            roles::ACCESS,
+            &[pick("department", "Department", departments, None).none("All departments")],
+        ),
+    ],
+    ..feature("stand_in")
+};
+
+#[test]
+fn a_list_several_sections_offer_is_read_once_for_a_members_settings() {
+    let at = seeded();
+    let answer = sections(&at.db, &at.owner(&at.northline), of(&[&DEPARTMENTS])).unwrap();
+    let offered: Vec<_> = (answer.sections.iter())
+        .map(|section| match &section.fields[0].kind {
+            SettingsKind::Many { options, .. } | SettingsKind::Pick { options, .. } => {
+                (section.id.as_str(), options[0].label.as_str())
+            }
+            _ => panic!("{} lists its options", section.id),
+        })
+        .collect();
+    assert_eq!(
+        offered,
+        [
+            ("stand_in.drivers", "Delivery"),
+            ("stand_in.roster", "Delivery")
+        ]
+    );
+    assert_eq!(LISTED.load(Ordering::Relaxed), 1);
 }

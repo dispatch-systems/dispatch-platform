@@ -242,9 +242,15 @@ impl State {
                 f(&db)
             };
             let work_ms = work_started.elapsed().as_secs_f64() * 1000.0;
-            // Any transaction in the work has committed, so the mailer finds what it queued.
+            // Any transaction in the work has committed, so the mailer finds what it queued,
+            // and the scheduler the deadlines it moved.
             if db.take_mail_queued() {
                 state.mail_wake.notify_one();
+            }
+            if db.take_schedules_moved() {
+                state
+                    .schedule_revision
+                    .fetch_add(1, std::sync::atomic::Ordering::Release);
             }
             if queued_ms + lock_ms + work_ms >= 25.0 {
                 let context = trace

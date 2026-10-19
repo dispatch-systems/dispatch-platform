@@ -21,8 +21,10 @@ what was decided.
   whose data names people, for those who hold `driver_match.manage`: the questions the backend
   sends, asked one at a time, then everyone as a card with their photo, from core's
   `/api/dsp/people/{code}/photo`, and the sources that have them, by role or a source lacking
-  them. Beside its name in the sidebar, how many of those questions wait, read again every
-  minute and after each decision. It was a tab of Settings: a link to
+  them. Beside its name in the sidebar, how many of those questions wait: the server keeps one
+  count for all of the DSP's managers until a decision or a collection changes it, and the
+  sidebar reads it again after each decision, after a collection a page following collections
+  hears, and every five minutes. It was a tab of Settings: a link to
   `settings?tab=driver-match` opens it.
 - **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on, the
   questions waiting, as pairs that may be one person or name variants to confirm, by people's
