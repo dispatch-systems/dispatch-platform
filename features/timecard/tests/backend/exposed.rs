@@ -2,7 +2,11 @@
 use crate::TimecardStore;
 use dispatch_core::{db::Store, testing};
 use dispatch_paycom::fixtures;
-use dispatch_timecard_contract::{self as timecards, Collected, PunchKind, Timecards};
+use dispatch_timecard_contract::{
+    self as timecards, Collected, Day,
+    PunchKind::{self, InDay, InLunch, OutDay, OutLunch},
+    Timecards,
+};
 use serde_json::json;
 
 /// A new DSP with Timecard on, and what it offers there.
@@ -20,6 +24,14 @@ fn offered() -> (tempfile::TempDir, Store, String, &'static dyn Timecards) {
 
 fn ids(codes: &[&str]) -> Vec<String> {
     codes.iter().map(|code| (*code).to_owned()).collect()
+}
+
+/// A day's punches, each by what it says and its clock.
+fn punches(day: &Day) -> Vec<(PunchKind, Option<&str>)> {
+    day.punches
+        .iter()
+        .map(|punch| (punch.kind, punch.time.as_deref()))
+        .collect()
 }
 
 #[test]
@@ -100,14 +112,22 @@ fn timecards_read_a_drivers_days_by_their_ids_telling_unknown_and_partial_days_a
         ]
     );
     let worked = &read.days[0];
-    assert_eq!((worked.hours, worked.worked_minutes), (8.0, Some(480)));
     assert_eq!(
-        worked.punches.iter().map(|p| p.kind).collect::<Vec<_>>(),
+        (
+            worked.status.as_str(),
+            worked.hours,
+            worked.worked_minutes,
+            worked.review
+        ),
+        ("Complete", 8.0, Some(480), false)
+    );
+    assert_eq!(
+        punches(worked),
         [
-            PunchKind::InDay,
-            PunchKind::OutLunch,
-            PunchKind::InLunch,
-            PunchKind::OutDay
+            (InDay, Some("08:00")),
+            (OutLunch, Some("12:00")),
+            (InLunch, Some("12:30")),
+            (OutDay, Some("16:30"))
         ]
     );
     let meal = &worked.meals[0];
@@ -115,11 +135,25 @@ fn timecards_read_a_drivers_days_by_their_ids_telling_unknown_and_partial_days_a
         (meal.out.as_deref(), meal.back.as_deref(), meal.minutes),
         (Some("12:00"), Some("12:30"), Some(30))
     );
-    // No punch out for the day: the meal is known, the time worked isn't.
+    // No punch out for the day: its punches end on the way back from the meal, which is known,
+    // and the time worked isn't.
     let missing = &read.days[1];
-    assert_eq!(missing.status, "Missing punch");
-    assert_eq!(missing.worked_minutes, None);
-    assert_eq!(missing.meals[0].minutes, Some(20));
+    assert_eq!(
+        (
+            missing.status.as_str(),
+            missing.worked_minutes,
+            missing.meals[0].minutes
+        ),
+        ("Missing punch", None, Some(20))
+    );
+    assert_eq!(
+        punches(missing),
+        [
+            (InDay, Some("07:58")),
+            (OutLunch, Some("12:00")),
+            (InLunch, Some("12:20"))
+        ]
+    );
 
     // E003's sync decides their days: the 15th, collected under way, still reads its punches.
     let synced = offered

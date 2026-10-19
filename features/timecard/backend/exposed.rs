@@ -17,8 +17,6 @@ use dispatch_timecard_contract::{Collected, Day, Days, Meal, Punch, PunchKind, T
 const LONGEST: i64 = 31;
 /// The most IDs one driver's read names.
 const IDS: usize = 16;
-/// The longest ID, in characters.
-const LONGEST_ID: usize = 128;
 
 /// Timecard's timecards, as `Timecards` reads them.
 pub(crate) struct Exposed;
@@ -58,16 +56,18 @@ impl Timecards for Exposed {
         from: &str,
         to: &str,
     ) -> Result<Days> {
-        validate::date(from)?;
-        validate::date(to)?;
-        let day = |date: &str| NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap();
-        let span = (day(to) - day(from)).num_days();
+        let day = |date: &str| {
+            validate::date(date)?;
+            NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
+        };
+        let (first, last) = (day(from)?, day(to)?);
         ensure(
-            (0..LONGEST).contains(&span)
-                && ids.len() <= IDS
-                && ids
-                    .iter()
-                    .all(|id| (1..=LONGEST_ID).contains(&id.chars().count())),
+            (0..LONGEST).contains(&(last - first).num_days()),
+            "invalid_input",
+            400,
+        )?;
+        ensure(
+            ids.len() <= IDS && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
             "invalid_input",
             400,
         )?;

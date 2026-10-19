@@ -135,6 +135,14 @@ fn a_drivers_days_are_read_for_their_ids_with_unknown_days_told_apart_while_it_i
     let quality = read.days[2].quality.as_ref().unwrap();
     assert_eq!((quality.delivered, quality.dispatched), (Some(97.0), None));
 
+    // An ID with no rows still sees the days collected, so it reads as nothing, not unknown.
+    let other = ["driver-9".to_owned()];
+    let nobody = offered
+        .days(&db, &dsp, &other, "2026-10-01", "2026-10-03")
+        .unwrap();
+    assert_eq!(nobody.collected, ["2026-10-01", "2026-10-03"]);
+    assert!(nobody.days.is_empty());
+
     let owner = testing::a_user(&db);
     db.set_feature(&dsp, "daily_performance", false, &owner)
         .unwrap();

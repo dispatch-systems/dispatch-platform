@@ -258,12 +258,12 @@ fn overlapping(ids: &[String], from: &str, to: &str) -> Result<Vec<String>> {
     };
     let (first, last) = (date(from)?, date(to)?);
     ensure(
-        first <= last
-            && (last - first).num_days() < LONGEST
-            && ids.len() <= MOST_IDS
-            && ids
-                .iter()
-                .all(|id| !id.is_empty() && id.chars().count() <= 128),
+        (0..LONGEST).contains(&(last - first).num_days()),
+        "invalid_input",
+        400,
+    )?;
+    ensure(
+        ids.len() <= MOST_IDS && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
         "invalid_input",
         400,
     )?;

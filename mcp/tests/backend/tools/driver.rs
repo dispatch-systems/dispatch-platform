@@ -40,9 +40,18 @@ fn known(from: &str, to: &str) -> Vec<String> {
         .filter(|day| (FIRST..=LAST).contains(&day.as_str()))
         .collect()
 }
-/// How many `list` holds within all of `items`.
-fn within<T, U>(items: &[T], list: impl Fn(&T) -> &Vec<U>) -> usize {
-    items.iter().map(|item| list(item).len()).sum()
+/// Whether `labels`, of what a cut of 30 kept, are all of the newest day's.
+fn newest_kept<'a>(labels: impl Iterator<Item = &'a str>) -> bool {
+    let labels: Vec<&str> = labels.collect();
+    !labels.is_empty() && labels.len() <= 30 && labels.iter().all(|label| label.contains(LAST))
+}
+/// Each day of `from` to `to` collected, under the first of `ids`; none for no IDs.
+fn rows_of(ids: &[String], from: &str, to: &str) -> Vec<(String, String)> {
+    let days = known(from, to);
+    let first = ids.first().into_iter();
+    first
+        .flat_map(|id| days.iter().map(|day| (id.clone(), day.clone())))
+        .collect()
 }
 /// `day` at `hour`:`minute` UTC, in epoch milliseconds: an hour past 23 is on a later day.
 fn at(day: &str, hour: i64, minute: i64) -> i64 {
@@ -87,8 +96,7 @@ fn finds_one_person_by_code_or_a_choice_and_asks_which_of_several() {
     people.extend(jordans.map(|name| person(&name[7..].to_ascii_uppercase(), &name, &[])));
     let everyone = Everyone::new(people, BTreeMap::new());
     let found = |asked: &str| {
-        let found = find(&everyone, "Fixture Delivery", asked);
-        found
+        find(&everyone, "Fixture Delivery", asked)
             .map(|person| person.code.clone())
             .map_err(|refusal| (refusal.code, refusal.choices))
     };
@@ -142,7 +150,8 @@ fn a_lookup_names_31_days_at_most_one_way() {
 }
 
 /// Every feature at once, answering for the first ID it's asked about: on each day collected,
-/// `rows` of each long list. It notes the IDs each reader was asked about.
+/// `rows` of each long list, each labelled with its day. It notes the IDs each reader was asked
+/// about.
 struct Fake {
     rows: usize,
     asked: Mutex<Vec<(&'static str, Vec<String>)>>,
@@ -154,21 +163,9 @@ impl Fake {
             asked: Mutex::default(),
         }
     }
-    /// Notes `ids` asked of `reader`, answering each day of `from` to `to` collected, with the
-    /// first ID; none for no IDs.
-    fn ask(
-        &self,
-        reader: &'static str,
-        ids: &[String],
-        from: &str,
-        to: &str,
-    ) -> Vec<(String, String)> {
+    /// Notes that `reader` was asked about `ids`.
+    fn note(&self, reader: &'static str, ids: &[String]) {
         self.asked.lock().unwrap().push((reader, ids.to_vec()));
-        let days = known(from, to);
-        let first = ids.first().into_iter();
-        first
-            .flat_map(|id| days.iter().map(|day| (id.clone(), day.clone())))
-            .collect()
     }
     /// Who was asked what, by reader.
     fn asked(&self) -> Vec<(&'static str, Vec<String>)> {
@@ -176,7 +173,8 @@ impl Fake {
         asked.sort();
         asked
     }
-    fn collected<T>(&self, make: fn(String, String) -> T) -> Result<Option<T>> {
+    /// The first day collected and the last, as `make` makes them.
+    fn first_to_last<T>(&self, make: fn(String, String) -> T) -> Result<Option<T>> {
         Ok(Some(make(FIRST.into(), LAST.into())))
     }
 }
@@ -211,10 +209,10 @@ impl DriverScorecards for Fake {
         _: &Store,
         _: &str,
         ids: &[String],
-        from: &str,
-        to: &str,
+        _: &str,
+        _: &str,
     ) -> Result<Vec<scorecard::Scorecard>> {
-        self.ask("scorecards", ids, from, to);
+        self.note("scorecards", ids);
         Ok(vec![])
     }
     fn packages(
@@ -222,16 +220,19 @@ impl DriverScorecards for Fake {
         _: &Store,
         _: &str,
         ids: &[String],
-        from: &str,
-        to: &str,
+        _: &str,
+        _: &str,
     ) -> Result<Vec<scorecard::Package>> {
-        self.ask("packages", ids, from, to);
+        self.note("packages", ids);
+        let Some(id) = ids.first() else {
+            return Ok(vec![]);
+        };
         let package = |n| scorecard::Package {
             kind: scorecard::PackageKind::Return,
             week: "2026-W38".into(),
             date: None,
             tracking_id: format!("TBA{n:012}"),
-            driver_id: ids[0].clone(),
+            driver_id: id.clone(),
             impacting: Some(true),
             reasons: strings(&["BUSINESS CLOSED"]),
         };
@@ -243,7 +244,7 @@ impl DailyMetrics for Fake {
         Source::new(&AMAZON)
     }
     fn collected(&self, _: &Store, _: &str) -> Result<Option<performance::Collected>> {
-        self.collected(|from, through| performance::Collected { from, through })
+        self.first_to_last(|from, through| performance::Collected { from, through })
     }
     fn days(
         &self,
@@ -253,21 +254,22 @@ impl DailyMetrics for Fake {
         from: &str,
         to: &str,
     ) -> Result<performance::Days> {
-        let rows = self.ask("daily", ids, from, to);
-        let returned = |_| performance::Returned {
-            tracking_id: Some("TBA000000000001".into()),
+        self.note("daily", ids);
+        let rows = rows_of(ids, from, to);
+        let returned = |date: &str, n| performance::Returned {
+            tracking_id: Some(format!("R {date} {n:02}")),
             reason: Some("BUSINESS CLOSED".into()),
             impacting: Some(false),
             exempted: Some(true),
             exemption_reason: None,
             coaching: None,
         };
-        let event = |_| performance::SafetyEvent {
+        let event = |date: &str, n| performance::SafetyEvent {
             event_id: None,
             kind: Some("Speeding".into()),
             subtype: None,
             severity: Some("LOW".into()),
-            started: None,
+            started: Some(format!("{date} 10:{n:02}:00")),
             impacting: Some(true),
             assessed: true,
         };
@@ -279,8 +281,8 @@ impl DailyMetrics for Fake {
             feedback: None,
             behaviors: None,
             returns: None,
-            returned: (0..self.rows).map(returned).collect(),
-            events: (0..self.rows).map(event).collect(),
+            returned: (0..self.rows).map(|n| returned(date, n)).collect(),
+            events: (0..self.rows).map(|n| event(date, n)).collect(),
         };
         Ok(performance::Days {
             days: rows.iter().map(day).collect(),
@@ -293,7 +295,7 @@ impl DriverRoutes for Fake {
         Source::new(&AMAZON)
     }
     fn collected(&self, _: &Store, _: &str) -> Result<Option<route::Collected>> {
-        self.collected(|from, through| route::Collected { from, through })
+        self.first_to_last(|from, through| route::Collected { from, through })
     }
     /// A route each day collected, ending after midnight UTC; the last day still under way.
     fn routes(
@@ -304,9 +306,10 @@ impl DriverRoutes for Fake {
         from: &str,
         to: &str,
     ) -> Result<route::Driven> {
-        let rows = self.ask("routes", ids, from, to);
-        let undelivered = |day: &str| route::Undelivered {
-            tracking_id: Some("TBA000000000001".into()),
+        self.note("routes", ids);
+        let rows = rows_of(ids, from, to);
+        let undelivered = |day: &str, n| route::Undelivered {
+            tracking_id: Some(format!("U {day} {n:02}")),
             state: Some("UNDELIVERABLE".into()),
             reason: Some("BUSINESS_CLOSED".into()),
             attempted_at: Some(at(day, 20, 5)),
@@ -330,7 +333,7 @@ impl DriverRoutes for Fake {
             removed: 0,
             breaks_secs: None,
             overtime_secs: None,
-            undelivered: (0..self.rows).map(|_| undelivered(day)).collect(),
+            undelivered: (0..self.rows).map(|n| undelivered(day, n)).collect(),
         };
         let days = known(from, to).into_iter();
         let days = days
@@ -350,7 +353,7 @@ impl timecard::Timecards for Fake {
         Source::new(&PAYCOM)
     }
     fn collected(&self, _: &Store, _: &str) -> Result<Option<timecard::Collected>> {
-        self.collected(|from, through| timecard::Collected { from, through })
+        self.first_to_last(|from, through| timecard::Collected { from, through })
     }
     /// A timecard each day collected; the last day still under way.
     fn timecards(
@@ -361,7 +364,8 @@ impl timecard::Timecards for Fake {
         from: &str,
         to: &str,
     ) -> Result<timecard::Days> {
-        let rows = self.ask("timecards", ids, from, to);
+        self.note("timecards", ids);
+        let rows = rows_of(ids, from, to);
         let card = |(id, date): &(String, String)| timecard::Day {
             date: date.clone(),
             id: id.clone(),
@@ -395,7 +399,7 @@ impl AmazonRoster for Fake {
         Ok(Some("2026-09-18T12:00:00Z".into()))
     }
     fn associates(&self, _: &Store, _: &str, ids: &[String]) -> Result<Vec<profiles::Associate>> {
-        self.ask("roster", ids, LAST, LAST);
+        self.note("roster", ids);
         let associate = |id: &String| profiles::Associate {
             id: id.clone(),
             listed: true,
@@ -413,7 +417,7 @@ impl ChatAccounts for Fake {
         Source::new(&SLACK)
     }
     fn accounts(&self, _: &Store, _: &str, ids: &[String]) -> Result<Vec<slack::ChatAccount>> {
-        self.ask("chat", ids, LAST, LAST);
+        self.note("chat", ids);
         let account = |id: &String| slack::ChatAccount {
             id: id.clone(),
             workspace: "Fixture".into(),
@@ -431,7 +435,7 @@ impl ShortInspections for Fake {
         Source::new(&AMAZON)
     }
     fn collected(&self, _: &Store, _: &str) -> Result<Option<dvic::Collected>> {
-        self.collected(|from, through| dvic::Collected { from, through })
+        self.first_to_last(|from, through| dvic::Collected { from, through })
     }
     fn drivers(&self, _: &Store, _: &str) -> Result<Vec<dvic::Driver>> {
         Ok(vec![])
@@ -439,7 +443,7 @@ impl ShortInspections for Fake {
     /// `rows` short inspections on the last day collected, a minute apart.
     fn inspections(&self, _: &Store, _: &str, asked: &Asked<'_>) -> Result<dvic::Page> {
         let id = asked.driver.unwrap_or_default().to_owned();
-        self.ask("inspections", std::slice::from_ref(&id), LAST, LAST);
+        self.note("inspections", std::slice::from_ref(&id));
         let inspection = |n| dvic::Inspection {
             date: LAST.into(),
             start_time: format!("{LAST} 06:{n:02}:00"),
@@ -553,13 +557,23 @@ fn cuts_long_lists_to_fit_keeping_the_newest_and_counting_the_rest() {
     let daily = month.daily.unwrap();
     assert_eq!(daily.days.len() + daily.more_days, 30);
     assert_eq!(daily.days.last().unwrap().date, LAST);
-    assert!(within(&daily.days, |day| &day.returned) <= 30);
-    assert!(within(&daily.days, |day| &day.events) <= 30);
     let routes = month.routes.unwrap();
     assert_eq!(routes.routes.len() + routes.more_routes, 30);
-    assert!(within(&routes.routes, |route| &route.undelivered) <= 30);
+    assert_eq!(routes.routes.last().unwrap().day, LAST);
     let timecards = month.timecards.unwrap();
     assert_eq!(timecards.days.len() + timecards.more_days, 30);
+    assert_eq!(timecards.days.last().unwrap().date, LAST);
+    // Of the lists within days, only the newest day's survive.
+    let returned = daily.days.iter().flat_map(|day| &day.returned);
+    assert!(newest_kept(
+        returned.filter_map(|it| it.tracking_id.as_deref())
+    ));
+    let events = daily.days.iter().flat_map(|day| &day.events);
+    assert!(newest_kept(events.filter_map(|it| it.started.as_deref())));
+    let undelivered = routes.routes.iter().flat_map(|route| &route.undelivered);
+    assert!(newest_kept(
+        undelivered.filter_map(|it| it.tracking_id.as_deref())
+    ));
 }
 
 #[cfg(feature = "dvic")]

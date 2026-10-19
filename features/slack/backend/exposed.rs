@@ -5,9 +5,6 @@ use dispatch_core::{Result, db::Store, ensure, manifest::people::Source};
 use dispatch_slack_contract::{ChatAccount, ChatAccounts};
 use std::collections::HashMap;
 
-/// The most IDs one question about accounts names.
-const MOST_ASKED: usize = 32;
-
 /// Slack's workspaces' members, as `ChatAccounts` reads them.
 pub(crate) struct Exposed;
 pub(crate) static EXPOSED: Exposed = Exposed;
@@ -18,10 +15,7 @@ impl ChatAccounts for Exposed {
     }
     fn accounts(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Vec<ChatAccount>> {
         ensure(
-            ids.len() <= MOST_ASKED
-                && ids
-                    .iter()
-                    .all(|id| !id.is_empty() && id.chars().count() <= 128),
+            ids.len() <= 32 && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
             "invalid_input",
             400,
         )?;

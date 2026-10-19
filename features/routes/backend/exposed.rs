@@ -18,9 +18,8 @@ use std::collections::HashMap;
 
 /// The most days one read covers.
 const LONGEST: i64 = 366;
-/// The most IDs one read names, and the longest ID.
+/// The most IDs one read names.
 const MOST_IDS: usize = 16;
-const LONGEST_ID: usize = 128;
 
 /// The days of a range with an active publication at the station, and whether each is final.
 const DAYS: &str = "SELECT day,min(mode='final') complete FROM route_publications \
@@ -74,12 +73,12 @@ impl DriverRoutes for Exposed {
     ) -> Result<Driven> {
         let (first, last) = (date(from)?, date(to)?);
         ensure(
-            first <= last
-                && (last - first).num_days() < LONGEST
-                && ids.len() <= MOST_IDS
-                && ids
-                    .iter()
-                    .all(|id| (1..=LONGEST_ID).contains(&id.chars().count())),
+            (0..LONGEST).contains(&(last - first).num_days()),
+            "invalid_input",
+            400,
+        )?;
+        ensure(
+            ids.len() <= MOST_IDS && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
             "invalid_input",
             400,
         )?;

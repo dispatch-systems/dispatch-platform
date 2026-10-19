@@ -260,7 +260,7 @@ impl DriverProfilesStore for Store {
             transporters.len() <= 32
                 && transporters
                     .iter()
-                    .all(|id| !id.is_empty() && id.chars().count() <= 128),
+                    .all(|id| (1..=128).contains(&id.chars().count())),
             "invalid_input",
             400,
         )?;

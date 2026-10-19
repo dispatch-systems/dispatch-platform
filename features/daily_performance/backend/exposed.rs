@@ -19,6 +19,10 @@ use rusqlite::params;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 
+/// The most days one read covers.
+const LONGEST: i64 = 31;
+/// The most IDs one read asks for.
+const MOST_IDS: usize = 20;
 /// The reasons customers give for negative feedback.
 const NEGATIVES: &[&str] = &[
     "was_not_so_great_cnt",
@@ -78,13 +82,14 @@ impl DailyMetrics for Exposed {
             NaiveDate::parse_from_str(value, "%Y-%m-%d")
                 .map_err(|_| Error::new("invalid_date", 400))
         };
-        let span = (day(to)? - day(from)?).num_days();
+        let (first, last) = (day(from)?, day(to)?);
         ensure(
-            (0..31).contains(&span)
-                && ids.len() <= 20
-                && ids
-                    .iter()
-                    .all(|id| !id.is_empty() && id.chars().count() <= 128),
+            (0..LONGEST).contains(&(last - first).num_days()),
+            "invalid_input",
+            400,
+        )?;
+        ensure(
+            ids.len() <= MOST_IDS && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
             "invalid_input",
             400,
         )?;
