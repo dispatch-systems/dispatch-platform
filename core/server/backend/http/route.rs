@@ -61,7 +61,8 @@ pub trait Grant: Copy + Send + Sync + 'static {
     /// refusals.
     fn refused(self, _state: &State, _input: &Input, _error: &Error) {}
     /// The one DSP whose data the caller acts on, for a write's cache: its write evicts only
-    /// that DSP's cached reads and those every DSP shares. None changes anything.
+    /// that DSP's cached reads and those every DSP shares. With none, the write may change
+    /// anything, so it advances the global revision.
     fn tenant(self, _who: &Self::Who) -> Option<&str> {
         None
     }
@@ -249,7 +250,8 @@ pub type Member<'a> = Ctx<'a, Context>;
 pub enum Work {
     /// One closure under the shared lock: `State::read`.
     Read,
-    /// One closure under the exclusive platform lock: `State::run`.
+    /// One closure under the exclusive platform lock, which says what it changes once its
+    /// caller is authorized: `State::run_declaring`.
     Write,
     /// Reviewed leases and checkpoints, under the exclusive lock without evicting data.
     Bookkeeping,

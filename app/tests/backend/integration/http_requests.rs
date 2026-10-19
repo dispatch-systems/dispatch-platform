@@ -764,6 +764,49 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
 }
 
 #[tokio::test]
+async fn a_write_on_a_dsps_route_evicts_only_that_dsps_cached_reads() {
+    use dispatch_core::server::cache::Scope;
+    let server = Server::start().await;
+    let owner = server.member("owner@dispatch.test").await;
+    let north = server.dsp("Northline Logistics").await;
+    let summit = server.dsp("Summit Delivery").await;
+    // A cached read of each DSP's: how many times any was read afresh, once this one is read.
+    let loads = std::sync::atomic::AtomicUsize::new(0);
+    let read = |dsp: &str| {
+        let revision = server.state.data_revision.load(Ordering::Relaxed);
+        let scope = Scope::tenant("probe", dsp);
+        server
+            .state
+            .read_cache
+            .read(scope, "probe".into(), revision, || {
+                loads.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            })
+            .unwrap();
+        loads.load(Ordering::Relaxed)
+    };
+    assert_eq!((read(&north), read(&summit), read(&north)), (1, 2, 2));
+    // Northline's profile, saved on its own route: only its reads are read afresh.
+    let profile = json!({
+        "name":"Northline Logistics",
+        "timezone":"America/Chicago",
+        "abbreviation":"NLL",
+        "stationCode":"DCH1"
+    });
+    let saved = server
+        .send(Call::post("/api/dsp/profile", profile).who(&owner))
+        .await;
+    assert_eq!(saved.status, 200, "{}", saved.body);
+    assert_eq!((read(&north), read(&summit)), (3, 3));
+    // The platform owner's write names no DSP, so every DSP's reads are.
+    let created = server
+        .send(Call::post("/api/platform/dsps", json!({"name":"Fourth DSP"})).who(&owner))
+        .await;
+    assert_eq!(created.status, 201, "{}", created.body);
+    assert_eq!((read(&north), read(&summit)), (4, 5));
+}
+
+#[tokio::test]
 async fn signing_in_and_out_sets_and_clears_the_session_cookie() {
     let server = Server::start().await;
     let credentials = json!({"email":"owner@dispatch.test","password":"Dispatch-demo-2026!"});

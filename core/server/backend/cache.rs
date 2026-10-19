@@ -1,6 +1,7 @@
 //! Bounded derived reads shared across database workers. Call only after authorization,
 //! while holding State's transition read lock. Unknown writes advance the global
-//! revision; reviewed writes evict the scopes that depend on their changed data.
+//! revision; a write on a DSP's route evicts that DSP's scopes and those every DSP shares;
+//! reviewed writes evict the scopes that depend on their changed data.
 use crate::{Error, Result, manifest::registry};
 use serde::Serialize;
 use std::any::Any;
