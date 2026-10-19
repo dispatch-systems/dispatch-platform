@@ -45,17 +45,24 @@ fn cgroup_cpu_usec(cgroup: &Path) -> u64 {
         })
         .unwrap_or(0)
 }
-/// The value with every array's items in a stable order, so two reads of the same
-/// data compare equal however the provider ordered its lists.
+/// The value with every object's fields and every array's items in a stable order, so
+/// two reads of the same data compare equal however the provider ordered them.
 fn canonical(value: &Value) -> Value {
     match value {
         // Counted from the moment of the request, so they differ between any two reads.
-        Value::Object(map) => Value::Object(
-            map.iter()
+        Value::Object(map) => {
+            let mut fields: Vec<(&String, &Value)> = map
+                .iter()
                 .filter(|(k, _)| !["timeRemainingSecs", "backendTime"].contains(&k.as_str()))
-                .map(|(k, v)| (k.clone(), canonical(v)))
-                .collect(),
-        ),
+                .collect();
+            fields.sort_by_key(|(k, _)| *k);
+            Value::Object(
+                fields
+                    .into_iter()
+                    .map(|(k, v)| (k.clone(), canonical(v)))
+                    .collect(),
+            )
+        }
         Value::Array(items) => {
             let mut items: Vec<Value> = items.iter().map(canonical).collect();
             items.sort_by_cached_key(|v| v.to_string());
@@ -180,9 +187,19 @@ pub async fn measure_route_method<R: serde::Serialize>(
                 (max_pss, sum_pss / samples.max(1), max_own)
             })
         };
+        // Today is read as it stands; a past day as completed.
+        let zone: chrono_tz::Tz = scope
+            .timezone
+            .parse()
+            .map_err(|_| Error::new("invalid_timezone", 400))?;
+        let today = dispatch_core::foundation::clock::today(zone).to_string();
         let request = crate::routes::Request {
             collection: crate::routes::Collection::Routes,
-            mode: crate::routes::Mode::Final,
+            mode: if scope.date >= today {
+                crate::routes::Mode::Snapshot
+            } else {
+                crate::routes::Mode::Final
+            },
             date: scope.date.clone(),
             station: scope.station.clone(),
             timezone: scope.timezone.clone(),

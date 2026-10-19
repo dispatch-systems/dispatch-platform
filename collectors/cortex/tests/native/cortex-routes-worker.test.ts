@@ -5,10 +5,13 @@ import type { AddressInfo } from 'node:net';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 // The real Rust driver against a staged execution site: discovery finds the service
-// area and provider, the itinerary list, the newer routes page and each itinerary are
-// read as the pages' own data responses, and the day is published from them.
+// area and provider, and the itinerary list is read as the page's own data response.
+// The list's application then signs every itinerary and the newer routes page's list,
+// which the driver downloads itself; the itinerary and the routes page's list whose
+// downloads keep failing are read by moving the application to them. The day is
+// published from them.
 test(
-  "Cortex BrowserOS collects a day of routes from the pages' own data responses",
+  'Cortex BrowserOS collects a day of routes the application signs, moving to what will not download',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 240000 },
   async (t) => {
     const area = '7b0d842b-699a-41a1-8881-d6dd5f89939d';
@@ -16,7 +19,10 @@ test(
     const day = '2026-09-25';
     const base = Date.UTC(2026, 8, 25, 15);
     const hour = 3_600_000;
-    const requests: URL[] = [];
+    // Each data request, and whether the page sent it or the driver downloaded it.
+    const requests: { url: URL; page: boolean }[] = [];
+    // Data requests without a valid signature for their address, which Cortex refuses.
+    const unsigned: string[] = [];
     // Documents loaded other than the list: Cortex's pages are one application that
     // fetches what its address shows, on load and whenever its history changes.
     const pages: string[] = [];
@@ -202,27 +208,63 @@ test(
       itineraryPartners: null,
       routePauseStatus: null,
     });
-    // The pages: React props for discovery and the meal script, and scripts that fetch
-    // the data the way Cortex's pages do, so the driver can take the responses.
+    // Cortex's signature of one request: its address, the session and the moment, which
+    // only the application can make and the server checks. A header of the page's own
+    // tells the page's requests from the driver's, which send only the signature.
+    const canonical = (url: URL, session: string, stamp: string) =>
+      [
+        'GET',
+        url.pathname,
+        [...url.searchParams]
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+          .join('&'),
+        `x-cortex-session:${session}`,
+        `x-cortex-timestamp:${stamp}`,
+      ].join('\n');
+    // The pages: React props for discovery and the meal script, the application's store,
+    // whose API action signs and sends each request as Cortex's does, and a router that
+    // asks it for what the address shows.
     const props = (extra: string) =>
       `<script>
         const root = document.querySelector('#root');
+        const canonical = ${canonical.toString()};
+        const request = (address) => new Promise((resolve, reject) => {
+          const url = new URL(address, location.origin);
+          const stamp = String(Date.now());
+          const xhr = new XMLHttpRequest();
+          xhr.open('GET', url.pathname + url.search);
+          xhr.setRequestHeader('X-Cortex-Hmac-Signature', btoa(canonical(url, 'fixture-session', stamp)));
+          xhr.setRequestHeader('X-Cortex-Timestamp', stamp);
+          xhr.setRequestHeader('X-Cortex-Session', 'fixture-session');
+          xhr.setRequestHeader('user-ref', 'cortex-webapp-user');
+          xhr.setRequestHeader('X-Fixture-Page', 'yes');
+          xhr.onload = () => (xhr.status === 200 ? resolve(xhr.responseText) : reject(new Error(String(xhr.status))));
+          xhr.onerror = () => reject(new Error('failed'));
+          xhr.send();
+        });
+        const store = { getState: () => ({}), subscribe: () => () => {}, dispatch: (action) => {
+          const call = action['Call API'];
+          if (!call) return action;
+          return request(call.endpoint + '?' + new URLSearchParams({ ...call.params, historicalDay: 'true' }));
+        } };
         root.__reactFiber$fixture = { memoizedProps: { selectedStation: { serviceAreaID: '${area}', defaultStationCode: 'TST1', timeZone: 'America/Los_Angeles' },
           providerFilterOptions: [{ value: 'ALL_DRIVERS', label: 'All drivers' }, { value: '${company}', label: 'Northline Logistics' }],
           providerFilterValue: new URL(location.href).searchParams.get('provider'), serviceAreaId: '${area}', selectedDay: '${day}',
-          isLoadingSummaries: false, allItinerarySummaries: [], transporterSummary: {} }, return: null };
+          isLoadingSummaries: false, allItinerarySummaries: [], transporterSummary: {} }, return: { memoizedProps: { store }, return: null } };
         ${extra}
       </script>`;
     const router = `
+      const api = (endpoint, params) => store.dispatch({ 'Call API': { endpoint: '/operations/execution/api/' + endpoint, method: 'get', params } }).catch(() => {});
       const show = () => {
         const path = location.pathname;
         if (path.startsWith('/operations/execution/itineraries/')) {
           const id = decodeURIComponent(path.split('/')[4]);
-          fetch('/operations/execution/api/itineraries/?documentType=Itinerary&historicalDay=true&itineraryId=' + encodeURIComponent(id) + '&serviceAreaId=${area}', { credentials: 'include' }).catch(() => {});
+          api('itineraries/' + encodeURIComponent(id), { documentType: 'Itinerary', itineraryId: id, serviceAreaId: '${area}' });
         } else if (path === '/operations/execution/dv/routes') {
-          fetch('/operations/execution/api/route-summaries?historicalDay=true&localDate=${day}&serviceAreaId=${area}&statsFromSummaries=true', { credentials: 'include' }).catch(() => {});
+          api('route-summaries', { localDate: '${day}', serviceAreaId: '${area}', statsFromSummaries: 'true' });
         } else {
-          fetch('/operations/execution/api/summaries?historicalDay=true&localDate=${day}&serviceAreaId=${area}', { credentials: 'include' }).catch(() => {});
+          api('summaries', { localDate: '${day}', serviceAreaId: '${area}' });
         }
       };
       addEventListener('popstate', show);
@@ -275,7 +317,29 @@ test(
         return redirect('/ap/signin');
       }
       if (url.pathname.startsWith('/operations/execution/api/')) {
-        requests.push(url);
+        const page = req.headers['x-fixture-page'] === 'yes';
+        requests.push({ url, page });
+        const session = String(req.headers['x-cortex-session'] ?? '');
+        const stamp = String(req.headers['x-cortex-timestamp'] ?? '');
+        const signature = String(req.headers['x-cortex-hmac-signature'] ?? '');
+        if (
+          !session ||
+          !stamp ||
+          Buffer.from(signature, 'base64').toString() !== canonical(url, session, stamp)
+        ) {
+          unsigned.push(url.pathname);
+          res.writeHead(400);
+          return res.end();
+        }
+        // The second driver's itinerary and the routes page's list never download; the
+        // page's own requests read them.
+        const failing =
+          url.searchParams.get('itineraryId') === 'itinerary-2' ||
+          url.pathname === '/operations/execution/api/route-summaries';
+        if (!page && failing) {
+          res.writeHead(503);
+          return res.end();
+        }
         if (url.pathname === '/operations/execution/api/summaries') return json(summaries);
         if (url.pathname === '/operations/execution/api/route-summaries')
           return json(routeSummaries);
@@ -367,21 +431,36 @@ test(
         ['Second Driver', 1, 1],
       ],
     );
-    // Each data request was the page's own, for this day and area.
-    const paths = requests.map((u) => u.pathname);
-    assert.ok(paths.includes('/operations/execution/api/summaries'));
-    assert.ok(paths.includes('/operations/execution/api/route-summaries'));
-    assert.equal(
-      paths.filter((p) => p.startsWith('/operations/execution/api/itineraries/')).length,
-      2,
-    );
-    for (const u of requests) assert.equal(u.searchParams.get('serviceAreaId'), area);
-    // The list's application moved to the itineraries and the routes page itself: only
-    // the second tab loaded a page, for its first itinerary, and the routes page was
-    // loaded once, where discovery landed.
-    assert.ok(
-      pages.filter((p) => p.startsWith('/operations/execution/itineraries/')).length <= 1,
-      JSON.stringify(pages),
+    // Every data request was signed for its own address, for this day and area. Lists
+    // were the pages' own as discovery and the list loaded them; the first itinerary was
+    // downloaded once, with nothing of the page's but the signature; the second
+    // itinerary's and the routes page list's downloads were each signed again once, then
+    // the page itself read them.
+    assert.deepEqual(unsigned, []);
+    for (const { url } of requests) assert.equal(url.searchParams.get('serviceAreaId'), area);
+    const sent = (path: string, id?: string) =>
+      requests
+        .filter(({ url }) => url.pathname.startsWith(path))
+        .filter(({ url }) => !id || url.searchParams.get('itineraryId') === id)
+        .map(({ page }) => (page ? 'page' : 'driver'));
+    assert.ok(sent('/operations/execution/api/summaries').length > 0);
+    assert.ok(sent('/operations/execution/api/summaries').every((by) => by === 'page'));
+    assert.deepEqual(sent('/operations/execution/api/route-summaries').slice(-3), [
+      'driver',
+      'driver',
+      'page',
+    ]);
+    assert.deepEqual(sent('/operations/execution/api/itineraries/', 'itinerary-1'), ['driver']);
+    assert.deepEqual(sent('/operations/execution/api/itineraries/', 'itinerary-2'), [
+      'driver',
+      'driver',
+      'page',
+    ]);
+    // The list's application moved to the itinerary it read: no itinerary's page was
+    // loaded, and the routes page was loaded once, where discovery landed.
+    assert.deepEqual(
+      pages.filter((p) => p.startsWith('/operations/execution/itineraries/')),
+      [],
     );
     assert.ok(
       pages.filter((p) => p === '/operations/execution/dv/routes').length <= 1,
