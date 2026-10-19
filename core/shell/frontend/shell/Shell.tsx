@@ -137,6 +137,15 @@ export function Shell({
   }, [label]);
   // Navigation closes the drawer; a DSP view that finishes loading behind it does not.
   useEffect(() => setMobile(false), [page, dspId]);
+  // The drawer is there only while the menu button is (shell.css, up to 980px wide): widening
+  // the window past it closes the drawer, so the page behind it isn't left inert.
+  useEffect(() => {
+    if (!mobile) return;
+    const narrow = matchMedia('(width <= 980px)');
+    const widened = () => narrow.matches || setMobile(false);
+    narrow.addEventListener('change', widened);
+    return () => narrow.removeEventListener('change', widened);
+  }, [mobile]);
   useFocusTrap(drawer, { active: mobile, onEscape: () => setMobile(false) });
   // The app's name and pages, unless the page open draws a sidebar of its own.
   const pages = (
