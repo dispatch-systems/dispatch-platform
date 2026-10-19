@@ -188,10 +188,11 @@ pub async fn measure_route_method<R: serde::Serialize>(
             })
         };
         // Today is read as it stands; a past day as completed.
-        let today = chrono::Utc::now()
-            .with_timezone(&scope.timezone.parse::<chrono_tz::Tz>().map_err(|_| Error::new("invalid_timezone", 400))?)
-            .date_naive()
-            .to_string();
+        let zone: chrono_tz::Tz = scope
+            .timezone
+            .parse()
+            .map_err(|_| Error::new("invalid_timezone", 400))?;
+        let today = dispatch_core::foundation::clock::today(zone).to_string();
         let request = crate::routes::Request {
             collection: crate::routes::Collection::Routes,
             mode: if scope.date >= today {
