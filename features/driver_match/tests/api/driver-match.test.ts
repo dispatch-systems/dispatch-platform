@@ -20,7 +20,7 @@ test('Driver Match answers only to its own permission, and its decisions to thei
     result = await owner.read('/api/dsp/driver-match');
     return Boolean(result.checkedAt) && result.people.length > 1;
   });
-  // The badge counts the questions the tab asks, without the roster.
+  // The sidebar counts the questions the page asks, without the roster.
   const counts = await owner.get('/api/dsp/driver-match/counts');
   assert.equal(counts.status, 200, counts.body);
   assert.deepEqual(counts.value, { questions: result.questions.length });
@@ -30,7 +30,7 @@ test('Driver Match answers only to its own permission, and its decisions to thei
   assert.equal((details.value as PersonDetails).person.code, first!.code);
   // A code written as codes are, which nobody holds.
   assert.equal((await owner.get('/api/dsp/driver-match/people/ZZZZZZ')).status, 404);
-  // A decision answers with nothing: the tab reads itself again.
+  // A decision answers with nothing: the page reads itself again.
   const apart = await owner.post('/api/dsp/driver-match/apart', {
     code: first!.code,
     other: second!.code,

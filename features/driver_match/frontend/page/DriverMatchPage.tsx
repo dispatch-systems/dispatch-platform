@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useCollectionUpdates } from '../../../../core/collection/frontend/live-collection.js';
 import { localDate } from '../../../../core/shell/frontend/lib/day.js';
-import { DataState } from '../../../../core/shell/frontend/ui/index.js';
+import { DataState, Header } from '../../../../core/shell/frontend/ui/index.js';
 import type { DriverMatch } from '../../api/index.js';
 import { useDriverMatch } from '../../api/client.js';
 import { PersonSheet } from '../person/PersonSheet.js';
@@ -10,21 +10,22 @@ import { CheckDialog } from './CheckDialog.js';
 import { checkList } from './checks.js';
 import { PeopleGrid } from './PeopleGrid.js';
 
-/** Settings → Driver Match: who to check, then everyone by face. */
-export function DriverMatchSettings({ timezone }: { timezone: string }) {
+/** Driver Match's page: who to check, then everyone by face. */
+export function DriverMatchPage({ timezone }: { timezone: string }) {
   // A finished collection can bring new people in.
   useCollectionUpdates();
   const request = useDriverMatch();
   return (
     <div className="driver-match">
+      <Header title="Driver Match" />
       <DataState data={request.data} error={request.error}>
-        {(data) => <DriverMatchTab data={data} timezone={timezone} />}
+        {(data) => <People data={data} timezone={timezone} />}
       </DataState>
     </div>
   );
 }
 
-function DriverMatchTab({ data, timezone }: { data: DriverMatch; timezone: string }) {
+function People({ data, timezone }: { data: DriverMatch; timezone: string }) {
   const checks = useMemo(() => checkList(data.questions, data.people), [data]);
   const queued = useMemo(() => new Set(checks.flatMap((check) => check.codes)), [checks]);
   const [open, setOpen] = useState<string | null>(null);

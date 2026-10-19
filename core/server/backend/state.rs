@@ -66,7 +66,7 @@ impl State {
         Self::initialize(config, browser::Manager::with_verified_runtime(runtime))
     }
     fn initialize(config: config::Config, browsers: browser::Manager) -> Result<Arc<Self>> {
-        crate::manifest::registry().check_settings(&config)?;
+        crate::manifest::registry().check_env(&config)?;
         let store = db::Store::initialize(config.clone())?;
         for dsp in store.platform.all(
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",

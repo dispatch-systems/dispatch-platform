@@ -1,10 +1,10 @@
 //! What Routes keeps for a DSP, in the database beside Cortex's: each day's routes, itineraries
-//! and packages, the collections that bring them and how long they are kept (`RoutesStore`), and
-//! how its rows read back as the API's types.
+//! and packages, the collections that bring them and their expiry past the DSP's window
+//! (`RoutesStore`), and how its rows read back as the API's types.
 use super::*;
 
 /// What Routes reads and writes for a DSP: each day's routes, itineraries and packages, in
-/// the database beside Cortex's, the collections that bring them and how long they are kept.
+/// the database beside Cortex's, the collections that bring them and their expiry.
 pub trait RoutesStore {
     fn routes_db(&self, id: &str) -> Result<DspLease<'_>>;
     fn enqueue_routes(
@@ -33,13 +33,6 @@ pub trait RoutesStore {
         itinerary: &PreparedItinerary,
     ) -> Result<()>;
     fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<()>;
-    fn route_retention(&self, id: &str) -> Result<RouteRetention>;
-    fn set_route_retention(
-        &self,
-        id: &str,
-        actor: Option<&str>,
-        days: Option<i64>,
-    ) -> Result<RouteRetention>;
     fn expire_routes(&self, id: &str) -> Result<usize>;
     fn sweep_routes(&self, id: &str) -> Result<bool>;
     fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess>;
@@ -295,55 +288,6 @@ impl RoutesStore for Store {
             )?;
             Ok(())
         })
-    }
-    /// The DSP's retention window and what its route data holds.
-    fn route_retention(&self, id: &str) -> Result<RouteRetention> {
-        let db = self.routes_db(id)?;
-        let setting = db.one("SELECT days,changed_at FROM route_retention WHERE id=1", [])?;
-        let stored = db
-            .one(
-                "SELECT count(*) days,min(day) oldest FROM route_publications WHERE active=1",
-                [],
-            )?
-            .unwrap_or_default();
-        Ok(RouteRetention {
-            days: setting.as_ref().and_then(|row| row["days"].as_i64()),
-            changed_at: setting
-                .as_ref()
-                .and_then(|row| row["changed_at"].as_str().map(str::to_owned)),
-            stored_days: stored["days"].as_i64().unwrap_or(0),
-            oldest_day: stored["oldest"].as_str().map(str::to_owned),
-        })
-    }
-    /// Sets how many days of route data the DSP keeps; `None` keeps every day. A window
-    /// takes effect at the next hourly expiry, not in this request.
-    fn set_route_retention(
-        &self,
-        id: &str,
-        actor: Option<&str>,
-        days: Option<i64>,
-    ) -> Result<RouteRetention> {
-        if let Some(days) = days {
-            ensure(
-                (MIN_RETENTION_DAYS..=MAX_RETENTION_DAYS).contains(&days),
-                "invalid_retention",
-                400,
-            )?;
-        }
-        let db = self.routes_db(id)?;
-        db.exec(
-            "INSERT INTO route_retention(id,days,changed_by,changed_at) VALUES (1,?,?,?) \
-             ON CONFLICT(id) DO UPDATE SET days=excluded.days,changed_by=excluded.changed_by,\
-             changed_at=excluded.changed_at",
-            params![days, actor, dispatch_core::db::iso()],
-        )?;
-        self.audit(
-            actor,
-            Some(id),
-            "routes.retention_changed",
-            &days.map_or_else(|| "forever".to_owned(), |d| d.to_string()),
-        )?;
-        self.route_retention(id)
     }
     /// Retires the days a DSP's retention window has passed: they become inactive, and
     /// `sweep_routes` deletes them in small steps. Addresses and drivers last seen before

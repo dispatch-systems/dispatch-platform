@@ -66,6 +66,7 @@
           "about": "A driver's Daily Quality and Day Safety day by day, the packages they returned and their safety events, and the days collected."
         }
       ],
+      "env": [],
       "settings": []
     },
     "switch": "daily_performance",
@@ -154,7 +155,7 @@
           "about": "Somewhere to keep a DSP's files, in folders, in its Google Drive."
         }
       ],
-      "settings": [
+      "env": [
         [
           "GOOGLE_CLIENT_ID",
           "GOOGLE_CLIENT_SECRET"
@@ -163,7 +164,8 @@
           "GOOGLE_API_KEY",
           "GOOGLE_APP_ID"
         ]
-      ]
+      ],
+      "settings": []
     },
     "switch": "documents",
     "mandatory": false,
@@ -244,6 +246,7 @@
           "about": "Who an ID is: everyone the DSP's features name, told apart."
         }
       ],
+      "env": [],
       "settings": []
     },
     "switch": "driver_match",
@@ -326,6 +329,7 @@
           "about": "What Amazon's roster says of each associate: status, roles, qualifications, license expiry."
         }
       ],
+      "env": [],
       "settings": []
     },
     "switch": "driver_profiles",
@@ -420,6 +424,7 @@
           "about": "The pre-trip inspections shorter than the minimum, who made them, and the days collected."
         }
       ],
+      "env": [],
       "settings": []
     },
     "switch": "dvic",
@@ -463,6 +468,7 @@
       "people": [],
       "routes": [],
       "exposes": [],
+      "env": [],
       "settings": []
     },
     "switch": "home",
@@ -534,8 +540,6 @@
         "POST /api/dsp/routes/collect",
         "GET /api/dsp/routes/jobs",
         "POST /api/dsp/routes/jobs/{id}/cancel",
-        "GET /api/dsp/routes/retention",
-        "POST /api/dsp/routes/retention",
         "POST /api/platform/dsps/{id}/routes/reprocess",
         "GET /api/dsp/routes/schedules",
         "POST /api/dsp/routes/schedules",
@@ -551,7 +555,10 @@
           "about": "Each driver's routes day by day, with their stops and packages, and the days collected."
         }
       ],
-      "settings": []
+      "env": [],
+      "settings": [
+        "routes.retention"
+      ]
     },
     "switch": "routes",
     "mandatory": false,
@@ -602,6 +609,7 @@
         "POST /api/dsp/profile"
       ],
       "exposes": [],
+      "env": [],
       "settings": []
     },
     "switch": "settings",
@@ -692,13 +700,14 @@
           "about": "Each person's accounts in the DSP's Slack workspaces: where, and whether each is active."
         }
       ],
-      "settings": [
+      "env": [
         [
           "SLACK_CLIENT_ID",
           "SLACK_CLIENT_SECRET",
           "SLACK_SIGNING_SECRET"
         ]
-      ]
+      ],
+      "settings": []
     },
     "switch": "slack",
     "mandatory": false,
@@ -759,6 +768,7 @@
         "POST /api/dsp/roles/{id}/remove"
       ],
       "exposes": [],
+      "env": [],
       "settings": []
     },
     "switch": "team",
@@ -879,6 +889,7 @@
           "about": "Each driver's Paycom timecards by day: their punches, the meal breaks they punched, the time worked, and the days collected."
         }
       ],
+      "env": [],
       "settings": []
     },
     "switch": "timecard",
@@ -956,6 +967,7 @@
         "POST /api/dsp/uniforms/stock/{id}"
       ],
       "exposes": [],
+      "env": [],
       "settings": []
     },
     "switch": "uniforms",
@@ -1041,6 +1053,7 @@
           "about": "Each driver's weekly scorecards, the packages they list, and the weeks collected."
         }
       ],
+      "env": [],
       "settings": []
     },
     "switch": "weekly_scorecard",

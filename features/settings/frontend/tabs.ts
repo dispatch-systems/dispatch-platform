@@ -1,55 +1,79 @@
-import type { ComponentType } from 'react';
 import type { DspView } from '../../../core/accounts/api/index.js';
+import type { SettingsAnswer } from '../../../core/settings/api/index.js';
+import { getSettings } from '../../../core/settings/api/client.js';
+import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { hashQuery, parseHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
 import {
-  settingsPieces,
-  settingsTabs,
-  visibleSettingsTabs,
-  type SettingsTab,
+  readSettings,
+  settingsRead,
+  settingsSection,
 } from '../../../core/shell/frontend/runtime/slots.js';
 
-// A DSP's Settings is made of the tabs its owners contribute: the account's own, and each
-// feature's settings panel, with the pieces other owners add to them. A feature's go with it.
+// A DSP's Settings is what the server says the member has: its pages, each a tab, and the
+// sections on them, which the page draws from their declarations. A custom section is drawn by
+// the component its owner registers, and only while it has one with something to show.
 
-/** Loads a tab's code and its pieces'. */
-export const loadTab = (tab: SettingsTab, view?: DspView) =>
-  Promise.all([tab.load(), ...settingsPieces(tab.id, view).map((piece) => piece.load())]);
-
-const badges = new Map<string, ComponentType<{ active: boolean }>>();
-/** A tab's badge, once loaded. */
-export const loadedBadge = (id: string) => badges.get(id);
-/** Loads a tab's badge once; resolves when it can be drawn. */
-export const loadBadge = (tab: SettingsTab) =>
-  tab.badge && !badges.has(tab.id)
-    ? tab.badge
-        .load()
-        .then((Label) => void badges.set(tab.id, Label))
-        .catch(() => undefined)
-    : Promise.resolve();
-
-/** The code of the tab the address names, so the page opens on it, and the tabs' badges. */
-export function preloadSettingsTab(view?: DspView) {
-  const tabs = visibleSettingsTabs(view);
-  const id = hashQuery().get('tab') || tabs[0]?.id;
-  const tab = tabs.find((each) => each.id === id);
-  return Promise.all([...tabs.map(loadBadge), tab && loadTab(tab, view)]);
+/** The sections the page draws, in their order on their pages, as the server lists them. */
+export const drawnSections = (settings: SettingsAnswer, view: DspView) =>
+  settings.sections.filter((section) => {
+    if (!section.custom) return true;
+    const drawn = settingsSection(section.id);
+    return Boolean(drawn && (!drawn.visible || drawn.visible(view)));
+  });
+/** The pages with a section drawn on them, in the order the server lists them. */
+export const drawnPages = (settings: SettingsAnswer, view: DspView) => {
+  const sections = drawnSections(settings, view);
+  return settings.pages.filter((page) => sections.some((section) => section.page === page.id));
+};
+/** The page the page opens on: the one `requested`, while it is drawn, or else the first. */
+export function openPage(settings: SettingsAnswer, view: DspView, requested: string | null) {
+  const pages = drawnPages(settings, view);
+  return (pages.find((page) => page.id === requested) ?? pages[0])?.id;
 }
 
-/** The reads a Settings tab opens on, warmed when the tab may open next. */
-export function prefetchSettingsTab(tab: string, view?: DspView, immediate = false) {
-  if (!admitted(view)) return;
-  warm(
-    settingsTabs(view).flatMap((contribution) => contribution.prefetch?.(tab, view) ?? []),
-    'route:settings',
-    immediate,
+/** The sections drawn on a page, in their order. */
+export const sectionsOn = (settings: SettingsAnswer, view: DspView, page: string | undefined) =>
+  drawnSections(settings, view).filter((section) => section.page === page);
+/** The custom sections of a page, as their owners register them. */
+const customOn = (settings: SettingsAnswer, view: DspView, page: string | undefined) =>
+  sectionsOn(settings, view, page).flatMap((section) =>
+    section.custom ? (settingsSection(section.id) ?? []) : [],
   );
-}
+/** Loads the code of a page's custom sections. */
+export const loadPage = (settings: SettingsAnswer, view: DspView, page: string | undefined) =>
+  Promise.all(customOn(settings, view, page).map((section) => section.load()));
 
-/** The tab the address names, while it names this DSP's Settings. */
-export function prefetchSettings(view: DspView, immediate: boolean) {
+/** The page the address names, while it names this DSP's Settings. */
+function addressed(view: DspView) {
   const address = parseHash(location.hash);
-  const tab =
-    address.dspId === view.dsp.id && address.page === 'settings' ? hashQuery().get('tab') : null;
-  prefetchSettingsTab(tab ?? visibleSettingsTabs(view)[0]?.id ?? '', view, immediate);
+  return address.dspId === view.dsp.id && address.page === 'settings'
+    ? hashQuery().get('tab')
+    : null;
+}
+/**
+ * Reads the member's Settings and loads the code of the page the address names, so the page
+ * opens whole.
+ */
+export function preloadSettings(view?: DspView) {
+  if (!admitted(view)) return Promise.resolve();
+  return dataCache
+    .read(settingsRead, getSettings)
+    .then((settings) => loadPage(settings, view, openPage(settings, view, addressed(view))))
+    .catch(() => undefined);
+}
+/** The reads a page's custom sections open on, warmed when the page may open next. */
+export function prefetchPage(page: string, view: DspView, immediate = false) {
+  const settings = readSettings();
+  if (!settings || !admitted(view)) return;
+  const reads = customOn(settings, view, page).flatMap((section) => section.prefetch?.(view) ?? []);
+  if (reads.length) warm(reads, 'route:settings', immediate);
+}
+/** The member's Settings, and once it is read, the reads of the page the address names. */
+export function prefetchSettings(view: DspView, immediate: boolean) {
+  if (!admitted(view)) return;
+  warm([settingsRead], 'route:settings', immediate);
+  const settings = readSettings();
+  const page = settings && openPage(settings, view, addressed(view));
+  if (page) prefetchPage(page, view, immediate);
 }

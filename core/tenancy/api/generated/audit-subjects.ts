@@ -5,5 +5,6 @@ export const auditSubjects = [
   "role",
   "schedule",
   "job",
+  "setting",
   "driver"
 ] as const;

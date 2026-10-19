@@ -1,4 +1,4 @@
-//! What the tab and its badge read: everyone with a code, as the sources the DSP has on
+//! What the page and its count read: everyone with a code, as the sources the DSP has on
 //! describe them, and the questions waiting for a person.
 use super::gather::{Gathered, gather};
 use super::{CHECKED, IdRow, pairs};
@@ -7,7 +7,7 @@ use dispatch_core::{Result, db::Store, foundation::names, manifest::people::Sour
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The Driver Match tab: the questions waiting, then every person with a code, by name.
+/// The Driver Match page: the questions waiting, then every person with a code, by name.
 pub(super) fn driver_match(store: &Store, dsp: &str) -> Result<DriverMatch> {
     let gathered = gather(store, dsp)?;
     let held = gathered.held();
@@ -28,7 +28,7 @@ pub(super) fn driver_match(store: &Store, dsp: &str) -> Result<DriverMatch> {
     })
 }
 
-/// How many questions wait, for the tab's badge.
+/// How many questions wait, for the sidebar's count.
 pub(super) fn counts(store: &Store, dsp: &str) -> Result<MatchCounts> {
     let gathered = gather(store, dsp)?;
     let held = gathered.held();

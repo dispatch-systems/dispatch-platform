@@ -187,20 +187,19 @@ test('every HTTP route has a method and path of its own', () => {
   holds('slots', 'routes', collisions('route', routes));
 });
 
-// The frontend's manifests, as they load: each page's address, each Settings tab and piece,
-// and the owner's name. Every owner's frontend/feature.ts counts, listed in the app or not.
+// The frontend's manifests, as they load: each page's address, each custom section of Settings
+// it draws, and the owner's name. Every owner's frontend/feature.ts counts, listed in the app or
+// not.
 type FrontendManifest = {
   name: string;
   routes?: readonly { id: string; scope: string; tabs?: boolean; hostsSettings?: boolean }[];
-  settingsTabs?: readonly { id: string }[];
-  settingsPieces?: readonly { tab: string; id: string }[];
+  settingsSections?: readonly { id: string }[];
   pageTabs?: readonly { page: string; id: string }[];
 };
 type DspPage = { id: string; file: string; tabs: boolean; hostsSettings: boolean };
 async function frontendContributions() {
   const addresses: Contribution[] = [];
-  const settingsTabs: Contribution[] = [];
-  const settingsPieces: Contribution[] = [];
+  const settingsSections: Contribution[] = [];
   const names: { file: string; name: string }[] = [];
   const pages: DspPage[] = [];
   const pageTabs: (Contribution & { page: string })[] = [];
@@ -223,13 +222,11 @@ async function frontendContributions() {
     }
     for (const tab of feature.pageTabs ?? [])
       pageTabs.push({ id: tab.id, page: tab.page, at: ownerName(file) });
-    for (const tab of feature.settingsTabs ?? [])
-      settingsTabs.push({ id: tab.id, at: ownerName(file) });
-    for (const piece of feature.settingsPieces ?? [])
-      settingsPieces.push({ id: `${piece.tab}/${piece.id}`, at: ownerName(file) });
+    for (const section of feature.settingsSections ?? [])
+      settingsSections.push({ id: section.id, at: ownerName(file) });
     names.push({ file, name: feature.name });
   }
-  return { addresses, settingsTabs, settingsPieces, names, pages, pageTabs };
+  return { addresses, settingsSections, names, pages, pageTabs };
 }
 
 // A tab one feature adds to another's page shows where that page draws it: the app draws them
@@ -258,11 +255,11 @@ test("every tab a feature adds to another's page has a page that draws it", asyn
   ]);
 });
 
-test("every page's address, Settings tab and piece of one has an id of its own", async () => {
-  const { addresses, settingsTabs, settingsPieces } = await frontendContributions();
+test("every page's address and Settings section has an id of its own", async () => {
+  const { addresses, settingsSections } = await frontendContributions();
   assert(
-    addresses.length > 10 && settingsTabs.length > 3,
-    'the frontend manifests declare pages and tabs',
+    addresses.length > 10 && settingsSections.length > 3,
+    'the frontend manifests declare pages and Settings sections',
   );
   // One owner may not declare an id twice either.
   const twice = (kind: string, list: Contribution[]) =>
@@ -272,8 +269,43 @@ test("every page's address, Settings tab and piece of one has an id of its own",
     ).map((violation) => violation.replace(/#\d+/g, ''));
   holds('slots', 'addresses', [
     ...twice('address', addresses),
-    ...twice('settings tab', settingsTabs),
-    ...twice('settings piece', settingsPieces),
+    ...twice('settings section', settingsSections),
+  ]);
+});
+
+// A section of Settings its owner's backend declares custom is drawn by the component its
+// owner's frontend registers under the section's id: declared without one, it never shows, and
+// a component no custom section names never draws.
+test('every custom section of Settings has its component, and every component its section', async () => {
+  const declared = calls('section').flatMap((span) => {
+    const source = lexFile(span.file);
+    const id = literalAt(source, span.start);
+    if (!id) return [];
+    // The declaration's chain of builders, to the end of its statement.
+    let end = span.end;
+    for (let depth = 0; end < source.masked.length; end++) {
+      const char = source.masked[end]!;
+      if ('([{'.includes(char)) depth++;
+      else if (')]}'.includes(char)) depth--;
+      else if (char === ';' && depth <= 0) break;
+    }
+    return /\.\s*custom\s*\(\s*\)/.test(source.masked.slice(span.end, end))
+      ? [{ id: id.value, at: ownerName(span.file) }]
+      : [];
+  });
+  const { settingsSections } = await frontendContributions();
+  assert(declared.length > 3, `found only ${declared.length} custom sections`);
+  holds('slots', 'custom sections', [
+    ...declared.flatMap(({ id, at }) => {
+      const drawn = settingsSections.filter((section) => section.id === id);
+      if (!drawn.length) return [`${at} declares the custom section ${id}, which nothing draws`];
+      return drawn
+        .filter((section) => section.at !== at)
+        .map((section) => `${section.at} draws ${at}'s section ${id}`);
+    }),
+    ...settingsSections
+      .filter((section) => !declared.some(({ id }) => id === section.id))
+      .map(({ id, at }) => `${at} draws ${id}, which no backend declares a custom section`),
   ]);
 });
 

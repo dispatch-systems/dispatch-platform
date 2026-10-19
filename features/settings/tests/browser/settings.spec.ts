@@ -1,22 +1,26 @@
 import { test, expect, login } from '../../../../core/shell/tests/support/fixtures.js';
 
-test('Settings shows a member the tabs they may use, and its address keeps the one chosen', async ({
+test('Settings shows a member the pages they have, and its address keeps and moves the one open', async ({
   page,
 }) => {
   await login(page, 'member@dispatch.test');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   const tabs = page.getByRole('tablist', { name: 'Settings', exact: true });
+  const tab = (name: string) => tabs.getByRole('tab', { name, exact: true });
   await expect(tabs.getByRole('tab')).toHaveText(['Profile', 'Security', 'Theme']);
-  await expect(tabs.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await tabs.getByRole('tab', { name: 'Theme', exact: true }).click();
+  await expect(tab('Profile')).toHaveAttribute('aria-selected', 'true');
+  await tab('Theme').click();
   await expect(page).toHaveURL(/#settings\?tab=theme$/);
   await page.reload();
-  await expect(
-    page
-      .getByRole('tablist', { name: 'Settings', exact: true })
-      .getByRole('tab', { name: 'Theme', exact: true }),
-  ).toHaveAttribute('aria-selected', 'true');
+  await expect(tab('Theme')).toHaveAttribute('aria-selected', 'true');
+  // A link to another of its pages, followed while Settings is open, opens that page.
+  await page.evaluate(() => {
+    location.hash = location.hash.replace(/tab=theme$/, 'tab=security');
+  });
+  await expect(tab('Security')).toHaveAttribute('aria-selected', 'true');
+  // One the member lacks opens the first.
+  await page.evaluate(() => {
+    location.hash = location.hash.replace(/tab=security$/, 'tab=data');
+  });
+  await expect(tab('Profile')).toHaveAttribute('aria-selected', 'true');
 });

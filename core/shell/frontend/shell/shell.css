@@ -61,6 +61,11 @@
   background: var(--accent);
   color: var(--foreground);
 }
+/* A page's badge, at the far end of its item. */
+.nav-badge {
+  display: inline-flex;
+  margin-left: auto;
+}
 .nav-item[aria-current='page'] {
   color: var(--primary);
   background: var(--selection);
@@ -78,7 +83,7 @@
 }
 .sidebar-account {
   border-top: 1px solid var(--border);
-  margin: 0 12px;
+  margin: auto 12px 0;
   padding: 16px 12px;
 }
 .account-button {

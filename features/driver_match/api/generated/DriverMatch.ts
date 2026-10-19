@@ -4,7 +4,7 @@ import type { Person } from "./Person";
 import type { Question } from "./Question";
 
 /**
- * The Driver Match tab: the sources the DSP has, the questions waiting, then everyone.
+ * The Driver Match page: the sources the DSP has, the questions waiting, then everyone.
  */
 export type DriverMatch = {
 /**

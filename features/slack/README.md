@@ -294,7 +294,7 @@ The platform's Slack app, one for each environment: **Dispatch Dev** for Dev and
 is distributed to any workspace from Slack's Manage Distribution, without a listing in Slack's
 Marketplace.
 
-The server reads its settings, a group it needs whole: `DISPATCH_DEV_SLACK_CLIENT_ID`,
+The server reads its environment variables, declared in its `env`, a group it needs whole: `DISPATCH_DEV_SLACK_CLIENT_ID`,
 `…_SLACK_CLIENT_SECRET` and `…_SLACK_SIGNING_SECRET` on Dev and its previews, or
 `DISPATCH_PRODUCTION_…` on Production. Without them, Slack in New says it's unavailable; with
 only some, the server refuses to start.
@@ -307,7 +307,7 @@ so a change to what it asks for or hears of shows in review, as a change to make
 1. At [api.slack.com/apps](https://api.slack.com/apps), Create New App, From a manifest, in the
    platform's own workspace; or, for an app made already, App Manifest in its settings.
 2. Under Basic Information, copy its Client ID, Client Secret and Signing Secret into the
-   server's settings above, and restart it.
+   server's environment variables above, and restart it.
 3. Under Event Subscriptions, have Slack check the Request URL again, now that the server
    answers it.
 4. Under Manage Distribution, Activate Public Distribution, so any workspace can install it.

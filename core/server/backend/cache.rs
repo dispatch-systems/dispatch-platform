@@ -150,6 +150,12 @@ pub const CACHED: &[Cached] = &[
         read: PEOPLE,
         evicted: Evicted::ByAllBut(&[DataDomain::SCHEDULES, DataDomain::LIVE]),
     },
+    // Settings reads its sections' values, and whatever their options and keepers read of the
+    // DSP's data, never a collection's live pages.
+    Cached {
+        read: crate::settings::CACHED,
+        evicted: Evicted::ByAllBut(&[DataDomain::LIVE]),
+    },
 ];
 fn evicts(read: &str, domain: DataDomain) -> bool {
     registry()

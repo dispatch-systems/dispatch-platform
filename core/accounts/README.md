@@ -2,7 +2,8 @@
 
 Users, sessions, passwords, passkeys, authenticator apps and recovery codes; invitations, DSP
 onboarding and member profiles; their emails and their screens. Both Settings pages show its
-Profile, Security and Theme panels, through `frontend/settings/tabs.ts`.
+Profile, Security and Theme panels, each the member's own, from `frontend/settings/sections.ts`:
+a DSP's as the custom sections it declares, the platform owner's as its tabs.
 
 Operators can mint a 15-minute, read-only dashboard observation credential using existing
 local/SSH access. It is separate from password sessions, bound to the environment and current

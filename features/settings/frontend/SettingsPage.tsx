@@ -1,68 +1,62 @@
-import { Fragment, Suspense, useEffect, useState, useTransition } from 'react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
-import { Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
-import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
-import {
-  settingsPieces,
-  visibleSettingsTabs,
-  type SettingsPiece,
-  type SettingsTab,
-} from '../../../core/shell/frontend/runtime/slots.js';
-import { loadBadge, loadTab, loadedBadge, prefetchSettingsTab } from './tabs.js';
+import type { SettingsAnswer } from '../../../core/settings/api/index.js';
+import { useSettings } from '../../../core/settings/api/client.js';
+import { DataState, Header } from '../../../core/shell/frontend/ui/index.js';
+import { guards } from './address.js';
+import { useFound } from './find.js';
+import { SettingsSections } from './SettingsSections.js';
+import { useOpenPage } from './useOpenPage.js';
+import './settings.css';
 
-export function SettingsPage({ session, view }: { session: SessionView; view?: DspView }) {
-  const tabs = visibleSettingsTabs(view);
-  const load = (tab?: SettingsTab) => void (tab && loadTab(tab, view).catch(() => undefined));
-  const [requestedTab, setTab] = useState(hashQuery().get('tab') || tabs[0]!.id);
-  const [pending, startTransition] = useTransition();
-  const tabOf = (id: string) => tabs.find((tab) => tab.id === id);
-  const tab = tabOf(requestedTab) ?? tabs[0]!;
-  // The page's preload brings the badges with it; one the page opened before, or that a
-  // newly granted permission shows, is drawn as soon as it arrives.
-  const [, badgeLoaded] = useState(0);
-  const missing = tabs.filter((each) => each.badge && !loadedBadge(each.id));
-  const waiting = missing.map((each) => each.id).join();
-  useEffect(() => {
-    if (!waiting) return;
-    let live = true;
-    void Promise.all(missing.map(loadBadge)).then(() => live && badgeLoaded((n) => n + 1));
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `waiting` names exactly the tabs `missing` holds
-  }, [waiting]);
-  const pieces = settingsPieces(tab.id, view);
-  const drawn = (piece: SettingsPiece) => (
-    <Fragment key={piece.id}>{piece.render({ session, view })}</Fragment>
+/**
+ * A DSP's Settings: the page of it the address names, under its name. Its sidebar, drawn in
+ * place of the app's, lists the member's pages and searches them.
+ */
+export function SettingsPage({ session, view }: { session: SessionView; view: DspView }) {
+  const settings = useSettings();
+  return (
+    <DataState data={settings.data} error={settings.error} retry={settings.refresh}>
+      {(data) => (
+        // Another DSP, or another role viewed as, starts afresh: no page, edit, editor or
+        // section pointed out of the last one's carries over.
+        <Page
+          key={view.token}
+          session={session}
+          view={view}
+          settings={data}
+          refresh={settings.refresh}
+        />
+      )}
+    </DataState>
   );
+}
+
+function Page({
+  session,
+  view,
+  settings,
+  refresh,
+}: {
+  session: SessionView;
+  view: DspView;
+  settings: SettingsAnswer;
+  refresh: () => void;
+}) {
+  const open = useOpenPage(settings, view);
+  const found = useFound();
   return (
     <>
-      <Header title="Settings" />
-      <Tabs
-        value={tab.id}
-        onIntent={(value) => {
-          load(tabOf(value));
-          prefetchSettingsTab(value, view);
-        }}
-        onChange={(value) => {
-          load(tabOf(value));
-          prefetchSettingsTab(value, view, true);
-          replaceHashQuery({ tab: value });
-          startTransition(() => setTab(value));
-        }}
-        items={tabs.map(({ id, label }) => {
-          const Badge = loadedBadge(id);
-          return [id, Badge ? <Badge key="label" active={requestedTab === id} /> : label];
-        })}
-        label="Settings"
+      <Header title={open.pages.find((page) => page.id === open.page)?.label ?? 'Settings'} />
+      <SettingsSections
+        session={session}
+        view={view}
+        settings={settings}
+        page={open.page}
+        refresh={refresh}
+        guards={guards}
+        busy={open.pending}
+        found={found}
       />
-      <div aria-busy={pending || undefined} inert={pending}>
-        <Suspense fallback={<Loading />}>
-          {pieces.filter((piece) => piece.above).map(drawn)}
-          {tab.render({ session, view })}
-          {pieces.filter((piece) => !piece.above).map(drawn)}
-        </Suspense>
-      </div>
     </>
   );
 }

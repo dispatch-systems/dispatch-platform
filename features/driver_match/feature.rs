@@ -25,8 +25,8 @@ use dispatch_core::{
 
 pub const FEATURE: Feature = Feature {
     place: 75,
-    // Every DSP has it: what the DSP's features name, it tells apart. Its one screen is a tab
-    // of Settings.
+    // Every DSP has it: what the DSP's features name, it tells apart. Its one screen is a page
+    // of its own.
     switch: mandatory("driver_match", "Driver Match"),
     permissions: &[perm("driver_match.manage", "Manage Driver Match", 60)],
     routes: api::routes::routes,

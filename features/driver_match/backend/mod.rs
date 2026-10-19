@@ -1,7 +1,7 @@
 //! Driver Match's logic: one code for each person the DSP's features name, whatever each
 //! source calls them. Collected rows keep their sources' IDs; `person_ids` leads every ID
 //! to its person. New IDs get a person after every collection, joining someone only on a
-//! certain match; anything less waits for a decision in Settings. It reads only the
+//! certain match; anything less waits for a decision on its page. It reads only the
 //! features the DSP has on. It is private to the crate: `feature.rs` re-exports what the app
 //! uses.
 mod assign;
@@ -93,9 +93,9 @@ pub trait DriverMatchStore {
     fn read_pass(&self, dsp: &str) -> Result<Collected>;
     /// Writes what a pass found: a person for every new ID. Answers how many IDs were new.
     fn write_pass(&self, dsp: &str, collected: Collected) -> Result<usize>;
-    /// The Driver Match tab: the questions waiting, then every person with a code.
+    /// The Driver Match page: the questions waiting, then every person with a code.
     fn driver_match(&self, dsp: &str) -> Result<DriverMatch>;
-    /// How many questions wait, for the tab's badge, without the roster.
+    /// How many questions wait, for the sidebar's count, without the roster.
     fn match_counts(&self, dsp: &str) -> Result<MatchCounts>;
     fn person_details(&self, dsp: &str, code: &str) -> Result<PersonDetails>;
     fn merge_people(&self, c: &Context, code: &str, into: &str) -> Result<()>;

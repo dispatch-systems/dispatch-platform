@@ -1,0 +1,235 @@
+/* A DSP's Settings: each declared section a card, a row for each of its fields. */
+.settings-section {
+  max-width: 900px;
+  margin-top: 24px;
+  padding: 22px 25px 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.settings-section > h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.15px;
+}
+.settings-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 24px;
+  min-height: 64px;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.settings-fields > * + *,
+.settings-section > .settings-schedules {
+  border-top: 1px solid var(--border);
+}
+.settings-field.settings-wide {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+/* Each field's own control, not those of an editor drawn in a field, as a schedule's. */
+.settings-field > select,
+.settings-number-choice > select {
+  min-width: 180px;
+  max-width: 100%;
+}
+.settings-field > input:where(:not([type='checkbox']):not([type='radio']):not([type='time'])) {
+  width: 260px;
+  max-width: 100%;
+}
+.settings-field > input[type='time'] {
+  width: 140px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-field > input[readonly] {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.settings-field input[aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+.settings-code {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-toggle {
+  cursor: pointer;
+}
+.settings-toggle input[role='switch'] {
+  appearance: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  background: var(--muted);
+  cursor: pointer;
+  transition: background-color var(--motion-duration);
+}
+.settings-toggle input[role='switch']::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: var(--foreground);
+  transition: left var(--motion-duration);
+}
+.settings-toggle input[role='switch']:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.settings-toggle input[role='switch']:checked::before {
+  left: 16px;
+  background: var(--primary-foreground);
+}
+
+.settings-segments {
+  display: inline-grid;
+  grid-auto-columns: minmax(96px, auto);
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--background);
+}
+.settings-segments label {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-segments label:has(:checked) {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--primary) 22%, var(--background));
+}
+.settings-segments label:has(:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.settings-segments input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 2px 20px;
+}
+.settings-checks label,
+.settings-order label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  font-weight: 400;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.settings-order {
+  display: grid;
+  gap: 4px;
+  max-width: 420px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-order li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.settings-order li label {
+  flex: 1;
+}
+.settings-order li:has(:checked) {
+  background: var(--background);
+}
+.settings-order .icon-button {
+  width: 30px;
+  min-height: 30px;
+  padding: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.settings-number-choice {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.settings-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-number > input {
+  width: 110px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-number > span {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.settings-schedules > h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.settings-section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.settings-section-actions .error {
+  flex: 1;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .settings-section {
+    padding-inline: 18px;
+  }
+  .settings-field:not(.settings-toggle) {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .settings-number-choice {
+    justify-content: flex-start;
+  }
+}

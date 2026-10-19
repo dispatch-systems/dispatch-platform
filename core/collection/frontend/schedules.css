@@ -55,3 +55,7 @@
 .schedule-delete-confirm button + button {
   margin-left: 8px;
 }
+/* Inline, in a page rather than a sheet: the form as wide as the sheet's. */
+.schedule-settings-inline .schedule-form {
+  max-width: 520px;
+}

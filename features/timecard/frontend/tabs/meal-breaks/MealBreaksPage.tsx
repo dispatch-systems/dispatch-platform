@@ -47,7 +47,7 @@ export function MealBreaksPage({
   onDateChange: (date: string) => void;
   refreshKey?: string | null;
   timezone: string;
-  /** Driver Match's tab of Settings, while the person sees it. */
+  /** Driver Match's page, while the person may open it. */
   driverMatch?: string;
   preferences: PaycomPreferences;
   onOpenEmployee?: (code: string, date: string) => void;

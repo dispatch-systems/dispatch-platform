@@ -1,7 +1,7 @@
 # Routes
 
 Each day's routes, itineraries, stops and packages from Cortex, kept for as
-long as the DSP's retention setting (its Data tab in Settings) says. Every response is stored
+long as the DSP's retention window (Settings' Data page) says. Every response is stored
 whole and compressed for reprocessing, beside the rows reads filter on. Its database keeps the
 name `routedata` on disk.
 
@@ -16,16 +16,23 @@ name `routedata` on disk.
   through core's schedule routes under `/api/dsp/routes/schedules`, behind `routes.manage`.
 - **API:** behind `routes.view`, `GET /api/dsp/routes/days`, `…/days/{day}`,
   `…/days/{day}/itineraries/{id}`, `…/packages/{tracking}` and `…/jobs`. Behind
-  `routes.collect`, `POST /api/dsp/routes/collect` and `…/jobs/{id}/cancel`. Behind
-  `routes.manage`, `GET` and `POST /api/dsp/routes/retention`. The platform owner rebuilds a
-  DSP's rows from its stored responses with `POST /api/platform/dsps/{id}/routes/reprocess`,
-  for every day or one, after a release that reads fields the earlier one didn't.
-- **Retention:** from 30 to 3,650 days, or forever. Hourly, data past the window is retired,
+  `routes.collect`, `POST /api/dsp/routes/collect` and `…/jobs/{id}/cancel`. The platform
+  owner rebuilds a DSP's rows from its stored responses with
+  `POST /api/platform/dsps/{id}/routes/reprocess`, for every day or one, after a release that
+  reads fields the earlier one didn't.
+- **Retention:** from 30 to 3,650 days, or every day. Hourly, data past the window is retired,
   and then deleted in small steps, so the lock is never held long.
-- **Its Settings tab** (`?tab=data`) shows the window and what it holds now, to those who
-  manage routes.
-- **Log:** `routes.collection_requested`, `routes.retention_changed` and `routes.data_expired`,
-  under Collections.
+- **Settings:** `routes.retention`, "Route data", on the shared Data page (`?tab=data`), behind
+  `routes.manage` (`backend/settings.rs`). Its one field, `days`, is a number from 30 to 3,650
+  with presets, or none for every day, the default. A window that passes a day the route data
+  holds asks to confirm first, naming the first day it keeps, counted back from today where
+  the DSP is. Expiry and collection requests read it with `settings::read`; core keeps it in
+  the DSP's settings. The window a DSP chose before, in its route data's `route_retention`, moves
+  in once as the server starts (`upgrade_storage`), unless the section was saved already; the
+  table stays, read only by that move.
+- **Log:** `routes.collection_requested` and `routes.data_expired`, under Collections; a change
+  of the window is core's `settings.changed`. `routes.retention_changed`, from before Settings
+  kept it, still reads.
 - **People:** its drivers and their days are Driver Match's `routes` kind of data.
 - **Exposed:** `driver_routes`, through its contract in `contract/` (`dispatch-routes-contract`),
   for any feature or agent tool, while it's on for the DSP: the source whose IDs name its

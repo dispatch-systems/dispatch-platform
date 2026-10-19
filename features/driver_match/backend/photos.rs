@@ -1,6 +1,6 @@
 //! People's photos. A person's is the first a kind of data holds under one of their IDs: their
 //! IDs in the sources' order, then as they came, and for each ID the kinds in the order their
-//! data is read. The tab, a person's photo and the directory all answer by this one rule.
+//! data is read. The page, a person's photo and the directory all answer by this one rule.
 use super::codes::valid_code;
 use super::sources::{self, Identity};
 use super::{IdRow, surviving};

@@ -29,8 +29,10 @@ import {
 } from '../../core/shell/frontend/runtime/feedback.js';
 import {
   dspHash,
+  followMoved,
   forgetDestination,
   navigate,
+  noteWayBack,
   parseHash,
   platformHash,
   rememberDestination,
@@ -42,6 +44,7 @@ import {
   landing,
   navigation,
   prepareRoute,
+  sidebarOf,
 } from './routes.js';
 import { features } from './features.js';
 import { routeLabel } from './route-meta.js';
@@ -177,7 +180,9 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
     };
   }, [load]);
   useEffect(() => {
-    const changed = () => {
+    const changed = (event: HashChangeEvent) => {
+      followMoved();
+      noteWayBack(new URL(event.oldURL).hash, window.location.hash);
       const next = parseHash(window.location.hash);
       const current = navigationState.current;
       const auth = /^(?:signin$|invite\?|reset\?)/.test(next.route);
@@ -402,6 +407,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       label={routeLabel(scope, page)}
       pending={pending}
       navigation={navigation(scope, { session, view })}
+      sidebar={sidebarOf(scope, page, { session, view })}
       logout={() => void perform(logout)}
       exitView={() => navigate(platformHash())}
       viewAs={(roleId) => {
@@ -458,6 +464,8 @@ function start() {
   void initialSession.catch(() => undefined);
   loadSite().then(
     () => {
+      // A link to where a page once was opens it where it is now.
+      followMoved();
       root.render(
         <FeedbackProvider>
           <PageBoundary>

@@ -1,23 +1,19 @@
 import { createElement, lazy } from 'react';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
-import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
-// Driver Profiles' frontend manifest, loaded up front. It has no page of its own yet: its
-// roster bar sits at the top of Driver Match's tab.
+// Driver Profiles' frontend manifest, loaded up front. It has no page of its own: its roster
+// bar is a section of Settings.
 
 const load = () => import('./index.js');
 const RosterBar = lazy(() => load().then((module) => ({ default: module.RosterBar })));
 
 export const feature: FrontendFeature = {
   name: 'driver_profiles',
-  settingsPieces: [
+  // Until its section is declared, Settings has none to draw this for.
+  settingsSections: [
     {
-      tab: 'driver-match',
-      id: 'roster',
-      order: 10,
-      above: true,
-      visible: (view) => can(view, 'driver_profiles.collect'),
+      id: 'driver_profiles.roster',
       load,
       render: ({ view }) => view && createElement(RosterBar, { timezone: view.dsp.timezone }),
     },

@@ -115,6 +115,8 @@ const phrases: AuditPhrases = {
     strong(e.detail.toUpperCase()),
   ],
   'dsp.settings_updated': () => ['updated DSP settings'],
+  // A section of a DSP's Settings, by its label; its changes say what each field became.
+  'settings.changed': (e) => ['changed ', strong(e.target ?? (e.detail || 'settings'))],
   'dsp.profile_completed': () => ['completed the DSP profile'],
   'mail.retried': (e) => ['retried an email', ...(e.target ? [' to ', strong(e.target)] : [])],
   'mail.discarded': (e) => ['discarded an email', ...(e.target ? [' to ', strong(e.target)] : [])],
@@ -225,6 +227,7 @@ const spoken = new Set([
   'dsp.feature_shown',
   'dsp.ai_support_hidden',
   'dsp.ai_support_shown',
+  'settings.changed',
 ]);
 export const isSpoken = (action: string) =>
   spoken.has(action) || owners.some((owner) => owner.spoken?.includes(action));
@@ -264,8 +267,11 @@ const fields: Record<string, string> = {
   dsps: 'DSPs',
   expires: 'Expires',
 };
+// A field recorded by its label already, as a setting's change is, reads as it was recorded.
 export const fieldLabel = (field: string) =>
-  fields[field] ?? owners.find((owner) => owner.fields?.[field])?.fields?.[field] ?? title(field);
+  fields[field] ??
+  owners.find((owner) => owner.fields?.[field])?.fields?.[field] ??
+  (/^[a-z0-9_.]+$/.test(field) ? title(field) : field);
 // A schedule's collection as its collector names it.
 const scheduleLabel = (value: string) =>
   collections.find((collection) => collection.schedule === value)?.label;

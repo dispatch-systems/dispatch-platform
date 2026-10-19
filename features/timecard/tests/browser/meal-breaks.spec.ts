@@ -251,10 +251,10 @@ test('refreshing unmatched drivers offers the Driver Match review and returns to
     page.getByText('1 Flex driver is not matched to a Paycom employee', { exact: false }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Review in Driver Match', exact: true }).click();
-  await expect(page).toHaveURL(/settings\?tab=driver-match/);
-  await expect(page.getByRole('tab', { name: /Driver Match/ })).toHaveAttribute(
-    'aria-selected',
-    'true',
+  await expect(page).toHaveURL(/\/driver-match$/);
+  await expect(page.getByRole('link', { name: /^Driver Match/ })).toHaveAttribute(
+    'aria-current',
+    'page',
   );
   await page.getByRole('link', { name: 'Timecard', exact: true }).click();
   await page.getByRole('tab', { name: 'Meal Breaks', exact: true }).click();

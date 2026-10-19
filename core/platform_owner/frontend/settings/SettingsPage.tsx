@@ -6,8 +6,10 @@ import { tabOf, tabs } from './tabs.js';
 
 const load = (id: string) =>
   void tabOf(id)
-    ?.load()
+    ?.section.load()
     .catch(() => undefined);
+// Its sections are each the person's own, which nothing else on the page changes.
+const refresh = () => undefined;
 
 /** The platform owner's own Settings. */
 export function SettingsPage({ session }: { session: SessionView }) {
@@ -29,7 +31,7 @@ export function SettingsPage({ session }: { session: SessionView }) {
         label="Settings"
       />
       <div aria-busy={pending || undefined} inert={pending}>
-        <Suspense fallback={<Loading />}>{tab.render({ session })}</Suspense>
+        <Suspense fallback={<Loading />}>{tab.section.render({ session, refresh })}</Suspense>
       </div>
     </>
   );

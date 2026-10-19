@@ -1,4 +1,5 @@
 import { createElement, lazy } from 'react';
+import { Fingerprint } from 'lucide-react';
 import { peopleFeatures } from '../../../core/manifest/api/generated/people-features.js';
 import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { hasFeature } from '../../../core/shell/frontend/runtime/features.js';
@@ -6,33 +7,40 @@ import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
-// Driver Match's frontend manifest, loaded up front. Its one screen is a tab of Settings.
+declare module '../../../core/shell/frontend/runtime/slots.js' {
+  interface DspPages {
+    'driver-match': true;
+  }
+}
+
+// Driver Match's frontend manifest, loaded up front. Its one screen is a page of its own.
 
 const load = () => import('./index.js');
-const loadBadge = () => import('./badge.js');
-const DriverMatchSettings = lazy(() =>
-  load().then((module) => ({ default: module.DriverMatchSettings })),
-);
+const DriverMatchPage = lazy(() => load().then((module) => ({ default: module.DriverMatchPage })));
 /** Whether the DSP has a feature on whose data names people: without one, there is no one. */
 const named = (view?: DspView) => peopleFeatures.some((feature) => hasFeature(view, feature));
+const manages = (view?: DspView) => can(view, 'driver_match.manage') && named(view);
 
 export const feature: FrontendFeature = {
   name: 'driver_match',
-  settingsTabs: [
+  routes: [
     {
       id: 'driver-match',
+      scope: 'dsp',
       label: 'Driver Match',
-      badge: { load: () => loadBadge().then((module) => module.DriverMatchTabLabel) },
-      order: 40,
-      visible: (view) => can(view, 'driver_match.manage') && named(view),
-      load,
-      render: ({ view }) =>
-        view && createElement(DriverMatchSettings, { timezone: view.dsp.timezone }),
-      // The badge counts the questions waiting on every tab; the open tab reads the whole roster.
-      prefetch: (tab, view) =>
-        can(view, 'driver_match.manage') && named(view)
-          ? [tab === 'driver-match' ? '/api/dsp/driver-match' : '/api/dsp/driver-match/counts']
-          : [],
+      icon: Fingerprint,
+      // How many questions wait.
+      badge: { load: () => import('./badge.js').then((module) => module.DriverMatchCount) },
+      nav: true,
+      feature: 'driver_match',
+      permission: ({ view }) => manages(view),
+      // It was a tab of Settings.
+      formerly: ['settings?tab=driver-match'],
+      preload: load,
+      render: ({ view }) => createElement(DriverMatchPage, { timezone: view.dsp.timezone }),
+      prefetch: ({ view, warm }) => {
+        if (manages(view)) warm(['/api/dsp/driver-match']);
+      },
     },
   ],
   platformSlots: () => import('./platform-slots.js'),

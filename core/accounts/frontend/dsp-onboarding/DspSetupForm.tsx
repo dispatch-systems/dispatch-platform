@@ -3,6 +3,7 @@ import { ArrowRight, ChevronDown } from 'lucide-react';
 import { dspAddress } from '../../../shell/frontend/runtime/site.js';
 import { ErrorBox } from '../../../shell/frontend/ui/index.js';
 import { field } from '../../../shell/frontend/lib/form.js';
+import { timezones } from '../../../shell/frontend/lib/timezones.js';
 
 export type DspSetup = {
   name: string;
@@ -10,19 +11,6 @@ export type DspSetup = {
   stationCode: string;
   timezone: string;
 };
-const timezones = [
-  ...new Set([
-    'America/Los_Angeles',
-    'America/Chicago',
-    'America/New_York',
-    'America/Denver',
-    'America/Phoenix',
-    'America/Anchorage',
-    'Pacific/Honolulu',
-    'UTC',
-    ...Intl.supportedValuesOf('timeZone'),
-  ]),
-].sort();
 
 const shortCode = /^[A-Za-z0-9]{2,16}$/;
 

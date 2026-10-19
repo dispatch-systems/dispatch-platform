@@ -743,7 +743,7 @@ test("Google's return address takes the picker's answer on, in the fragment, to 
   );
 });
 
-test("a server with half of Google's settings refuses to start, naming what's missing", async (t) => {
+test("a server with half of Google's environment variables refuses to start, naming what's missing", async (t) => {
   const f = await prepare();
   t.after(f.cleanup);
   const secret = 'private-client-secret-value';
@@ -754,7 +754,7 @@ test("a server with half of Google's settings refuses to start, naming what's mi
   });
   const output = `${result.stdout}${result.stderr}`;
   assert.notEqual(result.status, 0, output);
-  assert.match(output, /feature_settings_incomplete/);
+  assert.match(output, /feature_env_incomplete/);
   assert.match(output, /DISPATCH_DEV_GOOGLE_CLIENT_ID/);
   assert.ok(!output.includes(secret));
 });

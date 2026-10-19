@@ -1,4 +1,4 @@
-// The questions the Driver Match tab asks, as the backend sends them: are these two one person?
+// The questions the Driver Match page asks, as the backend sends them: are these two one person?
 import type { Person, PersonId, Question } from '../../api/index.js';
 import { confirmLink, keepApart, mergePeople, splitOff } from '../../api/client.js';
 import { evidenceText } from '../driver-match.js';

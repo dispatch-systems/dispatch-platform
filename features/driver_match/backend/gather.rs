@@ -1,4 +1,4 @@
-//! What the tab, a person's sheet and the badge read from the DSP's data, gathered once for
+//! What the page, a person's sheet and the count read from the DSP's data, gathered once for
 //! each answer: what every source says of each ID, which IDs count, and each person's IDs.
 use super::person::{self, Context};
 use super::sources::{self, Days, DriverDepartments, Found, Key, Seen};
@@ -89,7 +89,7 @@ impl Gathered {
         }
         held
     }
-    /// One person as the tab lists them, from their IDs.
+    /// One person as the page lists them, from their IDs.
     pub fn person(&self, code: &str, ids: &[(&IdRow, Source)]) -> Person {
         let context = Context {
             found: &self.found,

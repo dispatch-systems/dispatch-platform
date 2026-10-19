@@ -161,8 +161,8 @@ test('lib depends on nothing else in the frontend', () => {
 // other's lazy chunks. This remains an explicit boundary: callers cannot reach arbitrary
 // internals of another owner.
 const entries = [
-  // The account's Settings panels, which the platform owner's Settings page shows too.
-  'core/accounts/frontend/settings/tabs.ts',
+  // The account's Settings sections, which the platform owner's Settings page shows too.
+  'core/accounts/frontend/settings/sections.ts',
   // The wait on collection updates, for a page that follows its collections live.
   'core/collection/frontend/live-collection.ts',
   // A collection's schedules, for a feature that lets a DSP change when its collections run.

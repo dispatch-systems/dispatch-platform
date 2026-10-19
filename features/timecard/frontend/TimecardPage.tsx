@@ -6,6 +6,7 @@ import {
 import {
   lazy,
   Suspense,
+  use,
   useEffect,
   useLayoutEffect,
   useState,
@@ -24,7 +25,7 @@ import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
-import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
+import { HostedTab, OpenPage, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-prefetch.js';
@@ -34,6 +35,7 @@ import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   dspHash,
   navigate,
+  pageHash,
   settingsHash,
 } from '../../../core/shell/frontend/runtime/navigation.js';
 import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
@@ -164,6 +166,7 @@ export function PaycomPage({ view }: { view: DspView }) {
     : '';
   const canConnect = can(view, 'connections.manage');
   const connections = settingsHash(view.dsp.id, 'connections');
+  const page = use(OpenPage);
   const sync = useAction(
     async () => {
       try {
@@ -279,7 +282,7 @@ export function PaycomPage({ view }: { view: DspView }) {
                       }
                     : undefined
                 }
-                driverMatch={settingsHash(view.dsp.id, 'driver-match', view)}
+                driverMatch={page && pageHash(page, 'driver-match')}
                 preferences={preferences.data?.values ?? paycomDefaults}
               />
             </CommittedTab>

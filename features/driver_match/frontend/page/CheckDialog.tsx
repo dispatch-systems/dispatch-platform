@@ -18,7 +18,7 @@ export function CheckDialog({
   onClose: () => void;
 }) {
   const [at, setAt] = useState(start);
-  // An answer takes its question away before the tab is read again.
+  // An answer takes its question away before the page is read again.
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
   const left = checks.filter((check) => !answered.has(check.key));
   const answer = useAction((check: Check, same: boolean) => check.answer(same), {

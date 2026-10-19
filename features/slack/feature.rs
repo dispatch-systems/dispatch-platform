@@ -112,7 +112,7 @@ pub const FEATURE: Feature = Feature {
         },
     ],
     // Slack's app: its ID and secret, and the secret Slack signs its requests with.
-    settings: &[&[
+    env: &[&[
         "SLACK_CLIENT_ID",
         "SLACK_CLIENT_SECRET",
         "SLACK_SIGNING_SECRET",

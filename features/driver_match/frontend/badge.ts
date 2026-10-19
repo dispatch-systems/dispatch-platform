@@ -1,2 +1,2 @@
 import './badge.css';
-export { DriverMatchTabLabel } from './DriverMatchTabLabel.js';
+export { DriverMatchCount } from './DriverMatchCount.js';

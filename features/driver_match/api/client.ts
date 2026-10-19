@@ -1,7 +1,7 @@
 import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import type { DriverMatch, PeopleSource, PersonDetails } from './index.js';
 
-// Driver Match's endpoints, as its tab calls them. A decision answers with nothing: the tab
+// Driver Match's endpoints, as its page calls them. A decision answers with nothing: the page
 // reads itself again.
 
 const driverMatch = '/api/dsp/driver-match';

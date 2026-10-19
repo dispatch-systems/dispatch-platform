@@ -5,8 +5,8 @@ mod backend;
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
-    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
-    RouteTask, RouteUnknownStop,
+    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteStop, RouteTask,
+    RouteUnknownStop,
 };
 /// What the app uses: its storage and its database, and how it shapes a day's capture, which
 /// the app's Cortex route probe measures.
@@ -37,6 +37,9 @@ pub const FEATURE: Feature = Feature {
         perm("routes.manage", "Manage Routes", 32).implies(&["routes.view"]),
     ],
     routes: api::routes::routes,
+    // How long its data is kept, on Settings' Data page.
+    settings: &[backend::settings::RETENTION],
+    upgrade_storage: Some(backend::settings::upgrade),
     keeps: &[&backend::keeper::Routes],
     tables: &[(
         "routedata",
@@ -53,6 +56,7 @@ pub const FEATURE: Feature = Feature {
             "route_raw",
             "breaks",
             "unknown_stops",
+            // The window chosen before Settings kept it, read once to move it there.
             "route_retention",
         ],
     )],
@@ -109,7 +113,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         RoutePackageEvent,
         RoutePublication,
         RouteReprocess,
-        RouteRetention,
         RouteStop,
         RouteTask,
         RouteUnknownStop,

@@ -37,7 +37,8 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `subfeatures`         | `switches`     | The parts of its page switched on their own: its tabs (`tab`) and any other part (`sub`), each with the permissions it owns.       |
 | `permissions`         | `permissions`  | What a DSP's roles may grant, on the role sheet under its name: `perm`, with what each implies, sits under or lets its holder do.  |
 | `routes`              | `mod.rs`       | Its endpoints, each with its path and access, which the server checks before a handler runs; listed in its `tests/api/routes.txt`. |
-| `settings`            | `settings`     | The server's settings it reads with `config.setting`, in groups that go together; a server with part of a group refuses to start.  |
+| `env`                 | `env`          | The server's environment variables it reads with `config.setting`, in groups that go together; part of a group refuses to start.   |
+| `settings`            | `settings`     | Its sections of a DSP's Settings, each of fields saved together, which Settings draws and core keeps: `settings::read` reads them. |
 | `keeps`               | `keeping`      | The collections it keeps: for each, what a run needs, how what it brings is stored, and what a schedule of it queues (`Keeper`).   |
 | `schedule_aliases`    | `keeping`      | A name a schedule runs several of its collections by at once.                                                                      |
 | `live`                | `mod.rs`       | The permissions that may follow its collections' progress through the collection updates the dashboard waits on.                   |
@@ -229,10 +230,9 @@ them is `core/shell/frontend/runtime/slots/`, one module per slot, gathered by `
 | Slot                     | Module         | What it adds                                                                                                                      |
 | ------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `name`                   | `installed`    | The owner's directory name, as its switch is.                                                                                     |
-| `routes`                 | `pages`        | Its pages, inside a DSP or outside, in sidebar order; which one a DSP opens on (`landing`) or draws the Settings tabs.            |
+| `routes`                 | `pages`        | Its pages, inside a DSP or outside, in sidebar order; which one a DSP opens on (`landing`) or draws Settings (`hostsSettings`).   |
 | `dspSetup`               | `pages`        | Who may save a DSP's profile, and the route that saves it; opening a DSP that has none asks them for it.                          |
-| `settingsTabs`           | `settings`     | Its tabs on a DSP's Settings page.                                                                                                |
-| `settingsPieces`         | `settings`     | Its pieces of other owners' Settings tabs, drawn under the tab's own panel or above it.                                           |
+| `settingsSections`       | `settings`     | The components of its custom sections of a DSP's Settings, by the section's id, as its backend declares them `custom`.            |
 | `pageTabs`               | `page-tabs`    | Its tabs on another feature's page: a page with tabs draws them among its own, the app above any other.                           |
 | `connectionCard`         | `connections`  | A collector's card on a DSP's Connections tab.                                                                                    |
 | `connectionPieces`       | `connections`  | Its cards on a DSP's Connections tab, beside the collectors': one of the DSP's accounts, or the member's own.                     |

@@ -1,9 +1,9 @@
 // What an owner's `frontend/feature.ts` declares, and what the hosts read from it: one module
 // per slot under `slots/`, each adding what it holds to `FrontendFeature`, gathered here. Only
 // app/frontend lists the manifests; it installs them here before the first render, so no host
-// imports a feature. What a feature or a connection adds to another's page, a Settings tab or
-// a piece of one, a tab of a page, is there only while the DSP has it: switched off, or hidden
-// from the DSP's members, it is gone, as are its pages.
+// imports a feature. What a feature or a connection adds to another's page, a tab of a page or
+// a card on Connections, is there only while the DSP has it: switched off, or hidden from the
+// DSP's members, it is gone, as are its pages and its sections of Settings.
 //
 // A manifest is loaded up front, and outside a browser by the route table's tests. It stays
 // small, imports no CSS, touches no browser API until it is called, and loads its pages lazily.
@@ -25,10 +25,21 @@ export type {
   PlatformRouteId,
   Route,
   RoutePrefetch,
+  SidebarProps,
 } from './slots/pages.js';
-export { dspSetup, landingPage, routeOf, settingsPage } from './slots/pages.js';
-export type { SettingsContext, SettingsPiece, SettingsTab } from './slots/settings.js';
-export { settingsPieces, settingsTabs, visibleSettingsTabs } from './slots/settings.js';
+export {
+  dspSetup,
+  featureIcon,
+  landingPage,
+  loadedSidebar,
+  loadSidebar,
+  movedTo,
+  routeOf,
+  settingsPage,
+  sidebarOwner,
+} from './slots/pages.js';
+export type { CustomSection, CustomSectionContext, SettingsContext } from './slots/settings.js';
+export { readSettings, settingsRead, settingsSection } from './slots/settings.js';
 export type {
   ConnectionCard,
   ConnectionCardContext,

@@ -43,7 +43,9 @@ const OUTSIDE_THE_API: &[&str] = &[
 /// Adding an endpoint? Add its line to its owner's list. A reviewer then sees, in one line,
 /// who can reach it, and a permission changed by accident fails a test.
 fn owners() -> Vec<(String, Vec<Route>)> {
-    use dispatch_core::{accounts, collection, manifest, platform_owner, server, support, tenancy};
+    use dispatch_core::{
+        accounts, collection, manifest, platform_owner, server, settings, support, tenancy,
+    };
     dispatch_backend::install();
     let registry = dispatch_core::manifest::registry();
     let mut owners = vec![
@@ -55,6 +57,7 @@ fn owners() -> Vec<(String, Vec<Route>)> {
             platform_owner::api::routes(),
         ),
         ("core/server".to_owned(), server::api::routes()),
+        ("core/settings".to_owned(), settings::api::routes()),
         ("core/support".to_owned(), support::api::routes()),
         ("core/tenancy".to_owned(), tenancy::api::routes()),
     ];

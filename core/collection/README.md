@@ -14,3 +14,9 @@ one waiting request on `/api/dsp/collection-updates`, which the permissions feat
 the collections kept by features whose `live` permissions it holds, so a hint, such as the
 employee code a change names, stays with its feature's readers. A job's status isn't
 announced, so a page shows a run's progress by reading its status while it runs.
+
+Its Connections page is a custom section of a DSP's Settings, `collection.connections`, on the
+Connections page: the server shows it to every member, and its component in
+`frontend/feature.ts` says whether they have anything there. A collection's schedules are edited
+with `ScheduleSettings` (`frontend/schedules.ts`): in a sheet, or inline, as Settings draws a
+section's `schedules` field.

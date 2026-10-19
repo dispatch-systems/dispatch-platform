@@ -108,7 +108,7 @@ pub struct Person {
     /// Their photo's version, when a feature holds one: its address carries it.
     pub photo: Option<String>,
 }
-/// How many questions wait, for the tab's badge.
+/// How many questions wait, for the sidebar's count.
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
@@ -151,7 +151,7 @@ pub enum Question {
         id: String,
     },
 }
-/// The Driver Match tab: the sources the DSP has, the questions waiting, then everyone.
+/// The Driver Match page: the sources the DSP has, the questions waiting, then everyone.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]

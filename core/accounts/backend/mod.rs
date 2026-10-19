@@ -7,6 +7,7 @@ mod invitations;
 mod passwords;
 mod security;
 mod sessions;
+pub mod settings;
 
 use crate::{
     Error, Result,

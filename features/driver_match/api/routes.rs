@@ -1,5 +1,5 @@
 //! Driver Match's endpoints: every person the DSP's features name, and the decisions that
-//! join or part them, which answer with nothing: the tab reads itself again. Its one
+//! join or part them, which answer with nothing: the page reads itself again. Its one
 //! permission gates them all.
 use crate::backend::DriverMatchStore;
 use dispatch_core::{

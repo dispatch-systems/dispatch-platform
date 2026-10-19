@@ -10,6 +10,7 @@ pub(crate) mod maintenance;
 pub(crate) mod people;
 mod publishing;
 mod rows;
+pub(crate) mod settings;
 mod storage;
 
 use publishing::*;
@@ -19,8 +20,8 @@ use storage::*;
 
 use crate::api::types::{
     RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
-    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
-    RouteTask, RouteUnknownStop,
+    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteStop, RouteTask,
+    RouteUnknownStop,
 };
 use chrono::{Duration, NaiveDate};
 use dispatch_core::{
@@ -428,11 +429,9 @@ pub(crate) fn routes_request(store: &Store, id: &str, day: &str, mode: Mode) -> 
 }
 /// The first day the DSP's window keeps, or none when every day is kept.
 pub(super) fn retention_start(store: &Store, id: &str) -> Result<Option<NaiveDate>> {
-    let days = store
-        .routes_db(id)?
-        .one("SELECT days FROM route_retention WHERE id=1", [])?
-        .and_then(|row| row["days"].as_i64());
-    Ok(match days {
+    let retention: settings::Retention =
+        dispatch_core::settings::read(store, id, &settings::RETENTION)?;
+    Ok(match retention.days {
         Some(days) => Some(routes_today(store, id)? - Duration::days(days)),
         None => None,
     })

@@ -15,7 +15,7 @@ text_enum! {
 pub struct AuditSubject(&'static str);
 impl AuditSubject {
     /// Core's own kinds, before those the features declare.
-    const CORE: &[&str] = &["member", "role", "schedule", "job"];
+    const CORE: &[&str] = &["member", "role", "schedule", "job", "setting"];
     /// Every kind: core's, then each feature's, in the registry's order.
     pub fn all() -> impl Iterator<Item = Self> {
         let features = registry().features.iter().flat_map(|f| f.audit.subjects);
