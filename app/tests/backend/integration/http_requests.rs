@@ -763,6 +763,8 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
     assert_eq!(revision(), before + 2);
 }
 
+// Settings serves the DSP's profile, the DSP route it writes through: core has none of its own.
+#[cfg(feature = "settings")]
 #[tokio::test]
 async fn a_write_on_a_dsps_route_evicts_only_that_dsps_cached_reads() {
     use dispatch_core::server::cache::Scope;
