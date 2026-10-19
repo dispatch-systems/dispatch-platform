@@ -60,6 +60,11 @@ pub trait Grant: Copy + Send + Sync + 'static {
     /// Told that `authorize` refused the request with `error`, for a caller that counts such
     /// refusals.
     fn refused(self, _state: &State, _input: &Input, _error: &Error) {}
+    /// The one DSP whose data the caller acts on, for a write's cache: its write evicts only
+    /// that DSP's cached reads and those every DSP shares. None changes anything.
+    fn tenant(self, _who: &Self::Who) -> Option<&str> {
+        None
+    }
 }
 #[derive(Clone, Copy)]
 pub struct Public;
@@ -199,6 +204,9 @@ impl Grant for Dsp {
             .tenant = Some(context.dsp.id.clone());
         Ok(context)
     }
+    fn tenant(self, who: &Context) -> Option<&str> {
+        Some(&who.dsp.id)
+    }
 }
 impl Dsp {
     /// Checks again, after work done outside the database, that the member may still do this.
@@ -253,7 +261,9 @@ pub enum Work {
     Memory,
 }
 
-type Blocking = Arc<dyn Fn(&Store, &State, &Input) -> Result<Reply> + Send + Sync>;
+/// A route's handler, told whether its work is a write whose changes it says once it knows its
+/// caller, with `State::changed`.
+type Blocking = Arc<dyn Fn(&Store, &State, &Input, bool) -> Result<Reply> + Send + Sync>;
 /// A route's gate: its access's `Grant::gate`, run before the database is asked for.
 type Gate = Arc<dyn Fn(&State, &Input) -> Result<()> + Send + Sync>;
 fn gate_of<A: Grant>(access: A) -> Gate {
@@ -316,11 +326,15 @@ fn blocking<A: Grant>(
     method: Method,
     handler: impl Fn(&Store, &Ctx<'_, A::Who>, &Input) -> Result<Reply> + Send + Sync + 'static,
 ) -> Route {
-    let handler = move |db: &Store, state: &State, input: &Input| {
+    let handler = move |db: &Store, state: &State, input: &Input, writes: bool| {
         let who = access
             .authorize(db, input)
             .inspect_err(|error| access.refused(state, input, error))?;
         access.admit(state, &who)?;
+        // A write on a DSP's route changes that DSP's data, and any other changes anything.
+        if writes {
+            state.changed(access.tenant(&who));
+        }
         handler(db, &Ctx { state, who }, input)
     };
     Route {
@@ -395,7 +409,7 @@ pub fn coalesced_read_by(
             state
                 .read(move |db| {
                     let _turn = turn;
-                    handler(db, &shared, &input)
+                    handler(db, &shared, &input, false)
                 })
                 .await
         })
@@ -719,11 +733,12 @@ impl Route {
         let input = middleware::input(&state, request, self.path).await?;
         (self.gate)(&state, &input)?;
         let shared = state.clone();
-        let work = move |db: &Store| handler(db, &shared, &input);
+        let writes = self.work == Work::Write;
+        let work = move |db: &Store| handler(db, &shared, &input, writes);
         let reply = match self.work {
             Work::Read => state.read(work).await?,
             Work::Bookkeeping => state.run_bookkeeping(work).await?,
-            _ => state.run(work).await?,
+            _ => state.run_declaring(work).await?,
         };
         if self.invalidates_schedules {
             state

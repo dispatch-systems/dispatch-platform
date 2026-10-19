@@ -200,6 +200,19 @@ impl ReadCache {
             });
         }
     }
+    /// Evicts everything one DSP's cached reads hold, whatever its kind, and every read the
+    /// DSPs share, as the listings: what a write to that DSP's data could change.
+    pub fn invalidate_dsp(&self, dsp: &str) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.retain(|entry| {
+                entry
+                    .scope
+                    .dsp
+                    .as_deref()
+                    .is_some_and(|tenant| tenant != dsp)
+            });
+        }
+    }
     /// Expired invitations can change the owner shown in any user's DSP listing.
     pub fn invalidate_listings(&self) {
         if let Ok(mut entries) = self.entries.lock() {
