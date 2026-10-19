@@ -259,17 +259,14 @@ test('a dry run prints the plan and changes nothing', () => {
       'node_modules/tsx/dist/cli.mjs',
       'tooling/ci/removability.ts',
       '--feature',
-      'driver_profiles',
+      'uniforms',
       '--dry-run',
     ],
     { cwd: root, encoding: 'utf8' },
   );
   const lines = printed.trim().split('\n');
-  assert.match(lines[0]!, /^Leaving out driver_profiles; keeping /);
-  assert.equal(
-    lines.filter((line) => /^\(moves features\/driver_profiles aside\)$/.test(line)).length,
-    1,
-  );
+  assert.match(lines[0]!, /^Leaving out uniforms; keeping /);
+  assert.equal(lines.filter((line) => /^\(moves features\/uniforms aside\)$/.test(line)).length, 1);
   assert.deepEqual(
     lines
       .filter((line) => !line.startsWith('('))
@@ -278,7 +275,7 @@ test('a dry run prints the plan and changes nothing', () => {
     ['build', 'TypeScript', 'tests', 'types', 'bundle'],
   );
   assert.equal(fs.readFileSync(path.join(root, featureMap), 'utf8'), before);
-  assert(fs.existsSync(path.join(root, 'features/driver_profiles')));
+  assert(fs.existsSync(path.join(root, 'features/uniforms')));
 });
 
 test('a failure names the files and tests that reached into what was left out', () => {

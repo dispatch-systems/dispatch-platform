@@ -68,3 +68,14 @@ Timecard's collections. It names drivers through Driver Match.
   publications to their actual collection job. Each day validates and publishes all scopes
   in one transaction. Existing meal fields and privacy cleanup remain unchanged. The additive
   table can remain during a code rollback; do not remove it or rewrite shipped migrations.
+- **Exposed:** `timecards`, through its contract in `contract/` (`dispatch-timecard-contract`),
+  for any feature or agent tool, while it's on for the DSP: the days its collections of
+  everyone reached, and a driver's timecards by their Paycom codes, matched exactly, over up
+  to 31 days, each day's punches, meal breaks as punched, Paycom's hours and the minutes
+  worked, with the employee syncs and running collections its pages read, but without the
+  Daily tab's department filters. For the codes asked, a day after the collection covering it,
+  or outside every collection, is unknown rather than a day off, and the collection's own day
+  is partial: only what was punched by then. It refuses a day that isn't YYYY-MM-DD
+  (`invalid_date`), and more than 31 days, more than 16 codes, or a code that's empty or over
+  128 characters (`invalid_input`); no codes read no timecards. It leaves out departments,
+  positions, Paycom links and the Cortex meal comparison.

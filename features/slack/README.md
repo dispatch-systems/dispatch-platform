@@ -278,6 +278,14 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   `fixture-signing-secret`, so tests send requests as Slack would. It answers each method
   Dispatch calls, and an integration's own answer a method only that integration calls; any
   other fails, so a call nothing answers shows in a test or a preview.
+- **Exposed:** `chat_accounts`, through its contract in `contract/` (`dispatch-slack-contract`),
+  for any feature or agent tool, while it's on for the DSP: the accounts some of its `slack` IDs
+  name, in their order, each with its workspace (by its name in Dispatch, else its name in
+  Slack), the member's own ID there, the name they go by when it's another, whether it's active,
+  whether they're a guest and whether the workspace's access broke. It repeats nothing Driver
+  Match already has of them, as their names, email addresses and phone numbers, and never a
+  workspace's tokens or permissions. An ID of no account is left out; an empty ID, one over 128
+  characters, or more than 32 IDs is refused (`invalid_input`).
 
 ## Slack's app
 

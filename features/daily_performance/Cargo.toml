@@ -25,6 +25,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 ts-rs = { workspace = true, optional = true }
+dispatch-daily-performance-contract = { path = "contract" }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }

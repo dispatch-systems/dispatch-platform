@@ -1,4 +1,5 @@
 use crate::{Result, ensure};
+use chrono::NaiveDate;
 use serde_json::Value;
 pub fn fields(v: &Value, allowed: &[&str]) -> Result<()> {
     ensure(
@@ -60,6 +61,30 @@ pub fn date(value: &str) -> Result<()> {
         400,
     )
 }
+/// The days `from` to `to`, each YYYY-MM-DD: `from` first, and `longest` days at most, counting
+/// both.
+pub fn days(from: &str, to: &str, longest: i64) -> Result<(NaiveDate, NaiveDate)> {
+    let day = |value: &str| {
+        date(value)?;
+        NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .map_err(|_| crate::Error::new("invalid_date", 400))
+    };
+    let (from, to) = (day(from)?, day(to)?);
+    ensure(
+        (0..longest).contains(&(to - from).num_days()),
+        "invalid_input",
+        400,
+    )?;
+    Ok((from, to))
+}
+/// At most `most` IDs, each 1 to 128 characters.
+pub fn ids(ids: &[String], most: usize) -> Result<()> {
+    ensure(
+        ids.len() <= most && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
+        "invalid_input",
+        400,
+    )
+}
 pub fn code(value: &str) -> Result<()> {
     ensure(
         !value.is_empty()
@@ -94,3 +119,7 @@ pub fn token(value: &str, max: usize) -> bool {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/validate.rs"]
+mod tests;

@@ -171,8 +171,8 @@ pub fn everyone(store: &Store, state: &State, dsp: &str) -> Result<Arc<Everyone>
         || read(store, dsp),
     )
 }
-/// Everyone, read afresh, for work without the server's state at hand, as an agent's tool or a
-/// test: `everyone` keeps what this reads.
+/// Everyone, read afresh, for work without the server's state at hand, as a test: `everyone`
+/// keeps what this reads.
 pub fn read(store: &Store, dsp: &str) -> Result<Everyone> {
     registry().exposed::<dyn Directory>().map_or_else(
         || Ok(Everyone::default()),

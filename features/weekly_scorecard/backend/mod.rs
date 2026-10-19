@@ -3,6 +3,7 @@
 //! Amazon sends is kept as JSON beside the keys reads filter on. Browser and HTTP
 //! data is untrusted input.
 pub(crate) mod archive;
+pub(crate) mod exposed;
 pub(crate) mod keeper;
 pub(crate) mod people;
 pub(crate) mod retirement;
@@ -104,17 +105,29 @@ fn text(row: &Value, key: &str) -> Option<String> {
         _ => None,
     }
 }
-fn keys(dataset: &Dataset, row: &Value) -> Keys {
-    let impact = dataset.impact.and_then(|field| match row.get(field)? {
+/// Whether a flag Amazon writes is set: Y or N, true or false, 1 or 0, as text, a boolean or a
+/// number. None when it's anything else.
+pub(crate) fn flag(value: &Value) -> Option<bool> {
+    match value {
         Value::String(value) => match value.as_str() {
-            "Y" | "y" | "true" | "TRUE" | "1" => Some(1),
-            "N" | "n" | "false" | "FALSE" | "0" => Some(0),
+            "Y" | "y" | "true" | "TRUE" | "1" => Some(true),
+            "N" | "n" | "false" | "FALSE" | "0" => Some(false),
             _ => None,
         },
-        Value::Bool(value) => Some(i64::from(*value)),
-        Value::Number(value) => value.as_i64().filter(|v| *v == 0 || *v == 1),
+        Value::Bool(value) => Some(*value),
+        Value::Number(value) => match value.as_f64()? {
+            1.0 => Some(true),
+            0.0 => Some(false),
+            _ => None,
+        },
         _ => None,
-    });
+    }
+}
+fn keys(dataset: &Dataset, row: &Value) -> Keys {
+    let impact = dataset
+        .impact
+        .and_then(|field| flag(row.get(field)?))
+        .map(i64::from);
     Keys {
         data_date: text(row, "data_date"),
         transporter_id: text(row, "transporter_id"),
@@ -416,14 +429,19 @@ impl WeeklyScorecardStore for Store {
         })
     }
 }
-/// Today, where the DSP is.
-fn weekly_scorecard_today(store: &Store, id: &str) -> Result<NaiveDate> {
-    let tz: chrono_tz::Tz = store
+/// Where the DSP is.
+fn weekly_scorecard_timezone(store: &Store, id: &str) -> Result<chrono_tz::Tz> {
+    store
         .find_dsp(id)?
         .timezone
         .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    Ok(dispatch_core::foundation::clock::today(tz))
+        .map_err(|_| Error::new("invalid_timezone", 400))
+}
+/// Today, where the DSP is.
+fn weekly_scorecard_today(store: &Store, id: &str) -> Result<NaiveDate> {
+    Ok(dispatch_core::foundation::clock::today(
+        weekly_scorecard_timezone(store, id)?,
+    ))
 }
 /// The station the DSP's profile names, which every scorecard request carries.
 fn weekly_scorecard_station(store: &Store, id: &str) -> Result<String> {

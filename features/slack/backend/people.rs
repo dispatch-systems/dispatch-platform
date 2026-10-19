@@ -85,6 +85,6 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
         .collect())
 }
 /// The ID the member `member` of the workspace `team` is known by.
-fn id(team: &str, member: &Member) -> String {
+pub(super) fn id(team: &str, member: &Member) -> String {
     format!("{team}:{}", member.user)
 }

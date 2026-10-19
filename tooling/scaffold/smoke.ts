@@ -90,10 +90,9 @@ const ADDED: string[][] = [
   ['people', 'paycom', '--to', 'timecard', '--table', 'employees'],
   ['page', '--to', 'weekly_scorecard'],
   ['people', 'amazon', '--to', 'documents', '--table', 'documents_files'],
-  // Routes' tests install the collector it uses, as its contract's must; a page shows it.
-  ['contract', 'route_counts', '--to', 'routes', '--shown'],
-  // Daily Performance's tests name Cortex by an alias.
-  ['contract', 'daily_counts', '--to', 'daily_performance'],
+  // A keeper's tests install the collector it keeps from, as its contract's must; a page shows
+  // it.
+  ['contract', 'keeper_counts', '--to', 'smoke_keeper', '--shown'],
 ];
 
 /** Copies the checkout's files, committed or not, into `to`, with its packages linked. */

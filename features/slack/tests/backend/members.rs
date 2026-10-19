@@ -4,47 +4,14 @@
 use super::*;
 use crate::backend::{
     app::SCOPES as APP,
-    slack::Tokens,
-    storage::{SlackStore, Workspace},
+    storage::SlackStore,
+    support::{connect, platform},
 };
-use dispatch_core::{db::now, manifest::people::Named, testing};
+use dispatch_core::{manifest::people::Named, testing};
 
 const OPERATIONS: &str = "T0FIXTURE1";
 const DRIVERS: &str = "T0FIXTURE2";
 
-/// A platform with one DSP, and its server's state.
-fn platform() -> (impl Drop, Arc<State>, String) {
-    crate::backend::support::install();
-    let (root, store, dsp) = testing::bootstrapped();
-    let config = store.config.clone();
-    drop(store);
-    (root, State::new(config).unwrap(), dsp)
-}
-/// Connects the DSP's workspace `team`, its admin having let the bot do what `scopes` say.
-async fn connect(state: &Arc<State>, dsp: &str, team: &str, scopes: &[&str]) -> Bot {
-    let workspace = Workspace {
-        team: team.into(),
-        name: team.into(),
-        broken: false,
-        scopes: scopes.iter().map(|scope| (*scope).to_owned()).collect(),
-        bot_user: "U0FIXTUREBOT".into(),
-        app: "A0FIXTURE".into(),
-        connected_by: None,
-        connected_at: "2026-01-01T00:00:00Z".into(),
-        label: None,
-    };
-    let tokens = Tokens {
-        access: format!("fixture-access:{team}:test"),
-        refresh: None,
-        expires_at: Some(now() + 3_600_000),
-    };
-    let of = dsp.to_owned();
-    state
-        .run(move |db| db.save_slack_workspace(&of, &workspace, &tokens))
-        .await
-        .unwrap();
-    Bot::new(state, dsp, team)
-}
 async fn kept(state: &Arc<State>, dsp: &str) -> Vec<(String, Member)> {
     let of = dsp.to_owned();
     state.read(move |db| db.slack_members(&of)).await.unwrap()

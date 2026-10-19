@@ -8,6 +8,8 @@ pub const COLLECTORS: &[&dyn Collector] = &[
     &dispatch_cortex::COLLECTOR,
 ];
 pub const FEATURES: &[&Feature] = &[
+    #[cfg(feature = "driver_match")]
+    &dispatch_driver_match::FEATURE,
     #[cfg(feature = "dvic")]
     &dispatch_dvic::FEATURE,
 ];

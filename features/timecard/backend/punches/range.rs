@@ -16,6 +16,9 @@ pub(crate) struct DailySource {
     pub roster: Arc<BTreeMap<String, Value>>,
     pub rows: BTreeMap<String, Value>,
     pub available: bool,
+    /// When the newest collection of the day's selected rows was made, or else of its
+    /// publication: a period lists every day in it, and only the days up to then are real.
+    pub collected_at: Option<String>,
 }
 
 pub(crate) fn daily_sources(
@@ -47,6 +50,9 @@ pub(crate) fn daily_sources(
             day,
             DailySource {
                 available: publication.is_some(),
+                collected_at: publication
+                    .as_ref()
+                    .map(|p| s(p, "collected_at").to_owned()),
                 publication,
                 ..DailySource::default()
             },
@@ -141,14 +147,18 @@ pub(crate) fn daily_sources(
                         card[key] = employee[key].clone();
                     }
                     source.rows.insert(code.into(), card);
+                    // Newest last, and never older than the publication it overlays.
+                    source.collected_at = Some(s(&sync, "collected_at").to_owned());
                 }
             }
         }
     }
+    let now = dispatch_core::db::iso();
     for (date, live) in store.live_results_range(id, paycom::PROVIDER, from, to)? {
         let Some(source) = days.get_mut(&date) else {
             continue;
         };
+        let mut collecting = false;
         for (metadata, items) in live {
             for employee in metadata["roster"].as_array().into_iter().flatten() {
                 Arc::make_mut(&mut source.roster).insert(
@@ -161,8 +171,13 @@ pub(crate) fn daily_sources(
                 let code = s(&row, "employeeCode");
                 if wanted(code) {
                     source.rows.insert(code.to_owned(), row);
+                    collecting = true;
                 }
             }
+        }
+        // A running collection's rows are as of now.
+        if collecting {
+            source.collected_at = Some(now.clone());
         }
     }
     Ok(days)

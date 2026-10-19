@@ -4,6 +4,7 @@
 //! filter on; every response is kept whole, compressed, for reprocessing. Browser and
 //! HTTP data is untrusted input. The collection is `routes` to the platform; its database is
 //! `routedata`.
+pub(crate) mod exposed;
 pub(crate) mod keeper;
 pub(crate) mod maintenance;
 pub(crate) mod people;

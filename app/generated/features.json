@@ -59,7 +59,13 @@
         "POST /api/dsp/daily-performance/schedules/{key}/enabled",
         "POST /api/dsp/daily-performance/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "daily_metrics",
+          "contract": "dispatch_daily_performance_contract::DailyMetrics",
+          "about": "A driver's Daily Quality and Day Safety day by day, the packages they returned and their safety events, and the days collected."
+        }
+      ],
       "settings": []
     },
     "switch": "daily_performance",
@@ -313,7 +319,13 @@
         "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
         "POST /api/dsp/driver-profiles/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "amazon_roster",
+          "contract": "dispatch_driver_profiles_contract::AmazonRoster",
+          "about": "What Amazon's roster says of each associate: status, roles, qualifications, license expiry."
+        }
+      ],
       "settings": []
     },
     "switch": "driver_profiles",
@@ -532,7 +544,13 @@
         "POST /api/dsp/routes/schedules/{key}/enabled",
         "POST /api/dsp/routes/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "driver_routes",
+          "contract": "dispatch_routes_contract::DriverRoutes",
+          "about": "Each driver's routes day by day, with their stops and packages, and the days collected."
+        }
+      ],
       "settings": []
     },
     "switch": "routes",
@@ -667,7 +685,13 @@
         "POST /api/dsp/slack/workspaces/{team}/canvases/chosen",
         "POST /api/dsp/slack/workspaces/{team}/canvases/chosen/{canvas}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "chat_accounts",
+          "contract": "dispatch_slack_contract::ChatAccounts",
+          "about": "Each person's accounts in the DSP's Slack workspaces: where, and whether each is active."
+        }
+      ],
       "settings": [
         [
           "SLACK_CLIENT_ID",
@@ -848,7 +872,13 @@
         "POST /api/dsp/schedules/{key}/enabled",
         "POST /api/dsp/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "timecards",
+          "contract": "dispatch_timecard_contract::Timecards",
+          "about": "Each driver's Paycom timecards by day: their punches, the meal breaks they punched, the time worked, and the days collected."
+        }
+      ],
       "settings": []
     },
     "switch": "timecard",
@@ -1004,7 +1034,13 @@
         "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
         "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
       ],
-      "exposes": [],
+      "exposes": [
+        {
+          "name": "driver_scorecards",
+          "contract": "dispatch_weekly_scorecard_contract::DriverScorecards",
+          "about": "Each driver's weekly scorecards, the packages they list, and the weeks collected."
+        }
+      ],
       "settings": []
     },
     "switch": "weekly_scorecard",

@@ -36,3 +36,11 @@ yet: its roster bar sits at the top of Driver Match's Settings tab.
   as active. It names each listed associate's photo by its digest and serves it, so Driver
   Match shows it.
 - **Log:** `driver_profiles.collection_requested`, under Collections.
+- **Exposed:** `amazon_roster`, through its contract in `contract/`
+  (`dispatch-driver-profiles-contract`), for any feature or agent tool, while it's on for the
+  DSP: when the roster was last collected, or none before the first, and for the transporter
+  IDs asked, in their order, whether the roster still lists each, their status, roles,
+  qualifications, license expiry and when it last listed them. It leaves out an ID it never
+  listed, and refuses an empty ID, one over 128 characters or more than 32 IDs with
+  `invalid_input`. Names, contacts and photos are the directory's; it never offers the row as
+  Amazon sent it, the company or the work phone.

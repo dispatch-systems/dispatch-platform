@@ -4,7 +4,11 @@
 use super::{Answer, AnyTool, Effect, Failure, Refusal, db_caller, has_all, permitted};
 use crate::Caller;
 use dispatch_core::{
-    Error, State, accounts::api::types::Dsp, db::Store, tenancy::audit::AuditChange,
+    Error, State,
+    accounts::api::types::Dsp,
+    db::Store,
+    manifest::people::{self, Everyone},
+    tenancy::audit::AuditChange,
 };
 use std::sync::Arc;
 
@@ -94,6 +98,13 @@ impl Cx {
             })
             .await
             .unwrap_or_else(|error| Err(error.into()))
+    }
+
+    /// Everyone at `dsp`, as `people::everyone` keeps them, read as `read` reads.
+    pub(crate) async fn everyone(&self, dsp: &Dsp) -> Answer<Arc<Everyone>> {
+        let (state, dsp) = (self.state.clone(), dsp.id.clone());
+        self.read(move |db| Ok(people::everyone(db, &state, &dsp)?))
+            .await
     }
 
     /// Whether `switch`, a feature or its part, is on at `dsp`, hidden from its members or

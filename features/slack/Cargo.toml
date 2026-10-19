@@ -32,6 +32,7 @@ sha2 = { workspace = true }
 tokio = { workspace = true }
 ts-rs = { workspace = true, optional = true }
 url = { workspace = true }
+dispatch-slack-contract = { path = "contract" }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }

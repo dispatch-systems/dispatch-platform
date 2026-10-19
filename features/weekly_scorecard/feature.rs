@@ -116,6 +116,13 @@ pub const FEATURE: Feature = Feature {
         ..Audit::NONE
     },
     people: &[&backend::people::PEOPLE],
+    // What it offers every other feature and agent tool, through its contract.
+    exposes: &[dispatch_core::expose!(
+        dyn dispatch_weekly_scorecard_contract::DriverScorecards,
+        &backend::exposed::EXPOSED,
+        "driver_scorecards",
+        "Each driver's weekly scorecards, the packages they list, and the weeks collected.",
+    )],
     ..feature("weekly_scorecard")
 };
 

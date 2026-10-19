@@ -4,11 +4,9 @@
 use super::*;
 use crate::backend::{
     app,
-    slack::Tokens,
-    storage::Workspace,
     support::{self, LISTENING},
 };
-use dispatch_core::{State, db::now, testing};
+use dispatch_core::{State, testing};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -16,36 +14,8 @@ const TEAM: &str = "T0FIXTURE1";
 
 /// A platform with one DSP, which has the workspace `TEAM`, and the bot there.
 async fn connected() -> (impl Drop, Arc<State>, Bot) {
-    support::install();
-    let (root, store, dsp) = testing::bootstrapped();
-    let config = store.config.clone();
-    drop(store);
-    let state = State::new(config).unwrap();
-    let workspace = Workspace {
-        team: TEAM.into(),
-        name: "Operations".into(),
-        broken: false,
-        scopes: app::scopes()
-            .iter()
-            .map(|scope| (*scope).to_owned())
-            .collect(),
-        bot_user: "U0FIXTUREBOT".into(),
-        app: "A0FIXTURE".into(),
-        connected_by: None,
-        connected_at: "2026-10-16T12:00:00.000Z".into(),
-        label: None,
-    };
-    let tokens = Tokens {
-        access: format!("fixture-access:{TEAM}:test"),
-        refresh: None,
-        expires_at: Some(now() + 3_600_000),
-    };
-    let of = dsp.clone();
-    state
-        .run(move |db| db.save_slack_workspace(&of, &workspace, &tokens))
-        .await
-        .unwrap();
-    let bot = Bot::new(&state, &dsp, TEAM);
+    let (root, state, dsp) = support::platform();
+    let bot = support::connect(&state, &dsp, TEAM, &app::scopes()).await;
     (root, state, bot)
 }
 

@@ -5,17 +5,19 @@ use crate::api::types::RosterStatus;
 use dispatch_core::{
     Result,
     collection::registry::AddedStorage,
-    db::{Db, DspLease, Kind, Store, at, now},
+    db::{Db, DspLease, FromRow, Kind, Row, Store, at, now},
     ensure,
+    foundation::validate,
     manifest::people::Photo,
 };
 use dispatch_cortex::{
     self as cortex,
     associates::{Capture, Collection, JOB_KIND, Request},
 };
+use dispatch_driver_profiles_contract::Associate;
 use rusqlite::params;
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Its database beside Cortex's: `driver_profiles/driver_profiles.sqlite` in each DSP's data.
 pub(crate) const DATABASE: Kind = Kind::new("driver_profiles", 1);
@@ -72,6 +74,9 @@ pub trait DriverProfilesStore {
     /// The photo of the first of `transporters` the roster lists with one: its kind and its
     /// bytes.
     fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<Photo>>;
+    /// What the roster says of each of `transporters` it has listed, in their order. Refuses
+    /// an empty ID, one over 128 characters, or more than 32 IDs.
+    fn associates(&self, dsp: &str, transporters: &[String]) -> Result<Vec<Associate>>;
 }
 impl DriverProfilesStore for Store {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>> {
@@ -250,6 +255,42 @@ impl DriverProfilesStore for Store {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(error.into()),
         }
+    }
+    fn associates(&self, dsp: &str, transporters: &[String]) -> Result<Vec<Associate>> {
+        validate::ids(transporters, 32)?;
+        let mut kept = self
+            .driver_profiles_db(dsp)?
+            .query_as::<Kept>(
+                "SELECT transporter_id,listed,status,roles,qualifications,license_expires,\
+                 last_listed FROM associates \
+                 WHERE transporter_id IN (SELECT value FROM json_each(?))",
+                [serde_json::to_string(transporters)?],
+            )?
+            .into_iter()
+            .map(|Kept(associate)| (associate.id.clone(), associate))
+            .collect::<BTreeMap<_, _>>();
+        Ok(transporters
+            .iter()
+            .filter_map(|id| kept.remove(id))
+            .collect())
+    }
+}
+/// An associate as the roster's row has them.
+struct Kept(Associate);
+impl FromRow for Kept {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        let list = |column: &str| -> Result<Vec<String>> {
+            Ok(serde_json::from_str(&row.get::<String>(column)?)?)
+        };
+        Ok(Self(Associate {
+            id: row.get("transporter_id")?,
+            listed: row.get("listed")?,
+            status: row.get("status")?,
+            roles: list("roles")?,
+            qualifications: list("qualifications")?,
+            license_expires: row.get("license_expires")?,
+            last_listed: row.get("last_listed")?,
+        }))
     }
 }
 /// Every photo file the kept photos name.

@@ -7,12 +7,12 @@ use chrono::{Datelike, Duration, NaiveDate};
 use dispatch_core::{
     db::Store,
     foundation::names,
-    manifest::people::{self, Everyone, Source},
+    manifest::people::{Everyone, Source},
 };
 use dispatch_dvic_contract::{self as dvic, Asked, ShortInspections};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 /// The short inspections an answer lists at most; it counts the rest.
 const LISTED: usize = 100;
@@ -116,8 +116,13 @@ impl Tool for DvicShortInspections {
     async fn call(cx: Cx, input: Search) -> Answer<Reply<Found>> {
         let dsp = cx.dsp().clone();
         let today = today(&dsp.timezone);
+        // The directory, to find the drivers asked for.
+        let people = match &input.drivers {
+            Some(drivers) if !drivers.is_empty() => cx.everyone(&dsp).await?,
+            _ => Arc::default(),
+        };
         let found = cx
-            .read(move |db| search(db, &dsp.id, &dsp.name, today, &input))
+            .read(move |db| search(db, &people, &dsp.id, &dsp.name, today, &input))
             .await?;
         let text = summary(&found);
         Ok(Reply::new(found).text(text))
@@ -130,7 +135,14 @@ fn today(timezone: &str) -> NaiveDate {
 }
 
 /// The search, read at once.
-fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -> Answer<Found> {
+fn search(
+    db: &Store,
+    people: &Everyone,
+    dsp: &str,
+    name: &str,
+    today: NaiveDate,
+    input: &Search,
+) -> Answer<Found> {
     // The toolbox refuses first where DVIC is off; this answers only for a DSP whose DVIC was
     // switched off since, as the toolbox would.
     let Some(reader) = dvic::for_dsp(db, dsp)? else {
@@ -143,12 +155,7 @@ fn search(db: &Store, dsp: &str, name: &str, today: NaiveDate, input: &Search) -
     let coverage = reader.collected(db, dsp)?;
     let known = reader.drivers(db, dsp)?;
     let asked = input.drivers.as_deref().unwrap_or_default();
-    let people = if asked.is_empty() {
-        Everyone::default()
-    } else {
-        people::read(db, dsp)?
-    };
-    let (matched, not_found) = matched(reader.source(), &known, &people, asked)?;
+    let (matched, not_found) = matched(reader.source(), &known, people, asked)?;
     let (from, to) = match range(input, today)? {
         Some(range) => range,
         // Every day DVIC has for the drivers asked for, or the last 7.
@@ -462,4 +469,5 @@ fn summary(found: &Found) -> String {
 
 #[cfg(test)]
 #[path = "../tests/backend/tools/dvic_short_inspections.rs"]
-mod tests;
+// The driver tool's test publishes DVIC as this one does.
+pub(super) mod tests;

@@ -1,21 +1,10 @@
 //! The roster and its photos, against a real store in a temporary directory.
 use super::*;
-use crate::backend::photos;
-use dispatch_core::{manifest::Collector, testing};
-
-/// The roster Cortex's fixture collects for the DSP.
-fn roster(store: &Store, dsp: &str) -> Capture {
-    let request = bind_roster_request(store, dsp).unwrap();
-    let collected = dispatch_cortex::COLLECTOR
-        .fixture("America/Chicago", &request)
-        .unwrap();
-    serde_json::from_value(collected.data).unwrap()
-}
-/// What the keeper does with a finished collection: its photos' files, then the roster.
-fn publish(store: &Store, dsp: &str, job: &str, mut capture: Capture) {
-    photos::write(&photos::dir(store, dsp).unwrap(), &mut capture.photos).unwrap();
-    store.publish_roster(dsp, job, &capture).unwrap();
-}
+use crate::backend::{
+    photos,
+    support::{publish, roster},
+};
+use dispatch_core::testing;
 
 #[test]
 fn a_photo_stays_while_amazon_lists_whoever_it_shows() {
