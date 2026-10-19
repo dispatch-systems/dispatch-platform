@@ -137,6 +137,11 @@ test('member lands in own DSP, cannot see privileged navigation, mobile drawer w
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+  // Widening the window past the drawer's width closes it, and the page works again.
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await expect(page.getByRole('dialog', { name: 'Navigation', exact: true })).toHaveCount(0);
+  await page.getByLabel('Search employees').click();
 });
 
 test('a link followed the moment a DSP opens keeps its view', async ({ page }) => {
