@@ -127,43 +127,73 @@ impl Site {
     }
 }
 
+/// A running preview, as a call reaches it: its host and port, what its current run logged, and
+/// the change's scratch folder, where sessions are kept.
+struct Running {
+    host: String,
+    port: u16,
+    log: String,
+    scratch: std::path::PathBuf,
+}
+impl Running {
+    fn find(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Self> {
+        workspace::valid_name(name)?;
+        require(
+            ws.worktree(name).is_dir(),
+            &format!("worktrees/{name} doesn't exist."),
+        )?;
+        let port = crate::preview::port(name)?.ok_or_else(|| {
+            format!("{name} has no preview. Start it with dispatchdev preview {name}.")
+        })?;
+        let host = crate::preview::host()?;
+        let log = crate::preview::journal(name, runner)?;
+        require(
+            !log.is_empty(),
+            &format!("{name}'s preview isn't running. Start it with dispatchdev preview {name}."),
+        )?;
+        Ok(Self {
+            host,
+            port,
+            log,
+            scratch: workspace::scratch_dir(name)?,
+        })
+    }
+    /// The admin's address, where the platform owner signs in.
+    fn admin(&self) -> Site {
+        Site {
+            origin: format!("http://{}:{}", self.host, self.port),
+            reach: vec![],
+            jar: self.scratch.join(format!("api-{OWNER}.cookies")),
+        }
+    }
+}
+/// The DSPs on `name`'s preview, as its platform owner's session lists them.
+pub fn dsps(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Vec<Value>> {
+    let running = Running::find(ws, name, runner)?;
+    let session = running.admin().session(runner, &running.log, OWNER)?;
+    Ok(session["dsps"].as_array().cloned().unwrap_or_default())
+}
+
 pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
-    workspace::valid_name(name)?;
-    require(
-        ws.worktree(name).is_dir(),
-        &format!("worktrees/{name} doesn't exist."),
-    )?;
-    let port = crate::preview::port(name)?.ok_or_else(|| {
-        format!("{name} has no preview. Start it with dispatchdev preview {name}.")
-    })?;
-    let host = crate::preview::host()?;
-    let log = crate::preview::journal(name, runner)?;
-    require(
-        !log.is_empty(),
-        &format!("{name}'s preview isn't running. Start it with dispatchdev preview {name}."),
-    )?;
+    let running = Running::find(ws, name, runner)?;
+    let (host, port, log, scratch) = (&running.host, running.port, &running.log, &running.scratch);
     let who = call.who.unwrap_or(OWNER);
     require(
         who.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"@.-_+".contains(&b)),
         "An account is an email address.",
     )?;
-    let scratch = workspace::scratch_dir(name)?;
-    let admin = Site {
-        origin: format!("http://{host}:{port}"),
-        reach: vec![],
-        jar: scratch.join(format!("api-{OWNER}.cookies")),
-    };
+    let admin = running.admin();
     // A member signs in at their DSP's own address, which the owner's list names.
     let (site, session, dsps) = if who == OWNER {
-        let session = admin.session(runner, &log, OWNER)?;
+        let session = admin.session(runner, log, OWNER)?;
         let dsps = session["dsps"].clone();
         (admin, session, dsps)
     } else {
         let wanted = call
             .dsp
             .ok_or("A member signs in at their DSP's address: name the DSP with --dsp.")?;
-        let listed = admin.session(runner, &log, OWNER)?["dsps"].clone();
+        let listed = admin.session(runner, log, OWNER)?["dsps"].clone();
         let all = listed.as_array().map(Vec::as_slice).unwrap_or(&[]);
         let code = dsp(all, wanted)?["code"]
             .as_str()
@@ -175,7 +205,7 @@ pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> R
             reach: vec!["--resolve".into(), format!("{address}:{host}")],
             jar: scratch.join(format!("api-{who}.cookies")),
         };
-        let session = site.session(runner, &log, who)?;
+        let session = site.session(runner, log, who)?;
         let dsps = session["dsps"].clone();
         (site, session, dsps)
     };

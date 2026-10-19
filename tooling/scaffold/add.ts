@@ -40,6 +40,7 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
                       what it keeps, the feature's view, which offered(<name>) reads
   --icon <name>       its page's icon, from lucide-react
   --dry-run           print what it would write and change nothing
+  --json              print what it made, or would make, as JSON
   --out <dir>         with --dry-run, write the files under <dir> instead
   --root <dir>        the repository to write into (default: this one)`;
 

@@ -36,6 +36,7 @@ export const usage = `Usage: dispatchdev new integration <name> [options]
   --needs <scopes>    the Slack permissions it needs, as files:read,chat:write
   --hears <events>    the Slack events it's told of, as file_shared, each handled in heard
   --dry-run           print what it would write and change nothing
+  --json              print what it made, or would make, as JSON
   --out <dir>         with --dry-run, write the files under <dir> instead
   --root <dir>        the repository to write into (default: this one)`;
 

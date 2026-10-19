@@ -391,18 +391,24 @@ export function wiring(root: string) {
   return files;
 }
 
+/** The files the wiring would change in `root`: each that doesn't read as it should. */
+export function unwired(root: string, wired = wiring(root)) {
+  return [...wired]
+    .filter(([file, text]) => {
+      const at = path.join(root, file);
+      return !fs.existsSync(at) || fs.readFileSync(at, 'utf8') !== text;
+    })
+    .map(([file]) => file);
+}
+
 /**
  * Writes the wiring into `root`; Cargo.lock then lists the workspace's crates as they now are,
  * without the network, since builds run with `--locked`. Answers the files it changed.
  */
 export function wire(root: string) {
-  const changed: string[] = [];
-  for (const [file, text] of wiring(root)) {
-    const at = path.join(root, file);
-    if (fs.existsSync(at) && fs.readFileSync(at, 'utf8') === text) continue;
-    fs.writeFileSync(at, text);
-    changed.push(file);
-  }
+  const wired = wiring(root);
+  const changed = unwired(root, wired);
+  for (const file of changed) fs.writeFileSync(path.join(root, file), wired.get(file)!);
   if (changed.includes(appManifest) || changed.includes(mcpManifest)) {
     const lock = spawnSync('cargo', ['update', '--workspace', '--offline', '--quiet'], {
       cwd: root,

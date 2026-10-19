@@ -16,5 +16,6 @@ pub mod ship;
 pub mod start;
 pub mod status;
 pub mod test;
+pub mod verify;
 pub mod workspace;
 pub use dispatch_shared::{Native, REPOSITORY, Result, Runner, hex, require, to_hex};

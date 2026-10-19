@@ -39,6 +39,7 @@ export const usage = `Usage: dispatchdev new tool <name> [options]
   --title <title>         its name as people read it (default: from <name>)
   --description <text>    what it does, in one short sentence of at most 120 characters
   --dry-run               print what it would write and change nothing
+  --json                  print what it made, or would make, as JSON
   --out <dir>             with --dry-run, write the files under <dir> instead
   --root <dir>            the repository to write into (default: this one)
 

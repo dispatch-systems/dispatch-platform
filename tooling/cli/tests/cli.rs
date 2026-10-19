@@ -49,6 +49,15 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["browser", "dev"]);
     assert!(!ok);
     assert!(error.contains("Usage: dispatchdev browser"), "{error}");
+    let (ok, _, error) = run(&["verify"]);
+    assert!(!ok);
+    assert!(
+        error.contains("Usage: dispatchdev verify <feature>"),
+        "{error}"
+    );
+    let (ok, _, error) = run(&["test", "--only", "rust"]);
+    assert!(!ok);
+    assert!(error.contains("an --owner's tests"), "{error}");
 }
 
 #[test]

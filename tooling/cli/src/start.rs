@@ -53,7 +53,20 @@ pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Resul
         workspace::duration(took)
     );
     println!("Scratch: {}", scratch.display());
-    disk(ws, runner)
+    disk(ws, runner)?;
+    // A change's name with hyphens is a feature's with underscores.
+    let feature = name.replace('-', "_");
+    println!(
+        "{}",
+        workspace::next(&[
+            format!("`cd worktrees/{name}`"),
+            format!(
+                "`dispatchdev new feature {feature} --dry-run` shows what a new feature would write; \
+                 `dispatchdev doctor` whether the checkout is ready."
+            ),
+        ])
+    );
+    Ok(())
 }
 /// The free space on the worktrees' disk, and when it's low, what each worktree's build takes.
 pub fn disk(ws: &Workspace, runner: &dyn Runner) -> Result<()> {

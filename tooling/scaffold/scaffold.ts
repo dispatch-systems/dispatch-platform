@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
+import { leftLines, markers, type Todo } from './todo.js';
 import { marker } from './wire.js';
 
 // What `new-feature.ts` and `new-collector.ts` share: their arguments, names, the templates,
@@ -504,6 +505,8 @@ export type Made = {
   removed: string[];
   /** What to do next. */
   next: string[];
+  /** What it left for its author to write, each marker in what it wrote or changed. */
+  todos: Todo[];
 };
 
 /**
@@ -545,9 +548,15 @@ export function finish(plan: Plan, root: string, options: { dryRun: boolean; out
     changed: changed.sort(),
     removed: [...(plan.removed ?? [])].sort(),
     next: plan.notes,
+    todos: [...plan.files, ...plan.changes]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .flatMap(([file, content]) => markers(file, content)),
   };
 }
-/** What a generator made as people read it, its next steps last unless `next` is false. */
+/**
+ * What a generator made as people read it, then its next steps and what it left to write unless
+ * `next` is false.
+ */
 export function described(made: Made, next = true) {
   const lines = [
     `${made.dryRun ? 'Would write' : 'Wrote'}:`,
@@ -558,7 +567,7 @@ export function described(made: Made, next = true) {
       ? [`${made.dryRun ? 'Would remove' : 'Removed'}:`, ...made.removed.map((file) => `  ${file}`)]
       : []),
   ];
-  if (next && made.next.length) lines.push(...nextLines(made.next));
+  if (next) lines.push(...(made.next.length ? nextLines(made.next) : []), ...leftLines(made.todos));
   return lines.join('\n');
 }
 export const nextLines = (notes: string[]) => ['Next:', ...notes.map((note) => `  - ${note}`)];
@@ -604,12 +613,19 @@ export async function make(generator: Generator, argv: string[]): Promise<Made> 
 export const failed = (error: unknown, usage: string) =>
   `${error instanceof Error ? error.message : String(error)}\n${error instanceof UsageError ? `\n${usage}\n` : ''}`;
 
-/** Runs a generator as its own script: the usage, or what it made, or why it failed. */
+/**
+ * Runs a generator as its own script: the usage, or what it made, as JSON with --json, or why it
+ * failed.
+ */
 export async function run(generator: Generator) {
-  const argv = process.argv.slice(2);
+  const argv = process.argv.slice(2).filter((arg) => arg !== '--json');
+  const json = argv.length < process.argv.length - 2;
   try {
     if (asksUsage(argv)) process.stdout.write(`${generator.usage}\n`);
-    else process.stdout.write(`${described(await make(generator, argv))}\n`);
+    else {
+      const made = await make(generator, argv);
+      process.stdout.write(`${json ? JSON.stringify({ made }) : described(made)}\n`);
+    }
   } catch (error) {
     process.stderr.write(failed(error, generator.usage));
     process.exitCode = 1;

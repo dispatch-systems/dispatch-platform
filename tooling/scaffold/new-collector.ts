@@ -36,6 +36,7 @@ export const usage = `Usage: dispatchdev new collector <site> [options]
                         (default: <site>.example.com)
   --label <label>       its name as people read it (default: from <site>)
   --dry-run             print what it would write and change nothing
+  --json                print what it made, or would make, as JSON
   --out <dir>           with --dry-run, write the files under <dir> instead
   --root <dir>          the repository to write into (default: this one)`;
 

@@ -221,6 +221,22 @@ pub fn duration(elapsed: Duration) -> String {
         format!("{}m {:02}s", seconds / 60, seconds % 60)
     }
 }
+/// What to do after a command, as the scaffolder prints it: `Next:`, then a line each.
+pub fn next(notes: &[String]) -> String {
+    std::iter::once("Next:".to_owned())
+        .chain(notes.iter().map(|note| format!("  - {note}")))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+/// An argument as the shell reads it back: as it is when that's safe, else in single quotes.
+pub fn quote(arg: &str) -> String {
+    let plain = |b: u8| b.is_ascii_alphanumeric() || b"@%+=:,./_-".contains(&b);
+    if !arg.is_empty() && arg.bytes().all(plain) {
+        arg.to_owned()
+    } else {
+        format!("'{}'", arg.replace('\'', r"'\''"))
+    }
+}
 
 #[cfg(test)]
 mod tests {
