@@ -266,10 +266,7 @@ test('a dry run prints the plan and changes nothing', () => {
   );
   const lines = printed.trim().split('\n');
   assert.match(lines[0]!, /^Leaving out uniforms; keeping /);
-  assert.equal(
-    lines.filter((line) => /^\(moves features\/uniforms aside\)$/.test(line)).length,
-    1,
-  );
+  assert.equal(lines.filter((line) => /^\(moves features\/uniforms aside\)$/.test(line)).length, 1);
   assert.deepEqual(
     lines
       .filter((line) => !line.startsWith('('))
