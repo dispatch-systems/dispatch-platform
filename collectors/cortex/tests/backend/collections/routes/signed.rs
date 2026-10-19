@@ -18,7 +18,10 @@ fn request(url: &str) -> Value {
         "X-Cortex-Timestamp":"1760800000000","X-Cortex-Session":"session-1",
         "user-ref":"cortex-webapp-user"}})
 }
-const FIRST: &str = "/operations/execution/api/itineraries/it-1?documentType=Itinerary&historicalDay=true&itineraryId=it-1&serviceAreaId=area-1";
+const FIRST: &str = concat!(
+    "/operations/execution/api/itineraries/it-1",
+    "?documentType=Itinerary&historicalDay=true&itineraryId=it-1&serviceAreaId=area-1"
+);
 
 #[test]
 fn a_paused_request_is_used_only_as_the_read_asked_for_with_only_its_signature() {
@@ -43,12 +46,18 @@ fn a_paused_request_is_used_only_as_the_read_asked_for_with_only_its_signature()
         .map(|(n, v)| (n.to_owned(), v.to_owned()))
     );
     // An identifier is matched as the application spells it in the address.
-    let second = "/operations/execution/api/itineraries/it%3A2?documentType=Itinerary&itineraryId=it%3A2&serviceAreaId=area-1";
+    let second = concat!(
+        "/operations/execution/api/itineraries/it%3A2",
+        "?documentType=Itinerary&itineraryId=it%3A2&serviceAreaId=area-1"
+    );
     assert_eq!(
         day.signed(ORIGIN, &request(second)).map(|(r, _)| r),
         Some(Read::Itinerary(1))
     );
-    let routes = "/operations/execution/api/route-summaries?historicalDay=false&localDate=2026-10-18&serviceAreaId=area-1&statsFromSummaries=true";
+    let routes = concat!(
+        "/operations/execution/api/route-summaries",
+        "?historicalDay=false&localDate=2026-10-18&serviceAreaId=area-1&statsFromSummaries=true"
+    );
     assert_eq!(
         day.signed(ORIGIN, &request(routes)).map(|(r, _)| r),
         Some(Read::Routes)
