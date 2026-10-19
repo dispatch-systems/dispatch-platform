@@ -118,16 +118,20 @@ test('owner dashboard, search, workforce, timecards, connection verification and
 test('member lands in own DSP, cannot see privileged navigation, mobile drawer works', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await login(page, 'member@dispatch.test');
   await expect(
     page.getByRole('heading', { name: 'Currently under development', exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Open navigation' }).click();
-  for (const name of ['DSPs', 'Diagnostics', 'Agents', 'Audit log', 'Team & Roles'])
-    await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'DSP viewing mode' })).toHaveCount(0);
-  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+  // The drawer opens wherever the menu button replaces the sidebar: up to 980px wide.
+  for (const width of [900, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await expect(page.getByRole('dialog', { name: 'Navigation', exact: true })).toBeVisible();
+    for (const name of ['DSPs', 'Diagnostics', 'Agents', 'Audit log', 'Team & Roles'])
+      await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
+    await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+  }
   await page.getByRole('tab', { name: 'Employees', exact: true }).click();
   await expect(page.getByLabel('Search employees')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
