@@ -11,6 +11,10 @@ import { useReadAvailability } from '../lib/read-availability.js';
 import { errorLabelOf, isLongPoll } from './slots.js';
 export let csrf = '',
   view = '';
+/** Whose view a view token is: its DSP, and the role viewed as, without its signature. */
+const viewing = (token: string) => token.slice(0, token.lastIndexOf('.') + 1);
+/** Whose the last view opened was. */
+let viewed = '';
 export function credentials(nextCsrf: string, nextView = '') {
   if (csrf && csrf !== nextCsrf) {
     clearNavigationState();
@@ -18,7 +22,11 @@ export function credentials(nextCsrf: string, nextView = '') {
   }
   if (csrf !== nextCsrf || view !== nextView) {
     dataCache.clear();
-    forgetWaysBack();
+    // A view of the same DSP and role opened again, as once the DSP's name changes, keeps the
+    // way back, through the moment between the two when none is open.
+    const whose = nextView ? viewing(nextView) : viewed;
+    if (csrf !== nextCsrf || whose !== viewed) forgetWaysBack();
+    viewed = whose;
   }
   csrf = nextCsrf;
   view = nextView;

@@ -79,8 +79,9 @@ export function pageHash(
 }
 
 // A page that draws a sidebar of its own, as Settings, has a way back at its top: to the
-// address the member opened it from, within the same DSP. Moving among the pages under it
-// keeps it; leaving the DSP, or another view of it opening, forgets it.
+// address the member opened it from, within the same DSP. Moving among the pages under it,
+// or its view opening again as it was, keeps it; leaving the DSP, viewing it as another role or
+// another session forgets it.
 const waysBack = new Map<string, string>();
 /** Notes the way back as the address moves `from` one hash `to` another. */
 export function noteWayBack(from: string, to: string) {
