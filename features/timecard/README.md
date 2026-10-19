@@ -1,7 +1,7 @@
 # Timecard
 
 Paycom's employees, punches and timecards and the meal breaks Cortex reports, on the Timecard
-page (Daily, Meal Breaks and Employee Search) and its settings. Rust interprets punches and
+page (Daily, Meal Breaks and Employee Search) and its page of Settings. Rust interprets punches and
 assesses meals; the frontend only formats the results. Its addresses keep their old names
 (`#dsp/<id>/paycom`, `/api/dsp/paycom/…`), and its jobs and schedules keep theirs from when
 they were the only ones (`/api/dsp/jobs`, `/api/dsp/schedules`), though they serve only
@@ -23,11 +23,26 @@ Timecard's collections. It names drivers through Driver Match.
   `…/employees/{code}` (Employee Search's), `GET /api/dsp/paycom/meal-breaks`, its
   `…/period` (a person's gaps over their timecard period) and `…/period-gaps` (everyone's
   count of them), and `GET /api/dsp/cortex/meal-breaks` (the Meal Breaks tab's),
-  `…/paycom/status`, `…/paycom/settings` and `GET /api/dsp/jobs/meal-breaks`. Behind `collections.run`:
+  `…/paycom/status`, `…/paycom/settings` (what the page shows by, of its settings) and
+  `GET /api/dsp/jobs/meal-breaks`. Behind `collections.run`:
   `GET` and `POST /api/dsp/jobs` (its jobs, and a Paycom collection), `…/jobs/{id}/cancel`,
   `POST …/jobs/meal-breaks` (a day's meal breaks from both sources), `…/employees/{code}/sync`
-  and `…/cortex/meal-breaks/collect`. Behind `timecard.manage`, `POST …/paycom/settings` and
-  its schedules under `/api/dsp/schedules`. A tab switched off answers its routes 404.
+  and `…/cortex/meal-breaks/collect`. Behind `timecard.manage`, its schedules under
+  `/api/dsp/schedules`. A tab switched off answers its routes 404.
+- **Settings:** its own page of Settings (`?tab=timecard`), which the page's Settings button
+  opens and old links to `#dsp/<id>/paycom-settings` land on, holds its sections, each behind
+  `timecard.manage` and saved through core's settings: `timecard.schedules`, Sync schedules,
+  drawn by its own component, as one schedule may run both collections, which core's
+  schedule editor doesn't offer, though its sheet asks Save or Discard for unsaved edits as
+  core's does (`useUnsavedEdits`) before the page moves on; `timecard.roster`, Employees:
+  the department and delivery station the Daily tab and Employee Search list (none for all)
+  and the name order Meal Breaks writes and sorts names in; `timecard.drivers`, Driver
+  departments: all, or those chosen, whom alone the Daily tab lists and Driver Match counts as
+  drivers; and `timecard.late_das`,
+  Late DAs, with the Meal Breaks tab: the IN DAY time at or after which a DA is late, in the
+  departments chosen or any. Their departments and stations are the newest Paycom roster's,
+  listed as Settings is read. Its backend reads them with `settings::read`
+  (`backend/settings.rs`).
 - **Employee workspace:** the directory scrolls independently of the selected detail.
   Changing a person, filter or detail view preserves the displayed period. Meal comparisons
   are flat rows, including additional meals. Regular and overtime minutes come from complete
@@ -54,13 +69,17 @@ Timecard's collections. It names drivers through Driver Match.
 - **Errors** only its screens raise are worded in its API client, which loads with its page;
   its addresses are built in `api/urls.ts`, so its prefetch carries only those up front.
 - **Log:** `collection.requested`, `cortex.collection.requested` and
-  `meal_breaks.sync_requested`, under Collections, and `paycom.settings_updated`, under
-  Settings. They keep the names they shipped with, which history holds, rather than
-  `timecard.…`.
+  `meal_breaks.sync_requested`, under Collections. They keep the names they shipped with,
+  which history holds, rather than `timecard.…`. A change of its settings is Settings'
+  `settings.changed`; `paycom.settings_updated`, which it logged before, keeps its wording for
+  the entries history holds.
 - **People:** its employees and its meal breaks' drivers are Driver Match's `timecards` and
   `meal_breaks` kinds of data.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
-  Cortex's (`cortex`). A Cortex meal collection asks it for the scope's active publication, so
+  Cortex's (`cortex`). Its settings are core's, in the DSP's own database; the preferences it
+  kept in Paycom's `settings` before (`paycom.preferences`) move into them once, as the DSP
+  opens (`settings::carry_over`), into each section never saved, and are read nowhere else.
+  A Cortex meal collection asks it for the scope's active publication, so
   finished routes are not read again. A route whose meal punches Cortex sent in a shape the
   meal rules can't read is kept in `meal_unreadable`, and its driver reads as
   `cortex_unreadable` (Check Cortex punches), linked to the route, rather than as no meal.

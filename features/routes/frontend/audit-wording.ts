@@ -7,6 +7,7 @@ const phrases: AuditPhrases = {
     'started a routes collection',
     ...(e.detail && e.detail !== 'routes' ? [' for ', strong(day(e.detail))] : []),
   ],
+  // Recorded before Settings kept the window, which records its changes as `settings.changed`.
   'routes.retention_changed': (e, { strong }) =>
     e.detail === 'forever'
       ? ['set route data to be kept ', strong('indefinitely')]

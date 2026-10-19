@@ -1,18 +1,16 @@
-/* How many questions wait, beside the tab's name. */
-.driver-tab-flag {
+/* How many questions wait, beside the page's name in the sidebar. */
+.driver-match-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  margin-left: 7px;
-  padding: 0 5px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
   border: 1px solid var(--warning-border);
-  border-radius: 9px;
+  border-radius: 10px;
   background: var(--warning-surface);
   color: var(--warning);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  vertical-align: 1px;
 }

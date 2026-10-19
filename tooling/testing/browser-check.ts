@@ -52,9 +52,13 @@ try {
   );
   assert(dsp, 'The fixture DSP must be available');
   await owner.select(dsp.id);
-  const settings = await owner.get('/api/dsp/paycom/settings');
+  // Timecard's settings list the departments of the Paycom roster it keeps.
+  const settings = await owner.get('/api/dsp/settings');
   assert.equal(settings.status, 200, settings.body);
-  assert(settings.value.options.departments.length > 0);
+  const roster = settings.value.sections.find(
+    (section: { id: string }) => section.id === 'timecard.roster',
+  );
+  assert(roster.fields.find((field: { id: string }) => field.id === 'department').options.length);
   process.stdout.write(
     'Built Dev smoke check passed: health, assets, login, DSP access and Paycom settings.\n',
   );

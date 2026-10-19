@@ -26,6 +26,8 @@ pub const FEATURE: Feature = Feature {
         59,
     )],
     routes: api::routes::routes,
+    // Its roster bar and its schedules, on its own Settings page.
+    settings: &[backend::settings::ROSTER, backend::settings::COLLECTION],
     live: &["driver_profiles.collect"],
     keeps: &[&backend::keeper::Roster],
     tables: &[(

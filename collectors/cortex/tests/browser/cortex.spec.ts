@@ -10,7 +10,10 @@ test('Cortex credentials, verification, retest and disconnect stay scoped to its
   const settings = page.getByRole('link', { name: 'Settings', exact: true });
   await expect(settings).toHaveAttribute('href', /^#dsp\/dsp_[a-f0-9]{32}\/settings$/);
   await settings.click();
-  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Connections', exact: true })
+    .click();
   const cortex = page
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: 'Cortex', exact: true }) });

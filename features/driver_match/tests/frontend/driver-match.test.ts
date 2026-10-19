@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { PeopleSource, Person, PersonId, Question } from '../../api/index.js';
 import { shows } from '../../frontend/driver-match.js';
-import { checkList } from '../../frontend/settings/checks.js';
+import { checkList } from '../../frontend/page/checks.js';
 
 const id = (source: string, external: string, name: string): PersonId => ({
   source: source as PeopleSource,
@@ -72,7 +72,7 @@ test('each question the backend asks is a check about the people it names', () =
       ],
     },
     { kind: 'variant', person: antonio.code, source: 'amazon' as PeopleSource, id: 'T4' },
-    // Someone the tab no longer lists asks nothing.
+    // Someone the page no longer lists asks nothing.
     { kind: 'variant', person: 'ZZZZZZ', source: 'amazon' as PeopleSource, id: 'T8' },
   ];
   const [pair, variant, ...rest] = checkList(questions, [tony, antonio]);

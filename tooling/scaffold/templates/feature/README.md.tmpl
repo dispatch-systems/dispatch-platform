@@ -34,5 +34,5 @@ isn't obvious from the code.
 - **Tab:** {{label}}, on {{hostLabel}}'s page.
 {{/tab}}
 {{#settings}}
-- **Settings:** a {{label}} tab on a DSP's Settings page, for those holding `{{name}}.manage`.
+- **Settings:** `{{name}}.general`, "General", on its own page of Settings (`?tab={{slug}}`), behind `{{name}}.manage` (`backend/settings.rs`). Its one field, `example`, is a toggle, off until the DSP turns it on. {{label}} reads it with `backend::settings::general`; core keeps it in the DSP's settings and records each change as `settings.changed`.
 {{/settings}}

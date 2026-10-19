@@ -15,6 +15,8 @@ pub mod manifest;
 pub mod platform_owner;
 #[path = "server/backend/mod.rs"]
 pub mod server;
+#[path = "settings/backend/mod.rs"]
+pub mod settings;
 #[path = "support/backend/mod.rs"]
 pub mod support;
 #[path = "tenancy/backend/mod.rs"]
@@ -59,6 +61,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> Typescript {
     all.extend(manifest::people::typescript(cfg));
     all.extend(platform_owner::api::typescript(cfg));
     all.extend(server::api::typescript(cfg));
+    all.extend(settings::api::typescript(cfg));
     all.extend(support::api::typescript(cfg));
     all.extend(tenancy::api::typescript(cfg));
     all

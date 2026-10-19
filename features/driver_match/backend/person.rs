@@ -1,4 +1,4 @@
-//! A person as the tab lists them: what each source says of their IDs, what they do for the
+//! A person as the page lists them: what each source says of their IDs, what they do for the
 //! DSP, and their photo.
 use super::IdRow;
 use super::contacts::Contact;
@@ -110,7 +110,7 @@ pub(super) fn shown_name(ids: &[(&IdRow, Source)], found: &Found) -> Option<Stri
     })
 }
 
-/// A person as the tab lists them, from their IDs in the sources' order.
+/// A person as the page lists them, from their IDs in the sources' order.
 pub(super) fn person(code: &str, ids: &[(&IdRow, Source)], context: &Context) -> Person {
     let keys: Vec<Key> = ids
         .iter()

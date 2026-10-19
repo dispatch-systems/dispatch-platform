@@ -6,6 +6,7 @@ pub mod hidden;
 pub(crate) mod keeper;
 pub(crate) mod people;
 pub(crate) mod reader;
+pub(crate) mod settings;
 mod storage;
 
 pub use storage::{DvicDriver, DvicStore};

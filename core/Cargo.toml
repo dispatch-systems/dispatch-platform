@@ -57,3 +57,9 @@ tokio = { workspace = true, features = ["test-util"] }
 name = "integration"
 path = "db/tests/backend/integration/main.rs"
 
+
+# Settings over HTTP, under a registry with a stand-in feature that declares sections: a
+# program holds one registry, so it can't share the one above, which is core's alone.
+[[test]]
+name = "settings"
+path = "settings/tests/backend/integration/isolation.rs"

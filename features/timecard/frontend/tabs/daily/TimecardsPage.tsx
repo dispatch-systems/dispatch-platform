@@ -2,7 +2,7 @@ import { PaycomDateControls } from '../../DateControls.js';
 import { localDate } from '../../../../../core/shell/frontend/lib/day.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Globe, Info } from 'lucide-react';
-import type { DailyTimecard, PaycomPreferences } from '../../../api/index.js';
+import type { DailyTimecard, PaycomSettings } from '../../../api/index.js';
 import {
   dailyPageUrl,
   exportDailyTimecards,
@@ -40,13 +40,13 @@ export function TimecardsPage({
   onDateChange,
   refreshKey,
   timezone,
-  preferences,
+  settings,
 }: {
   date: string;
   onDateChange: (date: string) => void;
   refreshKey?: string | null;
   timezone: string;
-  preferences: PaycomPreferences;
+  settings: PaycomSettings;
 }) {
   const state = useTableState('timecard', { id: 'name', desc: false });
   const sort = state.sort!;
@@ -156,12 +156,12 @@ export function TimecardsPage({
                 {!data.rows.length && (
                   <Empty
                     title={
-                      preferences.driver_departments?.length === 0
+                      settings.driverDepartments?.length === 0
                         ? 'No driver departments selected'
                         : 'No employees match your Timecard settings'
                     }
                   >
-                    Your DSP owner can choose which departments appear in Timecard Settings.
+                    Your DSP owner can choose which departments appear in Settings.
                   </Empty>
                 )}
               </div>

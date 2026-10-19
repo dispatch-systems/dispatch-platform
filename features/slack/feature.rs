@@ -43,6 +43,8 @@ pub const FEATURE: Feature = Feature {
     // Its workspaces are among the DSP's own accounts, on Settings' DSP Connections.
     dsp_connection: true,
     routes: api::routes::routes,
+    // Its workspaces' settings, on its own page of Settings.
+    settings: &[backend::settings::WORKSPACES],
     tables: &[
         ("platform", &["slack_teams"]),
         (
@@ -112,7 +114,7 @@ pub const FEATURE: Feature = Feature {
         },
     ],
     // Slack's app: its ID and secret, and the secret Slack signs its requests with.
-    settings: &[&[
+    env: &[&[
         "SLACK_CLIENT_ID",
         "SLACK_CLIENT_SECRET",
         "SLACK_SIGNING_SECRET",

@@ -140,13 +140,15 @@ test('typed workforce responses carry Rust assessments and reject malformed nest
   }
   assert.equal(employees.total, 12);
   assert.equal(daily.available, true);
-  // Assessment must read persisted DSP preferences and change on the next response.
-  const prefs = (await owner.get('/api/dsp/paycom/settings')).value;
+  // Assessment reads the DSP's settings as saved, on the next response.
+  const late = (await owner.read('/api/dsp/settings')).sections.find(
+    (section: { id: string }) => section.id === 'timecard.late_das',
+  );
   assert.equal(
     (
-      await owner.post('/api/dsp/paycom/settings', {
-        revision: prefs.revision,
-        values: { ...prefs.values, late_da_time: '00:00', late_da_departments: [] },
+      await owner.post(`/api/dsp/settings/${late.id}`, {
+        values: { time: '00:00' },
+        revision: late.revision,
       })
     ).status,
     200,

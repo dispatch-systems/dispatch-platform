@@ -1,5 +1,5 @@
 use common::bootstrapped;
-use dispatch_core::db::s;
+use dispatch_core::db::{Store, s};
 use dispatch_core::testing as common;
 use dispatch_paycom::{self as paycom, fixtures};
 use dispatch_timecard::TimecardStore;
@@ -372,112 +372,90 @@ fn unchanged_publications_reuse_storage_but_changed_data_and_history_survive() {
     );
 }
 
+/// Saves `values` of Timecard's section `id` for the DSP as Settings does, its first save.
+fn set(db: &Store, dsp: &str, id: &str, values: Value) {
+    let section = (dispatch_timecard::FEATURE.settings.iter())
+        .find(|section| section.id == id)
+        .unwrap();
+    let actor = common::platform_owner(db);
+    dispatch_core::settings::save(db, dsp, &actor, section, &values, 0, true).unwrap();
+}
+/// The DSP's values of Timecard's section `id`.
+fn values(db: &Store, dsp: &str, id: &str) -> Value {
+    let section = (dispatch_timecard::FEATURE.settings.iter())
+        .find(|section| section.id == id)
+        .unwrap();
+    dispatch_core::settings::read(db, dsp, section).unwrap()
+}
+
 #[test]
-fn settings_reject_unknown_fields_and_preserve_empty_driver_selection() {
+fn no_driver_department_lists_nobody_on_the_timecard_tab_and_everyone_in_the_roster() {
     install();
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
-    let actor = common::platform_owner(&db);
     db.publish_timecards(id, &fixtures::fixture("UTC").unwrap())
         .unwrap();
-    let mut values = db.timecard_preferences(id).unwrap()["values"].clone();
-    values["driver_departments"] = json!([]);
-    db.save_timecard_preferences(id, &actor, 0, &values)
-        .unwrap();
+    let none = json!({"all_departments": false, "departments": []});
+    set(&db, id, "timecard.drivers", none);
     let day = fixtures::fixture("UTC").unwrap()["timecards"][0]["date"]
         .as_str()
         .unwrap()
         .to_owned();
-    assert_eq!(
+    assert!(
         db.daily_timecards(id, &day, "name", false)
-            .map(|value| serde_json::to_value(value).unwrap())
-            .unwrap()["rows"],
-        json!([])
+            .unwrap()
+            .rows
+            .is_empty()
     );
     assert_eq!(
         db.timecard_employees(id, "", 0, Some(100), false, None)
-            .map(|value| serde_json::to_value(value).unwrap())
-            .unwrap()["total"],
+            .unwrap()
+            .total,
         12
     );
-    values["unknown"] = json!(true);
-    assert!(
-        db.save_timecard_preferences(id, &actor, 1, &values)
-            .is_err()
-    );
 }
 
 #[test]
-fn retired_sync_preferences_are_not_returned_and_open_dashboards_may_still_send_them() {
+fn preferences_kept_in_paycoms_database_move_into_its_settings_once() {
     install();
     let (_root, db, id) = common::bootstrapped();
     let id = id.as_str();
-    let actor = common::platform_owner(&db);
-    // Preferences as v0.0.9 stored them.
-    let mut older = dispatch_timecard::defaults();
-    older["automatic_sync"] = json!(true);
-    older["sync_interval_seconds"] = json!(3600);
-    db.collector(id, paycom::PROVIDER)
-        .unwrap()
-        .set(
-            "paycom.preferences",
-            &json!({"revision":4,"values":older,"history":[]}),
-        )
+    db.publish_timecards(id, &fixtures::fixture("UTC").unwrap())
         .unwrap();
-    let values = db.timecard_preferences(id).unwrap()["values"].clone();
-    assert_eq!(values, dispatch_timecard::defaults());
-    let saved = db.save_timecard_preferences(id, &actor, 4, &older).unwrap();
-    assert_eq!(saved["revision"], 5);
-    assert_eq!(saved["values"], dispatch_timecard::defaults());
-    let stored = db
-        .collector(id, paycom::PROVIDER)
-        .unwrap()
-        .setting("paycom.preferences", Value::Null)
-        .unwrap();
-    assert_eq!(stored["values"], dispatch_timecard::defaults());
-}
-
-#[test]
-fn late_da_settings_default_for_older_preferences_and_validate() {
-    install();
-    let (_root, db, id) = common::bootstrapped();
-    let id = id.as_str();
-    let actor = common::platform_owner(&db);
-    // Preferences stored before the Late DA keys existed.
-    let mut older = dispatch_timecard::defaults();
-    for key in ["late_da_time", "late_da_departments"] {
-        older.as_object_mut().unwrap().remove(key);
-    }
-    db.collector(id, paycom::PROVIDER)
-        .unwrap()
-        .set(
-            "paycom.preferences",
-            &json!({"revision":0,"values":older,"history":[]}),
-        )
-        .unwrap();
-    let mut values = db.timecard_preferences(id).unwrap()["values"].clone();
-    assert_eq!(values["late_da_time"], "10:01");
-    assert_eq!(values["late_da_departments"], json!([]));
-    for time in ["24:00", "10:60", "9:30", "10-01", "ab:cd", "10:011"] {
-        values["late_da_time"] = json!(time);
-        assert!(
-            db.save_timecard_preferences(id, &actor, 0, &values)
-                .is_err(),
-            "{time}"
-        );
-    }
-    values["late_da_time"] = json!("09:45");
-    values["late_da_departments"] = Value::Null;
-    assert!(
-        db.save_timecard_preferences(id, &actor, 0, &values)
-            .is_err()
+    // As the last release kept them: an empty filter for all, and keys retired before it.
+    let kept = json!({"revision": 4, "history": [], "values": {
+        "opening_page": "employees", "rows_per_page": 25, "default_sort": "inDay",
+        "columns": ["inDay"], "automatic_sync": true,
+        "name_order": "last_first", "department": "", "station": "DEMO1",
+        "driver_departments": ["Delivery"],
+        "late_da_time": "09:45", "late_da_departments": ["Operations"],
+    }});
+    let paycom = db.collector(id, paycom::PROVIDER).unwrap();
+    paycom.set("paycom.preferences", &kept).unwrap();
+    drop(paycom);
+    common::before_settings(&db, id).unwrap();
+    db.open_collectors(id).unwrap();
+    assert_eq!(
+        values(&db, id, "timecard.roster"),
+        json!({"department": null, "station": "DEMO1", "name_order": "last_first"})
     );
-    values["late_da_departments"] = json!(["Delivery"]);
-    let saved = db
-        .save_timecard_preferences(id, &actor, 0, &values)
+    assert_eq!(
+        values(&db, id, "timecard.drivers"),
+        json!({"all_departments": false, "departments": ["Delivery"]})
+    );
+    assert_eq!(
+        values(&db, id, "timecard.late_das"),
+        json!({"time": "09:45", "departments": ["Operations"]})
+    );
+    // What Settings saves after stays, however often the DSP opens.
+    let section = (dispatch_timecard::FEATURE.settings.iter())
+        .find(|section| section.id == "timecard.late_das")
         .unwrap();
-    assert_eq!(saved["values"]["late_da_time"], "09:45");
-    assert_eq!(saved["values"]["late_da_departments"], json!(["Delivery"]));
+    let actor = common::platform_owner(&db);
+    let later = json!({"time": "11:00"});
+    dispatch_core::settings::save(&db, id, &actor, section, &later, 1, true).unwrap();
+    db.open_collectors(id).unwrap();
+    assert_eq!(values(&db, id, "timecard.late_das")["time"], "11:00");
 }
 
 #[test]
@@ -498,11 +476,12 @@ fn employee_and_daily_names_use_first_last_for_search_and_pagination() {
         .unwrap()
         .retain(|card| ["E001", "E002", "E003"].contains(&s(card, "employeeCode")));
     db.publish_timecards(&id, &data).unwrap();
-    let actor = common::platform_owner(&db);
-    let mut settings = db.timecard_preferences(&id).unwrap()["values"].clone();
-    settings["name_order"] = json!("last_first");
-    db.save_timecard_preferences(&id, &actor, 0, &settings)
-        .unwrap();
+    set(
+        &db,
+        &id,
+        "timecard.roster",
+        json!({"name_order": "last_first"}),
+    );
     let directory = db
         .timecard_employees(&id, "", 0, Some(2), false, None)
         .unwrap();

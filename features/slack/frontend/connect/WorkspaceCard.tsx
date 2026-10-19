@@ -26,8 +26,8 @@ export function WorkspaceCard({
   configures: boolean;
   /** Whether an install is under way, which a reconnect or update waits for. */
   busy: boolean;
-  /** Where its settings are, for those who manage Slack. */
-  settings: string;
+  /** Where its settings are, for those who manage Slack, on Slack's page of Settings. */
+  settings?: string;
   /** Reconnects or updates the workspace `team`. */
   install: (team: string) => void;
   disconnect: (workspace: SlackWorkspace) => void;
@@ -43,7 +43,7 @@ export function WorkspaceCard({
               {broken ? 'Reconnect' : 'Update'}
             </button>
           )}
-          {configures && (
+          {configures && settings && (
             <a className="slack-link-button" href={settings}>
               <Settings2 size={16} />
               Settings

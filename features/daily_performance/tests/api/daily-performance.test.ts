@@ -61,16 +61,34 @@ test('daily collection, policy and reads stay separate from weekly data and perm
   );
   assert.deepEqual((await owner.get('/api/dsp/weekly-scorecard/weeks')).value.weeks, []);
   assert.deepEqual((await owner.get('/api/dsp/weekly-scorecard/jobs')).value, []);
-  const policy = await owner.post(prefix + '/policy', { lookbackDays: 3, refreshHours: 12 });
-  assert.equal(policy.status, 200, policy.body);
-  assert.deepEqual((await owner.get(prefix + '/policy')).value, {
-    lookbackDays: 3,
-    refreshHours: 12,
+  // Its policy is its Settings section, each value within its range, and each DSP's own.
+  const policy = '/api/dsp/settings/daily_performance.collection';
+  const section = async (client: typeof owner) =>
+    (await client.read('/api/dsp/settings')).sections.find(
+      (each: { id: string }) => each.id === 'daily_performance.collection',
+    );
+  const defaults = { lookback_days: 7, refresh_hours: 20 };
+  assert.deepEqual((await section(owner)).values, defaults);
+  for (const values of [
+    { lookback_days: 0 },
+    { lookback_days: 31 },
+    { refresh_hours: 0 },
+    { refresh_hours: 169 },
+    { lookback_days: 2.5 },
+  ]) {
+    const refused = await owner.post(policy, { values, revision: 0 });
+    assert.equal(refused.value.error, 'invalid_input', JSON.stringify(values));
+  }
+  const saved = await owner.post(policy, {
+    values: { lookback_days: 3, refresh_hours: 12 },
+    revision: 0,
   });
-  assert.equal(
-    (await owner.post(prefix + '/policy', { lookbackDays: 0, refreshHours: 12 })).status,
-    400,
-  );
+  assert.equal(saved.status, 200, saved.body);
+  assert.deepEqual((await section(owner)).values, { lookback_days: 3, refresh_hours: 12 });
+  const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
+  await owner.select(summit.id);
+  assert.deepEqual((await section(owner)).values, defaults);
+  await owner.select(dsp.id);
   const schedule = await owner.post(prefix + '/schedules', {
     name: 'Daily Quality',
     collection: 'daily_performance',
@@ -99,6 +117,11 @@ test('daily collection, policy and reads stay separate from weekly data and perm
   assert.equal((await member.get(prefix)).status, 403);
   assert.equal(
     (await member.post(prefix + '/collect', { requestId: 'member', date: '2026-10-03' })).status,
+    403,
+  );
+  assert.equal(await section(member), undefined);
+  assert.equal(
+    (await member.post(policy, { values: { lookback_days: 1 }, revision: 1 })).status,
     403,
   );
 });

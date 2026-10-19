@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { renderFeature, showing } from './new-feature.js';
+import { renderFeature, settingsNote, showing } from './new-feature.js';
 import {
   UsageError,
   exists,
@@ -29,7 +29,8 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
 
   page                a page in a DSP's sidebar
   tab-of <feature>    a tab of another feature's page
-  settings            a tab on a DSP's Settings page, for those who manage it
+  settings            a section of a DSP's Settings, on a page of its own, that its backend
+                      declares and reads: for those who manage it
   api                 api/ with one endpoint behind the view permission
   people <source>     who --table <table>, in the DSP's database or a collector's, names, for
                       Driver Match
@@ -57,7 +58,15 @@ const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }
 const FLAGS = ['dry-run', 'shown'];
 const OPTIONS = ['to', 'table', 'icon', 'out', 'root'];
 /** The manifest's fields a piece adds: lists join the feature's, others are added whole. */
-const FIELDS = ['permissions', 'routes', 'people', 'depends_on', 'integrations', 'exposes'];
+const FIELDS = [
+  'permissions',
+  'routes',
+  'settings',
+  'people',
+  'depends_on',
+  'integrations',
+  'exposes',
+];
 
 /**
  * The index just past the comment or string starting at `at`, or `at` if none does. A `'` opens
@@ -431,6 +440,13 @@ export function rustfmt(source: string) {
 
 // ---- Cargo.toml and the rest
 
+/** Where the manifest's `[section]` is: from its header to the next one, if it has one. */
+function tomlSection(text: string, section: string) {
+  const found = new RegExp(`(^|\\n)\\[${section}\\]\\n`).exec(text);
+  if (!found) return undefined;
+  const next = text.indexOf('\n[', found.index + 1);
+  return { start: found.index, end: next < 0 ? text.length : next, last: next < 0 };
+}
 /** The manifest with each `key = value` the piece's lists that it lacks, in its section. */
 export function mergeToml(target: string, piece: string) {
   let text = target;
@@ -443,16 +459,20 @@ export function mergeToml(target: string, piece: string) {
     }
     const key = /^([\w-]+) = /.exec(line)?.[1];
     if (!key || !['dependencies', 'dev-dependencies', 'features'].includes(section)) continue;
-    const found = new RegExp(`(^|\\n)\\[${section}\\]\\n`).exec(text);
-    const start = found ? found.index : -1;
-    if (start < 0) {
+    const lists = (name: string) => {
+      const at = tomlSection(text, name);
+      return Boolean(at) && new RegExp(`^${key} = `, 'm').test(text.slice(at!.start, at!.end));
+    };
+    // A test's dependency the build lists already is the build's, unless it asks for more of it.
+    if (section === 'dev-dependencies' && !line.includes('features') && lists('dependencies'))
+      continue;
+    const at = tomlSection(text, section);
+    if (!at) {
       text = `${text.trimEnd()}\n\n[${section}]\n${line}\n`;
       continue;
     }
-    const next = text.indexOf('\n[', start + 1);
-    const end = next < 0 ? text.length : next;
-    if (new RegExp(`^${key} = `, 'm').test(text.slice(start, end))) continue;
-    text = `${text.slice(0, end).trimEnd()}\n${line}\n${text.slice(end).replace(/^\n*/, next < 0 ? '' : '\n')}`;
+    if (lists(section)) continue;
+    text = `${text.slice(0, at.end).trimEnd()}\n${line}\n${text.slice(at.end).replace(/^\n*/, at.last ? '' : '\n')}`;
   }
   return text;
 }
@@ -514,6 +534,10 @@ export async function planAdd(root: string, argv: string[]) {
     throw new UsageError('people reads who a table names: add --table <table>');
   if (piece === 'contract' && exists(root, `${dir}/contract`))
     throw new UsageError(`${name} has contract/ already: add to the contract it has`);
+  if (piece === 'settings' && exists(root, `${dir}/backend/settings.rs`))
+    throw new UsageError(
+      `${name} declares its settings in backend/settings.rs already: add a section or a field there`,
+    );
   const manifest = read(root, `${dir}/feature.rs`);
   if (shown && !new RegExp(`\\bperm\\(\\s*"${name}\\.view"`).test(manifest))
     throw new UsageError(
@@ -552,7 +576,7 @@ export async function planAdd(root: string, argv: string[]) {
         : `--table names one of ${name}'s tables: ${Object.values(tables).flat().join(', ') || 'it has none'}`,
     );
   const label = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
-  const { pascal } = names(name);
+  const { pascal, slug } = names(name);
   // The piece as the feature's templates write it, for the feature as it is.
   const { plan: rendered } = await renderFeature(
     root,
@@ -572,8 +596,8 @@ export async function planAdd(root: string, argv: string[]) {
   const left: string[] = [];
   // A new feature's own storage and first migration, which a piece added to one never needs.
   const own = /\/(backend\/storage\.rs|tests\/backend\/(storage|feature)\.rs|migrations\/.*)$/;
-  // A browser test only for a piece with a screen.
-  const screen = ['page', 'tab-of', 'settings'].includes(piece!);
+  // A browser test only for a piece with a screen of its own.
+  const screen = ['page', 'tab-of'].includes(piece!);
   const wanted = [...rendered.files].filter(
     ([file]) => !own.test(file) && (screen || !file.includes('/tests/browser/')),
   );
@@ -655,10 +679,11 @@ export async function planAdd(root: string, argv: string[]) {
   const site = peopleSources(root).find((source) => source.id === value)?.site;
   if (piece === 'people' && site) installing(root, plan, dir, { collector: site });
   if (shown) await showing(root, plan, value!);
-  // The contract's test installs the feature with what it uses: the collectors and features
-  // the feature map says it uses, what its other tests install, however they name it, and what
-  // its manifest, as the piece leaves it, depends on.
-  if (piece === 'contract') {
+  // The test a contract or settings brings installs the feature with what it uses: the
+  // collectors and features the feature map says it uses, what its other tests install, however
+  // they name it, and what its manifest, as the piece leaves it, depends on.
+  const tested = ({ contract: 'exposed', settings: 'settings' } as Record<string, string>)[piece!];
+  if (tested) {
     const now = (file: string) => plan.changes.get(file) ?? read(root, file);
     const used = new Map<string, 'collector' | 'feature'>();
     const kindOf = (each: string) =>
@@ -693,8 +718,9 @@ export async function planAdd(root: string, argv: string[]) {
       if (kind) used.set(each!, kind);
     }
     for (const [each, kind] of used)
-      installing(root, plan, dir, { [kind]: each }, `${dir}/tests/backend/exposed.rs`);
+      installing(root, plan, dir, { [kind]: each }, `${dir}/tests/backend/${tested}.rs`);
   }
+  if (piece === 'settings') plan.notes.push(settingsNote(name, slug));
   // A test a generator stamped that only restates a manifest alone, with no permission, goes
   // once the piece gives it one, with its module; and so does the empty backend/ a manifest
   // alone keeps, which a piece with an API or a screen doesn't need. A test or a module the

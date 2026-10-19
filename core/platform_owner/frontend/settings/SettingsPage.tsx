@@ -3,11 +3,14 @@ import type { SessionView } from '../../../accounts/api/index.js';
 import { Header, Loading, Tabs } from '../../../shell/frontend/ui/index.js';
 import { hashQuery, replaceHashQuery } from '../../../shell/frontend/runtime/navigation.js';
 import { tabOf, tabs } from './tabs.js';
+import './settings.css';
 
 const load = (id: string) =>
   void tabOf(id)
-    ?.load()
+    ?.section.load()
     .catch(() => undefined);
+// Its sections are each the person's own, which nothing else on the page changes.
+const refresh = () => undefined;
 
 /** The platform owner's own Settings. */
 export function SettingsPage({ session }: { session: SessionView }) {
@@ -28,8 +31,8 @@ export function SettingsPage({ session }: { session: SessionView }) {
         items={tabs.map(({ id, label }) => [id, label])}
         label="Settings"
       />
-      <div aria-busy={pending || undefined} inert={pending}>
-        <Suspense fallback={<Loading />}>{tab.render({ session })}</Suspense>
+      <div className="platform-settings-tab" aria-busy={pending || undefined} inert={pending}>
+        <Suspense fallback={<Loading />}>{tab.section.render({ session, refresh })}</Suspense>
       </div>
     </>
   );

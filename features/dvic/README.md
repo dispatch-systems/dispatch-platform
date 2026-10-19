@@ -70,8 +70,11 @@ publication weeks and at most two older weeks in a rolling 26-week lookback. It
 prioritizes never-checked weeks, then least recently checked weeks older than seven
 days. Missing/empty reports stay eligible for later checks. Manual sync can target
 older publication weeks explicitly. DVIC's schedules are its own, under its own routes and
-behind `dvic.manage`, and the DVIC page's collection settings manage them; they run only
-while DVIC is on. Its errors are worded in its API client, but for a missing station
+behind `dvic.manage`, and run only while DVIC is on. Its Settings page (`?tab=dvic`) holds
+them: one section, `dvic.collection` "Collection" (`backend/settings.rs`), whose schedules
+field draws core's schedule editor for these routes, a new one starting as Daily DVIC at
+18:00; the DVIC page's Collection settings button links there. It stores no values of its
+own there. Its errors are worded in its API client, but for a missing station
 (`dvic_station_required`), which a schedule meets too, worded in its manifest.
 
 ## Dates, storage, and efficiency

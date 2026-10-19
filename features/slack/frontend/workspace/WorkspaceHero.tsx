@@ -28,7 +28,7 @@ export function WorkspaceHero({
       </span>
       <div className="slack-hero-text">
         <div className="slack-hero-name">
-          <h1>{workspace.label ?? workspace.name}</h1>
+          <h2>{workspace.label ?? workspace.name}</h2>
           {renames && (
             <button
               className="icon-button slack-rename"

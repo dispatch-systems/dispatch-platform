@@ -66,7 +66,7 @@ impl State {
         Self::initialize(config, browser::Manager::with_verified_runtime(runtime))
     }
     fn initialize(config: config::Config, browsers: browser::Manager) -> Result<Arc<Self>> {
-        crate::manifest::registry().check_settings(&config)?;
+        crate::manifest::registry().check_env(&config)?;
         let store = db::Store::initialize(config.clone())?;
         for dsp in store.platform.all(
             "SELECT id FROM dsps WHERE status IN ('active','suspended')",
@@ -242,9 +242,15 @@ impl State {
                 f(&db)
             };
             let work_ms = work_started.elapsed().as_secs_f64() * 1000.0;
-            // Any transaction in the work has committed, so the mailer finds what it queued.
+            // Any transaction in the work has committed, so the mailer finds what it queued,
+            // and the scheduler the deadlines it moved.
             if db.take_mail_queued() {
                 state.mail_wake.notify_one();
+            }
+            if db.take_schedules_moved() {
+                state
+                    .schedule_revision
+                    .fetch_add(1, std::sync::atomic::Ordering::Release);
             }
             if queued_ms + lock_ms + work_ms >= 25.0 {
                 let context = trace

@@ -3,9 +3,7 @@ mod api;
 mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
-pub use api::types::{
-    DailyPerformanceDataset, DailyPerformanceDay, DailyPerformancePolicy, DailyPerformanceSummary,
-};
+pub use api::types::{DailyPerformanceDataset, DailyPerformanceDay, DailyPerformanceSummary};
 pub use backend::storage::{DATABASE, DailyPerformanceStore};
 
 use dispatch_core::db::{Migration, Migrations, migrations::Apply::Sql};
@@ -32,6 +30,9 @@ pub const FEATURE: Feature = Feature {
     ],
     domains: &[backend::storage::DOMAIN],
     routes: api::routes::routes,
+    // Which dates its schedules recheck, and the schedules, on its own Settings page.
+    settings: &[backend::settings::COLLECTION],
+    upgrade_storage: Some(backend::settings::upgrade),
     keeps: &[&backend::keeper::DailyPerformanceKeeper],
     tables: &[(
         "daily_performance",
@@ -75,6 +76,5 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         DailyPerformanceSummary,
         DailyPerformanceDay,
         DailyPerformanceDataset,
-        DailyPerformancePolicy,
     )
 }

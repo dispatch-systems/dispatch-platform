@@ -7,10 +7,11 @@ pub(crate) mod exposed;
 pub(crate) mod keeper;
 pub(crate) mod people;
 pub(crate) mod retirement;
+pub(crate) mod settings;
 
 use crate::api::types::{
-    WeeklyScorecardDatasetCount, WeeklyScorecardPolicy, WeeklyScorecardPublication,
-    WeeklyScorecardWeek, WeeklyScorecardWeeks,
+    WeeklyScorecardDatasetCount, WeeklyScorecardPublication, WeeklyScorecardWeek,
+    WeeklyScorecardWeeks,
 };
 use chrono::NaiveDate;
 use dispatch_core::{
@@ -44,6 +45,12 @@ pub static STORAGE: AddedStorage = AddedStorage {
     source: "weekly-scorecard-v1",
     verify,
 };
+/// What starting the server does to storage kept before: imports the retired scorecard
+/// database, then moves the policy its own database kept into Settings.
+pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
+    retirement::upgrade(store, id)?;
+    settings::upgrade(store, id)
+}
 fn verify(db: &Db) -> Result<()> {
     ensure(
         db.all("SELECT version FROM weekly_scorecard_schema", [])? == vec![json!({"version":1})],
@@ -149,8 +156,6 @@ pub trait WeeklyScorecardStore {
         week: Option<&str>,
     ) -> Result<Value>;
     fn weekly_scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>>;
-    fn weekly_scorecard_policy(&self, id: &str) -> Result<WeeklyScorecardPolicy>;
-    fn set_weekly_scorecard_policy(&self, id: &str, policy: &WeeklyScorecardPolicy) -> Result<()>;
     fn weekly_scorecard_address(&self, id: &str, station: &str)
     -> Result<Option<(String, String)>>;
     fn publish_weekly_scorecard(
@@ -181,26 +186,10 @@ impl WeeklyScorecardStore for Store {
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
-    fn weekly_scorecard_policy(&self, id: &str) -> Result<WeeklyScorecardPolicy> {
-        Ok(serde_json::from_value(
-            self.weekly_scorecard_db(id)?.setting(
-                "collection_policy",
-                serde_json::to_value(WeeklyScorecardPolicy::default())?,
-            )?,
-        )?)
-    }
-    fn set_weekly_scorecard_policy(&self, id: &str, policy: &WeeklyScorecardPolicy) -> Result<()> {
-        ensure(
-            (1..=8).contains(&policy.lookback_weeks) && (1..=168).contains(&policy.refresh_hours),
-            "invalid_input",
-            400,
-        )?;
-        self.weekly_scorecard_db(id)?
-            .set("collection_policy", &serde_json::to_value(policy)?)
-    }
     /// Refresh recent completed weeks, including posted weeks whose outcomes can change.
     fn weekly_scorecard_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
-        let policy = self.weekly_scorecard_policy(id)?;
+        let policy: settings::Policy =
+            dispatch_core::settings::read(self, id, &settings::COLLECTION)?;
         let latest = last_completed_week(weekly_scorecard_today(self, id)?);
         let (_, saturday) = dispatch_core::foundation::weeks::week_days(&latest)?;
         let station = weekly_scorecard_station(self, id)?;

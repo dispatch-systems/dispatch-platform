@@ -2,7 +2,7 @@ import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { localDate } from '../../../core/shell/frontend/lib/day.js';
 import { employeeName } from './paycom.js';
 import type {
-  PaycomPreferences,
+  NameOrder,
   AssessedClock,
   PaycomDay,
   DeliveryGap as Gap,
@@ -37,7 +37,7 @@ export function fullName(name: string) {
     .replace(/\s+/g, ' ');
 }
 // Providers write "Last, First"; a name already in the chosen order is kept as written.
-export function personName(name: string, order: PaycomPreferences['name_order']) {
+export function personName(name: string, order: NameOrder) {
   const value = fullName(name);
   return order === 'last_first' && name.includes(',') && value.includes(' ')
     ? name

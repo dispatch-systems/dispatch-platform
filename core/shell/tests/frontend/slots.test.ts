@@ -24,11 +24,11 @@ import {
   isLongPoll,
   pageTabs,
   runWording,
-  settingsPieces,
-  settingsTabs,
   scheduleIssueOf,
+  settingsRead,
   auditWording,
   loadPlatformSlots,
+  movedTo,
   switchIcon,
   type ConnectionCard,
   type ConnectionIntegration,
@@ -39,9 +39,8 @@ import {
   type PageTab,
   type PlatformSlots,
   type RunWording,
-  type SettingsPiece,
-  type SettingsTab,
 } from '../../frontend/runtime/slots.js';
+import { dataCache } from '../../frontend/runtime/data-cache.js';
 import { featureCatalog, type SubEntry } from '../../frontend/runtime/features.js';
 import type { DspView } from '../../../accounts/api/index.js';
 import type { Feature, PageFeature } from '../../../tenancy/api/index.js';
@@ -234,53 +233,49 @@ test('a DSP opens on the page a feature declares it lands on, and names none wit
   assert.equal(parseHash('#dsp/dsp_landing/board').page, 'board');
 });
 
-test('a link to Settings opens the page that draws the settings tabs, and only on a tab it has and the person sees', () => {
-  const tab = (id: string): SettingsTab => ({
-    id,
-    label: id,
-    order: 1,
-    load: () => Promise.resolve(),
-    render: () => id,
-  });
+test('a link to Settings opens the page that draws the settings, on the page it names, unless the person is known not to have it', () => {
   installFeatures([
     { name: 'alpha', routes: [page('board'), { ...page('options'), hostsSettings: true }] },
-    { name: 'beta', settingsTabs: [tab('beta-panel')] },
   ]);
   assert.equal(settingsHash('dsp_settings'), '#dsp/dsp_settings/options');
+  // Which pages a person has is the server's to say: until Settings is read, a link names it.
+  const view = { dsp: { id: 'dsp_settings' } } as DspView;
+  assert.equal(settingsHash('dsp_settings', 'data', view), '#dsp/dsp_settings/options?tab=data');
+  // What the page opens on goes beside it.
   assert.equal(
-    settingsHash('dsp_settings', 'beta-panel'),
-    '#dsp/dsp_settings/options?tab=beta-panel',
+    settingsHash('dsp_settings', 'data', view, { workspace: 'T1' }),
+    '#dsp/dsp_settings/options?tab=data&workspace=T1',
   );
-  assert.equal(settingsHash('dsp_settings', 'gone'), undefined);
+  dataCache.put(settingsRead, {
+    pages: [{ id: 'data', label: 'Data', group: 'dsp', order: 50 }],
+    sections: [],
+  });
+  assert.equal(settingsHash('dsp_settings', 'data', view), '#dsp/dsp_settings/options?tab=data');
+  assert.equal(settingsHash('dsp_settings', 'gone', view), undefined);
+  // What one DSP's Settings holds says nothing of another's.
+  assert.equal(settingsHash('dsp_other', 'gone', view), '#dsp/dsp_other/options?tab=gone');
+  dataCache.clear();
+  installFeatures([{ name: 'beta', routes: [page('board')] }]);
+  assert.equal(settingsHash('dsp_settings'), undefined);
+  assert.equal(settingsHash('dsp_settings', 'data'), undefined);
+});
+
+test('a link to where a page once was opens it where it is now, and a page of Settings with the rest of the link', () => {
   installFeatures([
     { name: 'alpha', routes: [{ ...page('options'), hostsSettings: true }] },
-    {
-      name: 'beta',
-      settingsTabs: [{ ...tab('beta-panel'), visible: (view) => !!view?.role.owner }],
-    },
+    { name: 'beta', routes: [{ ...page('match'), formerly: ['options?tab=match'] }] },
+    { name: 'gamma', movedToSettings: { gamma: 'gamma' } },
   ]);
-  const as = (owner: boolean) => ({ features: [], role: { owner } }) as unknown as DspView;
-  assert.equal(
-    settingsHash('dsp_settings', 'beta-panel', as(true)),
-    '#dsp/dsp_settings/options?tab=beta-panel',
-  );
-  assert.equal(settingsHash('dsp_settings', 'beta-panel', as(false)), undefined);
-  // A feature's tab, which a DSP without the feature has not.
-  const feature = featureCatalog.find((each) => each.kind !== 'sub');
-  if (feature) {
-    installFeatures([
-      { name: 'alpha', routes: [{ ...page('options'), hostsSettings: true }] },
-      { name: feature.id, settingsTabs: [tab('its-panel')] },
-    ]);
-    assert.equal(
-      settingsHash('dsp_settings', 'its-panel'),
-      '#dsp/dsp_settings/options?tab=its-panel',
-    );
-    assert.equal(settingsHash('dsp_settings', 'its-panel', as(true)), undefined);
-  }
-  installFeatures([{ name: 'beta', routes: [page('board')], settingsTabs: [tab('beta-panel')] }]);
-  assert.equal(settingsHash('dsp_settings'), undefined);
-  assert.equal(settingsHash('dsp_settings', 'beta-panel'), undefined);
+  const moved = (page: string, query = '') => movedTo(page, new URLSearchParams(query));
+  assert.deepEqual(moved('options', 'tab=match'), { page: 'match' });
+  assert.equal(moved('options', 'tab=data'), undefined);
+  assert.deepEqual(moved('gamma', 'workspace=T1&section=channels'), {
+    page: 'options',
+    query: { tab: 'gamma', workspace: 'T1', section: 'channels' },
+  });
+  // Without a page that draws Settings, a page of it is nowhere.
+  installFeatures([{ name: 'gamma', movedToSettings: { gamma: 'gamma' } }]);
+  assert.equal(moved('gamma'), undefined);
 });
 
 test("a page's tabs from other features come in their order, ties in the order they are listed", () => {
@@ -312,22 +307,6 @@ test("what a feature adds to another's page goes with it, and a part's with the 
   if (!part) return t.skip('this build has no feature with parts');
   const owner = part.page;
   const view = (...features: Feature[]) => ({ features }) as unknown as DspView;
-  const tab = (id: string, extra: Partial<SettingsTab> = {}): SettingsTab => ({
-    id,
-    label: id,
-    order: 1,
-    load: () => Promise.resolve(),
-    render: () => id,
-    ...extra,
-  });
-  const piece = (id: string, order: number, extra: Partial<SettingsPiece> = {}): SettingsPiece => ({
-    tab: 'general',
-    id,
-    order,
-    load: () => Promise.resolve(),
-    render: () => id,
-    ...extra,
-  });
   const card = (
     id: string,
     section: ConnectionPiece['section'],
@@ -383,20 +362,10 @@ test("what a feature adds to another's page goes with it, and a part's with the 
   installFeatures([
     {
       name: 'core-owner',
-      settingsTabs: [tab('general')],
-      settingsPieces: [piece('core', 50)],
       connectionSections: [section('core', 50)],
     },
     {
       name: owner,
-      settingsTabs: [tab('own'), tab('of-part', { part: part.id })],
-      settingsPieces: [
-        piece('late', 30),
-        piece('early', 10),
-        piece('of-part', 20, { part: part.id }),
-        piece('elsewhere', 1, { tab: 'own' }),
-        piece('unseen', 1, { visible: () => false }),
-      ],
       pageTabs: [pageTab('own'), pageTab('of-part', { part: part.id })],
       connectionPieces: [
         card('account-late', 'dsp', 20),
@@ -421,15 +390,6 @@ test("what a feature adds to another's page goes with it, and a part's with the 
     },
   ]);
   const ids = (each: readonly { id: string }[]) => each.map(({ id }) => id);
-  // Every tab exists, so links to one keep working; a view lists only what it has.
-  assert.deepEqual(ids(settingsTabs()), ['general', 'own', 'of-part']);
-  assert.deepEqual(ids(settingsTabs(view(owner, part.id))), ['general', 'own', 'of-part']);
-  assert.deepEqual(ids(settingsPieces('general', view(owner, part.id))), [
-    'early',
-    'of-part',
-    'late',
-    'core',
-  ]);
   assert.deepEqual(ids(pageTabs('team', view(owner, part.id))), ['own', 'of-part']);
   assert.deepEqual(ids(connectionSections('chat', view(owner, part.id))), [
     'early',
@@ -447,16 +407,11 @@ test("what a feature adds to another's page goes with it, and a part's with the 
   // Every card loads with the Connections tab, whoever sees it.
   assert.deepEqual(ids(connectionPieces('personal')), ['unseen-mine', 'mine']);
   // Without the part, its own go; without the feature, all of the feature's.
-  assert.deepEqual(ids(settingsTabs(view(owner))), ['general', 'own']);
-  assert.deepEqual(ids(settingsPieces('general', view(owner))), ['early', 'late', 'core']);
   assert.deepEqual(ids(pageTabs('team', view(owner))), ['own']);
   assert.deepEqual(ids(connectionSections('chat', view(owner))), ['early', 'late', 'core']);
   assert.deepEqual(ids(connectionIntegrations('chat', view(owner))), ['early', 'late']);
-  assert.deepEqual(ids(settingsTabs(view(part.id))), ['general']);
-  assert.deepEqual(ids(settingsPieces('general', view(part.id))), ['core']);
   assert.deepEqual(pageTabs('team', view()), []);
   assert.deepEqual(connectionPieces('dsp', view(part.id)), []);
   assert.deepEqual(ids(connectionSections('chat', view(part.id))), ['core']);
   assert.deepEqual(connectionIntegrations('chat', view(part.id)), []);
-  assert.deepEqual(ids(settingsPieces('general', undefined)), ['core']);
 });

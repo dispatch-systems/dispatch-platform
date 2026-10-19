@@ -1,5 +1,5 @@
 //! What Timecard reads and writes for a DSP, as one extension of the store: Paycom's
-//! employees, timecards and preferences, and the meal breaks Cortex reports. Each method is
+//! employees and timecards, and the meal breaks Cortex reports. Each method is
 //! written beside the rest of its part of Timecard.
 use crate::api::{
     employee_sync::EmployeeSyncStatus,
@@ -79,15 +79,6 @@ pub trait TimecardStore {
         desc: bool,
         active: Option<bool>,
     ) -> Result<EmployeesResponse>;
-    fn timecard_preference_values(&self, id: &str) -> Result<Value>;
-    fn timecard_preferences(&self, id: &str) -> Result<Value>;
-    fn save_timecard_preferences(
-        &self,
-        id: &str,
-        actor: &str,
-        revision: i64,
-        values: &Value,
-    ) -> Result<Value>;
     fn publish_timecards(&self, id: &str, value: &Value) -> Result<Value>;
     fn enqueue_timecards(&self, id: &str, actor: Option<&str>, key: &str) -> Result<Value>;
     fn enqueue_paycom_date(
@@ -230,21 +221,6 @@ impl TimecardStore for Store {
         active: Option<bool>,
     ) -> Result<EmployeesResponse> {
         super::punches::employees::timecard_employees(self, id, query, offset, limit, desc, active)
-    }
-    fn timecard_preference_values(&self, id: &str) -> Result<Value> {
-        super::punches::preferences::timecard_preference_values(self, id)
-    }
-    fn timecard_preferences(&self, id: &str) -> Result<Value> {
-        super::punches::preferences::timecard_preferences(self, id)
-    }
-    fn save_timecard_preferences(
-        &self,
-        id: &str,
-        actor: &str,
-        revision: i64,
-        values: &Value,
-    ) -> Result<Value> {
-        super::punches::preferences::save_timecard_preferences(self, id, actor, revision, values)
     }
     fn publish_timecards(&self, id: &str, value: &Value) -> Result<Value> {
         super::punches::publication::publish_timecards(self, id, value)

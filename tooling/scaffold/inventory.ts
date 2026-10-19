@@ -248,6 +248,8 @@ export function explain(root: string, name: string): Row {
     pages: pages(root)
       .filter((page) => (page.page ?? page.id).split('.')[0] === name || page.id === name)
       .map((page) => (page.page ? `${page.id} (tab)` : page.id)),
+    // Its sections of Settings, which Settings draws from what it declares.
+    settings: (feature.slots.settings ?? []) as string[],
     subfeatures: feature.subfeatures,
     tables: Object.entries(feature.tables).map(([db, tables]) => `${db}: ${tables.join(', ')}`),
     routes,

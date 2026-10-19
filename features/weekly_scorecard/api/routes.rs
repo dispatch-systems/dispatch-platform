@@ -1,6 +1,6 @@
 //! Weekly Scorecards: what is stored, collecting a week, and its jobs. The scorecard is a
 //! feature of its own; nothing here asks for another's permission.
-use crate::{WeeklyScorecardPolicy, backend::WeeklyScorecardStore};
+use crate::backend::WeeklyScorecardStore;
 use dispatch_core::{
     Result,
     collection::api::routes::{
@@ -22,8 +22,6 @@ const MANAGE: Dsp = Dsp("weekly_scorecard.manage");
 
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
-        read("/api/dsp/weekly-scorecard/policy", MANAGE, policy),
-        write("/api/dsp/weekly-scorecard/policy", MANAGE, update_policy),
         read("/api/dsp/weekly-scorecard/weeks", VIEW, weeks),
         job_list(
             "/api/dsp/weekly-scorecard/jobs",
@@ -72,20 +70,4 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         week.unwrap_or(""),
     )?;
     Ok(Reply::status(job, 202))
-}
-
-fn policy(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.weekly_scorecard_policy(c.dsp_id())?)
-}
-fn update_policy(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    let policy: WeeklyScorecardPolicy = serde_json::from_value(input.body.clone())
-        .map_err(|_| dispatch_core::Error::new("invalid_input", 400))?;
-    db.set_weekly_scorecard_policy(c.dsp_id(), &policy)?;
-    db.audit(
-        Some(c.actor()),
-        Some(c.dsp_id()),
-        "weekly_scorecard.policy_updated",
-        "",
-    )?;
-    Reply::of(&policy)
 }

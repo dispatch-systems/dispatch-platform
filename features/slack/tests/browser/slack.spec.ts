@@ -9,7 +9,8 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  const settings = page.getByRole('navigation', { name: 'Settings', exact: true });
+  await settings.getByRole('link', { name: 'Connections', exact: true }).click();
   const workspaces = page
     .getByRole('article')
     .filter({ has: page.getByRole('term').filter({ hasText: 'Workspace' }) });
@@ -30,25 +31,29 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await expect(page).toHaveURL(/tab=connections/);
   expect(page.url()).not.toContain('slackCode');
 
-  // Its settings, on a page of their own: Dispatch joins a channel there, and the pencil by its
-  // name renames it.
+  // Its settings, on Slack's page of Settings: Dispatch joins a channel there, and the pencil by
+  // its name renames it.
   await named.getByRole('link', { name: 'Settings' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Dispatch Ops' })).toBeVisible();
+  await expect(page).toHaveURL(/tab=slack&workspace=/);
+  await expect(page.getByRole('heading', { level: 2, name: 'Dispatch Ops' })).toBeVisible();
   await page.getByRole('button', { name: 'Join photos' }).click();
   await expect(page.getByRole('list', { name: 'Joined', exact: true })).toContainText('photos');
   await page.getByRole('button', { name: 'Rename' }).click();
   const rename = page.getByRole('dialog', { name: 'Rename connection' });
   await rename.getByLabel('Name').fill('Dispatch Crew');
   await rename.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Dispatch Crew' })).toBeVisible();
-  await page
-    .getByRole('navigation', { name: 'Breadcrumb' })
-    .getByRole('link', { name: 'Connections' })
-    .click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Dispatch Crew' })).toBeVisible();
+  await settings.getByRole('link', { name: 'Connections', exact: true }).click();
 
-  // Without a name, it goes by its name in Slack.
+  // Without a name, it goes by its name in Slack. With two, Slack's page opens one of them.
   await add();
   await expect(workspaces.getByRole('heading', { name: 'Drivers' })).toBeVisible();
+  await settings.getByRole('link', { name: 'Slack', exact: true }).click();
+  await page
+    .getByRole('combobox', { name: 'Workspace', exact: true })
+    .selectOption({ label: 'Drivers' });
+  await expect(page.getByRole('heading', { level: 2, name: 'Drivers' })).toBeVisible();
+  await settings.getByRole('link', { name: 'Connections', exact: true }).click();
   const renamed = workspaces.filter({ has: page.getByRole('heading', { name: 'Dispatch Crew' }) });
   await renamed.getByRole('button', { name: 'Disconnect' }).click();
   await page

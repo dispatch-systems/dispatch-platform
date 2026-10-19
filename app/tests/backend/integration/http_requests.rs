@@ -675,7 +675,6 @@ async fn every_access_kind_refuses_and_admits_the_right_callers() {
         ("/api/dsp/jobs/job_x/cancel", json!({})),
         ("/api/dsp/profile", json!({})),
         ("/api/dsp/schedules/preview", json!({})),
-        ("/api/dsp/paycom/settings", json!({})),
         ("/api/dsp/roles", json!({})),
         ("/api/dsp/members/invite", json!({})),
         ("/api/dsp/members/mem_x", json!({})),
@@ -761,6 +760,28 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
     assert_eq!(suspended.status, 200, "{}", suspended.body);
     assert_eq!(suspended.body["status"], "suspended");
     assert_eq!(revision(), before + 2);
+    // A save in Settings wakes it only when it moves when the DSP's schedules run, as its
+    // timezone does: not for a feature's choice, nor the DSP's station.
+    let mut woken = revision();
+    for (id, values, wakes) in [
+        ("timecard.drivers", json!({"all_departments": false}), false),
+        ("settings.profile", json!({"station_code": "DCH2"}), false),
+        ("settings.profile", json!({"timezone": "Asia/Tokyo"}), true),
+    ] {
+        // The DSP opened afresh each time, as a save of its profile expires its views.
+        let owner = server.member("owner@dispatch.test").await;
+        let read = server
+            .send(Call::get("/api/dsp/settings").who(&owner))
+            .await;
+        let sections = read.body["sections"].as_array().unwrap();
+        let section = sections.iter().find(|section| section["id"] == id).unwrap();
+        let save = json!({"values": values, "revision": section["revision"]});
+        let path = format!("/api/dsp/settings/{id}");
+        let saved = server.send(Call::post(&path, save).who(&owner)).await;
+        assert_eq!(saved.status, 200, "{id}: {}", saved.body);
+        woken += u64::from(wakes);
+        assert_eq!(revision(), woken, "{id}: {values}");
+    }
 }
 
 // Settings serves the DSP's profile, the DSP route it writes through: core has none of its own.

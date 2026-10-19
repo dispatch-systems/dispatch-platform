@@ -21,7 +21,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding-block: 24px;
+  padding-bottom: 24px;
 }
 .connections-view h2 {
   font-size: 18px;
@@ -48,7 +48,7 @@
   font-weight: 500;
 }
 .connections-view + .connections-view {
-  margin-top: 16px;
+  margin-top: 40px;
 }
 .connection-cards {
   display: grid;

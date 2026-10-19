@@ -57,7 +57,10 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   await expect(page.getByRole('dialog')).toContainText('08:00');
   await page.getByLabel('Close dialog').click();
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Connections', exact: true })
+    .click();
   await page
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: 'Paycom', exact: true }) })
@@ -76,7 +79,12 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   await page.getByLabel('Verification code').fill('123456');
   await page.getByRole('button', { name: 'Verify', exact: true }).click();
   await expect(page.getByText('Paycom needs your verification')).toHaveCount(0);
-  await page.getByRole('link', { name: 'Timecard', exact: true }).click();
+  // Settings holds the sidebar until Back leaves it.
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'Timecard', exact: true })
+    .click();
   // A completed first week supplies seven daily records for each of the twelve employees.
   await setDate(page, '2026-01-17');
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
@@ -165,10 +173,11 @@ test('a link followed the moment a DSP opens keeps its view', async ({ page }) =
   });
   await openDsp(page, 'Northline Logistics');
   await expect(page).toHaveURL(/#dsp\/[^/]+\/settings$/);
-  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Settings', exact: true })
+      .getByRole('link', { name: 'Profile', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('button', { name: 'Retry connection' })).toHaveCount(0);
 });
 
@@ -191,9 +200,10 @@ test('the mobile drawer stays open while the DSP behind it finishes loading', as
   await expect(page.getByRole('link', { name: 'Timecard', exact: true })).toBeVisible();
   await expect(settings).toBeVisible();
   await settings.click();
-  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Audit log', exact: true })).toHaveCount(0);
-  await expect(settings).toBeHidden();
+  // Settings opens on its first page, and the drawer, now Settings' own, closes over it.
+  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Settings', exact: true })).toBeHidden();
 });
 
 test('platform owner looks through a DSP role until they leave the DSP', async ({
@@ -358,28 +368,10 @@ test('Timecard schedules can be created, edited, paused and deleted', async ({ p
   }
   await expect(page.getByRole('tab', { name: 'Collections', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Timecard Settings', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Workspace view', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: 'Driver departments', exact: true })).toHaveCount(0);
-  const lateDas = page.getByRole('region', { name: 'Late DAs', exact: true });
-  await expect(lateDas.getByLabel('Late at or after')).toHaveValue('10:01');
-  await expect(lateDas.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
-  await lateDas.getByLabel('Late at or after').fill('09:45');
-  await lateDas.getByRole('checkbox', { name: /^Delivery/ }).check();
-  await lateDas.getByRole('button', { name: 'Discard', exact: true }).click();
-  await expect(lateDas.getByLabel('Late at or after')).toHaveValue('10:01');
-  await lateDas.getByLabel('Late at or after').fill('09:45');
-  await lateDas.getByRole('checkbox', { name: /^Delivery/ }).check();
-  await lateDas.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Late DAs saved' })).toBeVisible();
-  await expect(lateDas.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
-  await page.reload();
-  await expect(lateDas.getByLabel('Late at or after')).toHaveValue('09:45');
-  await expect(lateDas.getByRole('checkbox', { name: /^Delivery/ })).toBeChecked();
-  await expect(lateDas.getByRole('checkbox', { name: /^Operations/ })).not.toBeChecked();
-  await lateDas.getByRole('checkbox', { name: /^Operations/ }).check();
-  await lateDas.getByRole('button', { name: 'Discard', exact: true }).click();
-  await page.getByRole('button', { name: 'New schedule', exact: true }).first().click();
+  // Its own page of Settings, where its sync schedules are.
+  await expect(page).toHaveURL(/\/settings\?tab=timecard$/);
+  await expect(page.getByRole('region', { name: 'Sync schedules', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'New schedule', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: 'New schedule', exact: true });
   await dialog.getByLabel('Schedule name').fill('Paycom refresh');
   await dialog.getByLabel('Every', { exact: true }).fill('2');
@@ -404,7 +396,7 @@ test('Timecard schedules can be created, edited, paused and deleted', async ({ p
   await dialog.getByRole('button', { name: 'Delete schedule', exact: true }).click();
   await expect(row).toHaveCount(0);
   // Both collectors can be selected and saved while paused before connecting Cortex.
-  await page.getByRole('button', { name: 'New schedule', exact: true }).first().click();
+  await page.getByRole('button', { name: 'New schedule', exact: true }).click();
   dialog = page.getByRole('dialog', { name: 'New schedule', exact: true });
   await dialog.getByLabel('Schedule name').fill('Morning collection');
   await dialog.getByRole('checkbox', { name: 'Meal Break', exact: true }).check();

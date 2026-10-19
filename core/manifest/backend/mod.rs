@@ -13,6 +13,7 @@ pub mod audit;
 pub mod caching;
 pub mod collectors;
 pub mod commands;
+pub mod env;
 pub mod events;
 pub mod exposes;
 pub mod integrations;
@@ -31,6 +32,10 @@ pub use collectors::{Capability, Collection, Collector};
 pub use commands::{Commands, Demo};
 pub use keeping::{Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias};
 pub use permissions::{DefaultRole, Permission, perm};
+pub use settings::{
+    Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, choice, many, number,
+    pick, schedules, section, text, time, timezone, toggle,
+};
 pub use storage::Tables;
 pub use switches::{Sub, Switch, mandatory, optional, sub, tab};
 pub use upkeep::{Maintenance, Upkeep};
@@ -106,7 +111,7 @@ impl Registry {
     /// Panics unless each slot's declarations hold, as each slot's `check` says, and every
     /// feature depends only on registered features and collectors.
     pub fn check(&self) {
-        settings::check(self);
+        env::check(self);
         retirement::check(self);
         keeping::check(self);
         switches::check(self);
@@ -129,6 +134,7 @@ impl Registry {
         caching::check(self);
         audit::check(self);
         agents::check(self);
+        settings::check(self);
     }
 }
 
@@ -167,10 +173,13 @@ pub struct Feature {
     /// The permissions that may follow its collections' progress as it arrives, through
     /// the collection updates the dashboard waits on.
     pub live: &'static [&'static str],
-    /// The server's settings it reads with `config.setting`, in groups that go together:
-    /// `&[&["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]]`. A server with only part of a
-    /// group set refuses to start.
-    pub settings: &'static [&'static [&'static str]],
+    /// The server's environment variables it reads with `config.setting`, in groups that go
+    /// together: `&[&["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]]`. A server with only part
+    /// of a group set refuses to start.
+    pub env: &'static [&'static [&'static str]],
+    /// Its sections of a DSP's Settings: what its members set, each section's fields saved
+    /// together, which Settings draws and core keeps (`settings::Section`).
+    pub settings: &'static [Section],
     /// The collections it keeps.
     pub keeps: &'static [&'static dyn Keeper],
     /// What it adds to databases: its own, kept beside a collector's, or another owner's.
@@ -227,6 +236,7 @@ pub const fn feature(name: &'static str) -> Feature {
         dsp_connection: false,
         routes: Vec::new,
         live: &[],
+        env: &[],
         settings: &[],
         keeps: &[],
         migrations: &[],

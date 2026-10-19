@@ -52,8 +52,8 @@ and weeks, so it's best submitted well before the limit.
   (`documents.google`), and each refusal with Google's reason and its words, without the IDs
   and addresses in them (`documents.google_refused`).
 - **Google sign-in:** the platform's Google client, which this feature reads from the server's
-  own settings: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
-  (`DISPATCH_PRODUCTION_…` on Production), declared as its settings. Without both, no DSP can
+  environment: `DISPATCH_DEV_GOOGLE_CLIENT_ID` and `…_SECRET` on Dev and its previews
+  (`DISPATCH_PRODUCTION_…` on Production), declared in its `env`. Without both, no DSP can
   connect Google; with one, the server refuses to start. It returns to
   `/api/documents/google/return`. That route has no session (its cookie stays on Dispatch's own
   site), so it only passes what Google sent on to the page the sign-in started on, which

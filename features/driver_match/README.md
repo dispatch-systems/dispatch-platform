@@ -3,8 +3,8 @@
 One code per person across every source the DSP's features name people by: Paycom's employee
 codes, Amazon's transporter IDs and any source a feature declares. After each collection a new
 ID joins someone only on a certain match; anything less gets a person of its own and waits for
-a decision in its Settings tab. Collected rows keep their sources' IDs, and Driver Match stores
-only what was decided.
+a decision on its page. Collected rows keep their sources' IDs, and Driver Match stores only
+what was decided.
 
 - **Switch:** `driver_match`, mandatory: every DSP has it, with no switch to turn it off. It
   needs no connection: it matches whatever the DSP's features name.
@@ -17,12 +17,15 @@ only what was decided.
   while a workspace waits for its admin to let Dispatch read its members, or once the last
   one is disconnected.
 - **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
-- **Its screen** is the Driver Match tab of a DSP's Settings, shown while the DSP has a feature
-  on whose data names people: the questions the backend sends, asked one at a time, then
-  everyone as a card with their photo, from core's `/api/dsp/people/{code}/photo`, and the
-  sources that have them, by role or a source
-  lacking them. Its badge counts the same questions. Driver Profiles draws its roster bar above
-  it.
+- **Its page**, `driver-match` in a DSP's sidebar, is listed while the DSP has a feature on
+  whose data names people, for those who hold `driver_match.manage`: the questions the backend
+  sends, asked one at a time, then everyone as a card with their photo, from core's
+  `/api/dsp/people/{code}/photo`, and the sources that have them, by role or a source lacking
+  them. Beside its name in the sidebar, how many of those questions wait: the server keeps one
+  count for all of the DSP's managers until a decision or a collection changes it, and the
+  sidebar reads it again after each decision, after a collection a page following collections
+  hears, and every five minutes. It was a tab of Settings: a link to
+  `settings?tab=driver-match` opens it.
 - **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on, the
   questions waiting, as pairs that may be one person or name variants to confirm, by people's
   codes, and everyone), `…/counts` (how many questions wait), `…/people/{code}` (one person's
@@ -63,7 +66,7 @@ only what was decided.
   way joined to someone. Nobody who has left is asked about.
 - **Photos:** a person's photo is the first a kind of data holds under one of their IDs, their
   IDs in the sources' order and each ID's kinds in the order their data is read
-  (`backend/photos.rs`). The tab, a person's photo and the directory answer by that one rule,
+  (`backend/photos.rs`). The page, a person's photo and the directory answer by that one rule,
   so every feature showing people shows the same photo.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
   `driver_match.kept_apart` and `driver_match.confirmed`, naming people by their codes; the
@@ -86,8 +89,8 @@ of rule already is:
 - `review.rs` gathers why two people might be one, and `pairs.rs` makes those pairs, which
   side joins the other and in what order they're asked.
 - `codes.rs` writes and checks codes.
-- `gather.rs` reads what the tab, a person's sheet and the badge need, once for each answer;
-  `overview.rs` makes the tab and its questions, `details.rs` one person's sheet, `photos.rs`
+- `gather.rs` reads what the page, a person's sheet and the count need, once for each answer;
+  `overview.rs` makes the page and its questions, `details.rs` one person's sheet, `photos.rs`
   photos, and `decisions.rs` the decisions a person makes.
 
 ## Connecting a feature
@@ -127,7 +130,7 @@ sheet lists their kinds in this order.
 ## Asking who someone is
 
 A feature that shows people, or uses what is known of them, asks core's directory, never Driver
-Match, which exposes it (`backend/directory.rs`): everyone as the tab lists them,
+Match, which exposes it (`backend/directory.rs`): everyone as the page lists them,
 each with their code, the name they are shown by and every other way their sources write it,
 their role, every ID they hold by source, their email addresses and phone numbers, whether
 someone confirmed who they are and the version of their photo; and nobody in a build without

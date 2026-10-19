@@ -27,3 +27,28 @@ test("a link's secret leaves the address at once, and survives its screen render
   location.hash = '#invite';
   assert.equal(consumeHashToken('invite'), undefined);
 });
+
+test("the way back out of a page with a sidebar of its own outlives its view opening again, not another role's", async () => {
+  const { installFeatures } = await import('../../frontend/runtime/slots.js');
+  const { credentials } = await import('../../frontend/runtime/api.js');
+  const { noteWayBack, wayBack } = await import('../../frontend/runtime/navigation.js');
+  const page = (id: string, own?: true) =>
+    ({
+      id,
+      scope: 'dsp',
+      label: id,
+      nav: true,
+      preload: async () => undefined,
+      render: () => null,
+      ...(own && { sidebar: { load: async () => () => null } }),
+    }) as never;
+  installFeatures([{ name: 'stand_in', routes: [page('roster'), page('settings', true)] }]);
+  credentials('csrf', 'dsp_a.signed');
+  noteWayBack('#dsp/dsp_a/roster?day=1', '#dsp/dsp_a/settings');
+  // Reopened as the DSP's name changes, its view passes through none.
+  credentials('csrf');
+  credentials('csrf', 'dsp_a.signed-again');
+  assert.equal(wayBack('dsp_a'), '#dsp/dsp_a/roster?day=1');
+  credentials('csrf', 'dsp_a.member.signed');
+  assert.notEqual(wayBack('dsp_a'), '#dsp/dsp_a/roster?day=1');
+});

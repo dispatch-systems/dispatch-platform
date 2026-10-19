@@ -54,7 +54,10 @@ test('credentials close before login finishes, errors stay on the card, and CAPT
     // view before clicking, including when its session request is still loading.
     await expect(settings).toHaveAttribute('href', /^#dsp\/dsp_[a-f0-9]{32}\/settings$/);
     await settings.click();
-    await page.getByRole('tab', { name: 'Connections', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings', exact: true })
+      .getByRole('link', { name: 'Connections', exact: true })
+      .click();
     const card = page
       .getByRole('article')
       .filter({ has: page.getByRole('heading', { name: 'Paycom', exact: true }) });

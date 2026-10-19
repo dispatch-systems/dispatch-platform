@@ -1,23 +1,36 @@
-use super::preferences::preferences;
-use crate::{api::types::DailyTimecards, backend::TimecardStore};
+use crate::{
+    api::types::DailyTimecards,
+    backend::{
+        TimecardStore,
+        settings::{Listing, ROSTER, driver_departments},
+    },
+};
 use dispatch_core::{
     Result,
     db::{Db, Store, s},
     foundation::names::{compare, display},
 };
-use dispatch_paycom as paycom;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 pub(crate) const CACHED: &str = "timecard.daily";
-fn visible(row: &Value, p: &Value, drivers: bool) -> bool {
-    ["department", "station"]
-        .iter()
-        .all(|key| p[*key].is_null() || s(p, key).is_empty() || row[*key] == p[*key])
-        && (!drivers
-            || p["driver_departments"].is_null()
-            || p["driver_departments"]
-                .as_array()
-                .is_some_and(|a| a.contains(&row["department"])))
+/// Who the Timecard tab lists, as the DSP's settings say: the employees its roster settings
+/// list, of the departments that drive.
+struct Listed {
+    roster: Listing,
+    drivers: Option<Vec<String>>,
+}
+impl Listed {
+    fn read(store: &Store, id: &str) -> Result<Self> {
+        Ok(Self {
+            roster: dispatch_core::settings::read(store, id, &ROSTER)?,
+            drivers: driver_departments(store, id)?,
+        })
+    }
+    fn lists(&self, row: &Value) -> bool {
+        let department = s(row, "department");
+        self.roster.lists(department, s(row, "station"))
+            && (self.drivers.as_ref()).is_none_or(|drivers| drivers.iter().any(|d| d == department))
+    }
 }
 pub(crate) fn cards(db: &Db, sql: &str, p: impl rusqlite::Params) -> Result<Vec<Value>> {
     let mut rows = db.all(sql, p)?;
@@ -64,24 +77,22 @@ pub(crate) fn daily_timecards_range(
     desc: bool,
     codes: Option<&[String]>,
 ) -> Result<BTreeMap<String, DailyTimecards>> {
-    let db = store.collector(id, paycom::PROVIDER)?;
-    let settings = preferences(&db)?;
-    let p = &settings["values"];
+    let listed = Listed::read(store, id)?;
     super::range::daily_sources(store, id, from, to, codes)?
         .into_iter()
-        .map(|(date, source)| Ok((date, display_daily(source, p, sort, desc)?)))
+        .map(|(date, source)| Ok((date, display_daily(source, &listed, sort, desc)?)))
         .collect()
 }
 fn display_daily(
     source: super::range::DailySource,
-    p: &Value,
+    listed: &Listed,
     sort: &str,
     desc: bool,
 ) -> Result<DailyTimecards> {
     let publication = source.publication;
     let available = source.available;
     let mut rows: Vec<Value> = source.rows.into_values().collect();
-    rows.retain(|r| visible(r, p, true));
+    rows.retain(|row| listed.lists(row));
     for row in &mut rows {
         row["name"] = json!(display(s(row, "name")));
         row.as_object_mut().unwrap().remove("department");

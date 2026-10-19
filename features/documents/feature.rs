@@ -83,7 +83,7 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     // Google's sign-in client, and its file picker's keys.
-    settings: &[
+    env: &[
         &["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
         &["GOOGLE_API_KEY", "GOOGLE_APP_ID"],
     ],

@@ -1,4 +1,4 @@
-// What the Driver Match tab says about people, their IDs and the reasons two may be one.
+// What the Driver Match page says about people, their IDs and the reasons two may be one.
 import type {
   PeopleKind,
   PeopleSource,
@@ -19,7 +19,7 @@ export const roles: Record<PersonRole, { label: string; filter: string; tone: st
   office: { label: 'Office', filter: 'Office', tone: 'violet' },
   former: { label: 'Former', filter: 'Former', tone: 'neutral' },
 };
-/** Which people the tab shows: everyone still there, those of one role, or those a source lacks. */
+/** Who the page shows: everyone still there, those of one role, or those a source lacks. */
 export type PeopleFilter = 'all' | PersonRole | 'missing';
 export const peopleFilters: [PeopleFilter, string][] = [
   ['all', 'All'],

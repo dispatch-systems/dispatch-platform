@@ -6,6 +6,7 @@ pub(crate) mod keeper;
 pub(crate) mod maintenance;
 pub(crate) mod people;
 pub(crate) mod photos;
+pub(crate) mod settings;
 pub(crate) mod storage;
 
 #[cfg(test)]

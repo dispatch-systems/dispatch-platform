@@ -1,5 +1,5 @@
 //! Driver Profiles' endpoints, each registered with its path and access. Its roster bar, on
-//! Driver Match's tab, shows when the roster was collected and collects it on demand.
+//! its Settings page, shows when the roster was collected and collects it on demand.
 use crate::DriverProfilesStore;
 use dispatch_core::{
     Result,

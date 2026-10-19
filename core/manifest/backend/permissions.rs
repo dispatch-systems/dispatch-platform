@@ -4,7 +4,7 @@
 use crate::manifest::Registry;
 
 /// Core's own permissions, each declared by the core part that checks it.
-const CORE_PERMISSIONS: &[&Permission] = &[&crate::collection::registry::CONNECTIONS];
+pub(crate) const CORE_PERMISSIONS: &[&Permission] = &[&crate::collection::registry::CONNECTIONS];
 
 /// A permission a DSP's roles grant, as the role sheet offers it.
 pub struct Permission {

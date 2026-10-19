@@ -2,8 +2,8 @@
 
 Everyone Amazon lists for the DSP's company, active or not, with their contacts, roles,
 qualifications, license expiry and photo, collected from Cortex's associates page (Amazon's DA
-Console). Driver Match reads them as it reads every feature's people. It has no page of its own
-yet: its roster bar sits at the top of Driver Match's Settings tab.
+Console). Driver Match reads them as it reads every feature's people. It has no page of its own:
+its roster bar and its schedules are on its Settings page.
 
 - **Switch:** `driver_profiles`, off for every DSP until the platform owner switches it on. It
   needs the `associates` connection (Cortex), which switches on with it. It began as Driver
@@ -28,9 +28,11 @@ yet: its roster bar sits at the top of Driver Match's Settings tab.
   Backups leave the cache out, as a restore collects them again, and they go with the DSP's
   folder. A photo is deleted once Amazon no longer lists whoever it shows; an inactive
   associate Amazon still lists keeps theirs.
-- **Roster bar:** a piece above Driver Match's Settings tab, for those who hold
-  `driver_profiles.collect`: when the roster was collected and is collected next, its
-  schedules, and Collect now.
+- **Settings:** its own page (`?tab=driver-profiles`), for those who hold
+  `driver_profiles.collect` (`backend/settings.rs`): `driver_profiles.roster` "Amazon roster", a
+  custom section its roster bar draws (when the roster was collected and is collected next, and
+  Collect now), then `driver_profiles.collection` "Collection", the `associates` schedules, kept
+  by core's schedule routes under `…/schedules`. It stores no values of its own there.
 - **People:** its `Roster` names everyone Amazon has listed by the name Amazon has on file,
   read first among Amazon's spellings; someone counts as listed while the roster lists them
   as active. It names each listed associate's photo by its digest and serves it, so Driver

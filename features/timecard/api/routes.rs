@@ -1,9 +1,6 @@
-//! What Paycom and Cortex collected: employees, timecards, meal breaks and the Paycom
-//! preferences, and the jobs and schedules that collect them.
-use crate::{
-    api::settings::PaycomSettings,
-    backend::{TimecardStore, punches::employees::identify},
-};
+//! What Paycom and Cortex collected: employees, timecards and meal breaks, what the page
+//! shows them by, and the jobs and schedules that collect them.
+use crate::backend::{TimecardStore, punches::employees::identify, settings};
 use dispatch_core::{
     Error, Result,
     accounts::api::requests::CollectionRequest,
@@ -77,7 +74,6 @@ pub fn routes() -> Vec<Route> {
         .logged(),
         read("/api/dsp/paycom/status", VIEW, paycom_status),
         read("/api/dsp/paycom/settings", VIEW, paycom_settings).logged(),
-        write("/api/dsp/paycom/settings", MANAGE, save_paycom_settings),
         coalesced_read("/api/dsp/paycom/meal-breaks", VIEW, meal_comparison).logged(),
         coalesced_read_by(
             "/api/dsp/paycom/meal-breaks/page",
@@ -349,7 +345,8 @@ fn meal_page(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
             load,
         )?
     };
-    let preferences = db.timecard_preference_values(c.dsp_id())?;
+    let listing: settings::Listing =
+        dispatch_core::settings::read(db, c.dsp_id(), &settings::ROSTER)?;
     let query = crate::backend::meals::page::Query {
         search,
         filter,
@@ -357,7 +354,7 @@ fn meal_page(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         desc,
         offset,
         limit,
-        name_order: dispatch_core::db::s(&preferences["values"], "name_order"),
+        name_order: listing.name_order.as_str(),
     };
     let ordering = if live {
         std::sync::Arc::new(crate::backend::meals::page::order(&day, &query))
@@ -445,21 +442,9 @@ fn paycom_status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     })))
 }
 
-// The change history names people, so only those who manage timecards see it.
+/// What the page shows by, of the DSP's settings, which Settings saves.
 fn paycom_settings(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    let mut value: PaycomSettings = serde_json::from_value(db.timecard_preferences(c.dsp_id())?)?;
-    if !c.can("timecard.manage") {
-        value.history.clear();
-    }
-    Reply::of(&value)
-}
-
-fn save_paycom_settings(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    let b = &input.body;
-    v::fields(b, &["revision", "values"])?;
-    let revision = v::integer(b, "revision", 0, i64::MAX)?;
-    let saved = db.save_timecard_preferences(c.dsp_id(), c.actor(), revision, &b["values"])?;
-    Reply::of(&serde_json::from_value::<PaycomSettings>(saved)?)
+    Reply::of(&settings::shown(db, c.dsp_id())?)
 }
 
 fn meal_comparison(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

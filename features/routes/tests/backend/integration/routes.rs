@@ -1,6 +1,8 @@
 //! Routes storage: publication, supersession, the days a schedule queues and what the
 //! views read.
 use dispatch_core::db::{Store, s};
+use dispatch_core::manifest::Section;
+use dispatch_core::settings::{self, Saved};
 use dispatch_core::testing as common;
 use dispatch_cortex::{
     self as cortex,
@@ -55,6 +57,16 @@ fn sweep(db: &Store, id: &str) -> usize {
 }
 fn count(db: &Store, id: &str, sql: &str) -> i64 {
     db.routes_db(id).unwrap().count(sql, []).unwrap()
+}
+/// Today where the DSP is, as its window counts back from.
+fn today(db: &Store, id: &str) -> chrono::NaiveDate {
+    let zone: chrono_tz::Tz = db.find_dsp(id).unwrap().timezone.parse().unwrap();
+    dispatch_core::foundation::clock::today(zone)
+}
+/// How long the DSP keeps its route data, as Routes declares it.
+fn retention() -> &'static Section {
+    let mut sections = dispatch_routes::FEATURE.settings.iter();
+    sections.find(|s| s.id == "routes.retention").unwrap()
 }
 
 #[test]
@@ -605,31 +617,24 @@ fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     let (_root, db, id) = ready();
     let actor = common::a_user(&db);
     db.set_feature(&id, "routes", true, &actor).unwrap();
-    // Nothing is deleted by default.
-    let retention = db.route_retention(&id).unwrap();
-    assert_eq!(retention.days, None);
-    assert_eq!(retention.stored_days, 0);
-    let today = chrono::Utc::now().date_naive();
+    let today = today(&db, &id);
     let old = (today - chrono::Duration::days(40)).to_string();
     let recent = (today - chrono::Duration::days(1)).to_string();
     for (key, day) in [("old", &old), ("recent", &recent)] {
         let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
         publish(&db, &id, key, day, &capture);
     }
+    // Nothing is deleted by default.
     assert_eq!(db.expire_routes(&id).unwrap(), 0);
-    assert_eq!(db.route_retention(&id).unwrap().stored_days, 2);
-    // Windows are 30 days to ten years.
-    for days in [0, 29, 3651] {
-        assert_eq!(
-            db.set_route_retention(&id, Some(&actor), Some(days))
-                .unwrap_err()
-                .code,
-            "invalid_retention"
-        );
-    }
-    let retention = db.set_route_retention(&id, Some(&actor), Some(30)).unwrap();
-    assert_eq!(retention.days, Some(30));
-    assert_eq!(retention.oldest_day.as_deref(), Some(old.as_str()));
+    // A window that passes a stored day asks first; the day its words name is the settings
+    // module's own test, either side of midnight.
+    let window = json!({"days": 30});
+    assert!(matches!(
+        settings::save(&db, &id, &actor, retention(), &window, 0, false).unwrap(),
+        Saved::Confirm(_)
+    ));
+    assert_eq!(db.expire_routes(&id).unwrap(), 0);
+    settings::save(&db, &id, &actor, retention(), &window, 0, true).unwrap();
     // A day the window has passed cannot be collected again.
     assert_eq!(
         db.enqueue_routes(&id, None, "again", Some(&old), Mode::Final, 1)
@@ -663,16 +668,48 @@ fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     // Shared rows seen since stay; the recent day still shows them.
     assert_eq!(count(&db, &id, "SELECT count(*) FROM addresses"), 2);
     let actions: Vec<String> = common::audit_actions(&db, &id, "routes.");
-    assert!(actions.contains(&"routes.retention_changed".to_owned()));
     assert!(actions.contains(&"routes.data_expired".to_owned()));
-    // Keeping every day again deletes nothing more.
-    assert_eq!(
-        db.set_route_retention(&id, Some(&actor), None)
-            .unwrap()
-            .days,
-        None
-    );
+    // Keeping every day again deletes nothing more, so it asks nothing.
+    let every = json!({"days": null});
+    assert!(matches!(
+        settings::save(&db, &id, &actor, retention(), &every, 1, false).unwrap(),
+        Saved::Saved { revision: 2, .. }
+    ));
     assert_eq!(db.expire_routes(&id).unwrap(), 0);
+}
+
+#[test]
+fn a_window_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
+    install();
+    let (_root, db, id) = ready();
+    let actor = common::a_user(&db);
+    let other = db.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
+    // Each DSP's window as the release before kept it, in its own route data, and its settings
+    // as they were then.
+    for (dsp, days) in [(&id, 90), (&other, 365)] {
+        db.routes_db(dsp)
+            .unwrap()
+            .exec(
+                "INSERT INTO route_retention(id,days,changed_by,changed_at) VALUES (1,?,?,?)",
+                rusqlite::params![days, actor, dispatch_core::db::iso()],
+            )
+            .unwrap();
+        common::before_settings(&db, dsp).unwrap();
+    }
+    let upgrade = dispatch_routes::FEATURE.upgrade_storage.unwrap();
+    let days = |dsp: &str| settings::read::<Value>(&db, dsp, retention()).unwrap()["days"].clone();
+    upgrade(&db, &id).unwrap();
+    assert_eq!(days(&id), json!(90));
+    assert_eq!(days(&other), Value::Null);
+    upgrade(&db, &other).unwrap();
+    assert_eq!(days(&other), json!(365));
+    // Changed in Settings since, it isn't moved again; and the move itself recorded nothing.
+    let every = json!({"days": null});
+    settings::save(&db, &id, &actor, retention(), &every, 1, true).unwrap();
+    upgrade(&db, &id).unwrap();
+    assert_eq!(days(&id), Value::Null);
+    assert_eq!(days(&other), json!(365));
+    assert!(common::audit_actions(&db, &other, "settings.").is_empty());
 }
 
 #[test]

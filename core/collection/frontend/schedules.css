@@ -55,3 +55,7 @@
 .schedule-delete-confirm button + button {
   margin-left: 8px;
 }
+/* In the page, the form keeps the width it had in a sheet. */
+.schedule-settings .schedule-form {
+  max-width: 520px;
+}

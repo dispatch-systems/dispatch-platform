@@ -1,11 +1,11 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { DspView, Permission, SessionView } from '../../../../accounts/api/index.js';
 import type { Feature } from '../../../../tenancy/api/index.js';
 import { manifests } from './installed.js';
 
 // The pages slot: an owner's pages, inside a DSP or outside, and which of them a DSP opens on,
-// draws the Settings tabs, or saves a DSP's profile.
+// draws Settings, or saves a DSP's profile, and the sidebar a page draws of its own.
 
 /** Every page inside a DSP, by id. Each owner's feature.ts adds its own by declaration merging. */
 export interface DspPages {}
@@ -33,6 +33,16 @@ type Page<Context> = {
   /** The navigation item to highlight for a page that has none of its own. */
   parent?: string;
   icon?: LucideIcon;
+  /**
+   * Drawn beside its name in the sidebar, as a count of what waits there; `active` while the
+   * page is open. It loads on its own once the sidebar is drawn, which never waits for it.
+   */
+  badge?: { load: () => Promise<ComponentType<{ active: boolean }>> };
+  /**
+   * Its own sidebar, drawn in place of the app's name and pages while it, or a page under it
+   * (`parent`), is open, as Settings lists its pages there. Its code loads as the page's does.
+   */
+  sidebar?: { load: () => Promise<ComponentType<SidebarProps>> };
   /** Whether the sidebar lists the page. */
   nav: boolean | ((access: Access) => boolean);
   /** Who may open the page; omitted means everyone in the scope. */
@@ -50,9 +60,14 @@ export type DspRoute = Page<DspPageContext> & {
   ready?: (view: DspView) => boolean;
   /** Whether opening the DSP again returns here, as to the last page open; omitted, it does. */
   remembered?: boolean;
+  /**
+   * The addresses it was once at, each a page and its query, as `settings?tab=x` for a tab of
+   * Settings it was: a link to one opens this page. Each is kept as long as such links last.
+   */
+  formerly?: readonly string[];
   /** Whether a DSP opens here when it has no last page to return to; one page at most does. */
   landing?: boolean;
-  /** Whether the page draws every owner's settings tabs, as a DSP's Settings; one at most does. */
+  /** Whether the page draws a DSP's Settings, every owner's sections of it; one at most does. */
   hostsSettings?: boolean;
   /**
    * Draws the tabs other owners add to it among its own, with `usePageTabs`; the app draws
@@ -61,6 +76,15 @@ export type DspRoute = Page<DspPageContext> & {
   tabs?: boolean;
   /** Called only for the admitted view. */
   prefetch?: (prefetch: RoutePrefetch & { view: DspView }) => void;
+};
+/** What a page's own sidebar is drawn with. */
+export type SidebarProps = Access & {
+  /** The DSP open, whether or not its view is admitted yet; none outside one. */
+  dspId?: string;
+  /** The page open: the one the sidebar is, or one under it (`parent`). */
+  page: string;
+  /** Closes the sidebar where it opens over the page, on a narrow screen, as a link in it does. */
+  close: () => void;
 };
 export type PlatformRoute = Page<PageContext> & {
   id: PlatformRouteId;
@@ -82,17 +106,28 @@ declare module './installed.js' {
     /** Its pages, in sidebar order. */
     routes?: readonly Route[];
     /**
+     * Its icon where none of its pages shows one, as for its page of Settings when it has no
+     * page in the sidebar.
+     */
+    icon?: LucideIcon;
+    /**
      * Who may save a DSP's profile, and the route it serves that saves it, when the owner saves
      * it: opening a DSP that has none asks them for it. One owner at most says so; without one,
      * nobody is asked.
      */
     dspSetup?: { permission: Permission; save: string };
+    /**
+     * Its DSP pages that are pages of Settings now, each by its id with the page of Settings
+     * it is (`?tab=`): a link to one opens that page, with the rest of the link's query.
+     */
+    movedToSettings?: Readonly<Record<string, string>>;
   }
 }
 
 /** The installed page at an address. */
 export function routeOf(scope: 'dsp', page: string): DspRoute | undefined;
 export function routeOf(scope: 'platform', page: string): PlatformRoute | undefined;
+export function routeOf(scope: Route['scope'], page: string): Route | undefined;
 export function routeOf(scope: Route['scope'], page: string): Route | undefined {
   for (const feature of manifests())
     for (const route of feature.routes ?? [])
@@ -109,8 +144,61 @@ function dspPage(says: (route: DspRoute) => boolean | undefined) {
 }
 /** The page a DSP opens on, as a feature declares it; none without one. */
 export const landingPage = () => dspPage((route) => route.landing);
-/** The page that draws every owner's settings tabs, as a feature declares it; none without one. */
+/** The page that draws a DSP's Settings, as a feature declares it; none without one. */
 export const settingsPage = () => dspPage((route) => route.hostsSettings);
+/**
+ * Where a link to `page` with `query` leads now, if a page was once there: the DSP page, and
+ * the query it opens with, for a page of Settings its `tab` and the rest of the link's.
+ */
+export function movedTo(
+  page: string,
+  query: URLSearchParams,
+): { page: DspRouteId; query?: Record<string, string> } | undefined {
+  const formerly = dspPage((route) =>
+    route.formerly?.some((address) => {
+      const [at, asked] = address.split('?');
+      return (
+        at === page &&
+        [...new URLSearchParams(asked)].every(([key, value]) => query.get(key) === value)
+      );
+    }),
+  );
+  if (formerly) return { page: formerly };
+  const host = settingsPage();
+  const tab = manifests().find((feature) => feature.movedToSettings?.[page])?.movedToSettings?.[
+    page
+  ];
+  if (!host || !tab) return undefined;
+  const rest = [...query].filter(([key]) => key !== 'tab');
+  return { page: host, query: Object.fromEntries([['tab', tab], ...rest]) };
+}
+
+/** The page whose own sidebar is drawn while `page` is open: the page itself, or the one it is under. */
+export function sidebarOwner(scope: Route['scope'], page: string) {
+  const route = routeOf(scope, page);
+  const owner = route?.parent ? routeOf(scope, route.parent) : route;
+  return owner?.sidebar ? owner : undefined;
+}
+type Sidebar = NonNullable<Route['sidebar']>;
+const sidebars = new WeakMap<Sidebar, ComponentType<SidebarProps>>();
+/** Loads a page's own sidebar; once in, `loadedSidebar` answers it, so it draws as the page opens. */
+export const loadSidebar = (sidebar: Sidebar) =>
+  sidebar.load().then((drawn) => {
+    sidebars.set(sidebar, drawn);
+    return drawn;
+  });
+export const loadedSidebar = (sidebar: Sidebar) => sidebars.get(sidebar);
+
+/**
+ * A feature's icon: that of the first of its DSP pages with one in the sidebar, else the one its
+ * manifest gives (its switch's id is its owner's name).
+ */
+export function featureIcon(feature: string) {
+  for (const owner of manifests())
+    for (const route of owner.routes ?? [])
+      if (route.scope === 'dsp' && route.feature === feature && route.icon) return route.icon;
+  return manifests().find((owner) => owner.name === feature)?.icon;
+}
 
 /** Who may save a DSP's profile when it is first opened, and where, as the owner that saves it says. */
 export const dspSetup = () => manifests().find((feature) => feature.dspSetup)?.dspSetup;

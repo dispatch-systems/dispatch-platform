@@ -15,7 +15,7 @@ pub(super) fn both(a: &str, b: &str) -> String {
     format!("{a}{AND}{b}")
 }
 
-/// The name a code's person goes by now, as the tab shows it. A merged code answers for the
+/// The name a code's person goes by now, as the page shows it. A merged code answers for the
 /// person who kept its IDs.
 fn name_now(store: &Store, dsp: &str, found: &Found, code: &str) -> Result<Option<String>> {
     let rows: Vec<IdRow> = {

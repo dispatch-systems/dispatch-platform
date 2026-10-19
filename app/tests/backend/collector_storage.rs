@@ -53,7 +53,7 @@ fn provisioned() -> (tempfile::TempDir, Store, String) {
     paycom
         .set(
             "paycom.preferences",
-            &json!({"revision":3,"values":dispatch_timecard::defaults(),"history":[]}),
+            &json!({"revision":3,"values":{"name_order":"first_last"},"history":[]}),
         )
         .unwrap();
     drop(paycom);

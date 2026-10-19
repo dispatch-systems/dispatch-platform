@@ -6,7 +6,7 @@
 }
 .theme-section {
   max-width: 960px;
-  padding: 32px 0;
+  padding: 8px 0 32px;
 }
 .theme-section fieldset {
   min-width: 0;

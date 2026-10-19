@@ -27,10 +27,13 @@ import {
   FeedbackProvider,
   useFeedback,
 } from '../../core/shell/frontend/runtime/feedback.js';
+import { askHolds, askToLeave } from '../../core/shell/frontend/runtime/holds.js';
 import {
   dspHash,
+  followMoved,
   forgetDestination,
   navigate,
+  noteWayBack,
   parseHash,
   platformHash,
   rememberDestination,
@@ -42,6 +45,7 @@ import {
   landing,
   navigation,
   prepareRoute,
+  sidebarOf,
 } from './routes.js';
 import { features } from './features.js';
 import { routeLabel } from './route-meta.js';
@@ -177,7 +181,9 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
     };
   }, [load]);
   useEffect(() => {
-    const changed = () => {
+    const changed = (event: HashChangeEvent) => {
+      followMoved();
+      noteWayBack(new URL(event.oldURL).hash, window.location.hash);
       const next = parseHash(window.location.hash);
       const current = navigationState.current;
       const auth = /^(?:signin$|invite\?|reset\?)/.test(next.route);
@@ -402,13 +408,18 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       label={routeLabel(scope, page)}
       pending={pending}
       navigation={navigation(scope, { session, view })}
-      logout={() => void perform(logout)}
+      sidebar={sidebarOf(scope, page, { session, view })}
+      // Signing out asks about unsaved edits first, as leaving the page does.
+      logout={() => askToLeave(() => void perform(logout))}
       exitView={() => navigate(platformHash())}
-      viewAs={(roleId) => {
-        clearNavigationState();
-        saveRole(dspId, roleId);
-        void perform(reopen);
-      }}
+      // The page drawn anew for the role asks about unsaved edits first, as leaving it does.
+      viewAs={(roleId) =>
+        askToLeave(() => {
+          clearNavigationState();
+          saveRole(dspId, roleId);
+          void perform(reopen);
+        })
+      }
     >
       <FeedbackMessages />
       {!online && (
@@ -448,6 +459,8 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
   );
 }
 installFeatures(features);
+// A page with unsaved edits asks before the address moves on, before any page follows it.
+window.addEventListener('hashchange', askHolds);
 const root = createRoot(document.getElementById('root')!);
 // Which address this is decides what every link means here, so it is read first.
 function start() {
@@ -458,6 +471,8 @@ function start() {
   void initialSession.catch(() => undefined);
   loadSite().then(
     () => {
+      // A link to where a page once was opens it where it is now.
+      followMoved();
       root.render(
         <FeedbackProvider>
           <PageBoundary>

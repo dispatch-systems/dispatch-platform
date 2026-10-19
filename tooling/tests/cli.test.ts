@@ -95,9 +95,9 @@ test('list and explain read what the build lists', () => {
 
   assert.deepEqual(
     frontendSlots(
-      "export const feature: FrontendFeature = {\n  name: 'x',\n  routes: [\n    { id: 'x' },\n  ],\n  // A note.\n  platformSlots: () => import('./p.js'),\n  get settingsTabs() {\n    return [];\n  },\n};\n",
+      "export const feature: FrontendFeature = {\n  name: 'x',\n  routes: [\n    { id: 'x' },\n  ],\n  // A note.\n  platformSlots: () => import('./p.js'),\n  get settingsSections() {\n    return [];\n  },\n};\n",
     ),
-    ['routes', 'platformSlots', 'settingsTabs'],
+    ['routes', 'platformSlots', 'settingsSections'],
   );
   assert.equal(
     table([

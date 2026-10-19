@@ -6,6 +6,7 @@ import {
 import {
   lazy,
   Suspense,
+  use,
   useEffect,
   useLayoutEffect,
   useState,
@@ -24,7 +25,8 @@ import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { collectionData } from '../../../core/shell/frontend/runtime/data-policy.js';
 import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { ErrorBox, Header, Loading, Tabs } from '../../../core/shell/frontend/ui/index.js';
-import { HostedTab, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
+import { HostedTab, OpenPage, usePageTabs } from '../../../core/shell/frontend/runtime/PageTabs.js';
+import { settingsPage } from '../../../core/shell/frontend/runtime/slots.js';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { prefetchRouteData } from '../../../core/shell/frontend/runtime/route-prefetch.js';
@@ -34,6 +36,7 @@ import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import {
   dspHash,
   navigate,
+  pageHash,
   settingsHash,
 } from '../../../core/shell/frontend/runtime/navigation.js';
 import { SourceSyncStatus, type SyncSource } from './SourceSyncStatus.js';
@@ -101,7 +104,7 @@ export function PaycomPage({ view }: { view: DspView }) {
   );
   const [pending, startTransition] = useTransition();
   const { date, today, selectDate } = usePaycomDate(view.dsp.id, view.dsp.timezone);
-  const preferences = usePaycomSettings();
+  const settings = usePaycomSettings();
   useCollectionUpdates();
   const shownTabs = tabs.filter(([, , feature]) => hasFeature(view, feature));
   const ownTab = shownTabs.some(([id]) => id === selectedTab)
@@ -164,6 +167,16 @@ export function PaycomPage({ view }: { view: DspView }) {
     : '';
   const canConnect = can(view, 'connections.manage');
   const connections = settingsHash(view.dsp.id, 'connections');
+  // Its own page of Settings, for those who manage it.
+  const ownSettings = can(view, 'timecard.manage')
+    ? settingsHash(view.dsp.id, 'timecard', view)
+    : undefined;
+  const warmSettings = () => {
+    void loadSettings().catch(() => undefined);
+    const host = settingsPage();
+    if (host) prefetchRouteData(host, view);
+  };
+  const page = use(OpenPage);
   const sync = useAction(
     async () => {
       try {
@@ -219,17 +232,11 @@ export function PaycomPage({ view }: { view: DspView }) {
           </>
         )}
         {daily && syncButton()}
-        {can(view, 'timecard.manage') && (
+        {ownSettings && (
           <button
-            onPointerEnter={() => {
-              void loadSettings().catch(() => undefined);
-              prefetchRouteData('paycom-settings', view);
-            }}
-            onFocus={() => {
-              void loadSettings().catch(() => undefined);
-              prefetchRouteData('paycom-settings', view);
-            }}
-            onClick={() => navigate(dspHash(view.dsp.id, 'paycom-settings'))}
+            onPointerEnter={warmSettings}
+            onFocus={warmSettings}
+            onClick={() => navigate(ownSettings)}
           >
             {daily && <Settings size={16} />}
             Settings
@@ -279,8 +286,8 @@ export function PaycomPage({ view }: { view: DspView }) {
                       }
                     : undefined
                 }
-                driverMatch={settingsHash(view.dsp.id, 'driver-match', view)}
-                preferences={preferences.data?.values ?? paycomDefaults}
+                driverMatch={page && pageHash(page, 'driver-match')}
+                settings={settings.data ?? paycomDefaults}
               />
             </CommittedTab>
           ) : canConnect &&
@@ -326,7 +333,7 @@ export function PaycomPage({ view }: { view: DspView }) {
                     onDateChange={selectDate}
                     refreshKey={refreshKey}
                     timezone={view.dsp.timezone}
-                    preferences={preferences.data?.values ?? paycomDefaults}
+                    settings={settings.data ?? paycomDefaults}
                   />
                 )}
               </div>

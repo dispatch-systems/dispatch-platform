@@ -3,7 +3,6 @@ import { Blocks, Hash } from 'lucide-react';
 import { can } from '../../../core/shell/frontend/runtime/permissions.js';
 import {
   connectionIntegrations,
-  settingsPage,
   type FrontendFeature,
 } from '../../../core/shell/frontend/runtime/slots.js';
 import {
@@ -16,22 +15,16 @@ import {
 } from '../integrations/import_files/frontend/integration.js';
 import { CHANNELS, INTEGRATIONS } from './sections.js';
 
-// Slack's frontend manifest, loaded up front: it stays small and loads its cards and its page
-// lazily. Its error codes are worded in its API client, which loads with them: only they and New
-// make the calls that raise them.
-
-declare module '../../../core/shell/frontend/runtime/slots.js' {
-  interface DspPages {
-    slack: true;
-  }
-}
+// Slack's frontend manifest, loaded up front: it stays small and loads its cards and its section
+// of Settings lazily. Its error codes are worded in its API client, which loads with them: only
+// they and New make the calls that raise them.
 
 const loadCards = () => import('./settings.js');
 const SlackCards = lazy(() => loadCards().then((module) => ({ default: module.SlackCards })));
 const NewSlack = lazy(() => loadCards().then((module) => ({ default: module.NewSlack })));
 const SlackLogo = lazy(() => loadCards().then((module) => ({ default: module.SlackLogo })));
 const loadPage = () => import('./page.js');
-const WorkspacePage = lazy(() => loadPage().then((module) => ({ default: module.WorkspacePage })));
+const Workspaces = lazy(() => loadPage().then((module) => ({ default: module.Workspaces })));
 const ChannelsSection = lazy(() =>
   loadPage().then((module) => ({ default: module.ChannelsSection })),
 );
@@ -41,24 +34,19 @@ const IntegrationsSection = lazy(() =>
 
 export const feature: FrontendFeature = {
   name: 'slack',
-  // A workspace's settings, a page of their own reached from its card, for those who manage
-  // Slack. Settings stays lit in the sidebar while it's open, wherever Settings is.
-  routes: [
+  // The icon of its page of Settings, as it has no page in the sidebar.
+  icon: Hash,
+  // Its workspaces' settings, its custom section of its page of Settings, for those who manage
+  // Slack, reached from each workspace's card; its own page once was there.
+  settingsSections: [
     {
-      id: 'slack',
-      scope: 'dsp',
-      label: 'Slack',
-      get parent() {
-        return settingsPage();
-      },
-      nav: false,
-      remembered: false,
-      feature: 'slack',
-      permission: ({ view }) => can(view, 'slack.manage'),
-      preload: loadPage,
-      render: ({ session, view }) => createElement(WorkspacePage, { session, view }),
+      id: 'slack.workspaces',
+      load: loadPage,
+      render: ({ session, view }) => view && createElement(Workspaces, { session, view }),
+      prefetch: () => ['/api/dsp/slack/account'],
     },
   ],
+  movedToSettings: { slack: 'slack' },
   // Its workspaces are among the DSP's own accounts, each on a card of its own; New adds one.
   // Those who manage Slack see them too, for their settings.
   connectionPieces: [

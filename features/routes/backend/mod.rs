@@ -10,6 +10,7 @@ pub(crate) mod maintenance;
 pub(crate) mod people;
 mod publishing;
 mod rows;
+pub(crate) mod settings;
 mod storage;
 
 use publishing::*;
@@ -19,8 +20,8 @@ use storage::*;
 
 use crate::api::types::{
     RouteAddress, RouteBreak, RouteDayView, RouteDays, RouteItinerary, RouteItineraryDetail,
-    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteRetention, RouteStop,
-    RouteTask, RouteUnknownStop,
+    RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteStop, RouteTask,
+    RouteUnknownStop,
 };
 use chrono::{Duration, NaiveDate};
 use dispatch_core::{
@@ -388,12 +389,16 @@ pub fn day_allowed(mode: Mode, day: &str, today: NaiveDate) -> Result<()> {
 
 /// Today, where the DSP is.
 pub(super) fn routes_today(store: &Store, id: &str) -> Result<NaiveDate> {
+    routes_day(store, id, dispatch_core::db::now())
+}
+/// The day it is where the DSP is at `at`, in milliseconds since the epoch.
+fn routes_day(store: &Store, id: &str, at: i64) -> Result<NaiveDate> {
     let tz: chrono_tz::Tz = store
         .find_dsp(id)?
         .timezone
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))?;
-    Ok(dispatch_core::foundation::clock::today(tz))
+    Ok(dispatch_core::foundation::clock::day(tz, at))
 }
 /// The request for one day: the DSP's station and names, which the driver resolves
 /// to a service area and provider on Cortex.
@@ -428,14 +433,16 @@ pub(crate) fn routes_request(store: &Store, id: &str, day: &str, mode: Mode) -> 
 }
 /// The first day the DSP's window keeps, or none when every day is kept.
 pub(super) fn retention_start(store: &Store, id: &str) -> Result<Option<NaiveDate>> {
-    let days = store
-        .routes_db(id)?
-        .one("SELECT days FROM route_retention WHERE id=1", [])?
-        .and_then(|row| row["days"].as_i64());
-    Ok(match days {
-        Some(days) => Some(routes_today(store, id)? - Duration::days(days)),
-        None => None,
-    })
+    let retention: settings::Retention =
+        dispatch_core::settings::read(store, id, &settings::RETENTION)?;
+    (retention.days)
+        .map(|days| first_kept(store, id, days, dispatch_core::db::now()))
+        .transpose()
+}
+/// The first day a window of `days` keeps at `at`, in milliseconds since the epoch: that many
+/// days back from the day it is then where the DSP is, as expiry counts it as it runs.
+pub(super) fn first_kept(store: &Store, id: &str, days: i64, at: i64) -> Result<NaiveDate> {
+    Ok(routes_day(store, id, at)? - Duration::days(days))
 }
 /// Reuse the chosen publication during a scheduler batch. Every step checks its
 /// activity and job again, because another transition can run between deletions.

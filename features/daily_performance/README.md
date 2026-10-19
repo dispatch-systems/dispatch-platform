@@ -7,13 +7,22 @@ reads exactly one date from 22 datasets with at most six concurrent requests.
 The feature owns `daily_performance/daily_performance.sqlite`, publication history, indexed
 rows and source coverage. Its switch, permissions (`view`, `collect`, `manage`), schedules
 and jobs are independent of `weekly_scorecard`. Existing weekly grants do not grant daily
-access. There is no dedicated frontend page.
+access. There is no page of its own: Settings draws its section.
 
 Management routes use `/api/dsp/daily-performance`: the base lists collected days;
-`/collect` accepts a date or an inclusive from/to backfill of up to 31 days; `/jobs`,
-`/schedules` and `/policy` manage this collection alone. The policy defaults to rechecking
-the previous seven dates after 20 hours, with configurable 1–30 lookback days and 1–168
-refresh hours. Wall-clock times and cadence stay in the normal collection schedules.
+`/collect` accepts a date or an inclusive from/to backfill of up to 31 days; `/jobs` and
+`/schedules` manage this collection alone.
+
+Its Settings page (`?tab=daily-performance`) holds one section, `daily_performance.collection`
+"Collection", behind `daily_performance.manage` (`backend/settings.rs`): `lookback_days`
+(1–30, default 7) and `refresh_hours` (1–168, default 20), the dates a scheduled run rechecks
+and how long one collected stays fresh, then its schedules, kept by core's schedule routes at
+`/schedules`. Wall-clock times and cadence stay in those schedules. Scheduled runs read the
+values with `settings::read`; core keeps them in the DSP's settings and records each change as
+`settings.changed`. A policy kept before in its database's `settings` (`collection_policy`)
+moves in once as the server starts (`upgrade_storage`, through `settings::carry_over`), unless
+the section was saved already; the old value stays, read only by that move.
+`daily_performance.policy_updated`, from before, still reads in the log.
 
 Each capture is validated against its requested date and discovered company/station.
 Publication is atomic and idempotent per job; recollection replaces the active publication

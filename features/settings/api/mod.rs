@@ -1,2 +1,2 @@
-//! Settings' API: the DSP's own profile.
+//! Settings' API: the route onboarding saves the DSP's profile through.
 pub(crate) mod routes;

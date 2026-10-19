@@ -10,6 +10,8 @@ import { NavigationStateContext } from '../../core/shell/frontend/runtime/browse
 import { prefetchRouteData } from '../../core/shell/frontend/runtime/route-prefetch.js';
 import {
   landingPage,
+  loadSidebar,
+  sidebarOwner,
   type Access,
   type DspRouteId,
   type PageContext,
@@ -33,6 +35,9 @@ function placed(routes: readonly Route[]) {
   return listed;
 }
 const allowed = (route: Route, access: Access) => !route.permission || route.permission(access);
+/** Whether the DSP open has the page's feature, as far as its view says yet. */
+const available = (route: Route, access: Access) =>
+  route.scope !== 'dsp' || !route.feature || !access.view || hasFeature(access.view, route.feature);
 
 export const findRoute = (scope: Route['scope'], page: string) =>
   table.find((route) => route.scope === scope && route.id === page);
@@ -41,7 +46,10 @@ export function canNavigateImmediately(scope: Route['scope'], page: string, acce
   const route = findRoute(scope, page);
   return Boolean(route?.scope === 'dsp' && access.view && route.ready?.(access.view));
 }
-/** Code and authorized primary data start together, before the destination mounts. */
+/**
+ * Code and authorized primary data start together, before the destination mounts, and the code
+ * of the sidebar it draws, so that is in as it opens.
+ */
 export function prepareRoute(
   scope: Route['scope'],
   page: string,
@@ -51,7 +59,17 @@ export function prepareRoute(
   const route = findRoute(scope, page);
   if (!route || (access && !allowed(route, access))) return Promise.resolve();
   if (access) prefetchRouteData(page, access.view, access.session, immediate);
+  const sidebar = sidebarOwner(scope, page)?.sidebar;
+  if (sidebar) void loadSidebar(sidebar).catch(() => undefined);
   return route.preload(access);
+}
+/**
+ * The sidebar drawn in place of the app's while `page` is open: its own, or that of the page it
+ * is under, while the person may open that page.
+ */
+export function sidebarOf(scope: Route['scope'], page: string, access: Access) {
+  const owner = sidebarOwner(scope, page);
+  return owner && allowed(owner, access) && available(owner, access) ? owner.sidebar : undefined;
 }
 export const navigation = (scope: Route['scope'], access: Access) =>
   table

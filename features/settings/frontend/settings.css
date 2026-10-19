@@ -1,0 +1,474 @@
+/* A DSP's Settings: each declared section a card, a row for each of its fields. */
+.settings-section {
+  max-width: 900px;
+  padding: 22px 25px 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.settings-section > h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.15px;
+}
+.settings-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 24px;
+  min-height: 64px;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.settings-fields > * + *,
+.settings-section > .settings-schedules {
+  border-top: 1px solid var(--border);
+}
+.settings-field.settings-wide {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+/* Each field's own control, not those of an editor drawn in a field, as a schedule's. */
+.settings-field > select,
+.settings-number-choice > select {
+  min-width: 180px;
+  max-width: 100%;
+}
+.settings-field > input:where(:not([type='checkbox']):not([type='radio']):not([type='time'])) {
+  width: 260px;
+  max-width: 100%;
+}
+.settings-field > input[type='time'] {
+  width: 140px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-field > input[readonly] {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.settings-field input[aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+.settings-code {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-toggle {
+  cursor: pointer;
+}
+.settings-toggle input[role='switch'] {
+  appearance: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  background: var(--muted);
+  cursor: pointer;
+  transition: background-color var(--motion-duration);
+}
+.settings-toggle input[role='switch']::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: var(--foreground);
+  transition: left var(--motion-duration);
+}
+.settings-toggle input[role='switch']:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.settings-toggle input[role='switch']:checked::before {
+  left: 16px;
+  background: var(--primary-foreground);
+}
+
+.settings-segments {
+  display: inline-grid;
+  grid-auto-columns: minmax(96px, auto);
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--background);
+}
+.settings-segments label {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-segments label:has(:checked) {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--primary) 22%, var(--background));
+}
+.settings-segments label:has(:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.settings-segments input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 2px 20px;
+}
+.settings-checks label,
+.settings-order label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  font-weight: 400;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.settings-order {
+  display: grid;
+  gap: 4px;
+  max-width: 420px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-order li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.settings-order li label {
+  flex: 1;
+}
+.settings-order li:has(:checked) {
+  background: var(--background);
+}
+.settings-order .icon-button {
+  width: 30px;
+  min-height: 30px;
+  padding: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.settings-number-choice {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.settings-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-number > input {
+  width: 110px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-number > span {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.settings-schedules > h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.settings-section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.settings-section-actions .error {
+  flex: 1;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .settings-section {
+    padding-inline: 18px;
+  }
+  .settings-field:not(.settings-toggle) {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+  .settings-number-choice {
+    justify-content: flex-start;
+  }
+}
+
+/* A page's sections, under its name: the name's own margin above the first, and 24px between
+   each and the next. A section keeps no space above it of its own; a margin one keeps all the
+   same merges into these rather than adding to them. */
+.settings-page > * + * {
+  margin-top: 24px;
+}
+
+/* A section a search result opened, pointed out for a few seconds, then let go of slowly. */
+[data-settings-section] {
+  scroll-margin-top: 24px;
+  transition:
+    border-color 0.8s,
+    box-shadow 0.8s,
+    outline-color 0.8s;
+}
+[data-settings-section][data-found] {
+  transition-duration: 0.2s;
+}
+.settings-section[data-found] {
+  border-color: var(--ring);
+  box-shadow:
+    0 0 0 1px var(--ring),
+    0 0 0 5px color-mix(in srgb, var(--ring) 18%, transparent);
+}
+/* One its owner draws has no card of its own: the ring goes round what it draws. */
+div[data-settings-section] {
+  border-radius: 12px;
+  outline: 2px solid transparent;
+  outline-offset: 4px;
+}
+div[data-settings-section][data-found] {
+  outline-color: var(--ring);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-settings-section] {
+    transition: none;
+  }
+}
+
+/* Settings' sidebar, in place of the app's: the way back, the search, and the pages. */
+.settings-sidebar {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.settings-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 18px 16px;
+}
+.settings-sidebar-head .icon-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+  transition: background-color var(--motion-duration);
+}
+.settings-sidebar-head .icon-button:hover {
+  background: var(--accent);
+}
+.settings-sidebar-head svg {
+  width: 18px;
+  height: 18px;
+}
+.settings-sidebar-head h2 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+.settings-find {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  margin: 0 12px 14px;
+  padding: 0 5px 0 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--muted-foreground);
+  transition:
+    border-color var(--motion-duration),
+    box-shadow var(--motion-duration);
+}
+.settings-find:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent);
+}
+.settings-find > svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.settings-find input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+}
+/* The field's ring shows where the keys go. */
+.settings-find input:focus-visible {
+  outline: none;
+}
+.settings-find-clear {
+  flex-shrink: 0;
+  width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.settings-find-clear:hover {
+  color: var(--foreground);
+}
+.settings-find-clear:focus-visible {
+  outline-offset: 0;
+}
+.settings-find-clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-nav {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 12px 12px;
+  overflow-y: auto;
+}
+.settings-nav-group + .settings-nav-group {
+  margin-top: 22px;
+}
+.settings-nav-group h3 {
+  padding: 0 12px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 450;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration),
+    color var(--motion-duration);
+}
+.settings-nav-item + .settings-nav-item {
+  margin-top: 2px;
+}
+.settings-nav-item:hover {
+  background: var(--accent);
+}
+.settings-nav-item:focus-visible {
+  outline-offset: -2px;
+}
+.settings-nav-item svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+  stroke-width: 1.75;
+}
+.settings-nav-item:is([aria-current='page'], [data-current]) {
+  background: var(--selection);
+  color: var(--primary);
+  font-weight: 550;
+}
+.settings-nav-item:is([aria-current='page'], [data-current]) svg {
+  color: var(--primary);
+}
+
+.settings-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.settings-result {
+  align-items: flex-start;
+}
+.settings-result > svg {
+  margin-top: 2px;
+}
+.settings-result-name {
+  display: block;
+}
+/* What matched, in two lines at most. */
+.settings-result small {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.settings-result mark {
+  background: transparent;
+  color: var(--foreground);
+  font-weight: 650;
+}
+.settings-result[data-current] mark {
+  color: var(--primary);
+}
+.settings-result[data-current] small {
+  color: color-mix(in srgb, var(--primary) 70%, var(--muted-foreground));
+}
+/* The one Enter opens, while the search field has the keys. */
+.settings-find:focus-within + .settings-nav .settings-result[aria-selected='true'] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 70%, transparent);
+}
+.settings-find:focus-within
+  + .settings-nav
+  .settings-result[aria-selected='true']:not([data-current]) {
+  background: var(--accent);
+}

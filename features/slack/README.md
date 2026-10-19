@@ -25,12 +25,16 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   own, under its name: whether it works, its name in Slack, who connected it and when, and what
   can be done to it. The install link has one while it works, and an install Slack just sent
   the browser back from has one while it finishes. A DSP with none has no Slack card at all.
-- **Settings:** each workspace's Settings opens its settings, a page of their own (`slack`,
-  with the workspace and the section open in its address, outside the sidebar, Settings lit
-  while it's open): the workspace at the top, and its sections down the side, one shown at a
-  time. They're Slack's own, Channels and Integrations, and those other features add for each
-  workspace through the `connectionSections` slot under the connection `slack`, each drawn for
-  the workspace's ID. A section that names an `integration` is listed under Integrations, and
+- **Settings:** each workspace's Settings opens its settings on Slack's own page of Settings
+  (`?tab=slack`), its one section there, `slack.workspaces`, behind `slack.manage`, which its
+  own component draws (declared in `backend/settings.rs`, drawn by `frontend/workspace/`): the
+  DSP's workspaces chosen from one at a time when there are several, the one open at the top,
+  and its sections down the side, one shown at a time; with none, a link to Connections. The
+  address names the workspace and the section open (`&workspace=<team>&section=<id>`), beside
+  Settings' own page, and old links to its page of its own (`#dsp/<id>/slack?workspace=…`)
+  land there, keeping both. Its sections are Slack's own, Channels and Integrations, and those
+  other features add for each workspace through the `connectionSections` slot under the
+  connection `slack`, each drawn for the workspace's ID. A section that names an `integration` is listed under Integrations, and
   only while that's on in the workspace. A feature switched off for the DSP takes its sections
   with it.
 - **Integrations:** what other features do through Slack, each declared once in its own feature:
@@ -294,7 +298,7 @@ The platform's Slack app, one for each environment: **Dispatch Dev** for Dev and
 is distributed to any workspace from Slack's Manage Distribution, without a listing in Slack's
 Marketplace.
 
-The server reads its settings, a group it needs whole: `DISPATCH_DEV_SLACK_CLIENT_ID`,
+The server reads its environment variables, declared in its `env`, a group it needs whole: `DISPATCH_DEV_SLACK_CLIENT_ID`,
 `…_SLACK_CLIENT_SECRET` and `…_SLACK_SIGNING_SECRET` on Dev and its previews, or
 `DISPATCH_PRODUCTION_…` on Production. Without them, Slack in New says it's unavailable; with
 only some, the server refuses to start.
@@ -307,7 +311,7 @@ so a change to what it asks for or hears of shows in review, as a change to make
 1. At [api.slack.com/apps](https://api.slack.com/apps), Create New App, From a manifest, in the
    platform's own workspace; or, for an app made already, App Manifest in its settings.
 2. Under Basic Information, copy its Client ID, Client Secret and Signing Secret into the
-   server's settings above, and restart it.
+   server's environment variables above, and restart it.
 3. Under Event Subscriptions, have Slack check the Request URL again, now that the server
    answers it.
 4. Under Manage Distribution, Activate Public Distribution, so any workspace can install it.

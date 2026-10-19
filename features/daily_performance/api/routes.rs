@@ -1,5 +1,6 @@
-//! Independent daily collection, jobs, schedules and freshness policy.
-use crate::{DailyPerformancePolicy, DailyPerformanceStore};
+//! Independent daily collection, jobs and schedules. Its freshness policy is a section of
+//! Settings.
+use crate::DailyPerformanceStore;
 use dispatch_core::{
     Result,
     collection::api::routes::{
@@ -29,8 +30,6 @@ pub fn routes() -> Vec<Route> {
             COLLECT,
             &[JOB_KIND],
         ),
-        read("/api/dsp/daily-performance/policy", MANAGE, policy),
-        write("/api/dsp/daily-performance/policy", MANAGE, update_policy),
     ];
     routes.extend(schedule_routes(
         "/api/dsp/daily-performance/schedules",
@@ -68,19 +67,4 @@ fn collect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         from,
     )?;
     Ok(Reply::status(jobs, 202))
-}
-fn policy(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    Reply::of(&db.daily_performance_policy(c.dsp_id())?)
-}
-fn update_policy(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    let policy: DailyPerformancePolicy = serde_json::from_value(input.body.clone())
-        .map_err(|_| dispatch_core::Error::new("invalid_input", 400))?;
-    db.set_daily_performance_policy(c.dsp_id(), &policy)?;
-    db.audit(
-        Some(c.actor()),
-        Some(c.dsp_id()),
-        "daily_performance.policy_updated",
-        "",
-    )?;
-    Reply::of(&policy)
 }

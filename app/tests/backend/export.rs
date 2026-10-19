@@ -534,7 +534,8 @@ fn feature_map(root: &Path) -> String {
                     "about": exposed.about,
                 }))
                 .collect::<Vec<_>>(),
-            "settings": feature.settings,
+            "env": feature.env,
+            "settings": feature.settings.iter().map(|section| section.id).collect::<Vec<_>>(),
         });
         let dir = format!("features/{}", feature.name);
         let entry = json!({

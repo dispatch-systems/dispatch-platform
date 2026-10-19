@@ -32,12 +32,6 @@ const {{pascal}}Tab = lazy(() => loadTab().then((module) => ({ default: module.{
 const loadCard = () => import('./connection/{{pascal}}Card.js');
 const {{pascal}}Card = lazy(() => loadCard().then((module) => ({ default: module.{{pascal}}Card })));
 {{/connection}}
-{{#settings}}
-const loadSettings = () => import('./settings/{{pascal}}Settings.js');
-const {{pascal}}Settings = lazy(() =>
-  loadSettings().then((module) => ({ default: module.{{pascal}}Settings })),
-);
-{{/settings}}
 
 export const feature: FrontendFeature = {
   name: '{{name}}',
@@ -80,18 +74,6 @@ export const feature: FrontendFeature = {
     },
   ],
 {{/tab}}
-{{#settings}}
-  settingsTabs: [
-    {
-      id: '{{slug}}',
-      label: '{{label}}',
-      order: 100,
-      visible: (view) => can(view, '{{name}}.manage'),
-      load: loadSettings,
-      render: ({ view }) => view && createElement({{pascal}}Settings, { view }),
-    },
-  ],
-{{/settings}}
 {{#connection}}
   // The DSP's account it connects, on Settings' Connections tab.
   connectionPieces: [

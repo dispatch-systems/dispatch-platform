@@ -1,7 +1,6 @@
-/* Settings → Driver Match: who to check, then everyone by face. */
+/* Driver Match's page: who to check, then everyone by face. */
 .driver-match {
   max-width: 1080px;
-  padding-top: 24px;
 }
 .driver-match-copy {
   margin: 4px 0 0;

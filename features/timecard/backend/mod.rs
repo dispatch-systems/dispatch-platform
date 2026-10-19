@@ -3,6 +3,7 @@
 pub(crate) mod exposed;
 pub(crate) mod meals;
 pub(crate) mod punches;
+pub(crate) mod settings;
 mod storage;
 
 pub use storage::TimecardStore;

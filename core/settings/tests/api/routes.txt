@@ -1,0 +1,5 @@
+# Every route settings registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/settings Dsp("access") Read
+POST /api/dsp/settings/{section} Dsp("access") Write

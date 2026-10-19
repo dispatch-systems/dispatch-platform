@@ -120,6 +120,34 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
     (await member.post('/api/dsp/weekly-scorecard/collect', { requestId: 'member' })).status,
     403,
   );
+  // Its policy is its Settings section: each value within its range, each DSP's own, and a
+  // manager's to change.
+  const policy = '/api/dsp/settings/weekly_scorecard.collection';
+  const section = async (client: typeof owner) =>
+    (await client.read('/api/dsp/settings')).sections.find(
+      (each: { id: string }) => each.id === 'weekly_scorecard.collection',
+    );
+  const defaults = { lookback_weeks: 1, refresh_hours: 20 };
+  assert.deepEqual((await section(owner)).values, defaults);
+  for (const values of [{ lookback_weeks: 0 }, { lookback_weeks: 9 }, { refresh_hours: 169 }]) {
+    const refused = await owner.post(policy, { values, revision: 0 });
+    assert.equal(refused.value.error, 'invalid_input', JSON.stringify(values));
+  }
+  const saved = await owner.post(policy, {
+    values: { lookback_weeks: 4, refresh_hours: 12 },
+    revision: 0,
+  });
+  assert.equal(saved.status, 200, saved.body);
+  assert.deepEqual((await section(owner)).values, { lookback_weeks: 4, refresh_hours: 12 });
+  assert.equal(await section(member), undefined);
+  assert.equal(
+    (await member.post(policy, { values: { lookback_weeks: 2 }, revision: 1 })).status,
+    403,
+  );
+  const summit = owner.session.dsps.find((d: any) => d.name === 'Summit Delivery');
+  await owner.select(summit.id);
+  assert.deepEqual((await section(owner)).values, defaults);
+  await owner.select(dsp.id);
 
   // A scorecard schedule is its own collection, behind its own routes.
   const body = {

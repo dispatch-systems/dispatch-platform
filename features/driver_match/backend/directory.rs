@@ -1,6 +1,6 @@
 //! Everyone, told apart, for the features that show people or use what is known of them:
 //! core's directory, answered from the codes Driver Match keeps and what the DSP's features
-//! say of each ID, as the tab lists them.
+//! say of each ID, as the page lists them.
 use super::contacts::Contact;
 use super::gather::{Gathered, gather};
 use super::{IdRow, photos};
@@ -38,7 +38,7 @@ impl people::Directory for Directory {
     }
 }
 
-/// A person as the tab lists them, with every name and contact their IDs' sources have, from
+/// A person as the page lists them, with every name and contact their IDs' sources have, from
 /// their IDs in the sources' order.
 fn person(gathered: &Gathered, code: &str, ids: &[(&IdRow, Source)]) -> Person {
     let listed = gathered.person(code, ids);

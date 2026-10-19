@@ -1,6 +1,8 @@
 //! Weekly Scorecard storage: publication, supersession, weeks not posted, where the next
 //! job reads and what a schedule queues.
 use dispatch_core::db::{Store, s};
+use dispatch_core::manifest::Section;
+use dispatch_core::settings;
 use dispatch_core::testing as common;
 use dispatch_cortex::{
     self as cortex,
@@ -8,7 +10,7 @@ use dispatch_cortex::{
     weekly_scorecard::{self, Capture, Request},
 };
 use dispatch_weekly_scorecard::WeeklyScorecardStore;
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// Weekly Scorecard, and the Cortex collector whose scorecard it keeps.
 fn install() {
@@ -46,6 +48,13 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     .unwrap();
     common::ready_connection(&db, &id, cortex::PROVIDER).unwrap();
     (root, db, id)
+}
+/// Which weeks its schedules recheck, as Weekly Scorecard declares it.
+fn collection() -> &'static Section {
+    let mut sections = dispatch_weekly_scorecard::FEATURE.settings.iter();
+    sections
+        .find(|s| s.id == "weekly_scorecard.collection")
+        .unwrap()
 }
 /// Queues `week` and publishes `capture` as that job's outcome.
 fn publish(db: &Store, id: &str, key: &str, week: &str, capture: &Capture) -> String {
@@ -467,14 +476,9 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
             .unwrap(),
         vec![json!({"week":latest})]
     );
-    db.set_weekly_scorecard_policy(
-        &id,
-        &dispatch_weekly_scorecard::WeeklyScorecardPolicy {
-            lookback_weeks: 2,
-            refresh_hours: 12,
-        },
-    )
-    .unwrap();
+    let actor = common::a_user(&db);
+    let policy = json!({"lookback_weeks": 2, "refresh_hours": 12});
+    settings::save(&db, &id, &actor, collection(), &policy, 0, false).unwrap();
     let jobs = db.weekly_scorecard_jobs(&id).unwrap();
     assert_eq!(jobs.len(), 1);
     assert_ne!(jobs[0].1["week"], latest);
@@ -485,16 +489,6 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
         )
         .unwrap();
     assert_eq!(db.weekly_scorecard_jobs(&id).unwrap().len(), 2);
-    assert!(
-        db.set_weekly_scorecard_policy(
-            &id,
-            &dispatch_weekly_scorecard::WeeklyScorecardPolicy {
-                lookback_weeks: 0,
-                refresh_hours: 12,
-            }
-        )
-        .is_err()
-    );
     // Without a station there is nothing to ask for.
     db.set_profile(&id, json!({"stationCode":""})).unwrap();
     assert_eq!(
@@ -507,4 +501,50 @@ fn a_schedule_queues_the_latest_week_until_it_is_published() {
             .code,
         "weekly_scorecard_station_required"
     );
+}
+
+#[test]
+fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
+    install();
+    let (_root, db, id) = ready();
+    let actor = common::a_user(&db);
+    let other = db.new_dsp("Other DSP", "UTC", &actor, false).unwrap().id;
+    // Each DSP's policy as the release before kept it, in its own database, and its settings
+    // as they were then.
+    for (dsp, lookback) in [(&id, 2), (&other, 6)] {
+        db.weekly_scorecard_db(dsp)
+            .unwrap()
+            .set(
+                "collection_policy",
+                &json!({"lookbackWeeks": lookback, "refreshHours": 12}),
+            )
+            .unwrap();
+        common::before_settings(&db, dsp).unwrap();
+    }
+    let upgrade = dispatch_weekly_scorecard::FEATURE.upgrade_storage.unwrap();
+    let policy = |dsp: &str| settings::read::<Value>(&db, dsp, collection()).unwrap();
+    upgrade(&db, &id).unwrap();
+    assert_eq!(
+        policy(&id),
+        json!({"lookback_weeks": 2, "refresh_hours": 12})
+    );
+    assert_eq!(
+        policy(&other),
+        json!({"lookback_weeks": 1, "refresh_hours": 20})
+    );
+    upgrade(&db, &other).unwrap();
+    assert_eq!(
+        policy(&other),
+        json!({"lookback_weeks": 6, "refresh_hours": 12})
+    );
+    assert_eq!(db.weekly_scorecard_jobs(&id).unwrap().len(), 2);
+    // Changed in Settings since, it isn't moved again; and the move itself recorded nothing.
+    let changed = json!({"lookback_weeks": 4});
+    settings::save(&db, &id, &actor, collection(), &changed, 1, false).unwrap();
+    upgrade(&db, &id).unwrap();
+    assert_eq!(
+        policy(&id),
+        json!({"lookback_weeks": 4, "refresh_hours": 12})
+    );
+    assert!(common::audit_actions(&db, &other, "settings.").is_empty());
 }

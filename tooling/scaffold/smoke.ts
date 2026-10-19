@@ -81,12 +81,13 @@ const ADDED: string[][] = [
   ['api', '--to', 'smoke_front'],
   ['api', '--to', 'smoke_bare'],
   ['contract', 'smoke_rows_counts', '--to', 'smoke_rows'],
-  // The product's own, each a case add once broke: Team has no team.view for its manage
-  // permission to imply; Timecard has a loadSettings of its own, keeps its people's table in
-  // Paycom's database and declares a module without pub(crate); Weekly Scorecard's retired
-  // list names its permissions; Documents imports through a nested use tree.
+  // The product's own: Team has no backend/ for its settings, nor a team.view for their manage
+  // permission to imply, which add once broke; Uniform Inventory's settings join the backend
+  // and tests it has. Each case after them is one add once broke: Timecard keeps its people's
+  // table in Paycom's database and declares a module without pub(crate); Weekly Scorecard's
+  // retired list names its permissions; Documents imports through a nested use tree.
   ['settings', '--to', 'team'],
-  ['settings', '--to', 'timecard'],
+  ['settings', '--to', 'uniforms'],
   ['people', 'paycom', '--to', 'timecard', '--table', 'employees'],
   ['page', '--to', 'weekly_scorecard'],
   ['people', 'amazon', '--to', 'documents', '--table', 'documents_files'],

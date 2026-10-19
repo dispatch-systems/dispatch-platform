@@ -7,6 +7,7 @@ const requested: AuditPhrases[string] = (e, { strong }) => [
 
 const phrases: AuditPhrases = {
   'weekly_scorecard.collection_requested': requested,
+  // Recorded before Settings kept the policy, which records its changes as `settings.changed`.
   'weekly_scorecard.policy_updated': () => ['updated the weekly scorecard collection policy'],
 };
 export const wording: AuditWording = { phrases, spoken: Object.keys(phrases) };

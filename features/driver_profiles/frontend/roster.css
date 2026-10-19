@@ -1,16 +1,15 @@
-/* Driver Match's tab: Amazon's roster, above the tab's own panel, and the controls that change
-   it. */
+/* Its Settings page: Amazon's roster as it stands, and Collect now. */
 .driver-roster {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
-  max-width: 1080px;
+  max-width: 900px;
   margin-top: 24px;
   padding: 12px 16px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: 10px;
+  background: var(--card);
 }
 .driver-roster-icon {
   display: inline-grid;

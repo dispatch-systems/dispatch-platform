@@ -6,6 +6,7 @@ import {
   mutationAffects,
   type CollectionChange,
 } from '../../../core/shell/frontend/runtime/data-policy.js';
+import { settingsRead } from '../../../core/shell/frontend/runtime/slots.js';
 
 test('a driver checkpoint touches its employee and days, not another driver, roster, or feature', () => {
   const changes: CollectionChange[] = [
@@ -39,7 +40,7 @@ test('a driver checkpoint touches its employee and days, not another driver, ros
 });
 
 test('writes invalidate their dependencies without flushing unrelated features', () => {
-  assert.equal(mutationAffects('/api/dsp/paycom/settings', '/api/dsp/employees/A'), true);
+  assert.equal(mutationAffects('/api/dsp/settings/timecard.roster', '/api/dsp/employees/A'), true);
   assert.equal(mutationAffects('/api/dsp/uniforms/stock/A', '/api/dsp/employees/A'), false);
   // A Driver Match decision moves drivers between meal-break rows, and nothing else.
   assert.equal(
@@ -70,9 +71,6 @@ test('roster changes refresh department options without treating each driver as 
     employeeCode: null,
     roster: true,
   };
-  assert.equal(collectionAffects('/api/dsp/paycom/settings', [change]), true);
-  assert.equal(
-    collectionAffects('/api/dsp/paycom/settings', [{ ...change, roster: false }]),
-    false,
-  );
+  assert.equal(collectionAffects(settingsRead, [change]), true);
+  assert.equal(collectionAffects(settingsRead, [{ ...change, roster: false }]), false);
 });

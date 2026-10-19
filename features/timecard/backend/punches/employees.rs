@@ -1,5 +1,7 @@
-use super::preferences::preferences;
-use crate::api::types::{Employee, EmployeesResponse};
+use crate::{
+    api::types::{Employee, EmployeesResponse},
+    backend::settings::{Listing, ROSTER},
+};
 use dispatch_core::{
     Result,
     db::{Store, boolean, s},
@@ -32,8 +34,7 @@ pub(crate) struct Roster {
 pub(crate) const CACHED: &str = "timecard.employees";
 pub(crate) fn roster(store: &Store, id: &str) -> Result<Roster> {
     let db = store.collector(id, paycom::PROVIDER)?;
-    let settings = preferences(&db)?;
-    let p = &settings["values"];
+    let shown: Listing = dispatch_core::settings::read(store, id, &ROSTER)?;
     let Some(publication) = db.one(
         "SELECT id,collected_at FROM publications WHERE active=1",
         [],
@@ -48,7 +49,11 @@ pub(crate) fn roster(store: &Store, id: &str) -> Result<Roster> {
     let mut rows = db.all(
         "SELECT code,name,department,position,station,active FROM employees WHERE \
          publication_id=?1 AND (?2='' OR department=?2) AND (?3='' OR station=?3)",
-        params![s(&publication, "id"), s(p, "department"), s(p, "station")],
+        params![
+            s(&publication, "id"),
+            shown.department.unwrap_or_default(),
+            shown.station.unwrap_or_default()
+        ],
     )?;
     for row in &mut rows {
         boolean(row, &["active"]);
