@@ -19,7 +19,9 @@ pub fn routes() -> Vec<Route> {
         coalesced_read("/api/dsp/dvic/summary", Dsp("dvic.view"), summary),
         coalesced_read("/api/dsp/dvic/day", Dsp("dvic.view"), day),
         coalesced_read("/api/dsp/dvic/inspection", Dsp("dvic.view"), detail),
-        write("/api/dsp/dvic/collect", Dsp("dvic.collect"), collect),
+        // Queuing a collection writes only its job and its log entry, which no cached read
+        // uses: the caches stay as they are.
+        write("/api/dsp/dvic/collect", Dsp("dvic.collect"), collect).bookkeeping(),
         job_cancel(
             "/api/dsp/dvic/jobs/{id}/cancel",
             Dsp("dvic.collect"),

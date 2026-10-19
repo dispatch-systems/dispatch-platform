@@ -58,11 +58,14 @@ pub fn routes() -> Vec<Route> {
         )
         .logged(),
         read("/api/dsp/employees/{code}", VIEW, employee).logged(),
+        // Queuing a collection writes only its job and its log entry, which no cached read
+        // uses: the caches stay as they are, as for each queuing below.
         write(
             "/api/dsp/employees/{code}/sync",
             Dsp("collections.run"),
             sync_employee,
-        ),
+        )
+        .bookkeeping(),
         read("/api/dsp/timecards", VIEW, timecards).logged(),
         coalesced_read_by("/api/dsp/timecards/page", VIEW, daily_key, timecard_page).logged(),
         coalesced_read_by(
@@ -93,17 +96,18 @@ pub fn routes() -> Vec<Route> {
         .logged(),
         read("/api/dsp/cortex/meal-breaks", VIEW, cortex_meal_breaks),
         job_list("/api/dsp/jobs", RUN, KINDS).logged(),
-        write("/api/dsp/jobs", RUN, collect),
+        write("/api/dsp/jobs", RUN, collect).bookkeeping(),
         job_cancel("/api/dsp/jobs/{id}/cancel", RUN, KINDS),
         read("/api/dsp/jobs/meal-breaks", VIEW, meal_sync_status),
-        write("/api/dsp/jobs/meal-breaks", RUN, sync_meal_breaks),
+        write("/api/dsp/jobs/meal-breaks", RUN, sync_meal_breaks).bookkeeping(),
         read("/api/dsp/jobs/employees", VIEW, employee_sync_status),
-        write("/api/dsp/jobs/employees", RUN, sync_employees),
+        write("/api/dsp/jobs/employees", RUN, sync_employees).bookkeeping(),
         write(
             "/api/dsp/cortex/meal-breaks/collect",
             RUN,
             collect_cortex_meal_breaks,
-        ),
+        )
+        .bookkeeping(),
     ];
     routes.extend(schedule_routes("/api/dsp/schedules", MANAGE, "timecard"));
     routes

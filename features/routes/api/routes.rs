@@ -31,7 +31,9 @@ pub fn routes() -> Vec<Route> {
             itinerary,
         ),
         read("/api/dsp/routes/packages/{tracking}", VIEW, package),
-        write("/api/dsp/routes/collect", COLLECT, collect),
+        // Queuing a collection writes only its job and its log entry, which no cached read
+        // uses: the caches stay as they are.
+        write("/api/dsp/routes/collect", COLLECT, collect).bookkeeping(),
         job_list("/api/dsp/routes/jobs", VIEW, &[JOB_KIND]),
         job_cancel("/api/dsp/routes/jobs/{id}/cancel", COLLECT, &[JOB_KIND]),
         read("/api/dsp/routes/retention", MANAGE, retention),

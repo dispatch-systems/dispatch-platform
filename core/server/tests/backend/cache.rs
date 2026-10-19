@@ -67,7 +67,7 @@ fn oversized_results_and_errors_are_not_cached() {
     let cache = ReadCache::default();
     cache
         .read(meals("a"), "large".into(), 1, || {
-            Ok("x".repeat(8 * 1024 * 1024))
+            Ok("x".repeat(super::LARGEST))
         })
         .unwrap();
     assert!(cache.entries.lock().unwrap().is_empty());

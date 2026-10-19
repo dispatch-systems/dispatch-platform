@@ -8,7 +8,7 @@ GET /api/dsp/routes/jobs Dsp("routes.view") Read
 GET /api/dsp/routes/packages/{tracking} Dsp("routes.view") Read
 GET /api/dsp/routes/retention Dsp("routes.manage") Read
 GET /api/dsp/routes/schedules Dsp("routes.manage") Read
-POST /api/dsp/routes/collect Dsp("routes.collect") Write
+POST /api/dsp/routes/collect Dsp("routes.collect") Bookkeeping
 POST /api/dsp/routes/jobs/{id}/cancel Dsp("routes.collect") Async
 POST /api/dsp/routes/retention Dsp("routes.manage") Write
 POST /api/dsp/routes/schedules Dsp("routes.manage") Write wakes-scheduler

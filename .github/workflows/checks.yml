@@ -318,6 +318,9 @@ jobs:
         with:
           profile: debug
           save: 'false'
+      # Each week's Rust cache starts empty until the caches workflow refills it, and the
+      # generators update the lock offline: fetch the crates it names first.
+      - run: cargo fetch --locked
       - run: npm run check:ci -- scaffold
       - uses: ./.github/actions/fail-queue-entry
         if: failure() && github.event_name == 'merge_group'
