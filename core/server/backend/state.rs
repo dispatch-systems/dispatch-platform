@@ -118,6 +118,26 @@ impl State {
     ) -> Result<T> {
         self.database(true, CacheChange::Bookkeeping, f).await
     }
+    /// A write that says what it changes with `changed`, under the exclusive lock, once it
+    /// knows and before it changes anything: a write route, once its caller is authorized.
+    pub(crate) async fn run_declaring<T: Send + 'static>(
+        self: &Arc<Self>,
+        f: impl FnOnce(&db::Store) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        self.database(true, CacheChange::Bookkeeping, f).await
+    }
+    /// What a `run_declaring` write changes: one DSP's data, which evicts that DSP's cached
+    /// reads and those every DSP shares, or with none, anything, which advances the global
+    /// revision and so evicts every cached read.
+    pub fn changed(&self, dsp: Option<&str>) {
+        match dsp {
+            Some(dsp) => self.read_cache.invalidate_dsp(dsp),
+            None => {
+                self.data_revision
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
     /// A tenant mutation with known dependencies. Unknown writes must keep using `run`.
     pub async fn run_scoped<T: Send + 'static>(
         self: &Arc<Self>,

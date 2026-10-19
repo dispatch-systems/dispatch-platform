@@ -1,6 +1,7 @@
 //! Bounded derived reads shared across database workers. Call only after authorization,
 //! while holding State's transition read lock. Unknown writes advance the global
-//! revision; reviewed writes evict the scopes that depend on their changed data.
+//! revision; a write on a DSP's route evicts that DSP's scopes and those every DSP shares;
+//! reviewed writes evict the scopes that depend on their changed data.
 use crate::{Error, Result, manifest::registry};
 use serde::Serialize;
 use std::any::Any;
@@ -197,6 +198,19 @@ impl ReadCache {
                 let scope = &entry.scope;
                 !(scope.dsp.as_deref().is_none_or(|tenant| tenant == dsp)
                     && evicts(scope.read, domain))
+            });
+        }
+    }
+    /// Evicts everything one DSP's cached reads hold, whatever its kind, and every read the
+    /// DSPs share, as the listings: what a write to that DSP's data could change.
+    pub fn invalidate_dsp(&self, dsp: &str) {
+        if let Ok(mut entries) = self.entries.lock() {
+            entries.retain(|entry| {
+                entry
+                    .scope
+                    .dsp
+                    .as_deref()
+                    .is_some_and(|tenant| tenant != dsp)
             });
         }
     }

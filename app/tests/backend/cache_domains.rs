@@ -4,7 +4,7 @@ fn meals(dsp: &str) -> Scope {
     Scope::tenant("meals", dsp)
 }
 #[tokio::test]
-async fn bookkeeping_preserves_cache_and_failed_scoped_or_unknown_writes_invalidate() {
+async fn bookkeeping_preserves_cache_and_scoped_dsp_or_unknown_writes_invalidate() {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::Ordering;
     crate::install();
@@ -83,4 +83,23 @@ async fn bookkeeping_preserves_cache_and_failed_scoped_or_unknown_writes_invalid
     assert_eq!(cached("a").await.unwrap(), "America/Los_Angeles");
     assert_eq!(cached("b").await.unwrap(), "America/Los_Angeles");
     assert_eq!(loads.load(Ordering::Relaxed), 5);
+    // A write that says it changes one DSP's data, as a write on its route does, evicts that
+    // DSP's cached reads and leaves another's; one that names none evicts every DSP's.
+    let declaring = state.clone();
+    state
+        .run_bookkeeping(move |db| {
+            declaring.changed(Some("a"));
+            db.platform
+                .exec("UPDATE dsps SET timezone='Europe/London' WHERE id='a'", [])?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert_eq!(cached("a").await.unwrap(), "Europe/London");
+    assert_eq!(cached("b").await.unwrap(), "America/Los_Angeles");
+    assert_eq!(loads.load(Ordering::Relaxed), 6);
+    state.changed(None);
+    assert_eq!(cached("a").await.unwrap(), "Europe/London");
+    assert_eq!(cached("b").await.unwrap(), "America/Los_Angeles");
+    assert_eq!(loads.load(Ordering::Relaxed), 8);
 }
