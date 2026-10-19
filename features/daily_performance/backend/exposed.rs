@@ -3,11 +3,9 @@
 //! them (`dispatch_daily_performance_contract`).
 use super::storage::{flag, text};
 use crate::DailyPerformanceStore;
-use chrono::NaiveDate;
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::{Store, s},
-    ensure,
     foundation::validate,
     manifest::people::Source,
 };
@@ -77,22 +75,8 @@ impl DailyMetrics for Exposed {
         }))
     }
     fn days(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Days> {
-        let day = |value: &str| {
-            validate::date(value)?;
-            NaiveDate::parse_from_str(value, "%Y-%m-%d")
-                .map_err(|_| Error::new("invalid_date", 400))
-        };
-        let (first, last) = (day(from)?, day(to)?);
-        ensure(
-            (0..LONGEST).contains(&(last - first).num_days()),
-            "invalid_input",
-            400,
-        )?;
-        ensure(
-            ids.len() <= MOST_IDS && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
-            "invalid_input",
-            400,
-        )?;
+        validate::days(from, to, LONGEST)?;
+        validate::ids(ids, MOST_IDS)?;
         let station = db.profile(dsp)?.station_code;
         let data = db.daily_performance_db(dsp)?;
         let collected = data

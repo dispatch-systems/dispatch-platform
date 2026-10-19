@@ -7,6 +7,7 @@ use dispatch_core::{
     collection::registry::AddedStorage,
     db::{Db, DspLease, FromRow, Kind, Row, Store, at, now},
     ensure,
+    foundation::validate,
     manifest::people::Photo,
 };
 use dispatch_cortex::{
@@ -256,14 +257,7 @@ impl DriverProfilesStore for Store {
         }
     }
     fn associates(&self, dsp: &str, transporters: &[String]) -> Result<Vec<Associate>> {
-        ensure(
-            transporters.len() <= 32
-                && transporters
-                    .iter()
-                    .all(|id| (1..=128).contains(&id.chars().count())),
-            "invalid_input",
-            400,
-        )?;
+        validate::ids(transporters, 32)?;
         let mut kept = self
             .driver_profiles_db(dsp)?
             .query_as::<Kept>(

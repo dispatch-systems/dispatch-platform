@@ -2,12 +2,11 @@
 //! scorecards and the packages they list, from the weeks its own reads show
 //! (`dispatch_weekly_scorecard_contract`).
 use super::{WeeklyScorecardStore, flag, text, weekly_scorecard_timezone};
-use chrono::{DateTime, Datelike, Duration, NaiveDate};
+use chrono::{DateTime, Datelike, Duration};
 use chrono_tz::Tz;
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::{Store, s},
-    ensure,
     foundation::{validate, weeks::week_days},
     manifest::people::Source,
 };
@@ -252,21 +251,8 @@ fn rows(
 }
 /// The scorecard weeks overlapping `from` to `to`, refusing bad days and IDs.
 fn overlapping(ids: &[String], from: &str, to: &str) -> Result<Vec<String>> {
-    let date = |day: &str| -> Result<NaiveDate> {
-        validate::date(day)?;
-        NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
-    };
-    let (first, last) = (date(from)?, date(to)?);
-    ensure(
-        (0..LONGEST).contains(&(last - first).num_days()),
-        "invalid_input",
-        400,
-    )?;
-    ensure(
-        ids.len() <= MOST_IDS && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
-        "invalid_input",
-        400,
-    )?;
+    let (first, last) = validate::days(from, to, LONGEST)?;
+    validate::ids(ids, MOST_IDS)?;
     let mut sunday = first - Duration::days(first.weekday().num_days_from_sunday().into());
     let mut weeks = Vec::new();
     while sunday <= last {

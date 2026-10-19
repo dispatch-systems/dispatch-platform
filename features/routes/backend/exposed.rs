@@ -1,11 +1,9 @@
 //! What Routes exposes to every other feature and agent tool: each driver's routes, day by day,
 //! read from the rows its own pages read (`dispatch_routes_contract`).
 use super::RoutesStore;
-use chrono::NaiveDate;
 use dispatch_core::{
-    Error, Result,
+    Result,
     db::{Store, s},
-    ensure,
     foundation::validate,
     manifest::people::Source,
 };
@@ -71,17 +69,8 @@ impl DriverRoutes for Exposed {
         from: &str,
         to: &str,
     ) -> Result<Driven> {
-        let (first, last) = (date(from)?, date(to)?);
-        ensure(
-            (0..LONGEST).contains(&(last - first).num_days()),
-            "invalid_input",
-            400,
-        )?;
-        ensure(
-            ids.len() <= MOST_IDS && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
-            "invalid_input",
-            400,
-        )?;
+        validate::days(from, to, LONGEST)?;
+        validate::ids(ids, MOST_IDS)?;
         let station = db.profile(dsp)?.station_code;
         let ids = serde_json::to_string(ids)?;
         let routes = db.routes_db(dsp)?;
@@ -114,11 +103,6 @@ impl DriverRoutes for Exposed {
     }
 }
 
-/// A day as the contract names it, YYYY-MM-DD.
-fn date(day: &str) -> Result<NaiveDate> {
-    validate::date(day)?;
-    NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
-}
 /// A row's text, when it has some.
 fn text(row: &Value, key: &str) -> Option<String> {
     row[key].as_str().map(str::to_owned)

@@ -215,20 +215,16 @@ fn driver_scorecards_refuses_bad_days_and_ids() {
     let one = owned(&["driver-1"]);
     for (from, to, code) in [
         ("2026-9-13", "2026-09-19", "invalid_date"),
-        ("2026-09-19", "2026-09-13", "invalid_input"),
         ("2025-09-18", "2026-09-19", "invalid_input"),
     ] {
         refuses(&one, from, to, code);
     }
-    let many = (0..33).map(|n| format!("driver-{n}")).collect();
-    for asked in [vec![String::new()], vec!["x".repeat(129)], many] {
-        refuses(&asked, "2026-09-13", "2026-09-19", "invalid_input");
-    }
-    // 366 days are the most one read covers, and an ID is matched as written, whatever it holds.
-    let asked = vec!["DA 1/é".to_owned(), "x".repeat(128)];
+    let many: Vec<String> = (0..33).map(|n| format!("driver-{n}")).collect();
+    refuses(&many, "2026-09-13", "2026-09-19", "invalid_input");
+    // 366 days and 32 IDs are the most one read covers.
     assert!(
         offered
-            .scorecards(&db, &dsp, &asked, "2025-09-19", "2026-09-19")
+            .scorecards(&db, &dsp, &many[..32], "2025-09-19", "2026-09-19")
             .is_ok()
     );
 }

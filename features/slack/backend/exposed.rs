@@ -1,7 +1,7 @@
 //! What Slack exposes to every other feature and agent tool: its workspaces' members, as each
 //! person's accounts there (`chat_accounts`, through `dispatch_slack_contract`).
 use super::{people, storage::SlackStore};
-use dispatch_core::{Result, db::Store, ensure, manifest::people::Source};
+use dispatch_core::{Result, db::Store, foundation::validate, manifest::people::Source};
 use dispatch_slack_contract::{ChatAccount, ChatAccounts};
 use std::collections::HashMap;
 
@@ -14,11 +14,7 @@ impl ChatAccounts for Exposed {
         people::SOURCE
     }
     fn accounts(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Vec<ChatAccount>> {
-        ensure(
-            ids.len() <= 32 && ids.iter().all(|id| (1..=128).contains(&id.chars().count())),
-            "invalid_input",
-            400,
-        )?;
+        validate::ids(ids, 32)?;
         if ids.is_empty() {
             return Ok(Vec::new());
         }

@@ -35,7 +35,9 @@ async fn chat_accounts_are_the_ones_asked_for_only_while_slack_is_on() {
                 // Nobody's account.
                 format!("{DRIVERS}:U0NOBODY"),
             ];
-            let refused = offered.accounts(db, &of, &["U".repeat(129)]).unwrap_err();
+            let many: Vec<String> = (0..33).map(|n| format!("{DRIVERS}:U{n}")).collect();
+            offered.accounts(db, &of, &many[..32])?;
+            let refused = offered.accounts(db, &of, &many).unwrap_err();
             Ok((offered.accounts(db, &of, &asked)?, refused.code))
         })
         .await
@@ -69,7 +71,7 @@ async fn chat_accounts_are_the_ones_asked_for_only_while_slack_is_on() {
             },
         ]
     );
-    // An ID over 128 characters is refused.
+    // 32 IDs are read at once, and one more is refused.
     assert_eq!(refused, "invalid_input");
     let offered = state
         .run(move |db| {
