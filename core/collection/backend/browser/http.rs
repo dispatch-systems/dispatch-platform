@@ -365,19 +365,31 @@ impl Http {
         referer: &str,
         limit: usize,
     ) -> std::result::Result<Value, Refusal> {
+        let text = self.json_text(url, &[], referer, limit).await?;
+        serde_json::from_str(&text).map_err(|_| Refusal::Unreadable("http_not_json"))
+    }
+    /// A JSON document's text within `limit` bytes, unparsed, sent with `headers` as well:
+    /// those a page signed this exact address with, which its own request would carry.
+    pub async fn json_text(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        referer: &str,
+        limit: usize,
+    ) -> std::result::Result<String, Refusal> {
         let target = self.target(url)?;
-        let response = self
+        let mut request = self
             .client
             .get(target)
             .timeout(Duration::from_secs(60))
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "en-US,en;q=0.9")
-            .header("Referer", referer)
-            .send()
-            .await
-            .map_err(|_| Refusal::Unavailable)?;
-        let text = Self::body_within(response, "application/json", limit).await?;
-        serde_json::from_str(&text).map_err(|_| Refusal::Unreadable("http_not_json"))
+            .header("Referer", referer);
+        for (name, value) in headers {
+            request = request.header(name, value);
+        }
+        let response = request.send().await.map_err(|_| Refusal::Unavailable)?;
+        Self::body_within(response, "application/json", limit).await
     }
     /// Where `url` redirects, as a tab following it would go next: for an address the
     /// provider answers with the place a file is served from. The redirect itself is not

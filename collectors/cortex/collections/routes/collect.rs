@@ -1,11 +1,11 @@
-//! A day's routes. The scope comes from discovery, as for meals; the route list, the
-//! newer routes page's list and every itinerary are then taken as the page's own data
-//! responses, which the page signs, arrive.
+//! A day's routes. The scope comes from discovery, as for meals; the route list is then
+//! taken as the page's own data response, which the page signs, arrives.
 //!
-//! The list is one page load. Every itinerary after it is one move inside that loaded
-//! application: the address changes as a click in the list would change it, and the
-//! application fetches just that itinerary. An itinerary the application does not
-//! answer for is read by loading its own page instead.
+//! The list is one page load. Every itinerary and the newer routes page's list are then
+//! signed by that loaded application and downloaded (`signed`). Whatever that does not
+//! read is read by moves inside the application: the address changes as a click in the
+//! list would change it, and the application fetches just that itinerary. An itinerary
+//! the application does not answer for is read by loading its own page instead.
 use super::capture::{
     Capture, Collection, ItineraryCapture, MAX_BODY, MAX_ITINERARIES, Request, add_capture_bytes,
     listed,
@@ -34,8 +34,8 @@ use std::{
 use tokio::time::Instant;
 
 const SUMMARIES: &str = "/operations/execution/api/summaries";
-const ROUTE_SUMMARIES: &str = "/operations/execution/api/route-summaries";
-const ITINERARY: &str = "/operations/execution/api/itineraries/";
+pub(super) const ROUTE_SUMMARIES: &str = "/operations/execution/api/route-summaries";
+pub(super) const ITINERARY: &str = "/operations/execution/api/itineraries/";
 /// How long a page may take to ask for its data.
 const PAGE_DEADLINE: Duration = Duration::from_secs(45);
 /// A move that failed for one of these is read by loading the itinerary's page instead:
@@ -61,13 +61,17 @@ pub(crate) enum Navigation {
     Reload,
     /// The list is loaded once per tab and the application moves between itineraries.
     InApp,
+    /// The list's application signs every read, which is downloaded; what that does not
+    /// read is read as `InApp` does.
+    Signed,
 }
 /// How a day is read. The default was measured against the alternatives on a real day of
-/// 36 itineraries (`measure_route_method`): moving in the application, with every
-/// response withheld from the page, in three background tabs, read the day in about a
-/// third of the time, a fifth of the CPU and half the memory of loading each page.
+/// 41 itineraries (`measure_route_method`): signed by the application and downloaded
+/// twelve at a time, it read the day in under a third of the time and CPU of moving in
+/// the application in three background tabs with every response withheld, which itself
+/// took a quarter of the time and a tenth of the CPU of loading each page.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub(crate) struct Method {
     pub navigation: Navigation,
     /// Tabs reading itineraries at once.
@@ -78,14 +82,17 @@ pub(crate) struct Method {
     /// A captured response is failed for the page, which then never parses or renders
     /// it.
     pub withhold: bool,
+    /// Signed reads downloaded at once.
+    pub downloads: usize,
 }
 impl Default for Method {
     fn default() -> Self {
         Self {
-            navigation: Navigation::InApp,
+            navigation: Navigation::Signed,
             tabs: 3,
             windows: false,
             withhold: true,
+            downloads: 12,
         }
     }
 }
@@ -98,6 +105,7 @@ impl Method {
             tabs: 2,
             windows: true,
             withhold: false,
+            ..Self::default()
         }
     }
 }
@@ -115,19 +123,19 @@ struct WhoseDetails {
     #[serde(rename = "transporterId")]
     transporter: String,
 }
-fn owned_by(text: &str, id: &str, transporter: &str) -> bool {
+pub(super) fn owned_by(text: &str, id: &str, transporter: &str) -> bool {
     serde_json::from_str::<Whose>(text)
         .is_ok_and(|w| w.details.itinerary == id && w.details.transporter == transporter)
 }
 
 /// The itinerary lanes share one exact byte reservation for the day's accepted
 /// responses. A failed reservation leaves the total unchanged.
-struct CaptureBudget(AtomicUsize);
+pub(super) struct CaptureBudget(AtomicUsize);
 impl CaptureBudget {
     fn new(bytes: usize) -> Result<Self> {
         Ok(Self(AtomicUsize::new(add_capture_bytes(0, bytes)?)))
     }
-    fn add(&self, bytes: usize) -> Result<()> {
+    pub(super) fn add(&self, bytes: usize) -> Result<()> {
         self.0
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |total| {
                 add_capture_bytes(total, bytes).ok()
@@ -367,7 +375,7 @@ impl Driver {
     {
         request.validate()?;
         ensure(
-            (1..=4).contains(&method.tabs),
+            (1..=4).contains(&method.tabs) && (1..=16).contains(&method.downloads),
             "routes_capture_invalid",
             502,
         )?;
@@ -405,7 +413,7 @@ impl Driver {
         )?;
         // Loading the routes page leaves the list's application; the original reading
         // reloads every itinerary anyway, so it reads that page first.
-        let mut route_summaries = None;
+        let mut route_summaries: Option<Value> = None;
         if method.navigation == Navigation::Reload {
             let body = self
                 .capture_page(
@@ -420,8 +428,29 @@ impl Driver {
             route_summaries = Some(parse(body)?);
         }
         progress(15, format!("Reading {} itineraries", listed.len())).await?;
+        let mut itineraries: Vec<Option<ItineraryCapture>> = vec![None; listed.len()];
+        if method.navigation == Navigation::Signed {
+            let read = self
+                .read_signed(
+                    &scope,
+                    &listed,
+                    method.downloads,
+                    &bytes,
+                    metrics,
+                    &progress,
+                )
+                .await?;
+            itineraries = read.itineraries;
+            route_summaries = read.routes;
+        }
+        let todo: Vec<usize> = (0..listed.len())
+            .filter(|index| itineraries[*index].is_none())
+            .collect();
+        if method.navigation == Navigation::Signed && !todo.is_empty() {
+            metrics.detail("routes_signed_moved");
+        }
         let mut others = Vec::new();
-        for _ in 1..method.tabs.min(listed.len()) {
+        for _ in 1..method.tabs.min(todo.len()) {
             let mut page = if method.windows {
                 // Its own window stays visible, as a rendered page expects.
                 Page::open_window(self.browser.clone(), self.origin.clone()).await?
@@ -436,23 +465,27 @@ impl Driver {
             scope: &scope,
             method,
             listed: &listed,
+            todo: &todo,
             metrics,
             progress: &progress,
             next: AtomicUsize::new(0),
-            done: AtomicUsize::new(0),
+            done: AtomicUsize::new(listed.len() - todo.len()),
             stopped: AtomicBool::new(false),
             bytes,
         };
         // Drain every tab even when one fails. Dropping a sibling's in-flight command
         // closes the shared browser transport. The first tab shows the list's
         // application already; the others load their first itinerary's page.
-        let lanes_read = futures_util::future::join_all(
-            std::iter::once((&self.page, true))
-                .chain(others.iter().map(|page| (page, false)))
-                .map(|(page, loaded)| lanes.read(page, loaded)),
-        )
-        .await;
-        let mut itineraries: Vec<Option<ItineraryCapture>> = listed.iter().map(|_| None).collect();
+        let lanes_read = if todo.is_empty() {
+            Vec::new()
+        } else {
+            futures_util::future::join_all(
+                std::iter::once((&self.page, true))
+                    .chain(others.iter().map(|page| (page, false)))
+                    .map(|(page, loaded)| lanes.read(page, loaded)),
+            )
+            .await
+        };
         let mut failure = None;
         for lane in lanes_read {
             match lane {
@@ -535,6 +568,8 @@ struct Lanes<'a, F> {
     scope: &'a Scope,
     method: &'a Method,
     listed: &'a [(String, String)],
+    /// The places in `listed` still to read.
+    todo: &'a [usize],
     metrics: &'a Recorder,
     progress: &'a F,
     next: AtomicUsize,
@@ -550,7 +585,7 @@ where
     /// Reads itineraries in one tab until none are left. `loaded` is whether the tab
     /// already shows the application it can move within.
     async fn read(&self, page: &Page, loaded: bool) -> Result<Vec<(usize, ItineraryCapture)>> {
-        let in_app = self.method.navigation == Navigation::InApp;
+        let in_app = self.method.navigation != Navigation::Reload;
         let mut ready = in_app && loaded;
         if ready {
             page.command("Fetch.enable", patterns(&[ITINERARY])).await?;
@@ -568,10 +603,10 @@ where
         let driver = self.driver;
         let mut read = Vec::new();
         while !self.stopped.load(Ordering::SeqCst) {
-            let index = self.next.fetch_add(1, Ordering::SeqCst);
-            let Some((id, transporter)) = self.listed.get(index) else {
+            let Some(&index) = self.todo.get(self.next.fetch_add(1, Ordering::SeqCst)) else {
                 break;
             };
+            let (id, transporter) = &self.listed[index];
             let ordinal = index + 1;
             self.metrics.page_start(ordinal, 1);
             self.metrics.page_stage(ordinal, "content");
@@ -607,7 +642,7 @@ where
                         self.metrics,
                     )
                     .await;
-                if result.is_ok() && self.method.navigation == Navigation::InApp {
+                if result.is_ok() && self.method.navigation != Navigation::Reload {
                     page.command("Fetch.enable", patterns(&[ITINERARY])).await?;
                     *ready = true;
                 }
