@@ -4,4 +4,9 @@ import type { SettingsSection } from "./SettingsSection";
 /**
  * What a save answers: the section as it is now, or, keeping nothing, the words to confirm.
  */
-export type SettingsSaved = { section: SettingsSection, } | { warning: string, };
+export type SettingsSaved = { section: SettingsSection,
+/**
+ * Whether the save changed the DSP itself, as its name or timezone, which the member's
+ * view of it holds: the view is to be opened again.
+ */
+reopen: boolean, } | { warning: string, };

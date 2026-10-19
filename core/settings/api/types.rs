@@ -191,5 +191,7 @@ pub enum SettingsSaved {
         /// view of it holds: the view is to be opened again.
         reopen: bool,
     },
-    Warning { warning: String },
+    Warning {
+        warning: String,
+    },
 }
