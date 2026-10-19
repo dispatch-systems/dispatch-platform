@@ -106,8 +106,10 @@ impl<'a> Day<'a> {
             places,
         }
     }
+    /// Every read, but an itinerary the list repeats only once: its repeat is read by moves.
     fn reads(&self) -> impl Iterator<Item = Read> {
         (0..self.listed.len())
+            .filter(|index| self.places.get(self.listed[*index].0.as_str()) == Some(index))
             .map(Read::Itinerary)
             .chain([Read::Routes])
     }
@@ -559,7 +561,9 @@ impl Driver {
             }
         }
         page.command("Fetch.disable", json!({})).await?;
-        // Anything paused since went on when pausing ended: it is only dropped here.
+        // Anything paused since is dropped unanswered: answering it now could be a failed
+        // command, which ends the session. At worst one of the application's own requests
+        // is left waiting, and a later attempt finds its lane busy and reads by moves.
         while !self.browser.event(&page.id).await?.is_null() {}
         Ok(())
     }
