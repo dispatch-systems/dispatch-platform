@@ -72,6 +72,15 @@ async function tab(hash: string, numbered: boolean) {
   }
   const entries = [`https://dispatch.test/${hash}`];
   let index = 0;
+  // What the tab still has to do, as a browser does it, after the moment it's asked.
+  let pending = 0;
+  const later = (run: () => void) => {
+    pending++;
+    setTimeout(() => {
+      pending--;
+      run();
+    });
+  };
   const window = new EventTarget();
   const navigation = Object.assign(new EventTarget(), {
     get currentEntry() {
@@ -84,7 +93,7 @@ async function tab(hash: string, numbered: boolean) {
       Object.assign(new Event('currententrychange'), { from: { index: from } }),
     );
   const changed = (from: string) =>
-    setTimeout(() =>
+    later(() =>
       window.dispatchEvent(
         new HashChangeEvent('hashchange', { oldURL: from, newURL: entries[index]! }),
       ),
@@ -96,7 +105,7 @@ async function tab(hash: string, numbered: boolean) {
       moved(-1);
     },
     go: (delta: number) =>
-      setTimeout(() => {
+      later(() => {
         const from = index;
         index += delta;
         moved(from);
@@ -125,8 +134,11 @@ async function tab(hash: string, numbered: boolean) {
       changed(from);
     },
     back: () => history.go(-1),
-    /** Waits for every move under way to be heard. */
-    settled: () => new Promise((resolve) => setTimeout(resolve, 10)),
+    /** Waits for every move under way to be heard, however busy the machine. */
+    settled: async () => {
+      do await new Promise((resolve) => setTimeout(resolve));
+      while (pending > 0);
+    },
   };
 }
 

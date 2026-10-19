@@ -150,8 +150,9 @@ function ask(to: string | undefined, then: () => void) {
   next(0);
 }
 /**
- * Asks the holds before the page open is drawn anew where the address stays, as viewing its DSP
- * as another role draws it, and runs `then` once every one has let it.
+ * Asks the holds before the page open is drawn anew where the address stays, or left without the
+ * address moving, as viewing its DSP as another role draws it and signing out leaves it, and runs
+ * `then` once every one has let it.
  */
 export const askToLeave = (then: () => void) => ask(undefined, then);
 

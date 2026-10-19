@@ -410,7 +410,8 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       pending={pending}
       navigation={navigation(scope, { session, view })}
       sidebar={sidebarOf(scope, page, { session, view })}
-      logout={() => void perform(logout)}
+      // Signing out asks about unsaved edits first, as leaving the page does.
+      logout={() => askToLeave(() => void perform(logout))}
       exitView={() => navigate(platformHash())}
       // The page drawn anew for the role asks about unsaved edits first, as leaving it does.
       viewAs={(roleId) =>

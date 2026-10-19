@@ -251,6 +251,13 @@ test('schedules persist, pause, reject stale edits and delete; manual sync reach
   // Staying keeps the page, and the browser's history as it was: Forward still leads on, asking.
   await page.keyboard.press('Escape');
   await expect(ask).toHaveCount(0);
+  // Signing out asks first too, and staying keeps the session.
+  await page.locator('.account-menu summary').click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
   await page.goForward();
   await expect(ask).toBeVisible();
   await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
