@@ -20,9 +20,9 @@ and how long one collected stays fresh, then its schedules, kept by core's sched
 `/schedules`. Wall-clock times and cadence stay in those schedules. Scheduled runs read the
 values with `settings::read`; core keeps them in the DSP's settings and records each change as
 `settings.changed`. A policy kept before in its database's `settings` (`collection_policy`)
-moves in once as the server starts (`upgrade_storage`), unless the section was saved already;
-the old value stays, read only by that move. `daily_performance.policy_updated`, from before,
-still reads in the log.
+moves in once as the server starts (`upgrade_storage`, through `settings::carry_over`), unless
+the section was saved already; the old value stays, read only by that move.
+`daily_performance.policy_updated`, from before, still reads in the log.
 
 Each capture is validated against its requested date and discovered company/station.
 Publication is atomic and idempotent per job; recollection replaces the active publication

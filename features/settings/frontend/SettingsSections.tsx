@@ -1,10 +1,10 @@
 import { Suspense } from 'react';
 import type { DspView, SessionView } from '../../../core/accounts/api/index.js';
 import type { SettingsAnswer } from '../../../core/settings/api/index.js';
+import { LeaveGuards, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { settingsSection } from '../../../core/shell/frontend/runtime/slots.js';
 import { Loading } from '../../../core/shell/frontend/ui/index.js';
 import type { Found } from './find.js';
-import { LeaveGuards, type Guards } from './leave.js';
 import { Section, sectionElement } from './Section.js';
 import { sectionsOn } from './pages.js';
 

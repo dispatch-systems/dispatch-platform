@@ -1,11 +1,15 @@
 import { createContext, use, useEffect, type RefObject } from 'react';
-import type { Leave } from '../../../core/collection/frontend/schedules.js';
 
-// An editor open on a page of Settings, as a schedule's, keeps its unsaved edits until they
-// are saved or discarded: the page asks each before it moves to another of its pages.
+// Unsaved edits on a page, as a schedule's in its editor, are saved or discarded before the page
+// moves on, never lost without asking: the page asks each editor open on it in turn, whether it
+// moves by its own controls or the address moves, as Back, the browser's Back or Forward, a link
+// followed or a hash typed move it, which it hears through `holdAddress` (navigation.ts).
 
-/** The editors open on the page, each asked through its ref. */
+/** Runs `then` at once, or after the member chooses Save or Discard for unsaved edits. */
+export type Leave = (then: () => void) => void;
+/** The editors open on a page, each asked through its ref. */
 export type Guards = Set<RefObject<Leave | null>>;
+/** The editors open on the page drawn inside it, for a page that asks them before it moves on. */
 export const LeaveGuards = createContext<Guards | null>(null);
 
 /** Asks each open editor in turn, and moves on once every one has let it. */

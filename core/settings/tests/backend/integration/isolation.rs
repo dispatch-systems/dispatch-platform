@@ -333,6 +333,7 @@ async fn one_members_own_values_are_not_anothers() {
     let mine = "/api/dsp/settings/probe.mine";
     assert_eq!(server.save(&first, mine, days(45, 0)).await.status, 200);
     assert_eq!(server.save(&second, mine, days(60, 0)).await.status, 200);
+    // The first's answer is cached as the second, of the same role, reads theirs.
     assert_eq!(
         server.days(&first, "probe.mine").await,
         Some((json!(45), 1))

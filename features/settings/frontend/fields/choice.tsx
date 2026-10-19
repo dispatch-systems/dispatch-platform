@@ -1,5 +1,6 @@
 import type { SettingsOption, SettingsValue } from '../../../../core/settings/api/index.js';
 import type { FieldKind, FieldProps } from './kind.js';
+import { listed } from './options.js';
 
 /** One of the options from a list, a saved one the list no longer has kept in it. */
 export function OptionSelect({
@@ -16,12 +17,6 @@ export function OptionSelect({
   value: SettingsValue;
   change: (value: SettingsValue) => void;
 }) {
-  const listed = [
-    ...options,
-    ...(typeof value === 'string' && !options.some((option) => option.value === value)
-      ? [{ value, label: value }]
-      : []),
-  ];
   return (
     <select
       id={id}
@@ -33,7 +28,7 @@ export function OptionSelect({
           {none ?? ''}
         </option>
       )}
-      {listed.map((option) => (
+      {listed(options, [value]).map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
         </option>

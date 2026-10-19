@@ -215,8 +215,10 @@ pub trait Kept: Sync {
 pub type Warn = fn(&Store, dsp: &str, before: &Value, after: &Value) -> Result<Option<String>>;
 /// What else a save does, in the same write, given the values it saved: to `dsp`'s data alone.
 pub type OnSave = fn(&Store, dsp: &str, values: &Value) -> Result<()>;
-/// More words a section is found by, from what the member's own DSP has, which `c` is: never
-/// from its stored data, as it runs for each member's Settings.
+/// More words a section is found by, from what the member's own DSP has, which `c` is: its
+/// features, and the member's role and permissions, never who they are, as one answer serves
+/// every member with the same access; and never the DSP's stored data, as it runs for each
+/// member's Settings.
 pub type Found = fn(c: &Context) -> Vec<String>;
 /// The options a field lists as it's read, each a value and its label, as a DSP's
 /// departments: `dsp`'s alone. It runs once for each member's Settings that shows a section

@@ -1,23 +1,11 @@
 //! Each driver's routes, as a feature or agent tool reads them: only while Routes is on for the
 //! DSP, the right driver's days for the IDs given, and the days collected apart from the rest.
 use super::*;
-use crate::backend::routes_today;
+use crate::backend::{routes_today, tests::publish};
 use chrono::Duration;
 use dispatch_core::testing;
-use dispatch_cortex::routes::{Mode, Request, fixture};
+use dispatch_cortex::routes::Mode;
 use serde_json::json;
-
-/// Queues `day`, stages the fixture's day for that job and publishes it, as the executor does.
-fn publish(db: &Store, dsp: &str, day: &str, mode: Mode) {
-    let jobs = db
-        .enqueue_routes(dsp, None, day, Some(day), mode, 1)
-        .unwrap();
-    let job = s(&jobs[0], "id").to_owned();
-    let request = serde_json::from_str(&db.job_row(&job, Some(dsp)).unwrap().request).unwrap();
-    let capture = fixture(&Request::parse(&request).unwrap().unwrap()).unwrap();
-    let staged = db.stage_routes(dsp, &job, capture).unwrap();
-    db.publish_routes(dsp, &job, &staged).unwrap();
-}
 
 #[test]
 fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {

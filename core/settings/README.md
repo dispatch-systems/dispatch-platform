@@ -68,23 +68,30 @@ nothing. A save wakes the scheduler only when it retimes the DSP's schedules, as
 profile's timezone does: retiming them marks the work, and the server wakes the scheduler once
 the work is done.
 
-`settings::adopt` is how a feature moves values it kept itself into its declared section,
+`settings::carry_over` is how a feature moves values it kept itself into its declared section,
 once, from its `upgrade_storage`: checked as a save checks them, kept at revision 1 only while
-nothing of the section was ever saved, and not recorded in the log.
+nothing of the section was ever saved, and not recorded in the log; values its fields refuse
+now leave the defaults. It never stops a DSP opening: a failure reading the old values or
+keeping them is noted in the server's log as `settings.carry_over_failed` (its DSP, section and
+error code, never values) and tried again as the DSP next opens. Once the section holds values,
+it costs each start one keyed read of its record.
 
 ## API
 
 - `GET /api/dsp/settings`: every section the member may see, with its fields, values and
   revision, and the pages they're on. It's served from the read cache under the DSP's own name,
-  for what the member's access makes of it; any write to that DSP's data but a collection's live
-  pages evicts it. Each list a field offers (a `pick`'s, a listed `many`'s) is read once for an
-  answer, however many sections offer it. A section that can't be read now, as when its keeper
+  for what the member's access makes of it (their role, permissions and the DSP's features),
+  one answer for every member with the same access unless a section they see has fields each
+  member keeps their own of, when it's theirs alone; any write to that DSP's data but a
+  collection's live pages evicts it. Each list a field offers (a `pick`'s, a listed `many`'s)
+  is read once for an answer, however many sections offer it. A section that can't be read now, as when its keeper
   or a list it offers fails, is left out, with a page only it is on, and noted in the server's
   log as `settings.section_skipped` (its DSP, id and error code, never its values); the rest
   are answered as they are, and a save of it fails with that error before keeping anything.
 - `POST /api/dsp/settings/{section}`: `{values, revision, confirmed?}`, answering the section as
-  it is now, or `{warning}` with nothing kept. A section the DSP doesn't have, or hides from the
-  member, is `not_found`; one they lack the permission of is `permission_denied`.
+  it is now, its options as the save listed them to check it, or `{warning}` with nothing kept.
+  A section the DSP doesn't have, or hides from the member, is `not_found`; one they lack the
+  permission of is `permission_denied`.
 
 The DSP is always the one the member's view authorized: no request names one, so nothing of one
 DSP is read, saved or evicted from another. `tests/backend/integration/isolation.rs` holds it

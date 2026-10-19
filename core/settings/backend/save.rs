@@ -1,13 +1,15 @@
 //! Saving a section: what's sent checked and merged onto what's kept, at the revision it was
-//! read at, confirmed when its warning has words, and recorded in the DSP's log.
+//! read at, confirmed when its warning has words, and recorded in the DSP's log; and the
+//! values a feature kept itself before, carried into its section once.
 use super::{kinds, store};
 use crate::{
     Error, Result,
     db::{AuditChange, Store},
     ensure,
+    foundation::observability,
     manifest::settings::{Scope, Section},
 };
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
 /// What a save did.
 #[derive(Debug, PartialEq)]
@@ -36,6 +38,22 @@ pub fn save(
     revision: i64,
     confirmed: bool,
 ) -> Result<Saved> {
+    let (saved, _) = save_listing(db, dsp, actor, section, values, revision, confirmed)?;
+    Ok(saved)
+}
+
+/// `save`, handing back too the lists the section's fields offer, as it read them to check
+/// what's sent before keeping anything: what an answer that shows the section after it lists
+/// its options from, rather than reading them again.
+pub(crate) fn save_listing<'a>(
+    db: &'a Store,
+    dsp: &'a str,
+    actor: &str,
+    section: &Section,
+    values: &Value,
+    revision: i64,
+    confirmed: bool,
+) -> Result<(Saved, kinds::Lists<'a>)> {
     let given = values
         .as_object()
         .ok_or_else(|| Error::new("invalid_input", 400))?;
@@ -47,32 +65,27 @@ pub fn save(
         "settings_changed_reload_before_saving",
         409,
     )?;
-    let (after, offered) = merged(db, dsp, section, &now.values, given, true)?;
-    let changes: Vec<AuditChange> = section
-        .fields
-        .iter()
+    let mut lists = kinds::Lists::new(db, dsp);
+    let after = merged(section, &now.values, given, Some(&mut lists))?;
+    let changes = (section.fields.iter())
         .filter(|field| after.get(field.id) != now.values.get(field.id))
         .map(|field| {
-            let options = offered
-                .iter()
-                .find(|(id, _)| *id == field.id)
-                .and_then(|(_, options)| options.as_deref());
-            let shown =
-                |values: &Map<String, Value>| kinds::shown(field, &values[field.id], options);
-            (field.label, shown(&now.values), shown(&after))
+            let options = lists.options(field)?;
+            let shown = |values: &Map<String, Value>| {
+                kinds::shown(field, &values[field.id], options.as_deref())
+            };
+            Ok((field.label, shown(&now.values), shown(&after)))
         })
-        .collect();
+        .collect::<Result<Vec<AuditChange>>>()?;
     if changes.is_empty() {
-        return Ok(Saved::Saved {
-            revision,
-            values: Value::Object(now.values),
-        });
+        let values = Value::Object(now.values);
+        return Ok((Saved::Saved { revision, values }, lists));
     }
     let (before, after) = (Value::Object(now.values), Value::Object(after));
     if let Some(warn) = section.warn.filter(|_| !confirmed)
         && let Some(words) = warn(db, dsp, &before, &after)?
     {
-        return Ok(Saved::Confirm(words));
+        return Ok((Saved::Confirm(words), lists));
     }
     let revision = revision + 1;
     let people = db.dsp(dsp)?;
@@ -97,65 +110,88 @@ pub fn save(
         }
         Ok(())
     })?;
-    Ok(Saved::Saved {
-        revision,
-        values: after,
-    })
+    Ok((
+        Saved::Saved {
+            revision,
+            values: after,
+        },
+        lists,
+    ))
 }
 
-/// Keeps `values` as the DSP's first of `section` when nothing of it was ever saved: what a
-/// feature does once, from its `upgrade_storage`, as it moves values it kept itself into its
-/// declared section. Checked as a save checks them (`invalid_input` otherwise), but against
-/// no list a field takes as it's read, which may have dropped what was chosen then; kept at
-/// revision 1, and not recorded in the log, whose entries from before already say how they
-/// came to be. Answers whether it kept them: not when the section was ever saved, or the
-/// values are its defaults. Only `dsp`'s own database is read and written.
-pub fn adopt(db: &Store, dsp: &str, section: &Section, values: &Value) -> Result<bool> {
+/// Moves values a feature kept itself into its declared `section`, as the DSP's first, from
+/// its `upgrade_storage` as each DSP opens: `old` reads them as the feature kept them, none
+/// when it kept none. They're kept only while nothing of the section was ever saved, checked
+/// as a save checks them but against no list a field takes as it's read, which may have
+/// dropped what was chosen then; at revision 1, and not recorded in the log, whose entries
+/// from before already say how they came to be. Values its fields refuse now leave the
+/// defaults, as do none or the defaults themselves.
+///
+/// It never stops a DSP opening: what else fails, reading the old values or keeping them, is
+/// noted in the server's log as `settings.carry_over_failed`, with the DSP, the section and
+/// the error's code but never a value, and tried again as the DSP next opens, as nothing was
+/// kept. Once the section holds values, moved or saved, it's one keyed read of its record and
+/// `old` isn't called. Only `dsp`'s own database is read and written.
+pub fn carry_over(
+    db: &Store,
+    dsp: &str,
+    section: &Section,
+    old: impl FnOnce() -> Result<Option<Value>>,
+) {
+    if let Err(error) = adopt(db, dsp, section, old)
+        && error.code != "invalid_input"
+    {
+        observability::event(
+            "error",
+            "settings.carry_over_failed",
+            json!({"dspId": dsp, "section": section.id, "error": error.code}),
+        );
+    }
+}
+/// What `carry_over` does, failing as it may.
+fn adopt(
+    db: &Store,
+    dsp: &str,
+    section: &Section,
+    old: impl FnOnce() -> Result<Option<Value>>,
+) -> Result<()> {
     ensure(
         section.scope == Scope::Dsp && section.kept.is_none(),
         "settings_scope",
         500,
     )?;
+    let now = store::current(db, dsp, section, &store::record(db, dsp, section, None)?)?;
+    if now.revision != 0 {
+        return Ok(());
+    }
+    let Some(values) = old()? else {
+        return Ok(());
+    };
     let given = values
         .as_object()
         .ok_or_else(|| Error::new("invalid_input", 400))?;
-    let now = store::current(db, dsp, section, &store::record(db, dsp, section, None)?)?;
-    if now.revision != 0 {
-        return Ok(false);
+    let after = merged(section, &now.values, given, None)?;
+    if after != now.values {
+        let people = db.dsp(dsp)?;
+        store::write(&people, section, None, 1, &Value::Object(after), None)?;
     }
-    let (after, _) = merged(db, dsp, section, &now.values, given, false)?;
-    if after == now.values {
-        return Ok(false);
-    }
-    store::write(
-        &*db.dsp(dsp)?,
-        section,
-        None,
-        1,
-        &Value::Object(after),
-        None,
-    )?;
-    Ok(true)
+    Ok(())
 }
 
-/// The options of a field sent, listed once, for checking it and showing its change.
-type Offered = Vec<(&'static str, Option<Vec<(String, String)>>)>;
-/// `now` with each of the `given` fields' values, each checked as its kind says, and the
-/// options of each, `listing` them: refused as `invalid_input` for a field the section hasn't,
-/// or a schedules field, which holds no value. Listing, it reads every list the section
-/// offers, so a section Settings leaves out, as one of them fails, isn't saved either.
+/// `now` with each of the `given` fields' values, each checked as its kind says and against
+/// the options its field offers from `lists`: refused as `invalid_input` for a field the
+/// section hasn't, or a schedules field, which holds no value. It reads every list the section
+/// offers first, so a section Settings leaves out, as one of them fails, isn't saved either.
+/// With no lists, as for values a feature adopts, a field whose options are listed as it's
+/// read takes any value that fits it.
 fn merged(
-    db: &Store,
-    dsp: &str,
     section: &Section,
     now: &Map<String, Value>,
     given: &Map<String, Value>,
-    listing: bool,
-) -> Result<(Map<String, Value>, Offered)> {
+    mut lists: Option<&mut kinds::Lists>,
+) -> Result<Map<String, Value>> {
     let mut after = now.clone();
-    let mut offered = Vec::with_capacity(given.len());
-    let mut lists = kinds::Lists::new(db, dsp);
-    if listing {
+    if let Some(lists) = lists.as_deref_mut() {
         for field in section.fields {
             lists.options(field)?;
         }
@@ -166,10 +202,12 @@ fn merged(
             .iter()
             .find(|field| field.id == id && kinds::default(field).is_some())
             .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let options = if listing { lists.options(field)? } else { None };
+        let options = match lists.as_deref_mut() {
+            Some(lists) => lists.options(field)?,
+            None => None,
+        };
         let checked = kinds::checked(field, value, &now[field.id], options.as_deref())?;
         after.insert(field.id.to_owned(), checked);
-        offered.push((field.id, options));
     }
-    Ok((after, offered))
+    Ok(after)
 }

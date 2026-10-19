@@ -7,7 +7,8 @@ import { useAction } from '../../shell/frontend/runtime/useAction.js';
 import { useFeedback } from '../../shell/frontend/runtime/feedback.js';
 import { time } from '../../shell/frontend/lib/format.js';
 import { DataState, Empty, ErrorBox, Modal } from '../../shell/frontend/ui/index.js';
-import { ScheduleForm, type Leave, type ScheduleDefaults } from './ScheduleForm.js';
+import type { Leave } from '../../shell/frontend/runtime/leave.js';
+import { ScheduleForm, type ScheduleDefaults } from './ScheduleForm.js';
 
 /** Where a collection's schedules are, and what a new one starts as. */
 type Schedules = {
@@ -19,18 +20,13 @@ type Schedules = {
 /**
  * A collection's schedules: each with when it runs next, to pause, resume or edit, and a new
  * one to add. A feature serves them under `endpoint`, as core's schedule routes do. They show
- * in a sheet, or `inline` in the page, where the page asks `leaveRef` before it moves on, so
- * unsaved edits to a schedule are saved or discarded first, as closing the sheet does.
+ * in a sheet, or `inline` in the page. Unsaved edits to one are saved or discarded first, before
+ * the sheet closes or the page it's on moves on.
  */
 export function ScheduleSettings(
-  props: Schedules &
-    (
-      | { inline?: false; title?: string; onClose: () => void }
-      | { inline: true; leaveRef: MutableRefObject<Leave | null> }
-    ),
+  props: Schedules & ({ inline?: false; title?: string; onClose: () => void } | { inline: true }),
 ) {
-  const own = useRef<Leave | null>(null);
-  const leave = props.inline ? props.leaveRef : own;
+  const leave = useRef<Leave | null>(null);
   const [editing, setEditing] = useState<CollectionSchedule | null>();
   const body = (
     <ScheduleList

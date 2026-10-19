@@ -29,8 +29,14 @@ function NumberField({ field, id, value, before, change }: FieldProps<'number'>)
       ? NONE
       : (field.presets.find((each) => String(each.value) === String(value).trim())?.value ??
         CUSTOM);
-  // Custom shows the number to type once chosen, and for one no preset is.
+  // Custom shows the number to type once chosen, until the number is saved, and for one no
+  // preset is.
   const [chose, setChose] = useState(false);
+  const [saved, setSaved] = useState(before);
+  if (saved !== before) {
+    setSaved(before);
+    setChose(false);
+  }
   const custom = chose || preset === CUSTOM;
   const typed = (
     <span className="settings-number">

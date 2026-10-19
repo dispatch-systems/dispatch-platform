@@ -28,6 +28,7 @@ import {
   useFeedback,
 } from '../../core/shell/frontend/runtime/feedback.js';
 import {
+  askHolds,
   dspHash,
   followMoved,
   forgetDestination,
@@ -454,6 +455,8 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
   );
 }
 installFeatures(features);
+// A page with unsaved edits asks before the address moves on, before any page follows it.
+window.addEventListener('hashchange', askHolds);
 const root = createRoot(document.getElementById('root')!);
 // Which address this is decides what every link means here, so it is read first.
 function start() {

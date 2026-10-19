@@ -33,10 +33,12 @@ Timecard's collections. It names drivers through Driver Match.
   opens and old links to `#dsp/<id>/paycom-settings` land on, holds its sections, each behind
   `timecard.manage` and saved through core's settings: `timecard.schedules`, Sync schedules,
   drawn by its own component, as one schedule may run both collections, which core's
-  schedule editor doesn't offer; `timecard.roster`, Employees: the department and delivery
-  station the Daily tab and Employee Search list (none for all) and the name order Meal Breaks
-  writes and sorts names in; `timecard.drivers`, Driver departments: all, or those chosen,
-  whom alone the Daily tab lists and Driver Match counts as drivers; and `timecard.late_das`,
+  schedule editor doesn't offer, though its sheet asks Save or Discard for unsaved edits as
+  core's does (`useUnsavedSchedule`) before the page moves on; `timecard.roster`, Employees:
+  the department and delivery station the Daily tab and Employee Search list (none for all)
+  and the name order Meal Breaks writes and sorts names in; `timecard.drivers`, Driver
+  departments: all, or those chosen, whom alone the Daily tab lists and Driver Match counts as
+  drivers; and `timecard.late_das`,
   Late DAs, with the Meal Breaks tab: the IN DAY time at or after which a DA is late, in the
   departments chosen or any. Their departments and stations are the newest Paycom roster's,
   listed as Settings is read. Its backend reads them with `settings::read`
@@ -76,7 +78,8 @@ Timecard's collections. It names drivers through Driver Match.
 - **Storage:** in the collectors' own databases, which it migrates: Paycom's (`paycom`) and
   Cortex's (`cortex`). Its settings are core's, in the DSP's own database; the preferences it
   kept in Paycom's `settings` before (`paycom.preferences`) move into them once, as the DSP
-  opens, into each section never saved, and are read nowhere else. A Cortex meal collection asks it for the scope's active publication, so
+  opens (`settings::carry_over`), into each section never saved, and are read nowhere else.
+  A Cortex meal collection asks it for the scope's active publication, so
   finished routes are not read again. A route whose meal punches Cortex sent in a shape the
   meal rules can't read is kept in `meal_unreadable`, and its driver reads as
   `cortex_unreadable` (Check Cortex punches), linked to the route, rather than as no meal.

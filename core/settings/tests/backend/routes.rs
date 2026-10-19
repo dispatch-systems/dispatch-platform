@@ -290,23 +290,36 @@ static DEPARTMENTS: Feature = Feature {
 };
 
 #[test]
-fn a_list_several_sections_offer_is_read_once_for_a_members_settings() {
+fn a_list_several_sections_offer_is_read_once_for_a_members_settings_and_once_for_a_save() {
     let at = seeded();
-    let answer = sections(&at.db, &at.owner(&at.northline), of(&[&DEPARTMENTS])).unwrap();
-    let offered: Vec<_> = (answer.sections.iter())
-        .map(|section| match &section.fields[0].kind {
-            SettingsKind::Many { options, .. } | SettingsKind::Pick { options, .. } => {
-                (section.id.as_str(), options[0].label.as_str())
-            }
-            _ => panic!("{} lists its options", section.id),
-        })
-        .collect();
+    let owner = at.owner(&at.northline);
+    let offered = |section: &SettingsSection| match &section.fields[0].kind {
+        SettingsKind::Many { options, .. } | SettingsKind::Pick { options, .. } => {
+            (section.id.clone(), options[0].label.clone())
+        }
+        _ => panic!("{} lists its options", section.id),
+    };
+    let answer = sections(&at.db, &owner, of(&[&DEPARTMENTS])).unwrap();
     assert_eq!(
-        offered,
+        answer.sections.iter().map(offered).collect::<Vec<_>>(),
         [
-            ("stand_in.drivers", "Delivery"),
-            ("stand_in.roster", "Delivery")
+            ("stand_in.drivers".into(), "Delivery".into()),
+            ("stand_in.roster".into(), "Delivery".into())
         ]
     );
     assert_eq!(LISTED.load(Ordering::Relaxed), 1);
+    // A save reads it to check what's sent, and answers with the options it read then.
+    let body = json!({"values": {"department": "dsp"}, "revision": 0});
+    let saved = save_as(
+        &at.db,
+        &owner,
+        of(&[&DEPARTMENTS]),
+        "stand_in.roster",
+        &body,
+    );
+    let SettingsSaved::Section { section, .. } = saved.unwrap() else {
+        panic!("saved without asking");
+    };
+    assert_eq!(offered(&section).1, "Delivery");
+    assert_eq!(LISTED.load(Ordering::Relaxed), 2);
 }

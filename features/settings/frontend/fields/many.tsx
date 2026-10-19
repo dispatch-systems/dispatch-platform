@@ -1,28 +1,24 @@
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { SettingsValue } from '../../../../core/settings/api/index.js';
 import type { FieldKind, FieldProps } from './kind.js';
+import { checking, listed } from './options.js';
 
 const chosen = (value: SettingsValue) => (Array.isArray(value) ? value : []);
 
-/** Each option checked or not, kept in the options' order. */
-function Checks({ field, id, value, change }: FieldProps<'many'>) {
+/** Each option checked or not, kept in the order they are listed. */
+function Checks({ field, id, value, before, change }: FieldProps<'many'>) {
   const picked = chosen(value);
+  const shown = listed(field.options, [...chosen(before), ...picked]);
   return (
     <div className="settings-checks">
-      {field.options.map((option) => (
+      {shown.map((option) => (
         <label key={option.value}>
           <input
             type="checkbox"
             name={id}
             checked={picked.includes(option.value)}
             onChange={(event) =>
-              change(
-                field.options
-                  .map((each) => each.value)
-                  .filter((each) =>
-                    each === option.value ? event.target.checked : picked.includes(each),
-                  ),
-              )
+              change(checking(shown, picked, option.value, event.target.checked))
             }
           />
           {option.label}
@@ -33,10 +29,10 @@ function Checks({ field, id, value, change }: FieldProps<'many'>) {
 }
 
 /** The checked options first, in the member's order, each moved up or down; the rest after. */
-function Order({ field, id, value, change }: FieldProps<'many'>) {
+function Order({ field, id, value, before, change }: FieldProps<'many'>) {
   const picked = chosen(value);
-  const label = (each: string) =>
-    field.options.find((option) => option.value === each)?.label ?? each;
+  const shown = listed(field.options, [...chosen(before), ...picked]);
+  const label = (each: string) => shown.find((option) => option.value === each)?.label ?? each;
   const move = (from: number, to: number) => {
     const next = [...picked];
     next.splice(to, 0, ...next.splice(from, 1));
@@ -75,7 +71,7 @@ function Order({ field, id, value, change }: FieldProps<'many'>) {
           </button>
         </li>
       ))}
-      {field.options
+      {shown
         .filter((option) => !picked.includes(option.value))
         .map((option) => (
           <li key={option.value}>

@@ -626,16 +626,13 @@ fn a_retention_window_retires_older_days_only_while_routes_are_on() {
     }
     // Nothing is deleted by default.
     assert_eq!(db.expire_routes(&id).unwrap(), 0);
-    // A window that passes a stored day asks first, naming the first day it keeps.
+    // A window that passes a stored day asks first; the day its words name is the settings
+    // module's own test, either side of midnight.
     let window = json!({"days": 30});
-    let start = today - chrono::Duration::days(30);
-    assert_eq!(
+    assert!(matches!(
         settings::save(&db, &id, &actor, retention(), &window, 0, false).unwrap(),
-        Saved::Confirm(format!(
-            "Route data from before {} will be deleted within the hour. This can’t be undone.",
-            start.format("%b %-d, %Y")
-        ))
-    );
+        Saved::Confirm(_)
+    ));
     assert_eq!(db.expire_routes(&id).unwrap(), 0);
     settings::save(&db, &id, &actor, retention(), &window, 0, true).unwrap();
     // A day the window has passed cannot be collected again.

@@ -36,9 +36,15 @@ pub fn routes() -> Vec<Route> {
 }
 
 /// Served from the read cache, under the DSP's own name, for what the member's access makes
-/// of it: any write to the DSP's data but a collection's live pages evicts it.
+/// of it: one answer for every member with the same role, permissions and features, unless
+/// it holds values of their own. Any write to the DSP's data but a collection's live pages
+/// evicts it.
 fn answer(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
-    let access = serde_json::to_vec(&(c.actor(), &c.role, c.owner, &c.permissions, &c.features))?;
+    let seen = registry()
+        .sections()
+        .filter(|(feature, section)| visible(c, *feature, section));
+    let own = own(c, seen.map(|(_, section)| section));
+    let access = serde_json::to_vec(&(own, &c.role, c.owner, &c.permissions, &c.features))?;
     let bytes = c.state.read_cache.json(
         Cache::tenant(settings::CACHED, c.dsp_id()),
         crypto::sha(access),
@@ -60,8 +66,9 @@ type Declared = (Option<&'static Feature>, &'static Section);
 type OnPage = (String, &'static str, Group, u16);
 
 /// Every section of `declared` the member may see, with the pages they're on, read from the
-/// DSP's stored settings at once. One that can't be read now, as when its options can't be
-/// listed, is left out, and noted in the server's log; the rest are as they are.
+/// DSP's stored settings at once, and from the member's own only when the answer holds them
+/// (`own`). One that can't be read now, as when its options can't be listed, is left out, and
+/// noted in the server's log; the rest are as they are.
 pub(crate) fn sections(
     db: &Store,
     c: &Context,
@@ -77,7 +84,8 @@ pub(crate) fn sections(
             (group_a, at_a, page_a, a.order, a.id).cmp(&(group_b, at_b, page_b, b.order, b.id))
         },
     );
-    let records = store::Records::load(db, &c.dsp.id, c.actor())?;
+    let own = own(c, seen.iter().map(|((_, section), _)| *section));
+    let records = store::Records::load(db, &c.dsp.id, own)?;
     let mut lists = kinds::Lists::new(db, &c.dsp.id);
     let mut pages: Vec<SettingsPage> = Vec::new();
     let mut sections = Vec::with_capacity(seen.len());
@@ -107,6 +115,14 @@ pub(crate) fn sections(
     }
     Ok(SettingsAnswer { pages, sections })
 }
+/// Whose own values a member's Settings holds, given the sections they see: theirs while one
+/// of them has fields each member keeps their own of, and nobody's otherwise, so that one
+/// answer, cached once, serves every member with the same access. A section of each
+/// member's own with no fields, as their profile's, holds nothing of theirs to answer.
+fn own(c: &Context, seen: impl IntoIterator<Item = &'static Section>) -> Option<&str> {
+    let theirs = |section: &Section| section.scope == Scope::Member && !section.fields.is_empty();
+    seen.into_iter().any(theirs).then(|| c.actor())
+}
 /// Notes in the server's log a section left out of a member's Settings: which, of which DSP,
 /// and why, never its values.
 fn skipped(c: &Context, section: &Section, error: &Error) {
@@ -118,8 +134,8 @@ fn skipped(c: &Context, section: &Section, error: &Error) {
 }
 
 /// Saves the section `id` of `declared` as `body` asks, once the member may see it and holds
-/// its permission, recently verified when that asks for it: the section as it is now, or the
-/// words to confirm first.
+/// its permission, recently verified when that asks for it: the section as it is now, its
+/// options as the save listed them, or the words to confirm first.
 pub(crate) fn save_as(
     db: &Store,
     c: &Context,
@@ -137,7 +153,7 @@ pub(crate) fn save_as(
     }
     let body: SettingsSave =
         serde_json::from_value(body.clone()).map_err(|_| Error::new("invalid_input", 400))?;
-    let saved = settings::save(
+    let (saved, mut lists) = settings::save_listing(
         db,
         &c.dsp.id,
         c.actor(),
@@ -151,7 +167,6 @@ pub(crate) fn save_as(
             let (page, ..) = declared::page(feature, section);
             let member = (section.scope == Scope::Member).then(|| c.actor());
             let record = store::record(db, &c.dsp.id, section, member)?;
-            let mut lists = kinds::Lists::new(db, &c.dsp.id);
             SettingsSaved::Section {
                 section: Box::new(view(db, c, &mut lists, feature, section, page, &record)?),
                 reopen: db.find_dsp(&c.dsp.id)?.revision != c.dsp.revision,

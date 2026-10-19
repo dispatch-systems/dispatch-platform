@@ -39,7 +39,7 @@ export {
   sidebarOwner,
 } from './slots/pages.js';
 export type { CustomSection, CustomSectionContext, SettingsContext } from './slots/settings.js';
-export { readSettings, settingsRead, settingsSection } from './slots/settings.js';
+export { settingsRead, settingsSection } from './slots/settings.js';
 export type {
   ConnectionCard,
   ConnectionCardContext,

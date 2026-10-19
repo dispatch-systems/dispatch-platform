@@ -29,8 +29,12 @@ part. Mandatory: every DSP has it.
   enabled once a value changed and every value is one the field takes. A save sends the
   changed values with the revision they were read at; one the server says would lose something
   asks first in its words, and one another session beat is refused and the section read again.
-  A `schedules` field draws core's schedule editor inline, which asks about unsaved edits before
-  the page moves to another of its pages.
+  A `schedules` field draws core's schedule editor inline.
+- **Unsaved edits:** an editor open on the page with unsaved edits, as a schedule's, a custom
+  section's included (core's `useLeaveGuard`), asks Save or Discard before the page moves on,
+  however it moves: to another of its pages, by Back or the browser's Back or Forward, or by a
+  link followed or a hash typed (core's `holdAddress`). The address stays where it was while it
+  asks, and a save that fails keeps the page.
 - **A custom section** is drawn by the component its owner registers in the `settingsSections`
   slot under the section's id, with `refresh` to read Settings again; with `visible` it says
   whether the member has anything there, and a page with nothing to draw isn't listed.

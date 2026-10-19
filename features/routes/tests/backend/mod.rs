@@ -92,6 +92,17 @@ fn retained_sweep_selection_rechecks_running_jobs_and_publication_activity() {
         0
     );
 }
+/// Queues `day`, stages the fixture's day for that job and publishes it, as the executor does.
+pub(super) fn publish(db: &Store, dsp: &str, day: &str, mode: Mode) {
+    let jobs = db
+        .enqueue_routes(dsp, None, day, Some(day), mode, 1)
+        .unwrap();
+    let job = s(&jobs[0], "id").to_owned();
+    let request = serde_json::from_str(&db.job_row(&job, Some(dsp)).unwrap().request).unwrap();
+    let capture = fixture(&Request::parse(&request).unwrap().unwrap()).unwrap();
+    let staged = db.stage_routes(dsp, &job, capture).unwrap();
+    db.publish_routes(dsp, &job, &staged).unwrap();
+}
 fn request(mode: Mode) -> Request {
     Request {
         collection: Collection::Routes,

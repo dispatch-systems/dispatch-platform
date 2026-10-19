@@ -21,11 +21,13 @@ pub(crate) struct Current {
 /// Every record of a DSP one member reads: the DSP's, and that member's own, each by its key.
 pub(crate) struct Records(HashMap<String, Value>);
 impl Records {
-    /// In one query of the DSP's database, whatever number of sections it has.
-    pub(crate) fn load(db: &Store, dsp: &str, member: &str) -> Result<Self> {
-        let own = format!(":{member}");
+    /// In one query of the DSP's database, whatever number of sections it has: the DSP's, and
+    /// `member`'s own unless none is asked for.
+    pub(crate) fn load(db: &Store, dsp: &str, member: Option<&str>) -> Result<Self> {
+        let own = member.map(|member| format!(":{member}"));
         // The keys from `section:` up to the next character after `:`, as the table's key
         // orders them: the DSP's have no `:` past their prefix, and the member's end in theirs.
+        // With no member, the second test is null, so it holds for none.
         let rows: Vec<(String, String)> = db.dsp(dsp)?.query_as(
             "SELECT key,value FROM settings WHERE key>='section:' AND key<'section;' \
              AND (instr(substr(key,9),':')=0 OR substr(key,-length(?1))=?1)",

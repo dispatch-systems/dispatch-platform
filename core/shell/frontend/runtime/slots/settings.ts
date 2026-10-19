@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react';
 import type { DspView, SessionView } from '../../../../accounts/api/index.js';
-import type { SettingsAnswer } from '../../../../settings/api/index.js';
-import { dataCache } from '../data-cache.js';
 import { manifests } from './installed.js';
 
 // The Settings slot: the sections of a DSP's Settings an owner draws itself. Every section is
@@ -47,5 +45,3 @@ export const settingsSection = (id: string) =>
 
 /** The read a DSP's Settings is drawn from: its pages, and the sections on them the member sees. */
 export const settingsRead = '/api/dsp/settings';
-/** The open DSP's Settings, once read, while the cache still holds it. */
-export const readSettings = () => dataCache.peek(settingsRead).data as SettingsAnswer | undefined;

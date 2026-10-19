@@ -391,13 +391,13 @@
   background: var(--card);
   gap: 0;
 }
-.modal.side-sheet:has(.schedule-editor) .panel-body {
+.modal.side-sheet:has(.schedule-editor) > .panel-body {
   padding: 0;
 }
-.modal.side-sheet:has(.schedule-editor) .modal-heading {
+.modal.side-sheet:has(.schedule-editor) > .modal-heading {
   padding: 26px 26px 24px;
 }
-.modal.side-sheet:has(.schedule-editor) .modal-heading h2 {
+.modal.side-sheet:has(.schedule-editor) > .modal-heading h2 {
   font-weight: 500;
 }
 @media (pointer: coarse) {

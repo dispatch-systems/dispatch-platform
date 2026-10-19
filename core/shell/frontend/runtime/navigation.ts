@@ -2,16 +2,18 @@ import {
   landingPage,
   movedTo,
   routeOf,
-  readSettings,
   settingsPage,
+  settingsRead,
   sidebarOwner,
   type Access,
   type DspRouteId,
   type PlatformRouteId,
 } from './slots.js';
+import { dataCache } from './data-cache.js';
 import { hasFeature } from './features.js';
 import { siteDsp } from './site.js';
 import type { DspView } from '../../../accounts/api/index.js';
+import type { SettingsAnswer } from '../../../settings/api/index.js';
 
 const destinations = new Map<string, DspRouteId>();
 export function rememberDestination(dspId: string, page: DspRouteId) {
@@ -55,7 +57,8 @@ export function settingsHash(
   const host = settingsPage();
   if (!host) return undefined;
   if (page === undefined) return dspHash(dspId, host);
-  const pages = view?.dsp.id === dspId ? readSettings()?.pages : undefined;
+  const read = view?.dsp.id === dspId ? dataCache.peek(settingsRead).data : undefined;
+  const pages = (read as SettingsAnswer | undefined)?.pages;
   if (pages && !pages.some((each) => each.id === page)) return undefined;
   return dspHash(dspId, host, { tab: page, ...query });
 }
@@ -112,6 +115,49 @@ export const signInHash = '#signin';
 
 export function navigate(hash: string) {
   window.location.hash = hash;
+}
+
+// A page with unsaved edits holds the address: however it moves, by a link followed, Back, the
+// browser's Back or Forward or a hash typed, the page asks first, and while it asks the move is
+// put back, in place in the browser's history, so the address names the page still open. Once
+// every hold lets it, it is made again as it would have been, and every page following the
+// address hears it then; a hold that never lets it keeps the page, at its address.
+
+/** Asked before the address moves to `to`, a hash: runs `then` at once, once let, or never. */
+export type Hold = (to: string, then: () => void) => void;
+const holds = new Set<Hold>();
+/** The move the holds let, as it is made again. */
+let released: string | undefined;
+/** Has the address ask `hold` before it moves, until the answer is called. */
+export function holdAddress(hold: Hold) {
+  holds.add(hold);
+  return () => void holds.delete(hold);
+}
+/**
+ * Asks the holds as the address moves, heard before anything else that follows it: the app
+ * listens with it first, before it draws a page.
+ */
+export function askHolds(event: HashChangeEvent) {
+  const { oldURL: from, newURL: to } = event;
+  if (!holds.size || to === released) return;
+  // Let at once, the move goes on as it began; asked first, it is made again once let.
+  let waiting = false;
+  let letGo = false;
+  const go = () => {
+    if (!waiting) return void (letGo = true);
+    released = to;
+    history.replaceState(history.state, '', to);
+    window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: from, newURL: to }));
+    released = undefined;
+  };
+  const asks = [...holds];
+  const next = (index: number): void =>
+    index < asks.length ? asks[index]!(new URL(to).hash, () => next(index + 1)) : go();
+  next(0);
+  if (letGo) return;
+  waiting = true;
+  event.stopImmediatePropagation();
+  history.replaceState(history.state, '', from);
 }
 /** Signing in, or following an invitation or reset link: outside any DSP, at every address. */
 const signedOut = /^(?:signin$|invite\?|reset\?)/;

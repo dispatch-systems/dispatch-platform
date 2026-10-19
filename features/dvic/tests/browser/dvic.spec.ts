@@ -230,8 +230,25 @@ test('schedules persist, pause, reject stale edits and delete; manual sync reach
   await page.getByRole('button', { name: 'Delete schedule', exact: true }).click();
   await expect(page.getByText('No schedules yet', { exact: true })).toBeVisible();
   expect((await owner.get('/api/dsp/dvic/schedules')).value.schedules).toHaveLength(0);
-  // Back returns to the DVIC page its Collection settings opened from.
+  // Leaving the page with unsaved edits asks first, the address staying put meanwhile: Back,
+  // which then returns to the DVIC page its Collection settings opened from, and the browser's
+  // Back alike.
+  const draft = async () => {
+    await collection.getByRole('button', { name: 'Add schedule' }).click();
+    await page.getByLabel('Schedule name').fill('Draft only');
+  };
+  await draft();
   await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await expect(ask).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
+  await ask.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page).toHaveURL(/\/dvic$/);
+  await page.goBack();
+  await draft();
+  await page.goBack();
+  await expect(ask).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
+  await ask.getByRole('button', { name: 'Discard changes' }).click();
   await expect(page).toHaveURL(/\/dvic$/);
   const collected = page.waitForResponse(
     (response) =>

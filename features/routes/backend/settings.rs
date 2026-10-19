@@ -1,11 +1,14 @@
 //! Routes' settings: how long the DSP keeps its route data, on Settings' Data page, and the
 //! window a DSP chose before Settings kept it, moved in once.
-use super::{MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, RoutesStore, STORAGE, routes_today};
-use chrono::Duration;
+use super::{
+    MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, RoutesStore, STORAGE, first_kept,
+    maintenance::MAINTENANCE,
+};
 use dispatch_core::{
     Result,
     db::Store,
     manifest::{Section, number, section},
+    settings,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -45,14 +48,25 @@ pub struct Retention {
     pub days: Option<i64>,
 }
 
-/// The words to confirm a window with when it passes a day the DSP's route data holds: the
-/// first day it keeps, as expiry counts it. Every day kept, or none stored before it, asks
-/// nothing. It reads only `dsp`'s route data.
+/// The longest after a save until expiry runs, in milliseconds: its hour, and the minute
+/// upkeep may wait to be offered.
+const EXPIRES_WITHIN: i64 = MAINTENANCE.every.as_millis() as i64 + 60 * 1000;
+
+/// The words to confirm a window with when it passes a day the DSP's route data holds. It
+/// reads only `dsp`'s route data.
 fn deletes(db: &Store, dsp: &str, _: &Value, after: &Value) -> Result<Option<String>> {
+    deleted(db, dsp, after, dispatch_core::db::now())
+}
+/// The words to confirm the window `after` with, saved at `at` (milliseconds since the epoch),
+/// when it passes a day the route data holds: the first day it keeps as the expiry that runs
+/// within the hour after `at` counts it, a day later when that hour passes midnight where the
+/// DSP is, so the expiry deletes no day the words don't name. Every day kept, or none stored
+/// before it, asks nothing.
+fn deleted(db: &Store, dsp: &str, after: &Value, at: i64) -> Result<Option<String>> {
     let Some(days) = after["days"].as_i64() else {
         return Ok(None);
     };
-    let start = routes_today(db, dsp)? - Duration::days(days);
+    let start = first_kept(db, dsp, days, at + EXPIRES_WITHIN)?;
     let passed = db.routes_db(dsp)?.one(
         "SELECT 1 FROM route_publications WHERE active=1 AND day<? LIMIT 1",
         [start.to_string()],
@@ -66,27 +80,32 @@ fn deletes(db: &Store, dsp: &str, _: &Value, after: &Value) -> Result<Option<Str
 }
 
 /// Moves the window a DSP chose before Settings kept it, its route data's `route_retention`
-/// row, into `RETENTION` as the DSP's first value, at startup. Once the section holds one,
-/// saved or moved, nothing moves again; the table stays as it was, read only here.
+/// row, into `RETENTION` as the DSP's first value, at startup (`settings::carry_over`). Once
+/// the section holds one, saved or moved, nothing moves again; the table stays as it was, read
+/// only here.
 pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
-    // A DSP whose route data isn't made yet chose no window.
-    if store.dsp(id)?.setting(STORAGE.marker, Value::Null)? != json!(1) {
-        return Ok(());
-    }
-    let db = store.routes_db(id)?;
-    // Route data from before the table existed chose none either.
-    let kept = db.one(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='route_retention'",
-        [],
-    )?;
-    let days = match kept {
-        Some(_) => db
-            .one("SELECT days FROM route_retention WHERE id=1", [])?
-            .and_then(|row| row["days"].as_i64()),
-        None => None,
-    };
-    if let Some(days) = days {
-        dispatch_core::settings::adopt(store, id, &RETENTION, &json!({ "days": days }))?;
-    }
+    settings::carry_over(store, id, &RETENTION, || {
+        // A DSP whose route data isn't made yet chose no window.
+        if store.dsp(id)?.setting(STORAGE.marker, Value::Null)? != json!(1) {
+            return Ok(None);
+        }
+        let db = store.routes_db(id)?;
+        // Route data from before the table existed chose none either.
+        let kept = db.one(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='route_retention'",
+            [],
+        )?;
+        let days = match kept {
+            Some(_) => db
+                .one("SELECT days FROM route_retention WHERE id=1", [])?
+                .and_then(|row| row["days"].as_i64()),
+            None => None,
+        };
+        Ok(days.map(|days| json!({ "days": days })))
+    });
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/settings.rs"]
+mod tests;

@@ -10,7 +10,7 @@ use dispatch_core::{
     Result,
     db::Store,
     manifest::{Options, Section, choice, many, pick, section, time, toggle},
-    settings::{adopt, read},
+    settings::{carry_over, read},
 };
 use dispatch_paycom as paycom;
 use serde::Deserialize;
@@ -165,52 +165,56 @@ mod filters {
 }
 
 /// Moves the preferences a DSP kept in Paycom's database before Settings kept them,
-/// `paycom.preferences`, into its sections as their first values, at startup. A section that
+/// `paycom.preferences`, into its sections as their first values, at startup
+/// (`settings::carry_over`), each read only while its section was never saved. A section that
 /// holds values, saved or moved, keeps them; one whose values its fields refuse now keeps its
-/// defaults, rather than the DSP failing to open. What the page no longer reads (its opening
-/// tab, rows per page, sort and columns) stays behind; the record stays as it was, read only
-/// here.
+/// defaults. What the page no longer reads (its opening tab, rows per page, sort and columns)
+/// stays behind; the record stays as it was, read only here.
 pub(crate) fn upgrade(store: &Store, dsp: &str) -> Result<()> {
-    let adopt = |section: &Section, values: Value| match adopt(store, dsp, section, &values) {
-        Err(error) if error.code == "invalid_input" => Ok(()),
-        moved => moved.map(drop),
+    let moved = |section: &Section, values: fn(&Map<String, Value>) -> Option<Value>| {
+        carry_over(store, dsp, section, || {
+            let kept = store
+                .collector(dsp, paycom::PROVIDER)?
+                .setting("paycom.preferences", Value::Null)?;
+            Ok(kept
+                .get("values")
+                .and_then(Value::as_object)
+                .and_then(values))
+        });
     };
-    let kept = store
-        .collector(dsp, paycom::PROVIDER)?
-        .setting("paycom.preferences", Value::Null)?;
-    let Some(kept) = kept.get("values").and_then(Value::as_object) else {
-        return Ok(());
-    };
-    let mut roster = Map::new();
-    // An empty filter listed everyone, as none does now.
-    for key in ["department", "station"] {
-        if let Some(value) = kept
-            .get(key)
-            .and_then(Value::as_str)
-            .filter(|v| !v.is_empty())
-        {
-            roster.insert(key.to_owned(), json!(value));
+    moved(&ROSTER, |kept| {
+        let mut roster = Map::new();
+        // An empty filter listed everyone, as none does now.
+        for key in ["department", "station"] {
+            if let Some(value) = kept
+                .get(key)
+                .and_then(Value::as_str)
+                .filter(|v| !v.is_empty())
+            {
+                roster.insert(key.to_owned(), json!(value));
+            }
         }
-    }
-    if let Some(order) = kept.get("name_order") {
-        roster.insert("name_order".to_owned(), order.clone());
-    }
-    adopt(&ROSTER, Value::Object(roster))?;
+        if let Some(order) = kept.get("name_order") {
+            roster.insert("name_order".to_owned(), order.clone());
+        }
+        Some(Value::Object(roster))
+    });
     // None drove every department; a list, only those, an empty one none.
-    if let Some(departments) = kept.get("driver_departments").filter(|v| v.is_array()) {
-        adopt(
-            &DRIVERS,
-            json!({"all_departments": false, "departments": departments}),
-        )?;
-    }
-    let mut late = Map::new();
-    for (from, to) in [
-        ("late_da_time", "time"),
-        ("late_da_departments", "departments"),
-    ] {
-        if let Some(value) = kept.get(from) {
-            late.insert(to.to_owned(), value.clone());
+    moved(&DRIVERS, |kept| {
+        let departments = kept.get("driver_departments").filter(|v| v.is_array())?;
+        Some(json!({"all_departments": false, "departments": departments}))
+    });
+    moved(&LATE_DAS, |kept| {
+        let mut late = Map::new();
+        for (from, to) in [
+            ("late_da_time", "time"),
+            ("late_da_departments", "departments"),
+        ] {
+            if let Some(value) = kept.get(from) {
+                late.insert(to.to_owned(), value.clone());
+            }
         }
-    }
-    adopt(&LATE_DAS, Value::Object(late))
+        Some(Value::Object(late))
+    });
+    Ok(())
 }

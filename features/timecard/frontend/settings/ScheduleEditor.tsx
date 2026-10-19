@@ -6,6 +6,7 @@ import type { CollectionSchedule, ScheduleInput } from '../../../../core/collect
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { nextCollection } from './nextCollection.js';
 import { saveSchedule, removeSchedule } from '../../../../core/collection/api/client.js';
+import { useUnsavedSchedule } from '../../../../core/collection/frontend/schedules.js';
 import { previewSchedule, schedules } from '../../api/client.js';
 
 const newSchedule = (): ScheduleInput => ({
@@ -41,6 +42,7 @@ export function ScheduleEditor({
         }
       : newSchedule(),
   );
+  const [initial] = useState(draft);
   const [paycom, setPaycom] = useState(draft.collection !== 'meal_break');
   const [meal, setMeal] = useState(draft.collection !== 'paycom');
   const [busy, setBusy] = useState(false);
@@ -50,6 +52,18 @@ export function ScheduleEditor({
   const [preview, setPreview] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState('');
   const { cadence, intervalMinutes, localTime, enabled } = draft;
+  // Edits leave only through Save or Discard as its page of Settings moves on; Cancel or
+  // closing the sheet drops them.
+  const { asking } = useUnsavedSchedule({
+    dirty:
+      (['name', 'cadence', 'intervalMinutes', 'localTime', 'enabled'] as const).some(
+        (key) => draft[key] !== initial[key],
+      ) ||
+      paycom !== (initial.collection !== 'meal_break') ||
+      meal !== (initial.collection !== 'paycom'),
+    saveable: !busy && !stale && Boolean(draft.name.trim()) && (paycom || meal),
+    save: () => submit(),
+  });
   const sameTiming =
     !!schedule &&
     schedule.cadence === cadence &&
@@ -95,10 +109,11 @@ export function ScheduleEditor({
   }, [cadence, intervalMinutes, localTime, enabled, timezone, sameTiming, schedule]);
   const edit = <K extends keyof ScheduleInput>(key: K, value: ScheduleInput[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
+  /** Saves the schedule, or deletes it; whether it did. */
   async function submit(remove = false) {
     if (!remove && !paycom && !meal) {
       setError('Select Paycom, Meal Break, or both.');
-      return;
+      return false;
     }
     setBusy(true);
     setError('');
@@ -112,9 +127,11 @@ export function ScheduleEditor({
           ...(schedule ? { revision: schedule.revision } : {}),
         });
       onSaved(remove ? 'Schedule deleted' : schedule ? 'Schedule saved' : 'Schedule created');
+      return true;
     } catch (cause) {
       setError(messageOf(cause));
       setStale(cause instanceof ApiError && cause.code === 'schedule_changed');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -307,6 +324,7 @@ export function ScheduleEditor({
             </button>
           ))}
       </form>
+      {asking}
     </Modal>
   );
 }

@@ -1,14 +1,10 @@
 import type { DspView } from '../../../core/accounts/api/index.js';
 import type { SettingsAnswer } from '../../../core/settings/api/index.js';
-import { getSettings } from '../../../core/settings/api/client.js';
+import { getSettings, readSettings } from '../../../core/settings/api/client.js';
 import { dataCache } from '../../../core/shell/frontend/runtime/data-cache.js';
 import { hashQuery, parseHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { admitted, warm } from '../../../core/shell/frontend/runtime/route-prefetch.js';
-import {
-  readSettings,
-  settingsRead,
-  settingsSection,
-} from '../../../core/shell/frontend/runtime/slots.js';
+import { settingsRead, settingsSection } from '../../../core/shell/frontend/runtime/slots.js';
 
 // A DSP's Settings is what the server says the member has: its pages, which its sidebar lists,
 // and the sections on them, which the page draws from their declarations. A custom section is drawn by

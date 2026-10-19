@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type { CollectionSchedule, ScheduleCollection, ScheduleInput } from '../api/index.js';
 import { ApiError } from '../../shell/frontend/runtime/api.js';
+import type { Leave } from '../../shell/frontend/runtime/leave.js';
 import { previewSchedule, removeSchedule, saveSchedule } from '../api/client.js';
 import { messageOf } from '../../shell/frontend/lib/errors.js';
 import { time } from '../../shell/frontend/lib/format.js';
-import { ErrorBox, Modal } from '../../shell/frontend/ui/index.js';
-
-/** Runs `then` at once, or after the member chooses Save or Discard for unsaved edits. */
-export type Leave = (then: () => void) => void;
+import { ErrorBox } from '../../shell/frontend/ui/index.js';
+import { useUnsavedSchedule } from './useUnsavedSchedule.js';
 
 /** What a new schedule starts as: its name and the time it collects at. */
 export type ScheduleDefaults = { name: string; localTime: string };
@@ -47,7 +46,6 @@ export function ScheduleForm({
         },
   );
   const initial = useRef(draft);
-  const [confirming, setConfirming] = useState<(() => void) | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [stale, setStale] = useState(false);
@@ -59,7 +57,11 @@ export function ScheduleForm({
     (key) => draft[key] !== initial.current[key],
   );
   // Edits leave only through Save or Discard; closing the tab drops them silently.
-  const leave: Leave = (then) => (dirty ? setConfirming(() => then) : then());
+  const { leave, asking } = useUnsavedSchedule({
+    dirty,
+    saveable: !busy && !stale && Boolean(draft.name.trim()),
+    save,
+  });
   useEffect(() => {
     leaveRef.current = leave;
     return () => {
@@ -256,35 +258,7 @@ export function ScheduleForm({
             </button>
           ))}
       </form>
-      {confirming && (
-        <Modal title="Save changes?" dismissible={false} onClose={() => {}}>
-          <p>This schedule has unsaved changes.</p>
-          <div className="form-actions">
-            <button
-              type="button"
-              onClick={() => {
-                const then = confirming;
-                setConfirming(null);
-                then();
-              }}
-            >
-              Discard changes
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={busy || stale || !draft.name.trim()}
-              onClick={async () => {
-                const then = confirming;
-                if (await save()) then();
-                else setConfirming(null);
-              }}
-            >
-              Save changes
-            </button>
-          </div>
-        </Modal>
-      )}
+      {asking}
     </>
   );
 }

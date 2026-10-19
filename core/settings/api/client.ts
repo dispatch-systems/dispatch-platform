@@ -1,6 +1,6 @@
 import { api, useCachedData } from '../../shell/frontend/runtime/api.js';
 import { dataCache } from '../../shell/frontend/runtime/data-cache.js';
-import { readSettings, settingsRead } from '../../shell/frontend/runtime/slots.js';
+import { settingsRead } from '../../shell/frontend/runtime/slots.js';
 import type { SettingsAnswer, SettingsSave, SettingsSaved } from './index.js';
 
 // Settings' endpoints, as a DSP's Settings page calls them. Each is the open DSP's: the server
@@ -9,6 +9,8 @@ import type { SettingsAnswer, SettingsSave, SettingsSaved } from './index.js';
 
 /** What the member's Settings shows: its pages, and the sections on them. */
 export const useSettings = () => useCachedData<SettingsAnswer>(settingsRead);
+/** The member's Settings, once read, while the cache still holds it. */
+export const readSettings = () => dataCache.peek(settingsRead).data as SettingsAnswer | undefined;
 /** Reads the member's Settings, for a page about to draw it. */
 export const getSettings = (signal?: AbortSignal) =>
   api<SettingsAnswer>(settingsRead, undefined, signal);

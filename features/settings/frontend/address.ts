@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
+import { leaving, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
-import { leaving, type Guards } from './leave.js';
 
 // Settings' address: the page open (`?tab=<page>`, its id, which never changes) and a section of
 // it to point out (`&find=<section>`). Its sidebar moves it in place, as a link followed or Back
@@ -16,8 +16,10 @@ export function followAddress(follow: () => void) {
     window.removeEventListener('hashchange', follow);
   };
 }
+/** The page an address, a hash, names, if it names one. */
+export const pageIn = (hash: string) => new URLSearchParams(hash.split('?')[1]).get('tab');
 /** The page the address names, if it names one. */
-export const addressedPage = () => hashQuery().get('tab');
+export const addressedPage = () => pageIn(location.hash);
 /** The page the address names, as it moves. */
 export const useAddressedPage = () => useSyncExternalStore(followAddress, addressedPage);
 /** The section the address asks to point out, if it asks. */

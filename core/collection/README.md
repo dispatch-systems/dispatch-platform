@@ -19,4 +19,6 @@ Its Connections page is a custom section of a DSP's Settings, `collection.connec
 Connections page: the server shows it to every member, and its component in
 `frontend/feature.ts` says whether they have anything there. A collection's schedules are edited
 with `ScheduleSettings` (`frontend/schedules.ts`): in a sheet, or inline, as Settings draws a
-section's `schedules` field.
+section's `schedules` field. Its editor keeps a schedule's unsaved edits until they're saved or
+discarded, asking before the sheet closes or the page it's on moves on (core's `useLeaveGuard`);
+a feature's own editor does the same with `useUnsavedSchedule`, from the same entry.

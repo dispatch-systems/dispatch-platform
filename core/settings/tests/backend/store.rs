@@ -3,7 +3,7 @@
 //! and recorded in the DSP's log as each field shows it; a member's own aren't.
 use super::*;
 use crate::{
-    Result,
+    Error, Result,
     db::Store,
     manifest::settings::{
         Field, Kept, Options, Section, choice, many, number, pick, schedules, section, text, time,
@@ -322,28 +322,33 @@ fn a_section_kept_elsewhere_reads_and_saves_there_and_core_keeps_its_revision() 
 }
 
 #[test]
-fn values_a_feature_kept_itself_are_adopted_once_and_never_over_a_save() {
+fn values_a_feature_kept_itself_move_in_once_never_over_a_save_and_a_failure_waits() {
     let (_root, db, dsp, owner) = northline();
-    let adopt = |values: Value| super::adopt(&db, &dsp, &POLICY, &values);
+    let carry = |old: Result<Option<Value>>| carry_over(&db, &dsp, &POLICY, || old);
+    // What can't be read now, what its fields refuse, and its defaults, keep nothing and leave
+    // the DSP opening; what failed moves as it next opens.
+    carry(Err(Error::new("storage_busy", 503)));
+    carry(Ok(Some(json!({"days": 29}))));
+    carry(Ok(Some(json!({"days": null, "mode": "final"}))));
+    carry(Ok(None));
+    let record = store::record(&db, &dsp, &POLICY, None).unwrap();
+    assert_eq!(record, Value::Null);
+    // A department its list has dropped since is kept as it was chosen.
+    carry(Ok(Some(json!({"days": 120, "department": "gone"}))));
+    let moved = read::<Policy>(&db, &dsp, &POLICY).unwrap();
     assert_eq!(
-        adopt(json!({"days": 29})).unwrap_err().code,
-        "invalid_input"
-    );
-    assert!(
-        !adopt(json!({"days": null, "mode": "final"})).unwrap(),
-        "its defaults"
-    );
-    // A department its list has dropped since is kept as it was chosen; a save would refuse it.
-    assert!(adopt(json!({"days": 120, "department": "gone"})).unwrap());
-    assert!(!adopt(json!({"days": 365})).unwrap(), "adopted already");
-    let adopted = read::<Policy>(&db, &dsp, &POLICY).unwrap();
-    assert_eq!(
-        (adopted.days, adopted.department.as_deref()),
+        (moved.days, moved.department.as_deref()),
         (Some(120), Some("gone"))
     );
+    // Once it holds values, the old ones aren't read again.
+    carry_over(&db, &dsp, &POLICY, || panic!("read once moved"));
     // It's at revision 1, which a save then reads at, and the log has nothing of it.
     saved(&db, &dsp, &owner, json!({"days": 90}), 1).unwrap();
-    assert!(!adopt(json!({"days": 365})).unwrap());
+    // A save may keep it, but not choose one the list hasn't.
+    saved(&db, &dsp, &owner, json!({"department": "gone"}), 2).unwrap();
+    let refused = saved(&db, &dsp, &owner, json!({"department": "hr"}), 2).unwrap_err();
+    assert_eq!(refused.code, "invalid_input");
+    carry(Ok(Some(json!({"days": 365}))));
     assert_eq!(read::<Policy>(&db, &dsp, &POLICY).unwrap().days, Some(90));
     let logged = testing::audit_actions(&db, &dsp, "settings.");
     assert_eq!(logged, ["settings.changed"]);

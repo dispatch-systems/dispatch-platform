@@ -147,7 +147,8 @@ pub(crate) fn described(
 
 /// `given` as `field` keeps it, given what it holds now and the options it offers: made the
 /// one way it's kept, and refused as `invalid_input` unless it fits, is one of the options
-/// listed now, and neither empties a text once set nor changes a locked one. Given no options,
+/// listed now or one it holds already, which its list may have dropped since, and neither
+/// empties a text once set nor changes a locked one. Given no options,
 /// what a field lists as it's read is checked only as `fits` checks it, as for values a
 /// feature adopts, which its list may have dropped since they were kept.
 pub(crate) fn checked(
@@ -186,8 +187,11 @@ pub(crate) fn checked(
         }
         _ => given.clone(),
     };
+    // What it holds already stays allowed, so that saving others doesn't force it out.
+    let held =
+        |value: &Value| *now == *value || now.as_array().is_some_and(|kept| kept.contains(value));
     let listed = match (field.kind, listing) {
-        (Kind::Pick { .. }, Some(_)) => value.is_null() || offered(&value),
+        (Kind::Pick { .. }, Some(_)) => value.is_null() || offered(&value) || held(&value),
         (
             Kind::Many {
                 options: Options::Listed(_),
@@ -196,7 +200,7 @@ pub(crate) fn checked(
             Some(_),
         ) => value
             .as_array()
-            .is_some_and(|values| values.iter().all(offered)),
+            .is_some_and(|values| values.iter().all(|value| offered(value) || held(value))),
         _ => true,
     };
     let set = now.as_str().is_some_and(|now| !now.is_empty());

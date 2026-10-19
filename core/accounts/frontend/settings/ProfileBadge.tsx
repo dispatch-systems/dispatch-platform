@@ -26,7 +26,7 @@ function settle(badge: HTMLElement) {
  * page, and the badge a second, stiffer one about its hook, pushed the other way by the clip's
  * acceleration so that it lags and then catches up.
  * Dragging the badge pulls the strap toward the pointer; letting go keeps the velocity it had.
- * The page opens with the lanyard dropping from above the tab rule until its strap draws taut, which
+ * The page opens with the lanyard dropping from above its box until its strap draws taut, which
  * gives a little under the weight and sets it gently swinging. The reflection on the badge slides only as the badge itself leans.
  * Angles are radians, clockwise positive, written to CSS variables so that nothing re-renders.
  */
@@ -53,7 +53,7 @@ const SPREAD = 72; // each strap is anchored this far to the side of the clip's 
 const STRAP_LENGTH = Math.hypot(SPREAD, STRAP);
 
 // Each strap is drawn running straight up from the clip at (x, y), then turned to pass through its anchor.
-// It is never stretched: more or less of its length shows below the tab rule, as cloth would slide.
+// It is never stretched: more or less of its length shows below the top of its box, as cloth would slide.
 function strapTransform(side: -1 | 1, x: number, y: number) {
   const turn = (Math.atan2(side * SPREAD - x, STRAP + y) * 180) / Math.PI;
   return `translate(${CENTRE + x} ${STRAP + y}) rotate(${turn})`;

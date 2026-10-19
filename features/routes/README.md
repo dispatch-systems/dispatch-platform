@@ -25,11 +25,12 @@ name `routedata` on disk.
 - **Settings:** `routes.retention`, "Route data", on the shared Data page (`?tab=data`), behind
   `routes.manage` (`backend/settings.rs`). Its one field, `days`, is a number from 30 to 3,650
   with presets, or none for every day, the default. A window that passes a day the route data
-  holds asks to confirm first, naming the first day it keeps, counted back from today where
-  the DSP is. Expiry and collection requests read it with `settings::read`; core keeps it in
-  the DSP's settings. The window a DSP chose before, in its route data's `route_retention`, moves
-  in once as the server starts (`upgrade_storage`), unless the section was saved already; the
-  table stays, read only by that move.
+  holds asks to confirm first, naming the first day it keeps as the expiry within the hour
+  counts it: back from the day it is then where the DSP is, so the next day's in the hour
+  before midnight. Expiry and collection requests read it with `settings::read`; core keeps it
+  in the DSP's settings. The window a DSP chose before, in its route data's `route_retention`,
+  moves in once as the server starts (`upgrade_storage`, through `settings::carry_over`),
+  unless the section was saved already; the table stays, read only by that move.
 - **Log:** `routes.collection_requested` and `routes.data_expired`, under Collections; a change
   of the window is core's `settings.changed`. `routes.retention_changed`, from before Settings
   kept it, still reads.
