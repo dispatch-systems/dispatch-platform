@@ -441,7 +441,8 @@ impl Driver {
                 .await
             {
                 Ok(answer) if answer["started"] == true => break,
-                Ok(answer) if answer["busy"] == true => {
+                // Found, but the application cannot sign as asked: asking again won't help.
+                Ok(answer) if answer["busy"] == true || answer["store"] == true => {
                     signing.metrics.detail("routes_signing_unavailable");
                     return Ok(attempt);
                 }
@@ -471,6 +472,7 @@ impl Driver {
                     let added = self.browser.evaluate(&self.page.id, &add).await;
                     if added.is_ok_and(|answer| answer["started"] == true) {
                         asked.extend(more);
+                        quiet_since = Instant::now();
                     } else {
                         signing.metrics.detail("routes_signing_unavailable");
                         open = false;
@@ -496,37 +498,37 @@ impl Driver {
             if asked.is_empty() && ready.is_empty() && tasks.is_empty() {
                 break;
             }
-            // Every paused request is answered as soon as it is seen, whatever else is
-            // waiting, and never raced against anything: an abandoned browser command
-            // ends the whole session.
+            // Every paused request is answered as soon as it is seen, before anything else,
+            // and never raced against anything: an abandoned browser command ends the whole
+            // session.
             let event = self.browser.event(&self.page.id).await?;
+            if !event.is_null() {
+                let signed = day.signed(&self.origin, &event["request"]);
+                // None leaves the browser.
+                self.page
+                    .command(
+                        "Fetch.failRequest",
+                        json!({"requestId":event["requestId"],"errorReason":"BlockedByClient"}),
+                    )
+                    .await?;
+                match signed.filter(|(read, _)| asked.remove(read)) {
+                    Some(signed) => {
+                        attempt.signed = true;
+                        quiet_since = Instant::now();
+                        ready.push_back(signed);
+                    }
+                    None => signing.metrics.detail("routes_signed_unexpected"),
+                }
+            }
             while let Some(joined) = tasks.try_join_next() {
                 signing.take(joined).await?;
             }
-            if event.is_null() {
-                if !asked.is_empty() && quiet_since.elapsed() >= SIGN_DEADLINE {
-                    // What it was asked and never signed is read some other way.
-                    signing.metrics.detail("routes_signing_stalled");
-                    asked.clear();
-                    open = false;
-                }
-                continue;
-            }
-            quiet_since = Instant::now();
-            let signed = day.signed(&self.origin, &event["request"]);
-            // None leaves the browser.
-            self.page
-                .command(
-                    "Fetch.failRequest",
-                    json!({"requestId":event["requestId"],"errorReason":"BlockedByClient"}),
-                )
-                .await?;
-            match signed.filter(|(read, _)| asked.remove(read)) {
-                Some(signed) => {
-                    attempt.signed = true;
-                    ready.push_back(signed);
-                }
-                None => signing.metrics.detail("routes_signed_unexpected"),
+            // Only a read it was asked for counts as the application answering.
+            if !asked.is_empty() && quiet_since.elapsed() >= SIGN_DEADLINE {
+                // What it was asked and never signed is read some other way.
+                signing.metrics.detail("routes_signing_stalled");
+                asked.clear();
+                open = false;
             }
         }
         Ok(attempt)

@@ -7,7 +7,8 @@
 // up in the browser. Nothing is read from the application or its store but the action.
 //
 // `{action: "sign", reads, lanes}` answers whether the reads started: not without the
-// store, nor while an earlier run's lanes still wait (`busy`). `{action: "add", reads}`
+// store, nor while an earlier run's lanes still wait (`busy`), nor when the store's action
+// did not wait (`store` found, not started). `{action: "add", reads}`
 // gives a started run more reads. `{action: "stop"}` lets no lane start another read and
 // answers how many lanes still wait.
 (input) => {
@@ -89,5 +90,5 @@
   };
   state.fill();
   // An action that did not wait has stopped every lane already.
-  return { started: !state.stopped };
+  return { started: !state.stopped, store: true };
 };
