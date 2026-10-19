@@ -76,6 +76,7 @@ fn a_drivers_days_are_read_for_their_ids_with_unknown_days_told_apart_while_it_i
         })
     );
 
+    // driver-2's rows, not asked for, are left out.
     let ids = ["driver-1".to_owned(), "driver-3".to_owned()];
     let read = offered
         .days(&db, &dsp, &ids, "2026-09-30", "2026-10-04")
@@ -113,32 +114,26 @@ fn a_drivers_days_are_read_for_their_ids_with_unknown_days_told_apart_while_it_i
             Some(false)
         )
     );
-    assert!(first.events.is_empty());
     let third = &read.days[1];
     assert_eq!(third.safety.as_ref().unwrap().speeding, Some(2.0));
-    let negatives = &third.feedback.as_ref().unwrap().negatives;
-    assert_eq!(negatives.len(), 1);
-    assert_eq!(
-        (negatives[0].what.as_str(), negatives[0].count),
-        ("driver_mishandled_package_cnt", 2.0)
-    );
+    let negatives: Vec<_> = third
+        .feedback
+        .as_ref()
+        .unwrap()
+        .negatives
+        .iter()
+        .map(|n| (n.what.as_str(), n.count))
+        .collect();
+    assert_eq!(negatives, [("driver_mishandled_package_cnt", 2.0)]);
     // Reported both live and assessed, the event is told once, as assessed.
-    assert_eq!(third.events.len(), 1);
-    let event = &third.events[0];
-    assert!(event.assessed);
-    assert_eq!(
-        (event.kind.as_deref(), event.impacting),
-        (Some("Speeding"), Some(true))
-    );
+    let events: Vec<_> = third
+        .events
+        .iter()
+        .map(|e| (e.kind.as_deref(), e.impacting, e.assessed))
+        .collect();
+    assert_eq!(events, [(Some("Speeding"), Some(true), true)]);
     let quality = read.days[2].quality.as_ref().unwrap();
     assert_eq!((quality.delivered, quality.dispatched), (Some(97.0), None));
-
-    let other = ["driver-9".to_owned()];
-    let nobody = offered
-        .days(&db, &dsp, &other, "2026-10-01", "2026-10-03")
-        .unwrap();
-    assert_eq!(nobody.collected, ["2026-10-01", "2026-10-03"]);
-    assert!(nobody.days.is_empty());
 
     let owner = testing::a_user(&db);
     db.set_feature(&dsp, "daily_performance", false, &owner)

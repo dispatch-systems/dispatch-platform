@@ -59,8 +59,8 @@ impl DriverRoutes for Exposed {
         )?;
         Ok(row.and_then(|row| {
             Some(Collected {
-                from: row["first"].as_str()?.to_owned(),
-                through: row["last"].as_str()?.to_owned(),
+                from: text(&row, "first")?,
+                through: text(&row, "last")?,
             })
         }))
     }
@@ -72,18 +72,14 @@ impl DriverRoutes for Exposed {
         from: &str,
         to: &str,
     ) -> Result<Driven> {
-        validate::date(from)?;
-        validate::date(to)?;
-        let date = |day: &str| {
-            NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
-        };
+        let (first, last) = (date(from)?, date(to)?);
         ensure(
-            from <= to
-                && (date(to)? - date(from)?).num_days() < LONGEST
+            first <= last
+                && (last - first).num_days() < LONGEST
                 && ids.len() <= MOST_IDS
                 && ids
                     .iter()
-                    .all(|id| !id.is_empty() && id.chars().count() <= LONGEST_ID),
+                    .all(|id| (1..=LONGEST_ID).contains(&id.chars().count())),
             "invalid_input",
             400,
         )?;
@@ -108,16 +104,7 @@ impl DriverRoutes for Exposed {
             }
             for row in routes.all(UNDELIVERED, params![station, from, to, ids])? {
                 if let Some(&at) = found.get(&itinerary(&row)) {
-                    driven[at].undelivered.push(Undelivered {
-                        tracking_id: row["tracking_id"].as_str().map(str::to_owned),
-                        state: row["task_state"].as_str().map(str::to_owned),
-                        // Amazon writes NONE where it gives no reason.
-                        reason: row["state_context"]
-                            .as_str()
-                            .filter(|reason| *reason != "NONE")
-                            .map(str::to_owned),
-                        attempted_at: row["executed_at"].as_i64(),
-                    });
+                    driven[at].undelivered.push(undelivered(&row));
                 }
             }
             Ok(Driven {
@@ -128,6 +115,15 @@ impl DriverRoutes for Exposed {
     }
 }
 
+/// A day as the contract names it, YYYY-MM-DD.
+fn date(day: &str) -> Result<NaiveDate> {
+    validate::date(day)?;
+    NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
+}
+/// A row's text, when it has some.
+fn text(row: &Value, key: &str) -> Option<String> {
+    row[key].as_str().map(str::to_owned)
+}
 /// The publication and itinerary a row belongs to.
 fn itinerary(row: &Value) -> (String, String) {
     (
@@ -136,15 +132,14 @@ fn itinerary(row: &Value) -> (String, String) {
     )
 }
 fn route_day(row: &Value) -> RouteDay {
-    let text = |key: &str| row[key].as_str().map(str::to_owned);
     let count = |key: &str| row[key].as_i64().unwrap_or(0);
     RouteDay {
         day: s(row, "day").into(),
         driver_id: s(row, "transporter_id").into(),
-        route_code: text("route_code"),
-        status: text("execution_status"),
-        progress: text("progress_status"),
-        vin: text("vin"),
+        route_code: text(row, "route_code"),
+        status: text(row, "execution_status"),
+        progress: text(row, "progress_status"),
+        vin: text(row, "vin"),
         planned_departure_at: row["planned_departure_at"].as_i64(),
         departed_at: row["departed_at"].as_i64(),
         first_delivery_at: row["first_stop_at"].as_i64(),
@@ -158,6 +153,15 @@ fn route_day(row: &Value) -> RouteDay {
         breaks_secs: row["breaks_secs"].as_i64(),
         overtime_secs: row["overtime_secs"].as_i64(),
         undelivered: Vec::new(),
+    }
+}
+fn undelivered(row: &Value) -> Undelivered {
+    Undelivered {
+        tracking_id: text(row, "tracking_id"),
+        state: text(row, "task_state"),
+        // Amazon writes NONE where it gives no reason.
+        reason: text(row, "state_context").filter(|reason| reason != "NONE"),
+        attempted_at: row["executed_at"].as_i64(),
     }
 }
 

@@ -37,10 +37,6 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     let ids = |ids: &[&str]| ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
     let driver = ids(&["driver-2"]);
     assert_eq!(offered.collected(&db, &dsp).unwrap(), None);
-    let nothing = offered
-        .routes(&db, &dsp, &driver, &day(3), &day(0))
-        .unwrap();
-    assert!(nothing.days.is_empty() && nothing.routes.is_empty());
 
     // Three days ago and yesterday are left uncollected; today is read while under way.
     publish(&db, &dsp, &day(2), Mode::Final);

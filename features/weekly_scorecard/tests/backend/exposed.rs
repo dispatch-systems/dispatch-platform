@@ -46,8 +46,8 @@ fn publish(db: &Store, dsp: &str, key: &str, week: &str, edit: fn(&mut Capture))
     db.publish_weekly_scorecard(dsp, s(&job, "id"), &capture, &scope)
         .unwrap();
 }
-fn ids(ids: &[&str]) -> Vec<String> {
-    ids.iter().map(|id| (*id).to_owned()).collect()
+fn owned(texts: &[&str]) -> Vec<String> {
+    texts.iter().map(|text| (*text).to_owned()).collect()
 }
 
 #[test]
@@ -94,16 +94,17 @@ fn driver_scorecards_reads_the_drivers_asked_for_in_the_weeks_shown_only_while_o
         Some(Collected {
             from: "2026-09-06".into(),
             through: "2026-09-19".into(),
-            weeks: ids(&["2026-W37", "2026-W38"]),
+            weeks: owned(&["2026-W37", "2026-W38"]),
         })
     );
 
-    // Three weeks overlap the days asked: the first, never collected, is unknown and read as none.
+    // Three weeks overlap the days asked: the first, never collected, is unknown and read as none;
+    // the others are collected, and empty for an ID they don't name.
     let found = offered
         .scorecards(
             &db,
             &dsp,
-            &ids(&["driver-2", "someone-else"]),
+            &owned(&["driver-2", "someone-else"]),
             "2026-08-30",
             "2026-09-13",
         )
@@ -134,26 +135,13 @@ fn driver_scorecards_reads_the_drivers_asked_for_in_the_weeks_shown_only_while_o
     );
     let cdf = card.metrics.iter().find(|m| m.name == "cdf_dpmo").unwrap();
     assert_eq!(cdf.value, Some(100.0));
-    // A collected week without them is empty.
-    assert!(
-        offered
-            .scorecards(
-                &db,
-                &dsp,
-                &ids(&["someone-else"]),
-                "2026-09-13",
-                "2026-09-19"
-            )
-            .unwrap()
-            .is_empty()
-    );
 
     // A package counts in its scorecard week, though its own day is outside the days asked.
     let packages = offered
         .packages(
             &db,
             &dsp,
-            &ids(&["driver-1", "driver-3"]),
+            &owned(&["driver-1", "driver-3"]),
             "2026-09-19",
             "2026-09-19",
         )
@@ -178,7 +166,7 @@ fn driver_scorecards_reads_the_drivers_asked_for_in_the_weeks_shown_only_while_o
                 "driver-1",
                 None,
                 Some(true),
-                ids(&["driver_was_unprofessional"])
+                owned(&["driver_was_unprofessional"])
             ),
             (
                 PackageKind::Concession,
@@ -186,7 +174,7 @@ fn driver_scorecards_reads_the_drivers_asked_for_in_the_weeks_shown_only_while_o
                 "driver-3",
                 Some("2026-09-13"),
                 Some(true),
-                ids(&["dac_dnr", "dac_loss"])
+                owned(&["dac_dnr", "dac_loss"])
             ),
             (
                 PackageKind::Return,
@@ -194,7 +182,7 @@ fn driver_scorecards_reads_the_drivers_asked_for_in_the_weeks_shown_only_while_o
                 "driver-1",
                 Some("2026-09-13"),
                 Some(true),
-                ids(&["BUSINESS CLOSED"])
+                owned(&["BUSINESS CLOSED"])
             ),
         ]
     );
@@ -211,44 +199,30 @@ fn driver_scorecards_refuses_bad_days_and_ids() {
     let offered = scorecards::for_dsp(&db, &dsp)
         .unwrap()
         .expect("Weekly Scorecard is on");
-    let many: Vec<String> = (0..33).map(|n| format!("driver-{n}")).collect();
-    for (asked, from, to, code) in [
-        (
-            ids(&["driver-1"]),
-            "2026-9-13",
-            "2026-09-19",
-            "invalid_date",
-        ),
-        (
-            ids(&["driver-1"]),
-            "2026-09-19",
-            "2026-09-13",
-            "invalid_input",
-        ),
-        (
-            ids(&["driver-1"]),
-            "2025-09-18",
-            "2026-09-19",
-            "invalid_input",
-        ),
-        (
-            vec![String::new()],
-            "2026-09-13",
-            "2026-09-19",
-            "invalid_input",
-        ),
-        (
-            vec!["x".repeat(129)],
-            "2026-09-13",
-            "2026-09-19",
-            "invalid_input",
-        ),
-        (many, "2026-09-13", "2026-09-19", "invalid_input"),
+    let refuses = |asked: &[String], from: &str, to: &str, code: &str| {
+        for refused in [
+            offered.scorecards(&db, &dsp, asked, from, to).err(),
+            offered.packages(&db, &dsp, asked, from, to).err(),
+        ] {
+            let refused = refused.map(|error| error.code);
+            assert_eq!(
+                refused.as_deref(),
+                Some(code),
+                "{asked:?} from {from} to {to}"
+            );
+        }
+    };
+    let one = owned(&["driver-1"]);
+    for (from, to, code) in [
+        ("2026-9-13", "2026-09-19", "invalid_date"),
+        ("2026-09-19", "2026-09-13", "invalid_input"),
+        ("2025-09-18", "2026-09-19", "invalid_input"),
     ] {
-        let refused = offered.scorecards(&db, &dsp, &asked, from, to).unwrap_err();
-        assert_eq!(refused.code, code, "{from} to {to}");
-        let refused = offered.packages(&db, &dsp, &asked, from, to).unwrap_err();
-        assert_eq!(refused.code, code, "{from} to {to}");
+        refuses(&one, from, to, code);
+    }
+    let many = (0..33).map(|n| format!("driver-{n}")).collect();
+    for asked in [vec![String::new()], vec!["x".repeat(129)], many] {
+        refuses(&asked, "2026-09-13", "2026-09-19", "invalid_input");
     }
     // 366 days are the most one read covers, and an ID is matched as written, whatever it holds.
     let asked = vec!["DA 1/é".to_owned(), "x".repeat(128)];

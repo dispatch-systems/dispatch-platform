@@ -37,8 +37,6 @@ fn verify(db: &Db) -> Result<()> {
 /// How long a photo kept stands for its address before a collection downloads it again, in
 /// case the associate changed it.
 const PHOTO_REFRESH_MS: i64 = 30 * 24 * 3_600_000;
-/// The most transporter IDs one question about associates names.
-const MOST_ASKED: usize = 32;
 
 /// What a roster job carries while queued; the DSP's code is bound just before it runs.
 pub(crate) fn roster_request() -> Value {
@@ -76,7 +74,7 @@ pub trait DriverProfilesStore {
     /// bytes.
     fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<Photo>>;
     /// What the roster says of each of `transporters` it has listed, in their order. Refuses
-    /// an empty ID, one over 128 characters, or more than `MOST_ASKED`.
+    /// an empty ID, one over 128 characters, or more than 32 IDs.
     fn associates(&self, dsp: &str, transporters: &[String]) -> Result<Vec<Associate>>;
 }
 impl DriverProfilesStore for Store {
@@ -259,14 +257,14 @@ impl DriverProfilesStore for Store {
     }
     fn associates(&self, dsp: &str, transporters: &[String]) -> Result<Vec<Associate>> {
         ensure(
-            transporters.len() <= MOST_ASKED
+            transporters.len() <= 32
                 && transporters
                     .iter()
                     .all(|id| !id.is_empty() && id.chars().count() <= 128),
             "invalid_input",
             400,
         )?;
-        let mut kept: BTreeMap<String, Associate> = self
+        let mut kept = self
             .driver_profiles_db(dsp)?
             .query_as::<Kept>(
                 "SELECT transporter_id,listed,status,roles,qualifications,license_expires,\
@@ -276,7 +274,7 @@ impl DriverProfilesStore for Store {
             )?
             .into_iter()
             .map(|Kept(associate)| (associate.id.clone(), associate))
-            .collect();
+            .collect::<BTreeMap<_, _>>();
         Ok(transporters
             .iter()
             .filter_map(|id| kept.remove(id))

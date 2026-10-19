@@ -153,12 +153,12 @@ pub(crate) fn daily_sources(
             }
         }
     }
-    // A running collection's rows are as of now.
     let now = dispatch_core::db::iso();
     for (date, live) in store.live_results_range(id, paycom::PROVIDER, from, to)? {
         let Some(source) = days.get_mut(&date) else {
             continue;
         };
+        let mut collecting = false;
         for (metadata, items) in live {
             for employee in metadata["roster"].as_array().into_iter().flatten() {
                 Arc::make_mut(&mut source.roster).insert(
@@ -171,9 +171,13 @@ pub(crate) fn daily_sources(
                 let code = s(&row, "employeeCode");
                 if wanted(code) {
                     source.rows.insert(code.to_owned(), row);
-                    source.collected_at = Some(now.clone());
+                    collecting = true;
                 }
             }
+        }
+        // A running collection's rows are as of now.
+        if collecting {
+            source.collected_at = Some(now.clone());
         }
     }
     Ok(days)

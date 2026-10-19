@@ -30,33 +30,25 @@ impl Timecards for Exposed {
     }
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>> {
         let (_, zone) = zone(db, dsp)?;
-        let mut collected: Option<Collected> = None;
         // Each period as its newest collection of everyone left it: one employee's sync speaks
         // only for them.
-        for (from, to, at) in db
+        let periods = db
             .collector(dsp, paycom::PROVIDER)?
             .query_as::<(String, String, String)>(
                 "SELECT period_from,period_to,max(collected_at) FROM publications \
                  GROUP BY period_from,period_to",
                 [],
-            )?
-        {
-            let Some(day) = local_day(&at, zone) else {
-                continue;
-            };
-            let through = to.min(day);
-            if through < from {
-                continue;
-            }
-            collected = Some(match collected {
-                None => Collected { from, through },
-                Some(was) => Collected {
-                    from: was.from.min(from),
-                    through: was.through.max(through),
-                },
-            });
-        }
-        Ok(collected)
+            )?;
+        Ok(periods
+            .into_iter()
+            .filter_map(|(from, to, at)| {
+                let through = to.min(local_day(&at, zone)?);
+                (through >= from).then_some(Collected { from, through })
+            })
+            .reduce(|one, other| Collected {
+                from: one.from.min(other.from),
+                through: one.through.max(other.through),
+            }))
     }
     fn timecards(
         &self,

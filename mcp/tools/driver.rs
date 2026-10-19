@@ -11,7 +11,7 @@ use dispatch_core::{
     Result,
     accounts::api::types::Dsp,
     db::Store,
-    foundation::{validate, weeks},
+    foundation::{clock, validate, weeks},
     manifest::people::{Everyone, Person, Source},
 };
 use dispatch_daily_performance_contract::{self as performance, DailyMetrics};
@@ -38,13 +38,16 @@ const CHOICES: usize = 10;
 const READ: usize = 5000;
 /// The room an answer's JSON fits in, below the server's 48 KB, with its words beside it.
 const ROOM: usize = 40_000;
-/// The most each long list keeps, the newest, before any is cut further to fit.
-const CAPS: [(List, usize); 5] = [
+/// Each list an answer may cut short, with the most it keeps, the newest, before any is cut to fit.
+const LISTS: [(List, usize); 8] = [
     (List::Packages, 40),
     (List::Returned, 30),
     (List::Events, 30),
     (List::Undelivered, 30),
     (List::Inspections, 30),
+    (List::DailyDays, usize::MAX),
+    (List::Routes, usize::MAX),
+    (List::TimecardDays, usize::MAX),
 ];
 
 /// Whom to look up, over which days, and what of them.
@@ -95,37 +98,64 @@ impl Section {
             Section::Inspections => "inspections",
         }
     }
-    /// What `found`'s section of it doesn't know, or none where it's null.
-    fn gaps(self, found: &Found) -> Option<Gaps> {
-        let gaps = |ids: &[String], unknown: &[String], partial: &[String]| Gaps {
-            no_ids: ids.is_empty(),
-            unknown: !unknown.is_empty(),
-            partial: !partial.is_empty(),
+    /// What its section of `found` found, in words, and whether it knows none of their IDs, some
+    /// days are unknown, or some are so far. None where the section is null.
+    fn told(self, found: &Found) -> Option<(String, [bool; 3])> {
+        let gaps = |ids: &[String], unknown: &[String], partial: &[String]| {
+            [ids.is_empty(), !unknown.is_empty(), !partial.is_empty()]
         };
-        match self {
+        Some(match self {
             Section::Scorecards => {
-                (found.scorecards.as_ref()).map(|s| gaps(&s.ids, &s.unknown_weeks, &[]))
+                let s = found.scorecards.as_ref()?;
+                let mut words = count(s.weeks.len(), "weekly scorecard", "weekly scorecards");
+                let packages = s.packages.len() + s.more_packages;
+                if packages > 0 {
+                    words += ", ";
+                    words += &count(packages, "scorecard package", "scorecard packages");
+                }
+                (words, gaps(&s.ids, &s.unknown_weeks, &[]))
             }
-            Section::Daily => (found.daily.as_ref()).map(|d| gaps(&d.ids, &d.unknown_days, &[])),
+            Section::Daily => {
+                let d = found.daily.as_ref()?;
+                let mut dates: Vec<&str> = d.days.iter().map(|day| day.date.as_str()).collect();
+                dates.dedup();
+                let days = dates.len() + d.more_days;
+                let words = count(days, "day of daily metrics", "days of daily metrics");
+                (words, gaps(&d.ids, &d.unknown_days, &[]))
+            }
             Section::Routes => {
-                (found.routes.as_ref()).map(|r| gaps(&r.ids, &r.unknown_days, &r.partial_days))
+                let r = found.routes.as_ref()?;
+                let words = count(r.routes.len() + r.more_routes, "route", "routes");
+                (words, gaps(&r.ids, &r.unknown_days, &r.partial_days))
             }
             Section::Timecards => {
-                (found.timecards.as_ref()).map(|t| gaps(&t.ids, &t.unknown_days, &t.partial_days))
+                let t = found.timecards.as_ref()?;
+                let words = count(t.days.len() + t.more_days, "timecard", "timecards");
+                (words, gaps(&t.ids, &t.unknown_days, &t.partial_days))
             }
-            Section::Roster => (found.roster.as_ref()).map(|r| gaps(&r.ids, &[], &[])),
-            Section::Chat => (found.chat.as_ref()).map(|c| gaps(&c.ids, &[], &[])),
+            Section::Roster => {
+                let r = found.roster.as_ref()?;
+                let words = match r.associates.iter().find(|associate| associate.listed) {
+                    Some(associate) => format!("on Amazon's roster as {}", associate.status),
+                    None if r.collected.is_none() => "Amazon's roster not collected yet".into(),
+                    None if r.associates.is_empty() => "not on Amazon's roster".into(),
+                    None => "no longer on Amazon's roster".into(),
+                };
+                (words, gaps(&r.ids, &[], &[]))
+            }
+            Section::Chat => {
+                let c = found.chat.as_ref()?;
+                let words = count(c.accounts.len(), "chat account", "chat accounts");
+                (words, gaps(&c.ids, &[], &[]))
+            }
             Section::Inspections => {
-                (found.inspections.as_ref()).map(|i| gaps(&i.ids, &i.unknown_days, &[]))
+                let i = found.inspections.as_ref()?;
+                let short = i.inspections.len() + i.more_inspections;
+                let words = count(short, "short DVIC inspection", "short DVIC inspections");
+                (words, gaps(&i.ids, &i.unknown_days, &[]))
             }
-        }
+        })
     }
-}
-/// What a section doesn't know: any of their IDs, some days, or all of some days.
-struct Gaps {
-    no_ids: bool,
-    unknown: bool,
-    partial: bool,
 }
 
 /// Who the driver is, and what each feature on at the DSP knows of them over the days. A
@@ -179,6 +209,11 @@ pub struct Identity {
 pub struct Collected {
     pub from: String,
     pub through: String,
+}
+impl Collected {
+    fn holds(&self, day: &str) -> bool {
+        self.from.as_str() <= day && day <= self.through.as_str()
+    }
 }
 
 /// Their weekly scorecards, each week Sunday to Saturday.
@@ -581,36 +616,22 @@ impl Tool for Driver {
     type Output = Found;
     async fn call(cx: Cx, input: Lookup) -> Answer<Reply<Found>> {
         let dsp = cx.dsp().clone();
-        let span = range(&input, today(&dsp.timezone))?;
+        let span = range(&input, clock::today(zone(&dsp)))?;
         let people = cx.everyone(&dsp).await?;
         let person = find(&people, &dsp.name, &input.driver)?.clone();
-        let wanted = (input.sections).unwrap_or_else(|| Section::ALL.to_vec());
+        let wanted = input.sections.unwrap_or_else(|| Section::ALL.to_vec());
         let asked = wanted.clone();
         let found = cx
-            .read(move |db| look_up(db, &dsp, &person, span, &asked))
+            .read(move |db| answer(&Readers::at(db, &dsp.id, &asked)?, db, &dsp, &person, span))
             .await?;
         let text = summary(&found, &wanted);
         Ok(Reply::new(found).text(text))
     }
 }
 
-/// The DSP's own date today, in its time zone.
-fn today(timezone: &str) -> NaiveDate {
-    dispatch_core::foundation::clock::today(timezone.parse().unwrap_or(chrono_tz::UTC))
-}
-
-/// Each section of `wanted` whose feature is on, about `person` over `span`, read at once and fit.
-fn look_up(
-    db: &Store,
-    dsp: &Dsp,
-    person: &Person,
-    span: Span,
-    wanted: &[Section],
-) -> Answer<Found> {
-    let readers = Readers::at(db, &dsp.id, wanted)?;
-    let mut found = answer(&readers, db, dsp, person, span)?;
-    fit(&mut found);
-    Ok(found)
+/// The DSP's time zone.
+fn zone(dsp: &Dsp) -> Tz {
+    dsp.timezone.parse().unwrap_or(chrono_tz::UTC)
 }
 
 /// The days asked about, the first and the last.
@@ -627,16 +648,9 @@ impl Span {
             .take_while(move |day| *day <= self.to)
             .map(|day| day.to_string())
     }
-    /// The days outside what's `collected`: every one when nothing is.
-    fn outside(self, collected: Option<&Collected>) -> Vec<String> {
-        self.each()
-            .filter(|day| {
-                !collected.is_some_and(|collected| {
-                    collected.from.as_str() <= day.as_str()
-                        && day.as_str() <= collected.through.as_str()
-                })
-            })
-            .collect()
+    /// The days `known` doesn't know.
+    fn missing(self, known: impl Fn(&str) -> bool) -> Vec<String> {
+        self.each().filter(|day| !known(day)).collect()
     }
     /// The scorecard weeks overlapping the days, Sunday to Saturday, the oldest first, as core
     /// names Amazon's weeks.
@@ -702,10 +716,8 @@ fn find<'a>(
 ) -> std::result::Result<&'a Person, Refusal> {
     let asked = asked.trim();
     if asked.is_empty() || asked.len() > 100 {
-        return Err(Refusal::new(
-            "invalid_input",
-            "Name the driver, in 100 characters at most.",
-        ));
+        let message = "Name the driver, in 100 characters at most.";
+        return Err(Refusal::new("invalid_input", message));
     }
     let code = (asked.strip_suffix(')'))
         .and_then(|named| named.rsplit_once('('))
@@ -724,22 +736,17 @@ fn find<'a>(
         }
         1 => Ok(found[0]),
         many => {
-            let choices = found
-                .iter()
-                .take(CHOICES)
-                .map(|person| format!("{} ({})", person.name, person.code))
-                .collect();
-            let message = if many > CHOICES {
-                format!(
-                    "`{asked}` could be any of {many} people, the first {CHOICES} listed. Ask \
-                     which one, or for more of their name; a choice is a `driver` as it is."
-                )
+            let named = |person: &&Person| format!("{} ({})", person.name, person.code);
+            let choices = found.iter().take(CHOICES).map(named).collect();
+            let listed = if many > CHOICES {
+                format!(", the first {CHOICES} listed")
             } else {
-                format!(
-                    "`{asked}` could be any of these people. Ask which one; a choice is a \
-                     `driver` as it is."
-                )
+                String::new()
             };
+            let message = format!(
+                "`{asked}` could be any of {many} people{listed}. Ask which one; a choice is a \
+                 `driver` as it is."
+            );
             Err(Refusal::new("driver_ambiguous", message).choices(choices))
         }
     }
@@ -773,230 +780,206 @@ impl Readers<'static> {
     }
 }
 
-/// The answer about `person` over `span`, each section read by its reader, before it's fit.
+/// The answer about `person` over `span`, each section read by its reader, fit to send.
 fn answer(readers: &Readers, db: &Store, dsp: &Dsp, person: &Person, span: Span) -> Answer<Found> {
-    let id = dsp.id.as_str();
-    let zone: Tz = dsp.timezone.parse().unwrap_or(chrono_tz::UTC);
-    Ok(Found {
+    let (from, to) = (span.from.to_string(), span.to.to_string());
+    let at = Reading {
+        db,
+        dsp: &dsp.id,
+        person,
+        span,
+        from: from.clone(),
+        to: to.clone(),
+        zone: zone(dsp),
+    };
+    let mut found = Found {
         dsp: dsp.name.clone(),
-        from: span.from.to_string(),
-        to: span.to.to_string(),
+        from,
+        to,
         person: Identity::from(person),
-        scorecards: (readers.scorecards)
-            .map(|reader| scorecards(reader, db, id, person, span))
-            .transpose()?,
-        daily: (readers.daily)
-            .map(|reader| daily(reader, db, id, person, span))
-            .transpose()?,
-        routes: (readers.routes)
-            .map(|reader| routes(reader, db, id, person, span, zone))
-            .transpose()?,
-        timecards: (readers.timecards)
-            .map(|reader| timecards(reader, db, id, person, span))
-            .transpose()?,
-        roster: (readers.roster)
-            .map(|reader| roster(reader, db, id, person))
-            .transpose()?,
-        chat: (readers.chat)
-            .map(|reader| chat(reader, db, id, person))
-            .transpose()?,
-        inspections: (readers.inspections)
-            .map(|reader| inspections(reader, db, id, person, span))
-            .transpose()?,
+        scorecards: readers.scorecards.map(|r| at.scorecards(r)).transpose()?,
+        daily: readers.daily.map(|r| at.daily(r)).transpose()?,
+        routes: readers.routes.map(|r| at.routes(r)).transpose()?,
+        timecards: readers.timecards.map(|r| at.timecards(r)).transpose()?,
+        roster: readers.roster.map(|r| at.roster(r)).transpose()?,
+        chat: readers.chat.map(|r| at.chat(r)).transpose()?,
+        inspections: readers.inspections.map(|r| at.inspections(r)).transpose()?,
         trimmed: false,
-    })
+    };
+    fit(&mut found);
+    Ok(found)
 }
 
-/// The person's IDs of `source` a feature is asked about, the first linked first: none it
-/// would refuse.
-fn ids(person: &Person, source: Source) -> Vec<String> {
-    (person.ids_of(source).iter())
-        .filter(|id| !id.is_empty() && id.len() <= LONGEST_ID)
-        .take(IDS)
-        .cloned()
-        .collect()
-}
-
-fn scorecards(
-    reader: &dyn DriverScorecards,
-    db: &Store,
-    dsp: &str,
-    person: &Person,
+/// What each section is read with: the DSP, the person, and the days, as the contracts take them.
+struct Reading<'a> {
+    db: &'a Store,
+    dsp: &'a str,
+    person: &'a Person,
     span: Span,
-) -> Result<Scorecards> {
-    let collected = reader.collected(db, dsp)?;
-    let known = collected
-        .as_ref()
-        .map_or(&[][..], |collected| &collected.weeks[..]);
-    let unknown_weeks = (span.weeks().into_iter())
-        .filter(|week| !known.contains(week))
-        .collect();
-    let ids = ids(person, reader.source());
-    let (from, to) = (span.from.to_string(), span.to.to_string());
-    let weeks = reader.scorecards(db, dsp, &ids, &from, &to)?;
-    let packages = reader.packages(db, dsp, &ids, &from, &to)?;
-    Ok(Scorecards {
-        ids,
-        collected: collected
-            .map(|scorecard::Collected { from, through, .. }| Collected { from, through }),
-        unknown_weeks,
-        weeks: weeks.into_iter().map(Scorecard::from).collect(),
-        packages: packages.into_iter().map(Package::from).collect(),
-        more_packages: 0,
-    })
-}
-
-fn daily(
-    reader: &dyn DailyMetrics,
-    db: &Store,
-    dsp: &str,
-    person: &Person,
-    span: Span,
-) -> Result<Daily> {
-    let collected = (reader.collected(db, dsp)?)
-        .map(|performance::Collected { from, through }| Collected { from, through });
-    let ids = ids(person, reader.source());
-    let read = reader.days(db, dsp, &ids, &span.from.to_string(), &span.to.to_string())?;
-    let unknown_days = span
-        .each()
-        .filter(|day| !read.collected.contains(day))
-        .collect();
-    Ok(Daily {
-        ids,
-        collected,
-        unknown_days,
-        days: read.days.into_iter().map(Day::from).collect(),
-        more_days: 0,
-        more_returned: 0,
-        more_events: 0,
-    })
-}
-
-fn routes(
-    reader: &dyn DriverRoutes,
-    db: &Store,
-    dsp: &str,
-    person: &Person,
-    span: Span,
+    from: String,
+    to: String,
     zone: Tz,
-) -> Result<Routes> {
-    let collected = (reader.collected(db, dsp)?)
-        .map(|route::Collected { from, through }| Collected { from, through });
-    let ids = ids(person, reader.source());
-    let driven = reader.routes(db, dsp, &ids, &span.from.to_string(), &span.to.to_string())?;
-    let known = |day: &String| driven.days.iter().any(|known| known.day == *day);
-    let unknown_days = span.each().filter(|day| !known(day)).collect();
-    let partial_days = (driven.days.iter())
-        .filter(|day| !day.complete)
-        .map(|day| day.day.clone())
-        .collect();
-    Ok(Routes {
-        ids,
-        collected,
-        unknown_days,
-        partial_days,
-        routes: (driven.routes.into_iter())
-            .map(|driven| route_of(driven, zone))
-            .collect(),
-        more_routes: 0,
-        more_undelivered: 0,
-    })
 }
+impl Reading<'_> {
+    /// The person's IDs of `source` a feature is asked about, the first linked first: none it
+    /// would refuse.
+    fn ids(&self, source: Source) -> Vec<String> {
+        let fits = |id: &&String| !id.is_empty() && id.len() <= LONGEST_ID;
+        let held = self.person.ids_of(source).iter();
+        held.filter(fits).take(IDS).cloned().collect()
+    }
 
-fn timecards(
-    reader: &dyn timecard::Timecards,
-    db: &Store,
-    dsp: &str,
-    person: &Person,
-    span: Span,
-) -> Result<Timecards> {
-    let collected = (reader.collected(db, dsp)?)
-        .map(|timecard::Collected { from, through }| Collected { from, through });
-    let ids = ids(person, reader.source());
-    let read = reader.timecards(db, dsp, &ids, &span.from.to_string(), &span.to.to_string())?;
-    Ok(Timecards {
-        ids,
-        collected,
-        unknown_days: read.unknown,
-        partial_days: read.partial,
-        days: read.days.into_iter().map(Timecard::from).collect(),
-        more_days: 0,
-    })
-}
+    fn scorecards(&self, reader: &dyn DriverScorecards) -> Result<Scorecards> {
+        let ids = self.ids(reader.source());
+        let collected = reader.collected(self.db, self.dsp)?;
+        let known = collected.as_ref().map_or(&[][..], |c| &c.weeks[..]);
+        let mut unknown_weeks = self.span.weeks();
+        unknown_weeks.retain(|week| !known.contains(week));
+        Ok(Scorecards {
+            unknown_weeks,
+            weeks: mirrored(reader.scorecards(self.db, self.dsp, &ids, &self.from, &self.to)?),
+            packages: mirrored(reader.packages(self.db, self.dsp, &ids, &self.from, &self.to)?),
+            more_packages: 0,
+            collected: collected.map(Collected::from),
+            ids,
+        })
+    }
 
-fn roster(reader: &dyn AmazonRoster, db: &Store, dsp: &str, person: &Person) -> Result<Roster> {
-    let ids = ids(person, reader.source());
-    let associates = reader.associates(db, dsp, &ids)?;
-    Ok(Roster {
-        ids,
-        collected: reader.collected(db, dsp)?,
-        associates: associates.into_iter().map(Associate::from).collect(),
-    })
-}
+    fn daily(&self, reader: &dyn DailyMetrics) -> Result<Daily> {
+        let ids = self.ids(reader.source());
+        let read = reader.days(self.db, self.dsp, &ids, &self.from, &self.to)?;
+        let known = |day: &str| read.collected.iter().any(|known| known == day);
+        Ok(Daily {
+            collected: reader.collected(self.db, self.dsp)?.map(Collected::from),
+            unknown_days: self.span.missing(known),
+            days: mirrored(read.days),
+            more_days: 0,
+            more_returned: 0,
+            more_events: 0,
+            ids,
+        })
+    }
 
-fn chat(reader: &dyn ChatAccounts, db: &Store, dsp: &str, person: &Person) -> Result<Chat> {
-    let ids = ids(person, reader.source());
-    let accounts = reader.accounts(db, dsp, &ids)?;
-    Ok(Chat {
-        ids,
-        accounts: accounts.into_iter().map(ChatAccount::from).collect(),
-    })
-}
+    fn routes(&self, reader: &dyn DriverRoutes) -> Result<Routes> {
+        let ids = self.ids(reader.source());
+        let driven = reader.routes(self.db, self.dsp, &ids, &self.from, &self.to)?;
+        let known = |day: &str| driven.days.iter().any(|known| known.day == day);
+        let partial = driven.days.iter().filter(|day| !day.complete);
+        Ok(Routes {
+            collected: reader.collected(self.db, self.dsp)?.map(Collected::from),
+            unknown_days: self.span.missing(known),
+            partial_days: partial.map(|day| day.day.clone()).collect(),
+            routes: driven.routes.into_iter().map(|it| self.route(it)).collect(),
+            more_routes: 0,
+            more_undelivered: 0,
+            ids,
+        })
+    }
 
-/// Their short inspections, read a page at a time as the DVIC tool reads them: more than `READ`
-/// is refused.
-fn inspections(
-    reader: &dyn ShortInspections,
-    db: &Store,
-    dsp: &str,
-    person: &Person,
-    span: Span,
-) -> Answer<Inspections> {
-    let collected = (reader.collected(db, dsp)?)
-        .map(|dvic::Collected { from, through }| Collected { from, through });
-    // DVIC refuses an ID of anything but letters, digits, `_`, `-` or `.`: it holds none.
-    let ids: Vec<String> = (ids(person, reader.source()).into_iter())
-        .filter(|id| validate::token(id, LONGEST_ID))
-        .collect();
-    let (from, to) = (span.from.to_string(), span.to.to_string());
-    let mut read = Vec::new();
-    for id in &ids {
-        let mut after = String::new();
-        loop {
-            let asked = Asked {
-                from: &from,
-                to: &to,
-                driver: Some(id),
-                after: &after,
-                limit: 500,
-            };
-            let page = reader.inspections(db, dsp, &asked)?;
-            read.extend(page.inspections);
-            if read.len() > READ {
-                let message =
-                    format!("More than {READ} short inspections match. Ask for fewer days.");
-                return Err(Refusal::new("too_many", message).into());
-            }
-            match page.next {
-                Some(next) => after = next,
-                None => break,
-            }
+    /// A route as the answer gives it, its times on the DSP's clock.
+    fn route(&self, it: route::RouteDay) -> Route {
+        let at = |time: Option<i64>| local_time(time, self.zone, &it.day);
+        let undelivered = it.undelivered.into_iter().map(|package| Undelivered {
+            attempted: at(package.attempted_at),
+            tracking_id: package.tracking_id,
+            state: package.state,
+            reason: package.reason,
+        });
+        Route {
+            undelivered: undelivered.collect(),
+            planned_departure: at(it.planned_departure_at),
+            departed: at(it.departed_at),
+            first_delivery: at(it.first_delivery_at),
+            last_delivery: at(it.last_delivery_at),
+            ended: at(it.session_end_at),
+            day: it.day.clone(),
+            id: it.driver_id,
+            route_code: it.route_code,
+            status: it.status,
+            progress: it.progress,
+            vin: it.vin,
+            stops: it.stops,
+            stops_completed: it.stops_completed,
+            delivered: it.delivered,
+            not_delivered: it.not_delivered,
+            removed: it.removed,
+            break_minutes: it.breaks_secs.map(|seconds| seconds / 60),
+            overtime_minutes: it.overtime_secs.map(|seconds| seconds / 60),
         }
     }
-    read.sort_by(|a, b| {
-        (b.date.as_str(), b.start_time.as_str()).cmp(&(a.date.as_str(), a.start_time.as_str()))
-    });
-    Ok(Inspections {
-        ids,
-        unknown_days: span.outside(collected.as_ref()),
-        collected,
-        inspections: read.into_iter().map(Inspection::from).collect(),
-        more_inspections: 0,
-    })
+
+    fn timecards(&self, reader: &dyn timecard::Timecards) -> Result<Timecards> {
+        let ids = self.ids(reader.source());
+        let read = reader.timecards(self.db, self.dsp, &ids, &self.from, &self.to)?;
+        Ok(Timecards {
+            collected: reader.collected(self.db, self.dsp)?.map(Collected::from),
+            unknown_days: read.unknown,
+            partial_days: read.partial,
+            days: mirrored(read.days),
+            more_days: 0,
+            ids,
+        })
+    }
+
+    fn roster(&self, reader: &dyn AmazonRoster) -> Result<Roster> {
+        let ids = self.ids(reader.source());
+        Ok(Roster {
+            collected: reader.collected(self.db, self.dsp)?,
+            associates: mirrored(reader.associates(self.db, self.dsp, &ids)?),
+            ids,
+        })
+    }
+
+    fn chat(&self, reader: &dyn ChatAccounts) -> Result<Chat> {
+        let ids = self.ids(reader.source());
+        let accounts = mirrored(reader.accounts(self.db, self.dsp, &ids)?);
+        Ok(Chat { ids, accounts })
+    }
+
+    /// Their short inspections, read a page at a time as the DVIC tool reads them: more than
+    /// `READ` is refused.
+    fn inspections(&self, reader: &dyn ShortInspections) -> Answer<Inspections> {
+        // DVIC refuses an ID of anything but letters, digits, `_`, `-` or `.`: it holds none.
+        let mut ids = self.ids(reader.source());
+        ids.retain(|id| validate::token(id, LONGEST_ID));
+        let (from, to) = (&self.from, &self.to);
+        let mut read = Vec::new();
+        for id in &ids {
+            let mut after = String::new();
+            loop {
+                let asked = Asked {
+                    from,
+                    to,
+                    driver: Some(id),
+                    after: &after,
+                    limit: 500,
+                };
+                let page = reader.inspections(self.db, self.dsp, &asked)?;
+                read.extend(page.inspections);
+                if read.len() > READ {
+                    let message =
+                        format!("More than {READ} short inspections match. Ask for fewer days.");
+                    return Err(Refusal::new("too_many", message).into());
+                }
+                let Some(next) = page.next else { break };
+                after = next;
+            }
+        }
+        read.sort_by(|a, b| (&b.date, &b.start_time).cmp(&(&a.date, &a.start_time)));
+        let collected = reader.collected(self.db, self.dsp)?.map(Collected::from);
+        let covered = |day: &str| collected.as_ref().is_some_and(|c| c.holds(day));
+        Ok(Inspections {
+            unknown_days: self.span.missing(covered),
+            collected,
+            inspections: mirrored(read),
+            more_inspections: 0,
+            ids,
+        })
+    }
 }
 
-/// A list an answer may cut short, the newest kept, counting the rest in its `more_` field.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// A list an answer may cut short.
+#[derive(Clone, Copy)]
 enum List {
     Packages,
     DailyDays,
@@ -1008,103 +991,115 @@ enum List {
     Inspections,
 }
 impl List {
-    const ALL: [List; 8] = [
-        List::Packages,
-        List::DailyDays,
-        List::Returned,
-        List::Events,
-        List::Routes,
-        List::Undelivered,
-        List::TimecardDays,
-        List::Inspections,
-    ];
     /// How many it holds in `found`, and their size as JSON.
-    fn measure(self, found: &Found) -> (usize, usize) {
-        let (daily, routes) = (found.daily.as_ref(), found.routes.as_ref());
-        let none = (0, 0);
-        match self {
-            List::Packages => (found.scorecards.as_ref()).map_or(none, |s| sized(&s.packages)),
-            List::DailyDays => daily.map_or(none, |daily| sized(&daily.days)),
-            List::Returned => daily.map_or(none, |daily| {
-                total(daily.days.iter().map(|day| sized(&day.returned)))
-            }),
-            List::Events => daily.map_or(none, |daily| {
-                total(daily.days.iter().map(|day| sized(&day.events)))
-            }),
-            List::Routes => routes.map_or(none, |routes| sized(&routes.routes)),
-            List::Undelivered => routes.map_or(none, |routes| {
-                total(routes.routes.iter().map(|route| sized(&route.undelivered)))
-            }),
-            List::TimecardDays => (found.timecards.as_ref()).map_or(none, |t| sized(&t.days)),
-            List::Inspections => {
-                (found.inspections.as_ref()).map_or(none, |i| sized(&i.inspections))
-            }
-        }
+    fn size(self, found: &mut Found) -> (usize, usize) {
+        self.of(found).map_or((0, 0), |list| list.size())
     }
-    /// Keeps the newest `most` of it in `found`, answering how many it cut.
+    /// Keeps its newest `most` in `found`, answering how many it cut.
     fn keep(self, found: &mut Found, most: usize) -> usize {
-        match self {
-            List::Packages => (found.scorecards.as_mut()).map_or(0, |cards| {
-                counted(
-                    &mut cards.more_packages,
-                    cut_oldest(&mut cards.packages, most),
-                )
-            }),
-            List::DailyDays => (found.daily.as_mut()).map_or(0, |daily| {
-                counted(&mut daily.more_days, cut_oldest(&mut daily.days, most))
-            }),
-            List::Returned => (found.daily.as_mut()).map_or(0, |daily| {
-                let newest = daily.days.iter_mut().rev();
-                counted(
-                    &mut daily.more_returned,
-                    cut(newest.map(|day| &mut day.returned), most),
-                )
-            }),
-            List::Events => (found.daily.as_mut()).map_or(0, |daily| {
-                let newest = daily.days.iter_mut().rev();
-                counted(
-                    &mut daily.more_events,
-                    cut(newest.map(|day| &mut day.events), most),
-                )
-            }),
-            List::Routes => (found.routes.as_mut()).map_or(0, |routes| {
-                counted(
-                    &mut routes.more_routes,
-                    cut_oldest(&mut routes.routes, most),
-                )
-            }),
-            List::Undelivered => (found.routes.as_mut()).map_or(0, |routes| {
-                let newest = routes.routes.iter_mut().rev();
-                let cut = cut(newest.map(|route| &mut route.undelivered), most);
-                counted(&mut routes.more_undelivered, cut)
-            }),
-            List::TimecardDays => (found.timecards.as_mut()).map_or(0, |timecards| {
-                counted(
-                    &mut timecards.more_days,
-                    cut_oldest(&mut timecards.days, most),
-                )
-            }),
-            List::Inspections => (found.inspections.as_mut()).map_or(0, |short| {
-                let newest = std::iter::once(&mut short.inspections);
-                counted(&mut short.more_inspections, cut(newest, most))
-            }),
-        }
+        self.of(found).map_or(0, |mut list| list.keep(most))
+    }
+    /// The list in `found`, where its section is.
+    fn of(self, found: &mut Found) -> Option<Box<dyn Trim + '_>> {
+        Some(match self {
+            List::Packages => {
+                let s = found.scorecards.as_mut()?;
+                cut([&mut s.packages], true, &mut s.more_packages)
+            }
+            List::DailyDays => {
+                let d = found.daily.as_mut()?;
+                cut([&mut d.days], true, &mut d.more_days)
+            }
+            List::Returned => {
+                let d = found.daily.as_mut()?;
+                let newest = d.days.iter_mut().rev().map(|day| &mut day.returned);
+                cut(newest, false, &mut d.more_returned)
+            }
+            List::Events => {
+                let d = found.daily.as_mut()?;
+                let newest = d.days.iter_mut().rev().map(|day| &mut day.events);
+                cut(newest, false, &mut d.more_events)
+            }
+            List::Routes => {
+                let r = found.routes.as_mut()?;
+                cut([&mut r.routes], true, &mut r.more_routes)
+            }
+            List::Undelivered => {
+                let r = found.routes.as_mut()?;
+                let newest = r.routes.iter_mut().rev().map(|it| &mut it.undelivered);
+                cut(newest, false, &mut r.more_undelivered)
+            }
+            List::TimecardDays => {
+                let t = found.timecards.as_mut()?;
+                cut([&mut t.days], true, &mut t.more_days)
+            }
+            List::Inspections => {
+                let i = found.inspections.as_mut()?;
+                cut([&mut i.inspections], false, &mut i.more_inspections)
+            }
+        })
     }
 }
 
-/// Cuts each long list to its cap; then, while the answer takes more than `ROOM`, halves the
-/// list taking the most of it. Any cut notes that the answer was trimmed.
+/// A list of any kind, to measure and cut short.
+trait Trim {
+    /// How many it holds, and their size as JSON.
+    fn size(&self) -> (usize, usize);
+    /// Keeps its newest `most`, counting the rest, and answers how many it cut.
+    fn keep(&mut self, most: usize) -> usize;
+}
+/// A list as its parts: one listed oldest first, cut `from_front`; or parts listed newest first,
+/// each cut from its end. `more` counts what it leaves out.
+struct Cut<'a, T> {
+    parts: Vec<&'a mut Vec<T>>,
+    from_front: bool,
+    more: &'a mut usize,
+}
+fn cut<'a, T: Serialize + 'a>(
+    parts: impl IntoIterator<Item = &'a mut Vec<T>>,
+    from_front: bool,
+    more: &'a mut usize,
+) -> Box<dyn Trim + 'a> {
+    let parts = parts.into_iter().collect();
+    Box::new(Cut {
+        parts,
+        from_front,
+        more,
+    })
+}
+impl<T: Serialize> Trim for Cut<'_, T> {
+    fn size(&self) -> (usize, usize) {
+        let count = self.parts.iter().map(|part| part.len()).sum();
+        (count, self.parts.iter().map(json_len).sum())
+    }
+    fn keep(&mut self, most: usize) -> usize {
+        let (mut left, mut cut) = (most, 0);
+        for part in &mut self.parts {
+            let kept = part.len().min(left);
+            let gone = part.len() - kept;
+            if self.from_front {
+                part.drain(..gone);
+            } else {
+                part.truncate(kept);
+            }
+            (left, cut) = (left - kept, cut + gone);
+        }
+        *self.more += cut;
+        cut
+    }
+}
+
+/// Cuts each list to its most; then, while the answer takes more than `ROOM`, halves the list
+/// taking the most of it. Any cut notes that the answer was trimmed.
 fn fit(found: &mut Found) {
-    for (list, most) in CAPS {
+    for (list, most) in LISTS {
         let cut = list.keep(found, most);
         found.trimmed |= cut > 0;
     }
     while json_len(found) > ROOM {
-        let longest = (List::ALL.into_iter())
-            .map(|list| (list, list.measure(found)))
-            .filter(|(_, (count, _))| *count > 0)
-            .max_by_key(|(_, (_, bytes))| *bytes);
-        let Some((list, (count, _))) = longest else {
+        let sizes = LISTS.map(|(list, _)| (list, list.size(found)));
+        let held = sizes.into_iter().filter(|(_, (count, _))| *count > 0);
+        let Some((list, (count, _))) = held.max_by_key(|(_, (_, bytes))| *bytes) else {
             break;
         };
         list.keep(found, count / 2);
@@ -1114,49 +1109,73 @@ fn fit(found: &mut Found) {
 fn json_len<T: Serialize + ?Sized>(value: &T) -> usize {
     serde_json::to_vec(value).map_or(0, |json| json.len())
 }
-/// A list's length, and its size as JSON.
-fn sized<T: Serialize>(items: &[T]) -> (usize, usize) {
-    (items.len(), json_len(items))
-}
-fn total(each: impl Iterator<Item = (usize, usize)>) -> (usize, usize) {
-    each.fold((0, 0), |(count, bytes), (more, size)| {
-        (count + more, bytes + size)
-    })
-}
-/// Adds `cut` to the count `more` of what a list left out, answering it.
-fn counted(more: &mut usize, cut: usize) -> usize {
-    *more += cut;
-    cut
-}
-/// Keeps the last `most` of a list kept oldest first, answering how many it cut.
-fn cut_oldest<T>(list: &mut Vec<T>, most: usize) -> usize {
-    let gone = list.len().saturating_sub(most);
-    list.drain(..gone);
-    gone
-}
-/// Keeps the first `most` across `lists`, in their order, answering how many it cut.
-fn cut<'a, T: 'a>(lists: impl Iterator<Item = &'a mut Vec<T>>, most: usize) -> usize {
-    let (mut left, mut gone) = (most, 0);
-    for list in lists {
-        let kept = list.len().min(left);
-        gone += list.len() - kept;
-        list.truncate(kept);
-        left -= kept;
-    }
-    gone
-}
 
 /// An epoch-milliseconds time as HH:MM in the DSP's own time, with its date before it when it
 /// isn't on `day`, as after midnight.
-fn clock(at: Option<i64>, zone: Tz, day: &str) -> Option<String> {
+fn local_time(at: Option<i64>, zone: Tz, day: &str) -> Option<String> {
     let at = DateTime::from_timestamp_millis(at?)?.with_timezone(&zone);
-    let on_day = at.date_naive().to_string() == day;
-    Some(
-        at.format(if on_day { "%H:%M" } else { "%Y-%m-%d %H:%M" })
-            .to_string(),
-    )
+    let same = at.date_naive().to_string() == day;
+    let format = if same { "%H:%M" } else { "%Y-%m-%d %H:%M" };
+    Some(at.format(format).to_string())
 }
 
+/// `From` each contract type for the answer's mirror of it: an enum's variants by name; a struct's
+/// fields named before `;` moved as they are, and those after it set as given, from `it`.
+macro_rules! mirror {
+    ($(enum $module:ident::$from:ident => $to:ident { $($variant:ident),* })*) => {$(
+        impl From<$module::$from> for $to {
+            fn from(it: $module::$from) -> Self {
+                match it { $($module::$from::$variant => Self::$variant,)* }
+            }
+        }
+    )*};
+    ($(|$it:ident: $from:ty| $to:ident { $($same:ident),* $(; $($field:ident: $value:expr),*)? })*) => {$(
+        impl From<$from> for $to {
+            fn from($it: $from) -> Self {
+                Self { $($same: $it.$same,)* $($($field: $value,)*)? }
+            }
+        }
+    )*};
+}
+mirror! {
+    |it: scorecard::Collected| Collected { from, through }
+    |it: performance::Collected| Collected { from, through }
+    |it: route::Collected| Collected { from, through }
+    |it: timecard::Collected| Collected { from, through }
+    |it: dvic::Collected| Collected { from, through }
+    |it: scorecard::Scorecard| Scorecard { week, from, through, overall_score, overall_tier, delivered;
+        id: it.driver_id, metrics: mirrored(it.metrics) }
+    |it: scorecard::Metric| Metric { name, value, tier, score }
+    |it: scorecard::Package| Package { week, date, tracking_id, impacting, reasons; kind: it.kind.into() }
+    |it: performance::Day| Day { date, id; returned: mirrored(it.returned), events: mirrored(it.events),
+        quality: it.quality.map(Into::into), safety: it.safety.map(Into::into), feedback: it.feedback.map(Into::into),
+        behaviors: it.behaviors.map(Into::into), returns: it.returns.map(Into::into) }
+    |it: performance::Quality| Quality { dispatched, delivered, delivery_success_rate, completed_routes, dnr, returned,
+        pod_opportunities, pod_successes, pod_success_rate, pod_bypassed, not_on_van, transferred_out }
+    |it: performance::Safety| Safety { speeding, seatbelt, distraction, sign_signal, following_distance }
+    |it: performance::Feedback| Feedback { positive, negative; negatives: mirrored(it.negatives) }
+    |it: performance::Behaviors| Behaviors { dsb; concerns: mirrored(it.concerns) }
+    |it: performance::Count| Count { what, count }
+    |it: performance::Returns| Returns { all, controllable, exempted }
+    |it: performance::Returned| Returned { tracking_id, reason, impacting, exempted, exemption_reason, coaching }
+    |it: performance::SafetyEvent| Event { kind, subtype, severity, started, impacting, assessed }
+    |it: timecard::Day| Timecard { date, id, status, hours, worked_minutes, review;
+        punches: mirrored(it.punches), meals: mirrored(it.meals) }
+    |it: timecard::Punch| Punch { time, next_day; kind: it.kind.into() }
+    |it: timecard::Meal| Meal { out, back, minutes }
+    |it: profiles::Associate| Associate { id, listed, status, roles, qualifications, license_expires, last_listed }
+    |it: slack::ChatAccount| ChatAccount { workspace, user, display_name, active, guest, broken }
+    |it: dvic::Inspection| Inspection { date, start_time, vehicle_type, vin, duration_seconds, minimum_seconds,
+        short_by_seconds; id: it.driver_id }
+}
+/// Each of a contract's values, as the answer mirrors it.
+fn mirrored<A, B: From<A>>(values: Vec<A>) -> Vec<B> {
+    values.into_iter().map(B::from).collect()
+}
+mirror! {
+    enum scorecard::PackageKind => PackageKind { Concession, Return, Feedback }
+    enum timecard::PunchKind => PunchKind { InDay, OutLunch, InLunch, OutDay, Unlabeled }
+}
 impl From<&Person> for Identity {
     fn from(person: &Person) -> Self {
         Self {
@@ -1173,217 +1192,6 @@ impl From<&Person> for Identity {
         }
     }
 }
-impl From<scorecard::Scorecard> for Scorecard {
-    fn from(card: scorecard::Scorecard) -> Self {
-        Self {
-            week: card.week,
-            from: card.from,
-            through: card.through,
-            id: card.driver_id,
-            overall_score: card.overall_score,
-            overall_tier: card.overall_tier,
-            delivered: card.delivered,
-            metrics: (card.metrics.into_iter())
-                .map(|metric| Metric {
-                    name: metric.name,
-                    value: metric.value,
-                    tier: metric.tier,
-                    score: metric.score,
-                })
-                .collect(),
-        }
-    }
-}
-impl From<scorecard::Package> for Package {
-    fn from(package: scorecard::Package) -> Self {
-        Self {
-            kind: match package.kind {
-                scorecard::PackageKind::Concession => PackageKind::Concession,
-                scorecard::PackageKind::Return => PackageKind::Return,
-                scorecard::PackageKind::Feedback => PackageKind::Feedback,
-            },
-            week: package.week,
-            date: package.date,
-            tracking_id: package.tracking_id,
-            impacting: package.impacting,
-            reasons: package.reasons,
-        }
-    }
-}
-impl From<performance::Day> for Day {
-    fn from(day: performance::Day) -> Self {
-        Self {
-            date: day.date,
-            id: day.id,
-            quality: day.quality.map(|quality| Quality {
-                dispatched: quality.dispatched,
-                delivered: quality.delivered,
-                delivery_success_rate: quality.delivery_success_rate,
-                completed_routes: quality.completed_routes,
-                dnr: quality.dnr,
-                returned: quality.returned,
-                pod_opportunities: quality.pod_opportunities,
-                pod_successes: quality.pod_successes,
-                pod_success_rate: quality.pod_success_rate,
-                pod_bypassed: quality.pod_bypassed,
-                not_on_van: quality.not_on_van,
-                transferred_out: quality.transferred_out,
-            }),
-            safety: day.safety.map(|safety| Safety {
-                speeding: safety.speeding,
-                seatbelt: safety.seatbelt,
-                distraction: safety.distraction,
-                sign_signal: safety.sign_signal,
-                following_distance: safety.following_distance,
-            }),
-            feedback: day.feedback.map(|feedback| Feedback {
-                positive: feedback.positive,
-                negative: feedback.negative,
-                negatives: feedback.negatives.into_iter().map(Count::from).collect(),
-            }),
-            behaviors: day.behaviors.map(|behaviors| Behaviors {
-                dsb: behaviors.dsb,
-                concerns: behaviors.concerns.into_iter().map(Count::from).collect(),
-            }),
-            returns: day.returns.map(|returns| Returns {
-                all: returns.all,
-                controllable: returns.controllable,
-                exempted: returns.exempted,
-            }),
-            returned: (day.returned.into_iter())
-                .map(|returned| Returned {
-                    tracking_id: returned.tracking_id,
-                    reason: returned.reason,
-                    impacting: returned.impacting,
-                    exempted: returned.exempted,
-                    exemption_reason: returned.exemption_reason,
-                    coaching: returned.coaching,
-                })
-                .collect(),
-            events: (day.events.into_iter())
-                .map(|event| Event {
-                    kind: event.kind,
-                    subtype: event.subtype,
-                    severity: event.severity,
-                    started: event.started,
-                    impacting: event.impacting,
-                    assessed: event.assessed,
-                })
-                .collect(),
-        }
-    }
-}
-impl From<performance::Count> for Count {
-    fn from(count: performance::Count) -> Self {
-        Self {
-            what: count.what,
-            count: count.count,
-        }
-    }
-}
-/// A route as the answer gives it, its times on the DSP's clock.
-fn route_of(driven: route::RouteDay, zone: Tz) -> Route {
-    let at = |time: Option<i64>| clock(time, zone, &driven.day);
-    Route {
-        day: driven.day.clone(),
-        id: driven.driver_id,
-        route_code: driven.route_code,
-        status: driven.status,
-        progress: driven.progress,
-        vin: driven.vin,
-        planned_departure: at(driven.planned_departure_at),
-        departed: at(driven.departed_at),
-        first_delivery: at(driven.first_delivery_at),
-        last_delivery: at(driven.last_delivery_at),
-        ended: at(driven.session_end_at),
-        stops: driven.stops,
-        stops_completed: driven.stops_completed,
-        delivered: driven.delivered,
-        not_delivered: driven.not_delivered,
-        removed: driven.removed,
-        break_minutes: driven.breaks_secs.map(|seconds| seconds / 60),
-        overtime_minutes: driven.overtime_secs.map(|seconds| seconds / 60),
-        undelivered: (driven.undelivered.into_iter())
-            .map(|package| Undelivered {
-                tracking_id: package.tracking_id,
-                state: package.state,
-                reason: package.reason,
-                attempted: at(package.attempted_at),
-            })
-            .collect(),
-    }
-}
-impl From<timecard::Day> for Timecard {
-    fn from(day: timecard::Day) -> Self {
-        Self {
-            date: day.date,
-            id: day.id,
-            status: day.status,
-            hours: day.hours,
-            worked_minutes: day.worked_minutes,
-            punches: (day.punches.into_iter())
-                .map(|punch| Punch {
-                    kind: match punch.kind {
-                        timecard::PunchKind::InDay => PunchKind::InDay,
-                        timecard::PunchKind::OutLunch => PunchKind::OutLunch,
-                        timecard::PunchKind::InLunch => PunchKind::InLunch,
-                        timecard::PunchKind::OutDay => PunchKind::OutDay,
-                        timecard::PunchKind::Unlabeled => PunchKind::Unlabeled,
-                    },
-                    time: punch.time,
-                    next_day: punch.next_day,
-                })
-                .collect(),
-            meals: (day.meals.into_iter())
-                .map(|meal| Meal {
-                    out: meal.out,
-                    back: meal.back,
-                    minutes: meal.minutes,
-                })
-                .collect(),
-            review: day.review,
-        }
-    }
-}
-impl From<profiles::Associate> for Associate {
-    fn from(associate: profiles::Associate) -> Self {
-        Self {
-            id: associate.id,
-            listed: associate.listed,
-            status: associate.status,
-            roles: associate.roles,
-            qualifications: associate.qualifications,
-            license_expires: associate.license_expires,
-            last_listed: associate.last_listed,
-        }
-    }
-}
-impl From<slack::ChatAccount> for ChatAccount {
-    fn from(account: slack::ChatAccount) -> Self {
-        Self {
-            workspace: account.workspace,
-            user: account.user,
-            display_name: account.display_name,
-            active: account.active,
-            guest: account.guest,
-            broken: account.broken,
-        }
-    }
-}
-impl From<dvic::Inspection> for Inspection {
-    fn from(row: dvic::Inspection) -> Self {
-        Self {
-            date: row.date,
-            start_time: row.start_time,
-            id: row.driver_id,
-            vehicle_type: row.vehicle_type,
-            vin: row.vin,
-            duration_seconds: row.duration_seconds,
-            minimum_seconds: row.minimum_seconds,
-            short_by_seconds: row.short_by_seconds,
-        }
-    }
-}
 
 /// A day as people read it: Oct 4.
 fn day(date: &str) -> String {
@@ -1397,115 +1205,61 @@ fn count(count: usize, one: &str, many: &str) -> String {
         count => format!("{count} {many}"),
     }
 }
-/// The names of the sections answered whose gaps `pick` picks, joined, or none.
-fn lacking(found: &Found, pick: fn(&Gaps) -> bool) -> Option<String> {
-    let names: Vec<&str> = (Section::ALL.into_iter())
-        .filter(|section| section.gaps(found).as_ref().is_some_and(pick))
-        .map(Section::name)
-        .collect();
-    (!names.is_empty()).then(|| names.join(", "))
-}
 /// What the answer says, in a sentence or a few, for the agent to read out: who, what each
-/// section found, what isn't known, which sections asked for are off, and whether lists were
-/// cut short.
+/// section found and doesn't know, which sections asked for are off, and whether lists were cut
+/// short.
 fn summary(found: &Found, wanted: &[Section]) -> String {
+    let (mut told, mut lacking, mut off): (Vec<String>, [Vec<&str>; 3], Vec<&str>) =
+        Default::default();
+    for section in Section::ALL {
+        let Some((words, gaps)) = section.told(found) else {
+            if wanted.contains(&section) {
+                off.push(section.name());
+            }
+            continue;
+        };
+        told.push(words);
+        for (names, gap) in lacking.iter_mut().zip(gaps) {
+            if gap {
+                names.push(section.name());
+            }
+        }
+    }
     let person = &found.person;
-    let days = if found.from == found.to {
-        day(&found.from)
-    } else {
-        format!("{} to {}", day(&found.from), day(&found.to))
-    };
     let at = match person.role.as_str() {
         "former" => format!("who has left {}", found.dsp),
         "office" => format!("office staff at {}", found.dsp),
         role => format!("a {role} at {}", found.dsp),
     };
-    let mut told = Vec::new();
-    if let Some(cards) = &found.scorecards {
-        told.push(count(
-            cards.weeks.len(),
-            "weekly scorecard",
-            "weekly scorecards",
-        ));
-        let packages = cards.packages.len() + cards.more_packages;
-        if packages > 0 {
-            told.push(count(packages, "scorecard package", "scorecard packages"));
-        }
+    let (name, code, from) = (&person.name, &person.code, day(&found.from));
+    let mut text = format!("{name} ({code}), {at}, {from}");
+    if found.to != found.from {
+        text += &format!(" to {}", day(&found.to));
     }
-    if let Some(daily) = &found.daily {
-        let mut dates: Vec<&str> = daily.days.iter().map(|day| day.date.as_str()).collect();
-        dates.dedup();
-        let days = dates.len() + daily.more_days;
-        told.push(count(days, "day of daily metrics", "days of daily metrics"));
-    }
-    if let Some(routes) = &found.routes {
-        told.push(count(
-            routes.routes.len() + routes.more_routes,
-            "route",
-            "routes",
-        ));
-    }
-    if let Some(timecards) = &found.timecards {
-        let days = timecards.days.len() + timecards.more_days;
-        told.push(count(days, "timecard", "timecards"));
-    }
-    if let Some(roster) = &found.roster {
-        let listed = roster.associates.iter().find(|associate| associate.listed);
-        told.push(match (listed, &roster.collected) {
-            (Some(associate), _) => format!("on Amazon's roster as {}", associate.status),
-            (None, None) => "Amazon's roster not collected yet".to_owned(),
-            (None, Some(_)) if roster.associates.is_empty() => "not on Amazon's roster".to_owned(),
-            (None, Some(_)) => "no longer on Amazon's roster".to_owned(),
-        });
-    }
-    if let Some(chat) = &found.chat {
-        told.push(count(chat.accounts.len(), "chat account", "chat accounts"));
-    }
-    if let Some(short) = &found.inspections {
-        let inspections = short.inspections.len() + short.more_inspections;
-        told.push(count(
-            inspections,
-            "short DVIC inspection",
-            "short DVIC inspections",
-        ));
-    }
-    let mut text = format!("{} ({}), {at}, {days}", person.name, person.code);
     if !told.is_empty() {
-        text.push_str(": ");
-        text.push_str(&told.join(", "));
+        text += &format!(": {}", told.join(", "));
     }
     text.push('.');
-    if let Some(names) = lacking(found, |gaps| gaps.no_ids) {
-        text.push_str(&format!(
-            " They hold no ID that {names} read, so nothing of theirs is there."
-        ));
+    for (names, gap) in lacking.iter().zip(GAPS) {
+        if !names.is_empty() {
+            text += &format!(" {}", gap.replace("{names}", &names.join(", ")));
+        }
     }
-    if let Some(names) = lacking(found, |gaps| gaps.unknown) {
-        text.push_str(&format!(
-            " Some days aren't collected in {names}, so they're unknown."
-        ));
-    }
-    if let Some(names) = lacking(found, |gaps| gaps.partial) {
-        text.push_str(&format!(
-            " Some days in {names} were read while under way, so they show only what was known then."
-        ));
-    }
-    let mut off: Vec<&str> = (wanted.iter())
-        .filter(|section| section.gaps(found).is_none())
-        .map(|section| section.name())
-        .collect();
-    off.sort_unstable();
-    off.dedup();
     if !off.is_empty() {
-        text.push_str(&format!(" Off at {}: {}.", found.dsp, off.join(", ")));
+        text += &format!(" Off at {}: {}.", found.dsp, off.join(", "));
     }
     if found.trimmed {
-        text.push_str(
-            " Some lists were cut short: ask for fewer days or sections to see the rest.",
-        );
+        text += " Some lists were cut short: ask for fewer days or sections to see the rest.";
     }
     text
 }
+/// What the summary says of the sections that know none of their IDs, some of whose days are
+/// unknown, and some of whose days are so far.
+const GAPS: [&str; 3] = [
+    "They hold no ID that {names} read, so nothing of theirs is there.",
+    "Some days aren't collected in {names}, so they're unknown.",
+    "Some days in {names} were read while under way, so they show only what was known then.",
+];
 
 #[cfg(test)]
 #[path = "../tests/backend/tools/driver.rs"]

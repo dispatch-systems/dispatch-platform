@@ -71,12 +71,11 @@ async fn chat_accounts_are_the_ones_asked_for_only_while_slack_is_on() {
     );
     // An ID over 128 characters is refused.
     assert_eq!(refused, "invalid_input");
-    let of = dsp.clone();
     let offered = state
         .run(move |db| {
             let owner = testing::a_user(db);
-            db.set_feature(&of, "slack", false, &owner)?;
-            Ok(chat::for_dsp(db, &of)?.is_some())
+            db.set_feature(&dsp, "slack", false, &owner)?;
+            Ok(chat::for_dsp(db, &dsp)?.is_some())
         })
         .await
         .unwrap();

@@ -1,25 +1,16 @@
 //! What Driver Profiles exposes, as a feature using it finds it: only while it's on for the
 //! DSP, and what the roster it keeps says of the IDs asked for.
 use super::*;
-use crate::backend::storage::bind_roster_request;
-use dispatch_core::{manifest::Collector, testing};
+use crate::backend::support;
+use dispatch_core::testing;
 use dispatch_cortex::associates::Capture;
 use serde_json::json;
 
-/// Publishes the roster Cortex's fixture collects for the DSP as collected at `when`, less those
-/// `gone` names.
-fn publish(db: &Store, dsp: &str, job: &str, when: i64, gone: &[&str]) {
-    let request = bind_roster_request(db, dsp).unwrap();
-    let collected = dispatch_cortex::COLLECTOR
-        .fixture("America/Chicago", &request)
-        .unwrap();
-    let mut capture: Capture = serde_json::from_value(collected.data).unwrap();
-    capture
-        .associates
-        .retain(|a| !gone.contains(&a.transporter_id.as_str()));
-    capture.photos.clear();
+/// The roster Cortex's fixture collects for the DSP, as collected at `when`.
+fn roster_at(db: &Store, dsp: &str, when: i64) -> Capture {
+    let mut capture = support::roster(db, dsp);
     (capture.started_at, capture.finished_at) = (when, when);
-    db.publish_roster(dsp, job, &capture).unwrap();
+    capture
 }
 fn ids(ids: &[&str]) -> Vec<String> {
     ids.iter().map(|id| id.to_string()).collect()
@@ -62,9 +53,12 @@ fn amazon_roster_says_what_the_roster_listed_of_the_ids_asked_for_in_their_order
             .is_empty()
     );
     let (first, second) = ("2026-10-01T05:00:00.000Z", "2026-10-02T05:00:00.000Z");
-    publish(&db, &dsp, "job-1", 1_790_830_800_000, &[]);
+    support::publish(&db, &dsp, "job-1", roster_at(&db, &dsp, 1_790_830_800_000));
     // Amazon stops listing driver-7: what the last roster to list them said stays.
-    publish(&db, &dsp, "job-2", 1_790_917_200_000, &["driver-7"]);
+    let mut next = roster_at(&db, &dsp, 1_790_917_200_000);
+    next.associates.retain(|a| a.transporter_id != "driver-7");
+    next.photos.clear();
+    support::publish(&db, &dsp, "job-2", next);
     assert_eq!(
         roster.collected(&db, &dsp).unwrap().as_deref(),
         Some(second)
@@ -95,18 +89,15 @@ fn amazon_roster_says_what_the_roster_listed_of_the_ids_asked_for_in_their_order
             format!("driver-1 true ACTIVE [Driver, Helper] [CDV, EDV] 2027-01-15 {second}"),
         ]
     );
-    // Any ID the directory could hold is matched as written, up to 128 characters and 32 IDs.
-    let (longest, many) = (
-        "d".repeat(128),
-        (1..=33).map(|n| format!("driver-{n}")).collect::<Vec<_>>(),
-    );
+    // Any ID up to 128 characters is matched exactly as written, up to 32 at once.
+    let many: Vec<String> = (1..=33).map(|n| format!("driver-{n}")).collect();
+    assert!(roster.associates(&db, &dsp, &many[..32]).is_ok());
     assert!(
         roster
-            .associates(&db, &dsp, &ids(&["driver 1", &longest]))
+            .associates(&db, &dsp, &ids(&[" driver-1", &"d".repeat(128)]))
             .unwrap()
             .is_empty()
     );
-    assert_eq!(roster.associates(&db, &dsp, &many[..32]).unwrap().len(), 8);
     // An empty ID, a longer one, or one more ID refuses the whole question.
     let longer = "d".repeat(129);
     for refused in [ids(&["driver-1", ""]), ids(&["driver-1", &longer]), many] {

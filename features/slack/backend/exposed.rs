@@ -28,8 +28,8 @@ impl ChatAccounts for Exposed {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        // Each workspace the DSP has, by its name in Dispatch and whether its access broke. Its
-        // members go with it, so each member kept is in one.
+        // Each workspace by its name in Dispatch and whether its access broke. A workspace's
+        // members go with it, so every member kept is in one.
         let workspaces: HashMap<String, (String, bool)> = db
             .slack_workspaces(dsp)?
             .into_iter()
@@ -38,24 +38,25 @@ impl ChatAccounts for Exposed {
                 (workspace.team, (name, workspace.broken))
             })
             .collect();
-        let mut found: HashMap<String, ChatAccount> = HashMap::new();
+        let mut found = HashMap::new();
         for (team, member) in db.slack_members(dsp)? {
             let id = people::id(&team, &member);
+            if !ids.contains(&id) {
+                continue;
+            }
             let Some((workspace, broken)) = workspaces.get(&team) else {
                 continue;
             };
-            if ids.contains(&id) {
-                let account = ChatAccount {
-                    id: id.clone(),
-                    workspace: workspace.clone(),
-                    user: member.user,
-                    display_name: member.display_name,
-                    active: member.active,
-                    guest: member.guest,
-                    broken: *broken,
-                };
-                found.insert(id, account);
-            }
+            let account = ChatAccount {
+                id: id.clone(),
+                workspace: workspace.clone(),
+                user: member.user,
+                display_name: member.display_name,
+                active: member.active,
+                guest: member.guest,
+                broken: *broken,
+            };
+            found.insert(id, account);
         }
         Ok(ids.iter().filter_map(|id| found.remove(id)).collect())
     }

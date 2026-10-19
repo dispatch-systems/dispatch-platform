@@ -3,6 +3,7 @@
 //! (`dispatch_weekly_scorecard_contract`).
 use super::{WeeklyScorecardStore, flag, text, weekly_scorecard_timezone};
 use chrono::{DateTime, Datelike, Duration, NaiveDate};
+use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result,
     db::{Store, s},
@@ -97,14 +98,14 @@ impl DriverScorecards for Exposed {
         dispatch_cortex::SOURCE
     }
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>> {
-        let mut weeks: Vec<String> = db
+        let weeks: Vec<String> = db
             .weekly_scorecard_weeks(dsp)?
             .weeks
             .into_iter()
+            .rev()
             .filter(|week| week.posted && week.publication.is_some())
             .map(|week| week.week)
             .collect();
-        weeks.reverse();
         let (Some(first), Some(last)) = (weeks.first(), weeks.last()) else {
             return Ok(None);
         };
@@ -126,30 +127,7 @@ impl DriverScorecards for Exposed {
         let weeks = overlapping(ids, from, to)?;
         rows(db, dsp, "driver_weekly_scorecards", ids, &weeks)?
             .iter()
-            .map(|row| {
-                let (sunday, saturday) = week_days(s(row, "week"))?;
-                let fields: Value = serde_json::from_str(s(row, "row"))?;
-                Ok(Scorecard {
-                    week: s(row, "week").into(),
-                    from: sunday.to_string(),
-                    through: saturday.to_string(),
-                    driver_id: s(row, "transporter_id").into(),
-                    name: text(&fields, "da_name").unwrap_or_default(),
-                    overall_score: number(&fields, "da_overall_score"),
-                    overall_tier: text(&fields, "da_overall_tier"),
-                    delivered: number(&fields, "delivered").map(|n| n as i64),
-                    metrics: METRICS
-                        .iter()
-                        .map(|(name, value, tier, score)| Metric {
-                            name: (*name).into(),
-                            value: number(&fields, value),
-                            tier: text(&fields, tier),
-                            score: number(&fields, score),
-                        })
-                        .filter(|m| m.value.is_some() || m.tier.is_some() || m.score.is_some())
-                        .collect(),
-                })
-            })
+            .map(scorecard)
             .collect()
     }
     fn packages(
@@ -169,45 +147,7 @@ impl DriverScorecards for Exposed {
             (PackageKind::Feedback, "customer_feedback"),
         ] {
             for row in rows(db, dsp, table, ids, &weeks)? {
-                let fields: Value = serde_json::from_str(s(&row, "row"))?;
-                let marked = |key: &str| flag(&fields[key]) == Some(true);
-                let (date, reasons) = match kind {
-                    // Its `data_date` is the day the concession was recorded, often days after
-                    // the delivery, which Amazon times in UTC.
-                    PackageKind::Concession => (
-                        DateTime::parse_from_rfc3339(s(&fields, "delivery_datetime_iso"))
-                            .ok()
-                            .map(|at| at.with_timezone(&tz).date_naive().to_string()),
-                        CONCESSION_FLAGS
-                            .iter()
-                            .filter(|field| marked(field))
-                            .map(|field| field.trim_end_matches("_flag").to_owned())
-                            .collect(),
-                    ),
-                    PackageKind::Return => (
-                        day(&fields["delivery_planned_date"]),
-                        text(&fields, "rts_reason_code").into_iter().collect(),
-                    ),
-                    // Amazon writes when it was delivered in the station's own time, with no
-                    // offset.
-                    PackageKind::Feedback => (
-                        day(&fields["delivery_time"]),
-                        FEEDBACK_ANSWERS
-                            .iter()
-                            .filter(|answer| marked(answer))
-                            .map(|answer| (*answer).to_owned())
-                            .collect(),
-                    ),
-                };
-                packages.push(Package {
-                    kind,
-                    week: s(&row, "week").into(),
-                    date,
-                    tracking_id: s(&row, "tracking_id").into(),
-                    driver_id: s(&row, "transporter_id").into(),
-                    impacting: row["impact"].as_i64().map(|impact| impact == 1),
-                    reasons,
-                });
+                packages.push(package(kind, &row, tz)?);
             }
         }
         packages.sort_by(|a, b| (&a.week, &a.date).cmp(&(&b.week, &b.date)));
@@ -215,6 +155,73 @@ impl DriverScorecards for Exposed {
     }
 }
 
+/// A driver's scorecard, from its row.
+fn scorecard(row: &Value) -> Result<Scorecard> {
+    let (sunday, saturday) = week_days(s(row, "week"))?;
+    let fields: Value = serde_json::from_str(s(row, "row"))?;
+    Ok(Scorecard {
+        week: s(row, "week").into(),
+        from: sunday.to_string(),
+        through: saturday.to_string(),
+        driver_id: s(row, "transporter_id").into(),
+        name: text(&fields, "da_name").unwrap_or_default(),
+        overall_score: number(&fields, "da_overall_score"),
+        overall_tier: text(&fields, "da_overall_tier"),
+        delivered: number(&fields, "delivered").map(|n| n as i64),
+        metrics: METRICS
+            .iter()
+            .map(|(name, value, tier, score)| Metric {
+                name: (*name).into(),
+                value: number(&fields, value),
+                tier: text(&fields, tier),
+                score: number(&fields, score),
+            })
+            .filter(|m| m.value.is_some() || m.tier.is_some() || m.score.is_some())
+            .collect(),
+    })
+}
+/// A package of `kind`, from its row, its day in `tz`.
+fn package(kind: PackageKind, row: &Value, tz: Tz) -> Result<Package> {
+    let fields: Value = serde_json::from_str(s(row, "row"))?;
+    let (date, reasons) = match kind {
+        // Its `data_date` is the day the concession was recorded, often days after the delivery,
+        // which Amazon times in UTC.
+        PackageKind::Concession => (
+            DateTime::parse_from_rfc3339(s(&fields, "delivery_datetime_iso"))
+                .ok()
+                .map(|at| at.with_timezone(&tz).date_naive().to_string()),
+            marked(&fields, CONCESSION_FLAGS)
+                .map(|field| field.trim_end_matches("_flag").to_owned())
+                .collect(),
+        ),
+        PackageKind::Return => (
+            day(&fields["delivery_planned_date"]),
+            text(&fields, "rts_reason_code").into_iter().collect(),
+        ),
+        // Amazon writes when it was delivered in the station's own time, with no offset.
+        PackageKind::Feedback => (
+            day(&fields["delivery_time"]),
+            marked(&fields, FEEDBACK_ANSWERS)
+                .map(str::to_owned)
+                .collect(),
+        ),
+    };
+    Ok(Package {
+        kind,
+        week: s(row, "week").into(),
+        date,
+        tracking_id: s(row, "tracking_id").into(),
+        driver_id: s(row, "transporter_id").into(),
+        impacting: row["impact"].as_i64().map(|impact| impact == 1),
+        reasons,
+    })
+}
+/// The fields among `keys` that `fields` marks as set.
+fn marked(fields: &Value, keys: &'static [&'static str]) -> impl Iterator<Item = &'static str> {
+    keys.iter()
+        .copied()
+        .filter(move |key| flag(&fields[*key]) == Some(true))
+}
 /// The rows of `table` naming any of `ids` in `weeks`: only the active, verified publications
 /// at the DSP's station, as its weeks show them.
 fn rows(
@@ -230,7 +237,7 @@ fn rows(
     let station = db.profile(dsp)?.station_code;
     db.weekly_scorecard_db(dsp)?.all(
         &format!(
-            "SELECT p.week,d.data_date,d.transporter_id,d.tracking_id,d.impact,d.row FROM {table} d \
+            "SELECT p.week,d.transporter_id,d.tracking_id,d.impact,d.row FROM {table} d \
              JOIN weekly_scorecard_publications p ON p.id=d.publication_id \
              AND p.active=1 AND p.scope_verified=1 \
              WHERE p.station=?1 AND p.week IN (SELECT value FROM json_each(?2)) \
@@ -245,12 +252,11 @@ fn rows(
 }
 /// The scorecard weeks overlapping `from` to `to`, refusing bad days and IDs.
 fn overlapping(ids: &[String], from: &str, to: &str) -> Result<Vec<String>> {
-    validate::date(from)?;
-    validate::date(to)?;
-    let parse = |day: &str| {
+    let date = |day: &str| -> Result<NaiveDate> {
+        validate::date(day)?;
         NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))
     };
-    let (first, last) = (parse(from)?, parse(to)?);
+    let (first, last) = (date(from)?, date(to)?);
     ensure(
         first <= last
             && (last - first).num_days() < LONGEST

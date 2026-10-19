@@ -8,6 +8,10 @@ pub(crate) mod people;
 pub(crate) mod photos;
 pub(crate) mod storage;
 
+#[cfg(test)]
+#[path = "../tests/backend/support.rs"]
+pub(crate) mod support;
+
 use dispatch_core::server::cache::DataDomain;
 
 /// The roster and photos it keeps.

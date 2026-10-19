@@ -13,7 +13,7 @@ pub trait DailyMetrics: Send + Sync {
     /// The first day collected and the last, or none before the first.
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<Collected>>;
     /// A driver's days from `from` to `to`, YYYY-MM-DD in the DSP's own time, under any of
-    /// `ids`, each matched exactly; none for none. It refuses a day that isn't YYYY-MM-DD with
+    /// `ids`, each matched exactly; no IDs, no days. It refuses a day that isn't YYYY-MM-DD with
     /// `invalid_date`; and with `invalid_input`, `from` after `to`, more than 31 days, more than
     /// 20 IDs, or an ID that's empty or over 128 characters.
     fn days(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Days>;
