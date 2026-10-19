@@ -49,7 +49,9 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await add();
   await expect(workspaces.getByRole('heading', { name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Slack', exact: true }).click();
-  await page.getByLabel('Workspace', { exact: true }).selectOption({ label: 'Drivers' });
+  await page
+    .getByRole('combobox', { name: 'Workspace', exact: true })
+    .selectOption({ label: 'Drivers' });
   await expect(page.getByRole('heading', { level: 2, name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Connections', exact: true }).click();
   const renamed = workspaces.filter({ has: page.getByRole('heading', { name: 'Dispatch Crew' }) });

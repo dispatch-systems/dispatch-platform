@@ -158,6 +158,8 @@ test('an owner connects Google, lands in an empty Documents and makes a folder a
   await expect(
     page.getByRole('article').filter({ hasText: 'Google Drive' }).getByRole('status'),
   ).toHaveText('Connected');
+  // Settings holds the sidebar while it's open: Back leaves it for the app's pages.
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await page.getByLabel('New').click();
   await page.getByRole('button', { name: 'Folder', exact: true }).click();

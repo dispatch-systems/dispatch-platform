@@ -230,7 +230,9 @@ test('schedules persist, pause, reject stale edits and delete; manual sync reach
   await page.getByRole('button', { name: 'Delete schedule', exact: true }).click();
   await expect(page.getByText('No schedules yet', { exact: true })).toBeVisible();
   expect((await owner.get('/api/dsp/dvic/schedules')).value.schedules).toHaveLength(0);
-  await page.getByRole('link', { name: 'DVIC', exact: true }).click();
+  // Back returns to the DVIC page its Collection settings opened from.
+  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await expect(page).toHaveURL(/\/dvic$/);
   const collected = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/dsp/dvic/collect') && response.request().method() === 'POST',

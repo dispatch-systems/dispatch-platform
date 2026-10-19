@@ -1,6 +1,7 @@
 import { Check, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Job } from '../../../core/collection/api/index.js';
+import { useCollectionUpdates } from '../../../core/collection/frontend/live-collection.js';
 import { randomId } from '../../../core/shell/frontend/lib/random-id.js';
 import { time } from '../../../core/shell/frontend/lib/format.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
@@ -22,8 +23,9 @@ function said(status: RosterStatus | undefined, running: Job | undefined, timezo
 
 /** Amazon's roster: when it was collected and is collected next, and Collect now. */
 export function RosterBar({ timezone }: { timezone: string }) {
-  // A collection's end is announced to the page, but not its progress, which is read every few
-  // seconds while one runs.
+  // It follows collections' ends itself, wherever it's drawn, as a schedule's run elsewhere
+  // ends; not their progress, which is read every few seconds while one runs.
+  useCollectionUpdates();
   const [watching, setWatching] = useState(false);
   const status = useRosterStatus(watching ? POLL_MS : 0);
   const running = status.data?.jobs.find(active);
