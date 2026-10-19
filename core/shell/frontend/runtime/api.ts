@@ -12,7 +12,7 @@ import { errorLabelOf, isLongPoll } from './slots.js';
 export let csrf = '',
   view = '';
 /** Whose view a view token is: its DSP, and the role viewed as, without its signature. */
-const viewing = (token: string) => token.slice(0, token.lastIndexOf('.') + 1);
+export const viewing = (token: string) => token.slice(0, token.lastIndexOf('.') + 1);
 /** Whose the last view opened was. */
 let viewed = '';
 export function credentials(nextCsrf: string, nextView = '') {

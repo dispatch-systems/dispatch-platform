@@ -107,6 +107,35 @@ test('Settings draws route data from its declaration, and a window that deletes 
     ),
   ).toBeVisible();
   await expect(keep).toHaveValue('365');
+  // The view opening again for the same member and role, as once another session changes the
+  // DSP's profile, draws Settings anew as it was: the edit, saved at the revision it began at,
+  // and the search.
+  await keep.selectOption('90');
+  const search = page.getByRole('combobox', { name: 'Search settings', exact: true });
+  await search.fill('route');
+  const renamed = await owner.post('/api/dsp/profile', {
+    ...profile,
+    name: 'Northline Freight',
+    timezone: north.timezone,
+  });
+  expect(renamed.status, renamed.body).toBe(200);
+  const redrawn = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings') &&
+      response.request().method() === 'GET' &&
+      response.ok(),
+  );
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await redrawn;
+  await expect(keep).toHaveValue('90');
+  await expect(search).toHaveValue('route');
+  const stored = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/routes.retention') &&
+      response.request().method() === 'POST',
+  );
+  await save.click();
+  expect((await stored).status()).toBe(200);
 });
 
 test('a member without management permissions never sees the Data page or Driver Match', async ({

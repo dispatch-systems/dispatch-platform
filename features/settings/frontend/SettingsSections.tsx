@@ -4,6 +4,7 @@ import type { SettingsAnswer } from '../../../core/settings/api/index.js';
 import { LeaveGuards, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { settingsSection } from '../../../core/shell/frontend/runtime/slots.js';
 import { Loading } from '../../../core/shell/frontend/ui/index.js';
+import { whoseSettings } from './drafts.js';
 import type { Found } from './find.js';
 import { Section, sectionElement } from './Section.js';
 import { sectionsOn } from './pages.js';
@@ -36,6 +37,7 @@ export function SettingsSections({
   const reveal = (id: string) => (found?.section === id ? found.reveal : undefined);
   const sections = sectionsOn(settings, view, page);
   const label = settings.pages.find((each) => each.id === page)?.label;
+  const whose = whoseSettings(session, view);
   return (
     <LeaveGuards value={guards}>
       <div className="settings-page" aria-busy={busy || undefined} inert={busy}>
@@ -49,6 +51,7 @@ export function SettingsSections({
               <Section
                 key={section.id}
                 section={section}
+                whose={whose}
                 refresh={refresh}
                 reveal={reveal(section.id)}
                 named={sections.length === 1 && section.label === label}

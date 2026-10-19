@@ -47,8 +47,8 @@ struct Kept {
 /// Moves the policy a DSP chose before Settings kept it, its database's `collection_policy`,
 /// into `COLLECTION` as the DSP's first values, at startup (`settings::carry_over`). The old
 /// value is read as the DSP first opens since, whatever it is, and not again; it stays as it
-/// was, read only here. One that doesn't parse or fit isn't moved, so the defaults hold, as
-/// for a value the section can't hold.
+/// was, read only here. One that doesn't parse isn't moved, so the defaults hold, and a value
+/// its field doesn't hold now reads as the default, the other moving still.
 pub(crate) fn upgrade(store: &Store, id: &str) -> Result<()> {
     settings::carry_over(store, id, &COLLECTION, || {
         // A DSP whose database isn't made yet chose no policy.

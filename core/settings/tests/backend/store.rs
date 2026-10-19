@@ -322,7 +322,7 @@ fn a_section_kept_elsewhere_reads_and_saves_there_and_core_keeps_its_revision() 
 }
 
 #[test]
-fn values_a_feature_kept_itself_move_in_once_never_over_a_save_and_a_failure_waits() {
+fn values_a_feature_kept_move_in_once_each_that_fits_never_over_a_save_and_a_failure_waits() {
     let (_root, db, dsp, owner) = northline();
     let carry = |old: Result<Option<Value>>| carry_over(&db, &dsp, &POLICY, || old);
     // What can't be read now keeps nothing and leaves the DSP opening; it moves as it next
@@ -330,12 +330,14 @@ fn values_a_feature_kept_itself_move_in_once_never_over_a_save_and_a_failure_wai
     carry(Err(Error::new("storage_busy", 503)));
     let record = store::record(&db, &dsp, &POLICY, None).unwrap();
     assert_eq!(record, Value::Null);
-    // A department its list has dropped since is kept as it was chosen.
-    carry(Ok(Some(json!({"days": 120, "department": "gone"}))));
+    // A department its list has dropped since is kept as it was chosen. A mode its options no
+    // longer have, and a field the section hasn't, stay behind; the rest move still.
+    let old = json!({"days": 120, "department": "gone", "mode": "draft", "retired": true});
+    carry(Ok(Some(old)));
     let moved = read::<Policy>(&db, &dsp, &POLICY).unwrap();
     assert_eq!(
-        (moved.days, moved.department.as_deref()),
-        (Some(120), Some("gone"))
+        (moved.days, moved.department.as_deref(), moved.mode.as_str()),
+        (Some(120), Some("gone"), "final")
     );
     // Once it holds values, the old ones aren't read again.
     carry_over(&db, &dsp, &POLICY, || panic!("read once moved"));

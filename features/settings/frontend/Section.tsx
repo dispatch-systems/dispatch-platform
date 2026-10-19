@@ -10,6 +10,7 @@ import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
 import { useUnsavedEdits } from '../../../core/shell/frontend/runtime/useUnsavedEdits.js';
 import { ConfirmDialog, ErrorBox } from '../../../core/shell/frontend/ui/index.js';
+import { useDraft } from './drafts.js';
 import { FieldRow, held, saved, valid } from './fields/index.js';
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -30,23 +31,26 @@ export const sectionElement = (id: string, reveal?: RefCallback<HTMLElement>) =>
  * other, and the page moves on only once they are saved or discarded. A save that would lose
  * something asks first, in the server's words. Edits begin at the section as it was read when
  * they began: once another session has saved it since, a save of them is refused, though the
- * page has read it again meanwhile, and the section is read again.
+ * page has read it again meanwhile, and the section is read again. They're kept in `whose`
+ * Settings (drafts.ts), so the page drawn anew for the same view has them still.
  */
 export function Section({
   section,
+  whose,
   refresh,
   reveal,
   named = false,
 }: {
   section: SettingsSection;
+  /** Whose Settings it is in. */
+  whose: string;
   refresh: () => void;
   /** Points the section out, as a search result opening it does. */
   reveal?: RefCallback<HTMLElement>;
   /** Whether the page's heading already names it, as the only section of a page of its name. */
   named?: boolean;
 }) {
-  // Each field edited, by its id, and the revision of the section the edits began at.
-  const [draft, setDraft] = useState<{ revision: number; values: Record<string, SettingsValue> }>();
+  const [draft, setDraft] = useDraft(whose, section.id);
   const [warning, setWarning] = useState<string>();
   const { notify } = useFeedback();
   const values = section.fields.filter(held);

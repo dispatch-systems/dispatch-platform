@@ -36,10 +36,13 @@ part. Mandatory: every DSP has it.
   some, as a schedule's, a custom section's included (core's `useUnsavedEdits`), asks before the
   page moves on, however it moves: to another of its pages, by Back or the browser's Back or
   Forward, or by a link followed or a hash typed (core's `holdAddress`), and before it is drawn
-  anew for another role viewed as. Each with edits asks in turn, in the page's order: Save, only
-  for edits that may be saved, Discard, or Cancel (or Escape), which stays. The address stays
-  where it was while it asks, and a save that fails keeps the page. Closing or reloading the tab
-  has the browser ask.
+  anew for another role viewed as. Each with edits asks in turn, in the order they were opened:
+  Save, only for edits that may be saved, Discard, or Cancel (or Escape), which stays. The
+  address stays where it was while it asks, and a save that fails keeps the page. Closing or
+  reloading the tab has the browser ask. A declared section's edits, and the search, outlive
+  the view opening again for the same member, DSP and role viewed as, as it does once another
+  admin edits roles or the DSP's profile is saved: Settings is drawn anew with them as they
+  were, each edit at the revision it began at (`frontend/drafts.ts`).
 - **A custom section** is drawn by the component its owner registers in the `settingsSections`
   slot under the section's id, with `refresh` to read Settings again; with `visible` it says
   whether the member has anything there, and a page with nothing to draw isn't listed.

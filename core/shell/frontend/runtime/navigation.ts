@@ -116,104 +116,6 @@ export const signInHash = '#signin';
 export function navigate(hash: string) {
   window.location.hash = hash;
 }
-
-// A page with unsaved edits holds the address: however it moves, by a link followed, Back, the
-// browser's Back or Forward or a hash typed, the page asks first, and while it asks the move is
-// undone, so the address names the page still open and nothing following it hears the move. Once
-// every hold lets it, it is made again as it would have been, and every page following the
-// address hears it then; a hold that never lets it keeps the page, at its address.
-//
-// Where the browser numbers the tab's history (its Navigation API), a move along it is undone
-// by going back to the page's entry, and made again by going on to the one it moved to, so the
-// history stays as it was: kept, the page's Back and Forward still lead where they led. A move
-// that replaced its entry is put back in place, as it was. In a browser that doesn't number
-// them, every move is put back in place, in the entry it moved to: kept, the page is then at
-// that entry too, and Back or Forward to it stays on the page.
-
-/**
- * Asked before the page open is left: as the address moves `to`, a hash, or, with none, as the
- * page is drawn anew where it is. Runs `then` at once, once let, or never.
- */
-export type Hold = (to: string | undefined, then: () => void) => void;
-const holds = new Set<Hold>();
-/** Has the page ask `hold` before it is left, until the answer is called. */
-export function holdAddress(hold: Hold) {
-  followNumbers();
-  holds.add(hold);
-  return () => void holds.delete(hold);
-}
-/** Asks each hold in turn, `to` where the page goes, and runs `then` once every one has let it. */
-function ask(to: string | undefined, then: () => void) {
-  const asks = [...holds];
-  const next = (index: number): void =>
-    index < asks.length ? asks[index]!(to, () => next(index + 1)) : then();
-  next(0);
-}
-/**
- * Asks the holds before the page open is drawn anew where the address stays, or left without the
- * address moving, as viewing its DSP as another role draws it and signing out leaves it, and runs
- * `then` once every one has let it.
- */
-export const askToLeave = (then: () => void) => ask(undefined, then);
-
-/** The tab's history, where the browser numbers its entries: the one open, and each move. */
-type Numbered = EventTarget & { currentEntry: { index: number } | null };
-const numbered = () => (globalThis as { navigation?: Numbered }).navigation;
-/** The numbered history followed, and its latest move from one entry to another. */
-let followed: Numbered | undefined;
-let latest: { from: number; to: number } | undefined;
-function followNumbers() {
-  const tab = numbered();
-  if (!tab || tab === followed) return;
-  followed = tab;
-  tab.addEventListener('currententrychange', (event) => {
-    // An entry replaced is no longer numbered.
-    const from = (event as Event & { from: { index: number } }).from.index;
-    const to = tab.currentEntry?.index;
-    latest = from >= 0 && to !== undefined ? { from, to } : undefined;
-  });
-}
-/** A move undone along the history, by the address it returns to, which nothing else hears. */
-let undone: string | undefined;
-/** The move the holds let, by the address it is made to, as it is made again. */
-let released: string | undefined;
-/**
- * Asks the holds as the address moves, heard before anything else that follows it: the app
- * listens with it first, before it draws a page.
- */
-export function askHolds(event: HashChangeEvent) {
-  const { oldURL: from, newURL: to } = event;
-  if (to === undone) {
-    undone = undefined;
-    return event.stopImmediatePropagation();
-  }
-  if (to === released) return void (released = undefined);
-  if (!holds.size) return;
-  // How far along the history it moved, if it did.
-  const at = numbered()?.currentEntry?.index;
-  const moved = at !== undefined && latest?.to === at ? at - latest.from : 0;
-  // Let at once, the move goes on as it began; asked first, it is made again once let.
-  let waiting = false;
-  let letGo = false;
-  const go = () => {
-    if (!waiting) return void (letGo = true);
-    released = to;
-    if (moved) history.go(moved);
-    else {
-      history.replaceState(history.state, '', to);
-      window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: from, newURL: to }));
-    }
-  };
-  // A link to where a page once was asks as one to where it is now does.
-  ask(leadsTo(new URL(to).hash), go);
-  if (letGo) return;
-  waiting = true;
-  event.stopImmediatePropagation();
-  if (moved) {
-    undone = from;
-    history.go(-moved);
-  } else history.replaceState(history.state, '', from);
-}
 /** Signing in, or following an invitation or reset link: outside any DSP, at every address. */
 const signedOut = /^(?:signin$|invite\?|reset\?)/;
 /**
@@ -236,22 +138,19 @@ export function parseHash(hash: string) {
 }
 export const hashQuery = () => new URLSearchParams(window.location.hash.split('?')[1]);
 /**
- * Where an address, a hash, leads: where the page it names is now, if a page was once there, as
- * a tab of Settings it was or a page now a page of Settings.
- */
-function leadsTo(hash: string) {
-  const { dspId, page } = parseHash(hash);
-  const moved = dspId && movedTo(page, new URLSearchParams(hash.split('?')[1]));
-  return moved ? dspHash(dspId, moved.page, moved.query) : hash;
-}
-/**
- * Moves a link to where a page once was to where it is, in place in the browser's history, so
- * the app reads the address the page is at now.
+ * Moves a link to where a page once was, as a tab of Settings it was or a page now a page of
+ * Settings, to where it is, in place in the browser's history, so the app reads the address
+ * the page is at now.
  */
 export function followMoved() {
-  const hash = leadsTo(location.hash);
-  if (hash !== location.hash)
-    history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`);
+  const { dspId, page } = parseHash(location.hash);
+  const moved = dspId && movedTo(page, hashQuery());
+  if (moved)
+    history.replaceState(
+      history.state,
+      '',
+      `${location.pathname}${location.search}${dspHash(dspId, moved.page, moved.query)}`,
+    );
 }
 const linkTokens: { invite?: string; reset?: string } = {};
 /**

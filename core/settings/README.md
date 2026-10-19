@@ -69,15 +69,17 @@ nothing. A save wakes the scheduler only when it retimes the DSP's schedules, as
 profile's timezone does: retiming them marks the work, and the server wakes the scheduler once
 the work is done.
 
-`settings::carry_over` is how a feature moves values it kept itself into its declared section,
-once, from its `upgrade_storage`: checked as a save checks them, kept at revision 1 while the
-section has no record, never saved nor carried over, and not recorded in the log. With nothing
-to move (none, the defaults themselves, or values its fields refuse now) it keeps a record of
-no values at revision 0, so the defaults keep applying as the section declares them, and the
-first save is at revision 0 still. It never stops a DSP opening: a failure reading the old
-values or keeping them is noted in the server's log as `settings.carry_over_failed` (its DSP,
-section and error code, never values) and tried again as the DSP next opens. Once the section
-has a record, it costs each start one keyed read of it, and the old values aren't read.
+`settings::carry_over` is how a feature moves values it kept itself into its declared section, once,
+from its `upgrade_storage`: field by field, each value checked as a save checks it but not against
+the options a field lists as it's read, kept at revision 1 while the section has no record, never
+saved nor carried over, and not recorded in the log. A value its field refuses now, or one for a
+field the section hasn't, stays behind and reads as the default; the others move still. With nothing
+to move (none, the defaults themselves, or only values its fields refuse now) it keeps a record of
+no values at revision 0, so the defaults keep applying as the section declares them, and the first
+save is at revision 0 still. It never stops a DSP opening: a failure reading the old values or
+keeping them is noted in the server's log as `settings.carry_over_failed` (its DSP, section and
+error code, never values) and tried again as the DSP next opens. Once the section has a record, it
+costs each start one keyed read of it, and the old values aren't read.
 
 ## API
 

@@ -122,12 +122,14 @@ pub(crate) fn save_listing<'a>(
 /// Moves values a feature kept itself into its declared `section`, as the DSP's first, from
 /// its `upgrade_storage` as each DSP opens: `old` reads them as the feature kept them, none
 /// when it kept none. It does so once, while the section has no record, never saved nor
-/// carried over before. What it moves is checked as a save checks it, but against no list a
-/// field takes as it's read, which may have dropped what was chosen then; kept at revision 1,
-/// and not recorded in the log, whose entries from before already say how it came to be. With
-/// nothing to move, none, the defaults themselves or values its fields refuse now, it keeps a
-/// record of no values at revision 0: the defaults keep applying as the section declares them,
-/// and the first save is at revision 0 still.
+/// carried over before. Each field's value moves on its own, checked as a save checks it, but
+/// against no list a field takes as it's read, which may have dropped what was chosen then:
+/// one its field refuses now, or for a field the section hasn't, stays behind and reads as the
+/// default, and the others move still. What moves is kept at revision 1, and not recorded in
+/// the log, whose entries from before already say how it came to be. With nothing to move,
+/// none, the defaults themselves or only values its fields refuse now, it keeps a record of no
+/// values at revision 0: the defaults keep applying as the section declares them, and the
+/// first save is at revision 0 still.
 ///
 /// It never stops a DSP opening: what fails, reading the old values or keeping them, is noted
 /// in the server's log as `settings.carry_over_failed`, with the DSP, the section and the
@@ -165,28 +167,31 @@ fn adopt(
         return Ok(());
     }
     let defaults = store::current(db, dsp, section, &record)?.values;
-    let moved = match old()? {
-        Some(Value::Object(given)) => match merged(section, &defaults, &given, None) {
-            Ok(moved) => Some(moved).filter(|moved| *moved != defaults),
-            Err(refused) if refused.code == "invalid_input" => None,
-            Err(error) => return Err(error),
-        },
-        _ => None,
-    };
-    let (revision, values) = match moved {
-        Some(moved) => (1, Value::Object(moved)),
-        None => (0, json!({})),
+    let mut moved = defaults.clone();
+    if let Some(Value::Object(given)) = old()? {
+        for (id, value) in &given {
+            match checked(section, &defaults, id, value, None) {
+                Ok((id, value)) => {
+                    moved.insert(id.to_owned(), value);
+                }
+                // What its field refuses now it would refuse each time: it stays behind.
+                Err(refused) if refused.code == "invalid_input" => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    let (revision, values) = if moved == defaults {
+        (0, json!({}))
+    } else {
+        (1, Value::Object(moved))
     };
     let people = db.dsp(dsp)?;
     store::write(&people, section, None, revision, &values, None)
 }
 
-/// `now` with each of the `given` fields' values, each checked as its kind says and against
-/// the options its field offers from `lists`: refused as `invalid_input` for a field the
-/// section hasn't, or a schedules field, which holds no value. It reads every list the section
-/// offers first, so a section Settings leaves out, as one of them fails, isn't saved either.
-/// With no lists, as for values a feature adopts, a field whose options are listed as it's
-/// read takes any value that fits it.
+/// `now` with each of the `given` fields' values, each `checked`. It reads every list the
+/// section offers first, so a section Settings leaves out, as one of them fails, isn't saved
+/// either.
 fn merged(
     section: &Section,
     now: &Map<String, Value>,
@@ -200,17 +205,33 @@ fn merged(
         }
     }
     for (id, value) in given {
-        let field = section
-            .fields
-            .iter()
-            .find(|field| field.id == id && kinds::default(field).is_some())
-            .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let options = match lists.as_deref_mut() {
-            Some(lists) => lists.options(field)?,
-            None => None,
-        };
-        let checked = kinds::checked(field, value, &now[field.id], options.as_deref())?;
-        after.insert(field.id.to_owned(), checked);
+        let (id, value) = checked(section, now, id, value, lists.as_deref_mut())?;
+        after.insert(id.to_owned(), value);
     }
     Ok(after)
+}
+
+/// The section's field `id` and `value` as it keeps it, checked as its kind says, against what
+/// it holds `now` and the options it offers from `lists`: refused as `invalid_input` for a
+/// field the section hasn't, or a schedules field, which holds no value. With no lists, as for
+/// values a feature carries over, a field whose options are listed as it's read takes any
+/// value that fits it.
+fn checked(
+    section: &Section,
+    now: &Map<String, Value>,
+    id: &str,
+    value: &Value,
+    lists: Option<&mut kinds::Lists>,
+) -> Result<(&'static str, Value)> {
+    let field = section
+        .fields
+        .iter()
+        .find(|field| field.id == id && kinds::default(field).is_some())
+        .ok_or_else(|| Error::new("invalid_input", 400))?;
+    let options = match lists {
+        Some(lists) => lists.options(field)?,
+        None => None,
+    };
+    let value = kinds::checked(field, value, &now[field.id], options.as_deref())?;
+    Ok((field.id, value))
 }

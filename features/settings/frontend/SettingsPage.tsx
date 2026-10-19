@@ -4,6 +4,7 @@ import type { SettingsAnswer } from '../../../core/settings/api/index.js';
 import { useSettings } from '../../../core/settings/api/client.js';
 import { DataState, Header } from '../../../core/shell/frontend/ui/index.js';
 import { guards } from './address.js';
+import { whoseSettings } from './drafts.js';
 import { useFound } from './find.js';
 import { SettingsSections } from './SettingsSections.js';
 import { useOpenPage } from './useOpenPage.js';
@@ -18,10 +19,11 @@ export function SettingsPage({ session, view }: { session: SessionView; view: Ds
   return (
     <DataState data={settings.data} error={settings.error} retry={settings.refresh}>
       {(data) => (
-        // Another DSP, or another role viewed as, starts afresh: no page, edit, editor or
-        // section pointed out of the last one's carries over.
+        // Another member, DSP or role viewed as starts afresh: no page, edit, editor or section
+        // pointed out of the last one's carries over. The same view opened again, as once the
+        // DSP's profile is saved, keeps its edits (drafts.ts).
         <Page
-          key={view.token}
+          key={whoseSettings(session, view)}
           session={session}
           view={view}
           settings={data}

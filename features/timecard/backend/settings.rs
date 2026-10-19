@@ -167,9 +167,10 @@ mod filters {
 /// Moves the preferences a DSP kept in Paycom's database before Settings kept them,
 /// `paycom.preferences`, into its sections as their first values, at startup
 /// (`settings::carry_over`), read for each as the DSP first opens since, and not again. A
-/// section that holds values, saved or moved, keeps them; one whose values its fields refuse
-/// now keeps its defaults. What the page no longer reads (its opening tab, rows per page, sort and columns)
-/// stays behind; the record stays as it was, read only here.
+/// section that holds values, saved or moved, keeps them; a value its field refuses now stays
+/// behind and reads as the default, the others moving still. What the page no longer reads (its
+/// opening tab, rows per page, sort and columns) stays behind; the record stays as it was, read
+/// only here.
 pub(crate) fn upgrade(store: &Store, dsp: &str) -> Result<()> {
     let moved = |section: &Section, values: fn(&Map<String, Value>) -> Option<Value>| {
         carry_over(store, dsp, section, || {

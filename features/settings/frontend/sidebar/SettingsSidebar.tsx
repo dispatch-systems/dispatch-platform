@@ -5,6 +5,7 @@ import { useSettings } from '../../../../core/settings/api/client.js';
 import { dspHash, navigate, wayBack } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { settingsPage, type SidebarProps } from '../../../../core/shell/frontend/runtime/slots.js';
 import { moveTo, useAddressedPage } from '../address.js';
+import { whoseSettings } from '../drafts.js';
 import { search, type Found } from '../search/search.js';
 import { drawnPages, drawnSections, loadPage, openPage, prefetchPage } from '../pages.js';
 import { PageList } from './PageList.js';
@@ -17,7 +18,11 @@ import '../settings.css';
  * member opened it from, a search of their pages, and the pages themselves, under their groups,
  * or, while they search, the pages it found.
  */
-export function SettingsSidebar({ view, dspId, page, close }: SidebarProps) {
+export function SettingsSidebar({ session, view, dspId, page, close }: SidebarProps) {
+  // The search outlives the view opening again for the same member, DSP and role viewed as, as
+  // Settings' edits do, the sidebar being drawn throughout; for another, it starts afresh.
+  const whose = view && whoseSettings(session, view);
+  const [search, setSearch] = useState({ whose, query: '' });
   return (
     <div className="settings-sidebar">
       <div className="settings-sidebar-head">
@@ -28,15 +33,35 @@ export function SettingsSidebar({ view, dspId, page, close }: SidebarProps) {
         )}
         <h2>Settings</h2>
       </div>
-      {/* Another DSP, or another role viewed as, starts afresh: no search carries over. */}
-      {view && <Pages key={view.token} view={view} page={page} close={close} />}
+      {view && whose && (
+        <Pages
+          key={whose}
+          view={view}
+          page={page}
+          close={close}
+          query={search.whose === whose ? search.query : ''}
+          setQuery={(query) => setSearch({ whose, query })}
+        />
+      )}
     </div>
   );
 }
 
-function Pages({ view, page, close }: { view: DspView; page: string; close: () => void }) {
+function Pages({
+  view,
+  page,
+  close,
+  query,
+  setQuery,
+}: {
+  view: DspView;
+  page: string;
+  close: () => void;
+  /** What the member searches for, and what changes it. */
+  query: string;
+  setQuery: (query: string) => void;
+}) {
   const { data: settings } = useSettings();
-  const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const addressed = useAddressedPage();
   const list = useId();

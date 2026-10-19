@@ -27,9 +27,8 @@ import {
   FeedbackProvider,
   useFeedback,
 } from '../../core/shell/frontend/runtime/feedback.js';
+import { askHolds, askToLeave } from '../../core/shell/frontend/runtime/holds.js';
 import {
-  askHolds,
-  askToLeave,
   dspHash,
   followMoved,
   forgetDestination,

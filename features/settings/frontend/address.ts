@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { leaving, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
 import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
+import { forgetDrafts } from './drafts.js';
 
 // Settings' address: the page open (`?tab=<page>`, its id, which never changes) and a section of
 // it to point out (`&find=<section>`). Its sidebar moves it in place, as a link followed or Back
@@ -35,6 +36,15 @@ export function forgetSection() {
 /** The editors open on the page, as a schedule's, each asked before the page moves on. */
 export const guards: Guards = new Set();
 /**
+ * Asks the editors open on the page in turn, and once every one has let it, saved or discarded,
+ * forgets the sections' edits and moves on: `then`.
+ */
+export const leavePage = (then: () => void) =>
+  leaving(guards, () => {
+    forgetDrafts();
+    then();
+  });
+/**
  * Moves Settings from the page open, `from`, to `page`, once every editor open on it has let it,
  * pointing out `section` there.
  */
@@ -44,5 +54,5 @@ export function moveTo(page: string, from: string | undefined, section?: string)
     for (const follow of moves) follow();
   };
   if (page === from) move();
-  else leaving(guards, move);
+  else leavePage(move);
 }
