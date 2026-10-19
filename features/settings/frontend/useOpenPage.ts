@@ -28,6 +28,8 @@ export function useOpenPage(settings: SettingsAnswer, view: DspView) {
       }),
     [settings, view],
   );
+  // While the DSP's view opens again, as after its profile changes, the page isn't drawn and
+  // nothing holds the address for that round trip; its drafts stay kept and show again once it is.
   useEffect(() => holdAddress(leavePage), []);
   return { pages: drawnPages(settings, view), page, pending };
 }

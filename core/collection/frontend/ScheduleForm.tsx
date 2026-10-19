@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CollectionSchedule, ScheduleCollection, ScheduleInput } from '../api/index.js';
 import { ApiError } from '../../shell/frontend/runtime/api.js';
-import type { Leave } from '../../shell/frontend/runtime/leave.js';
 import { previewSchedule, removeSchedule, saveSchedule } from '../api/client.js';
 import { messageOf } from '../../shell/frontend/lib/errors.js';
 import { time } from '../../shell/frontend/lib/format.js';
@@ -18,7 +17,6 @@ export function ScheduleForm({
   defaults,
   schedule,
   timezone,
-  leaveRef,
   onSaved,
   onCancel,
   onReload,
@@ -28,7 +26,6 @@ export function ScheduleForm({
   defaults: ScheduleDefaults;
   schedule: CollectionSchedule | null;
   timezone: string;
-  leaveRef: MutableRefObject<Leave | null>;
   onSaved: (message: string) => void;
   onCancel: () => void;
   onReload: () => Promise<void>;
@@ -62,12 +59,6 @@ export function ScheduleForm({
     dirty,
     saveable: !busy && !stale && Boolean(draft.name.trim()),
     save,
-  });
-  useEffect(() => {
-    leaveRef.current = leave;
-    return () => {
-      leaveRef.current = null;
-    };
   });
   const scheduleId = schedule?.id;
   useEffect(() => {

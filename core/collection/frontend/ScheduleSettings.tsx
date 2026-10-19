@@ -1,4 +1,4 @@
-import { useRef, useState, type MutableRefObject } from 'react';
+import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { CollectionSchedule, CollectionSchedules, ScheduleCollection } from '../api/index.js';
 import { useData } from '../../shell/frontend/runtime/api.js';
@@ -6,8 +6,7 @@ import { getSchedules, setScheduleEnabled } from '../api/client.js';
 import { useAction } from '../../shell/frontend/runtime/useAction.js';
 import { useFeedback } from '../../shell/frontend/runtime/feedback.js';
 import { time } from '../../shell/frontend/lib/format.js';
-import { DataState, Empty, ErrorBox, Modal } from '../../shell/frontend/ui/index.js';
-import type { Leave } from '../../shell/frontend/runtime/leave.js';
+import { DataState, Empty, ErrorBox } from '../../shell/frontend/ui/index.js';
 import { ScheduleForm, type ScheduleDefaults } from './ScheduleForm.js';
 
 /** Where a collection's schedules are, and what a new one starts as. */
@@ -18,37 +17,16 @@ type Schedules = {
 };
 
 /**
- * A collection's schedules: each with when it runs next, to pause, resume or edit, and a new
- * one to add. A feature serves them under `endpoint`, as core's schedule routes do. They show
- * in a sheet, or `inline` in the page. Unsaved edits to one are saved or discarded first, before
- * the sheet closes or the page it's on moves on.
+ * A collection's schedules, in the page: each with when it runs next, to pause, resume or edit,
+ * and a new one to add. A feature serves them under `endpoint`, as core's schedule routes do.
+ * Unsaved edits to one are saved or discarded first, before the page moves on.
  */
-export function ScheduleSettings(
-  props: Schedules & ({ inline?: false; title?: string; onClose: () => void } | { inline: true }),
-) {
-  const leave = useRef<Leave | null>(null);
+export function ScheduleSettings(props: Schedules) {
   const [editing, setEditing] = useState<CollectionSchedule | null>();
-  const body = (
-    <ScheduleList
-      endpoint={props.endpoint}
-      collection={props.collection}
-      defaults={props.defaults}
-      editing={editing}
-      edit={setEditing}
-      leaveRef={leave}
-    />
-  );
-  if (props.inline) return <div className="schedule-settings schedule-settings-inline">{body}</div>;
-  const { title = 'Collection settings', onClose } = props;
   return (
-    <Modal
-      title={editing === undefined ? title : editing ? 'Edit schedule' : 'New schedule'}
-      variant="sheet"
-      // While the editor is open, closing the sheet asks about unsaved changes first.
-      onClose={() => (leave.current ? leave.current(onClose) : onClose())}
-    >
-      <div className="schedule-settings">{body}</div>
-    </Modal>
+    <div className="schedule-settings">
+      <ScheduleList {...props} editing={editing} edit={setEditing} />
+    </div>
   );
 }
 
@@ -59,11 +37,9 @@ function ScheduleList({
   defaults,
   editing,
   edit: setEditing,
-  leaveRef: leave,
 }: Schedules & {
   editing: CollectionSchedule | null | undefined;
   edit: (schedule: CollectionSchedule | null | undefined) => void;
-  leaveRef: MutableRefObject<Leave | null>;
 }) {
   const schedules = useData<CollectionSchedules>(endpoint);
   const { notify } = useFeedback();
@@ -136,7 +112,6 @@ function ScheduleList({
               defaults={defaults}
               schedule={editing}
               timezone={data.timezone}
-              leaveRef={leave}
               onCancel={() => setEditing(undefined)}
               onSaved={(message) => {
                 notify(message);

@@ -10,7 +10,6 @@ function Schedules({ field, alone }: FieldProps<'schedules'>) {
     <div className="settings-field settings-wide settings-schedules">
       {!alone && <h3>{field.label}</h3>}
       <ScheduleSettings
-        inline
         endpoint={field.path}
         collection={field.collection}
         defaults={{ name: field.starts.name, localTime: field.starts.localTime }}
