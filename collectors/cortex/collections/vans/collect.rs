@@ -77,20 +77,21 @@ pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<Vec<Van>> {
         }
         ensure(vans.len() <= MAX_VANS, "vans_source_too_large", 502)?;
         key = match &reply["data"]["continuationKey"] {
-            Value::Null => {
-                ensure(
-                    !vans.is_empty(),
-                    cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
-                    502,
-                )?;
-                return Ok(vans);
-            }
+            // No key, or an empty one, ends the list.
+            Value::Null => None,
+            Value::String(next) if next.is_empty() => None,
             // A key that names the page just read would read it forever.
-            Value::String(next) if !next.is_empty() && key.as_ref() != Some(next) => {
-                Some(next.clone())
-            }
+            Value::String(next) if key.as_ref() != Some(next) => Some(next.clone()),
             _ => return Err(changed()),
         };
+        if key.is_none() {
+            ensure(
+                !vans.is_empty(),
+                cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
+                502,
+            )?;
+            return Ok(vans);
+        }
     }
     Err(Error::new("vans_source_too_large", 502))
 }
@@ -103,7 +104,8 @@ impl Driver {
     ) -> Result<Capture> {
         request.validate()?;
         let started_at = now();
-        run.progress(15, "Finding the DSP's company".into()).await?;
+        run.progress(15, "Checking the DSP's company".into())
+            .await?;
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
         self.browser.close().await;
         let companies = match self.companies.take() {

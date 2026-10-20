@@ -12,13 +12,14 @@ const NAME = 'VanMarker 214';
 const PLATE = 'VANMARK01';
 
 // The real Rust driver against a staged Cortex: a vans job starts from the session the
-// connection's sign-in kept, reads the company list once, in the session check, reads the
-// fleet's two pages over HTTP with every status, and leaves nothing outside Vans' database.
+// connection's sign-in kept, checked over HTTP with no page rendered, reads the company list
+// once, in that check, reads the fleet's two pages over HTTP with every status, and leaves
+// nothing outside Vans' database.
 test(
-  'Cortex BrowserOS collects the fleet from the saved session in two pages, reading the companies once',
+  'Cortex BrowserOS collects the fleet from the saved session, rendering no page, in two pages, reading the companies once',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
   async (t) => {
-    const seen = { companies: 0, fleet: [] as URL[], signIns: 0 };
+    const seen = { companies: 0, consoles: 0, fleet: [] as URL[], landings: 0, signIns: 0 };
     const van = (vin: string, name: string, status: string) => ({
       vin,
       dspVehicleId: name,
@@ -42,12 +43,19 @@ test(
         res.setHeader('content-type', 'application/json;charset=UTF-8');
         res.end(JSON.stringify(value));
       };
+      // A browser that rendered the console says so; the session check's own read of the page
+      // runs no script.
+      if (url.pathname === '/landed') {
+        seen.landings++;
+        res.writeHead(204);
+        return res.end();
+      }
       if (url.pathname === '/dspconsolev2') {
-        return authenticated
-          ? html(
-              '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a>',
-            )
-          : redirect('/ap/signin');
+        if (!authenticated) return redirect('/ap/signin');
+        seen.consoles++;
+        return html(
+          '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a><script>fetch("/landed")</script>',
+        );
       }
       let body = '';
       for await (const chunk of req) body += chunk;
@@ -133,18 +141,28 @@ test(
       password: 'fixture-password',
     });
     assert.equal(saved.value.status, 'ready', saved.body);
-    const before = { ...seen, fleet: seen.fleet.length };
+    const collect = async (requestId: string) => {
+      const queued = await owner.post('/api/dsp/vans/collect', { requestId });
+      assert.equal(queued.status, 202, queued.body);
+      await until(async () => {
+        const status = await owner.read('/api/dsp/vans/status');
+        const current = status.jobs.find((job: any) => job.id === queued.value.id);
+        assert.notEqual(current?.status, 'failed', JSON.stringify(current));
+        return current?.status === 'succeeded';
+      }, 120000);
+    };
+    // The first job may go on in the browser the connection signed in with.
+    await collect('fleet-1');
+    assert.ok(seen.landings > 0, 'The sign-in on the page rendered the console');
 
-    const queued = await owner.post('/api/dsp/vans/collect', { requestId: 'fleet' });
-    assert.equal(queued.status, 202, queued.body);
-    await until(async () => {
-      const status = await owner.read('/api/dsp/vans/status');
-      const current = status.jobs.find((job: any) => job.id === queued.value.id);
-      assert.notEqual(current?.status, 'failed', JSON.stringify(current));
-      return current?.status === 'succeeded';
-    }, 120000);
-    // No sign-in, and the session check's company list served the collection too.
+    // The next job's new browser starts from the session its profile kept, checked over HTTP:
+    // the console page read once with no page rendered and no sign-in, and the check's
+    // company list serving the collection too.
+    const before = { ...seen, fleet: seen.fleet.length };
+    await collect('fleet-2');
     assert.equal(seen.signIns, before.signIns);
+    assert.equal(seen.landings, before.landings);
+    assert.equal(seen.consoles, before.consoles + 1);
     assert.equal(seen.companies, before.companies + 1);
     const pages = seen.fleet.slice(before.fleet);
     assert.deepEqual(

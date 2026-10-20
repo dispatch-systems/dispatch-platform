@@ -74,7 +74,8 @@ async fn the_fleet_is_read_page_after_page_each_van_once() {
                         row("1ftbw3xm5lka00101", "CDV 101"),
                         row("7FCTGAAA1NN000214", "EDV 214")
                     ]),
-                    Value::Null,
+                    // An empty key ends the list as none does.
+                    json!(""),
                 ),
                 ("again", _) => page(json!([row("1FTBW3XM5LKA00101", "CDV 101")]), json!("again")),
                 ("empty", _) => page(json!([]), Value::Null),

@@ -103,6 +103,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'weekly_scorecard',
       'driver_profiles',
       'daily_performance',
+      'vans',
       'timecard.meal_breaks',
     ),
     changed: [
@@ -112,6 +113,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       { feature: 'weekly_scorecard', enabled: false },
       { feature: 'driver_profiles', enabled: false },
       { feature: 'daily_performance', enabled: false },
+      { feature: 'vans', enabled: false },
       { feature: 'timecard.meal_breaks', enabled: false },
     ],
   });
@@ -132,6 +134,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'weekly_scorecard',
       'driver_profiles',
       'daily_performance',
+      'vans',
     ),
     changed: [
       { feature: 'cortex', enabled: true },
@@ -142,7 +145,14 @@ test('a feature switched off for a DSP stops existing there until it is switched
   assert.equal((await platform.get('/api/dsp/routes/days')).status, 403);
   result = await platform.post(url, { feature: 'routes', enabled: true });
   assert.deepEqual(result.value, {
-    features: without(all, 'dvic', 'weekly_scorecard', 'driver_profiles', 'daily_performance'),
+    features: without(
+      all,
+      'dvic',
+      'weekly_scorecard',
+      'driver_profiles',
+      'daily_performance',
+      'vans',
+    ),
     changed: [{ feature: 'routes', enabled: true }],
   });
   await platform.select(north.id);
@@ -165,6 +175,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       'weekly_scorecard',
       'driver_profiles',
       'daily_performance',
+      'vans',
       'documents',
       'slack',
     ),

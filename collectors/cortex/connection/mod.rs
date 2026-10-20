@@ -185,6 +185,7 @@ impl Driver {
                 "authenticated" => {
                     self.attempts.succeeded()?;
                     self.credentials = Value::Null;
+                    self.companies = None;
                     return Ok(json!({"type":"ready"}));
                 }
                 "invalid_credentials" | "account_locked" | "provider_unavailable" => {
