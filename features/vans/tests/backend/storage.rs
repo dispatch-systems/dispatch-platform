@@ -18,7 +18,7 @@ fn a_van_the_fleet_stops_listing_keeps_its_name() {
         .publish_fleet(&dsp, "job-1", &fleet(&store, &dsp, 1_790_830_800_000))
         .unwrap();
     let mut next = fleet(&store, &dsp, 1_790_917_200_000);
-    next.vans.retain(|van| van.name.as_deref() != Some("214"));
+    next.vans.retain(|van| van.name.as_deref() != Some("EDV 214"));
     store.publish_fleet(&dsp, "job-2", &next).unwrap();
     let status = store.fleet_status(&dsp).unwrap();
     assert_eq!(
@@ -34,7 +34,7 @@ fn a_van_the_fleet_stops_listing_keeps_its_name() {
         .unwrap(),
         [(
             "7FCTGAAA1NN000214".to_owned(),
-            Some("214".to_owned()),
+            Some("EDV 214".to_owned()),
             "2026-10-01T05:00:00.000Z".to_owned()
         )]
     );

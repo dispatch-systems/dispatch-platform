@@ -19,9 +19,13 @@ pub trait AmazonFleet: Send + Sync {
 pub struct Van {
     /// Its VIN, in capitals.
     pub vin: String,
-    /// What the DSP calls it, as it named it in Amazon's fleet, such as `214`; none when it
-    /// gave none.
+    /// What the DSP calls it, as it named it in Amazon's fleet, such as `EDV 214`; none when
+    /// it gave none. A name is the van's own while it runs: a returned van's may be another's
+    /// since, so name a van by its VIN, never a VIN by a name.
     pub name: Option<String>,
+    /// Its status, as Amazon writes it: `ACTIVE`, `MAINTENANCE` or `PENDING` while the DSP
+    /// runs it, `INACTIVE` once it is returned, sold or retired.
+    pub status: String,
     /// Whether the newest fleet lists it. One it stopped listing keeps what the last fleet to
     /// list it said.
     pub listed: bool,

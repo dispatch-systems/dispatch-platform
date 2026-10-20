@@ -7,8 +7,9 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 pub const JOB_KIND: &str = "cortex.vans.collect";
-/// Far more vehicles than one company runs: a longer list is not one DSP's.
-pub const MAX_VANS: usize = 2_000;
+/// Far more vehicles than one company runs or ever ran: a longer list is not one DSP's. One
+/// DSP's five years came to 318, every rental it returned among them.
+pub const MAX_VANS: usize = 10_000;
 /// The largest row kept as Amazon sent it.
 const MAX_ROW_BYTES: usize = 16 * 1024;
 
@@ -54,8 +55,19 @@ impl Request {
 pub struct Van {
     /// Its vehicle identification number, in capitals.
     pub vin: String,
-    /// What the DSP calls it, as it named it in the fleet.
+    /// What the DSP calls it, as it named it in the fleet: `dspVehicleId`. Names are reused:
+    /// a returned rental's name may be the next one's.
     pub name: Option<String>,
+    /// Its license plate.
+    pub plate: Option<String>,
+    /// `ACTIVE`, `MAINTENANCE`, `PENDING` or `INACTIVE`, as Amazon writes it: inactive is one
+    /// the DSP returned, sold or retired.
+    pub status: String,
+    /// What kind of van it is, as Amazon writes it: `EXTRA_LARGE_CARGO_VAN`,
+    /// `ELECTRIC_RPV_MEDIUM`.
+    pub service_tier: Option<String>,
+    /// The station it is kept at.
+    pub station: Option<String>,
     /// The row as Amazon sent it.
     pub row: Value,
 }
@@ -63,27 +75,38 @@ impl Van {
     /// One fleet row, read. `None` for a row naming no VIN, which nothing else Amazon sends
     /// could name either.
     pub fn read(row: Value) -> Result<Option<Self>> {
+        let invalid = || Error::new("vans_row_invalid", 502);
         ensure(row.is_object(), "vans_row_invalid", 502)?;
         ensure(
             row.to_string().len() <= MAX_ROW_BYTES,
             "vans_source_too_large",
             502,
         )?;
-        let text = |key: &str, max: usize| -> Option<String> {
-            let value = row.get(key)?.as_str()?.trim();
+        let text = |value: &Value, max: usize| -> Option<String> {
+            let value = value.as_str()?.trim();
             (!value.is_empty()
                 && value.chars().count() <= max
                 && !value.chars().any(char::is_control))
             .then(|| value.split_whitespace().collect::<Vec<_>>().join(" "))
         };
-        let Some(vin) = text("vin", 17)
+        let code = |value: &Value, max: usize| {
+            text(value, max).filter(|code| {
+                code.bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+            })
+        };
+        let Some(vin) = text(&row["vin"], 17)
             .map(|vin| vin.to_ascii_uppercase())
             .filter(|vin| vin_shaped(vin))
         else {
             return Ok(None);
         };
         Ok(Some(Self {
-            name: text("vehicleName", 64),
+            name: text(&row["dspVehicleId"], 64),
+            plate: text(&row["registrationNo"], 16),
+            status: code(&row["status"], 32).ok_or_else(invalid)?,
+            service_tier: code(&row["serviceTier"], 64),
+            station: code(&row["serviceStation"]["stationCode"], 16),
             vin,
             row,
         }))
@@ -139,3 +162,7 @@ impl Capture {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/collections/vans/capture.rs"]
+mod tests;

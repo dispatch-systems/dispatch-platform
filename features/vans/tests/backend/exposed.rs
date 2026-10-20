@@ -32,7 +32,7 @@ fn amazon_fleet_names_the_vans_asked_for_by_vin_in_their_order() {
     db.publish_fleet(&dsp, "job-1", &fleet(&db, &dsp, 1_790_830_800_000))
         .unwrap();
     let mut next = fleet(&db, &dsp, 1_790_917_200_000);
-    next.vans.retain(|van| van.name.as_deref() != Some("214"));
+    next.vans.retain(|van| van.name.as_deref() != Some("EDV 214"));
     db.publish_fleet(&dsp, "job-2", &next).unwrap();
     assert_eq!(
         fleet_of.collected(&db, &dsp).unwrap().as_deref(),
@@ -50,9 +50,10 @@ fn amazon_fleet_names_the_vans_asked_for_by_vin_in_their_order() {
         .iter()
         .map(|van| {
             format!(
-                "{} {} {} {}",
+                "{} {} {} {} {}",
                 van.vin,
                 van.name.as_deref().unwrap_or("none"),
+                van.status,
                 van.listed,
                 van.last_listed
             )
@@ -61,8 +62,8 @@ fn amazon_fleet_names_the_vans_asked_for_by_vin_in_their_order() {
     assert_eq!(
         said,
         [
-            "7FCTGAAA1NN000214 214 false 2026-10-01T05:00:00.000Z",
-            "3C6LRVDG0ME000301 Rental 301 true 2026-10-02T05:00:00.000Z",
+            "7FCTGAAA1NN000214 EDV 214 ACTIVE false 2026-10-01T05:00:00.000Z",
+            "3C6LRVDG0ME000301 Rental 301 INACTIVE true 2026-10-02T05:00:00.000Z",
         ]
     );
     // Up to a hundred at once; one more refuses the whole question.

@@ -85,14 +85,20 @@ impl VansStore for Store {
         db.transaction(|| {
             for van in &capture.vans {
                 db.exec(
-                    "INSERT INTO vans(vin,company_id,name,listed,first_listed,last_listed,row) \
-                     VALUES (?1,?2,?3,1,?4,?4,?5) ON CONFLICT(vin) DO UPDATE SET \
-                     company_id=excluded.company_id,name=excluded.name,listed=1,\
+                    "INSERT INTO vans(vin,company_id,name,plate,status,service_tier,station,listed,\
+                     first_listed,last_listed,row) VALUES (?1,?2,?3,?4,?5,?6,?7,1,?8,?8,?9) \
+                     ON CONFLICT(vin) DO UPDATE SET company_id=excluded.company_id,\
+                     name=excluded.name,plate=excluded.plate,status=excluded.status,\
+                     service_tier=excluded.service_tier,station=excluded.station,listed=1,\
                      last_listed=excluded.last_listed,row=excluded.row",
                     params![
                         van.vin,
                         capture.company_id,
                         van.name,
+                        van.plate,
+                        van.status,
+                        van.service_tier,
+                        van.station,
                         collected_at,
                         van.row.to_string(),
                     ],
@@ -148,7 +154,7 @@ impl VansStore for Store {
         let mut kept = self
             .vans_db(dsp)?
             .query_as::<Kept>(
-                "SELECT vin,name,listed,last_listed FROM vans \
+                "SELECT vin,name,status,listed,last_listed FROM vans \
                  WHERE vin IN (SELECT value FROM json_each(?))",
                 [serde_json::to_string(&asked)?],
             )?
@@ -165,6 +171,7 @@ impl FromRow for Kept {
         Ok(Self(Van {
             vin: row.get("vin")?,
             name: row.get("name")?,
+            status: row.get("status")?,
             listed: row.get("listed")?,
             last_listed: row.get("last_listed")?,
         }))
