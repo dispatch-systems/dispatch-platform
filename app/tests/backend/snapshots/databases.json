@@ -150,7 +150,7 @@
     "user_version": 1,
     "cache_size": -512,
     "migrations": [
-      [1, "baseline", "ded56b77d14df1b6"]
+      [1, "baseline", "71f3d544a1e4df71"]
     ]
   }
 ]
