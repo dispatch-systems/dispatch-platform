@@ -64,8 +64,8 @@ fn written(message: &Value) -> bool {
 }
 
 /// Keeps `message`, written in the workspace `team`'s direct message `channel`, unless it's
-/// another's or sent before its messages may be kept, then downloads its files: whether it
-/// changed anything.
+/// another's or sent before its messages may be kept, then downloads its files, and any others
+/// due: whether it changed anything.
 pub async fn keep(
     state: &Arc<State>,
     dsp: &str,
@@ -135,8 +135,7 @@ pub async fn keep(
     };
     live::changed(state, dsp);
     if !kept.files.is_empty() {
-        let (state, dsp) = (state.clone(), dsp.to_owned());
-        tokio::spawn(async move { files::download_due(&state, &dsp).await });
+        files::download_due(state, dsp).await;
     }
     Ok(true)
 }

@@ -46,8 +46,8 @@ pub struct Conversation {
     pub team: String,
     /// The member, by their ID in the workspace.
     pub user: String,
-    /// The direct message the app has with them, once known.
-    pub channel: Option<String>,
+    /// The direct message the app has with them.
+    pub channel: String,
     /// Their name, as their Slack profile last gave it.
     pub name: String,
     pub state: ConversationState,
@@ -231,7 +231,7 @@ pub trait CommunicationsStore {
         dsp: &str,
         after: i64,
     ) -> Result<(Option<Vec<String>>, i64)>;
-    /// The workspace's conversations whose direct message is known.
+    /// The workspace's conversations.
     fn communications_in(&self, dsp: &str, team: &str) -> Result<Vec<Conversation>>;
     /// Notes that catching up read the conversation's messages up to `at`.
     fn caught_up_communications(&self, dsp: &str, conversation: &str, at: i64) -> Result<()>;
@@ -496,8 +496,7 @@ impl CommunicationsStore for Store {
     }
     fn communications_in(&self, dsp: &str, team: &str) -> Result<Vec<Conversation>> {
         self.dsp(dsp)?.query_as(
-            "SELECT * FROM communications_conversations WHERE team_id=? \
-             AND channel_id IS NOT NULL ORDER BY id",
+            "SELECT * FROM communications_conversations WHERE team_id=? ORDER BY id",
             [team],
         )
     }

@@ -62,7 +62,7 @@ async fn a_members_messages_and_their_edits_are_kept_and_nothing_else() {
         .await
         .unwrap();
     assert_eq!(kept.name, "Cameron Hayes");
-    assert_eq!(kept.channel.as_deref(), Some(DM));
+    assert_eq!(kept.channel, DM);
     assert_eq!(kept.state, ConversationState::Waiting);
     assert_eq!(kept.waiting_since, Some(start));
     let messages = support::messages(&state, &dsp, &kept.id).await;
@@ -78,8 +78,7 @@ async fn a_members_messages_and_their_edits_are_kept_and_nothing_else() {
             ("Fixed it", true)
         ]
     );
-    // The photo is downloaded into Dispatch, as Slack keeps it.
-    files::download_due(&state, &dsp).await;
+    // The photo is downloaded into Dispatch at once, as Slack keeps it.
     let photo = &support::messages(&state, &dsp, &kept.id).await[1].files[0];
     assert_eq!(
         (photo.name.as_str(), photo.status),

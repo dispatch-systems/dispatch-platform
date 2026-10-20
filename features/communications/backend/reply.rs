@@ -61,8 +61,8 @@ pub async fn open(
             Ok((member, db.communications_conversation_with(&dsp, &at, &of)?))
         })
         .await?;
-    let channel = match kept.and_then(|kept| kept.channel) {
-        Some(channel) => channel,
+    let channel = match kept {
+        Some(kept) => kept.channel,
         None => opened(state, &c.dsp.id, team, user).await?,
     };
     let (shared, c, team, user) = (state.clone(), c.clone(), team.to_owned(), user.to_owned());
@@ -129,10 +129,6 @@ pub async fn send(
         })
         .await?;
     let dsp = c.dsp.id.as_str();
-    let channel = match conversation.channel {
-        Some(channel) => channel,
-        None => opened(state, dsp, &conversation.team, &conversation.user).await?,
-    };
     let bot = Bot::new(state, dsp, &conversation.team);
     let mut shown = Vec::new();
     for upload in &uploads {
@@ -143,7 +139,7 @@ pub async fn send(
     }
     let identity = sender::identity(state, dsp, &conversation.team, &c.auth.user).await;
     let mut args = json!({
-        "channel": channel,
+        "channel": conversation.channel,
         "text": if written.is_empty() {
             shown.iter().map(|(_, _, name)| text::escaped(name)).collect::<Vec<_>>().join(", ")
         } else {

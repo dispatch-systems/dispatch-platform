@@ -460,8 +460,8 @@ const glyphs = ids.map((id, n) => {
 
 const rust = [
   `//! Inter's capital letters at weight ${WEIGHT}, as the dashboard draws people's initials, written`,
-  "//! by `tooling/initials-glyphs.mjs` from the font the dashboard serves. Don't edit it by hand:",
-  '//! run that again.',
+  '//! by `tooling/initials-glyphs.mjs` from the font the dashboard serves, under its licence,',
+  "//! `app/frontend/public/assets/INTER-LICENSE.txt`. Don't edit it by hand: run that again.",
   '',
   '/// Font units to the em.',
   `pub const UNITS: f32 = ${units}.0;`,

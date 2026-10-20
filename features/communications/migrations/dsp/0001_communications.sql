@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS communications_conversations (
     id TEXT PRIMARY KEY,
     team_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    channel_id TEXT,
+    channel_id TEXT NOT NULL,
     name TEXT NOT NULL,
     state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')),
     waiting_since INTEGER,

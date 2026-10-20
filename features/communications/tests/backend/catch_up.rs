@@ -19,8 +19,8 @@ async fn what_dispatch_didnt_hear_is_caught_up_once_from_when_it_was_on() {
         .await
         .unwrap();
     assert_eq!(
-        (kept.channel.as_deref(), kept.state),
-        (Some(JORDAN), ConversationState::Waiting)
+        (kept.channel.as_str(), kept.state),
+        (JORDAN, ConversationState::Waiting)
     );
     assert!(kept.caught_up_at.is_some());
     let messages = support::messages(&state, &dsp, &kept.id).await;

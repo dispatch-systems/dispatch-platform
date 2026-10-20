@@ -22,6 +22,12 @@ const api = wordedApi({
   communications_upload_not_found: 'A photo is no longer attached. Add it again.',
   communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
   communications_file_not_found: 'This file is no longer here.',
+  slack_needs_update: 'This workspace needs updating first.',
+  slack_connection_broken: 'Slack stopped accepting the connection. Reconnect the workspace.',
+  slack_not_connected: 'This Slack workspace is no longer connected.',
+  slack_unreachable: "Slack didn't answer. Try again in a minute.",
+  slack_rate_limited: 'Slack is busy. Try again in a minute.',
+  slack_refused: "Slack didn't take the message. Try again.",
 });
 
 export const communicationsUrl = '/api/dsp/communications';

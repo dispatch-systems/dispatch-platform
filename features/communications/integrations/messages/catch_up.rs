@@ -1,6 +1,7 @@
 //! What members wrote to the app while Dispatch couldn't hear Slack, as while the server was
 //! down, kept as Slack would have told of it. As the server starts, and hourly, each direct
-//! message the app has in each workspace where Communications works is read (`im:history`) from
+//! message the app has in each workspace where Communications works, once its admin has
+//! approved reading them, is read (`im:history`) from
 //! when it was last read, or from when its messages may first be kept, never earlier, with the
 //! threads in it. Its direct messages are those Dispatch knows, and every other Slack lists the
 //! app as having (`im:read`) once the workspace's admin has approved that.
@@ -22,8 +23,9 @@ pub const MAINTENANCE: Maintenance = Maintenance {
 
 /// How a failure is reported.
 const FAILED: &str = "communications_catch_up_failed";
-/// What finding the app's direct messages Dispatch doesn't know needs the workspace's admin to
-/// have let it do.
+/// What reading the app's direct messages, and finding those Dispatch doesn't know, need the
+/// workspace's admin to have let it do.
+const READING: &str = "im:history";
 const LISTING: &str = "im:read";
 /// The messages each page of Slack's holds, and the pages read of a conversation in one pass.
 const PAGE: u64 = 200;
@@ -68,7 +70,8 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
             let on = kit::workspaces_on(db, &at, ID)?;
             let mut found = Vec::new();
             for workspace in kit::workspaces(db, &at)? {
-                if !on.contains(&workspace.team) {
+                let granted = |scope: &str| workspace.scopes.iter().any(|had| had == scope);
+                if !on.contains(&workspace.team) || !granted(READING) {
                     continue;
                 }
                 let Some(since) = incoming::kept_since(db, &at, &workspace.team)? else {
@@ -77,19 +80,16 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
                 let known = db
                     .communications_in(&at, &workspace.team)?
                     .into_iter()
-                    .filter_map(
-                        |Conversation {
-                             channel,
-                             user,
-                             caught_up_at,
-                             ..
-                         }| {
-                            Some((channel?, Direct { user, caught_up_at }))
-                        },
-                    )
+                    .map(|kept: Conversation| {
+                        let direct = Direct {
+                            user: kept.user,
+                            caught_up_at: kept.caught_up_at,
+                        };
+                        (kept.channel, direct)
+                    })
                     .collect();
                 found.push(Workspace {
-                    listing: workspace.scopes.iter().any(|scope| scope == LISTING),
+                    listing: granted(LISTING),
                     team: workspace.team,
                     since,
                     known,
