@@ -22,4 +22,7 @@ const phrases: AuditPhrases = {
 export const wording: AuditWording = {
   phrases,
   spoken: ['routes.collection_requested', 'routes.retention_changed', 'routes.data_expired'],
+  // A schedule of today so far; one of yesterday reads as its collection, Routes.
+  value: (field, value) =>
+    field === 'collection' && value === 'routes_today' ? 'Routes, today so far' : undefined,
 };

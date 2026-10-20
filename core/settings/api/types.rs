@@ -130,11 +130,13 @@ pub enum SettingsKind {
     /// An IANA timezone's name.
     Timezone,
     /// No value: the schedules of `collection`, which its feature serves at `path`, drawn
-    /// with core's schedule editor; a new one starts as `starts`.
+    /// with core's schedule editor; a new one starts as `starts`, collecting `collection`, or
+    /// with `collects`, what each chooses.
     Schedules {
         path: String,
         collection: ScheduleCollection,
         starts: SettingsStart,
+        collects: Option<SettingsScheduleChoice>,
     },
 }
 #[derive(Clone, Debug, Serialize)]
@@ -160,6 +162,23 @@ pub struct SettingsPreset {
 pub struct SettingsStart {
     pub name: String,
     pub local_time: String,
+}
+
+/// What each schedule chooses to collect, under `label`.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/settings/api/generated/"))]
+pub struct SettingsScheduleChoice {
+    pub label: String,
+    pub options: Vec<SettingsScheduleOption>,
+}
+/// One collection a schedule may choose, with its label.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/settings/api/generated/"))]
+pub struct SettingsScheduleOption {
+    pub collection: ScheduleCollection,
+    pub label: String,
 }
 
 /// Saving a section: any of its fields' values, as read at `revision`.

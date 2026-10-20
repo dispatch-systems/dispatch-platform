@@ -41,11 +41,15 @@ fn publish(db: &Store, id: &str, key: &str, day: &str, capture: &Capture) -> Str
         .enqueue_routes(id, None, key, Some(day), capture.mode, 1)
         .unwrap();
     let job = s(&jobs[0], "id").to_owned();
-    let staged = db.stage_routes(id, &job, capture.clone()).unwrap();
-    db.publish_routes(id, &job, &staged).unwrap();
-    // The executor publishes in the same transaction that finishes the job.
-    common::set_job_status(db, &job, "succeeded").unwrap();
+    finish(db, id, &job, capture);
     job
+}
+/// Stages `capture` for `job` and publishes it, as the executor does.
+fn finish(db: &Store, id: &str, job: &str, capture: &Capture) {
+    let staged = db.stage_routes(id, job, capture.clone()).unwrap();
+    db.publish_routes(id, job, &staged).unwrap();
+    // The executor publishes in the same transaction that finishes the job.
+    common::set_job_status(db, job, "succeeded").unwrap();
 }
 /// Runs the sweep until nothing is left for it.
 fn sweep(db: &Store, id: &str) -> usize {
@@ -486,7 +490,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
     let today = chrono::Utc::now().date_naive();
     let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
-    let jobs = db.routes_jobs(&id).unwrap();
+    let jobs = db.routes_jobs(&id, Mode::Final).unwrap();
     // Yesterday first, then the days before, at most four per run.
     assert_eq!(jobs.len(), dispatch_routes::MAX_JOBS_PER_RUN);
     assert_eq!(jobs[0].0, format!("routes:{}", day(1)));
@@ -497,7 +501,7 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     // A published day is not asked for again.
     let capture = routes::fixture(&request(&day(1), Mode::Final)).unwrap();
     publish(&db, &id, "yesterday", &day(1), &capture);
-    let jobs = db.routes_jobs(&id).unwrap();
+    let jobs = db.routes_jobs(&id, Mode::Final).unwrap();
     assert_eq!(jobs[0].0, format!("routes:{}", day(2)));
     assert!(
         jobs.iter()
@@ -508,9 +512,65 @@ fn a_schedule_queues_recent_days_without_a_final_publication() {
     publish(&db, &id, "today", &day(0), &snapshot);
     assert_eq!(db.route_days(&id).unwrap().days.len(), 2);
     assert_eq!(
-        db.routes_jobs(&id).unwrap()[0].0,
+        db.routes_jobs(&id, Mode::Final).unwrap()[0].0,
         format!("routes:{}", day(2))
     );
+}
+
+#[test]
+fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day() {
+    install();
+    let (_root, db, id) = ready();
+    db.enable_all_features(&id).unwrap();
+    // The bootstrapped DSP keeps UTC, so its days are UTC days.
+    let today = chrono::Utc::now().date_naive();
+    let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
+    // A DSP's daily schedule of `collection`, run once as it falls due: the requests it queued.
+    let run = |collection: &str| -> Vec<Value> {
+        let schedule = json!({"name":"Routes","collection":collection,"cadence":"daily",
+            "intervalMinutes":null,"localTime":"09:00","enabled":true});
+        let key = db.save_schedule(&id, None, &schedule).unwrap().id;
+        db.dsp(&id)
+            .unwrap()
+            .exec(
+                "UPDATE collection_schedules SET next_run='2026-01-01T00:00:00.000Z' WHERE id=?",
+                [&key],
+            )
+            .unwrap();
+        db.schedule_due(&id).unwrap();
+        let queued = db
+            .jobs
+            .all(
+                "SELECT request FROM jobs WHERE idempotency_key LIKE ? ORDER BY rowid",
+                [format!("schedule:{key}:%")],
+            )
+            .unwrap();
+        common::set_every_status(&db, "succeeded").unwrap();
+        queued
+            .iter()
+            .map(|job| serde_json::from_str(s(job, "request")).unwrap())
+            .collect()
+    };
+    let read = |request: &Value| (request["mode"].clone(), request["date"].clone());
+
+    // Today so far: today alone, read as it stands.
+    let queued = run("routes_today");
+    assert_eq!(queued.len(), 1);
+    assert_eq!(read(&queued[0]), (json!("snapshot"), json!(day(0))));
+
+    // Yesterday, read so far while it was today, is still read whole by a schedule of
+    // yesterday, with the days before it that lack a final read.
+    let so_far = serde_json::to_value(request(&day(1), Mode::Snapshot)).unwrap();
+    let jobs = db
+        .enqueue_batch(&id, None, &[("so-far".into(), cortex::PROVIDER, so_far)])
+        .unwrap();
+    let capture = routes::fixture(&request(&day(1), Mode::Snapshot)).unwrap();
+    finish(&db, &id, &jobs[0].id, &capture);
+    assert_eq!(db.route_days(&id).unwrap().days[0].mode, "snapshot");
+    let queued = run("routes");
+    assert_eq!(queued.len(), dispatch_routes::MAX_JOBS_PER_RUN);
+    assert_eq!(read(&queued[0]), (json!("final"), json!(day(1))));
+    assert_eq!(read(&queued[3]), (json!("final"), json!(day(4))));
 }
 
 #[test]

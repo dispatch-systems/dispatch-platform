@@ -14,7 +14,9 @@ use crate::{
 use serde_json::Value;
 use std::sync::Arc;
 
-/// A name a schedule collects by that runs several collections at once.
+/// A name a schedule collects by other than a collection's own: one that runs several
+/// collections at once, as Timecard's `both`, or one that reads a collection another way, as
+/// Routes' `routes_today`, which its keeper tells apart by the name `scheduled` is handed.
 pub struct ScheduleAlias {
     /// The `collection` a schedule names it by. Permanent: schedules store it.
     pub schedule: &'static str,
@@ -84,8 +86,10 @@ pub trait Keeper: Sync {
     fn schedule_ready(&self, _: &Store, _dsp: &str) -> Result<()> {
         Ok(())
     }
-    /// The jobs one scheduled run queues: an idempotency key suffix and a request each.
-    fn scheduled(&self, _: &Store, _dsp: &str) -> Result<Vec<(String, Value)>> {
+    /// The jobs one run of a schedule queues: an idempotency key suffix and a request each.
+    /// `schedule` is the name the schedule collects by: the collection's own, or an alias of
+    /// its feature's that runs it.
+    fn scheduled(&self, _: &Store, _dsp: &str, _schedule: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![])
     }
     /// The databases it keeps the collection in, beside its collector's own.

@@ -2,4 +2,4 @@
 // run: the list of them, in a sheet or inline, and the form editing one.
 import './schedules.css';
 export { ScheduleSettings } from './ScheduleSettings.js';
-export type { ScheduleDefaults } from './ScheduleForm.js';
+export type { ScheduleChoice, ScheduleDefaults } from './ScheduleForm.js';

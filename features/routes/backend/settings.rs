@@ -1,15 +1,31 @@
-//! Routes' settings: how long the DSP keeps its route data, on Settings' Data page, and the
-//! window a DSP chose before Settings kept it, moved in once.
+//! Routes' settings: its schedules, on its own page; how long the DSP keeps its route data, on
+//! Settings' Data page; and the window a DSP chose before Settings kept it, moved in once.
 use super::{
-    MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, RoutesStore, STORAGE, first_kept,
+    COLLECTION, MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, RoutesStore, STORAGE, TODAY, first_kept,
     maintenance::MAINTENANCE,
 };
 use dispatch_core::{
     Result,
     db::Store,
-    manifest::{Section, number, section},
+    manifest::{Section, number, schedules, section},
     settings,
 };
+
+/// The schedules of its `routes` collection, which core's schedule routes keep: each reads
+/// yesterday, as `routes`, or today so far, as `routes_today`.
+pub const SCHEDULES: Section = section(
+    "routes.collection",
+    "Collection",
+    "routes.manage",
+    &[schedules(
+        "schedules",
+        "Schedules",
+        "/api/dsp/routes/schedules",
+        COLLECTION,
+        ("Daily routes", "04:00"),
+    )
+    .collects("Day", &[(COLLECTION, "Yesterday"), (TODAY, "Today so far")])],
+);
 use serde::Deserialize;
 use serde_json::{Value, json};
 

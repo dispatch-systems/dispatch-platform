@@ -2,9 +2,10 @@
 import type { ScheduleCollection } from "../../../collection/api/generated/ScheduleCollection";
 import type { SettingsOption } from "./SettingsOption";
 import type { SettingsPreset } from "./SettingsPreset";
+import type { SettingsScheduleChoice } from "./SettingsScheduleChoice";
 import type { SettingsStart } from "./SettingsStart";
 
 /**
  * What a field holds, as its value is drawn and sent.
  */
-export type SettingsKind = { "kind": "toggle" } | { "kind": "choice", options: Array<SettingsOption>, } | { "kind": "pick", options: Array<SettingsOption>, none: string | null, } | { "kind": "many", options: Array<SettingsOption>, ordered: boolean, } | { "kind": "number", min: number, max: number, unit: string | null, presets: Array<SettingsPreset>, none: string | null, } | { "kind": "text", min: number, max: number, code: boolean, locked: boolean, } | { "kind": "time" } | { "kind": "timezone" } | { "kind": "schedules", path: string, collection: ScheduleCollection, starts: SettingsStart, };
+export type SettingsKind = { "kind": "toggle" } | { "kind": "choice", options: Array<SettingsOption>, } | { "kind": "pick", options: Array<SettingsOption>, none: string | null, } | { "kind": "many", options: Array<SettingsOption>, ordered: boolean, } | { "kind": "number", min: number, max: number, unit: string | null, presets: Array<SettingsPreset>, none: string | null, } | { "kind": "text", min: number, max: number, code: boolean, locked: boolean, } | { "kind": "time" } | { "kind": "timezone" } | { "kind": "schedules", path: string, collection: ScheduleCollection, starts: SettingsStart, collects: SettingsScheduleChoice | null, };

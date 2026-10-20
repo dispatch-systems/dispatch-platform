@@ -24,21 +24,27 @@ use dispatch_core::{
         Migration, Migrations,
         migrations::Apply::{Code, Sql},
     },
-    manifest::{Audit, Feature, feature, optional, perm},
+    manifest::{Audit, Feature, ScheduleAlias, feature, optional, perm},
     tenancy::api::audit::AuditArea::Collections,
 };
 
 pub const FEATURE: Feature = Feature {
     place: 40,
     switch: optional("routes", "Routes", &["routes"]),
+    // A schedule of `routes_today` reads today so far; one of `routes`, yesterday.
+    schedule_aliases: &[ScheduleAlias {
+        schedule: backend::TODAY,
+        runs: &[dispatch_cortex::routes::JOB_KIND],
+    }],
     permissions: &[
         perm("routes.view", "View Routes", 30),
         perm("routes.collect", "Collect Routes", 31).implies(&["routes.view"]),
         perm("routes.manage", "Manage Routes", 32).implies(&["routes.view"]),
     ],
     routes: api::routes::routes,
-    // How long its data is kept, on Settings' Data page.
-    settings: &[backend::settings::RETENTION],
+    // Its schedules, on its own page of Settings, and how long its data is kept, on the Data
+    // page.
+    settings: &[backend::settings::SCHEDULES, backend::settings::RETENTION],
     upgrade_storage: Some(backend::settings::upgrade),
     keeps: &[&backend::keeper::Routes],
     tables: &[(

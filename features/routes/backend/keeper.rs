@@ -11,7 +11,7 @@ use dispatch_core::{
     manifest::Keeper,
     server::cache::DataDomain,
 };
-use dispatch_cortex::routes::{Capture, JOB_KIND};
+use dispatch_cortex::routes::{Capture, JOB_KIND, Mode};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -49,8 +49,13 @@ impl Keeper for Routes {
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
         store.routes_schedule_ready(dsp)
     }
-    fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
-        store.routes_jobs(dsp)
+    fn scheduled(&self, store: &Store, dsp: &str, schedule: &str) -> Result<Vec<(String, Value)>> {
+        let mode = if schedule == super::TODAY {
+            Mode::Snapshot
+        } else {
+            Mode::Final
+        };
+        store.routes_jobs(dsp, mode)
     }
     fn storages(&self) -> &'static [&'static AddedStorage] {
         static STORAGES: [&AddedStorage; 1] = [&super::STORAGE];

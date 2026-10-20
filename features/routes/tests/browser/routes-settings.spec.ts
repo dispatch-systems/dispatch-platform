@@ -151,3 +151,47 @@ test('a member without management permissions never sees the Data page or Driver
   await expect(pages.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await expect(pages.getByRole('link', { name: 'Data', exact: true })).toHaveCount(0);
 });
+
+test('a Routes schedule reads yesterday unless it is set to read today so far', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const profile = { name: north.name, abbreviation: 'NLL', stationCode: 'TST1' };
+  expect(
+    (await owner.post('/api/dsp/profile', { ...profile, timezone: north.timezone })).status,
+  ).toBe(200);
+  await owner.select(north.id);
+  const connected = await owner.post('/api/dsp/connections/cortex', {
+    username: 'fixture@example.test',
+    password: 'fixture-password',
+  });
+  expect(connected.status, connected.body).toBe(200);
+  const stored = async () => (await owner.read('/api/dsp/routes/schedules')).schedules;
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Routes', exact: true })
+    .click();
+  const collection = page.getByRole('region', { name: 'Collection', exact: true });
+  await collection.getByRole('button', { name: 'Add schedule' }).click();
+  const day = page.getByLabel('Day', { exact: true });
+  await expect(day).toHaveValue('routes');
+  await page.getByLabel('Schedule name').fill('Morning routes');
+  await day.selectOption({ label: 'Today so far' });
+  await page.getByRole('button', { name: 'Save schedule' }).click();
+  await expect(collection).toContainText('Today so far · Daily');
+  expect((await stored())[0].collection).toBe('routes_today');
+  // Set back, it reads yesterday.
+  await page.getByRole('button', { name: 'Edit Morning routes' }).click();
+  await expect(day).toHaveValue('routes_today');
+  await day.selectOption({ label: 'Yesterday' });
+  await page.getByRole('button', { name: 'Save schedule' }).click();
+  await expect(collection).toContainText('Yesterday · Daily');
+  expect((await stored())[0].collection).toBe('routes');
+});

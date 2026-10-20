@@ -12,6 +12,7 @@ function Schedules({ field, alone }: FieldProps<'schedules'>) {
       <ScheduleSettings
         endpoint={field.path}
         collection={field.collection}
+        collects={field.collects}
         defaults={{ name: field.starts.name, localTime: field.starts.localTime }}
       />
     </div>

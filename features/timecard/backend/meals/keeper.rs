@@ -102,7 +102,7 @@ impl Keeper for MealBreaks {
             409,
         )
     }
-    fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
+    fn scheduled(&self, store: &Store, dsp: &str, _: &str) -> Result<Vec<(String, Value)>> {
         super::sync::meal_sync_scopes(store, dsp, &store.local_date(dsp)?)?
             .iter()
             .enumerate()

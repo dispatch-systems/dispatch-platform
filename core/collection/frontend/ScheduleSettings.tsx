@@ -7,12 +7,13 @@ import { useAction } from '../../shell/frontend/runtime/useAction.js';
 import { useFeedback } from '../../shell/frontend/runtime/feedback.js';
 import { time } from '../../shell/frontend/lib/format.js';
 import { DataState, Empty, ErrorBox } from '../../shell/frontend/ui/index.js';
-import { ScheduleForm, type ScheduleDefaults } from './ScheduleForm.js';
+import { ScheduleForm, type ScheduleChoice, type ScheduleDefaults } from './ScheduleForm.js';
 
-/** Where a collection's schedules are, and what a new one starts as. */
+/** Where a collection's schedules are, what each chooses to collect, and how a new one starts. */
 type Schedules = {
   endpoint: string;
   collection: ScheduleCollection;
+  collects?: ScheduleChoice | null;
   defaults: ScheduleDefaults;
 };
 
@@ -34,6 +35,7 @@ export function ScheduleSettings(props: Schedules) {
 function ScheduleList({
   endpoint,
   collection,
+  collects,
   defaults,
   editing,
   edit: setEditing,
@@ -69,10 +71,18 @@ function ScheduleList({
                   <div className="schedule-card" key={schedule.id}>
                     <strong>{schedule.name}</strong>
                     <p>
-                      {schedule.cadence === 'daily'
-                        ? 'Daily'
-                        : 'Every ' + schedule.intervalMinutes! / 60 + ' hours'}{' '}
-                      · {schedule.localTime} · {data.timezone}
+                      {[
+                        collects?.options.find(
+                          (option) => option.collection === schedule.collection,
+                        )?.label,
+                        schedule.cadence === 'daily'
+                          ? 'Daily'
+                          : 'Every ' + schedule.intervalMinutes! / 60 + ' hours',
+                        schedule.localTime,
+                        data.timezone,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </p>
                     <p className="muted">
                       {schedule.enabled
@@ -109,6 +119,7 @@ function ScheduleList({
               key={editing ? editing.id + ':' + editing.revision : 'new'}
               schedules={endpoint}
               collection={collection}
+              collects={collects}
               defaults={defaults}
               schedule={editing}
               timezone={data.timezone}

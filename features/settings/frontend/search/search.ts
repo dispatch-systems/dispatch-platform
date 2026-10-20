@@ -74,13 +74,14 @@ function matches(section: SettingsSection, typed: readonly string[]): Match[] {
 }
 
 /**
- * The labels of what a field may be set to, whatever its kind: its options, its presets and what
- * none is called, where it has them.
+ * The labels of what a field may be set to, whatever its kind: its options, its presets, what
+ * none is called, and what its schedules may each collect, where it has them.
  */
 function options(field: SettingsField) {
   const offered = [
     ...('options' in field ? field.options : []),
     ...('presets' in field ? field.presets : []),
+    ...('collects' in field && field.collects ? field.collects.options : []),
   ];
   const none = 'none' in field && field.none ? [field.none] : [];
   return [...offered.map((option) => option.label), ...none];

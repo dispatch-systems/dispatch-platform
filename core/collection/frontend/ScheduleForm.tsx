@@ -9,11 +9,20 @@ import { useUnsavedEdits } from '../../shell/frontend/runtime/useUnsavedEdits.js
 
 /** What a new schedule starts as: its name and the time it collects at. */
 export type ScheduleDefaults = { name: string; localTime: string };
+/** What each schedule chooses to collect, under `label`: one of `options`. */
+export type ScheduleChoice = {
+  label: string;
+  options: { collection: ScheduleCollection; label: string }[];
+};
 
-/** One schedule of one collection, new or as it was read, served under `schedules`. */
+/**
+ * One schedule, new or as it was read, served under `schedules`: of `collection`, or with
+ * `collects`, of the one it chooses.
+ */
 export function ScheduleForm({
   schedules,
   collection,
+  collects,
   defaults,
   schedule,
   timezone,
@@ -23,6 +32,7 @@ export function ScheduleForm({
 }: {
   schedules: string;
   collection: ScheduleCollection;
+  collects?: ScheduleChoice | null;
   defaults: ScheduleDefaults;
   schedule: CollectionSchedule | null;
   timezone: string;
@@ -50,9 +60,9 @@ export function ScheduleForm({
   const [preview, setPreview] = useState<string>();
   const [previewError, setPreviewError] = useState('');
   const { cadence, intervalMinutes, localTime, enabled } = draft;
-  const dirty = (['name', 'cadence', 'intervalMinutes', 'localTime', 'enabled'] as const).some(
-    (key) => draft[key] !== initial.current[key],
-  );
+  const dirty = (
+    ['name', 'collection', 'cadence', 'intervalMinutes', 'localTime', 'enabled'] as const
+  ).some((key) => draft[key] !== initial.current[key]);
   // Edits leave only through Save or Discard.
   const { leave, asking } = useUnsavedEdits({
     what: 'This schedule',
@@ -109,7 +119,7 @@ export function ScheduleForm({
       else
         await saveSchedule(schedules, schedule?.id, {
           name: draft.name.trim(),
-          collection,
+          collection: draft.collection,
           cadence,
           intervalMinutes,
           localTime,
@@ -148,6 +158,21 @@ export function ScheduleForm({
               onChange={(e) => edit('name', e.target.value)}
             />
           </label>
+          {collects && (
+            <label>
+              {collects.label}
+              <select
+                value={draft.collection}
+                onChange={(e) => edit('collection', e.target.value as ScheduleCollection)}
+              >
+                {collects.options.map((option) => (
+                  <option key={option.collection} value={option.collection}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             Frequency
             <select
