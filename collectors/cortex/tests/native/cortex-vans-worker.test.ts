@@ -43,7 +43,11 @@ test(
         res.end(JSON.stringify(value));
       };
       if (url.pathname === '/dspconsolev2') {
-        return authenticated ? html('<a href="/ap/signin">Sign out</a>') : redirect('/ap/signin');
+        return authenticated
+          ? html(
+              '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a>',
+            )
+          : redirect('/ap/signin');
       }
       let body = '';
       for await (const chunk of req) body += chunk;
