@@ -15,13 +15,13 @@ use serde_json::json;
 use std::{future::Future, sync::Arc};
 
 /// Reports a pass's failure, as `event`, with the error's code.
-pub(crate) fn failed(event: &'static str, error: &Error) {
+pub fn failed(event: &'static str, error: &Error) {
     observability::event("error", event, json!({"error": error.code}));
 }
 
 /// The DSPs Slack works for: each kept DSP that's active with Slack on. A failure finding them
 /// is reported as `event`, and the pass finds none.
-pub(crate) async fn dsps(state: &Arc<State>, event: &'static str) -> Vec<String> {
+pub async fn dsps(state: &Arc<State>, event: &'static str) -> Vec<String> {
     let found = state
         .read(|db| {
             let mut open = Vec::new();
@@ -61,7 +61,7 @@ pub(crate) fn workspaces_on(db: &Store, dsp: &str, integration: &str) -> Result<
 
 /// Work an integration keeps until it's done: how what's due is read, claimed, tried and
 /// finished, each in the DSP's database but the try.
-pub(crate) trait Queue: 'static {
+pub trait Queue: 'static {
     /// An item of it, as kept.
     type Item: Clone + Send + 'static;
     /// What claiming an item finds for its try.
@@ -105,7 +105,7 @@ pub(crate) trait Queue: 'static {
 }
 
 /// The pass that tries what's due in each DSP Slack works for: a `Maintenance` task's `run`.
-pub(crate) fn pass<Q: Queue>(state: Arc<State>, _: bool) -> Upkeep {
+pub fn pass<Q: Queue>(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
         for dsp in dsps(&state, Q::FAILED).await {
             due::<Q>(&state, &dsp).await;
@@ -114,7 +114,7 @@ pub(crate) fn pass<Q: Queue>(state: Arc<State>, _: bool) -> Upkeep {
 }
 
 /// Tries the DSP's items that are due, each claimed first so two tries never run at once.
-pub(crate) async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
+pub async fn due<Q: Queue>(state: &Arc<State>, dsp: &str) {
     let at = dsp.to_owned();
     let due = match state.read(move |db| Q::due(db, &at, now(), Q::BATCH)).await {
         Ok(due) => due,

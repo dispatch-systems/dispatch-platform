@@ -42,7 +42,7 @@ pub fn switch(db: &Store, c: &Context, team: &str, id: &str, on: bool) -> Result
     let switched = if on {
         db.turn_on_slack_integration(&c.dsp.id, team, id, &c.auth.user.id)?
     } else {
-        db.turn_off_slack_integration(&c.dsp.id, team, id)?
+        db.turn_off_slack_integration(&c.dsp.id, team, id, &c.auth.user.id)?
     };
     if switched {
         let named = workspace.label.as_deref().unwrap_or(&workspace.name);

@@ -467,6 +467,25 @@ impl Store {
     pub fn feature_enabled(&self, dsp: &str, id: &str) -> Result<bool> {
         Ok(self.features(dsp)?.iter().any(|f| f == id))
     }
+    /// When the feature `id` came on for the DSP, in milliseconds, as its switch's record says:
+    /// none while the DSP doesn't have it, or has it without a record of being switched on, as a
+    /// mandatory feature. Hiding or showing it records a later time, so this is never before it
+    /// came on: what a feature mustn't keep from before then, it keeps nothing of from before
+    /// this.
+    pub fn feature_on_since(&self, dsp: &str, id: &str) -> Result<Option<i64>> {
+        if !self.feature_enabled(dsp, id)? {
+            return Ok(None);
+        }
+        let found: Option<(String,)> = self.platform.one_as(
+            "SELECT changed_at FROM dsp_features WHERE dsp_id=? AND feature=? AND enabled=1",
+            [dsp, id],
+        )?;
+        Ok(found.and_then(|(at,)| {
+            chrono::DateTime::parse_from_rfc3339(&at)
+                .ok()
+                .map(|at| at.timestamp_millis())
+        }))
+    }
     /// Switches every feature on for a development or preview DSP, so its demo shows every
     /// page. Real DSPs start with none and get theirs from the platform owner.
     pub fn enable_all_features(&self, dsp: &str) -> Result<()> {

@@ -1,4 +1,71 @@
 {
+  "communications": {
+    "collectors": [],
+    "depends_on": [
+      "slack"
+    ],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "communications.use"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "communications"
+      ],
+      "integrations": [
+        [
+          "communications.messages",
+          "slack"
+        ]
+      ],
+      "live": [],
+      "maintenance": [
+        3600,
+        3600
+      ],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/communications",
+        "GET /api/dsp/communications/waiting",
+        "GET /api/dsp/communications/updates",
+        "GET /api/dsp/communications/conversations",
+        "POST /api/dsp/communications/conversations",
+        "GET /api/dsp/communications/conversations/{id}",
+        "POST /api/dsp/communications/conversations/{id}/messages",
+        "POST /api/dsp/communications/conversations/{id}/done",
+        "POST /api/dsp/communications/conversations/{id}/typing",
+        "GET /api/dsp/communications/contacts",
+        "POST /api/dsp/communications/uploads",
+        "GET /api/dsp/communications/files/{id}",
+        "GET /communications/initials/1/{name}"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": []
+    },
+    "switch": "communications",
+    "mandatory": false,
+    "tables": {
+      "dsp": [
+        "communications_changes",
+        "communications_conversations",
+        "communications_files",
+        "communications_messages"
+      ]
+    },
+    "subfeatures": []
+  },
   "daily_performance": {
     "collectors": [
       "cortex"
@@ -736,6 +803,7 @@
         "slack_imports",
         "slack_install_links",
         "slack_integrations",
+        "slack_integrations_off",
         "slack_members",
         "slack_workspaces"
       ],

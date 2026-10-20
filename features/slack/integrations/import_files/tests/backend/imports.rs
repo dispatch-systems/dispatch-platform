@@ -199,7 +199,10 @@ async fn the_hourly_catch_up_saves_what_slack_did_not_tell_of() {
     // Switched off in the workspace, nothing it lists is noticed.
     let at = dsp.clone();
     state
-        .run(move |db| db.turn_off_slack_integration(&at, TEAM, ID).map(drop))
+        .run(move |db| {
+            db.turn_off_slack_integration(&at, TEAM, ID, "user_1")
+                .map(drop)
+        })
         .await
         .unwrap();
     let before = noticed(&state, &dsp).await;

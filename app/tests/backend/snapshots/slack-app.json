@@ -24,7 +24,9 @@
         "chat:write.customize",
         "im:history",
         "im:write",
-        "files:read"
+        "files:read",
+        "files:write",
+        "im:read"
       ]
     }
   },

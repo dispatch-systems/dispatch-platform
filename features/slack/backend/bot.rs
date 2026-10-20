@@ -6,11 +6,11 @@
 //! for each workspace, so two never spend the same refresh token.
 use super::{
     connection,
-    slack::{Slack, Tokens},
+    slack::{Bytestream, Slack, Tokens},
     storage::SlackStore,
 };
 use dispatch_core::{Error, Result, State, db::now};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     sync::{Arc, LazyLock, Mutex},
@@ -72,6 +72,38 @@ impl Bot {
             self.broken().await?;
         }
         answer
+    }
+
+    /// Downloads the file of type `mime` Slack keeps at `url`, its `url_private_download`: its
+    /// bytes as they arrive. One the bot may not read yet is refused as a permission the
+    /// workspace hasn't approved (`slack_needs_update`).
+    pub async fn download(&self, url: &str, mime: &str) -> Result<Bytestream> {
+        let token = self.token().await?;
+        Slack::of(&self.state.config)?
+            .download(&token, url, mime)
+            .await
+    }
+    /// Uploads a file named `name` of `length` bytes as the bot (`files:write`), shared in no
+    /// conversation, for a message's blocks to show: its ID in Slack.
+    pub async fn upload(&self, name: &str, length: u64, bytes: Bytestream) -> Result<String> {
+        let reserved = self
+            .call(
+                "files.getUploadURLExternal",
+                &json!({"filename": name, "length": length}),
+            )
+            .await?;
+        let (Some(url), Some(id)) = (
+            reserved["upload_url"].as_str(),
+            reserved["file_id"].as_str(),
+        ) else {
+            return Err(Error::new("slack_refused", 502));
+        };
+        Slack::of(&self.state.config)?
+            .upload(url, length, bytes)
+            .await?;
+        let finished = json!({"files": [{"id": id, "title": name}]});
+        self.call("files.completeUploadExternal", &finished).await?;
+        Ok(id.to_owned())
     }
 
     /// The workspace's access token, renewed first when it nears its end.

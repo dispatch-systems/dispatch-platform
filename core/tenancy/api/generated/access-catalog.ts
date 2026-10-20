@@ -11,6 +11,7 @@ export const pages = [
   "driver_match",
   "daily_performance",
   "documents",
+  "communications",
   "team",
   "settings",
   "slack",
@@ -38,6 +39,7 @@ export const features = [
   "driver_match",
   "daily_performance",
   "documents",
+  "communications",
   "team",
   "settings",
   "slack",
@@ -165,6 +167,15 @@ export const featureCatalog = [
     "requires": [],
     "kind": "page",
     "connects": true
+  },
+  {
+    "id": "communications",
+    "label": "Communications",
+    "permissions": [
+      "communications.use"
+    ],
+    "requires": [],
+    "kind": "page"
   },
   {
     "id": "team",
@@ -300,6 +311,7 @@ export const permissions = [
   "roles.manage",
   "settings.manage",
   "connections.manage",
+  "communications.use",
   "daily_performance.view",
   "daily_performance.collect",
   "daily_performance.manage",
@@ -309,6 +321,7 @@ export const permissions = [
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
+  "communications.use": "Use Communications",
   "connections.manage": "Manage DSP Connections",
   "daily_performance.collect": "Collect Daily Performance",
   "daily_performance.manage": "Manage Daily Performance",
@@ -402,6 +415,12 @@ export const permissionGroups = [
     "Documents",
     [
       "documents.use"
+    ]
+  ],
+  [
+    "Communications",
+    [
+      "communications.use"
     ]
   ],
   [

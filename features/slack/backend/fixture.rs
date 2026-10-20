@@ -3,13 +3,14 @@
 //! workspace too, and one whose ID holds `GONE` is refused, as a workspace that removed the app
 //! is. Each workspace has the same channels, the bot in `general` and in the private
 //! `managers`, and what it joins and leaves is kept for the server's run. Its members are the
-//! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated.
-//! Its channels hold a few files, one too large to keep, which download as bytes made up to
-//! their size, and a canvas, which downloads as Slack's HTML of it, holding a photo that
-//! downloads as a picture; a test edits a workspace's canvas with `edit_canvas`. The bot posts
-//! in direct conversations and the channels it's in, and what it posted is kept for the
-//! server's run, which a test reads with `posted`. Requests it sends are signed with a secret
-//! the tests share.
+//! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated;
+//! Morgan's profile has a photo of their own, and everyone else's Slack's. Its channels hold a
+//! few files, one too large to keep, which download as bytes made up to their size, and a
+//! canvas, which downloads as Slack's HTML of it, holding a photo that downloads as a picture;
+//! a test edits a workspace's canvas with `edit_canvas`. Jordan sent the app a photo directly.
+//! The bot posts in direct conversations and the channels it's in, under a name and photo of
+//! its choosing, showing the files it uploaded, and what it posted is kept for the server's run,
+//! which a test reads with `posted`. Requests it sends are signed with a secret the tests share.
 use super::slack::{Bytestream, Installed, Tokens};
 use super::{app::scopes, storage::SlackStore};
 use axum::body::Bytes;
@@ -17,7 +18,7 @@ use dispatch_core::{
     Error, Result,
     db::{Store, now},
 };
-use futures_util::stream;
+use futures_util::{TryStreamExt, stream};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -105,10 +106,22 @@ const FILES: &[File] = &[
         size: PHOTO.len() as u64,
         mode: "hosted",
     },
+    // A photo Jordan sent the app directly, in no channel.
+    File {
+        id: DM_PHOTO,
+        channel: "",
+        user: "U0FIXJORDAN",
+        name: "Flat tire.png",
+        mime: "image/png",
+        size: PHOTO.len() as u64,
+        mode: "hosted",
+    },
 ];
 /// Its canvas, and the photo in it.
 pub const CANVAS: &str = "F0FIXCANVAS";
 const CANVAS_PHOTO: &str = "F0FIXCANVASPHOTO";
+/// The photo someone sent the app directly.
+pub const DM_PHOTO: &str = "F0FIXDMPHOTO";
 /// The photo: a picture a pixel square.
 const PHOTO: &[u8] = &[
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
@@ -191,7 +204,7 @@ pub fn download(url: &str) -> Result<Bytestream> {
         .ok_or_else(|| Error::new("slack_file_gone", 404))?;
     let bytes = match file.id {
         CANVAS => Bytes::from(canvas(team).0),
-        CANVAS_PHOTO => Bytes::from_static(PHOTO),
+        CANVAS_PHOTO | DM_PHOTO => Bytes::from_static(PHOTO),
         _ => Bytes::from(vec![b'x'; file.size as usize]),
     };
     Ok(Box::pin(stream::iter([Ok(bytes)])))
@@ -206,7 +219,8 @@ enum Kind {
     Bot,
 }
 /// One of its members: the workspaces they're in, by their names there, their ID, name, the
-/// name they go by when it's another, email address, phone number and what they are.
+/// name they go by when it's another, email address, phone number, whether they gave their
+/// profile a photo of their own rather than Slack's, and what they are.
 struct User {
     teams: &'static [&'static str],
     id: &'static str,
@@ -214,6 +228,7 @@ struct User {
     goes_by: &'static str,
     email: &'static str,
     phone: &'static str,
+    photo: bool,
     kind: Kind,
 }
 const EVERY: &[&str] = &["Operations", "Drivers", "Managers"];
@@ -231,6 +246,7 @@ const fn person(
         goes_by: "",
         email,
         phone: "",
+        photo: false,
         kind: Kind::Person,
     }
 }
@@ -245,6 +261,7 @@ const USERS: &[User] = &[
     },
     User {
         goes_by: "Morgan",
+        photo: true,
         ..person(
             &["Operations", "Managers"],
             "U0FIXOWNER",
@@ -290,23 +307,32 @@ const USERS: &[User] = &[
         )
     },
 ];
-/// The members of the workspace named `workspace`, as `users.list` describes them.
+/// The members of the workspace named `workspace`, as `users.list` describes them: each with
+/// their photo, the one they gave their profile or else Slack's own, drawn from their initials.
 fn users(workspace: &str) -> Vec<Value> {
     USERS
         .iter()
         .filter(|user| user.teams.contains(&workspace))
         .map(|user| {
+            let photo = if user.photo {
+                format!("{AVATARS}{}_512.jpg", user.id)
+            } else {
+                format!("{AVATARS}default-avatar_512.png")
+            };
             json!({
                 "id": user.id,
                 "deleted": user.kind == Kind::Deactivated,
                 "is_bot": user.kind == Kind::Bot,
                 "is_restricted": user.kind == Kind::Guest,
                 "profile": {"real_name": user.name, "display_name": user.goes_by,
-                    "email": user.email, "phone": user.phone},
+                    "email": user.email, "phone": user.phone,
+                    "is_custom_image": user.photo, "image_512": photo},
             })
         })
         .collect()
 }
+/// Where its members' photos are, as Slack's are on its own servers.
+const AVATARS: &str = "https://avatars.example.com/fixture/";
 /// How long its tokens last, as Slack's rotating tokens do.
 const LASTS_MS: i64 = 12 * 60 * 60 * 1000;
 
@@ -345,8 +371,9 @@ pub fn refresh(refresh: &str) -> Result<Tokens> {
 /// Slack's answer to a call with `args`: the workspace for `team.info`; its members, on one
 /// page, for `users.list`; the channels the bot sees, joins, leaves or is asked of for
 /// `conversations.*`; a file, or a channel's files, for `files.*`; `ok` to publishing a Home
-/// tab; the message posted, for `chat.postMessage`; and an integration's own answer to a method
-/// only it calls. Any other method is a mistake: answering it would hide a call no test or
+/// tab; the message posted, for `chat.postMessage`; a file the bot uploads, for
+/// `files.getUploadURLExternal` and `files.completeUploadExternal`; and an integration's own
+/// answer to a method only it calls. Any other method is a mistake: answering it would hide a call no test or
 /// preview tried.
 pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
     let team = workspace(token, "fixture-access:")?;
@@ -406,14 +433,49 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
         }
         "views.publish" => json!({"ok": true}),
         "chat.postMessage" => {
-            // In a direct conversation, or a channel the bot is in.
+            // In a direct conversation, or a channel the bot is in, showing only files the bot
+            // finished uploading.
             if !asked.starts_with('D') && seen(team, asked)?["is_member"] != true {
                 return Err(Error::new("slack_refused", 502));
             }
-            let text = args["text"].as_str().unwrap_or("");
-            let ts = post(team, asked, text);
-            json!({"ok": true, "channel": asked, "ts": ts, "message": {"type": "message",
-                "user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE", "text": text, "ts": ts}})
+            let shown = args["blocks"].as_array().into_iter().flatten();
+            let files = shown.filter_map(|block| block["slack_file"]["id"].as_str());
+            if !files
+                .into_iter()
+                .all(|file| uploaded(team, file) == Some(true))
+            {
+                return Err(Error::new("slack_refused", 502));
+            }
+            let text = |field: &str| args[field].as_str().map(str::to_owned);
+            let posted = Posted {
+                text: text("text").unwrap_or_default(),
+                username: text("username"),
+                icon_url: text("icon_url"),
+                blocks: args["blocks"].clone(),
+            };
+            let mut message = json!({"type": "message", "user": "U0FIXTUREBOT",
+                "bot_id": "B0FIXTURE", "text": posted.text});
+            let ts = post(team, asked, posted);
+            message["ts"] = json!(ts);
+            json!({"ok": true, "channel": asked, "ts": ts, "message": message})
+        }
+        // A file the bot uploads, reserved first, sent to where Slack says, then finished.
+        "files.getUploadURLExternal" => {
+            static FILES: AtomicU64 = AtomicU64::new(0);
+            let id = format!("F0FIXUP{:06}", FILES.fetch_add(1, Ordering::Relaxed));
+            json!({"ok": true, "file_id": id, "upload_url": format!("{UPLOAD}{team}/{id}")})
+        }
+        "files.completeUploadExternal" => {
+            let listed = args["files"].as_array().into_iter().flatten();
+            let ids: Vec<&str> = listed.filter_map(|file| file["id"].as_str()).collect();
+            if ids.is_empty() || !ids.iter().all(|id| uploaded(team, id).is_some()) {
+                return Err(Error::new("slack_refused", 502));
+            }
+            let mut uploads = UPLOADS.lock().unwrap_or_else(|poison| poison.into_inner());
+            for id in &ids {
+                uploads.insert(((*team).to_owned(), (*id).to_owned()), true);
+            }
+            json!({"ok": true, "files": ids.iter().map(|id| json!({"id": id})).collect::<Vec<_>>()})
         }
         _ => {
             // An integration's own answer, whichever feature's it is.
@@ -435,26 +497,62 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
     })
 }
 
-/// What the bot posted, in every workspace: each message's workspace, conversation and text.
-static POSTED: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
+/// A message the bot posted: its text, the name and photo it went under in place of the app's,
+/// if any, and its blocks.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Posted {
+    pub text: String,
+    pub username: Option<String>,
+    pub icon_url: Option<String>,
+    pub blocks: Value,
+}
+/// What the bot posted, in every workspace: each message's workspace, conversation and post.
+static POSTED: Mutex<Vec<(String, String, Posted)>> = Mutex::new(Vec::new());
 /// Keeps what the bot posted in the workspace's conversation `channel`: the message's `ts`, as
-/// Slack writes one, each unlike the last.
-fn post(team: &str, channel: &str, text: &str) -> String {
+/// Slack writes one, when it was posted and each unlike the last.
+fn post(team: &str, channel: &str, message: Posted) -> String {
     static POSTS: AtomicU64 = AtomicU64::new(0);
-    let turn = POSTS.fetch_add(1, Ordering::Relaxed) % 1_000_000;
+    let turn = POSTS.fetch_add(1, Ordering::Relaxed) % 1000;
     let mut posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
-    posted.push((team.to_owned(), channel.to_owned(), text.to_owned()));
-    format!("{}.{turn:06}", now() / 1000)
+    posted.push((team.to_owned(), channel.to_owned(), message));
+    let at = now();
+    format!("{}.{:03}{turn:03}", at / 1000, at % 1000)
 }
 /// What the bot posted in the workspace's conversation `channel`, in order.
-#[cfg(test)]
-pub fn posted(team: &str, channel: &str) -> Vec<String> {
+#[cfg(any(test, feature = "testing"))]
+pub fn posted(team: &str, channel: &str) -> Vec<Posted> {
     let posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
     posted
         .iter()
         .filter(|(at, sent, _)| at == team && sent == channel)
-        .map(|(_, _, text)| text.clone())
+        .map(|(_, _, message)| message.clone())
         .collect()
+}
+
+/// Where a file the bot uploads is sent: `fixture-upload:<team>/<file>`.
+const UPLOAD: &str = "fixture-upload:";
+/// The files the bot sent, by workspace and file, each with whether it finished uploading.
+static UPLOADS: LazyLock<Mutex<HashMap<(String, String), bool>>> = LazyLock::new(Default::default);
+/// Whether the bot sent the workspace's file `id`, and finished uploading it: none for one it
+/// never sent.
+fn uploaded(team: &str, id: &str) -> Option<bool> {
+    let uploads = UPLOADS.lock().unwrap_or_else(|poison| poison.into_inner());
+    uploads.get(&(team.to_owned(), id.to_owned())).copied()
+}
+/// Takes a file's bytes the bot sends to `url`, all of them, as Slack would: one sent anywhere
+/// it didn't say is refused.
+pub async fn upload(url: &str, bytes: Bytestream) -> Result<()> {
+    let (team, id) = url
+        .strip_prefix(UPLOAD)
+        .and_then(|named| named.split_once('/'))
+        .ok_or_else(|| Error::new("slack_refused", 502))?;
+    bytes
+        .try_for_each(|_| async { Ok(()) })
+        .await
+        .map_err(|_| Error::new("slack_unreachable", 502))?;
+    let mut uploads = UPLOADS.lock().unwrap_or_else(|poison| poison.into_inner());
+    uploads.insert((team.to_owned(), id.to_owned()), false);
+    Ok(())
 }
 
 /// Whether the bot is in each channel it joined or left, by workspace and channel.

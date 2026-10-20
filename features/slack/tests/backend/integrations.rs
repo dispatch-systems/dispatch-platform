@@ -5,7 +5,8 @@
 use super::*;
 use crate::backend::{
     app,
-    support::{self, LISTENING},
+    storage::SlackStore,
+    support::{self, LISTENING, STARTING},
 };
 use dispatch_core::{State, testing};
 use serde_json::json;
@@ -46,7 +47,7 @@ async fn an_integration_hears_of_its_events_only_while_on_in_the_workspace_and_f
             state
                 .run(move |db| match on {
                     true => db.turn_on_slack_integration(&dsp, TEAM, LISTENING.id, "U1"),
-                    false => db.turn_off_slack_integration(&dsp, TEAM, LISTENING.id),
+                    false => db.turn_off_slack_integration(&dsp, TEAM, LISTENING.id, "U1"),
                 })
                 .await
                 .unwrap()
@@ -101,4 +102,67 @@ async fn an_integration_clears_what_it_keeps_of_a_workspace_slack_forgets_even_w
         .await
         .unwrap();
     assert_eq!(support::forgotten(&dsp), [TEAM]);
+}
+
+#[tokio::test]
+async fn an_integration_that_starts_on_is_on_in_every_workspace_until_switched_off_there() {
+    let (_root, state, bot) = connected().await;
+    let dsp = bot.dsp.clone();
+    let of = dsp.clone();
+    let read = move |db: &dispatch_core::db::Store| {
+        Ok((
+            db.slack_integrations(&of, TEAM)?,
+            db.slack_integration_on_since(&of, TEAM, STARTING.id)?,
+        ))
+    };
+    // On from when the workspace was connected, 2026-01-01T00:00:00Z, the one that doesn't
+    // start on off.
+    let (on, since) = state.read(read.clone()).await.unwrap();
+    assert_eq!(on, [STARTING.id]);
+    assert_eq!(since, Some(1_767_225_600_000));
+    // Reconnected, or updated, it's on since when the DSP got the workspace still.
+    let of = dsp.clone();
+    state
+        .run(move |db| {
+            let mut workspace = db.slack_workspace(&of, TEAM)?.unwrap();
+            workspace.connected_at = "2026-03-01T00:00:00Z".into();
+            let tokens = db.slack_tokens(&of, TEAM)?.unwrap();
+            db.save_slack_workspace(&of, &workspace, &tokens)
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        state.read(read.clone()).await.unwrap().1,
+        Some(1_767_225_600_000)
+    );
+    // Switched off, it stays off, and isn't on since anything.
+    let of = dsp.clone();
+    let switched = state
+        .run(move |db| db.turn_off_slack_integration(&of, TEAM, STARTING.id, "U1"))
+        .await
+        .unwrap();
+    assert!(switched);
+    assert_eq!(state.read(read.clone()).await.unwrap(), (vec![], None));
+    // Switched on again, it's on since then.
+    let before = dispatch_core::db::now();
+    let of = dsp.clone();
+    state
+        .run(move |db| db.turn_on_slack_integration(&of, TEAM, STARTING.id, "U1"))
+        .await
+        .unwrap();
+    let (on, since) = state.read(read.clone()).await.unwrap();
+    assert_eq!(on, [STARTING.id]);
+    // To the millisecond, as SQL reads the time back.
+    assert!(since.unwrap() >= before - 1);
+    // Switched off, then the workspace connected again: on again, as in a new one.
+    let of = dsp.clone();
+    state
+        .run(move |db| {
+            db.turn_off_slack_integration(&of, TEAM, STARTING.id, "U1")?;
+            db.remove_slack_workspace(&of, TEAM).map(drop)
+        })
+        .await
+        .unwrap();
+    support::connect(&state, &dsp, TEAM, &app::scopes()).await;
+    assert_eq!(state.read(read).await.unwrap().0, [STARTING.id]);
 }

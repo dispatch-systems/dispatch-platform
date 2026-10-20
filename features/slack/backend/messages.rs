@@ -9,9 +9,10 @@ use serde_json::{Value, json};
 /// What a message no integration took is answered with.
 const UNAVAILABLE: &str = "DSP Messaging is unavailable";
 
-/// A message written to the app directly that no integration heard of: one a person wrote anew
-/// is answered that DSP Messaging is unavailable. Any other, as the app's own answer, another
-/// bot's post, an edit or a deletion, is left be, so an answer is never answered.
+/// A message written to the app directly that no integration heard of: one a person wrote anew,
+/// or a file they shared, is answered that DSP Messaging is unavailable. Any other, as the
+/// app's own answer, another bot's post, an edit or a deletion, is left be, so an answer is
+/// never answered.
 pub async fn unheard(bot: &Bot, event: &Value) -> Result<()> {
     if !written(event) {
         return Ok(());
@@ -21,11 +22,11 @@ pub async fn unheard(bot: &Bot, event: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Whether `event` is a message a person wrote anew to the app: from no bot, as the app's own
-/// posts are, and with no subtype, which an edit, a deletion, a file shared or a bot's post
-/// has.
+/// Whether `event` is a message a person wrote anew to the app, or a file they shared there:
+/// from no bot, as the app's own posts are, and with no subtype but a file shared, as an edit,
+/// a deletion or a bot's post has.
 fn written(event: &Value) -> bool {
-    event["bot_id"].is_null() && event["subtype"].is_null()
+    event["bot_id"].is_null() && (event["subtype"].is_null() || event["subtype"] == "file_share")
 }
 
 #[cfg(test)]

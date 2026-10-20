@@ -89,6 +89,14 @@
       "mandatory": false
     },
     {
+      "id": "communications",
+      "label": "Communications",
+      "permissions": ["communications.use"],
+      "requires": [],
+      "default": false,
+      "mandatory": false
+    },
+    {
       "id": "team",
       "label": "Team & Roles",
       "permissions": [],
@@ -184,6 +192,7 @@
     "driver_match",
     "daily_performance",
     "documents",
+    "communications",
     "team",
     "settings",
     "slack",

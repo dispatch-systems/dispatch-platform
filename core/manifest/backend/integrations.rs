@@ -31,6 +31,10 @@ pub struct Integration {
     pub needs: &'static [&'static str],
     /// What it's told of, in the service's terms, as Slack's events.
     pub hears: &'static [&'static str],
+    /// Whether it starts on in each of the connection's accounts, those the DSP had before it
+    /// was declared too, and stays on there until someone switches it off. Otherwise it starts
+    /// off in each, until someone switches it on.
+    pub starts_on: bool,
     /// What it does with each, once the connection's owner has answered the service.
     pub heard: Option<fn(Arc<State>, Heard) -> Upkeep>,
     /// Fixture mode's answer to a method of the service's that only it calls, for the account
@@ -50,8 +54,8 @@ pub type Fixture = fn(account: &str, method: &str, args: &Value) -> Option<Resul
 /// Clears what an integration keeps of the DSP's account.
 pub type Forget = fn(&Store, dsp: &str, account: &str) -> Result<()>;
 
-/// An integration that needs nothing and hears of nothing yet. A declaration starts here and
-/// names what it adds: `Integration { …, ..integration("slack", "x.what", "What") }`.
+/// An integration that needs nothing, hears of nothing yet and starts off. A declaration starts
+/// here and names what it adds: `Integration { …, ..integration("slack", "x.what", "What") }`.
 pub const fn integration(
     connection: &'static str,
     id: &'static str,
@@ -63,6 +67,7 @@ pub const fn integration(
         label,
         needs: &[],
         hears: &[],
+        starts_on: false,
         heard: None,
         fixture: None,
         forget: None,

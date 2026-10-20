@@ -46,7 +46,10 @@ unavailable; features add what it does, on this foundation.
   know what it does, how it's used, what Dispatch sees, and what switching it on or off means.
   The feature depends on Slack; Slack names none of them. Integrations, shown while a feature
   the DSP has declares one, has a card for each with its switch, which asks before it switches;
-  each starts off in every workspace. The app asks for what every integration needs beside its
+  each starts off in every workspace, but one its feature declares starts on (`starts_on`):
+  that one is on in every workspace the DSP has, those it had before it was declared too,
+  until someone switches it off there, where it then stays off (`slack_integrations_off`) until
+  switched on again. The app asks for what every integration needs beside its
   own, whether it's on or not, and Slack hands each event an integration hears of to it once
   Slack's own handling is done, while it's on in the workspace and its feature is on for the
   DSP. Switched off, it hears of nothing, and is never told of what it missed. One that hears
@@ -69,7 +72,7 @@ Each is a folder of its own, `integrations/<name>/`, holding all of it:
 - `frontend/`: its card, section, calls and audit wording.
 - `migrations/` and `tests/`.
 
-Slack's manifest lists each one's integration, upkeep, migration and tables. `integrations/mod.rs` lists each folder. `dispatchdev new integration <name>` writes a new one, listed in each of these places. Another feature's integration through Slack takes the same shape in its own `integrations/`, using `kit` (the bot, and linking channels to folders) once it acts in Slack.
+Slack's manifest lists each one's integration, upkeep, migration and tables. `integrations/mod.rs` lists each folder. `dispatchdev new integration <name>` writes a new one, listed in each of these places. Another feature's integration through Slack takes the same shape in its own `integrations/`, using `kit` once it acts in Slack: the bot, which calls Slack and downloads and uploads files there; what Slack keeps of the DSP's workspaces and their members, to read, with which workspaces an integration works in and since when; linking channels to folders; and the queue for work that mustn't be lost.
 
 - **Import Files,** Slack's own integration (`slack.import_files`, `integrations/import_files/`): the files
   and photos posted in the channels a workspace links to folders are saved there, where the DSP
@@ -211,8 +214,8 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   then forgets, with its members; and when its tokens there are revoked, which breaks the workspace until it's
   reconnected. A message written to it directly goes to each integration on there that hears
   of it; while none does, Slack answers it "DSP Messaging is unavailable", but only one a
-  person wrote anew: never the app's own answer, another bot's post, an edit, a deletion or a
-  file shared, so an answer is never answered. The app has no buttons or forms yet, so interactions are only answered for now:
+  person wrote anew, or a file they shared there: never the app's own answer, another bot's
+  post, an edit or a deletion, so an answer is never answered. The app has no buttons or forms yet, so interactions are only answered for now:
   a feature's buttons, forms and shortcuts are handled there, for their workspace's DSP, as
   events are.
 - **Calling Slack:** everything that acts in Slack holds a `Bot`, the app's bot in one DSP's
@@ -263,9 +266,11 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   it. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
-- **Data:** `slack_workspaces` (each with its name in Dispatch, `label`), `slack_members` (its
-  own migration 3), `slack_integrations` (migration 4: those on in each workspace, with who
-  switched each on and when), `slack_import_links` and `slack_imports` (migration 5: Import
+- **Data:** `slack_workspaces` (each with its name in Dispatch, `label`, and when the DSP got
+  it, `added_at`, migration 8, which reconnecting or updating it leaves as it was), `slack_members` (its
+  own migration 3), `slack_integrations` (migration 4: those switched on in each workspace,
+  with who switched each on and when), `slack_integrations_off` (migration 7: those that start
+  on, switched off in a workspace, with who switched each off and when), `slack_import_links` and `slack_imports` (migration 5: Import
   Files' linked channels, and each file it noticed with how saving it went),
   `slack_canvas_links`, `slack_canvas_picks` and `slack_canvases` (migration 6: Sync Canvases'
   linked channels, the canvases chosen on their own, and each canvas kept with its document),
@@ -286,14 +291,20 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   leaves is kept for the server's run. Its members are some of the demo's people, by
   example.com addresses: Jordan Ellis in Operations and Drivers, the owner Morgan Lane in
   Operations and Managers, and in Drivers Cameron Hayes, Casey Rivera by phone, the guest Drew
-  Sullivan and the deactivated Jesse Kline, with Slackbot and a bot everywhere. Its channels hold
+  Sullivan and the deactivated Jesse Kline, with Slackbot and a bot everywhere. Morgan's profile has a photo of their own
+  (`is_custom_image`), and everyone else's Slack's drawn one. Its channels hold
   a few files: Morgan's van photo and a video too large to keep in `photos`, Casey's route sheet
   in `dispatch`, each downloading as bytes made up to its size, and Morgan's Write-ups canvas in
   `photos`, downloading as Slack's HTML of it with a photo in it, which a test edits with
-  `fixture::edit_canvas`. It signs with
+  `fixture::edit_canvas`; and a photo Jordan sent the app directly. It signs with
   `fixture-signing-secret`, so tests send requests as Slack would. The bot posts
-  (`chat.postMessage`) in a direct conversation or a channel it's in, and what it posted is
-  kept for the server's run, which a test reads with `fixture::posted`. It answers each method
+  (`chat.postMessage`) in a direct conversation or a channel it's in, under a name and photo of
+  its choosing, with blocks showing only files it finished uploading
+  (`files.getUploadURLExternal`, then `files.completeUploadExternal`), and what it posted is
+  kept for the server's run, each with its text, name, photo and blocks, which a test reads with
+  `fixture::posted`; a dependant's tests read it, connect a workspace, read its members, switch
+  an integration and disconnect it through `dispatch_slack::testing`, behind Slack's `testing`
+  feature. It answers each method
   Dispatch calls, and an integration's own answer a method only that integration calls; any
   other fails, so a call nothing answers shows in a test or a preview.
 - **Exposed:** `chat_accounts`, through its contract in `contract/` (`dispatch-slack-contract`),

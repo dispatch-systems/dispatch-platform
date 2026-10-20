@@ -1,7 +1,8 @@
 //! Slack's app as Slack knows it, its manifest: the permissions it asks for and the events it's
 //! told of, Slack's own and each of its integrations', and where Slack reaches the server. A
 //! change to them is one to make in the app's settings in Slack too, so it shows in review as a
-//! change to app/tests/backend/snapshots/slack-app.json.
+//! change to app/tests/backend/snapshots/slack-app.json. Other features' integrations add to it,
+//! so it's the whole product's.
 use crate::{snapshot, testing};
 use dispatch_core::manifest::registry;
 

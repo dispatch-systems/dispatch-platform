@@ -24,6 +24,7 @@ test = false
 # whole product asks for `default`. A feature's own lists the features its crate uses.
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 default = [
+    "communications",
     "daily_performance",
     "documents",
     "driver_match",
@@ -39,6 +40,7 @@ default = [
     "vans",
     "weekly_scorecard",
 ]
+communications = ["dep:dispatch-communications", "slack"]
 daily_performance = ["dep:dispatch-daily-performance"]
 documents = ["dep:dispatch-documents"]
 driver_match = ["dep:dispatch-driver-match", "dispatch-mcp/driver_match"]
@@ -65,6 +67,7 @@ dispatch-host = { path = "../../ops/host-manager" }
 dispatch-mcp = { path = "../../mcp", default-features = false }
 dispatch-paycom = { path = "../../collectors/paycom" }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
+dispatch-communications = { path = "../../features/communications", optional = true }
 dispatch-daily-performance = { path = "../../features/daily_performance", optional = true }
 dispatch-documents = { path = "../../features/documents", optional = true }
 dispatch-driver-match = { path = "../../features/driver_match", optional = true }
@@ -93,6 +96,7 @@ dispatch-core = { path = "../../core", features = ["testing", "ts"] }
 dispatch-mcp = { path = "../../mcp", default-features = false, features = ["testing", "ts"] }
 dispatch-paycom = { path = "../../collectors/paycom", features = ["ts"] }
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
+dispatch-communications = { path = "../../features/communications", features = ["ts"] }
 dispatch-daily-performance = { path = "../../features/daily_performance", features = ["ts"] }
 dispatch-documents = { path = "../../features/documents", features = ["ts"] }
 dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"] }

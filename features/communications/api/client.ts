@@ -1,0 +1,84 @@
+import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
+import type {
+  Communications,
+  CommunicationsUpdates,
+  CommunicationsUpload,
+  CommunicationsWaiting,
+  Contacts,
+  Conversation,
+  ConversationMessages,
+  Conversations,
+  Message,
+} from './index.js';
+
+// Communications' endpoints, as its screens call them.
+
+/** What its error codes say. Only its screens make the calls that raise them, so they load with them. */
+const api = wordedApi({
+  communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
+  communications_contact_not_found: 'This person is no longer in your Slack workspace.',
+  communications_off: 'Communications is off in this Slack workspace.',
+  communications_upload_not_found: 'A photo is no longer attached. Add it again.',
+  communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
+  communications_file_not_found: 'This file is no longer here.',
+  upload_incomplete: "The photo didn't finish uploading. Try again.",
+  slack_needs_update: 'This workspace needs updating first.',
+  slack_connection_broken: 'Slack stopped accepting the connection. Reconnect the workspace.',
+  slack_not_connected: 'This Slack workspace is no longer connected.',
+  slack_unreachable: "Slack didn't answer. Try again in a minute.",
+  slack_rate_limited: 'Slack is busy. Try again in a minute.',
+  slack_refused: "Slack didn't take the message. Try again.",
+});
+
+export const communicationsUrl = '/api/dsp/communications';
+/** The DSP's conversations, those waiting first, and its workspaces. */
+export const useCommunications = () => useData<Communications>(communicationsUrl);
+/** How many conversations wait on an answer, for the sidebar. */
+export const useCommunicationsWaiting = () =>
+  useData<CommunicationsWaiting>(`${communicationsUrl}/waiting`);
+/** What changed since `after`, and who is typing, once either differs from what the page has. */
+export const getCommunicationsUpdates = (after: number, typing: number, signal: AbortSignal) =>
+  api<CommunicationsUpdates>(
+    `${communicationsUrl}/updates?after=${after}&typing=${typing}`,
+    undefined,
+    signal,
+  );
+/** Conversations found by a name typed, misspelt or not. */
+export const searchConversations = (typed: string) =>
+  api<Conversations>(`${communicationsUrl}/conversations?q=${encodeURIComponent(typed)}`);
+/** The answered conversations before the last one shown. */
+export const olderConversations = (last: Conversation) =>
+  api<Conversations>(
+    `${communicationsUrl}/conversations?before=${last.lastAt ?? 0}:${encodeURIComponent(last.id)}`,
+  );
+/** A conversation and its latest messages, or those before `first`. */
+export const getConversation = (id: string, first?: Message) =>
+  api<ConversationMessages>(
+    `${communicationsUrl}/conversations/${id}${first ? `?before=${first.ts}` : ''}`,
+  );
+/** The members of the DSP's workspaces, or those found by a name typed. */
+export const getContacts = (typed = '') =>
+  api<Contacts>(`${communicationsUrl}/contacts${typed ? `?q=${encodeURIComponent(typed)}` : ''}`);
+/** Opens a direct message with a member, to message them first. */
+export const openConversation = (teamId: string, userId: string) =>
+  api<Conversation>(`${communicationsUrl}/conversations`, { teamId, userId });
+/** Sends a message, with the photos added for it. */
+export const sendMessage = (id: string, text: string, photos: string[] = []) =>
+  api<Message>(`${communicationsUrl}/conversations/${id}/messages`, { text, photos });
+/** Marks a conversation answered without a reply. */
+export const markDone = (id: string) =>
+  api<Conversation>(`${communicationsUrl}/conversations/${id}/done`, {});
+/** Says the member is writing in a conversation, for the next few seconds. */
+export const sayTyping = (id: string) =>
+  api<{ ok: true }>(`${communicationsUrl}/conversations/${id}/typing`, {});
+/** Adds a photo for a message not sent yet. */
+export const addPhoto = (photo: File, progress?: (sent: number) => void, signal?: AbortSignal) =>
+  upload<CommunicationsUpload>(
+    `${communicationsUrl}/uploads?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
+    photo,
+    progress,
+    signal,
+  );
+/** Where a photo or file attached to a message is read from. */
+export const fileUrl = (id: string) => `${communicationsUrl}/files/${id}`;

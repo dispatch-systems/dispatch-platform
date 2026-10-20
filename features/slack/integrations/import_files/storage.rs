@@ -102,8 +102,6 @@ pub enum Outcome {
 
 /// The files noticed, saved and listed, in each DSP's database.
 pub trait ImportStore {
-    /// When the integration was last switched on in the workspace, in milliseconds.
-    fn slack_import_on_since(&self, dsp: &str, team: &str, id: &str) -> Result<Option<i64>>;
     /// Notices the file `file` in `channel`, due at `at`: whether it's new, as each file is
     /// noticed once, whichever channel it's in.
     fn notice_slack_import(
@@ -151,14 +149,6 @@ pub trait ImportStore {
 }
 
 impl ImportStore for Store {
-    fn slack_import_on_since(&self, dsp: &str, team: &str, id: &str) -> Result<Option<i64>> {
-        let found: Option<(i64,)> = self.dsp(dsp)?.one_as(
-            "SELECT CAST((julianday(turned_on_at) - 2440587.5) * 86400000 AS INTEGER) \
-             FROM slack_integrations WHERE team_id=? AND integration=?",
-            [team, id],
-        )?;
-        Ok(found.map(|(at,)| at))
-    }
     fn notice_slack_import(
         &self,
         dsp: &str,

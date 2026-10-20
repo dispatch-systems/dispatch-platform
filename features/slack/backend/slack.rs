@@ -1,6 +1,6 @@
 //! Slack, as Dispatch talks to it: installing the app in a workspace, calling Slack's API there
-//! as the app's bot, and downloading the files it may read. Fixture mode's Slack answers
-//! in-process instead.
+//! as the app's bot, downloading the files it may read and sending those it uploads. Fixture
+//! mode's Slack answers in-process instead.
 use super::{
     app::{RETURN_PATH, scopes},
     fixture,
@@ -285,6 +285,26 @@ impl Slack {
         Ok(Box::pin(
             response.bytes_stream().map_err(std::io::Error::other),
         ))
+    }
+    /// Sends a file's `length` bytes to `url`, where `files.getUploadURLExternal` said it goes,
+    /// as they arrive. The address is Slack's own for this one file, so it needs no token.
+    pub async fn upload(&self, url: &str, length: u64, bytes: Bytestream) -> Result<()> {
+        if let Self::Fixture = self {
+            return fixture::upload(url, bytes).await;
+        }
+        if !url.starts_with(FILES_HOST) {
+            return Err(Error::new("slack_refused", 502));
+        }
+        let request = DOWNLOADS
+            .post(url)
+            .header(reqwest::header::CONTENT_LENGTH, length)
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            .body(reqwest::Body::wrap_stream(bytes));
+        let response = timed("files.upload", request).await.map_err(unreachable)?;
+        if !response.status().is_success() {
+            return Err(Error::new("slack_unreachable", 502));
+        }
+        Ok(())
     }
     /// Removes the app from the workspace whose token this is. Best effort: Dispatch forgets
     /// the workspace whatever Slack answers.

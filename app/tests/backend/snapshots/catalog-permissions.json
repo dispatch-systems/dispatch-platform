@@ -22,6 +22,7 @@
     ["roles.manage", "Manage Roles"],
     ["settings.manage", "Manage DSP Settings"],
     ["connections.manage", "Manage DSP Connections"],
+    ["communications.use", "Use Communications"],
     ["daily_performance.view", "View Daily Performance"],
     ["daily_performance.collect", "Collect Daily Performance"],
     ["daily_performance.manage", "Manage Daily Performance"],

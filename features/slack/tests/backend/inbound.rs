@@ -68,9 +68,13 @@ async fn a_direct_message_is_answered_by_slack_until_an_integration_on_there_tak
     let written = json!({"type": "message", "channel_type": "im", "channel": DM,
         "user": "U0FIXJORDAN", "text": "Running late", "ts": "1760000000.000100"});
     let answered = ["DSP Messaging is unavailable"];
+    let posted = || -> Vec<String> {
+        let posts = fixture::posted(TEAM, DM).into_iter();
+        posts.map(|post| post.text).collect()
+    };
     // No integration on in the workspace hears of it, so Slack answers it.
     on_event(&bot, &written).await.unwrap();
-    assert_eq!(fixture::posted(TEAM, DM), answered);
+    assert_eq!(posted(), answered);
     assert!(support::heard(&dsp).is_empty());
     // One on there hears of it, as `message.im`, and takes it: Slack answers no more.
     let of = dsp.clone();
@@ -81,5 +85,5 @@ async fn a_direct_message_is_answered_by_slack_until_an_integration_on_there_tak
     on_event(&bot, &written).await.unwrap();
     let taken = [(TEAM.to_owned(), "message.im".to_owned())];
     assert_eq!(support::heard(&dsp), taken);
-    assert_eq!(fixture::posted(TEAM, DM), answered);
+    assert_eq!(posted(), answered);
 }

@@ -17,6 +17,8 @@
 //!   link's own page; `work`, what the passes share: the DSPs Slack works for, and the work
 //!   an integration keeps until it's done.
 //! - `settings`: its section of Settings, where its workspaces' settings are.
+//! - `kit`: what another feature's integration reads of Slack, beside the bot.
+//! - `testing`: what a dependant's tests use of Slack, behind its `testing` feature.
 pub(crate) mod app;
 pub(crate) mod author;
 pub(crate) mod bot;
@@ -28,6 +30,7 @@ pub(crate) mod fixture;
 pub(crate) mod home;
 pub(crate) mod inbound;
 pub(crate) mod integrations;
+pub(crate) mod kit;
 pub(crate) mod link;
 pub(crate) mod maintenance;
 pub(crate) mod members;
@@ -37,6 +40,8 @@ pub(crate) mod people;
 pub(crate) mod settings;
 pub(crate) mod slack;
 pub(crate) mod storage;
+#[cfg(any(test, feature = "testing"))]
+pub(crate) mod testing;
 pub(crate) mod work;
 
 #[cfg(test)]

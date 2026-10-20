@@ -21,7 +21,7 @@ pub const SCOPES: &[&str] = &["users:read", "users:read.email"];
 const PAGES: usize = 50;
 
 /// A member as Slack describes a user, unless they're a bot or Slackbot.
-pub(super) fn member(user: &Value) -> Option<Member> {
+pub fn member(user: &Value) -> Option<Member> {
     let id = user["id"].as_str().filter(|id| !id.is_empty())?;
     if id == "USLACKBOT" || user["is_bot"] == true || user["is_app_user"] == true {
         return None;
