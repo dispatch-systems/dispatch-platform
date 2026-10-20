@@ -11,8 +11,10 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct FleetStatus {
     pub collected_at: Option<String>,
-    /// Vans the fleet lists.
-    pub listed: usize,
+    /// Vans the fleet lists that the DSP runs: active, in maintenance or pending.
+    pub active: usize,
+    /// Vans it lists as inactive: returned, sold or retired.
+    pub inactive: usize,
     /// When a schedule collects it next.
     pub next_run: Option<String>,
     /// Its recent collections, the newest first.

@@ -1,22 +1,11 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import { connectFleet } from '../support/fleet.js';
 
 test('Collect now on the fleet bar collects the fleet, beside its schedules', async ({
   page,
   dispatch,
 }) => {
-  const owner = await dispatch.client();
-  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.select(north.id);
-  const profile = { name: north.name, abbreviation: 'NLL', stationCode: 'TST1' };
-  expect(
-    (await owner.post('/api/dsp/profile', { ...profile, timezone: north.timezone })).status,
-  ).toBe(200);
-  await owner.select(north.id);
-  const connected = await owner.post('/api/dsp/connections/cortex', {
-    username: 'fixture@example.test',
-    password: 'fixture-password',
-  });
-  expect(connected.status, connected.body).toBe(200);
+  await connectFleet(dispatch);
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();

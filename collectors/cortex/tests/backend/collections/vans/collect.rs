@@ -89,7 +89,8 @@ async fn the_fleet_is_read_page_after_page_each_van_once() {
     );
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let http = Http::detached(&origin, &cortex::HOSTS).unwrap();
-    let vans = fleet(&http, &origin).await.unwrap();
+    let (vans, unread) = fleet(&http, &origin).await.unwrap();
+    assert_eq!(unread, 1);
     assert_eq!(
         vans.iter()
             .map(|van| (van.vin.as_str(), van.name.as_deref()))

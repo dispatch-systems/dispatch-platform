@@ -21,10 +21,14 @@ fn the_fleet_is_collected_by_the_dsps_abbreviation_and_counts_what_it_lists() {
     next.vans
         .retain(|van| van.name.as_deref() != Some("EDV 214"));
     store.publish_fleet(&dsp, "job-2", &next).unwrap();
-    // The newest collection, and the vans it lists, inactive ones among them.
+    // The newest collection, and the vans it lists, those the DSP runs apart from the rest.
     let status = store.fleet_status(&dsp).unwrap();
     assert_eq!(
-        (status.collected_at.as_deref(), status.listed),
-        (Some("2026-10-02T05:00:00.000Z"), 5)
+        (
+            status.collected_at.as_deref(),
+            status.active,
+            status.inactive
+        ),
+        (Some("2026-10-02T05:00:00.000Z"), 4, 1)
     );
 }

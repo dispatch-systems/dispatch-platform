@@ -2,17 +2,17 @@
 
 Every vehicle Amazon's fleet lists for the DSP's company, with the name the DSP gives it,
 collected from Cortex's fleet management Vehicles page. A route names its van by VIN alone; Vans
-turns that VIN into the DSP's own name for it ("214"). It has no page of its own: its fleet bar
-and its schedules are on its Settings page.
+turns that VIN into the DSP's own name for it ("EDV 214"). It has no page of its own: its fleet
+bar and its schedules are on its Settings page.
 
 - **Switch:** `vans`, off for every DSP until the platform owner switches it on. It needs the
   `vans` connection (Cortex), which switches on with it.
 - **Permission:** `vans.collect`, to see when the fleet was collected, collect it on demand and
   change its schedules.
 - **API**, all behind `vans.collect`: `GET /api/dsp/vans/status` (when it was collected, how
-  many vans it lists, the next scheduled run and the recent jobs), `POST …/collect`,
-  `POST …/jobs/{id}/cancel`, and core's schedule routes under `…/schedules` for the `vans`
-  collection.
+  many vans it lists as run and as inactive, the next scheduled run and the recent jobs),
+  `POST …/collect`, `POST …/jobs/{id}/cancel`, and core's schedule routes under `…/schedules`
+  for the `vans` collection.
 - **Collection:** Cortex's `vans` reads the fleet as Amazon's fleet management page lists it,
   `/fleet-management/api/vehicles`, over plain HTTP with the session the job's browser started
   from, which closes once it is copied: every status the list accepts (active, maintenance,

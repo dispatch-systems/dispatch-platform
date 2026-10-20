@@ -7,9 +7,13 @@ import type { PublicJob } from "../../../../core/collection/api/generated/Public
  */
 export type FleetStatus = { collectedAt: string | null,
 /**
- * Vans the fleet lists.
+ * Vans the fleet lists that the DSP runs: active, in maintenance or pending.
  */
-listed: number,
+active: number,
+/**
+ * Vans it lists as inactive: returned, sold or retired.
+ */
+inactive: number,
 /**
  * When a schedule collects it next.
  */

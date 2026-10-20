@@ -55,12 +55,13 @@ fn address(origin: &str, key: Option<&str>) -> String {
     format!("{origin}{VEHICLES}?{}", query.finish())
 }
 
-/// Every van the fleet lists, each VIN once, page after page. A fleet naming no van would say
-/// every van left: it is a page that failed instead.
-pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<Vec<Van>> {
+/// Every van the fleet lists, each VIN once, page after page, and how many rows named no VIN.
+/// A fleet naming no van would say every van left: it is a page that failed instead.
+pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<(Vec<Van>, usize)> {
     let referer = format!("{origin}/fleet-management/");
     let mut seen = BTreeSet::new();
     let mut vans = Vec::new();
+    let mut unread = 0;
     let mut key: Option<String> = None;
     for _ in 0..MAX_PAGES {
         let reply = http
@@ -69,10 +70,10 @@ pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<Vec<Van>> {
             .map_err(refusal)?;
         let rows = reply["data"]["vehicles"].as_array().ok_or_else(changed)?;
         for row in rows {
-            if let Some(van) = Van::read(row.clone())?
-                && seen.insert(van.vin.clone())
-            {
-                vans.push(van);
+            match Van::read(row.clone())? {
+                Some(van) if seen.insert(van.vin.clone()) => vans.push(van),
+                Some(_) => (),
+                None => unread += 1,
             }
         }
         ensure(vans.len() <= MAX_VANS, "vans_source_too_large", 502)?;
@@ -90,7 +91,7 @@ pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<Vec<Van>> {
                 cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
                 502,
             )?;
-            return Ok(vans);
+            return Ok((vans, unread));
         }
     }
     Err(Error::new("vans_source_too_large", 502))
@@ -121,7 +122,11 @@ impl Driver {
         };
         let (company_id, company_code) = sole_company(&companies, &request.dsp_abbreviation)?;
         run.progress(40, "Reading the fleet".into()).await?;
-        let vans = fleet(&http, &self.origin).await?;
+        let (vans, unread) = fleet(&http, &self.origin).await?;
+        // Amazon sending rows without a VIN would otherwise show only as names missing later.
+        if unread > 0 {
+            run.metrics.detail("vans_row_without_vin");
+        }
         run.progress(95, "Validating the fleet".into()).await?;
         let capture = Capture {
             version: 1,

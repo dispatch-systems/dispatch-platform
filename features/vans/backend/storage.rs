@@ -136,7 +136,9 @@ impl VansStore for Store {
             .into_iter()
             .next()
             .map(|(at,)| at);
-        let listed = db.count("SELECT count(*) FROM vans WHERE listed=1", [])? as usize;
+        let count = |sql: &str| -> Result<usize> { Ok(db.count(sql, [])? as usize) };
+        let active = count("SELECT count(*) FROM vans WHERE listed=1 AND status<>'INACTIVE'")?;
+        let inactive = count("SELECT count(*) FROM vans WHERE listed=1 AND status='INACTIVE'")?;
         drop(db);
         let next_run = self
             .collection_schedules(dsp)?
@@ -147,7 +149,8 @@ impl VansStore for Store {
             .min();
         Ok(FleetStatus {
             collected_at,
-            listed,
+            active,
+            inactive,
             next_run,
             jobs: self.recent_jobs_of(dsp, JOB_KIND)?,
         })
