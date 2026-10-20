@@ -355,9 +355,11 @@ test(
     const busy = '2026-01-14';
     const swipe = `itinerary-${busy}-7`;
     const lists: Record<string, number> = {};
-    // Itinerary responses by route, route pages loaded by day, and responses being
-    // answered at once, most of all by day.
+    // Itinerary responses by route, those the application fetched other than when its API
+    // action was asked by day, route pages loaded by day, and responses being answered at
+    // once, most of all by day.
     const reads: Record<string, number> = {};
+    const unasked: Record<string, number> = {};
     const pages: Record<string, number> = {};
     const peaks: Record<string, number> = {};
     // Responses held until every tab has asked: how soon a tab starts is the machine's
@@ -412,6 +414,7 @@ test(
         const id = url.searchParams.get('itineraryId')!;
         const date = id.slice('itinerary-'.length, 'itinerary-'.length + 10);
         reads[id] = (reads[id] || 0) + 1;
+        if (!url.searchParams.get('fixtureAsked')) unasked[date] = (unasked[date] ?? 0) + 1;
         if (id === swipe) swiped = true;
         peaks[date] = Math.max(peaks[date] ?? 0, ++active);
         // Hold the initial requests until the test observes the lane count. Bulk
@@ -484,7 +487,8 @@ test(
       const read = Object.keys(reads).filter((id) => id.includes(date));
       assert.equal(read.length, count, `${date}: every route's itinerary was read`);
       assert.equal(peaks[date], atOnce(count), `${date}: as many at once as the browser sends`);
-      assert.equal(pages[date] ?? 0, 0, `${date}: the list's application moves to each route`);
+      assert.equal(pages[date] ?? 0, 0, `${date}: no route's page is loaded`);
+      assert.equal(unasked[date] ?? 0, 0, `${date}: each route is asked of the application`);
       // A finished day changes no more: unless a route changed while it was read, its list
       // is not read again to confirm it.
       if (date !== busy) assert.equal(lists[date], 1, `${date}: listed once`);
@@ -537,12 +541,14 @@ test(
   "Cortex reads a route the application doesn't answer from its page",
   { skip: native, timeout: 180000 },
   async (t) => {
-    // On the first day the route's first two itinerary requests fail, and the page it is
-    // then read from first shows another route. On the second the application ignores
-    // moves to the route.
+    // On the first day the application has no store to ask, so it is moved to the route;
+    // the route's first two itinerary requests fail, and the page it is then read from
+    // first shows another route. On the second the application ignores asks for the
+    // route.
     const failing = 'itinerary-2026-01-15-1';
     const still = 'itinerary-2026-01-16-1';
     const requests: Record<string, number> = {};
+    const asked: Record<string, number> = {};
     const pages: Record<string, number> = {};
     // Each route's id names its day.
     const day = (id: string) => id.slice('itinerary-'.length, 'itinerary-'.length + 10);
@@ -572,6 +578,7 @@ test(
       if (url.pathname.startsWith(itineraryApi)) {
         const id = url.searchParams.get('itineraryId')!;
         requests[id] = (requests[id] ?? 0) + 1;
+        if (url.searchParams.get('fixtureAsked')) asked[id] = (asked[id] ?? 0) + 1;
         if (id === failing && requests[id]! <= 2) return { status: 500 };
         const c = route(id);
         const on = c.breaks[0]!.timeStampOn;
@@ -598,7 +605,7 @@ test(
       }
       const date = url.searchParams.get('selectedDay')!;
       const id = date === '2026-01-15' ? failing : still;
-      const quirks: Quirks = date === '2026-01-15' ? {} : { still: [still] };
+      const quirks: Quirks = date === '2026-01-15' ? { storeless: true } : { still: [still] };
       if (url.pathname.includes('/documentType/')) {
         pages[id] = (pages[id] ?? 0) + 1;
         if (id === failing && pages[id] === 2) quirks.show = 'itinerary-2026-01-15-9';
@@ -632,8 +639,10 @@ test(
     assert.equal(requests[failing], 3);
     assert.equal(requests['itinerary-2026-01-15-9'], 1);
     assert.equal(pages[failing], 3);
-    // Unanswered in the moved application, the route was read from its loaded page.
+    // Unanswered by the application it was asked of, the route was read from its loaded
+    // page.
     assert.equal(requests[still], 1);
     assert.equal(pages[still], 1);
+    assert.deepEqual(asked, {});
   },
 );

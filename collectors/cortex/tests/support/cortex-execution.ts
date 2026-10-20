@@ -1,8 +1,10 @@
 // Cortex's execution pages as the meal collector meets them: one application that fetches
 // its day's list from the summaries API and keeps it in its React props, and fetches an
 // itinerary's details from the itinerary API with XMLHttpRequest when it loads on, or
-// moves to, that itinerary's address, and renders them with an id on each stop; the API
-// sends none. Every move is fetched, even while an earlier one is still loading.
+// moves to, that itinerary's address, or when its store's API action is asked for it, and
+// renders them with an id on each stop; the API sends none. Every move and every ask is
+// fetched, even while an earlier one is still loading. A request its store's action sent
+// carries `fixtureAsked`.
 export const itineraryApi = '/operations/execution/api/itineraries/';
 export const summariesApi = '/operations/execution/api/summaries';
 
@@ -10,8 +12,11 @@ export const summariesApi = '/operations/execution/api/summaries';
 export interface Quirks {
   /** It shows this itinerary's details instead of the address's, as Cortex sometimes does. */
   show?: string;
-  /** It ignores moves to these itineraries, fetching nothing. */
+  /** It ignores moves to these itineraries, and asks of its API action for them, fetching
+   * nothing. */
   still?: string[];
+  /** Its React tree is given no store, so nothing can be asked of its API action. */
+  storeless?: boolean;
 }
 
 /** A day's list as the summaries API sends it, each driver named `names[id]`, or for
@@ -54,11 +59,8 @@ export function executionPage(quirks: Quirks = {}, props: object = {}): string {
     };
     const fiber = { memoizedProps: list };
     document.querySelector('main').__reactFiber$fixture = fiber;
-    const show = (moved) => {
-      const match = location.pathname.match(/^\\/operations\\/execution\\/itineraries\\/([^/]+)\\/documentType\\//);
-      if (!match) return void (fiber.memoizedProps = list);
-      const id = decodeURIComponent(match[1]);
-      if (moved && (quirks.still || []).includes(id)) return;
+    // The itinerary's details, fetched and shown; \`asked\` marks a request the action sent.
+    const fetchDetails = (id, asked) => new Promise((resolve, reject) => {
       fiber.memoizedProps = { ...list, isLoadingItineraryDetails: true };
       const request = new XMLHttpRequest();
       request.onreadystatechange = () => {
@@ -66,10 +68,28 @@ export function executionPage(quirks: Quirks = {}, props: object = {}): string {
         const details = request.status === 200 ? JSON.parse(request.responseText).itineraryDetails : null;
         if (details) details.stops = details.stops.map((stop, i) => ({ stopId: 'stop-' + (i + 1), ...stop }));
         fiber.memoizedProps = { ...list, isLoadingItineraryDetails: false, itineraryDetails: details };
+        (request.status === 200 ? resolve : reject)(details);
       };
       request.open('GET', '${itineraryApi}?documentType=Itinerary&historicalDay=true&itineraryId=' +
-        encodeURIComponent(quirks.show || id) + '&serviceAreaId=' + encodeURIComponent(list.serviceAreaId));
+        encodeURIComponent(quirks.show || id) + '&serviceAreaId=' + encodeURIComponent(list.serviceAreaId) +
+        (asked ? '&fixtureAsked=1' : ''));
       request.send();
+    });
+    const store = { getState: () => ({}), subscribe: () => () => {}, dispatch: (action) => {
+      const call = action['Call API'];
+      if (!call) return action;
+      const id = call.params.itineraryId;
+      if (!call.endpoint.startsWith('${itineraryApi}') || (quirks.still || []).includes(id))
+        return new Promise(() => {});
+      return fetchDetails(id, true);
+    } };
+    if (!quirks.storeless) fiber.return = { memoizedProps: { store }, return: null };
+    const show = (moved) => {
+      const match = location.pathname.match(/^\\/operations\\/execution\\/itineraries\\/([^/]+)\\/documentType\\//);
+      if (!match) return void (fiber.memoizedProps = list);
+      const id = decodeURIComponent(match[1]);
+      if (moved && (quirks.still || []).includes(id)) return;
+      fetchDetails(id, false).catch(() => {});
     };
     addEventListener('popstate', () => show(true));
     const summaries = new XMLHttpRequest();

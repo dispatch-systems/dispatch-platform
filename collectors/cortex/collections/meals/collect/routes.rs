@@ -125,15 +125,48 @@ where
         }
         Ok(reads)
     }
+    /// Asks the tab's application for `candidate`'s itinerary: of its own API action
+    /// while `asking`, which stops once the application has no store for it, else by
+    /// moving it to the route. Whether the application took the ask.
+    async fn ask(&self, page: &Page, candidate: &Candidate, asking: &mut bool) -> bool {
+        let driver = self.driver;
+        if *asking {
+            let read = json!({
+                "endpoint": crate::collections::routes::collect::itinerary_path(&candidate.id),
+                "params": {
+                    "documentType": "Itinerary",
+                    "itineraryId": candidate.id,
+                    "serviceAreaId": self.scope.service_area_id,
+                },
+            });
+            // The store lives in the application's own world, where the action runs.
+            if driver
+                .browser
+                .evaluate(&page.id, &call(ASK, &read))
+                .await
+                .is_ok_and(|v| v == true)
+            {
+                return true;
+            }
+            *asking = false;
+            self.metrics.detail("meal_ask_unavailable");
+        }
+        let url = driver.meal_url(self.scope, Some(candidate));
+        page.evaluate(&call(MOVE, &json!(url)))
+            .await
+            .is_ok_and(|v| v == true)
+    }
     /// Reads routes through the hook, `in_flight` at once: each is named to the hook and
-    /// the application moved to it without waiting for the one before, and what the hook
-    /// has read is taken every 50 ms. A route the application didn't answer, or not within
-    /// 20 s, is read afterwards from its own loaded page. `loaded` is whether the tab
-    /// shows the application already; one that doesn't loads its first route's page.
+    /// asked of the application, or the application moved to it, without waiting for the
+    /// one before, and what the hook has read is taken every 50 ms. A route the
+    /// application didn't answer, or not within 20 s, is read afterwards from its own
+    /// loaded page. `loaded` is whether the tab shows the application already; one that
+    /// doesn't loads its first route's page.
     pub(super) async fn moves(&self, page: &Page, loaded: bool) -> Result<Vec<Read>> {
         let driver = self.driver;
         let mut reads = Vec::new();
         let mut moving = loaded;
+        let mut asking = self.method.ask;
         let mut waiting: Vec<(&'a Candidate, usize, Instant)> = Vec::new();
         let mut unanswered: Vec<(&'a Candidate, usize)> = Vec::new();
         loop {
@@ -171,12 +204,8 @@ where
                         ),
                     )
                     .await;
-                let url = driver.meal_url(self.scope, Some(candidate));
-                let moved = named.is_ok_and(|v| v == true)
-                    && page
-                        .evaluate(&call(MOVE, &json!(url)))
-                        .await
-                        .is_ok_and(|v| v == true);
+                let moved =
+                    named.is_ok_and(|v| v == true) && self.ask(page, candidate, &mut asking).await;
                 if moved {
                     waiting.push((candidate, ordinal, Instant::now()));
                 } else {

@@ -38,6 +38,8 @@ pub(crate) const CONTENT_NOT_READY: &[dispatch_core::Code] = &[
 ];
 /// How long the application may take to answer a move before the route's page is loaded.
 const MOVE_DEADLINE: Duration = Duration::from_secs(20);
+/// `meal_ask.js`, which asks the application's own API action for one itinerary.
+const ASK: &str = include_str!("../../scripts/meal_ask.js");
 /// A page script without the trailing `;` its formatter adds, so it can be called.
 fn script(source: &str) -> &str {
     source.trim().trim_end_matches(';')
@@ -84,8 +86,10 @@ struct Punch {
 /// days of 36 to 51 routes (`measure_meal_method`): one tab of the hook waiting for twelve
 /// routes at once, its list read from the response the application fetched, read a
 /// finished 51-route day in 8.8 s instead of 26 to 42 s for three tabs waiting for one
-/// route each, with half the CPU and memory and the same records. More routes at once, or
-/// more tabs, read no faster.
+/// route each, with half the CPU and memory and the same records. More tabs read no
+/// faster. Asking the application's own API action for sixteen routes at once instead of
+/// moving it to twelve read a finished 41-route day in 5.7 s with 6.1 CPU-s rather than
+/// 6.7 s with 9.7, three runs each, with the same records route for route.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct MealMethod {
@@ -103,14 +107,21 @@ pub(crate) struct MealMethod {
     /// itinerary it fetches, which the page never renders. Otherwise each route's page is
     /// loaded and `meal.js` reads it once rendered.
     pub hook: bool,
+    /// With the hook, each route is asked of the application's own API action, as its
+    /// pages ask for what they show, rather than moved to: the request is the
+    /// application's own, and nothing renders. A tab whose application has no store moves
+    /// to its routes as before.
+    #[serde(default)]
+    pub ask: bool,
 }
 impl Default for MealMethod {
     fn default() -> Self {
         Self {
             tabs: 1,
-            in_flight: 12,
+            in_flight: 16,
             windows: false,
             hook: true,
+            ask: true,
         }
     }
 }
@@ -123,6 +134,7 @@ impl MealMethod {
             in_flight: 1,
             windows: true,
             hook: false,
+            ask: false,
         }
     }
 }
