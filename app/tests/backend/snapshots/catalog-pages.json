@@ -119,6 +119,14 @@
       "requires": ["vans"],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "communications",
+      "label": "Communications",
+      "permissions": ["communications.view"],
+      "requires": [],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -188,6 +196,7 @@
     "settings",
     "slack",
     "vans",
+    "communications",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

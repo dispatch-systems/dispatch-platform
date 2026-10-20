@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { demo, fixture } from '../../../../core/shell/tests/support/support.js';
+
+const route = '/api/dsp/communications';
+
+test('Communications answers the members who may view it, and only them', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const summary = await owner.get(route);
+  assert.equal(summary.status, 200, summary.body);
+  assert.equal(summary.value.dspId, north.id);
+  assert.equal(summary.value.items, 0);
+  // No default role holds communications.view, so a member is refused until a role grants it.
+  const member = await f.client(demo.member);
+  await member.select(north.id);
+  assert.equal((await member.get(route)).status, 403);
+});

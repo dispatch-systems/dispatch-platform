@@ -601,6 +601,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "chrono-tz",
+ "dispatch-communications",
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-daily-performance",
@@ -630,6 +631,17 @@ dependencies = [
  "tokio",
  "ts-rs",
  "url",
+]
+
+[[package]]
+name = "dispatch-communications"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
+ "dispatch-slack",
+ "rusqlite",
+ "serde",
+ "ts-rs",
 ]
 
 [[package]]

@@ -15,6 +15,7 @@ import { feature as team } from '../../features/team/frontend/feature.js';
 import { feature as settings } from '../../features/settings/frontend/feature.js';
 import { feature as slack } from '../../features/slack/frontend/feature.js';
 import { feature as vans } from '../../features/vans/frontend/feature.js';
+import { feature as communications } from '../../features/communications/frontend/feature.js';
 import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
 import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
@@ -41,6 +42,7 @@ export const features: readonly FrontendFeature[] = [
   settings,
   slack,
   vans,
+  communications,
   paycom,
   cortex,
   accounts,

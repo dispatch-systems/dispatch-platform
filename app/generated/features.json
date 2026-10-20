@@ -1,4 +1,51 @@
 {
+  "communications": {
+    "collectors": [],
+    "depends_on": [
+      "slack"
+    ],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "communications.view"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "integrations": [
+        [
+          "communications.messages",
+          "slack"
+        ]
+      ],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/communications"
+      ],
+      "exposes": [],
+      "env": [],
+      "settings": []
+    },
+    "switch": "communications",
+    "mandatory": false,
+    "tables": {
+      "dsp": [
+        "communications_items"
+      ]
+    },
+    "subfeatures": []
+  },
   "daily_performance": {
     "collectors": [
       "cortex"
