@@ -361,6 +361,7 @@ test(
     const session = { ...seen };
     await collect('week-37', '2026-W37');
     const posted36 = await collect('week-36', '2026-W36');
+    assert.ok(session.landing > 0, 'The sign-in on the page rendered the console');
     assert.equal(seen.companies, session.companies + 2);
     assert.equal(seen.landing, session.landing);
     assert.equal(seen.signIns, session.signIns);
@@ -436,6 +437,7 @@ test(
     }
     assert.equal(seen.companies, expired.companies + 2);
     assert.equal(seen.signIns, expired.signIns + 1);
+    assert.equal(seen.landing, expired.landing + 1);
     assert.ok(
       seen.dailyPeak > 1 && seen.dailyPeak <= 6,
       `Daily request concurrency: ${seen.dailyPeak}`,

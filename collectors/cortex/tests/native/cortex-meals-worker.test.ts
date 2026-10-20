@@ -310,6 +310,7 @@ test(
     const before = { ...seen };
     mode = 'unavailable';
     assert.equal((await collect('2026-01-10', 'unknown')).status, 'succeeded');
+    assert.ok(before.landings > 0, 'The sign-in on the page rendered the console');
     assert.deepEqual(seen, { landings: before.landings, companies: before.companies + 1 });
     assert.equal((await publications()).value[0].verifiedGapPairs, 0);
     mode = 'inactive-near';
