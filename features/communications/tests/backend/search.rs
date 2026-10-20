@@ -26,7 +26,13 @@ fn found<'a>(typed: &str, names: &[&'a str]) -> Vec<(&'a str, Vec<&'a str>)> {
 
 #[test]
 fn a_misspelt_name_finds_the_closest_first_marking_the_letters_that_matched() {
-    let names = ["Jordan Lee", "William James", "Jamar Wilson", "Jamal Williams", "Sofia Ramirez"];
+    let names = [
+        "Jordan Lee",
+        "William James",
+        "Jamar Wilson",
+        "Jamal Williams",
+        "Sofia Ramirez",
+    ];
     let results = found("jamel willams", &names);
     assert_eq!(
         results.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
@@ -42,7 +48,10 @@ fn a_misspelt_name_finds_the_closest_first_marking_the_letters_that_matched() {
 #[test]
 fn accents_dont_count_and_marks_count_as_the_page_reads_a_string() {
     let names = ["José Núñez", "👋 Ana Silva"];
-    assert_eq!(found("jose nunez", &names[..1]), [("José Núñez", vec!["José", "Núñez"])]);
+    assert_eq!(
+        found("jose nunez", &names[..1]),
+        [("José Núñez", vec!["José", "Núñez"])]
+    );
     // An emoji is two of a string's units in the page.
     assert_eq!(matched("ana", names[1]).unwrap().1, [(3, 6)]);
 }

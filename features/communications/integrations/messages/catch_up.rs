@@ -77,9 +77,16 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
                 let known = db
                     .communications_in(&at, &workspace.team)?
                     .into_iter()
-                    .filter_map(|Conversation { channel, user, caught_up_at, .. }| {
-                        Some((channel?, Direct { user, caught_up_at }))
-                    })
+                    .filter_map(
+                        |Conversation {
+                             channel,
+                             user,
+                             caught_up_at,
+                             ..
+                         }| {
+                            Some((channel?, Direct { user, caught_up_at }))
+                        },
+                    )
                     .collect();
                 found.push(Workspace {
                     listing: workspace.scopes.iter().any(|scope| scope == LISTING),

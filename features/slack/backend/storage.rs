@@ -261,7 +261,8 @@ pub trait SlackStore {
 }
 /// Whether the integration `id` starts on in every workspace, as its feature declares it.
 fn starts_on(id: &str) -> bool {
-    super::integrations::declared().any(|(_, integration)| integration.id == id && integration.starts_on)
+    super::integrations::declared()
+        .any(|(_, integration)| integration.id == id && integration.starts_on)
 }
 /// Whether the integration `id` is on in the workspace `team`: switched on there, or starting
 /// on and not switched off there.
@@ -552,7 +553,10 @@ impl SlackStore for Store {
     fn slack_integration_on_since(&self, dsp: &str, team: &str, id: &str) -> Result<Option<i64>> {
         let db = self.dsp(dsp)?;
         let switched: Option<(i64,)> = db.one_as(
-            &format!("SELECT {} FROM slack_integrations WHERE team_id=? AND integration=?", ms("turned_on_at")),
+            &format!(
+                "SELECT {} FROM slack_integrations WHERE team_id=? AND integration=?",
+                ms("turned_on_at")
+            ),
             [team, id],
         )?;
         if switched.is_some() || !starts_on(id) {

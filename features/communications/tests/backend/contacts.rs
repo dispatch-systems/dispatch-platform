@@ -24,7 +24,15 @@ async fn the_active_members_of_the_workspaces_are_contacts_found_by_a_misspelt_n
         .into_iter()
         .map(|contact| contact.person.name)
         .collect();
-    assert_eq!(names, ["Cameron Hayes", "Casey Rivera", "Drew Sullivan", "Jordan Ellis"]);
+    assert_eq!(
+        names,
+        [
+            "Cameron Hayes",
+            "Casey Rivera",
+            "Drew Sullivan",
+            "Jordan Ellis"
+        ]
+    );
     let found = find(Some("camron hays")).await;
     assert_eq!(found[0].person.name, "Cameron Hayes");
     assert_eq!(found[0].person.user_id, "U0FIXCAM");

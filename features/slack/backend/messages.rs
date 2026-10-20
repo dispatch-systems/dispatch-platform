@@ -26,8 +26,7 @@ pub async fn unheard(bot: &Bot, event: &Value) -> Result<()> {
 /// from no bot, as the app's own posts are, and with no subtype but a file shared, as an edit,
 /// a deletion or a bot's post has.
 fn written(event: &Value) -> bool {
-    event["bot_id"].is_null()
-        && (event["subtype"].is_null() || event["subtype"] == "file_share")
+    event["bot_id"].is_null() && (event["subtype"].is_null() || event["subtype"] == "file_share")
 }
 
 #[cfg(test)]

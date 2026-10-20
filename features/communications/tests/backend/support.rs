@@ -2,8 +2,8 @@
 //! registry, so each installs the same: Slack and Communications. A test starts with a platform
 //! with one DSP, every feature on for it, and one of its fixture workspaces connected, its
 //! members read: the workspace's admin has approved all the app asks for.
-use crate::backend::{conversations, storage::CommunicationsStore};
 use crate::api::types::Message;
+use crate::backend::{conversations, storage::CommunicationsStore};
 use dispatch_core::{
     State,
     accounts::{Context, SessionLifetime},
@@ -47,7 +47,13 @@ pub async fn connected(team: &str) -> (impl Drop, Arc<State>, Bot) {
 }
 /// The DSP's owner, Test Owner, signed in and acting with Communications, under the name
 /// `first` `last` and the email address `email` in place of theirs.
-pub async fn member(state: &Arc<State>, dsp: &str, first: &str, last: &str, email: &str) -> Context {
+pub async fn member(
+    state: &Arc<State>,
+    dsp: &str,
+    first: &str,
+    last: &str,
+    email: &str,
+) -> Context {
     let raw = state
         .login(
             "owner@example.test".into(),
@@ -59,7 +65,12 @@ pub async fn member(state: &Arc<State>, dsp: &str, first: &str, last: &str, emai
         )
         .await
         .unwrap();
-    let (dsp, first, last, email) = (dsp.to_owned(), first.to_owned(), last.to_owned(), email.to_owned());
+    let (dsp, first, last, email) = (
+        dsp.to_owned(),
+        first.to_owned(),
+        last.to_owned(),
+        email.to_owned(),
+    );
     state
         .read(move |db| {
             let mut auth = db.authenticate(&raw, &Site::Admin)?;

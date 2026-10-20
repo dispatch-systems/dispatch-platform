@@ -2,11 +2,7 @@
 //! Communications works, as Driver Match knows them, with their photo and role, and their
 //! conversation if they have one. By name, or found by a name typed, misspelt or not, the
 //! closest first.
-use super::{
-    conversations::People,
-    search,
-    storage::CommunicationsStore,
-};
+use super::{conversations::People, search, storage::CommunicationsStore};
 use crate::{
     api::types::{Contact, Contacts},
     integrations::messages::ID,

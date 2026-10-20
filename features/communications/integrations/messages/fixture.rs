@@ -36,14 +36,19 @@ pub fn answer(team: &str, method: &str, args: &Value) -> Option<Result<Value>> {
             "response_metadata": {"next_cursor": ""},
         }),
         "conversations.history" => {
-            let written = if channel == JORDAN { history(team) } else { Vec::new() };
+            let written = if channel == JORDAN {
+                history(team)
+            } else {
+                Vec::new()
+            };
             json!({"ok": true, "messages": since(written, oldest), "has_more": false})
         }
         "conversations.replies" => {
             let thread = args["ts"].as_str().unwrap_or_default();
             let replied: Vec<Value> = if channel == JORDAN {
                 let all = history(team).into_iter().chain(replies(team));
-                all.filter(|message| message["thread_ts"] == thread).collect()
+                all.filter(|message| message["thread_ts"] == thread)
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -57,7 +62,9 @@ pub fn answer(team: &str, method: &str, args: &Value) -> Option<Result<Value>> {
 fn stamp(team: &str) -> i64 {
     static STAMPS: LazyLock<Mutex<HashMap<String, i64>>> = LazyLock::new(Default::default);
     let mut stamps = STAMPS.lock().unwrap_or_else(|poison| poison.into_inner());
-    *stamps.entry(team.to_owned()).or_insert_with(|| now() / 1000 + 1)
+    *stamps
+        .entry(team.to_owned())
+        .or_insert_with(|| now() / 1000 + 1)
 }
 /// Jordan's messages in the workspace, the latest first, as Slack lists a conversation's.
 fn history(team: &str) -> Vec<Value> {
@@ -80,8 +87,10 @@ fn history(team: &str) -> Vec<Value> {
 /// The replies in the thread of Jordan's question.
 fn replies(team: &str) -> Vec<Value> {
     let at = |micros: u32| format!("{}.{micros:06}", stamp(team));
-    vec![json!({"type": "message", "user": "U0FIXJORDAN", "text": "Never mind, Tyler took it",
-        "ts": at(400_000), "thread_ts": at(300_000)})]
+    vec![
+        json!({"type": "message", "user": "U0FIXJORDAN", "text": "Never mind, Tyler took it",
+        "ts": at(400_000), "thread_ts": at(300_000)}),
+    ]
 }
 /// `messages` written after `oldest`, in seconds, as Slack lists them.
 fn since(messages: Vec<Value>, oldest: f64) -> Vec<Value> {

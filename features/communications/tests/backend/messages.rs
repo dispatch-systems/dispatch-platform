@@ -27,6 +27,13 @@ async fn a_workspace_forgotten_keeps_its_messages_and_lets_go_of_conversations_w
         .await
         .unwrap();
     assert_eq!(kept.name, "Morgan Lane");
-    assert_eq!(support::texts(&state, &dsp, &kept.id).await, ["Keys are in the van"]);
-    assert!(support::conversation_with(&state, &dsp, TEAM, "U0NOWRITE").await.is_none());
+    assert_eq!(
+        support::texts(&state, &dsp, &kept.id).await,
+        ["Keys are in the van"]
+    );
+    assert!(
+        support::conversation_with(&state, &dsp, TEAM, "U0NOWRITE")
+            .await
+            .is_none()
+    );
 }

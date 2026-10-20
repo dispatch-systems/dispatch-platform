@@ -39,12 +39,18 @@ pub fn of(first: &str, last: &str) -> Option<String> {
             .filter(char::is_ascii_lowercase)
             .map(|letter| letter.to_ascii_uppercase())
     };
-    let letters: String = [initial(first), initial(last)].into_iter().flatten().collect();
+    let letters: String = [initial(first), initial(last)]
+        .into_iter()
+        .flatten()
+        .collect();
     (!letters.is_empty()).then_some(letters)
 }
 /// The address of the image of `letters` at `origin`.
 pub fn address(origin: &str, letters: &str) -> String {
-    format!("{origin}{}", PATH.replace("{name}", &format!("{letters}.png")))
+    format!(
+        "{origin}{}",
+        PATH.replace("{name}", &format!("{letters}.png"))
+    )
 }
 
 /// The image the file name `name` asks for, `<letters>.png`, as a PNG: none for one that isn't
@@ -69,7 +75,10 @@ pub fn image(name: &str) -> Option<Arc<Vec<u8>>> {
 fn drawing(letters: &str) -> Vec<u8> {
     let (ink, surface) = TONES[letters.bytes().map(usize::from).sum::<usize>() % TONES.len()];
     let scale = EM / UNITS;
-    let glyphs: Vec<_> = letters.bytes().map(|b| &LETTERS[usize::from(b - b'A')]).collect();
+    let glyphs: Vec<_> = letters
+        .bytes()
+        .map(|b| &LETTERS[usize::from(b - b'A')])
+        .collect();
     let width: f32 = glyphs.iter().map(|glyph| glyph.advance * scale).sum();
     let baseline = (SIZE as f32 + CAP_HEIGHT * scale) / 2.0;
     let mut x = (SIZE as f32 - width) / 2.0;
@@ -139,7 +148,12 @@ struct Pen {
 }
 impl Pen {
     /// Draws one command of path data with its numbers.
-    fn draw(&mut self, command: char, numbers: &[f32], line: &mut impl FnMut((f32, f32), (f32, f32))) {
+    fn draw(
+        &mut self,
+        command: char,
+        numbers: &[f32],
+        line: &mut impl FnMut((f32, f32), (f32, f32)),
+    ) {
         const STEPS: usize = 8;
         match (command, numbers) {
             ('M', &[x, y]) => {
@@ -233,7 +247,9 @@ fn png(width: usize, height: usize, pixels: &[u8]) -> Vec<u8> {
         rows.extend_from_slice(row);
     }
     let mut packed = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
-    packed.write_all(&rows).expect("writing to memory doesn't fail");
+    packed
+        .write_all(&rows)
+        .expect("writing to memory doesn't fail");
     let packed = packed.finish().expect("writing to memory doesn't fail");
     let mut header = Vec::with_capacity(13);
     header.extend_from_slice(&(width as u32).to_be_bytes());
@@ -241,7 +257,11 @@ fn png(width: usize, height: usize, pixels: &[u8]) -> Vec<u8> {
     // Eight bits a sample, in colour, compressed and filtered as PNG does, not interlaced.
     header.extend_from_slice(&[8, 2, 0, 0, 0]);
     let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
-    for (kind, data) in [(b"IHDR", &header), (b"IDAT", &packed), (b"IEND", &Vec::new())] {
+    for (kind, data) in [
+        (b"IHDR", &header),
+        (b"IDAT", &packed),
+        (b"IEND", &Vec::new()),
+    ] {
         png.extend_from_slice(&(data.len() as u32).to_be_bytes());
         let mut crc = flate2::Crc::new();
         crc.update(kind);

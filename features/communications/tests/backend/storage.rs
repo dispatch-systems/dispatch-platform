@@ -42,18 +42,34 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
         .unwrap();
     let id = kept.conversation;
     let state = || {
-        let conversation = store.communications_conversation(&dsp, &id).unwrap().unwrap();
-        (conversation.state, conversation.waiting_since, conversation.last_at)
+        let conversation = store
+            .communications_conversation(&dsp, &id)
+            .unwrap()
+            .unwrap();
+        (
+            conversation.state,
+            conversation.waiting_since,
+            conversation.last_at,
+        )
     };
-    assert_eq!(state(), (ConversationState::Waiting, Some(100_000), Some(100_000)));
+    assert_eq!(
+        state(),
+        (ConversationState::Waiting, Some(100_000), Some(100_000))
+    );
     // Kept once, however often Slack or catching up tells of it.
     let again = written("100.000001", 100_000, "Flat tire");
-    assert_eq!(store.keep_communications_message(&dsp, &again).unwrap(), None);
+    assert_eq!(
+        store.keep_communications_message(&dsp, &again).unwrap(),
+        None
+    );
     // A second message waits since the first.
     store
         .keep_communications_message(&dsp, &written("110.000001", 110_000, "Hello?"))
         .unwrap();
-    assert_eq!(state(), (ConversationState::Waiting, Some(100_000), Some(110_000)));
+    assert_eq!(
+        state(),
+        (ConversationState::Waiting, Some(100_000), Some(110_000))
+    );
     // Answered, it's responded; a message caught up later, written before the answer, leaves it so.
     store
         .keep_communications_reply(&dsp, &id, &sent("120.000001", 120_000))
@@ -66,7 +82,10 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
     store
         .keep_communications_message(&dsp, &written("130.000001", 130_000, "Thanks"))
         .unwrap();
-    assert_eq!(state(), (ConversationState::Waiting, Some(130_000), Some(130_000)));
+    assert_eq!(
+        state(),
+        (ConversationState::Waiting, Some(130_000), Some(130_000))
+    );
     assert!(store.mark_communications_done(&dsp, &id, "user_1").unwrap());
     assert_eq!(state().0, ConversationState::Done);
     assert!(!store.mark_communications_done(&dsp, &id, "user_1").unwrap());
@@ -77,7 +96,10 @@ fn a_conversation_waits_from_the_members_first_unanswered_message_until_answered
         .into_iter()
         .map(|message| message.text)
         .collect();
-    assert_eq!(texts, ["Flat tire", "Hello?", "Still here", "On my way", "Thanks"]);
+    assert_eq!(
+        texts,
+        ["Flat tire", "Hello?", "Still here", "On my way", "Thanks"]
+    );
 }
 
 #[test]
@@ -96,8 +118,18 @@ fn an_edit_keeps_only_the_latest_text() {
     assert!(edit("Van 21 is out", 105_000).is_some());
     // An earlier edit told of late changes nothing.
     assert!(edit("Van 2 is out", 101_000).is_none());
-    let kept = store.communications_messages(&dsp, &store.communications_with_messages(&dsp).unwrap()[0].id, None, 50).unwrap();
-    assert_eq!((kept[0].text.as_str(), kept[0].edited_at), ("Van 21 is out", Some(105_000)));
+    let kept = store
+        .communications_messages(
+            &dsp,
+            &store.communications_with_messages(&dsp).unwrap()[0].id,
+            None,
+            50,
+        )
+        .unwrap();
+    assert_eq!(
+        (kept[0].text.as_str(), kept[0].edited_at),
+        ("Van 21 is out", Some(105_000))
+    );
     // The earlier text is nowhere in the DSP's database.
     let db = store.dsp(&dsp).unwrap();
     let rows = db.all("SELECT * FROM communications_messages", []).unwrap();

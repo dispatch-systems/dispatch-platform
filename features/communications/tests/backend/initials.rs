@@ -17,7 +17,15 @@ fn someones_initials_come_from_their_first_and_last_names() {
 
 #[test]
 fn an_image_shows_one_or_two_capitals_drawn_on_their_tone() {
-    for refused in ["kb.png", "KBC.png", "K1.png", "KB.jpg", "KB", ".png", "../KB.png"] {
+    for refused in [
+        "kb.png",
+        "KBC.png",
+        "K1.png",
+        "KB.jpg",
+        "KB",
+        ".png",
+        "../KB.png",
+    ] {
         assert!(image(refused).is_none(), "{refused}");
     }
     let png = image("KB.png").unwrap();
@@ -35,8 +43,14 @@ fn an_image_shows_one_or_two_capitals_drawn_on_their_tone() {
         .collect();
     assert_eq!(pixels.len(), SIZE * SIZE);
     // Its corners are its tone's surface; its letters, in the middle, its ink.
-    let (ink, surface) = TONES.iter().find(|(_, surface)| pixels[0] == surface).unwrap();
+    let (ink, surface) = TONES
+        .iter()
+        .find(|(_, surface)| pixels[0] == surface)
+        .unwrap();
     assert!(pixels.iter().any(|pixel| pixel == ink));
     let inked = pixels.iter().filter(|pixel| *pixel != surface).count();
-    assert!((SIZE * SIZE / 50..SIZE * SIZE / 4).contains(&inked), "{inked}");
+    assert!(
+        (SIZE * SIZE / 50..SIZE * SIZE / 4).contains(&inked),
+        "{inked}"
+    );
 }

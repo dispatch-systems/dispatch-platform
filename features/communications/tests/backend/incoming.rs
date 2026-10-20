@@ -36,11 +36,18 @@ async fn a_members_messages_and_their_edits_are_kept_and_nothing_else() {
     };
     hear(written(start, json!({}))).await;
     // A photo shared with nothing written, and a reply in the thread of the first.
-    hear(written(start + 1, json!({"subtype": "file_share", "text": "",
+    hear(written(
+        start + 1,
+        json!({"subtype": "file_share", "text": "",
         "files": [{"id": "F0FIXDMPHOTO", "name": "Flat tire.png", "mimetype": "image/png",
-            "size": 69}]})))
+            "size": 69}]}),
+    ))
     .await;
-    hear(written(start + 2, json!({"text": "Fixed it", "thread_ts": ts(start)}))).await;
+    hear(written(
+        start + 2,
+        json!({"text": "Fixed it", "thread_ts": ts(start)}),
+    ))
+    .await;
     // The app's own answer, another bot's post, a deletion and Slackbot's word aren't kept.
     let left = [
         json!({"user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE", "text": "Sent"}),
@@ -65,12 +72,19 @@ async fn a_members_messages_and_their_edits_are_kept_and_nothing_else() {
         .collect();
     assert_eq!(
         read,
-        [("Flat tire on #route 4 & 5", false), ("", false), ("Fixed it", true)]
+        [
+            ("Flat tire on #route 4 & 5", false),
+            ("", false),
+            ("Fixed it", true)
+        ]
     );
     // The photo is downloaded into Dispatch, as Slack keeps it.
     files::download_due(&state, &dsp).await;
     let photo = &support::messages(&state, &dsp, &kept.id).await[1].files[0];
-    assert_eq!((photo.name.as_str(), photo.status), ("Flat tire.png", FileStatus::Kept));
+    assert_eq!(
+        (photo.name.as_str(), photo.status),
+        ("Flat tire.png", FileStatus::Kept)
+    );
     let (at, id) = (dsp.clone(), photo.id.clone());
     let sha256 = state
         .read(move |db| Ok(db.communications_file(&at, &id)?.unwrap().sha256.unwrap()))
@@ -105,7 +119,10 @@ async fn a_members_messages_and_their_edits_are_kept_and_nothing_else() {
     assert_eq!(edited[2].text, "Fixed it");
     let at = dsp.clone();
     let stored = state
-        .read(move |db| db.dsp(&at)?.all("SELECT * FROM communications_messages", []))
+        .read(move |db| {
+            db.dsp(&at)?
+                .all("SELECT * FROM communications_messages", [])
+        })
         .await
         .unwrap();
     assert!(!serde_json::to_string(&stored).unwrap().contains("4 & 5"));

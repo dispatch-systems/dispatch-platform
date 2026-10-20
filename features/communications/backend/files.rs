@@ -301,7 +301,10 @@ async fn forget_unsent(state: &Arc<State>, dsp: &str) -> Result<()> {
         .run_scoped(dsp, DOMAIN, move |db| {
             let loose = db.forget_unsent_communications(&at, now() - UNSENT_MS)?;
             let folder = folder(db, &at)?;
-            Ok(loose.into_iter().map(|sha256| folder.join(sha256)).collect::<Vec<_>>())
+            Ok(loose
+                .into_iter()
+                .map(|sha256| folder.join(sha256))
+                .collect::<Vec<_>>())
         })
         .await?;
     for path in loose {
@@ -330,9 +333,19 @@ impl FromRow for Due {
 }
 /// What trying to download a file came to.
 pub enum Outcome {
-    Kept { sha256: String, size: i64 },
-    Later { reason: String, at: i64, counted: bool },
-    Left { status: FileStatus, reason: String },
+    Kept {
+        sha256: String,
+        size: i64,
+    },
+    Later {
+        reason: String,
+        at: i64,
+        counted: bool,
+    },
+    Left {
+        status: FileStatus,
+        reason: String,
+    },
 }
 
 /// The members' files, downloaded from Slack as they're due, while Communications is on.
@@ -418,23 +431,36 @@ async fn download(state: &Arc<State>, dsp: &str, item: &Due) -> Result<Outcome> 
         return Ok(wait("communications_off"));
     }
     let bot = Bot::new(state, dsp, &item.team);
-    let info = match bot.call("files.info", &json!({"file": item.slack_id})).await {
+    let info = match bot
+        .call("files.info", &json!({"file": item.slack_id}))
+        .await
+    {
         Err(error) if error.code == "slack_file_gone" => {
             return Ok(left(FileStatus::Unavailable, "slack_file_gone"));
         }
         answer => answer?,
     };
     let file = &info["file"];
-    let (Some(url), true) = (file["url_private_download"].as_str(), file["mode"] == "hosted") else {
+    let (Some(url), true) = (
+        file["url_private_download"].as_str(),
+        file["mode"] == "hosted",
+    ) else {
         return Ok(left(FileStatus::Unavailable, "slack_file_not_hosted"));
     };
     let size = file["size"].as_u64().unwrap_or(0);
     if size > UPLOAD_LIMIT {
         return Ok(left(FileStatus::TooLarge, "upload_too_large"));
     }
-    let mime = file["mimetype"].as_str().unwrap_or("application/octet-stream");
+    let mime = file["mimetype"]
+        .as_str()
+        .unwrap_or("application/octet-stream");
     let bytes = bot.download(url, mime).await?;
-    let sha256 = keep(state, dsp, Upload::streamed(size, UPLOAD_LIMIT, bytes).await?).await?;
+    let sha256 = keep(
+        state,
+        dsp,
+        Upload::streamed(size, UPLOAD_LIMIT, bytes).await?,
+    )
+    .await?;
     Ok(Outcome::Kept {
         sha256,
         size: size as i64,
@@ -458,8 +484,12 @@ fn left(status: FileStatus, reason: &str) -> Outcome {
 /// What `error` makes of trying `item`: it waits uncounted for an approval or the workspace to
 /// work again, is tried again later each time, or is given up.
 fn failure(item: &Due, error: &Error) -> Outcome {
-    if ["slack_needs_update", "slack_connection_broken", "slack_not_connected"]
-        .contains(&error.code.as_str())
+    if [
+        "slack_needs_update",
+        "slack_connection_broken",
+        "slack_not_connected",
+    ]
+    .contains(&error.code.as_str())
     {
         return wait(&error.code);
     }

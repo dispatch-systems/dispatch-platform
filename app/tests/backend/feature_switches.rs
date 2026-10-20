@@ -248,9 +248,7 @@ fn a_hidden_feature_keeps_running_out_of_its_members_sight() {
         (refused.code.as_str(), refused.status),
         ("feature_mandatory", 409)
     );
-    let refused = db
-        .show_feature(&dsp, "cortex", false, &owner)
-        .unwrap_err();
+    let refused = db.show_feature(&dsp, "cortex", false, &owner).unwrap_err();
     assert_eq!(
         (refused.code.as_str(), refused.status),
         ("invalid_input", 400)

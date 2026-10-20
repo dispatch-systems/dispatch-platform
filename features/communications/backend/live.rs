@@ -4,12 +4,7 @@
 //! or twenty seconds pass, so either reaches it within a second or two. Who is writing is kept
 //! in memory alone, each for six seconds after their page last said so, or until they send.
 use crate::api::types::{Typing, Writing};
-use dispatch_core::{
-    State,
-    accounts::api::types::PublicUser,
-    db::now,
-    server::live::Topic,
-};
+use dispatch_core::{State, accounts::api::types::PublicUser, db::now, server::live::Topic};
 use std::{
     collections::HashMap,
     sync::{LazyLock, Mutex, MutexGuard},

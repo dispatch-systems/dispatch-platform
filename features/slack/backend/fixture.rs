@@ -440,7 +440,10 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
             }
             let shown = args["blocks"].as_array().into_iter().flatten();
             let files = shown.filter_map(|block| block["slack_file"]["id"].as_str());
-            if !files.into_iter().all(|file| uploaded(team, file) == Some(true)) {
+            if !files
+                .into_iter()
+                .all(|file| uploaded(team, file) == Some(true))
+            {
                 return Err(Error::new("slack_refused", 502));
             }
             let text = |field: &str| args[field].as_str().map(str::to_owned);

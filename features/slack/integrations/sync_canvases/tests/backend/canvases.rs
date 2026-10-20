@@ -196,7 +196,10 @@ async fn a_canvas_is_kept_only_while_something_covers_it_and_left_once_gone_from
     assert!(support::pages(&dsp).is_empty());
     let at = dsp.clone();
     state
-        .run(move |db| db.turn_off_slack_integration(&at, TEAM, ID, "user_1").map(drop))
+        .run(move |db| {
+            db.turn_off_slack_integration(&at, TEAM, ID, "user_1")
+                .map(drop)
+        })
         .await
         .unwrap();
     link(&state, &dsp, TEAM, PHOTOS, "write-ups").await;

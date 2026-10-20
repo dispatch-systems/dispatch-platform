@@ -27,7 +27,11 @@ pub fn matched(typed: &str, name: &str) -> Option<(f64, Vec<(u32, u32)>)> {
             .enumerate()
             .filter_map(|(at, (start, part))| {
                 let (score, letters) = like(word, part)?;
-                Some((score, at, letters.into_iter().map(|letter| start + letter).collect()))
+                Some((
+                    score,
+                    at,
+                    letters.into_iter().map(|letter| start + letter).collect(),
+                ))
             })
             .max_by(|a: &(f64, usize, Vec<usize>), b| a.0.total_cmp(&b.0).then(b.1.cmp(&a.1)));
         if let Some((score, at, letters)) = best {

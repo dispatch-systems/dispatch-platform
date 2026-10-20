@@ -66,7 +66,11 @@ async fn photo(state: &Arc<State>, dsp: &str, team: &str, email: &str) -> Option
         .ok()?;
     let profile = &info["user"]["profile"];
     let photo = (profile["is_custom_image"] == true)
-        .then(|| profile["image_512"].as_str().or(profile["image_192"].as_str()))
+        .then(|| {
+            profile["image_512"]
+                .as_str()
+                .or(profile["image_192"].as_str())
+        })
         .flatten()
         .map(str::to_owned);
     remembered().insert(key, (photo.clone(), now()));
@@ -77,5 +81,7 @@ async fn photo(state: &Arc<State>, dsp: &str, team: &str, email: &str) -> Option
 type Remembered = HashMap<(String, String, String), (Option<String>, i64)>;
 fn remembered() -> std::sync::MutexGuard<'static, Remembered> {
     static REMEMBERED: LazyLock<Mutex<Remembered>> = LazyLock::new(Default::default);
-    REMEMBERED.lock().unwrap_or_else(|poison| poison.into_inner())
+    REMEMBERED
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
 }

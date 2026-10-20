@@ -11,7 +11,10 @@ use serde::Serialize;
 /// waiting first, then the latest answered, with the workspaces they're in and who is typing.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Communications {
     /// The latest change, for `updates` to wait on.
@@ -30,7 +33,10 @@ pub struct Communications {
 /// sidebar, and since when each has.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationsWaiting {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -44,7 +50,10 @@ pub struct CommunicationsWaiting {
 /// One of the DSP's Slack workspaces, where its members write to the app.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationsWorkspace {
     pub team_id: String,
@@ -61,7 +70,10 @@ pub struct CommunicationsWorkspace {
 /// A conversation with a member of one of the DSP's workspaces.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Conversation {
     pub id: String,
@@ -87,7 +99,10 @@ pub struct Conversation {
 /// Match knows them as, if it does.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Correspondent {
     /// Their ID in the workspace.
@@ -104,7 +119,10 @@ pub struct Correspondent {
 /// A message in a conversation.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: String,
@@ -128,7 +146,10 @@ pub struct Message {
 /// the person Driver Match knows them as, by their email address, if it does.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Sender {
     pub user_id: String,
@@ -140,7 +161,10 @@ pub struct Sender {
 /// A photo or file attached to a message, which `files/{id}` serves once it's kept.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageFile {
     pub id: String,
@@ -155,7 +179,10 @@ pub struct MessageFile {
 /// first, or the answered ones before `before`.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Conversations {
     pub conversations: Vec<Conversation>,
@@ -166,7 +193,10 @@ pub struct Conversations {
 /// or those before the message `before`, by its `ts`, in the order written.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationMessages {
     pub conversation: Conversation,
@@ -179,7 +209,10 @@ pub struct ConversationMessages {
 /// those like what was searched, the closest first.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Contacts {
     pub contacts: Vec<Contact>,
@@ -187,7 +220,10 @@ pub struct Contacts {
 /// A member of one of the DSP's workspaces someone at the DSP can message.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Contact {
     pub team_id: String,
@@ -201,7 +237,10 @@ pub struct Contact {
 /// Who at the DSP is writing in which conversation now, and the version of that, for `updates`.
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Typing {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -211,7 +250,10 @@ pub struct Typing {
 /// Someone at the DSP writing in a conversation, other than whoever asks.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Writing {
     pub conversation_id: String,
@@ -225,7 +267,10 @@ pub struct Writing {
 /// as for changes no longer kept.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationsUpdates {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
@@ -240,7 +285,10 @@ pub struct CommunicationsUpdates {
 /// `POST /api/dsp/communications/uploads`: a photo added for a message not sent yet.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationsUpload {
     pub id: String,

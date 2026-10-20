@@ -47,7 +47,13 @@ pub async fn disconnect(state: &Arc<State>, dsp: &str, team: &str) {
 }
 /// Switches the integration `integration` on or off in the DSP's workspace `team`, as someone
 /// who manages Slack does in its Integrations.
-pub async fn switch(state: &Arc<State>, dsp: &str, team: &str, integration: &'static str, on: bool) {
+pub async fn switch(
+    state: &Arc<State>,
+    dsp: &str,
+    team: &str,
+    integration: &'static str,
+    on: bool,
+) {
     let (dsp, team) = (dsp.to_owned(), team.to_owned());
     state
         .run(move |db| match on {

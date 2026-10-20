@@ -41,7 +41,11 @@ pub fn routes() -> Vec<Route> {
         async_get("/api/dsp/communications/updates", USE, updates),
         read("/api/dsp/communications/conversations", USE, found),
         async_post("/api/dsp/communications/conversations", USE, open),
-        read("/api/dsp/communications/conversations/{id}", USE, conversation),
+        read(
+            "/api/dsp/communications/conversations/{id}",
+            USE,
+            conversation,
+        ),
         async_post(
             "/api/dsp/communications/conversations/{id}/messages",
             USE,
@@ -69,9 +73,10 @@ pub fn routes() -> Vec<Route> {
 
 /// One of Communications' IDs, `<prefix>_` and 32 hexadecimal digits.
 fn id(value: &str, prefix: &str) -> Result<String> {
-    let valid = value.strip_prefix(prefix).and_then(|rest| rest.strip_prefix('_')).is_some_and(
-        |hex| hex.len() == 32 && hex.bytes().all(|b| b.is_ascii_hexdigit()),
-    );
+    let valid = value
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.strip_prefix('_'))
+        .is_some_and(|hex| hex.len() == 32 && hex.bytes().all(|b| b.is_ascii_hexdigit()));
     ensure(valid, "invalid_input", 400)?;
     Ok(value.to_owned())
 }
@@ -79,7 +84,9 @@ fn id(value: &str, prefix: &str) -> Result<String> {
 fn slack_id(value: &str, first: &[u8]) -> Result<String> {
     let valid = (2..=32).contains(&value.len())
         && first.contains(&value.as_bytes()[0])
-        && value.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
     ensure(valid, "invalid_input", 400)?;
     Ok(value.to_owned())
 }
@@ -100,7 +107,12 @@ fn before(query: &Value) -> Result<Option<(i64, String)>> {
 
 fn overview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
-    Reply::of(&conversations::overview(db, c.state, c.dsp_id(), c.actor())?)
+    Reply::of(&conversations::overview(
+        db,
+        c.state,
+        c.dsp_id(),
+        c.actor(),
+    )?)
 }
 fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
@@ -145,7 +157,11 @@ fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     let conversation = id(input.param("id"), "cv")?;
     let found = db.communications_conversation(c.dsp_id(), &conversation)?;
-    ensure(found.is_some(), "communications_conversation_not_found", 404)?;
+    ensure(
+        found.is_some(),
+        "communications_conversation_not_found",
+        404,
+    )?;
     if db.mark_communications_done(c.dsp_id(), &conversation, c.actor())? {
         live::changed(c.state, c.dsp_id());
     }
@@ -189,7 +205,11 @@ async fn typing(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
         .read(move |db| {
             let c = access.authorize(db, &asked)?;
             let found = db.communications_conversation(&c.dsp.id, &of)?;
-            ensure(found.is_some(), "communications_conversation_not_found", 404)?;
+            ensure(
+                found.is_some(),
+                "communications_conversation_not_found",
+                404,
+            )?;
             Ok(c)
         })
         .await?;
@@ -271,9 +291,8 @@ async fn updates(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> 
             return Reply::of(&answer);
         }
         // Woken by a change, or by the next of those writing stopping, or at the end.
-        let stops = next.map(|at| {
-            now + Duration::from_millis((at - dispatch_core::db::now()).max(0) as u64)
-        });
+        let stops = next
+            .map(|at| now + Duration::from_millis((at - dispatch_core::db::now()).max(0) as u64));
         let wake = stops.map_or(until, |stops| stops.min(until));
         let _ = tokio::time::timeout_at(wake, listener.changed()).await;
     }

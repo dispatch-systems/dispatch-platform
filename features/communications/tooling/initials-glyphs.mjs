@@ -14,12 +14,71 @@ const WEIGHT = 600;
 
 /** The font's tables, by tag, uncompressed and as WOFF2 stores them. */
 function tables(buf) {
-  const known = ['cmap', 'head', 'hhea', 'hmtx', 'maxp', 'name', 'OS/2', 'post', 'cvt ', 'fpgm',
-    'glyf', 'loca', 'prep', 'CFF ', 'VORG', 'EBDT', 'EBLC', 'gasp', 'hdmx', 'kern', 'LTSH', 'PCLT',
-    'VDMX', 'vhea', 'vmtx', 'BASE', 'GDEF', 'GPOS', 'GSUB', 'EBSC', 'JSTF', 'MATH', 'CBDT', 'CBLC',
-    'COLR', 'CPAL', 'SVG ', 'sbix', 'acnt', 'avar', 'bdat', 'bloc', 'bsln', 'cvar', 'fdsc', 'feat',
-    'fmtx', 'fvar', 'gvar', 'hsty', 'just', 'lcar', 'mort', 'morx', 'opbd', 'prop', 'trak', 'Zapf',
-    'Silf', 'Glat', 'Gloc', 'Feat', 'Sill'];
+  const known = [
+    'cmap',
+    'head',
+    'hhea',
+    'hmtx',
+    'maxp',
+    'name',
+    'OS/2',
+    'post',
+    'cvt ',
+    'fpgm',
+    'glyf',
+    'loca',
+    'prep',
+    'CFF ',
+    'VORG',
+    'EBDT',
+    'EBLC',
+    'gasp',
+    'hdmx',
+    'kern',
+    'LTSH',
+    'PCLT',
+    'VDMX',
+    'vhea',
+    'vmtx',
+    'BASE',
+    'GDEF',
+    'GPOS',
+    'GSUB',
+    'EBSC',
+    'JSTF',
+    'MATH',
+    'CBDT',
+    'CBLC',
+    'COLR',
+    'CPAL',
+    'SVG ',
+    'sbix',
+    'acnt',
+    'avar',
+    'bdat',
+    'bloc',
+    'bsln',
+    'cvar',
+    'fdsc',
+    'feat',
+    'fmtx',
+    'fvar',
+    'gvar',
+    'hsty',
+    'just',
+    'lcar',
+    'mort',
+    'morx',
+    'opbd',
+    'prop',
+    'trak',
+    'Zapf',
+    'Silf',
+    'Glat',
+    'Gloc',
+    'Feat',
+    'Sill',
+  ];
   if (buf.toString('latin1', 0, 4) !== 'wOF2') throw new Error(`${FONT} isn't WOFF2`);
   let off = 48;
   const base128 = () => {
@@ -260,7 +319,10 @@ function variation(gvar, glyph, shapes, coord) {
     let end = peak.map((p) => Math.max(p, 0));
     if (index & 0x4000) {
       start = Array.from({ length: axes }, (_, a) => data.readInt16BE(header + a * 2) / 16384);
-      end = Array.from({ length: axes }, (_, a) => data.readInt16BE(header + axes * 2 + a * 2) / 16384);
+      end = Array.from(
+        { length: axes },
+        (_, a) => data.readInt16BE(header + axes * 2 + a * 2) / 16384,
+      );
       header += axes * 4;
     }
     const here = read(cursor.at);
@@ -278,7 +340,9 @@ function variation(gvar, glyph, shapes, coord) {
     }
     if (scalar === 0) continue;
     const touched = new Map();
-    (points ?? [...Array(count).keys()]).forEach((point, i) => touched.set(point, { x: dx[i], y: dy[i] }));
+    (points ?? [...Array(count).keys()]).forEach((point, i) =>
+      touched.set(point, { x: dx[i], y: dy[i] }),
+    );
     const delta = inferred(shapes, touched, count);
     delta.forEach((d, i) => {
       moved[i].x += d.x * scalar;
@@ -305,7 +369,11 @@ function inferred(shapes, touched, count) {
         let after = set.find((t) => t > id) ?? set[0];
         const value = {};
         for (const axis of ['x', 'y']) {
-          const [c, c1, c2] = [contour[local][axis], contour[before - first][axis], contour[after - first][axis]];
+          const [c, c1, c2] = [
+            contour[local][axis],
+            contour[before - first][axis],
+            contour[after - first][axis],
+          ];
           const [d1, d2] = [touched.get(before)[axis], touched.get(after)[axis]];
           if (c1 === c2) value[axis] = d1 === d2 ? d1 : 0;
           else if (c <= Math.min(c1, c2)) value[axis] = c1 < c2 ? d1 : d2;
@@ -342,7 +410,7 @@ function path(contour) {
   }
   points.push(points[0]);
   const drawn = [`M${at(points[0])}`];
-  for (let i = 1; i < points.length; ) {
+  for (let i = 1; i < points.length;) {
     const p = points[i];
     if (p[2]) {
       drawn.push(`L${at(p)}`);
@@ -356,6 +424,20 @@ function path(contour) {
     }
   }
   return `${drawn.join('')}Z`;
+}
+
+/** Path data in pieces of at most 96 characters, each broken before a command. */
+function lines(path) {
+  const pieces = [];
+  let piece = '';
+  for (const command of path.match(/[MLQZ][^MLQZ]*/g)) {
+    if (piece && piece.length + command.length > 96) {
+      pieces.push(piece);
+      piece = '';
+    }
+    piece += command;
+  }
+  return [...pieces, piece];
 }
 
 const glyphs = ids.map((id, n) => {
@@ -401,7 +483,9 @@ const rust = [
       `    // ${String.fromCharCode(65 + n)}`,
       '    Glyph {',
       `        advance: ${advance}.0,`,
-      `        path: "${path}",`,
+      '        path: concat!(',
+      ...lines(path).map((line) => `            "${line}",`),
+      '        ),',
       '    },',
     ].join('\n'),
   ),

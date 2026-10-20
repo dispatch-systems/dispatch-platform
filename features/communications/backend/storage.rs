@@ -188,8 +188,12 @@ pub trait CommunicationsStore {
     ) -> Result<Option<String>>;
     /// Keeps a message someone at the DSP sent in the conversation, with the photos they
     /// added, which become its own.
-    fn keep_communications_reply(&self, dsp: &str, conversation: &str, sent: &Sent)
-    -> Result<Message>;
+    fn keep_communications_reply(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        sent: &Sent,
+    ) -> Result<Message>;
     /// Marks the conversation done without an answer, as the member `by`, while it waits:
     /// whether it was waiting.
     fn mark_communications_done(&self, dsp: &str, conversation: &str, by: &str) -> Result<bool>;
@@ -206,8 +210,7 @@ pub trait CommunicationsStore {
     /// Every conversation with a message, the latest first.
     fn communications_with_messages(&self, dsp: &str) -> Result<Vec<Conversation>>;
     /// The conversations `ids` name, in no order.
-    fn communications_conversations(&self, dsp: &str, ids: &[String])
-    -> Result<Vec<Conversation>>;
+    fn communications_conversations(&self, dsp: &str, ids: &[String]) -> Result<Vec<Conversation>>;
     /// The latest message of each conversation `ids` names.
     fn latest_communications_messages(&self, dsp: &str, ids: &[String]) -> Result<Vec<Message>>;
     /// The conversation's messages before the one Slack knows as `before`, the latest `most`,
@@ -223,8 +226,11 @@ pub trait CommunicationsStore {
     fn communications_revision(&self, dsp: &str) -> Result<i64>;
     /// The conversations changed since the change `after`, and the latest change: none for
     /// changes no longer kept, which reading afresh answers.
-    fn communications_changed_since(&self, dsp: &str, after: i64)
-    -> Result<(Option<Vec<String>>, i64)>;
+    fn communications_changed_since(
+        &self,
+        dsp: &str,
+        after: i64,
+    ) -> Result<(Option<Vec<String>>, i64)>;
     /// The workspace's conversations whose direct message is known.
     fn communications_in(&self, dsp: &str, team: &str) -> Result<Vec<Conversation>>;
     /// Notes that catching up read the conversation's messages up to `at`.
@@ -235,8 +241,10 @@ pub trait CommunicationsStore {
 
 impl CommunicationsStore for Store {
     fn communications_conversation(&self, dsp: &str, id: &str) -> Result<Option<Conversation>> {
-        self.dsp(dsp)?
-            .one_as("SELECT * FROM communications_conversations WHERE id=?", [id])
+        self.dsp(dsp)?.one_as(
+            "SELECT * FROM communications_conversations WHERE id=?",
+            [id],
+        )
     }
     fn communications_conversation_with(
         &self,
@@ -260,8 +268,11 @@ impl CommunicationsStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let id = opened(&db, team, user, channel, name)?;
-            db.one_as("SELECT * FROM communications_conversations WHERE id=?", [&id])?
-                .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
+            db.one_as(
+                "SELECT * FROM communications_conversations WHERE id=?",
+                [&id],
+            )?
+            .ok_or_else(|| Error::new("communications_conversation_not_found", 404))
         })
     }
     fn keep_communications_message(&self, dsp: &str, written: &Written) -> Result<Option<Kept>> {
@@ -293,11 +304,14 @@ impl CommunicationsStore for Store {
                 let Some(edited_at) = written.edited_at else {
                     return Ok(None);
                 };
-                return Ok(edited(&db, &conversation, &written.ts, &written.text, edited_at)?
-                    .then(|| Kept {
-                        conversation,
-                        files: Vec::new(),
-                    }));
+                return Ok(
+                    edited(&db, &conversation, &written.ts, &written.text, edited_at)?.then(|| {
+                        Kept {
+                            conversation,
+                            files: Vec::new(),
+                        }
+                    }),
+                );
             }
             let mut files = Vec::new();
             for attached in &written.files {
@@ -358,7 +372,15 @@ impl CommunicationsStore for Store {
             db.exec(
                 "INSERT INTO communications_messages (id,conversation_id,ts,direction,sent_by,\
                  sender_name,text,at) VALUES (?,?,?,'out',?,?,?,?)",
-                params![id, conversation, sent.ts, sent.by, sent.name, sent.text, sent.at],
+                params![
+                    id,
+                    conversation,
+                    sent.ts,
+                    sent.by,
+                    sent.name,
+                    sent.text,
+                    sent.at
+                ],
             )?;
             for (photo, slack_id) in sent.photos {
                 db.exec(
@@ -414,11 +436,7 @@ impl CommunicationsStore for Store {
             [],
         )
     }
-    fn communications_conversations(
-        &self,
-        dsp: &str,
-        ids: &[String],
-    ) -> Result<Vec<Conversation>> {
+    fn communications_conversations(&self, dsp: &str, ids: &[String]) -> Result<Vec<Conversation>> {
         self.dsp(dsp)?.query_as(
             "SELECT * FROM communications_conversations \
              WHERE id IN (SELECT value FROM json_each(?))",

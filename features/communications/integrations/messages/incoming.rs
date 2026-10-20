@@ -30,11 +30,13 @@ pub fn ts(at: i64) -> String {
 /// Slack, Communications and its integration there were all on. None while any is off.
 pub fn kept_since(db: &Store, dsp: &str, team: &str) -> Result<Option<i64>> {
     let on = [
-        db.feature_on_since(dsp, dispatch_slack::FEATURE.name)?,
+        db.feature_on_since(dsp, "slack")?,
         db.feature_on_since(dsp, crate::FEATURE.name)?,
         kit::integration_on_since(db, dsp, team, ID)?,
     ];
-    Ok(on.into_iter().try_fold(0, |since, on| on.map(|on| since.max(on))))
+    Ok(on
+        .into_iter()
+        .try_fold(0, |since, on| on.map(|on| since.max(on))))
 }
 
 /// Keeps what Slack told of in the workspace `team`: a message a member wrote, or an edit of one.
@@ -124,7 +126,9 @@ pub async fn keep(
     };
     let of = dsp.to_owned();
     let kept = state
-        .run_scoped(dsp, DOMAIN, move |db| db.keep_communications_message(&of, &written))
+        .run_scoped(dsp, DOMAIN, move |db| {
+            db.keep_communications_message(&of, &written)
+        })
         .await?;
     let Some(kept) = kept else {
         return Ok(false);
@@ -156,7 +160,12 @@ async fn edited(state: &Arc<State>, dsp: &str, team: &str, message: &Value) -> R
     let text = text::plain(message["text"].as_str().unwrap_or_default(), |id| {
         names.get(id).cloned()
     });
-    let (of, team, user, ts) = (dsp.to_owned(), team.to_owned(), user.to_owned(), ts.to_owned());
+    let (of, team, user, ts) = (
+        dsp.to_owned(),
+        team.to_owned(),
+        user.to_owned(),
+        ts.to_owned(),
+    );
     let changed = state
         .run_scoped(dsp, DOMAIN, move |db| {
             db.edit_communications_message(&of, &team, &user, &ts, &text, edited_at)

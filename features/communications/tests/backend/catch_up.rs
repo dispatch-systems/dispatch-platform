@@ -26,7 +26,13 @@ async fn what_dispatch_didnt_hear_is_caught_up_once_from_when_it_was_on() {
     let messages = support::messages(&state, &dsp, &kept.id).await;
     let read: Vec<(&str, usize, bool)> = messages
         .iter()
-        .map(|message| (message.text.as_str(), message.files.len(), message.in_thread))
+        .map(|message| {
+            (
+                message.text.as_str(),
+                message.files.len(),
+                message.in_thread,
+            )
+        })
         .collect();
     assert_eq!(
         read,
@@ -39,9 +45,18 @@ async fn what_dispatch_didnt_hear_is_caught_up_once_from_when_it_was_on() {
     );
     // Caught up again, nothing is kept twice.
     let at = dsp.clone();
-    let before = state.read(move |db| db.communications_revision(&at)).await.unwrap();
+    let before = state
+        .read(move |db| db.communications_revision(&at))
+        .await
+        .unwrap();
     catch_up(&state, &dsp).await.unwrap();
     let at = dsp.clone();
-    let after = state.read(move |db| db.communications_revision(&at)).await.unwrap();
-    assert_eq!((after, support::messages(&state, &dsp, &kept.id).await.len()), (before, 4));
+    let after = state
+        .read(move |db| db.communications_revision(&at))
+        .await
+        .unwrap();
+    assert_eq!(
+        (after, support::messages(&state, &dsp, &kept.id).await.len()),
+        (before, 4)
+    );
 }

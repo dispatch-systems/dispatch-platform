@@ -132,7 +132,9 @@ pub const FEATURE: Feature = Feature {
                 Migration {
                     id: 7,
                     name: "slack_integrations_off",
-                    apply: Sql(include_str!("migrations/dsp/0007_slack_integrations_off.sql")),
+                    apply: Sql(include_str!(
+                        "migrations/dsp/0007_slack_integrations_off.sql"
+                    )),
                 },
             ],
         },

@@ -46,7 +46,9 @@ impl People {
     }
     /// The workspace `team`'s member `user`, whose Slack profile last named them `name`.
     pub fn correspondent(&self, team: &str, user: &str, name: &str) -> Correspondent {
-        let person = self.everyone.holding(kit::SOURCE, &kit::member_id(team, user));
+        let person = self
+            .everyone
+            .holding(kit::SOURCE, &kit::member_id(team, user));
         Correspondent {
             user_id: user.to_owned(),
             name: person.map_or_else(|| name.to_owned(), |person| person.name.clone()),
@@ -78,11 +80,19 @@ pub fn conversations(
     dsp: &str,
     kept: Vec<storage::Conversation>,
 ) -> Result<Vec<Conversation>> {
-    let ids: Vec<String> = kept.iter().map(|conversation| conversation.id.clone()).collect();
+    let ids: Vec<String> = kept
+        .iter()
+        .map(|conversation| conversation.id.clone())
+        .collect();
     let last = db.latest_communications_messages(dsp, &ids)?;
-    let of: Vec<String> = last.iter().map(|message| message.conversation.clone()).collect();
-    let mut latest: HashMap<String, Message> =
-        of.into_iter().zip(messages(db, people, dsp, last)?).collect();
+    let of: Vec<String> = last
+        .iter()
+        .map(|message| message.conversation.clone())
+        .collect();
+    let mut latest: HashMap<String, Message> = of
+        .into_iter()
+        .zip(messages(db, people, dsp, last)?)
+        .collect();
     Ok(kept
         .into_iter()
         .map(|conversation| Conversation {
@@ -116,13 +126,16 @@ pub fn messages(
             status,
             ..
         } = file;
-        files.entry(message.unwrap_or_default()).or_default().push(MessageFile {
-            id,
-            name,
-            mime,
-            size,
-            status,
-        });
+        files
+            .entry(message.unwrap_or_default())
+            .or_default()
+            .push(MessageFile {
+                id,
+                name,
+                mime,
+                size,
+                status,
+            });
     }
     Ok(kept
         .into_iter()
@@ -162,12 +175,7 @@ pub fn overview(db: &Store, state: &State, dsp: &str, me: &str) -> Result<Commun
     })
 }
 /// The answered conversations before `before`, its latest message's time and its ID.
-pub fn older(
-    db: &Store,
-    state: &State,
-    dsp: &str,
-    before: (i64, &str),
-) -> Result<Conversations> {
+pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let mut answered = db.answered_communications(dsp, Some(before), PAGE + 1)?;
     let more = answered.len() > PAGE;
@@ -184,7 +192,8 @@ pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conve
         .communications_with_messages(dsp)?
         .into_iter()
         .filter_map(|conversation| {
-            let named = people.correspondent(&conversation.team, &conversation.user, &conversation.name);
+            let named =
+                people.correspondent(&conversation.team, &conversation.user, &conversation.name);
             let (score, matched) = search::matched(typed, &named.name)?;
             Some((score, matched, conversation))
         })
@@ -193,7 +202,10 @@ pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conve
     found.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.2.last_at.cmp(&a.2.last_at)));
     let more = found.len() > PAGE;
     found.truncate(PAGE);
-    let (marks, kept): (Vec<_>, Vec<_>) = found.into_iter().map(|(_, matched, kept)| (matched, kept)).unzip();
+    let (marks, kept): (Vec<_>, Vec<_>) = found
+        .into_iter()
+        .map(|(_, matched, kept)| (matched, kept))
+        .unzip();
     let mut conversations = conversations(db, &people, dsp, kept)?;
     for (conversation, matched) in conversations.iter_mut().zip(marks) {
         conversation.matched = matched;

@@ -69,8 +69,13 @@ pub async fn open(
     state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
             let c = access.revalidate(db, &c)?;
-            let kept =
-                db.open_communications_conversation(&c.dsp.id, &team, &user, &channel, &member.name)?;
+            let kept = db.open_communications_conversation(
+                &c.dsp.id,
+                &team,
+                &user,
+                &channel,
+                &member.name,
+            )?;
             conversations::one(db, &shared, &c.dsp.id, &kept.id)
         })
         .await
@@ -233,8 +238,14 @@ pub async fn upload(
     state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
             let c = access.revalidate(db, &c)?;
-            let id =
-                db.add_communications_upload(&c.dsp.id, &c.auth.user.id, &name, &mime, size, &sha256)?;
+            let id = db.add_communications_upload(
+                &c.dsp.id,
+                &c.auth.user.id,
+                &name,
+                &mime,
+                size,
+                &sha256,
+            )?;
             Ok(CommunicationsUpload {
                 id,
                 name,

@@ -13,7 +13,10 @@ pub fn plain(text: &str, named: impl Fn(&str) -> Option<String>) -> String {
             break;
         };
         read.push_str(&unescaped(&rest[..start]));
-        read.push_str(&unescaped(&marked(&rest[start + 1..start + length], &named)));
+        read.push_str(&unescaped(&marked(
+            &rest[start + 1..start + length],
+            &named,
+        )));
         rest = &rest[start + length + 1..];
     }
     read.push_str(&unescaped(rest));
@@ -27,7 +30,13 @@ fn marked(inside: &str, named: &impl Fn(&str) -> Option<String>) -> String {
         None => (inside, None),
     };
     if let Some(user) = target.strip_prefix('@') {
-        return format!("@{}", label.map(str::to_owned).or_else(|| named(user)).unwrap_or_else(|| user.to_owned()));
+        return format!(
+            "@{}",
+            label
+                .map(str::to_owned)
+                .or_else(|| named(user))
+                .unwrap_or_else(|| user.to_owned())
+        );
     }
     if let Some(channel) = target.strip_prefix('#') {
         return format!("#{}", label.unwrap_or(channel));

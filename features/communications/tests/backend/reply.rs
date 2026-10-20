@@ -22,7 +22,9 @@ const TEAM: &str = "T0FIXTURE1";
 async fn started(state: &Arc<State>, bot: &Bot, dm: &str) -> String {
     let event = json!({"type": "message", "channel_type": "im", "channel": dm,
         "user": "U0FIXJORDAN", "text": "Van won't start", "ts": incoming::ts(now() - 1)});
-    incoming::heard(state, &bot.dsp, TEAM, &event).await.unwrap();
+    incoming::heard(state, &bot.dsp, TEAM, &event)
+        .await
+        .unwrap();
     support::conversation_with(state, &bot.dsp, TEAM, "U0FIXJORDAN")
         .await
         .unwrap()
@@ -46,12 +48,18 @@ async fn an_answer_goes_out_as_written_under_its_writers_name_and_slack_photo_or
     let id = started(&state, &bot, "D0REPLY").await;
     // No member of the workspaces has their email address: their initials.
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    send(&state, &owner, USE, &id, " Keys <@here> & go ", &[]).await.unwrap();
+    send(&state, &owner, USE, &id, " Keys <@here> & go ", &[])
+        .await
+        .unwrap();
     // A member with a photo of their own: that photo. One with Slack's drawn photo: initials.
     let morgan = support::member(&state, &dsp, "Morgan", "Lane", "Morgan.Lane@example.com").await;
-    send(&state, &morgan, USE, &id, "On my way", &[]).await.unwrap();
+    send(&state, &morgan, USE, &id, "On my way", &[])
+        .await
+        .unwrap();
     let jordan = support::member(&state, &dsp, "Jordan", "Ellis", "jordan.ellis@example.com").await;
-    send(&state, &jordan, USE, &id, "Thanks", &[]).await.unwrap();
+    send(&state, &jordan, USE, &id, "Thanks", &[])
+        .await
+        .unwrap();
     let initials = |letters: &str| Some(initials::address(&state.config.origin, letters));
     let posted: Vec<_> = slack::posted(TEAM, "D0REPLY")
         .into_iter()
@@ -60,7 +68,11 @@ async fn an_answer_goes_out_as_written_under_its_writers_name_and_slack_photo_or
     assert_eq!(
         posted,
         [
-            ("Keys &lt;@here&gt; &amp; go".into(), Some("Test Owner".into()), initials("TO")),
+            (
+                "Keys &lt;@here&gt; &amp; go".into(),
+                Some("Test Owner".into()),
+                initials("TO")
+            ),
             (
                 "On my way".into(),
                 Some("Morgan Lane".into()),
@@ -118,9 +130,13 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
     let png = initials::image("PH.png").unwrap().to_vec();
     let photo = add("Dashboard.png", "image/png", png).await.unwrap();
     // One that isn't the photo it says it is is refused.
-    let refused = add("Notes.png", "image/png", b"not a picture".to_vec()).await.unwrap_err();
+    let refused = add("Notes.png", "image/png", b"not a picture".to_vec())
+        .await
+        .unwrap_err();
     assert_eq!(refused.code, "communications_photo_kind");
-    let message = send(&state, &owner, USE, &id, "", &[photo.id.clone()]).await.unwrap();
+    let message = send(&state, &owner, USE, &id, "", &[photo.id.clone()])
+        .await
+        .unwrap();
     assert_eq!(
         (message.files.len(), message.files[0].status),
         (1, FileStatus::Kept)
@@ -130,7 +146,9 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
     assert_eq!(posted.blocks[0]["type"], "image");
     assert!(posted.blocks[0]["slack_file"]["id"].as_str().is_some());
     // Sent, it's no longer one to add to another message.
-    let again = send(&state, &owner, USE, &id, "Again", &[photo.id]).await.unwrap_err();
+    let again = send(&state, &owner, USE, &id, "Again", &[photo.id])
+        .await
+        .unwrap_err();
     assert_eq!(again.code, "communications_upload_not_found");
 }
 
@@ -146,10 +164,14 @@ async fn someone_at_the_dsp_messages_a_member_first() {
     );
     // Opened, it isn't listed until a message is in it.
     assert_eq!(listed(&state, &dsp).await, 0);
-    send(&state, &owner, USE, &opened.id, "Welcome aboard", &[]).await.unwrap();
+    send(&state, &owner, USE, &opened.id, "Welcome aboard", &[])
+        .await
+        .unwrap();
     assert_eq!(slack::posted(TEAM, "D0FIXOWNER")[0].text, "Welcome aboard");
     assert_eq!(listed(&state, &dsp).await, 1);
     // Only a member of a workspace, while they're active there.
-    let gone = open(&state, &owner, USE, TEAM, "U0NOBODY").await.unwrap_err();
+    let gone = open(&state, &owner, USE, TEAM, "U0NOBODY")
+        .await
+        .unwrap_err();
     assert_eq!(gone.code, "communications_contact_not_found");
 }
