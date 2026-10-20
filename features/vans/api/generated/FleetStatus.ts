@@ -9,7 +9,7 @@ export type FleetStatus = { collectedAt: string | null,
 /**
  * Vans the fleet lists that the DSP runs: active, in maintenance or pending.
  */
-active: number,
+running: number,
 /**
  * Vans it lists as inactive: returned, sold or retired.
  */

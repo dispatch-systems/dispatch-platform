@@ -12,7 +12,7 @@ use serde::Serialize;
 pub struct FleetStatus {
     pub collected_at: Option<String>,
     /// Vans the fleet lists that the DSP runs: active, in maintenance or pending.
-    pub active: usize,
+    pub running: usize,
     /// Vans it lists as inactive: returned, sold or retired.
     pub inactive: usize,
     /// When a schedule collects it next.

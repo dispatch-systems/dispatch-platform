@@ -26,7 +26,7 @@ fn the_fleet_is_collected_by_the_dsps_abbreviation_and_counts_what_it_lists() {
     assert_eq!(
         (
             status.collected_at.as_deref(),
-            status.active,
+            status.running,
             status.inactive
         ),
         (Some("2026-10-02T05:00:00.000Z"), 4, 1)

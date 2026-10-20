@@ -17,7 +17,7 @@ test('the fleet collects, for those who may collect it', async (t) => {
   });
   const status = await owner.read('/api/dsp/vans/status');
   assert.ok(status.collectedAt);
-  assert.deepEqual([status.active, status.inactive], [5, 1]);
+  assert.deepEqual([status.running, status.inactive], [5, 1]);
   // No default role holds vans.collect, so a member is refused until a role grants it.
   const member = await f.client(demo.member);
   await member.select(dsp.id);

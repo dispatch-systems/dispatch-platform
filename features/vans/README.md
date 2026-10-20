@@ -10,9 +10,9 @@ bar and its schedules are on its Settings page.
 - **Permission:** `vans.collect`, to see when the fleet was collected, collect it on demand and
   change its schedules.
 - **API**, all behind `vans.collect`: `GET /api/dsp/vans/status` (when it was collected, how
-  many vans it lists as run and as inactive, the next scheduled run and the recent jobs),
-  `POST …/collect`, `POST …/jobs/{id}/cancel`, and core's schedule routes under `…/schedules`
-  for the `vans` collection.
+  many vans the DSP runs and how many are inactive, the next scheduled run and the recent
+  jobs), `POST …/collect`, `POST …/jobs/{id}/cancel`, and core's schedule routes under
+  `…/schedules` for the `vans` collection.
 - **Collection:** Cortex's `vans` reads the fleet as Amazon's fleet management page lists it,
   `/fleet-management/api/vehicles`, over plain HTTP with the session the job's browser started
   from, which closes once it is copied: every status the list accepts (active, maintenance,
