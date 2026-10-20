@@ -34,6 +34,9 @@ const OUTSIDE_THE_API: &[&str] = &[
     // signature, made with the app's signing secret, which the feature checks before anything.
     "/slack/events",
     "/slack/interactions",
+    // The image of someone's initials, which Slack fetches to show beside a message they sent:
+    // two letters, and nothing a session or a DSP holds.
+    "/communications/initials/1/{name}",
 ];
 
 /// Every owner that registers routes, with the folder its `tests/api/routes.txt` is in: each

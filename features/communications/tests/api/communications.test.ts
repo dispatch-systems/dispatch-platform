@@ -55,9 +55,10 @@ test('a direct message reaches Communications live, and its answer and photo go 
     photo = file?.status === 'kept' ? file.id : '';
     return Boolean(photo);
   });
-  const bytes = await owner.get(`${route}/files/${photo}`);
+  const bytes = await f.raw(`${route}/files/${photo}`, undefined, owner.headers);
   assert.equal(bytes.status, 200);
   assert.equal(bytes.headers.get('content-type'), 'image/png');
+  assert.deepEqual([...new Uint8Array(await bytes.arrayBuffer()).slice(0, 4)], [137, 80, 78, 71]);
 
   // Answered, it waits no more; written to again, it waits; marked done, it doesn't.
   const answer = await owner.post(`${route}/conversations/${conversation.id}/messages`, {
