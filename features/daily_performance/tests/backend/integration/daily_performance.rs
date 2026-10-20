@@ -37,6 +37,17 @@ fn collection() -> &'static Section {
 }
 /// The fixture's day `date`, published by a job of its own, which it answers.
 fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance::Capture {
+    publish_with(store, dsp, date, key, |_| {}).1
+}
+/// The fixture's day `date` as `change` leaves it, published by a job of its own: the job,
+/// and the day.
+fn publish_with(
+    store: &Store,
+    dsp: &str,
+    date: &str,
+    key: &str,
+    change: impl Fn(&mut daily_performance::Capture),
+) -> (String, daily_performance::Capture) {
     let queued = store
         .enqueue_daily_performance(dsp, None, key, date, date)
         .unwrap();
@@ -50,11 +61,12 @@ fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance
         panic!("discover")
     };
     let scope = discovery.scope("area-fixture", "company-fixture").unwrap();
-    let days = daily_performance::fixture(&request).unwrap();
+    let mut days = daily_performance::fixture(&request).unwrap();
+    change(&mut days.days[0]);
     store
         .publish_daily_performance(dsp, job, &days, &scope)
         .unwrap();
-    days.days[0].clone()
+    (job.to_owned(), days.days[0].clone())
 }
 #[test]
 fn unknown_stored_dataset_returns_an_error_without_panicking() {
@@ -397,4 +409,108 @@ fn the_days_per_job_migration_keeps_every_row_and_allows_a_job_its_days() {
         )
         .is_err()
     );
+}
+// A finished day answered with fewer rows than it holds, as Cortex answers while it
+// republishes a day, is kept beside the published day until a read at least half an hour
+// later sees the same; a day that grew, and the day not over yet, publish at once.
+#[test]
+fn a_finished_day_that_shrank_waits_for_a_second_read() {
+    let (_root, store, dsp) = ready();
+    let today = dispatch_core::foundation::clock::today(chrono_tz::America::Los_Angeles);
+    let yesterday = (today - chrono::Duration::days(1)).to_string();
+    let date = yesterday.as_str();
+    let shrink = |capture: &mut daily_performance::Capture| {
+        capture.datasets[0].rows.pop();
+    };
+    let (full, _) = publish_with(&store, &dsp, date, "full", |_| {});
+    let data = store.daily_performance_db(&dsp).unwrap();
+    let active = |date: &str| {
+        data.one(
+            "SELECT job_id FROM daily_publications WHERE date=? AND active=1",
+            [date],
+        )
+        .unwrap()
+        .unwrap()["job_id"]
+            .clone()
+    };
+    let (held, _) = publish_with(&store, &dsp, date, "shrunk-1", shrink);
+    assert_eq!(active(date), json!(full));
+    // A held read keeps its counts alone.
+    let kept = |job: &str, table: &str| {
+        data.count(
+            &format!(
+                "SELECT count(*) FROM {table} WHERE publication_id IN \
+                 (SELECT id FROM daily_publications WHERE job_id=?)"
+            ),
+            [job],
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        (kept(&held, "daily_datasets"), kept(&held, "daily_rows")),
+        (22, 0)
+    );
+    publish_with(&store, &dsp, date, "shrunk-2", shrink);
+    assert_eq!(active(date), json!(full));
+    // Half an hour later the same counts are what the day now is: the held reads came after
+    // the published one, and longer ago than that. Its published day, older than the
+    // refresh, is due again meanwhile.
+    data.exec(
+        "UPDATE daily_publications SET collected_at=CASE active WHEN 1 THEN ? ELSE ? END",
+        [at(now() - 21 * 3_600_000), at(now() - 31 * 60_000)],
+    )
+    .unwrap();
+    let due = store.daily_performance_jobs(&dsp).unwrap();
+    assert!(due[0].1["dates"].as_array().unwrap().contains(&json!(date)));
+    let (confirmed, _) = publish_with(&store, &dsp, date, "shrunk-3", shrink);
+    assert_eq!(active(date), json!(confirmed));
+    // A smaller count than the one confirmed is held again; more rows publish at once.
+    publish_with(&store, &dsp, date, "smaller", |capture| {
+        capture.datasets[0].rows.truncate(1)
+    });
+    assert_eq!(active(date), json!(confirmed));
+    let (grown, _) = publish_with(&store, &dsp, date, "grown", |_| {});
+    assert_eq!(active(date), json!(grown));
+    // Reads held before the day was published again confirm nothing about it.
+    publish_with(&store, &dsp, date, "after", shrink);
+    assert_eq!(active(date), json!(grown));
+    // The day not over yet changes as it goes, and is never held.
+    let today = today.to_string();
+    publish_with(&store, &dsp, &today, "today", |_| {});
+    let (shrunk_today, _) = publish_with(&store, &dsp, &today, "today-shrunk", shrink);
+    assert_eq!(active(&today), json!(shrunk_today));
+}
+// A dataset gone empty, as it reads while Cortex answers nothing, waits twelve hours for a
+// second read to agree before the day publishes it.
+#[test]
+fn a_finished_day_gone_empty_waits_half_a_day() {
+    let (_root, store, dsp) = ready();
+    let today = dispatch_core::foundation::clock::today(chrono_tz::America::Los_Angeles);
+    let yesterday = (today - chrono::Duration::days(1)).to_string();
+    let empty = |capture: &mut daily_performance::Capture| capture.datasets[0].rows.clear();
+    let (full, _) = publish_with(&store, &dsp, &yesterday, "full", |_| {});
+    let data = store.daily_performance_db(&dsp).unwrap();
+    let active = || {
+        data.one("SELECT job_id FROM daily_publications WHERE active=1", [])
+            .unwrap()
+            .unwrap()["job_id"]
+            .clone()
+    };
+    let age = |held_minutes: i64| {
+        data.exec(
+            "UPDATE daily_publications SET collected_at=CASE active WHEN 1 THEN ? ELSE ? END",
+            [
+                at(now() - 24 * 3_600_000),
+                at(now() - held_minutes * 60_000),
+            ],
+        )
+        .unwrap()
+    };
+    publish_with(&store, &dsp, &yesterday, "empty-1", empty);
+    age(31);
+    publish_with(&store, &dsp, &yesterday, "empty-2", empty);
+    assert_eq!(active(), json!(full));
+    age(13 * 60);
+    let (confirmed, _) = publish_with(&store, &dsp, &yesterday, "empty-3", empty);
+    assert_eq!(active(), json!(confirmed));
 }

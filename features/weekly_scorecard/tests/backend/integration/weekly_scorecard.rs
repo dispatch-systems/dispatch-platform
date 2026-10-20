@@ -191,7 +191,9 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
     let capture = weekly_scorecard::fixture(&request("2026-W37")).unwrap();
     let first = publish(&db, &id, "one", "2026-W37", &capture);
     let mut again = capture.clone();
-    again.datasets[1].rows.pop();
+    let mut late = again.datasets[1].rows[0].clone();
+    late["tracking_id"] = json!("TBA000000000009");
+    again.datasets[1].rows.push(late);
     again.started_at += 1000;
     again.finished_at += 2000;
     let second = publish(&db, &id, "two", "2026-W37", &again);
@@ -218,7 +220,7 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
         storage
             .count("SELECT count(*) FROM returns_to_station", [])
             .unwrap(),
-        3
+        5
     );
     storage
         .exec(
@@ -230,8 +232,89 @@ fn collecting_a_week_again_supersedes_its_publication_and_keeps_the_history() {
         storage
             .count("SELECT count(*) FROM returns_to_station", [])
             .unwrap(),
-        1
+        3
     );
+}
+
+// A week answered with fewer rows than it holds, as Cortex answers while it republishes a
+// week, is kept beside the published week until a read at least half an hour later sees the
+// same; a week that grew publishes at once.
+#[test]
+fn a_week_that_shrank_waits_for_a_second_read() {
+    install();
+    let (_root, db, id) = ready();
+    let full = weekly_scorecard::fixture(&request("2026-W36")).unwrap();
+    let first = publish(&db, &id, "full", "2026-W36", &full);
+    let mut shrunk = full.clone();
+    shrunk.datasets[1].rows.pop();
+    let storage = db.weekly_scorecard_db(&id).unwrap();
+    let active = || {
+        storage
+            .one(
+                "SELECT job_id FROM weekly_scorecard_publications WHERE active=1",
+                [],
+            )
+            .unwrap()
+            .unwrap()["job_id"]
+            .clone()
+    };
+    let checked = || {
+        storage
+            .one("SELECT checked_at FROM weekly_scorecard_weeks", [])
+            .unwrap()
+            .unwrap()["checked_at"]
+            .clone()
+    };
+    let before = checked();
+    let held = publish(&db, &id, "shrunk-1", "2026-W36", &shrunk);
+    assert_eq!(active(), json!(first));
+    // Held, the week keeps the check that found it and stays due; its read keeps its
+    // counts alone.
+    assert_eq!(checked(), before);
+    assert_eq!(
+        storage
+            .count(
+                "SELECT count(*) FROM returns_to_station WHERE publication_id IN \
+                 (SELECT id FROM weekly_scorecard_publications WHERE job_id=?)",
+                [&held],
+            )
+            .unwrap(),
+        0
+    );
+    publish(&db, &id, "shrunk-2", "2026-W36", &shrunk);
+    assert_eq!(active(), json!(first));
+    assert_eq!(
+        db.weekly_scorecard_weeks(&id).unwrap().weeks[0]
+            .publication
+            .as_ref()
+            .unwrap()
+            .row_count,
+        full.row_count()
+    );
+    // Half an hour later the same counts are what the week now is: the held reads came
+    // after the published one, and longer ago than that.
+    let ago = |minutes: i64| dispatch_core::db::at(dispatch_core::db::now() - minutes * 60_000);
+    storage
+        .exec(
+            "UPDATE weekly_scorecard_publications SET collected_at=CASE active WHEN 1 THEN ? ELSE ? END",
+            [ago(120), ago(31)],
+        )
+        .unwrap();
+    let confirmed = publish(&db, &id, "shrunk-3", "2026-W36", &shrunk);
+    assert_eq!(active(), json!(confirmed));
+    let mut grown = shrunk.clone();
+    grown.datasets[1].rows = full.datasets[1].rows.clone();
+    let grew = publish(&db, &id, "grown", "2026-W36", &grown);
+    assert_eq!(active(), json!(grew));
+    // A week published before its datasets' counts were kept can't be compared, and isn't
+    // held.
+    storage
+        .exec("DELETE FROM weekly_scorecard_sources", [])
+        .unwrap();
+    // The jobs above, which publish without running, leave the queue room for one more.
+    common::set_every_status(&db, "succeeded").unwrap();
+    let legacy = publish(&db, &id, "legacy", "2026-W36", &shrunk);
+    assert_eq!(active(), json!(legacy));
 }
 
 #[test]
@@ -243,7 +326,9 @@ fn week_counts_use_capture_metadata_and_recover_missing_legacy_dataset_counts() 
     let old = weekly_scorecard::fixture(&request("2026-W37")).unwrap();
     publish(&db, &id, "old", "2026-W37", &old);
     let mut current = old.clone();
-    current.datasets[1].rows.pop();
+    let mut late = current.datasets[1].rows[0].clone();
+    late["tracking_id"] = json!("TBA000000000009");
+    current.datasets[1].rows.push(late);
     current.started_at += 1000;
     current.finished_at += 2000;
     publish(&db, &id, "current", "2026-W37", &current);

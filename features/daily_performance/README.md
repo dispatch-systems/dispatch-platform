@@ -28,7 +28,11 @@ the section was saved already; the old value stays, read only by that move.
 
 Each day's capture is validated against the requested dates and discovered company/station.
 A job publishes its days atomically, each idempotent per job and day; recollection replaces a
-day's active publication while retaining history.
+day's active publication while retaining history. A finished day recollected with fewer rows
+in any dataset than its active publication holds, as Cortex answers while it republishes a
+day, is kept beside it, with its counts alone, until a read at least half an hour later
+(twelve hours for a dataset gone empty) sees the same counts; the day not over yet always
+publishes.
 Nonempty datasets have observed coverage. Empty responses stay unconfirmed and do not prove
 zero events or completed work.
 
