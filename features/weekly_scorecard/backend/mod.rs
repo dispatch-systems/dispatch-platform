@@ -46,7 +46,7 @@ const CONFIRM_EMPTY_AFTER_MS: i64 = 12 * 3_600_000;
 fn held(db: &DspLease<'_>, capture: &Capture) -> Result<bool> {
     let Some(active) = db.one(
         "SELECT id,collected_at FROM weekly_scorecard_publications \
-         WHERE week=? AND station=? AND company_id=? AND active=1",
+         WHERE week=? AND station=? AND company_id=? AND active=1 AND scope_verified=1",
         [&capture.week, &capture.station, &capture.company_id],
     )?
     else {
@@ -352,32 +352,30 @@ impl WeeklyScorecardStore for Store {
                 ],
             )?;
             // A held week keeps its counts alone, which a later read is compared with.
-            for (dataset, captured) in DATASETS
-                .iter()
-                .zip(&capture.datasets)
-                .filter(|_| !hold)
-            {
-                let sql = format!(
-                    "INSERT INTO {}(publication_id,row_index,week,data_date,transporter_id,tracking_id,\
-                     event_id,impact,row) VALUES (?,?,?,?,?,?,?,?,?)",
-                    dataset.table
-                );
-                for (index, row) in captured.rows.iter().enumerate() {
-                    let keys = keys(dataset, row);
-                    db.exec(
-                        &sql,
-                        params![
-                            publication,
-                            index as i64,
-                            capture.week,
-                            keys.data_date,
-                            keys.transporter_id,
-                            keys.tracking_id,
-                            keys.event_id,
-                            keys.impact,
-                            row.to_string()
-                        ],
-                    )?;
+            if !hold {
+                for (dataset, captured) in DATASETS.iter().zip(&capture.datasets) {
+                    let sql = format!(
+                        "INSERT INTO {}(publication_id,row_index,week,data_date,transporter_id,tracking_id,\
+                         event_id,impact,row) VALUES (?,?,?,?,?,?,?,?,?)",
+                        dataset.table
+                    );
+                    for (index, row) in captured.rows.iter().enumerate() {
+                        let keys = keys(dataset, row);
+                        db.exec(
+                            &sql,
+                            params![
+                                publication,
+                                index as i64,
+                                capture.week,
+                                keys.data_date,
+                                keys.transporter_id,
+                                keys.tracking_id,
+                                keys.event_id,
+                                keys.impact,
+                                row.to_string()
+                            ],
+                        )?;
+                    }
                 }
             }
             for captured in &capture.datasets {
