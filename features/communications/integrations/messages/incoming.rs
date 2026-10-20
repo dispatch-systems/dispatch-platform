@@ -79,11 +79,25 @@ pub async fn keep(
     let Some(sent) = millis(ts).filter(|_| written(message) && !channel.is_empty()) else {
         return Ok(false);
     };
-    let (at, of) = (dsp.to_owned(), team.to_owned());
-    let (since, names) = state
-        .read(move |db| Ok((kept_since(db, &at, &of)?, names(db, &at, &of)?)))
+    let edited_at = message["edited"]["ts"].as_str().and_then(millis);
+    let (at, of, by, sent_ts) = (
+        dsp.to_owned(),
+        team.to_owned(),
+        user.to_owned(),
+        ts.to_owned(),
+    );
+    let (since, kept, names) = state
+        .read(move |db| {
+            Ok((
+                kept_since(db, &at, &of)?,
+                db.communications_edited(&at, &of, &by, &sent_ts)?,
+                names(db, &at, &of)?,
+            ))
+        })
         .await?;
-    if since.is_none_or(|since| sent < since) {
+    // Sent before its messages may be kept, or kept already, as Slack or catching up told of it
+    // again, with no later edit.
+    if since.is_none_or(|since| sent < since) || kept.is_some_and(|kept| edited_at <= kept) {
         return Ok(false);
     }
     let name = match names.get(user) {
@@ -121,7 +135,7 @@ pub async fn keep(
             names.get(id).cloned()
         }),
         at: sent,
-        edited_at: message["edited"]["ts"].as_str().and_then(millis),
+        edited_at,
         files,
     };
     let of = dsp.to_owned();

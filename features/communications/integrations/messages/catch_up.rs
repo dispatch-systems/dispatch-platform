@@ -2,9 +2,11 @@
 //! down, kept as Slack would have told of it. As the server starts, and hourly, each direct
 //! message the app has in each workspace where Communications works, once its admin has
 //! approved reading them, is read (`im:history`) from when it was last read, or from when its
-//! messages may first be kept, never earlier, with the replies since then in its threads, those
-//! begun up to a week before too. Where a pass left off moves on only once it read all there
-//! was. Its direct messages are those Dispatch knows, and every other Slack lists the app as
+//! messages may first be kept, never earlier, with the replies since then in its threads. What
+//! was written in the week before is read again for any edit or reply since. Slack lists the
+//! latest first, so a direct message with more since then than a pass reads goes on, the next
+//! pass, from the oldest message it read, and is read up to the first pass's time once it's back
+//! down. Its direct messages are those Dispatch knows, and every other Slack lists the app as
 //! having (`im:read`) once the workspace's admin has approved that.
 use super::{ID, incoming};
 use crate::backend::storage::{CommunicationsStore, Conversation, DOMAIN};
@@ -31,8 +33,8 @@ const LISTING: &str = "im:read";
 /// The messages each page of Slack's holds, and the pages read of a conversation in one pass.
 const PAGE: u64 = 200;
 const PAGES: usize = 10;
-/// How far before where it left off a direct message is read again, for the replies in threads
-/// begun before then, in milliseconds: a week.
+/// How far before where it left off a direct message is read again, for edits and the replies in
+/// threads begun before then, in milliseconds: a week.
 const THREADS_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
 fn pass(state: Arc<State>, due: bool) -> Upkeep {
@@ -48,10 +50,12 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
     })
 }
 
-/// A direct message the app has in a workspace: with whom, and up to when it was read.
+/// A direct message the app has in a workspace: with whom, up to when it was read, and where
+/// reading it goes on from, if a pass left more than it reads.
 struct Direct {
     user: String,
     caught_up_at: Option<i64>,
+    catching_up: Option<(i64, String)>,
 }
 /// What catching up a workspace starts from: from when its messages may be kept, whether the
 /// app may list its direct messages, and those Dispatch knows, by their IDs.
@@ -88,6 +92,7 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
                         let direct = Direct {
                             user: kept.user,
                             caught_up_at: kept.caught_up_at,
+                            catching_up: kept.catching_up,
                         };
                         (kept.channel, direct)
                     })
@@ -110,6 +115,7 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
                 directs.entry(channel).or_insert(Direct {
                     user,
                     caught_up_at: None,
+                    catching_up: None,
                 });
             }
         }
@@ -118,22 +124,31 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
                 continue;
             }
             let from = direct.caught_up_at.unwrap_or(0).max(workspace.since);
-            let started = now();
-            match read(state, &bot, &channel, from, workspace.since).await {
-                Ok(true) => {}
-                // More than a pass reads is left for the next.
-                Ok(false) => continue,
+            // Going on from where a pass left off, or reading up to now.
+            let (to, before) = match direct.catching_up {
+                Some((to, before)) => (to, Some(before)),
+                None => (now(), None),
+            };
+            let read = async {
+                earlier(state, &bot, &channel, from).await?;
+                since(state, &bot, &channel, from, before.as_deref()).await
+            };
+            let left = match read.await {
+                Ok(left) => left,
                 Err(error) => {
                     kit::failed(FAILED, &error);
                     continue;
                 }
-            }
+            };
             let (at, team, user) = (dsp.to_owned(), workspace.team.clone(), direct.user);
             state
                 .run_scoped(dsp, DOMAIN, move |db| {
-                    match db.communications_conversation_with(&at, &team, &user)? {
-                        Some(kept) => db.caught_up_communications(&at, &kept.id, started),
-                        None => Ok(()),
+                    let Some(kept) = db.communications_conversation_with(&at, &team, &user)? else {
+                        return Ok(());
+                    };
+                    match left {
+                        None => db.caught_up_communications(&at, &kept.id, to),
+                        Some(before) => db.catching_up_communications(&at, &kept.id, to, &before),
                     }
                 })
                 .await?;
@@ -166,46 +181,91 @@ async fn listed(bot: &Bot) -> Result<Vec<(String, String)>> {
     Ok(found)
 }
 
-/// Keeps what was written in the direct message `channel` since `from`, in milliseconds, and the
-/// replies in its threads since then, those begun up to a week before it too, never from before
-/// `since`: whether it read all of it. What it reads again from that week, it keeps once still,
-/// and any later edit of it.
-async fn read(state: &Arc<State>, bot: &Bot, channel: &str, from: i64, since: i64) -> Result<bool> {
-    let oldest = incoming::ts((from - THREADS_MS).max(since));
-    let replied = incoming::ts(from);
+/// Keeps what was written in the direct message `channel` since `from`, in milliseconds, before
+/// the message Slack knows as `before` when a pass left off there, with the replies since then in
+/// its threads: where the next pass goes on from, when there's more than a pass reads, which
+/// Slack lists the latest first.
+async fn since(
+    state: &Arc<State>,
+    bot: &Bot,
+    channel: &str,
+    from: i64,
+    before: Option<&str>,
+) -> Result<Option<String>> {
+    let (oldest, mut cursor, mut last) = (incoming::ts(from), Value::Null, None);
+    for _ in 0..PAGES {
+        let page = bot
+            .call(
+                "conversations.history",
+                &json!({"channel": channel, "oldest": oldest, "latest": before,
+                    "inclusive": true, "limit": PAGE, "cursor": cursor}),
+            )
+            .await?;
+        for message in page["messages"].as_array().into_iter().flatten() {
+            incoming::keep(state, &bot.dsp, &bot.team, channel, message).await?;
+            replied(state, bot, channel, message, from).await?;
+            last = message["ts"].as_str().map(str::to_owned).or(last);
+        }
+        cursor = match page["response_metadata"]["next_cursor"].as_str() {
+            Some(next) if !next.is_empty() => json!(next),
+            _ => return Ok(None),
+        };
+    }
+    Ok(last)
+}
+/// Keeps what changed since `from`, in milliseconds, of what was written in the direct message
+/// `channel` in the week before: each edit, and each reply in its threads. A pass reads as much
+/// of it as it reads of anything.
+async fn earlier(state: &Arc<State>, bot: &Bot, channel: &str, from: i64) -> Result<()> {
+    let (oldest, latest) = (incoming::ts(from - THREADS_MS), incoming::ts(from));
     let mut cursor = Value::Null;
     for _ in 0..PAGES {
         let page = bot
             .call(
                 "conversations.history",
-                &json!({"channel": channel, "oldest": oldest, "limit": PAGE, "cursor": cursor}),
+                &json!({"channel": channel, "oldest": oldest, "latest": latest, "limit": PAGE,
+                    "cursor": cursor}),
             )
             .await?;
         for message in page["messages"].as_array().into_iter().flatten() {
-            incoming::keep(state, &bot.dsp, &bot.team, channel, message).await?;
-            let latest = message["latest_reply"].as_str().and_then(incoming::millis);
-            if let (Some(thread), true) = (message["ts"].as_str(), latest > Some(from))
-                && !replies(state, bot, channel, thread, &replied).await?
-            {
-                return Ok(false);
+            let edited = message["edited"]["ts"].as_str().and_then(incoming::millis);
+            if edited > Some(from) {
+                incoming::keep(state, &bot.dsp, &bot.team, channel, message).await?;
             }
+            replied(state, bot, channel, message, from).await?;
         }
         cursor = match page["response_metadata"]["next_cursor"].as_str() {
             Some(next) if !next.is_empty() => json!(next),
-            _ => return Ok(true),
+            _ => return Ok(()),
         };
     }
-    Ok(false)
+    Ok(())
 }
-/// Keeps the replies in the thread `thread` of the direct message `channel` since `oldest`:
-/// whether it read all of them.
+/// Keeps the replies since `from`, in milliseconds, in the thread `message` began, if it has any.
+async fn replied(
+    state: &Arc<State>,
+    bot: &Bot,
+    channel: &str,
+    message: &Value,
+    from: i64,
+) -> Result<()> {
+    let latest = message["latest_reply"].as_str().and_then(incoming::millis);
+    match message["ts"].as_str() {
+        Some(thread) if latest > Some(from) => {
+            replies(state, bot, channel, thread, &incoming::ts(from)).await
+        }
+        _ => Ok(()),
+    }
+}
+/// Keeps the replies in the thread `thread` of the direct message `channel` since `oldest`, as
+/// many as a pass reads.
 async fn replies(
     state: &Arc<State>,
     bot: &Bot,
     channel: &str,
     thread: &str,
     oldest: &str,
-) -> Result<bool> {
+) -> Result<()> {
     let mut cursor = Value::Null;
     for _ in 0..PAGES {
         let page = bot
@@ -222,10 +282,10 @@ async fn replies(
         }
         cursor = match page["response_metadata"]["next_cursor"].as_str() {
             Some(next) if !next.is_empty() => json!(next),
-            _ => return Ok(true),
+            _ => return Ok(()),
         };
     }
-    Ok(false)
+    Ok(())
 }
 
 #[cfg(test)]

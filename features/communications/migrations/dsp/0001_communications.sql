@@ -7,7 +7,9 @@
 -- message yet (`last_at` null) was opened, or found by catching up, and holds nothing. Whether
 -- it waits on an answer follows from its messages and when someone at the DSP marked it done
 -- (`done_at`), and is kept beside them: `state`, and since when it waits. Catching up has read
--- its messages up to `caught_up_at`.
+-- its messages up to `caught_up_at`; one with more since then than a pass reads goes on, the
+-- next pass, from the oldest it read (`catching_up_before`), and has read up to
+-- `catching_up_to` once it gets back down to `caught_up_at`.
 CREATE TABLE IF NOT EXISTS communications_conversations (
     id TEXT PRIMARY KEY,
     team_id TEXT NOT NULL,
@@ -20,6 +22,8 @@ CREATE TABLE IF NOT EXISTS communications_conversations (
     done_at INTEGER,
     done_by TEXT,
     caught_up_at INTEGER,
+    catching_up_to INTEGER,
+    catching_up_before TEXT,
     UNIQUE (team_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS communications_conversations_latest

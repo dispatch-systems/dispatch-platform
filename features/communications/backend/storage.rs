@@ -57,6 +57,10 @@ pub struct Conversation {
     pub last_at: Option<i64>,
     /// Up to when catching up has read its messages.
     pub caught_up_at: Option<i64>,
+    /// Where catching up goes on from, with more since `caught_up_at` than a pass reads: up to
+    /// when it will have read once it's back down there, and the oldest message it read, by its
+    /// `ts`.
+    pub catching_up: Option<(i64, String)>,
 }
 impl FromRow for Conversation {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -70,6 +74,10 @@ impl FromRow for Conversation {
             waiting_since: row.get("waiting_since")?,
             last_at: row.get("last_at")?,
             caught_up_at: row.get("caught_up_at")?,
+            catching_up: match (row.get("catching_up_to")?, row.get("catching_up_before")?) {
+                (Some(to), Some(before)) => Some((to, before)),
+                _ => None,
+            },
         })
     }
 }
@@ -235,6 +243,24 @@ pub trait CommunicationsStore {
     fn communications_in(&self, dsp: &str, team: &str) -> Result<Vec<Conversation>>;
     /// Notes that catching up read the conversation's messages up to `at`.
     fn caught_up_communications(&self, dsp: &str, conversation: &str, at: i64) -> Result<()>;
+    /// Notes that catching up read the conversation's messages down to the one Slack knows as
+    /// `before`, of those up to `to`, and goes on from there.
+    fn catching_up_communications(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        to: i64,
+        before: &str,
+    ) -> Result<()>;
+    /// When the workspace's member `user`'s message `ts` was last edited, as kept: none when it
+    /// isn't kept, and none within when it's kept unedited.
+    fn communications_edited(
+        &self,
+        dsp: &str,
+        team: &str,
+        user: &str,
+        ts: &str,
+    ) -> Result<Option<Option<i64>>>;
     /// Clears what's kept of the workspace beside its messages: each conversation with none.
     fn forget_empty_communications(&self, dsp: &str, team: &str) -> Result<()>;
 }
@@ -502,11 +528,40 @@ impl CommunicationsStore for Store {
     }
     fn caught_up_communications(&self, dsp: &str, conversation: &str, at: i64) -> Result<()> {
         self.dsp(dsp)?.exec(
-            "UPDATE communications_conversations SET caught_up_at=max(coalesce(caught_up_at,0),?) \
-             WHERE id=?",
+            "UPDATE communications_conversations SET caught_up_at=max(coalesce(caught_up_at,0),?),\
+             catching_up_to=NULL,catching_up_before=NULL WHERE id=?",
             params![at, conversation],
         )?;
         Ok(())
+    }
+    fn catching_up_communications(
+        &self,
+        dsp: &str,
+        conversation: &str,
+        to: i64,
+        before: &str,
+    ) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "UPDATE communications_conversations SET catching_up_to=?,catching_up_before=? \
+             WHERE id=?",
+            params![to, before, conversation],
+        )?;
+        Ok(())
+    }
+    fn communications_edited(
+        &self,
+        dsp: &str,
+        team: &str,
+        user: &str,
+        ts: &str,
+    ) -> Result<Option<Option<i64>>> {
+        let found: Option<(Option<i64>,)> = self.dsp(dsp)?.one_as(
+            "SELECT m.edited_at FROM communications_messages m \
+             JOIN communications_conversations c ON c.id=m.conversation_id \
+             WHERE c.team_id=? AND c.user_id=? AND m.ts=?",
+            [team, user, ts],
+        )?;
+        Ok(found.map(|(edited,)| edited))
     }
     fn forget_empty_communications(&self, dsp: &str, team: &str) -> Result<()> {
         self.dsp(dsp)?.exec(

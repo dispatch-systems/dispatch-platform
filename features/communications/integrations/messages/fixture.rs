@@ -5,7 +5,9 @@
 //! listening: a message, a photo, a question with a reply in its thread, and the app's own
 //! answer, each stamped when a workspace's is first read, so it's newer than when Communications
 //! came on; and one from before 2026, before it ever was. A test reads a workspace's once, and
-//! may add a reply to the question later (`reply_later`).
+//! may add a reply to the question later (`reply_later`). In Managers, Slack lists the app as
+//! having Cameron's too, holding more than a pass reads. Each lists as Slack does: the latest
+//! first, within `oldest` and `latest`, a page at a time.
 use dispatch_core::{Result, db::now};
 use serde_json::{Value, json};
 use std::{
@@ -15,6 +17,10 @@ use std::{
 
 /// Jordan's direct message with the app.
 pub const JORDAN: &str = "D0FIXJORDAN";
+/// Cameron's, in the one workspace where it holds more than a pass reads, and how many.
+pub const BUSY: &str = "D0FIXCAM";
+pub const BUSY_TEAM: &str = "T0FIXTURE3";
+const CHATTER: usize = 2050;
 /// The photo Jordan sent, as Slack's own fixture holds it.
 const PHOTO: &str = "F0FIXDMPHOTO";
 
@@ -22,28 +28,30 @@ const PHOTO: &str = "F0FIXDMPHOTO";
 /// Communications calls.
 pub fn answer(team: &str, method: &str, args: &Value) -> Option<Result<Value>> {
     let channel = args["channel"].as_str().unwrap_or_default();
-    let oldest = args["oldest"].as_str().and_then(seconds).unwrap_or(0.0);
+    let busy = team == BUSY_TEAM;
     Some(Ok(match method {
         "conversations.open" => {
             let user = args["users"].as_str().unwrap_or_default();
             json!({"ok": true, "channel": {"id": format!("D{}", user.get(1..).unwrap_or_default())}})
         }
-        "users.conversations" => json!({
-            "ok": true,
-            "channels": [
-                {"id": JORDAN, "is_im": true, "user": "U0FIXJORDAN"},
-                {"id": "D0FIXSLACKBOT", "is_im": true, "user": "USLACKBOT"},
-            ],
-            "response_metadata": {"next_cursor": ""},
-        }),
-        "conversations.history" => {
-            let written = if channel == JORDAN {
-                history(team)
-            } else {
-                Vec::new()
-            };
-            json!({"ok": true, "messages": since(written, oldest), "has_more": false})
+        "users.conversations" => {
+            let mut channels = vec![
+                json!({"id": JORDAN, "is_im": true, "user": "U0FIXJORDAN"}),
+                json!({"id": "D0FIXSLACKBOT", "is_im": true, "user": "USLACKBOT"}),
+            ];
+            if busy {
+                channels.push(json!({"id": BUSY, "is_im": true, "user": "U0FIXCAM"}));
+            }
+            json!({"ok": true, "channels": channels, "response_metadata": {"next_cursor": ""}})
         }
+        "conversations.history" => listed(
+            match channel {
+                JORDAN => history(team),
+                BUSY if busy => chatter(team),
+                _ => Vec::new(),
+            },
+            args,
+        ),
         "conversations.replies" => {
             let thread = args["ts"].as_str().unwrap_or_default();
             let replied: Vec<Value> = if channel == JORDAN {
@@ -53,7 +61,7 @@ pub fn answer(team: &str, method: &str, args: &Value) -> Option<Result<Value>> {
             } else {
                 Vec::new()
             };
-            json!({"ok": true, "messages": since(replied, oldest), "has_more": false})
+            listed(replied, args)
         }
         _ => return None,
     }))
@@ -112,14 +120,52 @@ pub fn reply_later(team: &str, text: &str, after: i64) {
     let mut added = ADDED.lock().unwrap_or_else(|poison| poison.into_inner());
     added.push((team.to_owned(), text.to_owned(), ts));
 }
-/// `messages` written after `oldest`, in seconds, as Slack lists them.
-fn since(messages: Vec<Value>, oldest: f64) -> Vec<Value> {
-    let written = |message: &Value| message["ts"].as_str().and_then(seconds).unwrap_or(0.0);
-    messages
-        .into_iter()
-        .filter(|message| written(message) > oldest)
+/// Cameron's messages in the workspace with more of them than a pass reads, the latest first,
+/// each a microsecond after the last from when its history was stamped.
+fn chatter(team: &str) -> Vec<Value> {
+    (1..=CHATTER)
+        .rev()
+        .map(|n| {
+            json!({"type": "message", "user": "U0FIXCAM", "text": format!("Stop {n} done"),
+                "ts": format!("{}.{n:06}", stamp(team))})
+        })
         .collect()
 }
-fn seconds(ts: &str) -> Option<f64> {
-    ts.parse().ok()
+/// `messages`, the latest first, as Slack lists them with `args`: those after `oldest` and before
+/// `latest`, or at either too when `inclusive`, `limit` at a time from `cursor`. Slack's `ts` are
+/// all of one width, so they compare as text.
+fn listed(messages: Vec<Value>, args: &Value) -> Value {
+    let bound = |field: &str| args[field].as_str().unwrap_or_default().to_owned();
+    let (oldest, latest, inclusive) = (bound("oldest"), bound("latest"), args["inclusive"] == true);
+    let within: Vec<Value> = messages
+        .into_iter()
+        .filter(|message| {
+            let ts = message["ts"].as_str().unwrap_or_default();
+            let after = if inclusive {
+                ts >= oldest.as_str()
+            } else {
+                ts > oldest.as_str()
+            };
+            let before = latest.is_empty()
+                || if inclusive {
+                    ts <= latest.as_str()
+                } else {
+                    ts < latest.as_str()
+                };
+            after && before
+        })
+        .collect();
+    let limit = args["limit"].as_u64().unwrap_or(100) as usize;
+    let from: usize = args["cursor"]
+        .as_str()
+        .and_then(|at| at.parse().ok())
+        .unwrap_or(0);
+    let next = if from + limit < within.len() {
+        (from + limit).to_string()
+    } else {
+        String::new()
+    };
+    let page: Vec<Value> = within.into_iter().skip(from).take(limit).collect();
+    json!({"ok": true, "messages": page, "has_more": !next.is_empty(),
+        "response_metadata": {"next_cursor": next}})
 }

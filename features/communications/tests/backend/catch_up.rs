@@ -93,3 +93,42 @@ async fn a_reply_in_a_thread_begun_before_where_catching_up_left_off_is_caught_u
         ("Swapped with Tyler", true)
     );
 }
+
+#[tokio::test]
+async fn a_direct_message_with_more_than_a_pass_reads_is_caught_up_over_passes() {
+    let (_root, state, bot) = support::connected(fixture::BUSY_TEAM).await;
+    let dsp = bot.dsp.clone();
+    let kept = || {
+        let (state, dsp) = (state.clone(), dsp.clone());
+        async move {
+            let conversation =
+                support::conversation_with(&state, &dsp, fixture::BUSY_TEAM, "U0FIXCAM")
+                    .await
+                    .unwrap();
+            let (at, id) = (dsp.clone(), conversation.id.clone());
+            let count = state
+                .read(move |db| {
+                    db.dsp(&at)?.count(
+                        "SELECT count(*) FROM communications_messages WHERE conversation_id=?",
+                        [&id],
+                    )
+                })
+                .await
+                .unwrap();
+            (count, conversation)
+        }
+    };
+    // A pass reads the latest it can, and leaves where it stopped for the next.
+    catch_up(&state, &dsp).await.unwrap();
+    let (count, first) = kept().await;
+    assert!(count < 2050, "{count}");
+    assert!(first.catching_up.is_some());
+    // The next goes on from there, down to the start, and is caught up.
+    catch_up(&state, &dsp).await.unwrap();
+    let (count, second) = kept().await;
+    assert_eq!(count, 2050);
+    assert_eq!(
+        (second.catching_up, second.caught_up_at),
+        (None, first.catching_up.map(|(to, _)| to))
+    );
+}
