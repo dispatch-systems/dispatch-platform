@@ -19,7 +19,7 @@ use serde_json::{Map, Value, json};
 const MANAGE: &str = "timecard.manage";
 
 /// Its sync schedules, drawn by its own component: each runs Paycom's timecards, Cortex's meal
-/// breaks, or both at once, which core's schedule editor doesn't offer.
+/// breaks, or both at once, a box ticked for each source.
 pub const SCHEDULES: Section = section("timecard.schedules", "Sync schedules", MANAGE, &[])
     .custom()
     .keywords(&["collection", "schedule"])

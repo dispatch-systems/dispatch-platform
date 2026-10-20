@@ -10,6 +10,8 @@ use dispatch_core::{
     manifest::{Section, number, schedules, section},
     settings,
 };
+use serde::Deserialize;
+use serde_json::{Value, json};
 
 /// The schedules of its `routes` collection, which core's schedule routes keep: each reads
 /// yesterday, as `routes`, or today so far, as `routes_today`.
@@ -26,8 +28,6 @@ pub const SCHEDULES: Section = section(
     )
     .collects("Day", &[(COLLECTION, "Yesterday"), (TODAY, "Today so far")])],
 );
-use serde::Deserialize;
-use serde_json::{Value, json};
 
 /// How many days of route data the DSP keeps, counted back from today where it is; none keeps
 /// every day. Hourly, the days past it are deleted, so a window that passes a stored day asks

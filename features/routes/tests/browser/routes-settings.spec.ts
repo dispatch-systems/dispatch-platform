@@ -1,10 +1,13 @@
-import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  login,
+  openDsp,
+  type Dispatch,
+} from '../../../../core/shell/tests/support/fixtures.js';
 
-test('Settings draws route data from its declaration, and a window that deletes stored days asks first', async ({
-  page,
-  dispatch,
-}) => {
-  // A day from two months ago, collected while every day is kept.
+/** Northline Logistics' owner, the DSP and its profile, with a station and Cortex, as Routes needs. */
+async function seedRoutes(dispatch: Dispatch) {
   const owner = await dispatch.client();
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(north.id);
@@ -18,6 +21,15 @@ test('Settings draws route data from its declaration, and a window that deletes 
     password: 'fixture-password',
   });
   expect(connected.status, connected.body).toBe(200);
+  return { owner, north, profile };
+}
+
+test('Settings draws route data from its declaration, and a window that deletes stored days asks first', async ({
+  page,
+  dispatch,
+}) => {
+  const { owner, north, profile } = await seedRoutes(dispatch);
+  // A day from two months ago, collected while every day is kept.
   const day = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
   const queued = await owner.post('/api/dsp/routes/collect', { requestId: 'old', date: day });
   expect(queued.status, queued.body).toBe(202);
@@ -156,19 +168,7 @@ test('a Routes schedule reads yesterday unless it is set to read today so far', 
   page,
   dispatch,
 }) => {
-  const owner = await dispatch.client();
-  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  await owner.select(north.id);
-  const profile = { name: north.name, abbreviation: 'NLL', stationCode: 'TST1' };
-  expect(
-    (await owner.post('/api/dsp/profile', { ...profile, timezone: north.timezone })).status,
-  ).toBe(200);
-  await owner.select(north.id);
-  const connected = await owner.post('/api/dsp/connections/cortex', {
-    username: 'fixture@example.test',
-    password: 'fixture-password',
-  });
-  expect(connected.status, connected.body).toBe(200);
+  const { owner } = await seedRoutes(dispatch);
   const stored = async () => (await owner.read('/api/dsp/routes/schedules')).schedules;
 
   await login(page);

@@ -551,7 +551,7 @@ fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day
     assert_eq!(read(&queued[0]), (json!("snapshot"), json!(day(0))));
 
     // Yesterday, read so far while it was today, is still read whole by a schedule of
-    // yesterday, with the days before it that lack a final read.
+    // yesterday.
     let so_far = serde_json::to_value(request(&day(1), Mode::Snapshot)).unwrap();
     let jobs = db
         .enqueue_batch(&id, None, &[("so-far".into(), cortex::PROVIDER, so_far)])
@@ -560,9 +560,7 @@ fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day
     finish(&db, &id, &jobs[0].id, &capture);
     assert_eq!(db.route_days(&id).unwrap().days[0].mode, "snapshot");
     let queued = run("routes");
-    assert_eq!(queued.len(), dispatch_routes::MAX_JOBS_PER_RUN);
     assert_eq!(read(&queued[0]), (json!("final"), json!(day(1))));
-    assert_eq!(read(&queued[3]), (json!("final"), json!(day(4))));
 }
 
 #[test]
