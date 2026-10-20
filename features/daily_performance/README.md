@@ -2,7 +2,9 @@
 
 Amazon Daily Quality and Day Safety, stored separately from posted Weekly Scorecards.
 Cortex shares authentication, scope discovery and the performance HTTP reader. A daily job
-reads exactly one date from 22 datasets with at most six concurrent requests.
+reads the dates it is asked for, oldest first, from 22 datasets, all at once: on its first
+attempt each run of consecutive dates is one request per dataset, its rows given back to the
+days they name, and a retry reads each date on its own.
 
 The feature owns `daily_performance/daily_performance.sqlite`, publication history, indexed
 rows and source coverage. Its switch, permissions (`view`, `collect`, `manage`), schedules
@@ -24,16 +26,16 @@ moves in once as the server starts (`upgrade_storage`, through `settings::carry_
 the section was saved already; the old value stays, read only by that move.
 `daily_performance.policy_updated`, from before, still reads in the log.
 
-Each capture is validated against its requested date and discovered company/station.
-Publication is atomic and idempotent per job; recollection replaces the active publication
-while retaining history.
+Each day's capture is validated against the requested dates and discovered company/station.
+A job publishes its days atomically, each idempotent per job and day; recollection replaces a
+day's active publication while retaining history.
 Nonempty datasets have observed coverage. Empty responses stay unconfirmed and do not prove
 zero events or completed work.
 
-Daily's keeper declares a bounded 31-job queue capacity so the supported 31-day backfill and
-default seven-day scheduled refresh can be admitted atomically. Worker/browser concurrency,
-idempotency and manual batch exclusivity remain enforced; other collections retain their
-existing capacities.
+A scheduled refresh queues one job for every date due, and a backfill of up to 31 days is
+one job. Daily's keeper declares a bounded 31-job queue capacity: a job reads its days in as
+many requests as one day takes. Worker/browser concurrency, idempotency and manual batch
+exclusivity remain enforced; other collections retain their existing capacities.
 
 Daily feedback contains response counts, not individual package reviews. RTS fields retain
 daily coaching and exemptions. Assessed and live safety datasets stay separate because
