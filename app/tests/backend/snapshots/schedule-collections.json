@@ -1,11 +1,11 @@
 [
   "paycom",
   "meal_break",
-  "routes",
   "both",
-  "routes_today",
   "weekly_scorecard",
   "daily_performance",
+  "routes",
+  "routes_today",
   "dvic",
   "associates",
   "vans"

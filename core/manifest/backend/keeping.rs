@@ -134,24 +134,27 @@ impl Registry {
             .iter()
             .flat_map(|feature| feature.schedule_aliases)
     }
-    /// Every collection a schedule may name: the collections an alias runs, the aliases,
-    /// then the other collections, each in the registry's order.
+    /// Every collection a schedule may name, in the registry's order, each alias right after
+    /// the last of the collections it runs.
     pub fn schedule_collections(&self) -> Vec<&'static str> {
-        let (together, alone): (Vec<&'static Collection>, Vec<_>) = self
+        let collections: Vec<&'static Collection> = self
             .collectors
             .iter()
             .flat_map(|collector| collector.collections())
-            .partition(|collection| {
-                self.schedule_aliases()
-                    .any(|alias| alias.runs.contains(&collection.job_kind))
+            .collect();
+        let runs = |alias: &ScheduleAlias, collection: &Collection| {
+            alias.runs.contains(&collection.job_kind)
+        };
+        let mut names = Vec::new();
+        for (at, collection) in collections.iter().enumerate() {
+            names.push(collection.schedule);
+            let last = self.schedule_aliases().filter(|alias| {
+                runs(alias, collection)
+                    && !collections[at + 1..].iter().any(|later| runs(alias, later))
             });
-        let aliases = self.schedule_aliases().map(|alias| alias.schedule);
-        together
-            .iter()
-            .map(|collection| collection.schedule)
-            .chain(aliases)
-            .chain(alone.iter().map(|collection| collection.schedule))
-            .collect()
+            names.extend(last.map(|alias| alias.schedule));
+        }
+        names
     }
     /// What a schedule of `collection` runs, each collection with its collector, in the
     /// registry's order: the collections the alias of that name runs, or the one it names.

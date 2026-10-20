@@ -116,13 +116,13 @@ text_enum! {
         Error => "error",
     }
 }
-/// What a schedule collects: one provider's data, or every scheduled provider's.
+/// What a schedule collects: one provider's data, several at once, or one read another way.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ScheduleCollection(&'static str);
 impl ScheduleCollection {
-    /// Every collection a schedule may name, as the registry declares them: the
-    /// collections a feature's alias runs, such as Timecard's `both`, the aliases, then the
-    /// others. Each is one a feature keeps, as the registry makes sure.
+    /// Every collection a schedule may name, as the registry declares them, each alias, such
+    /// as Timecard's `both`, right after the last of the collections it runs. Each is one a
+    /// feature keeps, as the registry makes sure.
     pub fn all() -> impl Iterator<Item = Self> {
         registry().schedule_collections().into_iter().map(Self)
     }
@@ -169,8 +169,8 @@ impl ts_rs::TS for ScheduleCollection {
     const IS_ENUM: bool = true;
     fn docs() -> Option<String> {
         Some(
-            "/**\n * What a schedule collects: one provider's data, or every scheduled \
-             provider's.\n */\n"
+            "/**\n * What a schedule collects: one provider's data, several at once, or \
+             one read another way.\n */\n"
                 .to_owned(),
         )
     }
