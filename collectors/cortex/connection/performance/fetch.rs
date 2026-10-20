@@ -83,7 +83,11 @@ fn rows(dataset: &str, value: &Value) -> Result<Vec<Value>> {
         return Ok(Vec::new());
     };
     let rows = table["rows"].as_array().ok_or_else(invalid)?;
-    ensure(rows.len() <= MAX_ROWS, "performance_source_too_large", 502)?;
+    ensure(
+        rows.len() <= MAX_ROWS,
+        cortex::codes::PERFORMANCE_SOURCE_TOO_LARGE.as_str(),
+        502,
+    )?;
     rows.iter()
         .map(|row| {
             let row = match row {

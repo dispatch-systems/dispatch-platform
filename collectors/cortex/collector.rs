@@ -437,6 +437,7 @@ pub(crate) mod codes {
     pub const DVIC_SOURCE_CHANGED: Code = Code::new("dvic_source_changed");
     pub const DVIC_SOURCE_UNREADABLE: Code = Code::new("dvic_source_unreadable");
     pub const PERFORMANCE_API_UNREADABLE: Code = Code::new("performance_api_unreadable");
+    pub const PERFORMANCE_SOURCE_TOO_LARGE: Code = Code::new("performance_source_too_large");
 
     /// A failed attempt with one of these is queued again while attempts remain.
     pub const RETRYABLE: &[Code] = &[

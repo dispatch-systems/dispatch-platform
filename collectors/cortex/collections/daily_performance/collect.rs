@@ -1,6 +1,7 @@
 //! The days a collection was asked for over the shared authenticated performance transport.
-//! On a job's first attempt each run of consecutive days is one read per dataset, its rows
-//! given back to their days; a retry reads each day on its own.
+//! On a job's first attempt each run of up to a week of consecutive days is one read per
+//! dataset, its rows given back to their days; a retry, whatever the first attempt met,
+//! reads each day on its own as a job of one day always did.
 use super::{Capture, Collection, DATASETS, Days, Request};
 use crate::{
     codes,
@@ -9,7 +10,7 @@ use crate::{
         performance::{Found, mismatched},
     },
     discovery::Scope,
-    performance::{DatasetCapture, Read},
+    performance::{Dataset, DatasetCapture, Read},
 };
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, collection::browser::Run, db::now};
@@ -21,37 +22,51 @@ use std::collections::BTreeMap;
 /// until all have answered; the largest day seen was 2 MB, a week's range seven times that.
 const LANES: usize = 22;
 
-/// The request's days as runs of consecutive days, first and last of each.
+/// The most days one range reads: a week, as read side by side with each day's own reads.
+const RANGE_DAYS: usize = 7;
+
+/// The request's days as runs of consecutive days of at most a week, first and last of each.
 fn runs(dates: &[String]) -> Result<Vec<(String, String)>> {
-    let mut runs: Vec<(String, String, NaiveDate)> = Vec::new();
+    let mut runs: Vec<(String, String, NaiveDate, usize)> = Vec::new();
     for text in dates {
         let date = NaiveDate::parse_from_str(text, "%Y-%m-%d")
             .map_err(|_| Error::new("invalid_date", 400))?;
         match runs.last_mut() {
-            Some((_, last, previous)) if previous.succ_opt() == Some(date) => {
+            Some((_, last, previous, days))
+                if previous.succ_opt() == Some(date) && *days < RANGE_DAYS =>
+            {
                 *last = text.clone();
                 *previous = date;
+                *days += 1;
             }
-            _ => runs.push((text.clone(), text.clone(), date)),
+            _ => runs.push((text.clone(), text.clone(), date, 1)),
         }
     }
     Ok(runs
         .into_iter()
-        .map(|(first, last, _)| (first, last))
+        .map(|(first, last, ..)| (first, last))
         .collect())
 }
-/// One dataset's rows over the days `from` to `to`, read as one range, as each day's own
-/// read answers them: a dataset whose rows name their day gives each day its own, and one
-/// whose rows name none, as the thresholds, answers every day alike, as each day's read
-/// did when both were read side by side. None when a row names no day among the others, or
-/// a day outside the range: the range can't be told apart that way.
-fn split(rows: &[Value], from: &str, to: &str) -> Option<BTreeMap<String, Vec<Value>>> {
+/// One dataset's rows over the days `from` to `to`, as each day's own read answers them.
+/// One day's read is that day's. A station's dataset read as a range gives each day the
+/// rows naming it; the thresholds, which name no station or day, answer every day alike, as
+/// each day's read did when both were read side by side. None when a station's row names no
+/// day, or a day outside the range: the range can't be told apart that way.
+fn split(
+    dataset: &Dataset,
+    rows: &[Value],
+    from: &str,
+    to: &str,
+) -> Option<BTreeMap<String, Vec<Value>>> {
+    if from == to {
+        return Some(BTreeMap::from([(from.to_owned(), rows.to_vec())]));
+    }
     let (first, last) = (
         NaiveDate::parse_from_str(from, "%Y-%m-%d").ok()?,
         NaiveDate::parse_from_str(to, "%Y-%m-%d").ok()?,
     );
     let days = first.iter_days().take_while(|day| *day <= last);
-    if !rows.iter().any(|row| row["data_date"].is_string()) {
+    if !dataset.station {
         return Some(days.map(|day| (day.to_string(), rows.to_vec())).collect());
     }
     let mut split: BTreeMap<String, Vec<Value>> =
@@ -114,19 +129,30 @@ impl Driver {
                 })
             })
             .collect();
+        let ranged = ranges.iter().any(|(from, to)| from != to);
         let (company_id, dsp_code, datasets) = self
             .read_performance(scope, found, &request.dsp_abbreviation, &reads, LANES, run)
-            .await?;
+            .await
+            .map_err(|error| {
+                // A range too large to read is read a day at a time by the retry.
+                if ranged && error.is_any(&[codes::PERFORMANCE_SOURCE_TOO_LARGE]) {
+                    run.metrics.detail("daily_range_too_large");
+                    Error::new(codes::CORTEX_SOURCE_CHANGED.as_str(), 502)
+                } else {
+                    error
+                }
+            })?;
         let mut by_day: BTreeMap<String, Vec<DatasetCapture>> = request
             .dates
             .iter()
             .map(|date| (date.clone(), Vec::new()))
             .collect();
-        for read in datasets {
-            let split = split(&read.rows, &read.from, &read.to).ok_or_else(|| {
-                run.metrics.detail("daily_range_unsplit");
-                Error::new(codes::CORTEX_SOURCE_CHANGED.as_str(), 502)
-            })?;
+        for (asked, read) in reads.iter().zip(datasets) {
+            let split =
+                split(asked.dataset, &read.rows, &read.from, &read.to).ok_or_else(|| {
+                    run.metrics.detail("daily_range_unsplit");
+                    Error::new(codes::CORTEX_SOURCE_CHANGED.as_str(), 502)
+                })?;
             for (date, rows) in split {
                 if let Some(day) = by_day.get_mut(&date) {
                     day.push(DatasetCapture {
