@@ -238,9 +238,10 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   `channels:read` and `groups:read`, to list them, `channels:join`, to join public ones, and
   `channels:manage` and `groups:write`, to leave them; for Driver Match `users:read` and
   `users:read.email`, to read its members with their email addresses; and for what people
-  write to it directly `im:history`, to read it, `chat:write`, to answer it, `im:write`, to
-  open a conversation with someone, and `chat:write.customize`, to answer under the name and
-  photo of whoever at the DSP does.
+  write to it directly `im:history`, to read it, and `chat:write`, to answer it. It asks too,
+  ahead of an integration that answers from Dispatch, for `im:write`, to open a conversation
+  with someone, and `chat:write.customize`, to answer under the name and photo of whoever at
+  the DSP does, so each workspace approves them in the same Update.
 
 ## API, data and upkeep
 

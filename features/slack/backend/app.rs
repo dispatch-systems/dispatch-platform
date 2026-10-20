@@ -15,9 +15,10 @@ use serde_json::{Value, json};
 /// (`channels:read`, `groups:read`), join public ones (`channels:join`) and leave either
 /// (`channels:manage`, `groups:write`). Driver Match reads its members, with their email
 /// addresses (`users:read`, `users:read.email`). What people write to the app directly is read
-/// (`im:history`) and answered (`chat:write`), in a conversation the app may open itself
-/// (`im:write`), under the name and photo of whoever at the DSP answers
-/// (`chat:write.customize`).
+/// (`im:history`) and answered (`chat:write`). Opening a conversation with someone (`im:write`)
+/// and answering under the name and photo of whoever at the DSP does (`chat:write.customize`)
+/// are asked for ahead of an integration that answers from Dispatch, so each workspace approves
+/// them in the same Update.
 pub const SCOPES: &[&str] = &[
     "team:read",
     "channels:read",
