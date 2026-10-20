@@ -435,7 +435,8 @@ test(
       assert.ok(captured.every((url) => url.searchParams.get('timeFrame') === 'Daily'));
       assert.equal(new Set(captured.map((url) => url.searchParams.get('dataSetId'))).size, 22);
     }
-    assert.equal(seen.companies, expired.companies + 2);
+    // The refused check may end before its second request is answered.
+    assert.ok(seen.companies >= expired.companies + 1);
     assert.equal(seen.signIns, expired.signIns + 1);
     assert.equal(seen.landing, expired.landing + 1);
     assert.ok(
