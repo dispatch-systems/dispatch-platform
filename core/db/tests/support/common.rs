@@ -290,6 +290,15 @@ pub fn change_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()
     Ok(())
 }
 
+/// Makes a DSP's schedule next fall due at `deadline`, as one whose time has come or will.
+pub fn schedule_due_at(db: &Store, dsp: &str, schedule: &str, deadline: &str) -> Result<()> {
+    db.dsp(dsp)?.exec(
+        "UPDATE collection_schedules SET next_run=? WHERE id=?",
+        [deadline, schedule],
+    )?;
+    Ok(())
+}
+
 /// Sets a job's status, as a worker would leave it.
 pub fn set_job_status(db: &Store, job: &str, status: &str) -> Result<()> {
     db.jobs

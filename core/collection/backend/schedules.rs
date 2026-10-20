@@ -506,7 +506,8 @@ impl Store {
         self.check_schedule_sources(id, row.collection)?;
         let mut requests = Vec::new();
         for (provider, scheduled) in Self::scheduled_collections(row.collection) {
-            for (suffix, request) in registry().keeper(scheduled.job_kind).scheduled(self, id)? {
+            let keeper = registry().keeper(scheduled.job_kind);
+            for (suffix, request) in keeper.scheduled(self, id, row.collection.as_str())? {
                 requests.push((format!("{key}{suffix}"), provider, request));
             }
         }

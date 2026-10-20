@@ -44,6 +44,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::io::Write;
 pub const COLLECTION: &str = "routes";
+/// What a schedule collects by to read today so far, rather than yesterday's finished day
+/// and the days before it lacks: an alias of the routes collection. Permanent: schedules
+/// store it.
+pub const TODAY: &str = "routes_today";
 /// The routes, itineraries and packages it keeps.
 pub const DOMAIN: DataDomain = DataDomain::new("routes");
 /// What shaped a publication's rows. 2 keys tasks by itinerary and keeps their events

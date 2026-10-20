@@ -31,7 +31,8 @@ part. Mandatory: every DSP has it.
   enabled once a value changed and every value is one the field takes. A save sends the
   changed values with the revision they were read at; one the server says would lose something
   asks first in its words, and one another session beat is refused and the section read again.
-  A `schedules` field draws core's schedule editor inline.
+  A `schedules` field draws core's schedule editor inline, with a choice of what each schedule
+  collects when the field offers one.
 - **Unsaved edits:** a declared section with unsaved edits, or an editor open on the page with
   some, as a schedule's, a custom section's included (core's `useUnsavedEdits`), asks before the
   page moves on, however it moves: to another of its pages, by Back or the browser's Back or

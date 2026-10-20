@@ -54,7 +54,7 @@ impl Keeper for WeeklyScorecard {
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
         super::weekly_scorecard_schedule_ready(store, dsp)
     }
-    fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
+    fn scheduled(&self, store: &Store, dsp: &str, _: &str) -> Result<Vec<(String, Value)>> {
         store.weekly_scorecard_jobs(dsp)
     }
     fn storages(&self) -> &'static [&'static AddedStorage] {

@@ -40,7 +40,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `env`                 | `env`          | The server's environment variables it reads with `config.setting`, in groups that go together; part of a group refuses to start.   |
 | `settings`            | `settings`     | Its sections of a DSP's Settings, each of fields saved together, which Settings draws and core keeps: `settings::read` reads them. |
 | `keeps`               | `keeping`      | The collections it keeps: for each, what a run needs, how what it brings is stored, and what a schedule of it queues (`Keeper`).   |
-| `schedule_aliases`    | `keeping`      | A name a schedule runs several of its collections by at once.                                                                      |
+| `schedule_aliases`    | `keeping`      | A name a schedule collects by: several of its collections at once, or one read another way.                                        |
 | `live`                | `mod.rs`       | The permissions that may follow its collections' progress through the collection updates the dashboard waits on.                   |
 | `migrations`          | `storage`      | What it adds to a database it keeps whole: that database's one list.                                                               |
 | `own_migrations`      | `storage`      | What it adds to a database other owners add to, numbered by the feature from 1 and recorded under its name.                        |

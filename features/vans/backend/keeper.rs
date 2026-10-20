@@ -40,7 +40,7 @@ impl Keeper for Fleet {
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
         bind_fleet_request(store, dsp).map(|_| ())
     }
-    fn scheduled(&self, _: &Store, _dsp: &str) -> Result<Vec<(String, Value)>> {
+    fn scheduled(&self, _: &Store, _dsp: &str, _: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![("vans".into(), fleet_request())])
     }
     fn storages(&self) -> &'static [&'static AddedStorage] {

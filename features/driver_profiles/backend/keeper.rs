@@ -82,7 +82,7 @@ impl Keeper for Roster {
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
         bind_roster_request(store, dsp).map(|_| ())
     }
-    fn scheduled(&self, _: &Store, _dsp: &str) -> Result<Vec<(String, Value)>> {
+    fn scheduled(&self, _: &Store, _dsp: &str, _: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![("associates".into(), roster_request())])
     }
     fn storages(&self) -> &'static [&'static AddedStorage] {

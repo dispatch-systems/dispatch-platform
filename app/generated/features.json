@@ -567,6 +567,7 @@
       ],
       "env": [],
       "settings": [
+        "routes.collection",
         "routes.retention"
       ]
     },

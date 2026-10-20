@@ -61,7 +61,7 @@ impl Keeper for DailyPerformanceKeeper {
         )
         .map(|_| ())
     }
-    fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
+    fn scheduled(&self, store: &Store, dsp: &str, _: &str) -> Result<Vec<(String, Value)>> {
         store.daily_performance_jobs(dsp)
     }
     fn storages(&self) -> &'static [&'static AddedStorage] {

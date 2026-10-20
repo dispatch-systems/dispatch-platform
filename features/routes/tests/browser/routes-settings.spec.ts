@@ -1,10 +1,13 @@
-import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import {
+  test,
+  expect,
+  login,
+  openDsp,
+  type Dispatch,
+} from '../../../../core/shell/tests/support/fixtures.js';
 
-test('Settings draws route data from its declaration, and a window that deletes stored days asks first', async ({
-  page,
-  dispatch,
-}) => {
-  // A day from two months ago, collected while every day is kept.
+/** Northline Logistics' owner, the DSP and its profile, with a station and Cortex, as Routes needs. */
+async function seedRoutes(dispatch: Dispatch) {
   const owner = await dispatch.client();
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(north.id);
@@ -18,6 +21,15 @@ test('Settings draws route data from its declaration, and a window that deletes 
     password: 'fixture-password',
   });
   expect(connected.status, connected.body).toBe(200);
+  return { owner, north, profile };
+}
+
+test('Settings draws route data from its declaration, and a window that deletes stored days asks first', async ({
+  page,
+  dispatch,
+}) => {
+  const { owner, north, profile } = await seedRoutes(dispatch);
+  // A day from two months ago, collected while every day is kept.
   const day = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
   const queued = await owner.post('/api/dsp/routes/collect', { requestId: 'old', date: day });
   expect(queued.status, queued.body).toBe(202);
@@ -150,4 +162,36 @@ test('a member without management permissions never sees the Data page or Driver
   const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
   await expect(pages.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await expect(pages.getByRole('link', { name: 'Data', exact: true })).toHaveCount(0);
+});
+
+test('a Routes schedule reads yesterday unless it is set to read today so far', async ({
+  page,
+  dispatch,
+}) => {
+  const { owner } = await seedRoutes(dispatch);
+  const stored = async () => (await owner.read('/api/dsp/routes/schedules')).schedules;
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Routes', exact: true })
+    .click();
+  const collection = page.getByRole('region', { name: 'Collection', exact: true });
+  await collection.getByRole('button', { name: 'Add schedule' }).click();
+  const day = page.getByRole('combobox', { name: 'Day', exact: true });
+  await expect(day).toHaveValue('routes');
+  await page.getByLabel('Schedule name').fill('Morning routes');
+  await day.selectOption({ label: 'Today so far' });
+  await page.getByRole('button', { name: 'Save schedule' }).click();
+  await expect(collection).toContainText('Today so far · Daily');
+  expect((await stored())[0].collection).toBe('routes_today');
+  // Set back, it reads yesterday.
+  await page.getByRole('button', { name: 'Edit Morning routes' }).click();
+  await expect(day).toHaveValue('routes_today');
+  await day.selectOption({ label: 'Yesterday' });
+  await page.getByRole('button', { name: 'Save schedule' }).click();
+  await expect(collection).toContainText('Yesterday · Daily');
+  expect((await stored())[0].collection).toBe('routes');
 });

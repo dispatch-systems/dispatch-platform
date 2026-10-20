@@ -17,7 +17,7 @@ pub trait RoutesStore {
         days: i64,
     ) -> Result<Value>;
     fn routes_schedule_ready(&self, id: &str) -> Result<()>;
-    fn routes_jobs(&self, id: &str) -> Result<Vec<(String, Value)>>;
+    fn routes_jobs(&self, id: &str, mode: Mode) -> Result<Vec<(String, Value)>>;
     fn stage_routes_start(
         &self,
         id: &str,
@@ -106,10 +106,18 @@ impl RoutesStore for Store {
             409,
         )
     }
-    /// The days a scheduled run collects: yesterday, and recent days without a final
-    /// publication, newest first.
-    fn routes_jobs(&self, id: &str) -> Result<Vec<(String, Value)>> {
+    /// The days a scheduled run collects in `mode`: a snapshot of today; or as final,
+    /// yesterday and recent days without a final publication, newest first. A snapshot of
+    /// a day leaves its final read to the first run after it ends.
+    fn routes_jobs(&self, id: &str, mode: Mode) -> Result<Vec<(String, Value)>> {
         let today = routes_today(self, id)?;
+        if mode == Mode::Snapshot {
+            let day = today.to_string();
+            return Ok(vec![(
+                format!("routes:{day}"),
+                routes_request(self, id, &day, mode)?,
+            )]);
+        }
         let station = self.profile(id)?.station_code;
         let db = self.routes_db(id)?;
         let mut jobs = Vec::new();

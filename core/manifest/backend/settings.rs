@@ -283,12 +283,21 @@ pub enum Kind {
     Timezone { default: &'static str },
     /// The schedules of one of its feature's collections, which core's collection schedules
     /// keep at `path`, the feature's `schedule_routes`; a new one starts as `starts` (its
-    /// name and `HH:MM`). Not a value: Settings draws core's schedule editor.
+    /// name and `HH:MM`), collecting `collection`, or with `collects`, what each chooses.
+    /// Not a value: Settings draws core's schedule editor.
     Schedules {
         path: &'static str,
         collection: &'static str,
         starts: (&'static str, &'static str),
+        collects: Option<ScheduleChoice>,
     },
+}
+/// What each schedule of a schedules field chooses to collect, under `label`: each option a
+/// collection its feature keeps or an alias it declares, with its label.
+#[derive(Clone, Copy)]
+pub struct ScheduleChoice {
+    pub label: &'static str,
+    pub options: &'static [(&'static str, &'static str)],
 }
 /// The options of a `many`: fixed, or listed as it's read.
 #[derive(Clone, Copy)]
@@ -400,6 +409,7 @@ pub const fn schedules(
         path,
         collection,
         starts,
+        collects: None,
     };
     field(id, label, kind)
 }
@@ -549,6 +559,33 @@ impl Field {
                 Self { kind, ..self }
             }
             _ => panic!("only a text is locked"),
+        }
+    }
+    /// What each of a schedules field's schedules chooses to collect, under `label`: `&[("x",
+    /// "Yesterday"), ("x_today", "Today so far")]`, collections its feature keeps or aliases it
+    /// declares, the field's own among them.
+    pub const fn collects(
+        self,
+        label: &'static str,
+        options: &'static [(&'static str, &'static str)],
+    ) -> Self {
+        match self.kind {
+            Kind::Schedules {
+                path,
+                collection,
+                starts,
+                ..
+            } => {
+                let collects = Some(ScheduleChoice { label, options });
+                let kind = Kind::Schedules {
+                    path,
+                    collection,
+                    starts,
+                    collects,
+                };
+                Self { kind, ..self }
+            }
+            _ => panic!("only a schedules field chooses what it collects"),
         }
     }
 }
@@ -762,7 +799,12 @@ fn check_field(
             path,
             collection,
             starts,
-        } => return check_schedules(registry, feature, section, path, collection, starts),
+            collects,
+        } => {
+            return check_schedules(
+                registry, feature, section, path, collection, starts, collects,
+            );
+        }
         _ => {}
     }
     match crate::settings::kinds::default(field) {
@@ -772,8 +814,10 @@ fn check_field(
         _ => Ok(()),
     }
 }
-/// Why a schedules field doesn't hold, if it doesn't: its collection is one its feature keeps,
-/// at one of its feature's own routes, in a section of the DSP's, starting with a name and a time.
+/// Why a schedules field doesn't hold, if it doesn't: its collection, and each it offers to
+/// choose, is one its feature keeps or an alias it declares, its own among those offered, each
+/// once; at one of its feature's own routes, in a section of the DSP's, starting with a name and
+/// a time.
 fn check_schedules(
     registry: &Registry,
     feature: Option<&Feature>,
@@ -781,6 +825,7 @@ fn check_schedules(
     path: &str,
     collection: &str,
     (name, at): (&str, &str),
+    collects: Option<ScheduleChoice>,
 ) -> std::result::Result<(), String> {
     let Some(feature) = feature else {
         return Err("core keeps no schedules of its own".into());
@@ -788,19 +833,32 @@ fn check_schedules(
     if section.scope != Scope::Dsp {
         return Err("schedules are the DSP's, never a member's".into());
     }
-    let kept = feature.keeps.iter().any(|keeper| {
-        registry
-            .collectors
+    let keeps = |collection: &str| {
+        let kept = feature.keeps.iter().any(|keeper| {
+            registry
+                .collectors
+                .iter()
+                .flat_map(|collector| collector.collections())
+                .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == collection)
+        });
+        let aliased = feature
+            .schedule_aliases
             .iter()
-            .flat_map(|collector| collector.collections())
-            .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == collection)
-    });
-    let aliased = feature
-        .schedule_aliases
-        .iter()
-        .any(|alias| alias.schedule == collection);
-    if !kept && !aliased {
-        return Err(format!("{collection} is no collection its feature keeps"));
+            .any(|alias| alias.schedule == collection);
+        kept || aliased
+    };
+    let offered: Vec<&str> = match collects {
+        Some(choice) => choice.options.iter().map(|(value, _)| *value).collect(),
+        None => vec![collection],
+    };
+    if let Some(other) = offered.iter().find(|offered| !keeps(offered)) {
+        return Err(format!("{other} is no collection its feature keeps"));
+    }
+    if !offered.contains(&collection) {
+        return Err(format!("what it offers to collect leaves out {collection}"));
+    }
+    if offered.iter().collect::<BTreeSet<_>>().len() != offered.len() {
+        return Err("what it offers to collect repeats one".into());
     }
     if !(feature.routes)()
         .iter()

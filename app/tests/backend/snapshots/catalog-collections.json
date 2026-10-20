@@ -14,6 +14,7 @@
     ["weekly_scorecard", "weekly_scorecard"],
     ["daily_performance", "daily_performance"],
     ["routes", "routes"],
+    ["routes_today", "routes"],
     ["dvic", "dvic"],
     ["associates", "driver_profiles"],
     ["vans", "vans"],

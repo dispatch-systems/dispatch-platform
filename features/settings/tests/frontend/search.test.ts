@@ -47,6 +47,7 @@ const pages = [
   page('data', 'Data', 4),
   page('timecard', 'Timecard', 5),
   page('dvic', 'DVIC', 6),
+  page('routes', 'Routes', 7),
 ];
 const sections = [
   section('accounts.security', 'security', 'Security', {
@@ -87,6 +88,20 @@ const sections = [
       field('shift', 'Shift', { kind: 'choice', options: [{ value: 'am', label: 'Morning' }] }),
     ],
   }),
+  section('routes.collection', 'routes', 'Collection', {
+    fields: [
+      field('schedules', 'Schedules', {
+        kind: 'schedules',
+        collects: {
+          label: 'Day',
+          options: [
+            { collection: 'routes', label: 'Yesterday' },
+            { collection: 'routes_today', label: 'Today so far' },
+          ],
+        },
+      }),
+    ],
+  }),
 ];
 
 /** Marked text as it reads, with what matched in brackets. */
@@ -117,6 +132,7 @@ test('Settings search finds each page once, by the best of what it holds that ev
   // The start of a word, in any case; not the middle of one.
   assert.deepEqual(found('sched'), [
     'timecard Timecard | Collection [sched]ules | timecard.meal_breaks',
+    'routes Routes | [Sched]ules | routes.collection',
   ]);
   assert.deepEqual(found('hedule'), []);
   assert.deepEqual(found('pass'), ['security Security | [Pass]word | accounts.security']);
@@ -125,6 +141,9 @@ test('Settings search finds each page once, by the best of what it holds that ev
   assert.deepEqual(found('day every'), ['data Data | Keep for: [Every] [day] | routes.retention']);
   assert.deepEqual(found('30'), ['data Data | Keep for: [30] days | routes.retention']);
   assert.deepEqual(found('morning'), ['dvic DVIC | Shift: [Morning] | dvic.inspections']);
+  assert.deepEqual(found('today'), [
+    'routes Routes | Schedules: [Today] so far | routes.collection',
+  ]);
   assert.deepEqual(found('northline'), [
     'dsp DSP profile | Name: [Northline] Logistics | settings.profile',
   ]);

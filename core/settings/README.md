@@ -28,9 +28,11 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
   `number` (`.unit`, `.presets`, `.none` for a labelled none), `text` (`.code` for uppercase
   letters and digits, `.locked` once set; empty only until set, when its default is), `time`,
   `timezone`, and `schedules`, which holds no value: Settings draws core's schedule editor for
-  the feature's `schedule_routes` there. Each field's id is the serde name its feature reads it
-  by; every field reads as its default until saved, and as its default again if what was kept
-  no longer fits it.
+  the feature's `schedule_routes` there, each schedule collecting the field's collection, or
+  with `.collects(label, options)` the one it chooses of its feature's collections and schedule
+  aliases, as Routes' "Yesterday" and "Today so far". Each field's id is the serde name its
+  feature reads it by; every field reads as its default until saved, and as its default again if
+  what was kept no longer fits it.
 - **Pages:** a section is on its feature's own page (its switch's id, `-` for `_`, ordered by
   its `place`) unless `.on(..)` puts it on a shared page: `general`, `security` and `theme`, the
   member's own; `dsp`, `connections` and `data`, the DSP's.

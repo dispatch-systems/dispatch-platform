@@ -96,7 +96,7 @@ impl Keeper for Timecards {
         }
         Ok(cards)
     }
-    fn scheduled(&self, _: &Store, _: &str) -> Result<Vec<(String, Value)>> {
+    fn scheduled(&self, _: &Store, _: &str, _: &str) -> Result<Vec<(String, Value)>> {
         Ok(vec![("paycom".into(), json!({}))])
     }
 }

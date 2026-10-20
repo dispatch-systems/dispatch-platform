@@ -1,13 +1,16 @@
 //! What each kind of field holds, every concern of a kind in one place: the options it
 //! offers, how Settings draws it, a value sent checked and made the one way it's kept, what a
 //! kept value still fits, and how the log shows one. A new kind is one arm in each.
-use super::api::types::{SettingsKind, SettingsOption, SettingsPreset, SettingsStart};
+use super::api::types::{
+    SettingsKind, SettingsOption, SettingsPreset, SettingsScheduleChoice, SettingsScheduleOption,
+    SettingsStart,
+};
 use crate::{
     Error, Result,
     collection::api::types::ScheduleCollection,
     db::Store,
     ensure,
-    manifest::settings::{Field, Kind, Listed, Options},
+    manifest::settings::{Field, Kind, Listed, Options, ScheduleChoice},
 };
 use serde_json::Value;
 
@@ -133,16 +136,40 @@ pub(crate) fn described(
             path,
             collection,
             starts: (name, at),
+            collects,
         } => SettingsKind::Schedules {
             path: path.to_owned(),
-            collection: ScheduleCollection::parse(collection)
-                .ok_or_else(|| Error::new("schedule_collection_unknown", 500))?,
+            collection: schedule_collection(collection)?,
             starts: SettingsStart {
                 name: name.to_owned(),
                 local_time: at.to_owned(),
             },
+            collects: collects.map(schedule_choice).transpose()?,
         },
     })
+}
+/// What each schedule of a schedules field chooses to collect, as Settings draws it.
+fn schedule_choice(choice: ScheduleChoice) -> Result<SettingsScheduleChoice> {
+    let options = choice
+        .options
+        .iter()
+        .map(|(collection, label)| {
+            Ok(SettingsScheduleOption {
+                collection: schedule_collection(collection)?,
+                label: (*label).to_owned(),
+            })
+        })
+        .collect::<Result<_>>()?;
+    Ok(SettingsScheduleChoice {
+        label: choice.label.to_owned(),
+        options,
+    })
+}
+/// A collection a schedules field names, which the registry's check proved one a schedule
+/// may name.
+fn schedule_collection(collection: &str) -> Result<ScheduleCollection> {
+    ScheduleCollection::parse(collection)
+        .ok_or_else(|| Error::new("schedule_collection_unknown", 500))
 }
 
 /// `given` as `field` keeps it, given what it holds now and the options it offers: made the
