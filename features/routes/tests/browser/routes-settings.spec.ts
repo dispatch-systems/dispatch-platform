@@ -180,7 +180,7 @@ test('a Routes schedule reads yesterday unless it is set to read today so far', 
     .click();
   const collection = page.getByRole('region', { name: 'Collection', exact: true });
   await collection.getByRole('button', { name: 'Add schedule' }).click();
-  const day = page.getByLabel('Day', { exact: true });
+  const day = page.getByRole('combobox', { name: 'Day', exact: true });
   await expect(day).toHaveValue('routes');
   await page.getByLabel('Schedule name').fill('Morning routes');
   await day.selectOption({ label: 'Today so far' });
