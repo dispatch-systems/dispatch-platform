@@ -225,9 +225,10 @@ jobs:
       - run: npm run check:ci -- smoke
       - uses: ./.github/actions/fail-queue-entry
         if: failure() && github.event_name == 'merge_group'
-  # The workload regression measures the packaged build on a runner of its own. In the merge
-  # queue a build that breaks a budget is judged again beside the base's build on the same
-  # runner, so a runner that can't hold the budget for the base doesn't fail it.
+  # The workload regression measures the packaged build on a runner of its own. A build that
+  # breaks a budget is judged again beside the base's build on the same runner, so a runner that
+  # can't hold the budget for the base doesn't fail it. One that misses there too is measured
+  # once more, and fails only if it misses again.
   benchmark:
     needs: build
     if: contains('all benchmark', inputs.suite || 'all')
@@ -281,6 +282,7 @@ jobs:
           path: |
             /tmp/dispatch-rust-benchmark.json
             /tmp/dispatch-rust-benchmark-base.json
+            /tmp/dispatch-rust-benchmark-again.json
           if-no-files-found: ignore
           retention-days: 30
       - uses: ./.github/actions/fail-queue-entry

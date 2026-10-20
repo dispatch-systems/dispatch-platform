@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   checkBenchmark,
+  checkBeside,
   budgets,
   tolerances,
   type BenchmarkReport,
@@ -179,6 +180,17 @@ test('beside its base on the same runner, a build is judged by both, and the run
       build.measurements[5]!.requestsPerSecond = base.measurements[5]!.requestsPerSecond * 0.8;
     }),
   );
+});
+test('measured again beside its base, a build is judged by the second run, and both must be correct', () => {
+  const base = sample();
+  base.peakRssBytes = budgets.peakRssBytes - 1024 ** 2;
+  const missed = sample();
+  missed.peakRssBytes = budgets.peakRssBytes + 1;
+  assert.doesNotThrow(() => checkBeside([missed, sample()], base));
+  assert.throws(() => checkBeside([missed, missed], base), /peakRssBytes exceeds budget/);
+  const failed = sample();
+  failed.measurements[0]!.errors = 1;
+  assert.throws(() => checkBeside([failed, sample()], base), /HTTP errors/);
 });
 test('an HTTP error names the failed route, status and response', () => {
   const report = sample();

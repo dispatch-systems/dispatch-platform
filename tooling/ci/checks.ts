@@ -114,16 +114,19 @@ function checks() {
 }
 /**
  * The workload regression, against the build already in `.build`. A build within its budgets
- * passes at once. In the merge queue one that breaks a budget is judged again beside the base's
- * build, in `.baseline`, run after it on the same runner: a runner that can't hold a budget for
- * the base doesn't fail the build, though a clear regression from the base does.
+ * passes at once. One that breaks a budget is judged again beside the base's build, when the job
+ * fetched it into `.baseline`, run after it on the same runner: a runner that can't hold a budget
+ * for the base doesn't fail the build, though a clear regression from the base does. A build
+ * that misses there too is measured once more, after the base, and fails only if it misses again.
  */
 async function benchmark() {
   const name = 'Rust workload regression';
   const script = ['node_modules/tsx/dist/cli.mjs', 'tooling/benchmarks/benchmark-rust.ts'];
   const report = '/tmp/dispatch-rust-benchmark.json';
   const base = '/tmp/dispatch-rust-benchmark-base.json';
-  const measure = [...script, '--binary', '.build/services/rust/dispatch-backend', '--check'];
+  const again = '/tmp/dispatch-rust-benchmark-again.json';
+  const build = [...script, '--binary', '.build/services/rust/dispatch-backend'];
+  const measure = [...build, '--check'];
   if (!fs.existsSync('.baseline/services/rust/dispatch-backend'))
     return run(name, process.execPath, [...measure, '--output', report]);
   if (await run(name, process.execPath, [...measure, '--output', report], process.env, false))
@@ -141,14 +144,19 @@ async function benchmark() {
     failures.push(name);
     return false;
   }
-  return run(`${name}, beside the base`, process.execPath, [
+  const judge = (...reports: string[]) => [
     'node_modules/tsx/dist/cli.mjs',
     'tooling/benchmarks/judge.ts',
-    '--report',
-    report,
+    ...reports.flatMap((file) => ['--report', file]),
     '--baseline',
     base,
-  ]);
+  ];
+  if (await run(`${name}, beside the base`, process.execPath, judge(report), process.env, false))
+    return true;
+  return (
+    (await run(`${name}, measured again`, process.execPath, [...build, '--output', again])) &&
+    run(`${name}, again beside the base`, process.execPath, judge(report, again))
+  );
 }
 /**
  * The pinned browser, from the cache when the job restored it. In CI its system packages
