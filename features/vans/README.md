@@ -29,11 +29,11 @@ bar and its schedules are on its Settings page.
   `OUT_OF_SERVICE`, sends no ETag, and its Excel export is built in the page from this same
   list. All 52 VINs that Routes held for that DSP were in it and named, 8 of them inactive.
 - **Schedules:** only the DSP's own, added on its Settings page; Vans makes none.
-- **Data:** `vans` and `fleet_runs`, in a database of its own beside Cortex's. Each
-  van by VIN: the name the DSP gives it, plate, status, kind (`service_tier`), station, and the
-  row as Amazon sent it. A name is reused: a returned rental's may be the next one's, so a van is
-  named by its VIN and never the other way round. A van the fleet stops listing keeps its row,
-  with `listed` 0, so a route that names its VIN still finds its name.
+- **Data:** `vans` and `fleet_runs`, in a database of its own beside Cortex's. Each van by
+  VIN: the name the DSP gives it, plate, status, kind (`service_tier`), station, and the row as
+  Amazon sent it. A name is reused: a returned rental's may be the next one's, so a van is named
+  by its VIN and never the other way round. A van the fleet stops listing keeps its row, with
+  `listed` 0, so a route that names its VIN still finds its name.
 - **Settings:** its own page (`?tab=vans`), for those who hold `vans.collect`
   (`backend/settings.rs`): `vans.fleet` "Amazon fleet", a custom section its fleet bar draws
   (when the fleet was collected and is collected next, and Collect now), then `vans.collection`

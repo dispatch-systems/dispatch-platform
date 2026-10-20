@@ -142,7 +142,7 @@
     "user_version": 1,
     "cache_size": -512,
     "migrations": [
-      [1, "baseline", "21aa6c8f3431a72b"],
+      [1, "baseline", "f6e5e7f6adbf9faf"],
       [2, "drop_settings", "c8a26bc3352c0fed"]
     ]
   },
@@ -151,7 +151,7 @@
     "user_version": 1,
     "cache_size": -512,
     "migrations": [
-      [1, "baseline", "71f3d544a1e4df71"],
+      [1, "baseline", "7a3d3eb969a79743"],
       [2, "drop_settings", "10dd5a5c583894dc"]
     ]
   }
