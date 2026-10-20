@@ -1,7 +1,13 @@
 //! How Dispatch knows a request came from Slack: only one Slack signed with the app's signing
 //! secret, as it was sent, and recently, is taken. Slack's own published example is the
-//! reference, so the check agrees with Slack rather than with itself.
+//! reference, so the check agrees with Slack rather than with itself. And how an event is
+//! routed: a message written to the app directly goes to an integration on there that hears of
+//! it, and only when none does is Slack's own to answer.
 use super::*;
+use crate::backend::{
+    app, fixture,
+    support::{self, LISTENING},
+};
 use axum::http::HeaderValue;
 
 const SECRET: &str = "8f742231b10e8888abcd99yyyzzz85a5";
@@ -51,4 +57,29 @@ fn only_a_request_slack_signed_as_sent_and_recently_is_taken() {
         AT
     ));
     assert!(!signed(SECRET, &HeaderMap::new(), BODY.as_bytes(), AT));
+}
+
+#[tokio::test]
+async fn a_direct_message_is_answered_by_slack_until_an_integration_on_there_takes_it() {
+    const TEAM: &str = "T0FIXTURE1";
+    const DM: &str = "D0FIXINBOUND";
+    let (_root, state, dsp) = support::platform();
+    let bot = support::connect(&state, &dsp, TEAM, &app::scopes()).await;
+    let written = json!({"type": "message", "channel_type": "im", "channel": DM,
+        "user": "U0FIXJORDAN", "text": "Running late", "ts": "1760000000.000100"});
+    let answered = ["DSP Messaging is unavailable"];
+    // No integration on in the workspace hears of it, so Slack answers it.
+    on_event(&bot, &written).await.unwrap();
+    assert_eq!(fixture::posted(TEAM, DM), answered);
+    assert!(support::heard(&dsp).is_empty());
+    // One on there hears of it, as `message.im`, and takes it: Slack answers no more.
+    let of = dsp.clone();
+    state
+        .run(move |db| db.turn_on_slack_integration(&of, TEAM, LISTENING.id, "U1"))
+        .await
+        .unwrap();
+    on_event(&bot, &written).await.unwrap();
+    let taken = [(TEAM.to_owned(), "message.im".to_owned())];
+    assert_eq!(support::heard(&dsp), taken);
+    assert_eq!(fixture::posted(TEAM, DM), answered);
 }

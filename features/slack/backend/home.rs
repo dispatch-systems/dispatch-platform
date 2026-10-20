@@ -4,8 +4,8 @@ use super::bot::Bot;
 use dispatch_core::{Result, ensure};
 use serde_json::{Value, json};
 
-/// Someone opened the app in Slack: its Home tab, to them, or its messages, which it has none
-/// of yet.
+/// Someone opened the app in Slack: its Home tab, drawn for them, or its Messages tab, which
+/// Slack draws itself.
 pub async fn opened(bot: &Bot, event: &Value) -> Result<()> {
     if event["tab"] != "home" {
         return Ok(());

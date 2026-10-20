@@ -3,7 +3,7 @@
   "features": {
     "app_home": {
       "home_tab_enabled": true,
-      "messages_tab_enabled": false,
+      "messages_tab_enabled": true,
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {"display_name": "dispatch-dev", "always_online": true}
@@ -20,6 +20,10 @@
         "groups:write",
         "users:read",
         "users:read.email",
+        "chat:write",
+        "chat:write.customize",
+        "im:history",
+        "im:write",
         "files:read"
       ]
     }
@@ -31,6 +35,7 @@
         "app_home_opened",
         "team_join",
         "user_change",
+        "message.im",
         "app_uninstalled",
         "tokens_revoked",
         "file_shared",

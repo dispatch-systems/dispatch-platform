@@ -14,7 +14,10 @@ use serde_json::{Value, json};
 /// Channels list the public channels and the private ones the bot was invited to
 /// (`channels:read`, `groups:read`), join public ones (`channels:join`) and leave either
 /// (`channels:manage`, `groups:write`). Driver Match reads its members, with their email
-/// addresses (`users:read`, `users:read.email`).
+/// addresses (`users:read`, `users:read.email`). What people write to the app directly is read
+/// (`im:history`) and answered (`chat:write`), in a conversation the app may open itself
+/// (`im:write`), under the name and photo of whoever at the DSP answers
+/// (`chat:write.customize`).
 pub const SCOPES: &[&str] = &[
     "team:read",
     "channels:read",
@@ -24,14 +27,19 @@ pub const SCOPES: &[&str] = &[
     "groups:write",
     "users:read",
     "users:read.email",
+    "chat:write",
+    "chat:write.customize",
+    "im:history",
+    "im:write",
 ];
 /// What Slack tells the app of for Slack itself: its Home tab opened, someone joining the
-/// workspace or changing their profile, and its being removed from a workspace or losing its
-/// tokens there.
+/// workspace or changing their profile, a message written to it directly, and its being
+/// removed from a workspace or losing its tokens there.
 pub const EVENTS: &[&str] = &[
     "app_home_opened",
     "team_join",
     "user_change",
+    "message.im",
     "app_uninstalled",
     "tokens_revoked",
 ];
@@ -100,7 +108,7 @@ fn manifest(config: &Config) -> Value {
         "features": {
             "app_home": {
                 "home_tab_enabled": true,
-                "messages_tab_enabled": false,
+                "messages_tab_enabled": true,
                 "messages_tab_read_only_enabled": false,
             },
             "bot_user": {"display_name": handle, "always_online": true},

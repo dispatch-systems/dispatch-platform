@@ -70,7 +70,7 @@ async fn a_method_no_fixture_answers_fails_and_an_integration_answers_its_own() 
     let (_root, _state, bot) = bot();
     kept_until(&bot, 2 * 60 * 60 * 1000).await;
     let asked = serde_json::json!({"channel": "C0FIXGENERAL"});
-    let error = bot.call("chat.postMessage", &asked).await.unwrap_err();
+    let error = bot.call("reactions.add", &asked).await.unwrap_err();
     assert_eq!(error.code, "slack_fixture_unanswered");
     let answered = bot.call("listening.ping", &asked).await.unwrap();
     assert_eq!(answered["team"], TEAM);

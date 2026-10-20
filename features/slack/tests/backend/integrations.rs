@@ -1,6 +1,7 @@
 //! What other features do through Slack: the app asks for what their integrations need, an
 //! integration hears of what happens in a workspace only while it's on there and its feature is
-//! on for the DSP, and it clears what it keeps of a workspace Slack forgets.
+//! on for the DSP, Slack knowing whether any did, and it clears what it keeps of a workspace
+//! Slack forgets.
 use super::*;
 use crate::backend::{
     app,
@@ -64,24 +65,25 @@ async fn an_integration_hears_of_its_events_only_while_on_in_the_workspace_and_f
         }
     };
 
-    // Its feature on for the DSP, but off in the workspace, it hears of nothing.
+    // Its feature on for the DSP, but off in the workspace, it hears of nothing, and Slack is
+    // told none heard.
     feature(true).await;
-    hear("file_shared").await;
+    assert!(!hear("file_shared").await);
     assert!(support::heard(&dsp).is_empty());
     // On there, it hears of what it listens for, and nothing else.
     assert!(switch(true).await);
-    hear("file_shared").await;
-    hear("team_join").await;
+    assert!(hear("file_shared").await);
+    assert!(!hear("team_join").await);
     let once = vec![(TEAM.to_owned(), "file_shared".to_owned())];
     assert_eq!(support::heard(&dsp), once);
     // Its feature off for the DSP, it hears of nothing more, though it's on in the workspace.
     feature(false).await;
-    hear("file_shared").await;
+    assert!(!hear("file_shared").await);
     assert_eq!(support::heard(&dsp), once);
     // Its feature back on, but switched off in the workspace: still nothing.
     feature(true).await;
     assert!(switch(false).await);
-    hear("file_shared").await;
+    assert!(!hear("file_shared").await);
     assert_eq!(support::heard(&dsp), once);
 }
 
