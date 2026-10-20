@@ -483,9 +483,13 @@ const rust = [
       `    // ${String.fromCharCode(65 + n)}`,
       '    Glyph {',
       `        advance: ${advance}.0,`,
-      '        path: concat!(',
-      ...lines(path).map((line) => `            "${line}",`),
-      '        ),',
+      ...(lines(path).length === 1
+        ? [`        path: "${path}",`]
+        : [
+            '        path: concat!(',
+            ...lines(path).map((line) => `            "${line}",`),
+            '        ),',
+          ]),
       '    },',
     ].join('\n'),
   ),

@@ -71,9 +71,7 @@ pub const LETTERS: [Glyph; 26] = [
     // F
     Glyph {
         advance: 1204.0,
-        path: concat!(
-            "M150 0L150 1490L1104 1490L1104 1265L417 1265L417 818L1037 818L1037 596L417 596L417 0L150 0Z",
-        ),
+        path: "M150 0L150 1490L1104 1490L1104 1265L417 1265L417 818L1037 818L1037 596L417 596L417 0L150 0Z",
     },
     // G
     Glyph {
@@ -99,7 +97,7 @@ pub const LETTERS: [Glyph; 26] = [
     // I
     Glyph {
         advance: 567.0,
-        path: concat!("M417 1490L417 0L150 0L150 1490L417 1490Z",),
+        path: "M417 1490L417 0L150 0L150 1490L417 1490Z",
     },
     // J
     Glyph {
@@ -122,7 +120,7 @@ pub const LETTERS: [Glyph; 26] = [
     // L
     Glyph {
         advance: 1158.0,
-        path: concat!("M150 0L150 1490L417 1490L417 225L1075 225L1075 0L150 0Z",),
+        path: "M150 0L150 1490L417 1490L417 225L1075 225L1075 0L150 0Z",
     },
     // M
     Glyph {
@@ -209,9 +207,7 @@ pub const LETTERS: [Glyph; 26] = [
     // T
     Glyph {
         advance: 1352.0,
-        path: concat!(
-            "M83 1265L83 1490L1269 1490L1269 1265L810 1265L810 0L543 0L543 1265L83 1265Z",
-        ),
+        path: "M83 1265L83 1490L1269 1490L1269 1265L810 1265L810 0L543 0L543 1265L83 1265Z",
     },
     // U
     Glyph {

@@ -134,9 +134,16 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
         .await
         .unwrap_err();
     assert_eq!(refused.code, "communications_photo_kind");
-    let message = send(&state, &owner, USE, &id, "", &[photo.id.clone()])
-        .await
-        .unwrap();
+    let message = send(
+        &state,
+        &owner,
+        USE,
+        &id,
+        "",
+        std::slice::from_ref(&photo.id),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         (message.files.len(), message.files[0].status),
         (1, FileStatus::Kept)

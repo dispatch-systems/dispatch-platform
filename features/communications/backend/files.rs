@@ -234,16 +234,12 @@ pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<String
 }
 /// Lets go of the DSP's bytes kept by `sha256`, unless a file is kept by them.
 pub async fn discard(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<()> {
-    let (at, sha256) = (dsp.to_owned(), sha256.to_owned());
-    let path = state
-        .read(move |db| {
-            Ok((!db.communications_bytes_kept(&at, &sha256)?)
-                .then(|| folder(db, &at).map(|folder| folder.join(sha256)))
-                .transpose()?)
-        })
+    let (at, kept) = (dsp.to_owned(), sha256.to_owned());
+    let (folder, kept) = state
+        .read(move |db| Ok((folder(db, &at)?, db.communications_bytes_kept(&at, &kept)?)))
         .await?;
-    if let Some(path) = path {
-        tokio::fs::remove_file(path).await?;
+    if !kept {
+        tokio::fs::remove_file(folder.join(sha256)).await?;
     }
     Ok(())
 }
