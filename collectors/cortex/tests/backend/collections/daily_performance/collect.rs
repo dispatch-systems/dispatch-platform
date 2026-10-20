@@ -73,6 +73,15 @@ fn a_range_splits_into_the_days_its_rows_name() {
     let every = split(thresholds, &limits, "2026-10-12", "2026-10-13").unwrap();
     assert_eq!(every["2026-10-12"], limits);
     assert_eq!(every["2026-10-13"], limits);
+    // Thresholds that do name their day go back to it, as any dataset's rows.
+    let dated = split(
+        thresholds,
+        &[row("2026-10-12", 1), row("2026-10-13", 2)],
+        "2026-10-12",
+        "2026-10-13",
+    )
+    .unwrap();
+    assert_eq!(dated["2026-10-13"], vec![row("2026-10-13", 2)]);
     let empty = split(station, &[], "2026-10-12", "2026-10-13").unwrap();
     assert!(empty["2026-10-12"].is_empty() && empty["2026-10-13"].is_empty());
 

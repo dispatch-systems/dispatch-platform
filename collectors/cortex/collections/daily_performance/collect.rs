@@ -48,10 +48,10 @@ fn runs(dates: &[String]) -> Result<Vec<(String, String)>> {
         .collect())
 }
 /// One dataset's rows over the days `from` to `to`, as each day's own read answers them.
-/// One day's read is that day's. A station's dataset read as a range gives each day the
-/// rows naming it; the thresholds, which name no station or day, answer every day alike, as
-/// each day's read did when both were read side by side. None when a station's row names no
-/// day, or a day outside the range: the range can't be told apart that way.
+/// One day's read is that day's. A dataset read as a range gives each day the rows naming
+/// it; the thresholds, which name no station and whose rows name no day, answer every day
+/// alike, as each day's read did when both were read side by side. None when a station's row
+/// names no day, or a row a day outside the range: the range can't be told apart that way.
 fn split(
     dataset: &Dataset,
     rows: &[Value],
@@ -66,7 +66,7 @@ fn split(
         NaiveDate::parse_from_str(to, "%Y-%m-%d").ok()?,
     );
     let days = first.iter_days().take_while(|day| *day <= last);
-    if !dataset.station {
+    if !dataset.station && !rows.iter().any(|row| row["data_date"].is_string()) {
         return Some(days.map(|day| (day.to_string(), rows.to_vec())).collect());
     }
     let mut split: BTreeMap<String, Vec<Value>> =
