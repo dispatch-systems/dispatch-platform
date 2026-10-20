@@ -33,6 +33,67 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub const ADAPTER_VERSION: i64 = 1;
+/// How long before a held read another must confirm what it saw.
+const CONFIRM_AFTER_MS: i64 = 30 * 60_000;
+
+/// Whether `capture` is held back rather than published: a dataset answered with fewer rows
+/// than the week's active publication read, which is what Cortex answers while it republishes
+/// a week, and no read held at least half an hour before saw the same counts for those
+/// datasets. A drop seen twice that far apart is what the week now is, as a dispute settles.
+fn held(db: &DspLease<'_>, capture: &Capture) -> Result<bool> {
+    let Some(active) = db.one(
+        "SELECT id,collected_at FROM weekly_scorecard_publications          WHERE week=? AND station=? AND company_id=? AND active=1",
+        [&capture.week, &capture.station, &capture.company_id],
+    )?
+    else {
+        return Ok(false);
+    };
+    let counts = |publication: &str| -> Result<HashMap<String, i64>> {
+        Ok(db
+            .all(
+                "SELECT dataset,row_count FROM weekly_scorecard_sources WHERE publication_id=?",
+                [publication],
+            )?
+            .iter()
+            .map(|row| {
+                (
+                    s(row, "dataset").to_owned(),
+                    row["row_count"].as_i64().unwrap_or(0),
+                )
+            })
+            .collect())
+    };
+    let kept = counts(s(&active, "id"))?;
+    let dropped: Vec<(&str, i64)> = capture
+        .datasets
+        .iter()
+        .map(|captured| (captured.id.as_str(), captured.rows.len() as i64))
+        .filter(|(dataset, rows)| kept.get(*dataset).is_some_and(|kept| rows < kept))
+        .collect();
+    if dropped.is_empty() {
+        return Ok(false);
+    }
+    let earlier = db.all(
+        "SELECT id FROM weekly_scorecard_publications WHERE week=? AND station=? AND company_id=?          AND active=0 AND collected_at>? AND collected_at<=?",
+        params![
+            capture.week,
+            capture.station,
+            capture.company_id,
+            s(&active, "collected_at"),
+            at(now() - CONFIRM_AFTER_MS)
+        ],
+    )?;
+    for held in earlier {
+        let seen = counts(s(&held, "id"))?;
+        if dropped
+            .iter()
+            .all(|(dataset, rows)| seen.get(*dataset) == Some(rows))
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
 /// The scorecard weeks it keeps.
 pub const DOMAIN: DataDomain = DataDomain::new("weekly_scorecard");
 /// The weekly scorecard database beside `cortex.sqlite`. Its durable identity stays
@@ -255,6 +316,7 @@ impl WeeklyScorecardStore for Store {
                 )?;
                 return Ok(());
             }
+            let hold = held(&db, capture)?;
             let publication = dispatch_core::foundation::crypto::id("weekly_scorecard")?;
             db.exec(
                 "INSERT INTO weekly_scorecard_publications(id,job_id,week,station,company_id,dsp_code,started_at,\
@@ -307,6 +369,10 @@ impl WeeklyScorecardStore for Store {
                         captured.rows.len() as i64
                     ],
                 )?;
+            }
+            // A held week keeps its active publication, and stays due to be read again.
+            if hold {
+                return Ok(());
             }
             db.exec(
                 "UPDATE weekly_scorecard_publications SET active=0 WHERE week=? AND station=? AND active=1",

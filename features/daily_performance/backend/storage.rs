@@ -98,8 +98,72 @@ pub(crate) fn flag(value: &Value) -> Option<i64> {
         _ => None,
     }
 }
-/// One day of a job's collection, published as that day's active publication.
-fn publish_day(data: &DspLease<'_>, job: &str, capture: &Capture) -> Result<()> {
+/// How long before a held read another must confirm what it saw.
+const CONFIRM_AFTER_MS: i64 = 30 * 60_000;
+
+/// Whether `capture`, a finished day, is held back rather than published: a dataset
+/// answered with fewer rows than the day's active publication holds, which is what Cortex
+/// answers while it republishes a day, and no read held at least half an hour before saw the
+/// same counts for those datasets. A drop seen twice that far apart is what the day now is.
+fn held(data: &DspLease<'_>, capture: &Capture, today: chrono::NaiveDate) -> Result<bool> {
+    if capture.date >= today.to_string() {
+        return Ok(false);
+    }
+    let Some(active) = data.one(
+        "SELECT id,collected_at FROM daily_publications WHERE station=? AND date=? AND active=1",
+        [&capture.station, &capture.date],
+    )?
+    else {
+        return Ok(false);
+    };
+    let counts = |publication: &str| -> Result<std::collections::HashMap<String, i64>> {
+        Ok(data
+            .all(
+                "SELECT dataset,row_count FROM daily_datasets WHERE publication_id=?",
+                [publication],
+            )?
+            .iter()
+            .map(|row| {
+                (
+                    s(row, "dataset").to_owned(),
+                    row["row_count"].as_i64().unwrap_or(0),
+                )
+            })
+            .collect())
+    };
+    let kept = counts(s(&active, "id"))?;
+    let dropped: Vec<(&str, i64)> = DATASETS
+        .iter()
+        .zip(&capture.datasets)
+        .map(|(dataset, captured)| (dataset.table, captured.rows.len() as i64))
+        .filter(|(table, rows)| kept.get(*table).is_some_and(|kept| rows < kept))
+        .collect();
+    if dropped.is_empty() {
+        return Ok(false);
+    }
+    let earlier = data.all(
+        "SELECT id FROM daily_publications WHERE station=? AND date=? AND active=0          AND collected_at>? AND collected_at<=?",
+        params![
+            capture.station,
+            capture.date,
+            s(&active, "collected_at"),
+            at(now() - CONFIRM_AFTER_MS)
+        ],
+    )?;
+    for held in earlier {
+        let seen = counts(s(&held, "id"))?;
+        if dropped
+            .iter()
+            .all(|(table, rows)| seen.get(*table) == Some(rows))
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+/// One day of a job's collection, published as that day's active publication, or kept
+/// beside it unpublished when held.
+fn publish_day(data: &DspLease<'_>, job: &str, capture: &Capture, hold: bool) -> Result<()> {
     let publication = crypto::id("daily_performance")?;
     data.exec(
         "INSERT INTO daily_publications VALUES (?,?,?,?,?,?,?,?,0,?)",
@@ -148,6 +212,9 @@ fn publish_day(data: &DspLease<'_>, job: &str, capture: &Capture) -> Result<()> 
                 ],
             )?;
         }
+    }
+    if hold {
+        return Ok(());
     }
     data.exec(
         "UPDATE daily_publications SET active=0 WHERE station=? AND date=? AND active=1",
@@ -257,6 +324,7 @@ impl DailyPerformanceStore for Store {
             409,
         )?;
         days.validate_scope(&bound, scope)?;
+        let today = today(self, dsp)?;
         let data = self.daily_performance_db(dsp)?;
         // Each day its own publication, all of them together.
         data.transaction(|| {
@@ -273,7 +341,7 @@ impl DailyPerformanceStore for Store {
                     )?;
                     continue;
                 }
-                publish_day(&data, job, capture)?;
+                publish_day(&data, job, capture, held(&data, capture, today)?)?;
             }
             Ok(())
         })
