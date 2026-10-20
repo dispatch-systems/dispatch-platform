@@ -45,13 +45,22 @@ pub const FEATURE: Feature = Feature {
     )],
     migrations: &[Migrations {
         kind: backend::storage::DATABASE,
-        list: &[Migration {
-            id: 1,
-            name: "baseline",
-            apply: Sql(include_str!(
-                "migrations/daily_performance/0001_baseline.sql"
-            )),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "baseline",
+                apply: Sql(include_str!(
+                    "migrations/daily_performance/0001_baseline.sql"
+                )),
+            },
+            Migration {
+                id: 2,
+                name: "days_per_job",
+                apply: Sql(include_str!(
+                    "migrations/daily_performance/0002_days_per_job.sql"
+                )),
+            },
+        ],
     }],
     audit: Audit {
         areas: &[("daily_performance.", Collections)],

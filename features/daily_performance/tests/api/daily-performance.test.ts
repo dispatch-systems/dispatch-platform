@@ -37,7 +37,8 @@ test('daily collection, policy and reads stay separate from weekly data and perm
     to: '2026-10-04',
   });
   assert.equal(queued.status, 202, queued.body);
-  assert.equal(queued.value.length, 2);
+  // Both days are one job.
+  assert.equal(queued.value.length, 1);
   assert.ok(queued.value.every((job: any) => job.kind === 'cortex.daily_performance.collect'));
   await until(async () => {
     const jobs = (await owner.get(prefix + '/jobs')).value;

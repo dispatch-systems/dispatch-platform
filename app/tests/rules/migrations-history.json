@@ -302,6 +302,11 @@
       "id": 1,
       "name": "baseline",
       "sha256": "990d189e7b8dc8662ef4131aea4ba3d102a75e683083dd71cc1791d74f64a040"
+    },
+    {
+      "id": 2,
+      "name": "days_per_job",
+      "sha256": "fa9aadd569f9bb24308ef0d5131a95a5119655dbcc166919bb173be7a73772c1"
     }
   ]
 }

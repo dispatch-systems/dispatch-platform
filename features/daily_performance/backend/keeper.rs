@@ -1,7 +1,7 @@
 //! Daily policy, request binding and publication belong to this feature.
 use crate::DailyPerformanceStore;
 use dispatch_core::{
-    Error, Result,
+    Result,
     collection::{browser::Collected, registry::AddedStorage},
     db::{Store, s},
     ensure,
@@ -25,10 +25,8 @@ impl Keeper for DailyPerformanceKeeper {
         super::storage::DOMAIN
     }
     fn bind(&self, store: &Store, dsp: &str, request: &Value) -> Result<Value> {
-        let date = request["date"]
-            .as_str()
-            .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let bound = super::storage::bind(store, dsp, date)?;
+        let dates = super::storage::requested_dates(request)?;
+        let bound = super::storage::bind(store, dsp, &dates)?;
         ensure(
             request["station"] == bound["station"],
             "daily_performance_scope_mismatch",
@@ -56,8 +54,12 @@ impl Keeper for DailyPerformanceKeeper {
         )
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
-        super::storage::bind(store, dsp, &super::storage::today(store, dsp)?.to_string())
-            .map(|_| ())
+        super::storage::bind(
+            store,
+            dsp,
+            &[super::storage::today(store, dsp)?.to_string()],
+        )
+        .map(|_| ())
     }
     fn scheduled(&self, store: &Store, dsp: &str) -> Result<Vec<(String, Value)>> {
         store.daily_performance_jobs(dsp)

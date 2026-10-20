@@ -157,6 +157,7 @@ export const facts = new Set([
   'provider',
   'collection',
   'date',
+  'through',
   'duration',
   'attempt',
   'invitedBy',
@@ -184,9 +185,11 @@ function outcome(event: AuditEvent): Part[] {
   if (event.target) return ['Scheduled collection ', strong(event.target), result];
   const name = collected(event);
   const date = fact(event, 'date');
+  const through = fact(event, 'through');
   return [
     name ? `${name} collection` : 'Collection',
     ...(date ? [' for ', strong(day(date))] : []),
+    ...(date && through ? [' to ', strong(day(through))] : []),
     result,
   ];
 }

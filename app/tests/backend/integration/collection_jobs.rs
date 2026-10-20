@@ -190,6 +190,20 @@ fn collection_outcomes_record_their_schedule_provider_collection_date_and_durati
             ("collection", None, Some("cortex.dvic.collect".to_owned())),
         ]
     );
+    // A job that read several days names its first and last.
+    let job = JobFacts {
+        kind: "cortex.daily_performance.collect",
+        request: "{\"dates\":[\"2026-10-01\",\"2026-10-02\",\"2026-10-03\"]}",
+        ..job
+    };
+    let (_, facts) = db.job_facts("missing", &job);
+    assert_eq!(
+        facts[2..],
+        [
+            ("date", None, Some("2026-10-01".to_owned())),
+            ("through", None, Some("2026-10-03".to_owned())),
+        ]
+    );
 }
 
 #[cfg(feature = "timecard")]

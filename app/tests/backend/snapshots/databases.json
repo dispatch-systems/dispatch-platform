@@ -113,7 +113,8 @@
     "user_version": 1,
     "cache_size": -512,
     "migrations": [
-      [1, "baseline", "990d189e7b8dc866"]
+      [1, "baseline", "990d189e7b8dc866"],
+      [2, "days_per_job", "fa9aadd569f9bb24"]
     ]
   },
   {

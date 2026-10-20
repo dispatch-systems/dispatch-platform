@@ -661,8 +661,23 @@ impl Store {
             ));
         }
         let request = serde_json::from_str::<Value>(job.request).unwrap_or_default();
-        if let Some(date) = request["date"].as_str() {
-            facts.push(("date", None, Some(date.to_owned())));
+        // The day a job read, or the first and last of the days it read.
+        let dates: Vec<&str> = request["date"]
+            .as_str()
+            .into_iter()
+            .chain(
+                request["dates"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str),
+            )
+            .collect();
+        if let (Some(first), Some(last)) = (dates.first(), dates.last()) {
+            facts.push(("date", None, Some((*first).to_owned())));
+            if last != first {
+                facts.push(("through", None, Some((*last).to_owned())));
+            }
         }
         if let Some(started) = job
             .started_at

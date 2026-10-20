@@ -41,10 +41,10 @@ fn publish(store: &Store, dsp: &str, date: &str, change: fn(&mut Capture)) {
         panic!("discover")
     };
     let scope = discovery.scope("area-fixture", "company-fixture").unwrap();
-    let mut capture = daily_performance::fixture(&request).unwrap();
-    change(&mut capture);
+    let mut days = daily_performance::fixture(&request).unwrap();
+    change(&mut days.days[0]);
     store
-        .publish_daily_performance(dsp, job, &capture, &scope)
+        .publish_daily_performance(dsp, job, &days, &scope)
         .unwrap();
 }
 
