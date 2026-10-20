@@ -21,14 +21,11 @@ pub async fn unheard(bot: &Bot, event: &Value) -> Result<()> {
     Ok(())
 }
 
-/// Whether `event` is a message a person wrote anew to the app: in a direct conversation, by
-/// someone, from no bot, as the app's own posts are, and with no subtype, which an edit, a
-/// deletion, a file shared or a bot's post has.
+/// Whether `event` is a message a person wrote anew to the app: by someone, from no bot, as the
+/// app's own posts are, and with no subtype, which an edit, a deletion, a file shared or a
+/// bot's post has.
 fn written(event: &Value) -> bool {
-    event["channel"]
-        .as_str()
-        .is_some_and(|channel| channel.starts_with('D'))
-        && event["user"].as_str().is_some_and(|user| !user.is_empty())
+    event["user"].as_str().is_some_and(|user| !user.is_empty())
         && event["bot_id"].is_null()
         && event["subtype"].is_null()
 }
