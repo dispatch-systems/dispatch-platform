@@ -437,8 +437,8 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
 
 /// What the bot posted, in every workspace: each message's workspace, conversation and text.
 static POSTED: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
-/// Keeps what the bot posted in the workspace's conversation `channel`: when, as Slack writes a
-/// message's `ts`, each another.
+/// Keeps what the bot posted in the workspace's conversation `channel`: the message's `ts`, as
+/// Slack writes one, each unlike the last.
 fn post(team: &str, channel: &str, text: &str) -> String {
     static POSTS: AtomicU64 = AtomicU64::new(0);
     let turn = POSTS.fetch_add(1, Ordering::Relaxed) % 1_000_000;
