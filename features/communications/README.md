@@ -124,8 +124,9 @@ unavailable.
   workspace where it's on (`conversations.open`, `im:write`): the conversation it answers isn't
   listed until a message is in it, so the page holds it until then.
 - **Where it can't:** a conversation of a workspace Communications doesn't work in now, as one
-  switched off there, needing reconnecting or disconnected, stays listed with its history, and
-  says it can't be written in (`canReply`); sending there is refused (`communications_off`).
+  switched off there, needing reconnecting or disconnected, stays listed with its history; the
+  page writes only where its workspaces say Communications works (`on`), and sending there is
+  refused (`communications_off`).
 
 ## Waiting, Responded and Done
 

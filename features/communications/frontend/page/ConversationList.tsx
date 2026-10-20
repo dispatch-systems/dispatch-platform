@@ -10,8 +10,8 @@ import { More } from './More.js';
 import { Name, Wait, typingNote } from './parts.js';
 
 // The list of conversations: those waiting on an answer, then those answered, or those found by
-// a name typed, misspelt or not; with the conversation New message opened at the top until it
-// holds a message.
+// a name typed, misspelt or not; with the conversation open at the top while the list doesn't
+// hold it, as one New message opened before it holds a message.
 
 type Listing = {
   open?: string;
@@ -24,13 +24,13 @@ type Listing = {
 
 export function ConversationList({
   inbox,
-  draft,
+  pinned,
   readOlder,
   ...listing
 }: Listing & {
   inbox: Communications;
-  /** A conversation New message opened, not listed until it holds a message. */
-  draft?: Conversation;
+  /** The conversation open, while the list doesn't hold it. */
+  pinned?: Conversation;
   readOlder: () => void;
 }) {
   const [typed, setTyped] = useState('');
@@ -87,23 +87,26 @@ export function ConversationList({
           )
         ) : (
           <>
-            {draft && (
-              <ul className="convos">
-                <li className="convo selected">
-                  <button className="convo-open" onClick={() => listing.select(draft.id)}>
-                    <Face {...draft.with} size={40} />
-                    <span className="convo-body">
-                      <span className="line1">
-                        <strong>{draft.with.name}</strong>
+            {pinned &&
+              (pinned.lastAt === null ? (
+                <ul className="convos">
+                  <li className="convo selected">
+                    <button className="convo-open" onClick={() => listing.select(pinned.id)}>
+                      <Face {...pinned.with} size={40} />
+                      <span className="convo-body">
+                        <span className="line1">
+                          <strong>{pinned.with.name}</strong>
+                        </span>
+                        <span className="line2">
+                          <span className="preview">New message</span>
+                        </span>
                       </span>
-                      <span className="line2">
-                        <span className="preview">New message</span>
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              </ul>
-            )}
+                    </button>
+                  </li>
+                </ul>
+              ) : (
+                rows([pinned])
+              ))}
             {waiting.length > 0 && (
               <>
                 <h2 className="list-head">

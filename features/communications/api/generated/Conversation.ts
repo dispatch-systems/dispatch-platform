@@ -28,11 +28,6 @@ lastAt: number | null,
  */
 last: Message | null,
 /**
- * Whether someone at the DSP can write in it now: Communications works in its workspace,
- * which the DSP still has.
- */
-canReply: boolean,
-/**
  * The letters of its name that matched what was searched, as runs of the name's UTF-16
  * code units: start and end. None unless searched.
  */

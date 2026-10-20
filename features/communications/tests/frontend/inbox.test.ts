@@ -17,7 +17,6 @@ const conversation = (
   waitingSince: since,
   lastAt: at,
   last: null,
-  canReply: true,
   matched: [],
 });
 const ids = (inbox: Communications) => inbox.conversations.map((each) => each.id);

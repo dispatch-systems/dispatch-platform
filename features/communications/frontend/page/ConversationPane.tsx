@@ -18,7 +18,7 @@ export function ConversationPane({
   id,
   listed,
   working,
-  unlisted,
+  seen,
   changed,
   typing,
   timeZone,
@@ -32,8 +32,8 @@ export function ConversationPane({
   listed?: Conversation;
   /** The workspaces Communications works in now, as each update brings them. */
   working: readonly CommunicationsWorkspace[];
-  /** Keeps a conversation read that holds no message yet, which the list doesn't, on the page. */
-  unlisted: (conversation: Conversation) => void;
+  /** Tells the page of the conversation as read, which pins one the list doesn't hold. */
+  seen: (conversation: Conversation) => void;
   changed: Changed;
   typing: readonly Writing[];
   timeZone: string;
@@ -49,8 +49,8 @@ export function ConversationPane({
     if (gone) closed();
   }, [gone, closed]);
   useEffect(() => {
-    if (opened?.conversation.lastAt === null) unlisted(opened.conversation);
-  }, [opened, unlisted]);
+    if (opened) seen(opened.conversation);
+  }, [opened, seen]);
   const conversation = listed ?? opened?.conversation;
   const writable = working.some((workspace) => workspace.teamId === conversation?.teamId);
   const done = useAction(async () => {

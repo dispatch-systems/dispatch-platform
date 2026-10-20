@@ -109,13 +109,11 @@ pub fn conversations(
         .into_iter()
         .zip(messages(db, people, dsp, last)?)
         .collect();
-    let on = kit::workspaces_on(db, dsp, ID)?;
     Ok(kept
         .into_iter()
         .map(|conversation| Conversation {
             with: people.correspondent(&conversation.team, &conversation.user, &conversation.name),
             last: latest.remove(&conversation.id),
-            can_reply: on.contains(&conversation.team),
             id: conversation.id,
             team_id: conversation.team,
             state: conversation.state,

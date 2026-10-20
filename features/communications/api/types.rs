@@ -93,9 +93,6 @@ pub struct Conversation {
     pub last_at: Option<i64>,
     /// Its latest message, if it has one.
     pub last: Option<Message>,
-    /// Whether someone at the DSP can write in it now: Communications works in its workspace,
-    /// which the DSP still has.
-    pub can_reply: bool,
     /// The letters of its name that matched what was searched, as runs of the name's UTF-16
     /// code units: start and end. None unless searched.
     pub matched: Vec<(u32, u32)>,

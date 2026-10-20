@@ -50,36 +50,43 @@ export function CommunicationsPage({ view }: { view: DspView }) {
     }
   });
   const [open, setOpen] = useState(() => hashQuery().get('open') ?? undefined);
-  const [draft, setDraft] = useState<Conversation>();
+  const [pinned, setPinned] = useState<Conversation>();
   const [composing, setComposing] = useState(false);
   const now = useNow(TICK_MS);
   const select = useCallback((id?: string) => {
     setOpen(id);
-    // A conversation New message opened goes once another is.
-    setDraft((opened) => (opened?.id === id ? opened : undefined));
+    // One pinned to the top of the list goes once another is open.
+    setPinned((kept) => (kept?.id === id ? kept : undefined));
     replaceHashQuery(id ? { open: id } : {});
   }, []);
   const closed = useCallback(() => select(undefined), [select]);
-  // Side by side, a conversation is always open: the first, until another is chosen.
+  // Side by side, a conversation is always open: the first, until another is chosen, and as the
+  // window widens to show both.
   const first = inbox?.conversations[0]?.id;
   useEffect(() => {
-    if (!open && first && matchMedia(SIDE_BY_SIDE).matches) select(first);
+    const wide = matchMedia(SIDE_BY_SIDE);
+    const openFirst = () => {
+      if (!open && first && wide.matches) select(first);
+    };
+    openFirst();
+    wide.addEventListener('change', openFirst);
+    return () => wide.removeEventListener('change', openFirst);
   }, [open, first, select]);
   // Each update brings the workspaces as they are, so it goes once Slack is updated.
   const updating = manages ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
   const done = useAction(async (conversation: Conversation) =>
     show(await markDone(conversation.id)),
   );
-  // One holding no message yet is kept at the top of the list until it does: as New message
-  // opens it, or as it's read, as when picked again or opened from the address.
-  const unlisted = useCallback((conversation: Conversation) => setDraft(conversation), []);
+  // The conversation open, as last read, is pinned to the top of the list while the list doesn't
+  // hold it: one holding no message yet, as New message opens it, or one older than those listed.
+  const seen = useCallback((conversation: Conversation) => setPinned(conversation), []);
   const pick = useCallback(
     async (contact: Contact) => {
       let id = contact.conversationId;
       if (!id) {
         const opened = await openConversation(contact.teamId, contact.person.userId);
         id = opened.id;
-        if (opened.lastAt === null) setDraft(opened);
+        setPinned(opened);
       }
       select(id);
       setComposing(false);
@@ -90,7 +97,7 @@ export function CommunicationsPage({ view }: { view: DspView }) {
   const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
   const connect = manages && inbox?.workspaces.length === 0;
   const listed = inbox?.conversations.find((conversation) => conversation.id === open);
-  const unsent = draft && !inbox?.conversations.some((each) => each.id === draft.id);
+  const unlisted = pinned && !inbox?.conversations.some((each) => each.id === pinned.id);
   return (
     <div className={open ? 'communications reading' : 'communications'}>
       <div className="communications-page" inert={updating.length > 0}>
@@ -118,7 +125,7 @@ export function CommunicationsPage({ view }: { view: DspView }) {
           <div className="chat-frame">
             <ConversationList
               inbox={inbox}
-              draft={unsent ? draft : undefined}
+              pinned={unlisted ? pinned : undefined}
               readOlder={readOlder}
               open={open}
               typing={inbox.typing.writing}
@@ -131,9 +138,9 @@ export function CommunicationsPage({ view }: { view: DspView }) {
               <ConversationPane
                 key={open}
                 id={open}
-                listed={listed ?? (draft?.id === open ? draft : undefined)}
+                listed={listed ?? (pinned?.id === open ? pinned : undefined)}
                 working={working}
-                unlisted={unlisted}
+                seen={seen}
                 changed={changed}
                 typing={inbox.typing.writing}
                 timeZone={timeZone}
