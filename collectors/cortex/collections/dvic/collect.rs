@@ -28,6 +28,13 @@ use std::collections::{HashMap, HashSet};
 
 pub const REPORT_HOST: &str = "flex-peer-performance-reports-prod-usamazon.s3.amazonaws.com";
 
+/// What a listing found: where the API answered, the reports DVIC already holds, and
+/// those listed.
+struct Listing {
+    api: Api,
+    known: HashMap<String, KnownReport>,
+    listed: Vec<Listed>,
+}
 struct Listed {
     name: String,
     path: String,
@@ -266,9 +273,13 @@ impl Driver {
     ) -> Result<(Capture, Scope)> {
         request.validate()?;
         run.progress(5, "Finding DVIC reports".into()).await?;
-        // A kept scope whose reads named another station, company or DSP is found again.
+        let started_at = now();
+        // A kept scope whose listing named another station, company or DSP is found again,
+        // while the browser is still open for it. A report is checked after the browser
+        // has closed, against what its listing already bound it to: finding the station
+        // again would not change it.
         let (scope, found) = self.scope_for(&request.scope_request(), false, run).await?;
-        match self.dvic_capture(request, &scope, run).await {
+        let (scope, listing) = match self.dvic_list(request, &scope, run).await {
             Err(error) if mismatched(&error) => {
                 let _ = self.known.forget(&request.station);
                 if found == Found::Discovered {
@@ -276,10 +287,13 @@ impl Driver {
                 }
                 run.metrics.detail("known_scope_mismatched");
                 let (scope, _) = self.scope_for(&request.scope_request(), true, run).await?;
-                self.dvic_capture(request, &scope, run).await
+                let listing = self.dvic_list(request, &scope, run).await?;
+                (scope, listing)
             }
-            captured => captured,
-        }
+            listing => (scope, listing?),
+        };
+        self.dvic_read(request, scope, listing, started_at, run)
+            .await
     }
     /// Every week's listing, read together, in the weeks' order.
     async fn dvic_listing(
@@ -301,13 +315,13 @@ impl Driver {
         }
         Ok(listed)
     }
-    async fn dvic_capture(
+    /// Where the reports are, which DVIC already holds, and every week's listing.
+    async fn dvic_list(
         &mut self,
         request: &Request,
         scope: &Scope,
         run: &Run<'_>,
-    ) -> Result<(Capture, Scope)> {
-        let started_at = now();
+    ) -> Result<Listing> {
         let (mut api, mut kept) = match self.known_api(scope, &request.dsp_abbreviation) {
             Some(api) => (api, true),
             None => (
@@ -317,7 +331,6 @@ impl Driver {
             ),
         };
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
-        let downloads = reports(&self.origin)?;
         let job = run.job.to_owned();
         let station = request.station.clone();
         let company = api.company_id.clone();
@@ -355,8 +368,21 @@ impl Driver {
             }
         };
         self.keep_api(scope, &api, run);
+        Ok(Listing { api, known, listed })
+    }
+    /// Every listed report, then the capture of them all.
+    async fn dvic_read(
+        &mut self,
+        request: &Request,
+        scope: Scope,
+        listing: Listing,
+        started_at: i64,
+        run: &Run<'_>,
+    ) -> Result<(Capture, Scope)> {
+        let Listing { api, known, listed } = listing;
         // Nothing after the listing needs the browser: reports download without its session.
         self.browser.close().await;
+        let downloads = reports(&self.origin)?;
         ensure(
             listed.len() <= dvic::MAX_REPORTS,
             "dvic_source_too_large",
@@ -408,8 +434,8 @@ impl Driver {
             finished_at: now().max(started_at),
             reports,
         };
-        capture.validate_scope(request, scope)?;
-        Ok((capture, scope.clone()))
+        capture.validate_scope(request, &scope)?;
+        Ok((capture, scope))
     }
 }
 
