@@ -22,10 +22,20 @@ const delivered = (id: string, time: number) => ({
 });
 type Answer = (url: URL) => Promise<{ json: unknown } | { html: string } | { status: number }>;
 // A Cortex site answered by `answer`, and a DSP whose Cortex connection signs in to it.
+// Its landing page keeps a session the next job's browser starts from.
 async function site(t: TestContext, answer: Answer) {
+  let landings = 0;
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://fixture.test');
+    if (url.pathname === '/workforce/listCompanies') {
+      const signedIn = req.headers.cookie?.includes('authenticated=yes');
+      res.writeHead(signedIn ? 200 : 401, { 'content-type': 'application/json' });
+      res.end(signedIn ? JSON.stringify({ records: [{ companyId: 'provider-1' }] }) : '');
+      return;
+    }
     if (url.pathname === '/dspconsolev2') {
+      landings++;
+      res.setHeader('set-cookie', 'authenticated=yes; Path=/; Max-Age=3600');
       res.setHeader('content-type', 'text/html');
       res.end(
         '<title>DSP Console</title><nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a>',
@@ -92,7 +102,7 @@ async function site(t: TestContext, answer: Answer) {
     }, wait);
     return job;
   };
-  return { f, owner, dsp, collect };
+  return { f, owner, dsp, collect, landings: () => landings };
 }
 
 test(
@@ -152,7 +162,7 @@ test(
         },
       ];
     };
-    const { f, owner, dsp, collect } = await site(t, async (url) => {
+    const { f, owner, dsp, collect, landings } = await site(t, async (url) => {
       if (url.pathname.startsWith(itineraryApi)) {
         const id = url.searchParams.get('itineraryId')!;
         visits[id] = (visits[id] || 0) + 1;
@@ -288,8 +298,11 @@ test(
         assert.deepEqual(unknown, [{ itinerary_id: 'itinerary-1', rule }], shape);
       });
     }
+    // A job's new browser starts from the saved session and opens the day's page alone.
+    const landed = landings();
     mode = 'unavailable';
     assert.equal((await collect('2026-01-10', 'unknown')).status, 'succeeded');
+    assert.equal(landings(), landed);
     assert.equal((await publications()).value[0].verifiedGapPairs, 0);
     mode = 'inactive-near';
     assert.equal((await collect('2026-01-10', 'inactive-near')).status, 'succeeded');

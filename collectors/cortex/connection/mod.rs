@@ -1,11 +1,13 @@
 //! Cortex authentication and performance transport from Amazon Logistics.
 pub mod performance;
+use crate::collections::associates::collect::COMPANIES;
 use crate::collections::meals::collect as collection;
 use crate::discovery::Scope;
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
     browseros,
+    http::Http,
     page::{Page, call},
 };
 use dispatch_core::{Error, Result, db::s, ensure, manifest::registry};
@@ -22,6 +24,8 @@ const ORIGIN: &str = "https://logistics.amazon.com";
 const ORIGINS: &[&str] = &[ORIGIN, "https://www.amazon.com", "https://amazon.com"];
 const LANDING: &str = "/dspconsolev2";
 const AUTH: &str = include_str!("../scripts/auth.js");
+/// As much as the company list a session check reads may hold.
+const COMPANIES_LIMIT: usize = 2 * 1024 * 1024;
 pub struct Driver {
     pub browser: browseros::Session,
     pub(crate) page: Page,
@@ -61,6 +65,36 @@ impl Driver {
             .allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
         self.page.size_window().await?;
         self.page.front_alone().await
+    }
+    /// The application's tab, opened the first time a collection needs one: a session
+    /// that started from the saved one has none until then.
+    pub(crate) async fn ensure_page(&mut self) -> Result<()> {
+        if self.page.id.is_empty() {
+            self.open().await?;
+        }
+        Ok(())
+    }
+    /// Whether the session the profile kept still signs this browser in: it kept
+    /// Amazon's cookies, and the company list, which Amazon answers only a signed-in
+    /// account, comes back with the account's companies. Anything else signs in on the
+    /// page as before.
+    async fn saved_session(&self) -> Result<bool> {
+        let http = Http::signed_in(&self.browser, &self.origin, &crate::HOSTS).await?;
+        if !http.carries_cookies() {
+            return Ok(false);
+        }
+        let companies = http
+            .json(
+                &format!("{}{COMPANIES}", self.origin),
+                &format!("{}/workforce", self.origin),
+                COMPANIES_LIMIT,
+            )
+            .await;
+        Ok(companies.is_ok_and(|reply| {
+            reply["records"]
+                .as_array()
+                .is_some_and(|records| !records.is_empty())
+        }))
     }
     async fn script(&self, mut input: Value) -> Result<Value> {
         input["origins"] = json!(self.origins);
@@ -141,9 +175,19 @@ impl Driver {
                     };
                     self.username_submitted = false;
                     self.password_submitted = false;
-                    if self.page.id.is_empty() {
-                        self.open().await?;
+                    // A job's new browser starts from the session its profile kept, when
+                    // Amazon still accepts it, and opens no page until it needs one. The
+                    // owner's own sign-ins always go through the page.
+                    if s(&command, "action") == "start"
+                        && command["ownerRetry"] != true
+                        && self.page.id.is_empty()
+                        && self.saved_session().await?
+                    {
+                        self.attempts.succeeded()?;
+                        self.credentials = Value::Null;
+                        return Ok(json!({"type":"ready"}));
                     }
+                    self.ensure_page().await?;
                     self.page.navigate(LANDING).await?;
                     let value = self.observe("", 30).await?;
                     self.advance(value).await

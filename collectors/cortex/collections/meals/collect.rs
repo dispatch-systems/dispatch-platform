@@ -451,6 +451,7 @@ impl Driver {
             "invalid_cortex_scope",
             400,
         )?;
+        self.ensure_page().await?;
         let installed = if method.hook {
             let added = self
                 .page

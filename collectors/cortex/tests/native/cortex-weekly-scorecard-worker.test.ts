@@ -21,14 +21,26 @@ const SATURDAYS: Record<string, string> = {
 // The real Rust driver against a staged multi-provider Cortex. Provider discovery binds
 // the tenant to its company before the overview is opened; stored addresses are reused
 // only inside that scope; when the API moves, a job finds it again; a refused dataset
-// fails the attempt for a retry; and nothing collected is left outside the databases.
+// fails the attempt for a retry; jobs start from the saved session, and sign in again
+// once it ends; and nothing collected is left outside the databases.
 test(
-  'Cortex BrowserOS collects scorecard weeks at the stored API address, finds it again when it moves, and leaves nothing outside the databases',
+  'Cortex BrowserOS collects scorecard weeks at the stored API address from the saved session, finds the address again when it moves, and leaves nothing outside the databases',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 300000 },
   async (t) => {
     let version = 'v1';
     const requests: URL[] = [];
-    const seen = { discovery: 0, overview: 0, foreignApi: 0, dailyActive: 0, dailyPeak: 0 };
+    const seen = {
+      discovery: 0,
+      overview: 0,
+      foreignApi: 0,
+      dailyActive: 0,
+      dailyPeak: 0,
+      landing: 0,
+      signIns: 0,
+      companies: 0,
+    };
+    // Each sign-in's session: an earlier one's cookies no longer sign anything in.
+    let generation = 1;
     // Weeks 38 and 36 are posted, 37 is not, and 35's returns are refused.
     const rows = (dataSetId: string, week: string): object[] => {
       if (week === '2026-W37') return [];
@@ -79,7 +91,9 @@ test(
     };
     const server = http.createServer(async (req, res) => {
       const url = new URL(req.url!, 'http://fixture.test');
-      const authenticated = req.headers.cookie?.includes('authenticated=yes');
+      const authenticated =
+        req.headers.cookie?.includes('authenticated=yes') &&
+        req.headers.cookie?.includes(`generation=g${generation}x`);
       const html = (body: string) => {
         res.setHeader('content-type', 'text/html');
         res.end(`<html><head><title>DSP Console</title></head><body>${body}</body></html>`);
@@ -89,6 +103,7 @@ test(
         res.end();
       };
       if (url.pathname === '/dspconsolev2') {
+        seen.landing++;
         if (authenticated)
           return html(
             '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a>',
@@ -108,8 +123,22 @@ test(
         );
       if (url.pathname === '/ap/submit') {
         assert.equal(fields.get('password'), 'fixture-password');
-        res.setHeader('set-cookie', 'authenticated=yes; Path=/; Max-Age=3600');
+        seen.signIns++;
+        res.setHeader('set-cookie', [
+          'authenticated=yes; Path=/; Max-Age=3600',
+          `generation=g${generation}x; Path=/; Max-Age=3600`,
+        ]);
         return redirect('/dspconsolev2');
+      }
+      // The companies the account sees, which only a signed-in session is answered.
+      if (url.pathname === '/workforce/listCompanies') {
+        seen.companies++;
+        if (!authenticated) {
+          res.writeHead(401);
+          return res.end();
+        }
+        res.setHeader('content-type', 'application/json');
+        return res.end(JSON.stringify({ records: [{ companyId: 'company-1', shortCode: 'NLL' }] }));
       }
       if (url.pathname === '/operations/execution/itineraries') {
         if (!authenticated) return redirect('/ap/signin');
@@ -319,10 +348,16 @@ test(
     ]);
 
     // The next jobs re-resolve provider identity, then read at the stored address without
-    // loading the overview: a week not posted yet is noted, a posted one published.
+    // loading the overview: a week not posted yet is noted, a posted one published. Each
+    // job's new browser starts from the session its profile kept: one check of the
+    // company list, then no landing page and no sign-in.
     requests.length = 0;
+    const session = { ...seen };
     await collect('week-37', '2026-W37');
     const posted36 = await collect('week-36', '2026-W36');
+    assert.equal(seen.companies, session.companies + 2);
+    assert.equal(seen.landing, session.landing);
+    assert.equal(seen.signIns, session.signIns);
     assert.equal(seen.overview, overviews);
     assert.equal(requests.length, 14 * 2);
     assert.ok(requests.every((u) => u.pathname === '/performance/api/v1/getData'));
@@ -368,6 +403,10 @@ test(
     );
 
     // The same connection and HTTP reader collect each date independently of weekly storage.
+    // Amazon ended the saved session first: the first date's check is refused and its job
+    // signs in on the page, once; the second date's starts from that new session.
+    generation++;
+    const expired = { ...seen };
     for (const date of ['2026-10-03', '2026-10-04']) {
       const daily = await owner.post('/api/dsp/daily-performance/collect', {
         requestId: `daily-${date}`,
@@ -389,6 +428,8 @@ test(
       assert.ok(captured.every((url) => url.searchParams.get('timeFrame') === 'Daily'));
       assert.equal(new Set(captured.map((url) => url.searchParams.get('dataSetId'))).size, 22);
     }
+    assert.equal(seen.companies, expired.companies + 2);
+    assert.equal(seen.signIns, expired.signIns + 1);
     assert.ok(
       seen.dailyPeak > 1 && seen.dailyPeak <= 6,
       `Daily request concurrency: ${seen.dailyPeak}`,
