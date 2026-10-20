@@ -330,7 +330,6 @@ impl Driver {
                 false,
             ),
         };
-        let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
         let job = run.job.to_owned();
         let station = request.station.clone();
         let company = api.company_id.clone();
@@ -348,6 +347,8 @@ impl Driver {
         let known: HashMap<String, KnownReport> = serde_json::from_value(known)?;
         run.progress(10, "Checking DVIC reports".into()).await?;
         let listed = loop {
+            // The browser's cookies as they are now: the overview may have renewed them.
+            let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
             match self.dvic_listing(&http, &api, request, run).await {
                 Ok(listed) => break listed,
                 // Nothing answers where the API last answered, or it answers as to no one
