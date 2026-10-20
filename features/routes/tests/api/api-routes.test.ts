@@ -168,21 +168,26 @@ test('a day of routes is collected on request, stored in normalized rows and lis
     (await owner.post('/api/dsp/routes/schedules', { ...body, collection: 'paycom' })).status,
     403,
   );
+  // One that reads today so far is Routes' too.
+  const today = { ...body, collection: 'routes_today' };
+  assert.equal((await owner.post('/api/dsp/schedules', today)).status, 403);
+  const sofar = await owner.post('/api/dsp/routes/schedules', today);
+  assert.equal(sofar.status, 201, sofar.body);
+  assert.equal(sofar.value.collection, 'routes_today');
   assert.ok(
     !(await owner.get('/api/dsp/schedules')).value.schedules.some(
       (s: any) => s.id === schedule.value.id,
     ),
   );
-  const scheduled = async () =>
-    (await owner.get('/api/dsp/routes/schedules')).value.schedules.find(
-      (s: any) => s.id === schedule.value.id,
-    );
-  assert.equal((await scheduled()).enabled, true);
+  const scheduled = async (id: string) =>
+    (await owner.get('/api/dsp/routes/schedules')).value.schedules.find((s: any) => s.id === id);
+  assert.equal((await scheduled(schedule.value.id)).enabled, true);
   assert.equal(
     (await owner.post('/api/dsp/connections/cortex/disable', { removeCredentials: false })).status,
     200,
   );
-  assert.equal((await scheduled()).enabled, false);
+  assert.equal((await scheduled(schedule.value.id)).enabled, false);
+  assert.equal((await scheduled(sofar.value.id)).enabled, false);
   // The audit names the collection request.
   const events = (await owner.get('/api/platform/audit?limit=50')).value.events;
   assert.ok(

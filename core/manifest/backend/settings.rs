@@ -854,12 +854,11 @@ fn check_schedules(
     if let Some(other) = offered.iter().find(|offered| !keeps(offered)) {
         return Err(format!("{other} is no collection its feature keeps"));
     }
-    if !offered.contains(&collection)
-        || offered.iter().collect::<BTreeSet<_>>().len() != offered.len()
-    {
-        return Err(format!(
-            "what it offers to collect repeats one, or leaves out {collection}"
-        ));
+    if !offered.contains(&collection) {
+        return Err(format!("what it offers to collect leaves out {collection}"));
+    }
+    if offered.iter().collect::<BTreeSet<_>>().len() != offered.len() {
+        return Err("what it offers to collect repeats one".into());
     }
     if !(feature.routes)()
         .iter()

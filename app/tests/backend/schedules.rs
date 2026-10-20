@@ -13,6 +13,7 @@ use dispatch_core::{
     },
     db::{Kind, Migrations},
     manifest::{Capability, Collection, Collector, Registry},
+    testing::schedule_due_at,
 };
 use dispatch_cortex as cortex;
 use dispatch_paycom as paycom;
@@ -67,9 +68,6 @@ fn meals(db: &Store, id: &str) {
     db.publish_meals(id, "seed-meals", &cortex::meals::fixture(&scope), &scope)
         .unwrap();
 }
-fn due(db: &Store, id: &str, key: &str, deadline: &str) {
-    dispatch_core::testing::schedule_due_at(db, id, key, deadline).unwrap();
-}
 #[test]
 fn resuming_preview_preserves_the_saved_interval_anchor() {
     crate::install();
@@ -123,7 +121,7 @@ fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
         let row = db.save_schedule(&id, None, &input(collection)).unwrap();
         let key = row.id.as_str();
         let deadline = "2026-01-01T00:00:00.000Z";
-        due(&db, &id, key, deadline);
+        schedule_due_at(&db, &id, key, deadline).unwrap();
         let next = db.schedule_due(&id).unwrap().unwrap();
         assert!(next > now());
         let jobs = db.jobs.all("SELECT * FROM jobs", []).unwrap();
@@ -148,7 +146,7 @@ fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
                     .to_string()
             );
         }
-        due(&db, &id, key, deadline); // Crash after the batch committed, before advancing the schedule.
+        schedule_due_at(&db, &id, key, deadline).unwrap(); // Crash after the batch committed, before advancing the schedule.
         db.schedule_due(&id).unwrap();
         assert_eq!(
             db.jobs.all("SELECT id FROM jobs", []).unwrap().len(),
@@ -166,8 +164,8 @@ fn blocked_and_overlapping_schedules_never_start_half_a_batch() {
     let first = db.save_schedule(&id, None, &input("paycom")).unwrap().id;
     let second = db.save_schedule(&id, None, &input("both")).unwrap().id;
     let stored = |key: &str| db.collection_schedule(&id, key).unwrap();
-    due(&db, &id, &first, "2026-01-01T00:00:00.000Z");
-    due(&db, &id, &second, "2026-01-02T00:00:00.000Z");
+    schedule_due_at(&db, &id, &first, "2026-01-01T00:00:00.000Z").unwrap();
+    schedule_due_at(&db, &id, &second, "2026-01-02T00:00:00.000Z").unwrap();
     db.schedule_due(&id).unwrap();
     assert_eq!(db.jobs.all("SELECT id FROM jobs", []).unwrap().len(), 1);
     assert_eq!(
@@ -275,7 +273,7 @@ fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
     );
 
     // The DSP's own schedule runs, neither held back by the job nor timed by the schedule.
-    due(&db, &id, &own, "2026-01-01T00:00:00.000Z");
+    schedule_due_at(&db, &id, &own, "2026-01-01T00:00:00.000Z").unwrap();
     db.schedule_due(&id).unwrap();
     assert_eq!(db.collection_schedule(&id, &own).unwrap().last_error, None);
     let deadlines = db.schedule_deadlines().unwrap();
