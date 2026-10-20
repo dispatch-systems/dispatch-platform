@@ -8,7 +8,8 @@ import { fixture, until } from '../../../../core/shell/tests/support/support.js'
 import { fileContainsAny } from '../../../../core/shell/tests/support/files.js';
 
 // What only the collected vans carry, so any copy of them outside their database shows.
-const MARKERS = ['VanMarker 214', 'VANMARK01'];
+const NAME = 'VanMarker 214';
+const PLATE = 'VANMARK01';
 
 // The real Rust driver against a staged Cortex: a vans job starts from the session the
 // connection's sign-in kept, reads the company list once, in the session check, reads the
@@ -21,7 +22,7 @@ test(
     const van = (vin: string, name: string, status: string) => ({
       vin,
       dspVehicleId: name,
-      registrationNo: name === MARKERS[0] ? MARKERS[1] : 'FXT0100',
+      registrationNo: name === NAME ? PLATE : 'FXT0100',
       status,
       serviceTier: 'ELECTRIC_RPV_MEDIUM',
       serviceStation: { stationCode: 'TST1' },
@@ -86,7 +87,7 @@ test(
               data: {
                 vehicles: [
                   van('1FTBW3XM5LKA00101', 'CDV 101', 'ACTIVE'),
-                  van('7FCTGAAA1NN000214', MARKERS[0], 'ACTIVE'),
+                  van('7FCTGAAA1NN000214', NAME, 'ACTIVE'),
                 ],
                 continuationKey: 'page-2',
               },
@@ -162,14 +163,17 @@ test(
     assert.deepEqual(stored, [
       { vin: '1FTBW3XM5LKA00101', name: 'CDV 101', status: 'ACTIVE', listed: 1 },
       { vin: '3C6LRVDG0ME000301', name: 'Rental 301', status: 'INACTIVE', listed: 1 },
-      { vin: '7FCTGAAA1NN000214', name: MARKERS[0], status: 'ACTIVE', listed: 1 },
+      { vin: '7FCTGAAA1NN000214', name: NAME, status: 'ACTIVE', listed: 1 },
     ]);
 
     // Everything collected lives in Vans' database alone: no browser run is left, and no
     // other file holds any of it, in any encoding a browser stores text.
     const runs = path.join(f.root, 'data/preview/browser-runs');
     await until(async () => !fs.existsSync(runs) || fs.readdirSync(runs).length === 0, 30000);
-    const needles = MARKERS.flatMap((m) => [Buffer.from(m, 'utf8'), Buffer.from(m, 'utf16le')]);
+    const needles = [NAME, PLATE].flatMap((m) => [
+      Buffer.from(m, 'utf8'),
+      Buffer.from(m, 'utf16le'),
+    ]);
     const holding: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
