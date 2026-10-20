@@ -18,7 +18,7 @@ fn ready() -> (tempfile::TempDir, Store, String) {
     (root, store, dsp)
 }
 #[test]
-fn the_default_daily_refresh_can_queue_all_seven_dates() {
+fn the_default_daily_refresh_queues_all_seven_dates_as_one_job() {
     let (_root, store, dsp) = ready();
     let requests: Vec<_> = store
         .daily_performance_jobs(&dsp)
@@ -26,11 +26,14 @@ fn the_default_daily_refresh_can_queue_all_seven_dates() {
         .into_iter()
         .map(|(key, request)| (key, cortex::PROVIDER, request))
         .collect();
-    assert_eq!(requests.len(), 7);
-    assert_eq!(store.enqueue_batch(&dsp, None, &requests).unwrap().len(), 7);
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].2["dates"].as_array().unwrap().len(), 7);
+    assert_eq!(store.enqueue_batch(&dsp, None, &requests).unwrap().len(), 1);
 }
+// A month's backfill is one job; the queue holds as many jobs as it held single days, each
+// as many reads as one day was.
 #[test]
-fn daily_backfills_admit_31_dates_atomically_with_idempotency_and_existing_bounds() {
+fn daily_backfills_read_31_dates_as_one_job_with_idempotency_and_existing_bounds() {
     let (_root, store, dsp) = ready();
     let queued = store
         .enqueue_daily_performance(
@@ -41,7 +44,15 @@ fn daily_backfills_admit_31_dates_atomically_with_idempotency_and_existing_bound
             "2026-10-01",
         )
         .unwrap();
-    assert_eq!(queued.as_array().unwrap().len(), 31);
+    assert_eq!(queued.as_array().unwrap().len(), 1);
+    let request: serde_json::Value = serde_json::from_str(
+        &store
+            .job_row(queued[0]["id"].as_str().unwrap(), Some(&dsp))
+            .unwrap()
+            .request,
+    )
+    .unwrap();
+    assert_eq!(request["dates"].as_array().unwrap().len(), 31);
     assert_eq!(
         store
             .enqueue_daily_performance(
@@ -54,6 +65,12 @@ fn daily_backfills_admit_31_dates_atomically_with_idempotency_and_existing_bound
             .unwrap(),
         queued
     );
+    for day in 1..=30 {
+        let date = format!("2026-08-{day:02}");
+        store
+            .enqueue_daily_performance(&dsp, None, &format!("day-{day}"), &date, &date)
+            .unwrap();
+    }
     assert_eq!(
         store
             .enqueue_daily_performance(&dsp, None, "overflow", "2026-10-02", "2026-10-02")
