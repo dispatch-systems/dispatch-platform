@@ -147,6 +147,8 @@ where
                     *asking = false;
                     self.metrics.detail("meal_ask_unavailable");
                 }
+                // An ask the browser timed out on may still have been sent: its answer is
+                // read for this route either way, and a second one waits unclaimed.
                 Err(_) => self.metrics.detail("meal_ask_failed"),
             }
         }
