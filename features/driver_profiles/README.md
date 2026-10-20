@@ -18,12 +18,10 @@ its roster bar and its schedules are on its Settings page.
   abbreviation, then its whole roster in one request over HTTP, then downloads the photos the
   DSP lacks or holds for over 30 days, about sixty at most a run; the next brings the rest. A
   roster naming no one is refused rather than taken to mean everyone left.
-- **Schedule:** each DSP that has it gets one schedule, `Daily roster` at 05:00 its time, as
-  soon as Cortex is connected and the DSP has an abbreviation. It is made once: changed or
-  removed, it stays as the DSP left it.
-- **Data:** `associates`, `photos`, `roster_runs` and `settings`, in a database of its own
-  beside Cortex's. Someone the roster stops listing keeps their row, with `listed` 0, so what
-  names them elsewhere still finds a name.
+- **Schedules:** only the DSP's own, added on its Settings page; Driver Profiles makes none.
+- **Data:** `associates`, `photos` and `roster_runs`, in a database of its own beside
+  Cortex's. Someone the roster stops listing keeps their row, with `listed` 0, so what names
+  them elsewhere still finds a name.
 - **Photos** are files in the DSP's cache, `cache/driver_profiles/photos/<sha256>.<ext>`.
   Backups leave the cache out, as a restore collects them again, and they go with the DSP's
   folder. A photo is deleted once Amazon no longer lists whoever it shows; an inactive

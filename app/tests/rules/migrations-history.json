@@ -308,5 +308,29 @@
       "name": "days_per_job",
       "sha256": "fa9aadd569f9bb24308ef0d5131a95a5119655dbcc166919bb173be7a73772c1"
     }
+  ],
+  "driver_profiles": [
+    {
+      "id": 1,
+      "name": "baseline",
+      "sha256": "7883df84ca01f0419a494e6fefd54daef40de398af15dece0c08c94b17d79313"
+    },
+    {
+      "id": 2,
+      "name": "drop_settings",
+      "sha256": "c8a26bc3352c0fed1ef69a0a6d308fc2fa619045c744d424c0ec5f9868a0a867"
+    }
+  ],
+  "vans": [
+    {
+      "id": 1,
+      "name": "baseline",
+      "sha256": "93bafd1b9d28c0d8fd2f99056d3f6b0ab5abe148adbcb75f1207b404c04f6e95"
+    },
+    {
+      "id": 2,
+      "name": "drop_settings",
+      "sha256": "10dd5a5c583894dcc8e7fc1eb15acd457c73cf9314d40cdfb9e358b22cb0b932"
+    }
   ]
 }

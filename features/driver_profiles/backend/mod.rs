@@ -3,7 +3,6 @@
 //! dependant uses.
 pub(crate) mod exposed;
 pub(crate) mod keeper;
-pub(crate) mod maintenance;
 pub(crate) mod people;
 pub(crate) mod photos;
 pub(crate) mod settings;

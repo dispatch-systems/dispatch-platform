@@ -24,17 +24,23 @@ pub const FEATURE: Feature = Feature {
     settings: &[backend::settings::FLEET, backend::settings::COLLECTION],
     live: &["vans.collect"],
     keeps: &[&backend::keeper::Fleet],
-    tables: &[("vans", &["vans", "settings", "fleet_runs"])],
+    tables: &[("vans", &["vans", "fleet_runs"])],
     migrations: &[Migrations {
         kind: backend::storage::DATABASE,
-        list: &[Migration {
-            id: 1,
-            name: "baseline",
-            apply: Sql(include_str!("migrations/vans/0001_baseline.sql")),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "baseline",
+                apply: Sql(include_str!("migrations/vans/0001_baseline.sql")),
+            },
+            Migration {
+                id: 2,
+                name: "drop_settings",
+                apply: Sql(include_str!("migrations/vans/0002_drop_settings.sql")),
+            },
+        ],
     }],
     domains: &[backend::DOMAIN],
-    maintenance: &[backend::maintenance::MAINTENANCE],
     audit: Audit {
         areas: &[("vans.", Collections)],
         ..Audit::NONE
