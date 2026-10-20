@@ -13,6 +13,7 @@ pub mod pr;
 pub mod preview;
 pub mod scaffold;
 pub mod ship;
+pub mod slot;
 pub mod start;
 pub mod status;
 pub mod test;

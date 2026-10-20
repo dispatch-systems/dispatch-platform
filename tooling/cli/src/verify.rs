@@ -5,7 +5,11 @@
 //! then leaves it out as the weekly check does: on GitHub when the branch is pushed as it is
 //! (`crate::ci`), else in a copy of the checkout, so neither the worktree nor its preview is
 //! touched. A line a step, then what failed and what to do next.
-use crate::{Result, Runner, ci, require, test, workspace};
+use crate::{
+    Result, Runner, ci, require,
+    slot::{self, Slot},
+    test, workspace,
+};
 use serde_json::Value;
 use std::{
     fs,
@@ -14,14 +18,15 @@ use std::{
 };
 
 const TSX: &str = "node node_modules/tsx/dist/cli.mjs";
+/// Whether `generate` would change anything, from the app's tests built in the checkout's own
+/// target folder.
+const GENERATE: &str =
+    "node node_modules/tsx/dist/cli.mjs tooling/scaffold/cli.ts generate --check";
 
 /// The steps that need no build of their own, run in the checkout as they are: each its line's
 /// label and its command.
 fn quick(root: &Path, changed: &[String]) -> Result<Vec<(String, String)>> {
-    let mut steps = vec![(
-        "generate --check".to_owned(),
-        format!("{TSX} tooling/scaffold/cli.ts generate --check"),
-    )];
+    let mut steps = vec![("generate --check".to_owned(), GENERATE.to_owned())];
     // Every architecture rule, found where it lives. What a generator left to write is listed
     // rather than failed: a feature in progress has it on purpose.
     let mut rules: Vec<String> = fs::read_dir(root.join("app/tests/rules"))?
@@ -199,12 +204,21 @@ pub fn run(
     let scratch = workspace::scratch_dir(name)?;
     let logs: PathBuf = scratch.join("verify").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
-    let env = [("TMPDIR", scratch.as_os_str())];
     let (mut passed, mut failed) = (0, Vec::<String>::new());
 
     let changed = test::changed(root, runner)?;
     for (index, (label, command)) in quick(root, &changed)?.iter().enumerate() {
         let log = logs.join(format!("{}.log", index + 1));
+        // generate --check builds the app's tests, so it waits its turn for a build slot.
+        let slot = if command == GENERATE {
+            Slot::take(root, label, &std::env::vars().collect(), runner)?
+        } else {
+            None
+        };
+        let mut env = vec![("TMPDIR", scratch.as_os_str())];
+        if let Some(slot) = &slot {
+            env.push((slot::HELD, slot.path.as_os_str()));
+        }
         let (ok, took) = workspace::logged(command, root, &log, &env)?;
         line(ok, took, label);
         if ok {
