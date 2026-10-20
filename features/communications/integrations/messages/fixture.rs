@@ -4,7 +4,8 @@
 //! as having Jordan's and Slackbot's. Jordan's holds what they wrote while Dispatch wasn't
 //! listening: a message, a photo, a question with a reply in its thread, and the app's own
 //! answer, each stamped when a workspace's is first read, so it's newer than when Communications
-//! came on; and one from before 2026, before it ever was. A test reads a workspace's once.
+//! came on; and one from before 2026, before it ever was. A test reads a workspace's once, and
+//! may add a reply to the question later (`reply_later`).
 use dispatch_core::{Result, db::now};
 use serde_json::{Value, json};
 use std::{
@@ -70,11 +71,13 @@ fn stamp(team: &str) -> i64 {
 fn history(team: &str) -> Vec<Value> {
     let at = |micros: u32| format!("{}.{micros:06}", stamp(team));
     let thread = at(300_000);
+    let replied = replies(team);
     vec![
         json!({"type": "message", "user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE",
             "text": "DSP Messaging is unavailable", "ts": at(350_000)}),
         json!({"type": "message", "user": "U0FIXJORDAN", "text": "Can I swap Saturday?",
-            "ts": thread, "thread_ts": thread, "reply_count": 1, "latest_reply": at(400_000)}),
+            "ts": thread, "thread_ts": thread, "reply_count": replied.len(),
+            "latest_reply": replied.last().map(|reply| reply["ts"].clone())}),
         json!({"type": "message", "subtype": "file_share", "user": "U0FIXJORDAN", "text": "",
             "ts": at(200_000), "files": [{"id": PHOTO, "name": "Flat tire.png",
             "mimetype": "image/png", "size": 69, "mode": "hosted"}]}),
@@ -84,13 +87,30 @@ fn history(team: &str) -> Vec<Value> {
             "ts": "1767225599.000100"}),
     ]
 }
-/// The replies in the thread of Jordan's question.
+/// The replies in the thread of Jordan's question: the one they wrote, then any a test added.
 fn replies(team: &str) -> Vec<Value> {
     let at = |micros: u32| format!("{}.{micros:06}", stamp(team));
-    vec![
-        json!({"type": "message", "user": "U0FIXJORDAN", "text": "Never mind, Tyler took it",
-        "ts": at(400_000), "thread_ts": at(300_000)}),
-    ]
+    let written = json!({"type": "message", "user": "U0FIXJORDAN",
+        "text": "Never mind, Tyler took it", "ts": at(400_000), "thread_ts": at(300_000)});
+    let added = ADDED.lock().unwrap_or_else(|poison| poison.into_inner());
+    let later = added
+        .iter()
+        .filter(|(of, ..)| of == team)
+        .map(|(_, text, ts)| {
+            json!({"type": "message", "user": "U0FIXJORDAN", "text": text, "ts": ts,
+            "thread_ts": at(300_000)})
+        });
+    [written].into_iter().chain(later).collect()
+}
+/// The replies a test added to Jordan's question later: each one's workspace, text and `ts`.
+static ADDED: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
+/// Adds Jordan's reply `text` to their question in the workspace, written `after` seconds after
+/// its history was stamped.
+#[cfg(test)]
+pub fn reply_later(team: &str, text: &str, after: i64) {
+    let ts = format!("{}.000000", stamp(team) + after);
+    let mut added = ADDED.lock().unwrap_or_else(|poison| poison.into_inner());
+    added.push((team.to_owned(), text.to_owned(), ts));
 }
 /// `messages` written after `oldest`, in seconds, as Slack lists them.
 fn since(messages: Vec<Value>, oldest: f64) -> Vec<Value> {

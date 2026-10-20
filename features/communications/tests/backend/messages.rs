@@ -1,6 +1,6 @@
 //! A workspace forgotten, as on disconnecting it, keeps every message the DSP had there.
 use super::*;
-use crate::backend::{storage::CommunicationsStore, support};
+use crate::backend::{conversations, storage::CommunicationsStore, support};
 use dispatch_core::db::now;
 use dispatch_slack::testing as slack;
 use serde_json::json;
@@ -31,6 +31,13 @@ async fn a_workspace_forgotten_keeps_its_messages_and_lets_go_of_conversations_w
         support::texts(&state, &dsp, &kept.id).await,
         ["Keys are in the van"]
     );
+    // Its workspace gone, it can't be written in.
+    let (shared, at, id) = (state.clone(), dsp.clone(), kept.id.clone());
+    let listed = state
+        .read(move |db| conversations::one(db, &shared, &at, &id))
+        .await
+        .unwrap();
+    assert!(!listed.can_reply);
     assert!(
         support::conversation_with(&state, &dsp, TEAM, "U0NOWRITE")
             .await

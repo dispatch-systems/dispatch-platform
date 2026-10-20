@@ -4,7 +4,7 @@
 //! conversation but shown in the message (`files:write`). Someone at the DSP may open a direct
 //! message with any member of a workspace where Communications works, to message them first
 //! (`im:write`). Slack is called outside the database, and the member's access checked again
-//! before anything is kept.
+//! before anything is kept, or, for a message, before it goes to Slack: what Slack has is kept.
 use super::{
     conversations, files,
     files::FileStore,
@@ -147,11 +147,16 @@ pub async fn send(
         },
         "username": identity.name,
         "icon_url": identity.icon,
+        // As written: Slack's markup, as `*` for bold, isn't read in it.
+        "mrkdwn": false,
         "unfurl_links": false,
     });
     if !shown.is_empty() {
         args["blocks"] = blocks(written, &shown);
     }
+    // Checked again before it goes to Slack: once Slack has it, it's kept.
+    let asked = c.clone();
+    let c = state.read(move |db| access.revalidate(db, &asked)).await?;
     let posted = post(&bot, &args, !shown.is_empty()).await?;
     let ts = posted["ts"].as_str().unwrap_or_default().to_owned();
     let at = incoming::millis(&ts).ok_or_else(|| Error::new("slack_refused", 502))?;
@@ -159,22 +164,21 @@ pub async fn send(
         .into_iter()
         .map(|(photo, slack_id, _)| (photo, slack_id))
         .collect();
-    let (shared, by, conversation, name) = (state.clone(), c.clone(), id.to_owned(), identity.name);
-    let written = written.to_owned();
+    let (shared, dsp, by) = (state.clone(), c.dsp.id.clone(), c.auth.user.id.clone());
+    let (conversation, name, written) = (id.to_owned(), identity.name, written.to_owned());
     let message = state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            let c = access.revalidate(db, &by)?;
             let sent = Sent {
                 ts: &ts,
                 text: &written,
                 at,
-                by: &c.auth.user.id,
+                by: &by,
                 name: &name,
                 photos: &photos,
             };
-            let kept = db.keep_communications_reply(&c.dsp.id, &conversation, &sent)?;
-            let people = conversations::People::read(db, &shared, &c.dsp.id)?;
-            Ok(conversations::messages(db, &people, &c.dsp.id, vec![kept])?.remove(0))
+            let kept = db.keep_communications_reply(&dsp, &conversation, &sent)?;
+            let people = conversations::People::read(db, &shared, &dsp)?;
+            Ok(conversations::messages(db, &people, &dsp, vec![kept])?.remove(0))
         })
         .await?;
     live::stopped(state, &c.dsp.id, id, &c.auth.user.id);

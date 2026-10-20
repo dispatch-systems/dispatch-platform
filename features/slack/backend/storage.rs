@@ -178,6 +178,18 @@ fn keep_member(db: &Db, team: &str, member: &Member) -> Result<bool> {
     Ok(kept.is_empty())
 }
 
+/// Slack's migration 8: when the DSP got each workspace (`added_at`), which reconnecting or
+/// updating it leaves as it was, unlike when it was last connected: for one it had already, when
+/// it was connected.
+pub(crate) fn add_workspaces_added(db: &Db) -> Result<()> {
+    add_column(db, "slack_workspaces", "added_at", "TEXT")?;
+    db.exec(
+        "UPDATE slack_workspaces SET added_at=connected_at WHERE added_at IS NULL",
+        [],
+    )?;
+    Ok(())
+}
+
 /// The DSP's install link, as stored: never the link itself, only its hash.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Link {
@@ -234,8 +246,8 @@ pub trait SlackStore {
     /// doesn't have.
     fn slack_integrations(&self, dsp: &str, team: &str) -> Result<Vec<String>>;
     /// When the integration `id` came on in the workspace `team`, in milliseconds: when someone
-    /// switched it on there, or, for one on from the start, when the workspace was connected.
-    /// None while it's off.
+    /// switched it on there, or, for one on from the start, when the DSP got the workspace,
+    /// however often it was reconnected since. None while it's off.
     fn slack_integration_on_since(&self, dsp: &str, team: &str, id: &str) -> Result<Option<i64>>;
     /// Switches the integration `id` on in the workspace `team`, as the member `by`: whether it
     /// was off.
@@ -371,10 +383,16 @@ impl SlackStore for Store {
         let kept = self
             .save_slack_tokens(dsp, &workspace.team, tokens)
             .and_then(|()| {
+                // Reconnected, it keeps when the DSP got it.
                 self.dsp(dsp)?.exec(
-                    "INSERT OR REPLACE INTO slack_workspaces (team_id,name,status,scopes,\
-                     bot_user_id,app_id,connected_by,connected_at,broken_at,label) \
-                     VALUES (?,?,'connected',?,?,?,?,?,NULL,?)",
+                    "INSERT INTO slack_workspaces (team_id,name,status,scopes,bot_user_id,\
+                     app_id,connected_by,connected_at,broken_at,label,added_at) \
+                     VALUES (?1,?2,'connected',?3,?4,?5,?6,?7,NULL,?8,?7) \
+                     ON CONFLICT(team_id) DO UPDATE SET name=excluded.name,\
+                     status=excluded.status,scopes=excluded.scopes,\
+                     bot_user_id=excluded.bot_user_id,app_id=excluded.app_id,\
+                     connected_by=excluded.connected_by,connected_at=excluded.connected_at,\
+                     broken_at=NULL,label=excluded.label",
                     params![
                         workspace.team,
                         workspace.name,
@@ -566,7 +584,7 @@ impl SlackStore for Store {
             &format!(
                 "SELECT {} FROM slack_workspaces WHERE team_id=?1 AND NOT EXISTS \
                  (SELECT 1 FROM slack_integrations_off WHERE team_id=?1 AND integration=?2)",
-                ms("connected_at")
+                ms("added_at")
             ),
             [team, id],
         )?;

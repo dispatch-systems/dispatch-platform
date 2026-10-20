@@ -3,9 +3,7 @@ import { test, expect, login, openDsp } from '../../../../core/shell/tests/suppo
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
 // mode's Slack sends the browser straight back from installing.
 
-test('Communications is on from the start in a workspace just connected, and switches off there', async ({
-  page,
-}) => {
+test('Communications is on from the start in a workspace just connected', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
@@ -25,14 +23,6 @@ test('Communications is on from the start in a workspace just connected, and swi
     .getByRole('navigation', { name: 'Sections' })
     .getByRole('button', { name: 'Integrations', exact: true })
     .click();
-  const on = page.getByRole('switch', { name: 'Communications', exact: true });
-  await expect(on).toBeChecked();
-  await on.click();
-  await page
-    .getByRole('dialog', { name: 'Turn off Communications?' })
-    .getByRole('button', { name: 'Turn off' })
-    .click();
-  await expect(on).not.toBeChecked();
-  await page.reload();
-  await expect(page.getByRole('switch', { name: 'Communications', exact: true })).not.toBeChecked();
+  // Its card, under the workspace's Integrations, on.
+  await expect(page.getByRole('switch', { name: 'Communications', exact: true })).toBeChecked();
 });

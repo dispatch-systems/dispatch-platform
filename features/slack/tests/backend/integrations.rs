@@ -120,6 +120,21 @@ async fn an_integration_that_starts_on_is_on_in_every_workspace_until_switched_o
     let (on, since) = state.read(read.clone()).await.unwrap();
     assert_eq!(on, [STARTING.id]);
     assert_eq!(since, Some(1_767_225_600_000));
+    // Reconnected, or updated, it's on since when the DSP got the workspace still.
+    let of = dsp.clone();
+    state
+        .run(move |db| {
+            let mut workspace = db.slack_workspace(&of, TEAM)?.unwrap();
+            workspace.connected_at = "2026-03-01T00:00:00Z".into();
+            let tokens = db.slack_tokens(&of, TEAM)?.unwrap();
+            db.save_slack_workspace(&of, &workspace, &tokens)
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        state.read(read.clone()).await.unwrap().1,
+        Some(1_767_225_600_000)
+    );
     // Switched off, it stays off, and isn't on since anything.
     let of = dsp.clone();
     let switched = state

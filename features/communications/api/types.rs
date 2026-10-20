@@ -90,6 +90,9 @@ pub struct Conversation {
     pub last_at: Option<i64>,
     /// Its latest message, if it has one.
     pub last: Option<Message>,
+    /// Whether someone at the DSP can write in it now: Communications works in its workspace,
+    /// which the DSP still has.
+    pub can_reply: bool,
     /// The letters of its name that matched what was searched, as runs of the name's UTF-16
     /// code units: start and end. None unless searched.
     pub matched: Vec<(u32, u32)>,
@@ -264,7 +267,8 @@ pub struct Writing {
 
 /// `GET /api/dsp/communications/updates`: what changed since `after`, and who is typing, once
 /// either changes or twenty seconds pass. `reset` asks for `GET /api/dsp/communications` afresh,
-/// as for changes no longer kept.
+/// as for changes no longer kept. A conversation changes with any of its messages, as one
+/// edited or a file kept, so a page with one open reads it again when it's among them.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(

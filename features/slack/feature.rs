@@ -136,6 +136,11 @@ pub const FEATURE: Feature = Feature {
                         "migrations/dsp/0007_slack_integrations_off.sql"
                     )),
                 },
+                Migration {
+                    id: 8,
+                    name: "slack_workspaces_added",
+                    apply: Code(backend::storage::add_workspaces_added),
+                },
             ],
         },
     ],

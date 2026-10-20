@@ -1,10 +1,11 @@
 //! What members wrote to the app while Dispatch couldn't hear Slack, as while the server was
 //! down, kept as Slack would have told of it. As the server starts, and hourly, each direct
 //! message the app has in each workspace where Communications works, once its admin has
-//! approved reading them, is read (`im:history`) from
-//! when it was last read, or from when its messages may first be kept, never earlier, with the
-//! threads in it. Its direct messages are those Dispatch knows, and every other Slack lists the
-//! app as having (`im:read`) once the workspace's admin has approved that.
+//! approved reading them, is read (`im:history`) from when it was last read, or from when its
+//! messages may first be kept, never earlier, with the replies since then in its threads, those
+//! begun up to a week before too. Where a pass left off moves on only once it read all there
+//! was. Its direct messages are those Dispatch knows, and every other Slack lists the app as
+//! having (`im:read`) once the workspace's admin has approved that.
 use super::{ID, incoming};
 use crate::backend::storage::{CommunicationsStore, Conversation, DOMAIN};
 use dispatch_core::{
@@ -30,6 +31,9 @@ const LISTING: &str = "im:read";
 /// The messages each page of Slack's holds, and the pages read of a conversation in one pass.
 const PAGE: u64 = 200;
 const PAGES: usize = 10;
+/// How far before where it left off a direct message is read again, for the replies in threads
+/// begun before then, in milliseconds: a week.
+const THREADS_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
 fn pass(state: Arc<State>, due: bool) -> Upkeep {
     Box::pin(async move {
@@ -115,9 +119,14 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
             }
             let from = direct.caught_up_at.unwrap_or(0).max(workspace.since);
             let started = now();
-            if let Err(error) = read(state, &bot, &channel, from).await {
-                kit::failed(FAILED, &error);
-                continue;
+            match read(state, &bot, &channel, from, workspace.since).await {
+                Ok(true) => {}
+                // More than a pass reads is left for the next.
+                Ok(false) => continue,
+                Err(error) => {
+                    kit::failed(FAILED, &error);
+                    continue;
+                }
             }
             let (at, team, user) = (dsp.to_owned(), workspace.team.clone(), direct.user);
             state
@@ -157,10 +166,13 @@ async fn listed(bot: &Bot) -> Result<Vec<(String, String)>> {
     Ok(found)
 }
 
-/// Keeps what was written in the direct message `channel` since `from`, in milliseconds, with
-/// the replies in its threads since then.
-async fn read(state: &Arc<State>, bot: &Bot, channel: &str, from: i64) -> Result<()> {
-    let oldest = incoming::ts(from);
+/// Keeps what was written in the direct message `channel` since `from`, in milliseconds, and the
+/// replies in its threads since then, those begun up to a week before it too, never from before
+/// `since`: whether it read all of it. What it reads again from that week, it keeps once still,
+/// and any later edit of it.
+async fn read(state: &Arc<State>, bot: &Bot, channel: &str, from: i64, since: i64) -> Result<bool> {
+    let oldest = incoming::ts((from - THREADS_MS).max(since));
+    let replied = incoming::ts(from);
     let mut cursor = Value::Null;
     for _ in 0..PAGES {
         let page = bot
@@ -171,29 +183,29 @@ async fn read(state: &Arc<State>, bot: &Bot, channel: &str, from: i64) -> Result
             .await?;
         for message in page["messages"].as_array().into_iter().flatten() {
             incoming::keep(state, &bot.dsp, &bot.team, channel, message).await?;
-            let replied = message["latest_reply"].as_str().and_then(incoming::millis);
-            if let (Some(thread), true) = (
-                message["ts"].as_str(),
-                replied.is_some_and(|latest| latest > from),
-            ) {
-                replies(state, bot, channel, thread, &oldest).await?;
+            let latest = message["latest_reply"].as_str().and_then(incoming::millis);
+            if let (Some(thread), true) = (message["ts"].as_str(), latest > Some(from))
+                && !replies(state, bot, channel, thread, &replied).await?
+            {
+                return Ok(false);
             }
         }
         cursor = match page["response_metadata"]["next_cursor"].as_str() {
             Some(next) if !next.is_empty() => json!(next),
-            _ => break,
+            _ => return Ok(true),
         };
     }
-    Ok(())
+    Ok(false)
 }
-/// Keeps the replies in the thread `thread` of the direct message `channel` since `oldest`.
+/// Keeps the replies in the thread `thread` of the direct message `channel` since `oldest`:
+/// whether it read all of them.
 async fn replies(
     state: &Arc<State>,
     bot: &Bot,
     channel: &str,
     thread: &str,
     oldest: &str,
-) -> Result<()> {
+) -> Result<bool> {
     let mut cursor = Value::Null;
     for _ in 0..PAGES {
         let page = bot
@@ -210,10 +222,10 @@ async fn replies(
         }
         cursor = match page["response_metadata"]["next_cursor"].as_str() {
             Some(next) if !next.is_empty() => json!(next),
-            _ => break,
+            _ => return Ok(true),
         };
     }
-    Ok(())
+    Ok(false)
 }
 
 #[cfg(test)]

@@ -266,7 +266,8 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   it. Public:
   `GET /api/slack/return`, where Slack sends the browser back; `GET /api/slack/install`, the install
   link; and Slack's own `POST /slack/events` and `POST /slack/interactions`.
-- **Data:** `slack_workspaces` (each with its name in Dispatch, `label`), `slack_members` (its
+- **Data:** `slack_workspaces` (each with its name in Dispatch, `label`, and when the DSP got
+  it, `added_at`, migration 8, which reconnecting or updating it leaves as it was), `slack_members` (its
   own migration 3), `slack_integrations` (migration 4: those switched on in each workspace,
   with who switched each on and when), `slack_integrations_off` (migration 7: those that start
   on, switched off in a workspace, with who switched each off and when), `slack_import_links` and `slack_imports` (migration 5: Import

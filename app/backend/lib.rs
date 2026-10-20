@@ -112,7 +112,7 @@ mod schedule_runs;
 #[path = "../tests/backend/schema.rs"]
 mod schema;
 #[cfg(test)]
-#[cfg(feature = "slack")]
+#[cfg(feature = "default")]
 #[path = "../tests/backend/slack_app.rs"]
 mod slack_app;
 #[cfg(test)]

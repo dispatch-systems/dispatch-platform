@@ -23,8 +23,8 @@ pub fn workspaces_on(db: &Store, dsp: &str, integration: &str) -> Result<Vec<Str
     work::workspaces_on(db, dsp, integration)
 }
 /// When the integration `integration` came on in the workspace `team`, in milliseconds: when
-/// someone switched it on there, or, for one on from the start, when the workspace was
-/// connected. None while it's off.
+/// someone switched it on there, or, for one on from the start, when the DSP got the workspace,
+/// however often it was reconnected since. None while it's off.
 pub fn integration_on_since(
     db: &Store,
     dsp: &str,

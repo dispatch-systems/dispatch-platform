@@ -8,7 +8,7 @@
 //! within a day.
 use super::{
     live,
-    storage::{DOMAIN, changed_conversation},
+    storage::{CommunicationsStore, DOMAIN, changed_conversation},
 };
 use crate::integrations::messages::ID;
 use dispatch_core::{
@@ -239,7 +239,7 @@ pub async fn discard(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<()> 
         .read(move |db| Ok((folder(db, &at)?, db.communications_bytes_kept(&at, &kept)?)))
         .await?;
     if !kept {
-        tokio::fs::remove_file(folder.join(sha256)).await?;
+        gone(tokio::fs::remove_file(folder.join(sha256)).await)?;
     }
     Ok(())
 }
@@ -274,10 +274,17 @@ pub async fn head(state: &Arc<State>, dsp: &str, sha256: &str, most: usize) -> R
 }
 
 /// Downloads the DSP's files that are due now, then tells the pages waiting on its
-/// conversations.
+/// conversations, when any download came to something.
 pub async fn download_due(state: &Arc<State>, dsp: &str) {
+    let revision = || {
+        let at = dsp.to_owned();
+        state.read(move |db| db.communications_revision(&at))
+    };
+    let before = revision().await;
     kit::due::<Downloads>(state, dsp).await;
-    live::changed(state, dsp);
+    if before.is_err() || revision().await.ok() != before.ok() {
+        live::changed(state, dsp);
+    }
 }
 fn pass(state: Arc<State>, due: bool) -> Upkeep {
     Box::pin(async move {
@@ -304,9 +311,16 @@ async fn forget_unsent(state: &Arc<State>, dsp: &str) -> Result<()> {
         })
         .await?;
     for path in loose {
-        tokio::fs::remove_file(path).await?;
+        gone(tokio::fs::remove_file(path).await)?;
     }
     Ok(())
+}
+/// What removing a file came to, one already gone being as good as removed.
+fn gone(removed: std::io::Result<()>) -> Result<()> {
+    match removed {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(()),
+    }
 }
 
 /// A member's file due to download: its workspace, Slack's ID of it, and how often it failed.

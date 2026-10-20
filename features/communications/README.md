@@ -47,12 +47,14 @@ unavailable.
   of late, or catching up finds, sent before then is left. Slack's other answer, while it's off,
   keeps nothing.
 - **Catching up:** as the server starts, and hourly, each direct message the app has in each
-  workspace where it's on is read from Slack (`conversations.history`, and
-  `conversations.replies` for the threads in it) from when it was last read, or from when its
-  messages may first be kept, so what Dispatch didn't hear of while it couldn't hear Slack is
-  kept as Slack would have told of it, once. Its direct messages are those Dispatch knows, and
-  each other Slack lists the app as having (`users.conversations`, with `im:read`) once the
-  workspace's admin has approved that.
+  workspace where it's on, once its admin approved reading them, is read from Slack
+  (`conversations.history`, and `conversations.replies` for the threads in it) from when it was
+  last read, or from when its messages may first be kept, never earlier, so what Dispatch didn't
+  hear of while it couldn't hear Slack is kept as Slack would have told of it, once. It reads
+  again from a week before where it left off, for replies in threads begun before then, and
+  edits made since; where it left off moves on only once it read all there was. Its direct
+  messages are those Dispatch knows, and each other Slack lists the app as having
+  (`users.conversations`, with `im:read`) once the workspace's admin has approved that.
 - **Kept until the DSP is deleted:** disconnecting a workspace, or Slack removing the app from
   it, keeps its conversations, each message with who sent it and its photos and files; its
   integration's `forget` lets go only of the conversations holding no message.
@@ -78,8 +80,11 @@ unavailable.
   is sent, a photo is kept in the DSP's data as it's uploaded, its adder's alone until it's sent,
   and let go after a day unsent.
 - **Messaging first:** someone at the DSP opens a direct message with any active member of a
-  workspace where it's on (`conversations.open`, `im:write`), which is listed once a message is
-  in it.
+  workspace where it's on (`conversations.open`, `im:write`): the conversation it answers isn't
+  listed until a message is in it, so the page holds it until then.
+- **Where it can't:** a conversation of a workspace Communications doesn't work in now, as one
+  switched off there, needing reconnecting or disconnected, stays listed with its history, and
+  says it can't be written in (`canReply`); sending there is refused (`communications_off`).
 
 ## Waiting, Responded and Done
 
@@ -93,7 +98,8 @@ written before an answer, leaves it answered.
 
 The page waits on `updates`, a long poll as the dashboard's other live pages use (a `Topic`),
 which answers once a change it hasn't seen is kept, or who is writing changes, or twenty seconds
-pass: each conversation changed, as it is now, and how many wait. Who at the DSP is writing in
+pass: each conversation changed, as it is now, and how many wait. A conversation changes with any
+of its messages, as one edited or a file kept, so a page with it open reads it again. Who at the DSP is writing in
 which conversation is kept in memory alone, each for six seconds after their page last said so
 (`typing`), or until they send, and shown to everyone else with Communications.
 

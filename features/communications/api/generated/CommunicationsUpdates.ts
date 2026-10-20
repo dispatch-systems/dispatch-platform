@@ -5,7 +5,8 @@ import type { Typing } from "./Typing";
 /**
  * `GET /api/dsp/communications/updates`: what changed since `after`, and who is typing, once
  * either changes or twenty seconds pass. `reset` asks for `GET /api/dsp/communications` afresh,
- * as for changes no longer kept.
+ * as for changes no longer kept. A conversation changes with any of its messages, as one
+ * edited or a file kept, so a page with one open reads it again when it's among them.
  */
 export type CommunicationsUpdates = { revision: number, reset: boolean, waiting: number,
 /**
