@@ -1,7 +1,10 @@
 CREATE TABLE account_passkeys ( id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, credential TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL );
 CREATE TABLE authenticator_apps ( user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, secret TEXT NOT NULL, created_at INTEGER NOT NULL, last_counter INTEGER NOT NULL DEFAULT -1 );
 CREATE TABLE "collection_schedules" ( id TEXT PRIMARY KEY, name TEXT NOT NULL, collection TEXT NOT NULL, cadence TEXT NOT NULL CHECK(cadence IN ('interval','daily')), interval_minutes INTEGER, local_time TEXT NOT NULL, anchor INTEGER NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), next_run TEXT, revision INTEGER NOT NULL DEFAULT 1, last_error TEXT, created_at TEXT NOT NULL );
-CREATE TABLE communications_items ( id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL );
+CREATE TABLE communications_changes ( revision INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL );
+CREATE TABLE communications_conversations ( id TEXT PRIMARY KEY, team_id TEXT NOT NULL, user_id TEXT NOT NULL, channel_id TEXT, name TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT, caught_up_at INTEGER, UNIQUE (team_id, user_id) );
+CREATE TABLE communications_files ( id TEXT PRIMARY KEY, message_id TEXT REFERENCES communications_messages (id), slack_file_id TEXT, uploaded_by TEXT, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, status TEXT NOT NULL CHECK (status IN ('waiting', 'kept', 'too_large', 'unavailable', 'failed')), sha256 TEXT, added_at INTEGER NOT NULL, due_at INTEGER, claimed_until INTEGER, attempts INTEGER NOT NULL DEFAULT 0, reason TEXT );
+CREATE TABLE communications_messages ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES communications_conversations (id), ts TEXT NOT NULL, thread_ts TEXT, direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), sent_by TEXT, sender_name TEXT, text TEXT NOT NULL, at INTEGER NOT NULL, edited_at INTEGER, UNIQUE (conversation_id, ts) );
 CREATE TABLE documents_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, verifier TEXT NOT NULL, expires_at INTEGER NOT NULL );
 CREATE TABLE documents_connection ( id INTEGER PRIMARY KEY CHECK (id = 1), status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), account_email TEXT NOT NULL, account_kind TEXT NOT NULL CHECK (account_kind IN ('workspace', 'personal')), folder_id TEXT NOT NULL, folder_name TEXT NOT NULL, connected_by TEXT NOT NULL, connected_at TEXT NOT NULL, broken_at TEXT , full_access INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE documents_files ( file_id TEXT PRIMARY KEY, added_by TEXT NOT NULL, added_at TEXT NOT NULL, changed_by TEXT NOT NULL, changed_at TEXT NOT NULL , added_name TEXT, changed_name TEXT);
@@ -30,6 +33,7 @@ CREATE TABLE slack_import_links ( team_id TEXT NOT NULL, channel_id TEXT NOT NUL
 CREATE TABLE slack_imports ( team_id TEXT NOT NULL, file_id TEXT NOT NULL, channel_id TEXT NOT NULL, name TEXT, mime TEXT, size INTEGER, posted_by TEXT, posted_name TEXT, status TEXT NOT NULL CHECK (status IN ('waiting', 'saved', 'too_large', 'skipped', 'gone', 'failed')), reason TEXT, attempts INTEGER NOT NULL DEFAULT 0, due_at INTEGER NOT NULL, saved_id TEXT, saved_link TEXT, noticed_at INTEGER NOT NULL, done_at INTEGER, PRIMARY KEY (team_id, file_id) );
 CREATE TABLE slack_install_links ( id INTEGER PRIMARY KEY CHECK (id = 1), link_hash TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL , label TEXT);
 CREATE TABLE slack_integrations ( team_id TEXT NOT NULL, integration TEXT NOT NULL, turned_on_by TEXT NOT NULL, turned_on_at TEXT NOT NULL, PRIMARY KEY (team_id, integration) );
+CREATE TABLE slack_integrations_off ( team_id TEXT NOT NULL, integration TEXT NOT NULL, turned_off_by TEXT NOT NULL, turned_off_at TEXT NOT NULL, PRIMARY KEY (team_id, integration) );
 CREATE TABLE slack_members ( team_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, display_name TEXT, email TEXT, phone TEXT, active INTEGER NOT NULL CHECK (active IN (0, 1)), guest INTEGER NOT NULL CHECK (guest IN (0, 1)), PRIMARY KEY (team_id, user_id) );
 CREATE TABLE slack_workspaces ( team_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), scopes TEXT NOT NULL, bot_user_id TEXT NOT NULL, app_id TEXT NOT NULL, connected_by TEXT, connected_at TEXT NOT NULL, broken_at TEXT , label TEXT);
 CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );
@@ -39,6 +43,11 @@ CREATE TABLE uniform_variants ( id TEXT PRIMARY KEY, uniform_id TEXT NOT NULL RE
 CREATE TABLE uniforms ( id TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL, revision INTEGER NOT NULL, position INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)) );
 CREATE TABLE users ( id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE, first_name TEXT NOT NULL, last_name TEXT NOT NULL, password TEXT NOT NULL, platform_owner INTEGER NOT NULL DEFAULT 0 CHECK(platform_owner=0), status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL );
 CREATE INDEX account_passkeys_user ON account_passkeys(user_id);
+CREATE INDEX communications_conversations_channels ON communications_conversations (team_id, channel_id);
+CREATE INDEX communications_conversations_latest ON communications_conversations (last_at, id);
+CREATE INDEX communications_files_due ON communications_files (status, due_at);
+CREATE INDEX communications_files_message ON communications_files (message_id);
+CREATE INDEX communications_messages_latest ON communications_messages (conversation_id, at);
 CREATE INDEX invitations_dsp_owner ON invitations(dsp_id,role,expires_at DESC) WHERE used_at IS NULL;
 CREATE INDEX invitations_expiry ON invitations(expires_at);
 CREATE INDEX invitations_role ON invitations(role_id) WHERE used_at IS NULL;

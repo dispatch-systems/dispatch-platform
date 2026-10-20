@@ -1,4 +1,16 @@
 # Every route communications registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
-GET /api/dsp/communications Dsp("communications.view") Read
+GET /api/dsp/communications Dsp("communications.use") Read
+GET /api/dsp/communications/contacts Dsp("communications.use") Read
+GET /api/dsp/communications/conversations Dsp("communications.use") Read
+GET /api/dsp/communications/conversations/{id} Dsp("communications.use") Read
+GET /api/dsp/communications/files/{id} Dsp("communications.use") Async
+GET /api/dsp/communications/updates Dsp("communications.use") Async
+GET /api/dsp/communications/waiting Dsp("communications.use") Read
+GET /communications/initials/1/{name} Public Async
+POST /api/dsp/communications/conversations Dsp("communications.use") Async
+POST /api/dsp/communications/conversations/{id}/done Dsp("communications.use") Write
+POST /api/dsp/communications/conversations/{id}/messages Dsp("communications.use") Async
+POST /api/dsp/communications/conversations/{id}/typing Dsp("communications.use") Async
+POST /api/dsp/communications/uploads Dsp("communications.use") Upload

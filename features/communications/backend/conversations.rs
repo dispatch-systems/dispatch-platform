@@ -134,6 +134,7 @@ pub fn messages(
                 .as_ref()
                 .is_some_and(|thread| *thread != message.ts),
             id: message.id,
+            ts: message.ts,
             direction: message.direction,
             text: message.text,
             at: message.at,
@@ -202,13 +203,14 @@ pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conve
         more,
     })
 }
-/// The conversation `id` and its latest messages, or those before `before`.
+/// The conversation `id` and its latest messages, or those before the one Slack knows as
+/// `before`.
 pub fn opened(
     db: &Store,
     state: &State,
     dsp: &str,
     id: &str,
-    before: Option<(i64, &str)>,
+    before: Option<&str>,
 ) -> Result<ConversationMessages> {
     let kept = db
         .communications_conversation(dsp, id)?

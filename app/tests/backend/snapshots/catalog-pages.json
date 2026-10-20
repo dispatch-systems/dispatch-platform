@@ -89,6 +89,14 @@
       "mandatory": false
     },
     {
+      "id": "communications",
+      "label": "Communications",
+      "permissions": ["communications.use"],
+      "requires": [],
+      "default": false,
+      "mandatory": false
+    },
+    {
       "id": "team",
       "label": "Team & Roles",
       "permissions": [],
@@ -117,14 +125,6 @@
       "label": "Vans",
       "permissions": ["vans.collect"],
       "requires": ["vans"],
-      "default": false,
-      "mandatory": false
-    },
-    {
-      "id": "communications",
-      "label": "Communications",
-      "permissions": ["communications.view"],
-      "requires": [],
       "default": false,
       "mandatory": false
     }
@@ -192,11 +192,11 @@
     "driver_match",
     "daily_performance",
     "documents",
+    "communications",
     "team",
     "settings",
     "slack",
     "vans",
-    "communications",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

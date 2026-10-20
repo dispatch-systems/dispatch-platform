@@ -15,6 +15,7 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct Communications {
     /// The latest change, for `updates` to wait on.
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     /// How many conversations wait on an answer.
     pub waiting: usize,
@@ -32,9 +33,11 @@ pub struct Communications {
 #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationsWaiting {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     pub count: usize,
     /// Since when each waits, the longest waiting first.
+    #[cfg_attr(feature = "ts", ts(type = "Array<number>"))]
     pub since: Vec<i64>,
 }
 
@@ -68,8 +71,10 @@ pub struct Conversation {
     pub with: Correspondent,
     pub state: ConversationState,
     /// Since when it waits on an answer.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub waiting_since: Option<i64>,
     /// When its latest message was written; none before its first.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub last_at: Option<i64>,
     /// Its latest message, if it has one.
     pub last: Option<Message>,
@@ -103,10 +108,14 @@ pub struct Correspondent {
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: String,
+    /// Its ID in Slack, which orders a conversation's messages, as `before` reads it.
+    pub ts: String,
     pub direction: Direction,
     pub text: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub at: i64,
     /// When it was last edited in Slack: only its latest text is kept.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub edited_at: Option<i64>,
     /// Whether it was written in a thread of the direct message.
     pub in_thread: bool,
@@ -137,6 +146,7 @@ pub struct MessageFile {
     pub id: String,
     pub name: String,
     pub mime: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub size: i64,
     pub status: FileStatus,
 }
@@ -153,7 +163,7 @@ pub struct Conversations {
 }
 
 /// `GET /api/dsp/communications/conversations/{id}`: a conversation and its latest messages,
-/// or those before `before`, in the order written.
+/// or those before the message `before`, by its `ts`, in the order written.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
@@ -194,6 +204,7 @@ pub struct Contact {
 #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Typing {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub version: u64,
     pub writing: Vec<Writing>,
 }
@@ -217,6 +228,7 @@ pub struct Writing {
 #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationsUpdates {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub revision: i64,
     pub reset: bool,
     pub waiting: usize,
@@ -234,5 +246,6 @@ pub struct CommunicationsUpload {
     pub id: String,
     pub name: String,
     pub mime: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub size: i64,
 }

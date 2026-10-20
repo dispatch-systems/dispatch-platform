@@ -62,17 +62,17 @@ fn stamp(team: &str) -> i64 {
 /// Jordan's messages in the workspace, the latest first, as Slack lists a conversation's.
 fn history(team: &str) -> Vec<Value> {
     let at = |micros: u32| format!("{}.{micros:06}", stamp(team));
-    let thread = at(300);
+    let thread = at(300_000);
     vec![
         json!({"type": "message", "user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE",
-            "text": "DSP Messaging is unavailable", "ts": at(350)}),
+            "text": "DSP Messaging is unavailable", "ts": at(350_000)}),
         json!({"type": "message", "user": "U0FIXJORDAN", "text": "Can I swap Saturday?",
-            "ts": thread, "thread_ts": thread, "reply_count": 1, "latest_reply": at(400)}),
+            "ts": thread, "thread_ts": thread, "reply_count": 1, "latest_reply": at(400_000)}),
         json!({"type": "message", "subtype": "file_share", "user": "U0FIXJORDAN", "text": "",
-            "ts": at(200), "files": [{"id": PHOTO, "name": "Flat tire.png",
+            "ts": at(200_000), "files": [{"id": PHOTO, "name": "Flat tire.png",
             "mimetype": "image/png", "size": 69, "mode": "hosted"}]}),
         json!({"type": "message", "user": "U0FIXJORDAN",
-            "text": "Running 10 minutes late, flat tire", "ts": at(100)}),
+            "text": "Running 10 minutes late, flat tire", "ts": at(100_000)}),
         json!({"type": "message", "user": "U0FIXJORDAN", "text": "Before Communications",
             "ts": "1767225599.000100"}),
     ]
@@ -81,7 +81,7 @@ fn history(team: &str) -> Vec<Value> {
 fn replies(team: &str) -> Vec<Value> {
     let at = |micros: u32| format!("{}.{micros:06}", stamp(team));
     vec![json!({"type": "message", "user": "U0FIXJORDAN", "text": "Never mind, Tyler took it",
-        "ts": at(400), "thread_ts": at(300)})]
+        "ts": at(400_000), "thread_ts": at(300_000)})]
 }
 /// `messages` written after `oldest`, in seconds, as Slack lists them.
 fn since(messages: Vec<Value>, oldest: f64) -> Vec<Value> {

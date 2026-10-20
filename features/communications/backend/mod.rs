@@ -20,3 +20,7 @@ pub(crate) mod search;
 pub(crate) mod sender;
 pub(crate) mod storage;
 pub(crate) mod text;
+
+#[cfg(test)]
+#[path = "../tests/backend/support.rs"]
+pub(crate) mod support;

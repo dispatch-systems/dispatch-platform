@@ -11,11 +11,11 @@ export const pages = [
   "driver_match",
   "daily_performance",
   "documents",
+  "communications",
   "team",
   "settings",
   "slack",
-  "vans",
-  "communications"
+  "vans"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -39,11 +39,11 @@ export const features = [
   "driver_match",
   "daily_performance",
   "documents",
+  "communications",
   "team",
   "settings",
   "slack",
   "vans",
-  "communications",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -169,6 +169,15 @@ export const featureCatalog = [
     "connects": true
   },
   {
+    "id": "communications",
+    "label": "Communications",
+    "permissions": [
+      "communications.use"
+    ],
+    "requires": [],
+    "kind": "page"
+  },
+  {
     "id": "team",
     "label": "Team & Roles",
     "permissions": [],
@@ -203,15 +212,6 @@ export const featureCatalog = [
     "requires": [
       "vans"
     ],
-    "kind": "page"
-  },
-  {
-    "id": "communications",
-    "label": "Communications",
-    "permissions": [
-      "communications.view"
-    ],
-    "requires": [],
     "kind": "page"
   },
   {
@@ -311,17 +311,17 @@ export const permissions = [
   "roles.manage",
   "settings.manage",
   "connections.manage",
+  "communications.use",
   "daily_performance.view",
   "daily_performance.collect",
   "daily_performance.manage",
   "documents.use",
   "slack.manage",
-  "vans.collect",
-  "communications.view"
+  "vans.collect"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
-  "communications.view": "View Communications",
+  "communications.use": "Use Communications",
   "connections.manage": "Manage DSP Connections",
   "daily_performance.collect": "Collect Daily Performance",
   "daily_performance.manage": "Manage Daily Performance",
@@ -418,6 +418,12 @@ export const permissionGroups = [
     ]
   ],
   [
+    "Communications",
+    [
+      "communications.use"
+    ]
+  ],
+  [
     "Slack",
     [
       "slack.manage"
@@ -427,12 +433,6 @@ export const permissionGroups = [
     "Vans",
     [
       "vans.collect"
-    ]
-  ],
-  [
-    "Communications",
-    [
-      "communications.view"
     ]
   ],
   [

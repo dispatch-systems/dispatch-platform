@@ -1,7 +1,9 @@
 //! What tests use of Slack, its own and, behind its `testing` feature, a dependant's: connecting
-//! one of a DSP's fixture workspaces without installing the app there.
+//! one of a DSP's fixture workspaces without installing the app there, switching an integration
+//! there, and disconnecting it.
 use super::{
     bot::Bot,
+    connection,
     slack::Tokens,
     storage::{SlackStore, Workspace},
 };
@@ -32,4 +34,26 @@ pub async fn connect(state: &Arc<State>, dsp: &str, team: &str, scopes: &[&str])
         .await
         .unwrap();
     Bot::new(state, dsp, team)
+}
+
+/// Forgets the DSP's workspace `team`, as when Slack says the app was removed there: what Slack
+/// and each integration keep of it goes.
+pub async fn disconnect(state: &Arc<State>, dsp: &str, team: &str) {
+    let (dsp, team) = (dsp.to_owned(), team.to_owned());
+    state
+        .run(move |db| connection::removed(db, &dsp, &team))
+        .await
+        .unwrap();
+}
+/// Switches the integration `integration` on or off in the DSP's workspace `team`, as someone
+/// who manages Slack does in its Integrations.
+pub async fn switch(state: &Arc<State>, dsp: &str, team: &str, integration: &'static str, on: bool) {
+    let (dsp, team) = (dsp.to_owned(), team.to_owned());
+    state
+        .run(move |db| match on {
+            true => db.turn_on_slack_integration(&dsp, &team, integration, "user_test"),
+            false => db.turn_off_slack_integration(&dsp, &team, integration, "user_test"),
+        })
+        .await
+        .unwrap();
 }

@@ -119,8 +119,14 @@ fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["before"])?;
     let conversation = id(input.param("id"), "cv")?;
-    let before = before(&input.query)?;
-    let before = before.as_ref().map(|(at, id)| (*at, id.as_str()));
+    let before = optional_text(&input.query, "before", 32)?;
+    let valid = before.split_once('.').is_some_and(|(seconds, micros)| {
+        [seconds, micros]
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+    });
+    ensure(before.is_empty() || valid, "invalid_input", 400)?;
+    let before = (!before.is_empty()).then_some(before);
     Reply::of(&conversations::opened(
         db,
         c.state,

@@ -58,3 +58,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         contacts: found.into_iter().map(|(_, contact)| contact).collect(),
     })
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/contacts.rs"]
+mod tests;

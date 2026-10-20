@@ -61,3 +61,7 @@ pub fn heard(state: Arc<State>, heard: Heard) -> Upkeep {
 fn forget(db: &Store, dsp: &str, team: &str) -> Result<()> {
     db.forget_empty_communications(dsp, team)
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/messages.rs"]
+mod tests;

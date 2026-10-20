@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS communications_conversations_latest
 CREATE INDEX IF NOT EXISTS communications_conversations_channels
     ON communications_conversations (team_id, channel_id);
 
--- Each message, by Slack's `ts` in its conversation: one the member wrote (`in`), or one someone
+-- Each message, by Slack's `ts` in its conversation, which orders them: one the member wrote (`in`), or one someone
 -- at the DSP sent (`out`), by their account (`sent_by`) under the name it went out under
 -- (`sender_name`). `thread_ts` is the thread it was written in, if any. An edit in Slack keeps
 -- only its latest text, with when it was made (`edited_at`).
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS communications_messages (
     UNIQUE (conversation_id, ts)
 );
 CREATE INDEX IF NOT EXISTS communications_messages_latest
-    ON communications_messages (conversation_id, at, id);
+    ON communications_messages (conversation_id, at);
 
 -- Each photo or file attached to a message: one a member sent, by Slack's ID, downloaded into the
 -- DSP's own files (`waiting` until it is, tried again after a failure), or a photo someone at
@@ -72,8 +72,9 @@ CREATE INDEX IF NOT EXISTS communications_files_message ON communications_files 
 CREATE INDEX IF NOT EXISTS communications_files_due ON communications_files (status, due_at);
 
 -- Each change to a conversation, in order, so a page waiting on them reads only those it hasn't
--- seen. The latest thousand are kept.
+-- seen. The latest thousand are kept: the latest always is, so each change's revision is after
+-- every one before it.
 CREATE TABLE IF NOT EXISTS communications_changes (
-    revision INTEGER PRIMARY KEY AUTOINCREMENT,
+    revision INTEGER PRIMARY KEY,
     conversation_id TEXT NOT NULL
 );

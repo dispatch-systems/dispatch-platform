@@ -125,3 +125,7 @@ pub fn typing(dsp: &str, except: &str) -> (Typing, Option<i64>) {
         next,
     )
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/live.rs"]
+mod tests;

@@ -43,11 +43,13 @@ pub mod kit {
     pub use crate::backend::work::{Queue, dsps, due, failed, pass};
 }
 /// What a dependant's tests use of Slack, behind its `testing` feature: connecting one of a
-/// DSP's fixture workspaces, and what the bot posted there.
+/// DSP's fixture workspaces, reading its members, switching an integration there, what the bot
+/// posted there, and disconnecting it.
 #[cfg(any(test, feature = "testing"))]
 pub mod testing {
-    pub use crate::backend::fixture::{DM_PHOTO, Posted, posted};
-    pub use crate::backend::testing::connect;
+    pub use crate::backend::fixture::{Posted, posted};
+    pub use crate::backend::members::read as read_members;
+    pub use crate::backend::testing::{connect, disconnect, switch};
 }
 
 pub const FEATURE: Feature = Feature {

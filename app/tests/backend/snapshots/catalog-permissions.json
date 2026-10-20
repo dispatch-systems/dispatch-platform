@@ -22,13 +22,13 @@
     ["roles.manage", "Manage Roles"],
     ["settings.manage", "Manage DSP Settings"],
     ["connections.manage", "Manage DSP Connections"],
+    ["communications.use", "Use Communications"],
     ["daily_performance.view", "View Daily Performance"],
     ["daily_performance.collect", "Collect Daily Performance"],
     ["daily_performance.manage", "Manage Daily Performance"],
     ["documents.use", "Use Documents"],
     ["slack.manage", "Manage Slack"],
-    ["vans.collect", "Collect Vans"],
-    ["communications.view", "View Communications"]
+    ["vans.collect", "Collect Vans"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],

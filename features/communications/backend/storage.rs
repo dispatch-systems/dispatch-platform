@@ -79,7 +79,7 @@ impl FromRow for Conversation {
 pub struct Message {
     pub id: String,
     pub conversation: String,
-    /// Its ID in Slack, in its conversation.
+    /// Its ID in Slack, in its conversation, which orders its messages.
     pub ts: String,
     /// The thread it was written in, if any: its first message's `ts`.
     pub thread_ts: Option<String>,
@@ -210,13 +210,13 @@ pub trait CommunicationsStore {
     -> Result<Vec<Conversation>>;
     /// The latest message of each conversation `ids` names.
     fn latest_communications_messages(&self, dsp: &str, ids: &[String]) -> Result<Vec<Message>>;
-    /// The conversation's messages before `before`, its time and its ID, the latest `most`, in
-    /// the order they were written.
+    /// The conversation's messages before the one Slack knows as `before`, the latest `most`,
+    /// in the order they were written.
     fn communications_messages(
         &self,
         dsp: &str,
         conversation: &str,
-        before: Option<(i64, &str)>,
+        before: Option<&str>,
         most: usize,
     ) -> Result<Vec<Message>>;
     /// The latest change to any conversation: 0 before the first.
@@ -430,7 +430,7 @@ impl CommunicationsStore for Store {
             "SELECT m.* FROM communications_messages m \
              WHERE m.conversation_id IN (SELECT value FROM json_each(?)) AND m.id=(\
              SELECT id FROM communications_messages WHERE conversation_id=m.conversation_id \
-             ORDER BY at DESC,id DESC LIMIT 1)",
+             ORDER BY ts DESC LIMIT 1)",
             [serde_json::to_string(ids)?],
         )
     }
@@ -438,14 +438,13 @@ impl CommunicationsStore for Store {
         &self,
         dsp: &str,
         conversation: &str,
-        before: Option<(i64, &str)>,
+        before: Option<&str>,
         most: usize,
     ) -> Result<Vec<Message>> {
-        let (at, id) = before.unwrap_or((i64::MAX, "\u{10FFFF}"));
         let mut messages: Vec<Message> = self.dsp(dsp)?.query_as(
             "SELECT * FROM communications_messages WHERE conversation_id=?1 \
-             AND (at<?2 OR (at=?2 AND id<?3)) ORDER BY at DESC,id DESC LIMIT ?4",
-            params![conversation, at, id, most as i64],
+             AND (?2 IS NULL OR ts<?2) ORDER BY ts DESC LIMIT ?3",
+            params![conversation, before, most as i64],
         )?;
         messages.reverse();
         Ok(messages)

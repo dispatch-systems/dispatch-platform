@@ -11,11 +11,11 @@ import { feature as driverProfiles } from '../../features/driver_profiles/fronte
 import { feature as driverMatch } from '../../features/driver_match/frontend/feature.js';
 import { feature as dailyPerformance } from '../../features/daily_performance/frontend/feature.js';
 import { feature as documents } from '../../features/documents/frontend/feature.js';
+import { feature as communications } from '../../features/communications/frontend/feature.js';
 import { feature as team } from '../../features/team/frontend/feature.js';
 import { feature as settings } from '../../features/settings/frontend/feature.js';
 import { feature as slack } from '../../features/slack/frontend/feature.js';
 import { feature as vans } from '../../features/vans/frontend/feature.js';
-import { feature as communications } from '../../features/communications/frontend/feature.js';
 import { feature as paycom } from '../../collectors/paycom/frontend/feature.js';
 import { feature as cortex } from '../../collectors/cortex/frontend/feature.js';
 import { feature as accounts } from '../../core/accounts/frontend/feature.js';
@@ -38,11 +38,11 @@ export const features: readonly FrontendFeature[] = [
   driverMatch,
   dailyPerformance,
   documents,
+  communications,
   team,
   settings,
   slack,
   vans,
-  communications,
   paycom,
   cortex,
   accounts,

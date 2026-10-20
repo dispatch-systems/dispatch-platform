@@ -506,13 +506,14 @@ pub struct Posted {
 /// What the bot posted, in every workspace: each message's workspace, conversation and post.
 static POSTED: Mutex<Vec<(String, String, Posted)>> = Mutex::new(Vec::new());
 /// Keeps what the bot posted in the workspace's conversation `channel`: the message's `ts`, as
-/// Slack writes one, each unlike the last.
+/// Slack writes one, when it was posted and each unlike the last.
 fn post(team: &str, channel: &str, message: Posted) -> String {
     static POSTS: AtomicU64 = AtomicU64::new(0);
-    let turn = POSTS.fetch_add(1, Ordering::Relaxed) % 1_000_000;
+    let turn = POSTS.fetch_add(1, Ordering::Relaxed) % 1000;
     let mut posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
     posted.push((team.to_owned(), channel.to_owned(), message));
-    format!("{}.{turn:06}", now() / 1000)
+    let at = now();
+    format!("{}.{:03}{turn:03}", at / 1000, at % 1000)
 }
 /// What the bot posted in the workspace's conversation `channel`, in order.
 #[cfg(any(test, feature = "testing"))]
