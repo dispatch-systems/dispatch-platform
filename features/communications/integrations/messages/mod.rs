@@ -26,14 +26,26 @@ use std::sync::Arc;
 
 /// Its ID, as each workspace keeps it switched on or off. Permanent once shipped.
 pub const ID: &str = "communications.messages";
-/// What it is to Slack. Beside what Slack asks for itself to read what's written to the app and
-/// answer it, open a direct message and answer under someone's name and photo, it downloads
-/// what members attach (`files:read`), uploads the photos someone at the DSP adds
-/// (`files:write`), and lists the app's direct messages to catch up on them (`im:read`). It's
-/// told of each message written to the app (`message.im`). Its `forget` keeps every message of a
-/// workspace forgotten, and lets go of what holds none.
+/// What it is to Slack. It reads what's written to the app (`im:history`) and answers it
+/// (`chat:write`), under the name and photo of whoever at the DSP does (`chat:write.customize`),
+/// opens a direct message (`im:write`) and tells who members are (`users:read`,
+/// `users:read.email`), which Slack asks for itself too; and it downloads what members attach
+/// (`files:read`), uploads the photos someone at the DSP adds (`files:write`), and lists the app's
+/// direct messages to catch up on them (`im:read`). It's told of each message written to the app
+/// (`message.im`). Its `forget` keeps every message of a workspace forgotten, and lets go of what
+/// holds none.
 pub const INTEGRATION: Integration = Integration {
-    needs: &["files:read", "files:write", "im:read"],
+    needs: &[
+        "im:history",
+        "chat:write",
+        "chat:write.customize",
+        "im:write",
+        "users:read",
+        "users:read.email",
+        "files:read",
+        "files:write",
+        "im:read",
+    ],
     hears: &["message.im"],
     starts_on: true,
     heard: Some(heard),
@@ -42,24 +54,12 @@ pub const INTEGRATION: Integration = Integration {
     ..integration("slack", ID, "Communications")
 };
 
-/// What Communications uses of what Slack asks for itself: reading what's written to the app
-/// (`im:history`) and answering it (`chat:write`), under the name and photo of whoever at the DSP
-/// does (`chat:write.customize`), opening a direct message (`im:write`), and telling who members
-/// are (`users:read`, `users:read.email`).
-const FROM_SLACK: &[&str] = &[
-    "im:history",
-    "chat:write",
-    "chat:write.customize",
-    "im:write",
-    "users:read",
-    "users:read.email",
-];
-/// Whether the workspace's admin has approved all Communications uses there, what Slack asks
-/// for itself and what it needs of its own: else updating Slack there asks for the rest.
+/// Whether the workspace's admin has approved all Communications uses there: else updating Slack
+/// there asks for the rest.
 pub fn approved(workspace: &kit::Workspace) -> bool {
-    FROM_SLACK
+    INTEGRATION
+        .needs
         .iter()
-        .chain(INTEGRATION.needs)
         .all(|scope| workspace.scopes.iter().any(|had| had == scope))
 }
 

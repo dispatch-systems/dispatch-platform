@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 /// Makes the DSP's install link, in place of the one before it for the same: for adding a
 /// workspace, to have the name `label` in Dispatch, or for updating or reconnecting the
-/// workspace `team`. Shown this once.
+/// workspace `team`, which keeps its own and is given none. Shown this once.
 pub fn create(
     db: &Store,
     c: &Context,
@@ -42,7 +42,6 @@ pub fn create(
     };
     let link = format!("{}.{}", c.dsp.id, crypto::token()?);
     let hash = crypto::sha(&link);
-    let label = team.map_or(label, |_| None);
     let kept = db.save_slack_link(&c.dsp.id, team, &hash, c.actor(), label.as_deref())?;
     c.audit(db, "slack.link_created", &named)?;
     let query = url::form_urlencoded::Serializer::new(String::new())

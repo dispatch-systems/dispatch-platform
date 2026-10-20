@@ -16,10 +16,12 @@ unavailable.
 - **Its integration:** `communications.messages`, under each workspace's Integrations in Slack's
   settings, on from the start (`starts_on`) in every workspace the DSP has, those it had before
   too, until someone who manages Slack switches it off there; switched off, it stays off there.
-  It hears of each message written to the app (`message.im`), and needs, beside what Slack asks
-  for itself (`im:history`, `chat:write`, `chat:write.customize`, `im:write`, `users:read`,
-  `users:read.email`), `files:read` to download what members attach, `files:write` to upload the
-  photos someone at the DSP adds, and `im:read` to list the app's direct messages to catch up on.
+  It hears of each message written to the app (`message.im`), and needs what Slack asks for
+  itself too, to read and answer direct messages and tell who members are (`im:history`,
+  `chat:write`, `chat:write.customize`, `im:write`, `users:read`, `users:read.email`), declared so
+  a workspace that hasn't approved them needs updating for it; and `files:read` to download what
+  members attach, `files:write` to upload the photos someone at the DSP adds, and `im:read` to
+  list the app's direct messages to catch up on.
 
 ## The page
 

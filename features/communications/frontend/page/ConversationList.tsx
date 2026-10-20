@@ -3,6 +3,7 @@ import { Check } from 'lucide-react';
 import type { Communications, Conversation, Writing } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
 import { SearchInput } from '../../../../core/shell/frontend/ui/index.js';
+import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { listTime, preview } from '../format.js';
 import { Face } from './Face.js';
 import { More } from './More.js';
@@ -34,18 +35,28 @@ export function ConversationList({
 }) {
   const [typed, setTyped] = useState('');
   const [found, setFound] = useState<Conversation[]>();
+  const [failed, setFailed] = useState('');
   // Found again as the conversations change, a moment after typing stops.
   useEffect(() => {
     const name = typed.trim();
     if (!name) {
       setFound(undefined);
+      setFailed('');
       return;
     }
     let live = true;
     const timer = setTimeout(() => {
       searchConversations(name).then(
-        (result) => live && setFound(result.conversations),
-        () => live && setFound([]),
+        (result) => {
+          if (!live) return;
+          setFound(result.conversations);
+          setFailed('');
+        },
+        (cause) => {
+          if (!live) return;
+          setFound([]);
+          setFailed(messageOf(cause));
+        },
       );
     }, 200);
     return () => {
@@ -72,7 +83,7 @@ export function ConversationList({
           found.length ? (
             rows(found)
           ) : (
-            <p className="list-empty">No matches</p>
+            <p className="list-empty">{failed || 'No matches'}</p>
           )
         ) : (
           <>

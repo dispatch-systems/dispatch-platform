@@ -171,9 +171,7 @@ export function Composer({
           ref={field}
           rows={1}
           aria-label="Message"
-          placeholder={
-            conversation.canReply ? `Message ${first}` : 'Communications is off in this workspace'
-          }
+          placeholder={`Message ${first}`}
           maxLength={TEXT_MOST}
           value={text}
           disabled={!conversation.canReply}

@@ -57,7 +57,10 @@ export function useInbox() {
           if (disposed || request.signal.aborted) return;
           fresh = false;
           change(read);
-          setChanged((last) => ({ at: last.at + 1, ids: 'all' }));
+          // Read afresh with nothing changed since, as the Update popup does every few seconds,
+          // the conversation open needs no reading again.
+          if (read.revision !== listed?.revision)
+            setChanged((last) => ({ at: last.at + 1, ids: 'all' }));
         } else {
           const update = await getCommunicationsUpdates(
             listed.revision,

@@ -72,6 +72,10 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
     await returnedTo(fromPage.value.url),
     `${f.env.DISPATCH_ORIGIN}/#dsp/${north.id}/communications`,
   );
+  // Only a page's address: it goes in the address Slack sends the browser back to.
+  const odd = await owner.post('/api/dsp/slack/connect', { label: '', page: 'team?x=1#' });
+  assert.equal(odd.status, 400);
+  assert.equal(odd.value.error, 'invalid_input');
 
   assert.equal((await connect(owner)).status, 200);
   assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), ['Drivers', 'Operations']);
