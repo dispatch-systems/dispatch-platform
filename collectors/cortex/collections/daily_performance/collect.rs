@@ -11,7 +11,8 @@ use crate::{
 use dispatch_core::{Result, collection::browser::Run, db::now};
 
 /// Reads at once: every dataset of the day together. Cortex answered all 22 at once
-/// without throttling, in about a fifth of the time six at once took.
+/// without throttling, in about a fifth of the time six at once took. Each reply is held
+/// until all have answered; the largest seen was 2 MB.
 const LANES: usize = 22;
 
 impl Driver {
@@ -23,12 +24,15 @@ impl Driver {
         request.validate()?;
         // A kept scope whose reads named another station, company or DSP is found again.
         let (scope, found) = self.scope_for(&request.scope_request(), false, run).await?;
-        match self.daily_capture(request, &scope, run).await {
-            Err(error) if found == Found::Known && mismatched(&error) => {
-                run.metrics.detail("known_scope_mismatched");
+        match self.daily_capture(request, &scope, found, run).await {
+            Err(error) if mismatched(&error) => {
                 let _ = self.known.forget(&request.station);
-                let (scope, _) = self.scope_for(&request.scope_request(), true, run).await?;
-                self.daily_capture(request, &scope, run).await
+                if found == Found::Discovered {
+                    return Err(error);
+                }
+                run.metrics.detail("known_scope_mismatched");
+                let (scope, found) = self.scope_for(&request.scope_request(), true, run).await?;
+                self.daily_capture(request, &scope, found, run).await
             }
             captured => captured,
         }
@@ -37,6 +41,7 @@ impl Driver {
         &mut self,
         request: &Request,
         scope: &Scope,
+        found: Found,
         run: &Run<'_>,
     ) -> Result<(Capture, Scope)> {
         let started_at = now();
@@ -49,7 +54,7 @@ impl Driver {
             })
             .collect();
         let (company_id, dsp_code, datasets) = self
-            .read_performance(scope, &request.dsp_abbreviation, &reads, LANES, run)
+            .read_performance(scope, found, &request.dsp_abbreviation, &reads, LANES, run)
             .await?;
         let capture = Capture {
             version: 1,
@@ -63,6 +68,8 @@ impl Driver {
             datasets,
         };
         capture.validate_scope(request, scope)?;
+        // Checked, the capture needs the browser no more.
+        self.browser.close().await;
         Ok((capture, scope.clone()))
     }
 }

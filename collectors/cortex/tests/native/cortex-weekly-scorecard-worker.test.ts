@@ -400,9 +400,10 @@ test(
     // the week read again for what discovery finds.
     foreignOnce = true;
     const kept = seen.discovery;
-    await collect('week-36-again', '2026-W36');
+    const foreign = await collect('week-36-again', '2026-W36');
     assert.equal(foreignOnce, false);
     assert.ok(seen.discovery > kept);
+    assert.equal((await job(foreign)).metrics.length, 1, 'found again within the attempt');
 
     // New credentials forget what discovery kept: the next job finds the station again.
     const resaved = await owner.post('/api/dsp/connections/cortex', {

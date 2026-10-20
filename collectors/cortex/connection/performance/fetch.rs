@@ -309,7 +309,7 @@ impl Driver {
         }))
     }
     /// Bounded parallel reads, `lanes` at once, preserving the requested order.
-    /// The first answer shows the session and the address work, and the
+    /// The first answer shows the session and the address work, and with `close` the
     /// browser closes then: nothing after it needs a page.
     async fn read_all(
         &self,
@@ -317,6 +317,7 @@ impl Driver {
         reads: &[Read],
         station: &str,
         lanes: usize,
+        close: bool,
         run: &Run<'_>,
     ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
@@ -339,7 +340,7 @@ impl Driver {
                     .await
                     .map_err(|refusal| refused(refusal, run.metrics))?;
                 let rows = rows(dataset.id, &value)?;
-                if !answered.swap(true, Ordering::SeqCst) {
+                if !answered.swap(true, Ordering::SeqCst) && close {
                     self.browser.close().await;
                 }
                 done.fetch_add(1, Ordering::SeqCst);
@@ -394,8 +395,8 @@ impl Driver {
         }
         let scope = self.resolve_scope(request, run.metrics).await?;
         // A scope that can't be kept is found again next time.
-        if matches!(request, CollectionRequest::Discover(_))
-            && self.known.keep(&scope, now()).is_err()
+        if let CollectionRequest::Discover(discovery) = request
+            && self.known.keep(discovery, &scope, now()).is_err()
         {
             run.metrics.detail("known_scope_unwritten");
         }
@@ -426,10 +427,13 @@ impl Driver {
         }
     }
     /// Every read of `reads` for `scope`, `lanes` at once, with the company and DSP code
-    /// the API named.
+    /// the API named. A scope `found` by discovery now needs no page after the first
+    /// answer; a kept one keeps the browser until what was read has been checked, so a
+    /// mismatch can find the station again.
     pub(crate) async fn read_performance(
         &mut self,
         scope: &Scope,
+        found: Found,
         expected_dsp: &str,
         reads: &[Read],
         lanes: usize,
@@ -452,7 +456,17 @@ impl Driver {
         run.progress(20, "Reading performance datasets".into())
             .await?;
         let replies = loop {
-            match self.read_all(&api, reads, &scope.station, lanes, run).await {
+            match self
+                .read_all(
+                    &api,
+                    reads,
+                    &scope.station,
+                    lanes,
+                    found == Found::Discovered,
+                    run,
+                )
+                .await
+            {
                 Ok(replies) => break replies,
                 // Nothing answered where the last publication read: Cortex moved its
                 // API, and the page names it again.

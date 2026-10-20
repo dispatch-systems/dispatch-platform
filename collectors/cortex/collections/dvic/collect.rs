@@ -269,9 +269,12 @@ impl Driver {
         // A kept scope whose reads named another station, company or DSP is found again.
         let (scope, found) = self.scope_for(&request.scope_request(), false, run).await?;
         match self.dvic_capture(request, &scope, run).await {
-            Err(error) if found == Found::Known && mismatched(&error) => {
-                run.metrics.detail("known_scope_mismatched");
+            Err(error) if mismatched(&error) => {
                 let _ = self.known.forget(&request.station);
+                if found == Found::Discovered {
+                    return Err(error);
+                }
+                run.metrics.detail("known_scope_mismatched");
                 let (scope, _) = self.scope_for(&request.scope_request(), true, run).await?;
                 self.dvic_capture(request, &scope, run).await
             }
@@ -334,8 +337,15 @@ impl Driver {
         let listed = loop {
             match self.dvic_listing(&http, &api, request, run).await {
                 Ok(listed) => break listed,
-                // Nothing answers where the API last answered: the overview names it again.
-                Err(error) if kept && error.is(cortex::codes::DVIC_SOURCE_UNREADABLE) => {
+                // Nothing answers where the API last answered, or it answers as to no one
+                // signed in: the overview names it again, or shows the sign-out itself.
+                Err(error)
+                    if kept
+                        && error.is_any(&[
+                            cortex::codes::DVIC_SOURCE_UNREADABLE,
+                            dispatch_core::Code::VerificationRequired,
+                        ]) =>
+                {
                     api = self
                         .performance_api(scope, &request.dsp_abbreviation, run.metrics)
                         .await?;

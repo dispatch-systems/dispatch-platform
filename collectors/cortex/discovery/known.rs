@@ -29,6 +29,9 @@ struct Station {
     service_area_id: String,
     provider: String,
     timezone: String,
+    /// The DSP as discovery was asked to find it.
+    dsp_name: String,
+    dsp_abbreviation: String,
     found_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     api: Option<Api>,
@@ -77,13 +80,15 @@ impl KnownScopes {
         db::write_private(&self.path, &bytes)
     }
     /// The scope discovery found for the station `discovery` asks about, on its date, when
-    /// found within the week in the DSP's own timezone.
+    /// found within the week for the same DSP, named and coded as now, in its own timezone.
     pub fn scope(&self, discovery: &Discovery, now: i64) -> Option<Scope> {
         let known = self.read();
         let station = known.stations.get(&discovery.station)?;
         (now - station.found_at < FRESH_MS
             && now >= station.found_at
-            && station.timezone == discovery.timezone)
+            && station.timezone == discovery.timezone
+            && station.dsp_name == discovery.dsp_name
+            && station.dsp_abbreviation == discovery.dsp_abbreviation)
             .then(|| {
                 discovery
                     .scope(&station.service_area_id, &station.provider)
@@ -100,9 +105,9 @@ impl KnownScopes {
             .flatten()
             .filter(|api| token(&api.dsp, 32) && api.base.len() <= 512)
     }
-    /// Keeps what discovery found for `scope`'s station, with where the API answered when
-    /// it is the same company's.
-    pub fn keep(&self, scope: &Scope, now: i64) -> Result<()> {
+    /// Keeps what `discovery` found, `scope`, for its station, with where the API answered
+    /// when it is the same company's.
+    pub fn keep(&self, discovery: &Discovery, scope: &Scope, now: i64) -> Result<()> {
         let mut known = self.read();
         let api = known
             .stations
@@ -115,6 +120,8 @@ impl KnownScopes {
                 service_area_id: scope.service_area_id.clone(),
                 provider: scope.provider.clone(),
                 timezone: scope.timezone.clone(),
+                dsp_name: discovery.dsp_name.clone(),
+                dsp_abbreviation: discovery.dsp_abbreviation.clone(),
                 found_at: now,
                 api,
             },
