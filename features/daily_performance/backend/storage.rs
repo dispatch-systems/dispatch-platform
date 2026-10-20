@@ -98,13 +98,16 @@ pub(crate) fn flag(value: &Value) -> Option<i64> {
         _ => None,
     }
 }
-/// How long before a held read another must confirm what it saw.
+/// How long before a held read another must confirm what it saw; a dataset gone empty, as
+/// it reads while Cortex answers nothing, waits longer.
 const CONFIRM_AFTER_MS: i64 = 30 * 60_000;
+const CONFIRM_EMPTY_AFTER_MS: i64 = 12 * 3_600_000;
 
 /// Whether `capture`, a finished day, is held back rather than published: a dataset
 /// answered with fewer rows than the day's active publication holds, which is what Cortex
-/// answers while it republishes a day, and no read held at least half an hour before saw the
-/// same counts for those datasets. A drop seen twice that far apart is what the day now is.
+/// answers while it republishes a day, and no read held at least half an hour before, or
+/// twelve hours for a dataset gone empty, saw the same counts for those datasets. A drop
+/// seen twice that far apart is what the day now is.
 fn held(data: &DspLease<'_>, capture: &Capture, today: chrono::NaiveDate) -> Result<bool> {
     if capture.date >= today.to_string() {
         return Ok(false);
@@ -141,6 +144,11 @@ fn held(data: &DspLease<'_>, capture: &Capture, today: chrono::NaiveDate) -> Res
     if dropped.is_empty() {
         return Ok(false);
     }
+    let wait = if dropped.iter().any(|(_, rows)| *rows == 0) {
+        CONFIRM_EMPTY_AFTER_MS
+    } else {
+        CONFIRM_AFTER_MS
+    };
     let earlier = data.all(
         "SELECT id FROM daily_publications WHERE station=? AND date=? AND active=0 \
          AND collected_at>? AND collected_at<=?",
@@ -148,7 +156,7 @@ fn held(data: &DspLease<'_>, capture: &Capture, today: chrono::NaiveDate) -> Res
             capture.station,
             capture.date,
             s(&active, "collected_at"),
-            at(now() - CONFIRM_AFTER_MS)
+            at(now() - wait)
         ],
     )?;
     for held in earlier {
@@ -160,10 +168,17 @@ fn held(data: &DspLease<'_>, capture: &Capture, today: chrono::NaiveDate) -> Res
             return Ok(false);
         }
     }
+    dispatch_core::foundation::observability::event(
+        "info",
+        "daily_performance.publication_held",
+        json!({"date": capture.date, "datasets": dropped.iter().map(|(table, rows)| {
+            json!({"dataset": table, "rows": rows, "published": kept.get(*table)})
+        }).collect::<Vec<_>>()}),
+    );
     Ok(true)
 }
-/// One day of a job's collection, published as that day's active publication, or kept
-/// beside it unpublished when held.
+/// One day of a job's collection, published as that day's active publication; or, when held,
+/// kept beside it with its counts alone, which a later read is compared with.
 fn publish_day(data: &DspLease<'_>, job: &str, capture: &Capture, hold: bool) -> Result<()> {
     let publication = crypto::id("daily_performance")?;
     data.exec(
@@ -195,6 +210,9 @@ fn publish_day(data: &DspLease<'_>, job: &str, capture: &Capture, hold: bool) ->
                 }
             ],
         )?;
+        if hold {
+            continue;
+        }
         for (index, row) in captured.rows.iter().enumerate() {
             let impact = dataset.impact.and_then(|field| flag(&row[field]));
             data.exec(

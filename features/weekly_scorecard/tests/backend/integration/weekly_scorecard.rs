@@ -258,8 +258,29 @@ fn a_week_that_shrank_waits_for_a_second_read() {
             .unwrap()["job_id"]
             .clone()
     };
-    publish(&db, &id, "shrunk-1", "2026-W36", &shrunk);
+    let checked = || {
+        storage
+            .one("SELECT checked_at FROM weekly_scorecard_weeks", [])
+            .unwrap()
+            .unwrap()["checked_at"]
+            .clone()
+    };
+    let before = checked();
+    let held = publish(&db, &id, "shrunk-1", "2026-W36", &shrunk);
     assert_eq!(active(), json!(first));
+    // Held, the week keeps the check that found it and stays due; its read keeps its
+    // counts alone.
+    assert_eq!(checked(), before);
+    assert_eq!(
+        storage
+            .count(
+                "SELECT count(*) FROM returns_to_station WHERE publication_id IN \
+                 (SELECT id FROM weekly_scorecard_publications WHERE job_id=?)",
+                [&held],
+            )
+            .unwrap(),
+        0
+    );
     publish(&db, &id, "shrunk-2", "2026-W36", &shrunk);
     assert_eq!(active(), json!(first));
     assert_eq!(
@@ -285,6 +306,15 @@ fn a_week_that_shrank_waits_for_a_second_read() {
     grown.datasets[1].rows = full.datasets[1].rows.clone();
     let grew = publish(&db, &id, "grown", "2026-W36", &grown);
     assert_eq!(active(), json!(grew));
+    // A week published before its datasets' counts were kept can't be compared, and isn't
+    // held.
+    storage
+        .exec("DELETE FROM weekly_scorecard_sources", [])
+        .unwrap();
+    // The jobs above, which publish without running, leave the queue room for one more.
+    common::set_every_status(&db, "succeeded").unwrap();
+    let legacy = publish(&db, &id, "legacy", "2026-W36", &shrunk);
+    assert_eq!(active(), json!(legacy));
 }
 
 #[test]
