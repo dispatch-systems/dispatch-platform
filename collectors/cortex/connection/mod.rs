@@ -7,7 +7,7 @@ use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
     browseros,
-    http::Http,
+    http::{Http, Refusal},
     page::{Page, call},
 };
 use dispatch_core::{Error, Result, db::s, ensure, manifest::registry};
@@ -26,6 +26,28 @@ const LANDING: &str = "/dspconsolev2";
 const AUTH: &str = include_str!("../scripts/auth.js");
 /// As much as the company list a session check reads may hold.
 const COMPANIES_LIMIT: usize = 2 * 1024 * 1024;
+/// How long one request of the session check may take: a stalled answer signs in on the
+/// page instead, well within the start's own time.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// One request of the saved session's check, asked once more when Amazon was briefly
+/// unavailable. A refusal, or no answer in time, is none.
+async fn checked<T, F, Fut>(ask: F) -> Option<T>
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = std::result::Result<T, Refusal>>,
+{
+    for attempt in 0..2 {
+        match tokio::time::timeout(CHECK_TIMEOUT, ask()).await {
+            Ok(Ok(answer)) => return Some(answer),
+            Ok(Err(Refusal::Unavailable)) if attempt == 0 => {
+                sleep(Duration::from_millis(500)).await;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
 pub struct Driver {
     pub browser: browseros::Session,
     pub(crate) page: Page,
@@ -75,26 +97,29 @@ impl Driver {
         Ok(())
     }
     /// Whether the session the profile kept still signs this browser in: it kept
-    /// Amazon's cookies, and the company list, which Amazon answers only a signed-in
-    /// account, comes back with the account's companies. Anything else signs in on the
-    /// page as before.
+    /// Amazon's cookies, Amazon serves the console page itself rather than sending it to
+    /// a sign-in or a verification, and the company list, which Amazon answers only a
+    /// signed-in account, comes back with the account's companies. Anything else signs
+    /// in on the page as before, where a verification reaches the owner.
     async fn saved_session(&self) -> Result<bool> {
         let http = Http::signed_in(&self.browser, &self.origin, &crate::HOSTS).await?;
         if !http.carries_cookies() {
             return Ok(false);
         }
-        let companies = http
-            .json(
-                &format!("{}{COMPANIES}", self.origin),
-                &format!("{}/workforce", self.origin),
-                COMPANIES_LIMIT,
-            )
-            .await;
-        Ok(companies.is_ok_and(|reply| {
-            reply["records"]
-                .as_array()
-                .is_some_and(|records| !records.is_empty())
-        }))
+        let landing = format!("{}{LANDING}", self.origin);
+        let home = format!("{}/", self.origin);
+        let companies = format!("{}{COMPANIES}", self.origin);
+        let workforce = format!("{}/workforce", self.origin);
+        let (console, companies) = tokio::join!(
+            checked(|| http.page(&landing, &home)),
+            checked(|| http.json(&companies, &workforce, COMPANIES_LIMIT)),
+        );
+        Ok(console.is_some()
+            && companies.is_some_and(|reply| {
+                reply["records"]
+                    .as_array()
+                    .is_some_and(|records| !records.is_empty())
+            }))
     }
     async fn script(&self, mut input: Value) -> Result<Value> {
         input["origins"] = json!(self.origins);
@@ -163,6 +188,12 @@ impl Driver {
     }
     pub async fn request(&mut self, command: Value) -> Result<Value> {
         let result = async {
+            // A session that started from the saved one has no tab to verify on.
+            if ["complete_assistance", "verify", "screenshot", "assist"]
+                .contains(&s(&command, "action"))
+            {
+                ensure(!self.page.id.is_empty(), "verification_expired", 409)?;
+            }
             match s(&command, "action") {
                 "start" | "check" => {
                     let observe_only = self

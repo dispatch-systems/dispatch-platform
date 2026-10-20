@@ -2,9 +2,10 @@
 
 Amazon Logistics, read for one DSP through the sandboxed browser and plain HTTP: meal breaks,
 routes, posted weekly scorecards, Daily Quality and Day Safety, and DVIC workbooks. A job's
-browser starts from the session its profile kept, checked with one request for the account's
-companies, and opens no page until a collection needs one; a session Amazon no longer accepts,
-or none at all, signs in on the page as the owner's own sign-ins always do. Discovery finds the station and service area
+browser starts from the session its profile kept, checked by asking for the console page and
+the account's companies over HTTP, and opens no page until a collection needs one; a session
+Amazon no longer accepts, or sends to a sign-in or a verification, or none at all, signs in on
+the page as the owner's own sign-ins always do. Discovery finds the station and service area
 once; later collections reuse what the station's last publication stored. Meals are read as
 moves inside the application, each response withheld from the page so nothing renders. A day's
 routes are signed by the application's own API action, stopped before they leave the browser and

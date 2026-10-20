@@ -102,11 +102,17 @@ test(
         res.writeHead(302, { location: path });
         res.end();
       };
-      if (url.pathname === '/dspconsolev2') {
+      // A browser that rendered the console says so; the session check's own read of the
+      // page runs no script.
+      if (url.pathname === '/landed') {
         seen.landing++;
+        res.writeHead(204);
+        return res.end();
+      }
+      if (url.pathname === '/dspconsolev2') {
         if (authenticated)
           return html(
-            '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a>',
+            '<nav><a href="/scheduling/calendar-view/week">Weekly schedule</a></nav><a href="/ap/signin">Sign out</a><script>fetch("/landed")</script>',
           );
         return redirect('/ap/signin');
       }
