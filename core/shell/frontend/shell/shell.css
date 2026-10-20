@@ -145,8 +145,8 @@
   outline: none;
   margin: 0 auto;
 }
-/* A page that fills the window (`fills`): the page, last in its container, takes what the app's
-   bars leave, and its parts scroll within it. */
+/* A DSP page that fills the window (`fills`): the page takes what the app's bars leave, and its
+   parts scroll within it. */
 .main-area.fills {
   display: flex;
   flex-direction: column;
@@ -160,7 +160,7 @@
   width: 100%;
   padding-bottom: 24px;
 }
-.main-area.fills > .page-container > :last-child {
+.main-area.fills .dsp-page {
   display: flex;
   flex-direction: column;
   flex: 1;

@@ -408,7 +408,8 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       current={opened?.parent ?? page}
       label={routeLabel(scope, page)}
       pending={pending}
-      fills={opened?.fills}
+      // Only once the DSP's view is admitted: what shows before it, as Retry connection, doesn't fill.
+      fills={Boolean(view) && opened?.scope === 'dsp' && opened.fills}
       navigation={navigation(scope, { session, view })}
       sidebar={sidebarOf(scope, page, { session, view })}
       // Signing out asks about unsaved edits first, as leaving the page does.
@@ -448,7 +449,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
         switching ? (
           <Loading />
         ) : view ? (
-          <div key={view.token}>
+          <div key={view.token} className="dsp-page">
             <Page session={session} view={view} page={page} reopen={reopen} />
           </div>
         ) : (
