@@ -281,6 +281,10 @@
         {
           "id": 1,
           "name": "baseline"
+        },
+        {
+          "id": 2,
+          "name": "drop_settings"
         }
       ]
     },
@@ -308,9 +312,7 @@
       "live": [
         "driver_profiles.collect"
       ],
-      "maintenance": [
-        600
-      ],
+      "maintenance": [],
       "on": [],
       "people": [
         "driver_profiles"
@@ -345,8 +347,7 @@
       "driver_profiles": [
         "associates",
         "photos",
-        "roster_runs",
-        "settings"
+        "roster_runs"
       ]
     },
     "subfeatures": []
@@ -1013,6 +1014,10 @@
         {
           "id": 1,
           "name": "baseline"
+        },
+        {
+          "id": 2,
+          "name": "drop_settings"
         }
       ]
     },
@@ -1040,9 +1045,7 @@
       "live": [
         "vans.collect"
       ],
-      "maintenance": [
-        600
-      ],
+      "maintenance": [],
       "on": [],
       "people": [],
       "routes": [
@@ -1074,7 +1077,6 @@
     "tables": {
       "vans": [
         "fleet_runs",
-        "settings",
         "vans"
       ]
     },

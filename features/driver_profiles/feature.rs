@@ -30,20 +30,25 @@ pub const FEATURE: Feature = Feature {
     settings: &[backend::settings::ROSTER, backend::settings::COLLECTION],
     live: &["driver_profiles.collect"],
     keeps: &[&backend::keeper::Roster],
-    tables: &[(
-        "driver_profiles",
-        &["associates", "photos", "settings", "roster_runs"],
-    )],
+    tables: &[("driver_profiles", &["associates", "photos", "roster_runs"])],
     migrations: &[Migrations {
         kind: backend::storage::DATABASE,
-        list: &[Migration {
-            id: 1,
-            name: "baseline",
-            apply: Sql(include_str!("migrations/driver_profiles/0001_baseline.sql")),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "baseline",
+                apply: Sql(include_str!("migrations/driver_profiles/0001_baseline.sql")),
+            },
+            Migration {
+                id: 2,
+                name: "drop_settings",
+                apply: Sql(include_str!(
+                    "migrations/driver_profiles/0002_drop_settings.sql"
+                )),
+            },
+        ],
     }],
     domains: &[backend::DOMAIN],
-    maintenance: &[backend::maintenance::MAINTENANCE],
     audit: Audit {
         areas: &[("driver_profiles.", Collections)],
         ..Audit::NONE

@@ -28,7 +28,7 @@ pub(crate) static STORAGE: AddedStorage = AddedStorage {
 };
 /// Fails closed when the initialized storage lost a table.
 fn verify(db: &Db) -> Result<()> {
-    for table in ["vans", "fleet_runs", "settings"] {
+    for table in ["vans", "fleet_runs"] {
         db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
     }
     Ok(())
