@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS vans (
     last_listed TEXT NOT NULL,
     row TEXT NOT NULL
 );
--- Its own settings: whether the DSP's first schedule was made, which 0002_drop_settings drops.
+-- Its own settings, dropped by 0002_drop_settings: it held only whether the DSP's first
+-- schedule was made.
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL CHECK(json_valid(value)));
 -- Each collection that published, newest last.
 CREATE TABLE IF NOT EXISTS fleet_runs (
