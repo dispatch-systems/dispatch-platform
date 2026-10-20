@@ -223,6 +223,16 @@ export function checkBenchmark(
     );
   }
 }
+/**
+ * A build's reports in the order they were measured, judged beside the base's from the same
+ * runner: each must be correct, and the last must hold. A build measured again after missing
+ * there is judged by the second run, as a slow spell of the runner passes and a regression
+ * shows again.
+ */
+export function checkBeside(reports: BenchmarkReport[], baseline: BenchmarkReport) {
+  for (const report of reports) checkBenchmark(report);
+  checkBenchmark(reports.at(-1)!, true, baseline);
+}
 /** The key measurements of the candidate beside the base's, a line each. */
 export function compared(report: BenchmarkReport, baseline: BenchmarkReport) {
   const mb = (bytes: number) => `${(bytes / 1024 ** 2).toFixed(0)} MB`;

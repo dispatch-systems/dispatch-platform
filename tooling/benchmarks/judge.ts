@@ -1,15 +1,14 @@
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { checkBenchmark, compared, type BenchmarkReport } from './benchmark-budget.js';
+import { checkBeside, compared, type BenchmarkReport } from './benchmark-budget.js';
 
-// A workload report judged again beside the base's build, measured after it on the same runner:
-// the merge queue's second look at a build that broke a budget there.
+// A build's workload reports judged again beside the base's build, measured on the same runner:
+// the second look at a build that broke a budget alone, and with a second report, the third.
 const { values } = parseArgs({
-  options: { report: { type: 'string' }, baseline: { type: 'string' } },
+  options: { report: { type: 'string', multiple: true }, baseline: { type: 'string' } },
 });
-const read = (file: string | undefined) =>
-  JSON.parse(fs.readFileSync(file!, 'utf8')) as BenchmarkReport;
-const report = read(values.report);
-const baseline = read(values.baseline);
-process.stdout.write(`Against the base's build:\n${compared(report, baseline)}`);
-checkBenchmark(report, true, baseline);
+const read = (file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as BenchmarkReport;
+const reports = values.report!.map(read);
+const baseline = read(values.baseline!);
+process.stdout.write(`Against the base's build:\n${compared(reports.at(-1)!, baseline)}`);
+checkBeside(reports, baseline);

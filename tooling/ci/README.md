@@ -15,7 +15,7 @@ suite in sequence:
 | checks          | `checks`                                   | Source privacy/secrets, types, formatting, the linter, bundle budget and dashboard logic. |
 | browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
 | smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                               |
-| benchmark       | `benchmark`                                | The Rust workload budget; in the queue a break is rechecked beside the base.              |
+| benchmark       | `benchmark`                                | The Rust workload budget; a break is rechecked beside the base's build.                   |
 | core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
 | scaffold        | `scaffold`                                 | What every generator writes builds, lints, keeps the rules and passes its Rust tests.     |
