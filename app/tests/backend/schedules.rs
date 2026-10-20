@@ -68,13 +68,7 @@ fn meals(db: &Store, id: &str) {
         .unwrap();
 }
 fn due(db: &Store, id: &str, key: &str, deadline: &str) {
-    db.dsp(id)
-        .unwrap()
-        .exec(
-            "UPDATE collection_schedules SET next_run=? WHERE id=?",
-            [deadline, key],
-        )
-        .unwrap();
+    dispatch_core::testing::schedule_due_at(db, id, key, deadline).unwrap();
 }
 #[test]
 fn resuming_preview_preserves_the_saved_interval_anchor() {

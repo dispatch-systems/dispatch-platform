@@ -525,31 +525,23 @@ fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day
     // The bootstrapped DSP keeps UTC, so its days are UTC days.
     let today = chrono::Utc::now().date_naive();
     let day = |back: i64| (today - chrono::Duration::days(back)).to_string();
-    // A DSP's daily schedule of `collection`, run once as it falls due: the requests it queued.
+    // A DSP's daily schedule of `collection`, run once as it falls due: the requests it
+    // queued, newest day first.
     let run = |collection: &str| -> Vec<Value> {
         let schedule = json!({"name":"Routes","collection":collection,"cadence":"daily",
             "intervalMinutes":null,"localTime":"09:00","enabled":true});
         let key = db.save_schedule(&id, None, &schedule).unwrap().id;
-        db.dsp(&id)
-            .unwrap()
-            .exec(
-                "UPDATE collection_schedules SET next_run='2026-01-01T00:00:00.000Z' WHERE id=?",
-                [&key],
-            )
-            .unwrap();
+        common::schedule_due_at(&db, &id, &key, "2026-01-01T00:00:00.000Z").unwrap();
         db.schedule_due(&id).unwrap();
-        let queued = db
-            .jobs
-            .all(
-                "SELECT request FROM jobs WHERE idempotency_key LIKE ? ORDER BY rowid",
-                [format!("schedule:{key}:%")],
-            )
-            .unwrap();
+        let mut queued: Vec<Value> = db
+            .active_job_ids(&id, routes::JOB_KIND)
+            .unwrap()
+            .iter()
+            .map(|job| serde_json::from_str(&db.job_row(job, Some(&id)).unwrap().request).unwrap())
+            .collect();
+        queued.sort_by(|a, b| b["date"].as_str().cmp(&a["date"].as_str()));
         common::set_every_status(&db, "succeeded").unwrap();
         queued
-            .iter()
-            .map(|job| serde_json::from_str(s(job, "request")).unwrap())
-            .collect()
     };
     let read = |request: &Value| (request["mode"].clone(), request["date"].clone());
 
