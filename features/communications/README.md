@@ -39,8 +39,9 @@ unavailable.
   (`data/communications/files/`, by their bytes' SHA-256), so they outlive Slack. Each is tried
   at once, then, when it fails, after a minute, five, fifteen, an hour, three, six and twelve,
   and given up after that; it waits, uncounted, while the workspace's admin hasn't approved
-  reading files or the workspace needs reconnecting. Only files Slack hosts are downloaded, up to
-  100 MB; a larger one, or a link to elsewhere, keeps its name, type and size alone.
+  reading files or the workspace needs reconnecting, and is given up once the DSP no longer has
+  the workspace. Only files Slack hosts are downloaded, up to 100 MB; a larger one, or a link to
+  elsewhere, keeps its name, type and size alone.
 - **Never before it was on:** a message is kept only if it was sent once Slack, Communications
   and its integration in that workspace were all on, the latest of the three
   (`feature_on_since`, and Slack's switch record or the workspace's connection): one Slack tells
@@ -50,9 +51,10 @@ unavailable.
   workspace where it's on, once its admin approved reading them, is read from Slack
   (`conversations.history`, and `conversations.replies` for the threads in it) from when it was
   last read, or from when its messages may first be kept, never earlier, so what Dispatch didn't
-  hear of while it couldn't hear Slack is kept as Slack would have told of it, once. It reads
-  again from a week before where it left off, for replies in threads begun before then, and
-  edits made since; where it left off moves on only once it read all there was. Its direct
+  hear of while it couldn't hear Slack is kept as Slack would have told of it, once. What was
+  written in the week before is read again for any edit since, or reply in its threads. Slack
+  lists the latest first, so a direct message with more since then than a pass reads (2,000
+  messages) goes on, the next pass, from the oldest it read, until it's back down. Its direct
   messages are those Dispatch knows, and each other Slack lists the app as having
   (`users.conversations`, with `im:read`) once the workspace's admin has approved that.
 - **Kept until the DSP is deleted:** disconnecting a workspace, or Slack removing the app from
@@ -121,8 +123,8 @@ Behind `communications.use`:
   the app's Messages tab there, `chatLink`), who is typing and the latest change (`revision`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar.
 - `GET …/updates?after=<revision>&typing=<version>`: the long poll.
-- `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`: conversations found, or the
-  answered ones before the last shown.
+- `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`: the fifty conversations found
+  closest to a name, or the answered ones before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written.
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.

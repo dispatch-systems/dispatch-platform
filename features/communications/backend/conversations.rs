@@ -204,7 +204,6 @@ pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conve
         .collect();
     // The closest first; of those as close, the latest.
     found.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.2.last_at.cmp(&a.2.last_at)));
-    let more = found.len() > PAGE;
     found.truncate(PAGE);
     let (marks, kept): (Vec<_>, Vec<_>) = found
         .into_iter()
@@ -216,7 +215,7 @@ pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conve
     }
     Ok(Conversations {
         conversations,
-        more,
+        more: false,
     })
 }
 /// The conversation `id` and its latest messages, or those before the one Slack knows as

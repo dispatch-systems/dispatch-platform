@@ -2,7 +2,11 @@
 import type { Conversation } from "./Conversation";
 
 /**
- * `GET /api/dsp/communications/conversations`: conversations found by name, the closest
- * first, or the answered ones before `before`.
+ * `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
+ * to it, the closest first, or the answered ones before `before`.
  */
-export type Conversations = { conversations: Array<Conversation>, more: boolean, };
+export type Conversations = { conversations: Array<Conversation>,
+/**
+ * Whether older answered conversations are left to read; never for a search.
+ */
+more: boolean, };

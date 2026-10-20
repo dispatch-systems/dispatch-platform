@@ -4,7 +4,7 @@
 use super::*;
 use crate::backend::{
     conversations,
-    files::FileStatus,
+    files::{FileStatus, FileStore},
     initials,
     storage::{CommunicationsStore, ConversationState},
     support::{self, USE},
@@ -134,6 +134,24 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
         .await
         .unwrap_err();
     assert_eq!(refused.code, "communications_photo_kind");
+    // Going with one message, it can't go with another at once.
+    let (at, by, ids) = (
+        dsp.clone(),
+        owner.auth.user.id.clone(),
+        vec![photo.id.clone()],
+    );
+    let claim = move |db: &dispatch_core::db::Store| {
+        db.claim_communications_uploads(&at, &by, &ids, now() + 60_000)
+            .map(drop)
+    };
+    state.run(claim.clone()).await.unwrap();
+    let taken = state.run(claim).await.unwrap_err();
+    assert_eq!(taken.code, "communications_upload_not_found");
+    let (at, ids) = (dsp.clone(), vec![photo.id.clone()]);
+    state
+        .run(move |db| db.release_communications_uploads(&at, &ids))
+        .await
+        .unwrap();
     let message = send(
         &state,
         &owner,

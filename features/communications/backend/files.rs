@@ -109,9 +109,18 @@ pub trait FileStore {
         size: i64,
         sha256: &str,
     ) -> Result<String>;
-    /// The photos `ids` names that the member `by` added for a message not sent yet, in their
-    /// order: refused if any isn't.
-    fn communications_uploads(&self, dsp: &str, by: &str, ids: &[String]) -> Result<Vec<File>>;
+    /// Claims the photos `ids` names that the member `by` added for a message not sent yet, in
+    /// their order, until `until`, while their message goes to Slack: refused if any isn't one,
+    /// or another message is being sent with it.
+    fn claim_communications_uploads(
+        &self,
+        dsp: &str,
+        by: &str,
+        ids: &[String],
+        until: i64,
+    ) -> Result<Vec<File>>;
+    /// Lets go of the photos `ids` names, claimed for a message Slack didn't take.
+    fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()>;
     /// Lets go of the photos added before `before` for a message never sent: the SHA-256 of
     /// each whose bytes nothing keeps now.
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
@@ -147,21 +156,45 @@ impl FileStore for Store {
         )?;
         Ok(id)
     }
-    fn communications_uploads(&self, dsp: &str, by: &str, ids: &[String]) -> Result<Vec<File>> {
-        let found: Vec<File> = self.dsp(dsp)?.query_as(
-            "SELECT * FROM communications_files WHERE id IN (SELECT value FROM json_each(?)) \
-             AND uploaded_by=? AND message_id IS NULL",
-            params![serde_json::to_string(ids)?, by],
+    fn claim_communications_uploads(
+        &self,
+        dsp: &str,
+        by: &str,
+        ids: &[String],
+        until: i64,
+    ) -> Result<Vec<File>> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let found: Vec<File> = db.query_as(
+                "SELECT * FROM communications_files WHERE id IN (SELECT value FROM json_each(?)) \
+                 AND uploaded_by=? AND message_id IS NULL AND coalesce(claimed_until,0)<=?",
+                params![serde_json::to_string(ids)?, by, now()],
+            )?;
+            let claimed = ids
+                .iter()
+                .map(|id| {
+                    found
+                        .iter()
+                        .find(|file| file.id == *id)
+                        .cloned()
+                        .ok_or_else(|| Error::new("communications_upload_not_found", 404))
+                })
+                .collect::<Result<Vec<File>>>()?;
+            db.exec(
+                "UPDATE communications_files SET claimed_until=? \
+                 WHERE id IN (SELECT value FROM json_each(?))",
+                params![until, serde_json::to_string(ids)?],
+            )?;
+            Ok(claimed)
+        })
+    }
+    fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "UPDATE communications_files SET claimed_until=NULL \
+             WHERE id IN (SELECT value FROM json_each(?)) AND message_id IS NULL",
+            [serde_json::to_string(ids)?],
         )?;
-        ids.iter()
-            .map(|id| {
-                found
-                    .iter()
-                    .find(|file| file.id == *id)
-                    .cloned()
-                    .ok_or_else(|| Error::new("communications_upload_not_found", 404))
-            })
-            .collect()
+        Ok(())
     }
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
         let db = self.dsp(dsp)?;
@@ -216,7 +249,7 @@ pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<String
     let mut bytes = Box::pin(bytes.stream());
     let copied: Result<()> = async {
         while let Some(chunk) = bytes.next().await {
-            let chunk = chunk.map_err(|error| Error::new(error.to_string(), 502))?;
+            let chunk = chunk.map_err(|_| Error::new("upload_incomplete", 400))?;
             hash.update(&chunk);
             written.write_all(&chunk).await?;
         }
@@ -398,6 +431,8 @@ impl Queue for Downloads {
     fn finish(db: &Store, dsp: &str, item: &Due, outcome: &Outcome, _: i64) -> Result<()> {
         let db = db.dsp(dsp)?;
         db.transaction(|| {
+            // Its message shows it kept, or not to be: a wait changes nothing it shows.
+            let shown = !matches!(outcome, Outcome::Later { .. });
             match outcome {
                 Outcome::Kept { sha256, size } => db.exec(
                     "UPDATE communications_files SET status='kept',sha256=?,size=?,reason=NULL,\
@@ -419,6 +454,9 @@ impl Queue for Downloads {
                     params![status, reason, item.id],
                 )?,
             };
+            if !shown {
+                return Ok(());
+            }
             let (conversation,): (String,) = db
                 .one_as(
                     "SELECT m.conversation_id FROM communications_files f \
@@ -431,12 +469,21 @@ impl Queue for Downloads {
     }
 }
 
-/// Downloads one of a member's files from Slack, while Communications is on in its workspace.
+/// Downloads one of a member's files from Slack, while Communications is on in its workspace:
+/// one of a workspace the DSP no longer has is given up.
 async fn download(state: &Arc<State>, dsp: &str, item: &Due) -> Result<Outcome> {
     let (at, team) = (dsp.to_owned(), item.team.clone());
-    let on = state
-        .read(move |db| Ok(kit::workspaces_on(db, &at, ID)?.contains(&team)))
+    let (had, on) = state
+        .read(move |db| {
+            let had = kit::workspaces(db, &at)?
+                .iter()
+                .any(|kept| kept.team == team);
+            Ok((had, kit::workspaces_on(db, &at, ID)?.contains(&team)))
+        })
         .await?;
+    if !had {
+        return Ok(left(FileStatus::Unavailable, "slack_workspace_gone"));
+    }
     if !on {
         return Ok(wait("communications_off"));
     }

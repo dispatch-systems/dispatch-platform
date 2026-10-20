@@ -410,8 +410,8 @@ impl CommunicationsStore for Store {
             )?;
             for (photo, slack_id) in sent.photos {
                 db.exec(
-                    "UPDATE communications_files SET message_id=?,slack_file_id=? \
-                     WHERE id=? AND message_id IS NULL",
+                    "UPDATE communications_files SET message_id=?,slack_file_id=?,\
+                     claimed_until=NULL WHERE id=? AND message_id IS NULL",
                     params![id, slack_id, photo],
                 )?;
             }

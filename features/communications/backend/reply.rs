@@ -7,9 +7,9 @@
 //! before anything is kept, or, for a message, before it goes to Slack: what Slack has is kept.
 use super::{
     conversations, files,
-    files::FileStore,
+    files::{File, FileStore},
     live, sender,
-    storage::{CommunicationsStore, DOMAIN, Sent},
+    storage::{self, CommunicationsStore, DOMAIN, Sent},
     text,
 };
 use crate::{
@@ -17,7 +17,7 @@ use crate::{
     integrations::messages::{ID, incoming},
 };
 use dispatch_core::{
-    Error, Result, State, accounts::Context, ensure, server::http::route::Dsp,
+    Error, Result, State, accounts::Context, db::now, ensure, server::http::route::Dsp,
     server::http::upload::Upload,
 };
 use dispatch_slack::kit::{self, Bot};
@@ -29,6 +29,8 @@ pub const TEXT_MOST: usize = 3000;
 /// The most photos a message may carry, and the largest each may be, in bytes.
 pub const PHOTOS_MOST: usize = 10;
 pub const PHOTO_MOST: u64 = 20 * 1024 * 1024;
+/// How long a message's photos are claimed for it while it goes to Slack, in milliseconds.
+const SENDING_MS: i64 = 10 * 60 * 1000;
 /// The kinds of photo Slack shows in a message, each with how its bytes begin.
 const PHOTO_KINDS: &[(&str, &[u8])] = &[
     ("image/png", b"\x89PNG"),
@@ -115,8 +117,10 @@ pub async fn send(
         c.auth.user.id.clone(),
         photos.to_vec(),
     );
+    // Its photos are claimed for it, so another message can't take them as it goes.
+    let until = now() + SENDING_MS;
     let (conversation, uploads) = state
-        .read(move |db| {
+        .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
             let conversation = db
                 .communications_conversation(&dsp, &at)?
                 .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
@@ -125,13 +129,37 @@ pub async fn send(
                 "communications_off",
                 409,
             )?;
-            Ok((conversation, db.communications_uploads(&dsp, &by, &chosen)?))
+            let uploads = db.claim_communications_uploads(&dsp, &by, &chosen, until)?;
+            Ok((conversation, uploads))
         })
         .await?;
+    let sent = deliver(state, c, access, &conversation, written, &uploads).await;
+    if sent.is_err() && !photos.is_empty() {
+        // Slack didn't take it: its photos are free to send again. Should letting them go fail,
+        // the claim ends on its own.
+        let (dsp, chosen) = (c.dsp.id.clone(), photos.to_vec());
+        let _ = state
+            .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
+                db.release_communications_uploads(&dsp, &chosen)
+            })
+            .await;
+    }
+    sent
+}
+/// Sends what the member `c` wrote in `conversation`, with the photos `uploads` they added, then
+/// keeps it: the message, as the page reads it.
+async fn deliver(
+    state: &Arc<State>,
+    c: &Context,
+    access: Dsp,
+    conversation: &storage::Conversation,
+    written: &str,
+    uploads: &[File],
+) -> Result<Message> {
     let dsp = c.dsp.id.as_str();
     let bot = Bot::new(state, dsp, &conversation.team);
     let mut shown = Vec::new();
-    for upload in &uploads {
+    for upload in uploads {
         let sha256 = upload.sha256.as_deref().unwrap_or_default();
         let bytes = files::read(state, dsp, sha256).await?;
         let slack_id = bot.upload(&upload.name, upload.size as u64, bytes).await?;
@@ -165,7 +193,7 @@ pub async fn send(
         .map(|(photo, slack_id, _)| (photo, slack_id))
         .collect();
     let (shared, dsp, by) = (state.clone(), c.dsp.id.clone(), c.auth.user.id.clone());
-    let (conversation, name, written) = (id.to_owned(), identity.name, written.to_owned());
+    let (id, name, written) = (conversation.id.clone(), identity.name, written.to_owned());
     let message = state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
             let sent = Sent {
@@ -176,12 +204,12 @@ pub async fn send(
                 name: &name,
                 photos: &photos,
             };
-            let kept = db.keep_communications_reply(&dsp, &conversation, &sent)?;
+            let kept = db.keep_communications_reply(&dsp, &id, &sent)?;
             let people = conversations::People::read(db, &shared, &dsp)?;
             Ok(conversations::messages(db, &people, &dsp, vec![kept])?.remove(0))
         })
         .await?;
-    live::stopped(state, &c.dsp.id, id, &c.auth.user.id);
+    live::stopped(state, &c.dsp.id, &conversation.id, &c.auth.user.id);
     live::changed(state, &c.dsp.id);
     Ok(message)
 }

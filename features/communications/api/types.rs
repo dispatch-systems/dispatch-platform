@@ -178,8 +178,8 @@ pub struct MessageFile {
     pub status: FileStatus,
 }
 
-/// `GET /api/dsp/communications/conversations`: conversations found by name, the closest
-/// first, or the answered ones before `before`.
+/// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
+/// to it, the closest first, or the answered ones before `before`.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -189,6 +189,7 @@ pub struct MessageFile {
 #[serde(rename_all = "camelCase")]
 pub struct Conversations {
     pub conversations: Vec<Conversation>,
+    /// Whether older answered conversations are left to read; never for a search.
     pub more: bool,
 }
 

@@ -22,6 +22,7 @@ const api = wordedApi({
   communications_upload_not_found: 'A photo is no longer attached. Add it again.',
   communications_photo_kind: 'Photos must be PNG, JPEG or GIF.',
   communications_file_not_found: 'This file is no longer here.',
+  upload_incomplete: "The photo didn't finish uploading. Try again.",
   slack_needs_update: 'This workspace needs updating first.',
   slack_connection_broken: 'Slack stopped accepting the connection. Reconnect the workspace.',
   slack_not_connected: 'This Slack workspace is no longer connected.',
