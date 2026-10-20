@@ -65,6 +65,9 @@ pub struct CommunicationsWorkspace {
     /// The address that opens the app's Messages tab in the workspace, where its members write
     /// to the DSP.
     pub chat_link: String,
+    /// Whether, Communications being on there, the workspace's admin has yet to approve a
+    /// permission it uses: updating Slack there asks for it.
+    pub needs_update: bool,
 }
 
 /// A conversation with a member of one of the DSP's workspaces.
@@ -90,9 +93,6 @@ pub struct Conversation {
     pub last_at: Option<i64>,
     /// Its latest message, if it has one.
     pub last: Option<Message>,
-    /// Whether someone at the DSP can write in it now: Communications works in its workspace,
-    /// which the DSP still has.
-    pub can_reply: bool,
     /// The letters of its name that matched what was searched, as runs of the name's UTF-16
     /// code units: start and end. None unless searched.
     pub matched: Vec<(u32, u32)>,
@@ -264,12 +264,18 @@ pub struct Writing {
     pub user_id: String,
     pub first_name: String,
     pub name: String,
+    /// The person Driver Match knows them as, by their email address, if it does, and their
+    /// photo's version, as a message's sender's.
+    pub code: Option<String>,
+    pub photo: Option<String>,
 }
 
 /// `GET /api/dsp/communications/updates`: what changed since `after`, and who is typing, once
 /// either changes or twenty seconds pass. `reset` asks for `GET /api/dsp/communications` afresh,
 /// as for changes no longer kept. A conversation changes with any of its messages, as one
-/// edited or a file kept, so a page with one open reads it again when it's among them.
+/// edited or a file kept, so a page with one open reads it again when it's among them. The
+/// workspaces come as they are now, so a page follows one connected, updated, switched off or
+/// disconnected while it waits.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -285,6 +291,7 @@ pub struct CommunicationsUpdates {
     /// Each conversation changed, as it is now.
     pub conversations: Vec<Conversation>,
     pub typing: Typing,
+    pub workspaces: Vec<CommunicationsWorkspace>,
 }
 
 /// `POST /api/dsp/communications/uploads`: a photo added for a message not sent yet.

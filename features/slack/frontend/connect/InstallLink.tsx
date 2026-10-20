@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Badge } from '../../../../core/shell/frontend/ui/index.js';
@@ -13,17 +14,6 @@ import { SlackCard } from './SlackCard.js';
 
 // The DSP's install link, for whoever runs its Slack: made from New, and on a card of its own
 // while it works.
-
-/**
- * Puts the new install link on the clipboard. The link is still being made, so the clipboard
- * is given it to come: Safari lets a page write there only while answering the click.
- */
-async function toClipboard(link: Promise<string>) {
-  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-    const text = link.then((url) => new Blob([url], { type: 'text/plain' }));
-    await navigator.clipboard.write([new ClipboardItem({ 'text/plain': text })]);
-  } else await navigator.clipboard.writeText(await link);
-}
 
 /**
  * Making the link, in place of any before, for a workspace to have the name it's given: `copied`

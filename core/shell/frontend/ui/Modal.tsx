@@ -1,4 +1,4 @@
-import { useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { useFocusTrap } from './useFocusTrap.js';
 
@@ -12,6 +12,7 @@ export function Modal({
   initialFocus = 'input,button,select',
   onBack,
   above = false,
+  page = false,
 }: {
   title: ReactNode;
   description?: string;
@@ -24,16 +25,25 @@ export function Modal({
   onBack?: () => void;
   /** Shown over any other dialog or sheet open, as a prompt the page itself raised is. */
   above?: boolean;
+  /**
+   * Over the page alone: the app's sidebar and bars stay in use, so focus isn't held in it, and
+   * whoever opens it makes what it covers `inert`.
+   */
+  page?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const headingId = useId();
   const dismiss = () => {
     if (dismissible) onClose();
   };
-  useFocusTrap(ref, { initialFocus, onEscape: dismiss });
+  useFocusTrap(ref, { active: !page, initialFocus, onEscape: dismiss });
+  // Over the page alone, it takes focus as it opens, and leaves it free to go.
+  useEffect(() => {
+    if (page) ref.current?.querySelector<HTMLElement>(initialFocus)?.focus();
+  }, [page, initialFocus]);
   return (
     <div
-      className={`modal-backdrop ${variant === 'sheet' ? 'sheet-backdrop' : ''} ${above ? 'modal-above' : ''}`}
+      className={`modal-backdrop ${variant === 'sheet' ? 'sheet-backdrop' : ''} ${above ? 'modal-above' : ''} ${page ? 'page-modal' : ''}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) dismiss();
       }}
@@ -42,8 +52,9 @@ export function Modal({
         ref={ref}
         className={`modal ${variant === 'sheet' ? 'side-sheet' : variant === 'browser' ? 'browser-modal' : ''}`}
         role="dialog"
-        aria-modal="true"
+        aria-modal={page ? undefined : 'true'}
         aria-labelledby={headingId}
+        onKeyDown={page ? (event) => event.key === 'Escape' && dismiss() : undefined}
       >
         <div className="modal-heading" data-slot={variant === 'sheet' ? 'sheet-header' : undefined}>
           {onBack ? (

@@ -76,7 +76,9 @@
       ["slack", 5, "slack_imports", "3f8237e6e4e91cc6"],
       ["slack", 6, "slack_canvases", "3a03db3814f239c5"],
       ["slack", 7, "slack_integrations_off", "a8879c571eca2182"],
-      ["slack", 8, "slack_workspaces_added", "code"]
+      ["slack", 8, "slack_workspaces_added", "code"],
+      ["slack", 9, "slack_install_links_by_workspace", "c02a5b6288a083bc"],
+      ["slack", 10, "slack_install_pages", "code"]
     ]
   },
   {

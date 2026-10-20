@@ -1,4 +1,4 @@
-import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   Communications,
@@ -33,10 +33,12 @@ const api = wordedApi({
 
 export const communicationsUrl = '/api/dsp/communications';
 /** The DSP's conversations, those waiting first, and its workspaces. */
-export const useCommunications = () => useData<Communications>(communicationsUrl);
-/** How many conversations wait on an answer, for the sidebar. */
-export const useCommunicationsWaiting = () =>
-  useData<CommunicationsWaiting>(`${communicationsUrl}/waiting`);
+export const getCommunications = (signal: AbortSignal) =>
+  api<Communications>(communicationsUrl, undefined, signal);
+/** How many conversations wait on an answer, read again every `poll` milliseconds. */
+export const waitingUrl = `${communicationsUrl}/waiting`;
+export const useCommunicationsWaiting = (poll: number) =>
+  useCachedData<CommunicationsWaiting>(waitingUrl, poll);
 /** What changed since `after`, and who is typing, once either differs from what the page has. */
 export const getCommunicationsUpdates = (after: number, typing: number, signal: AbortSignal) =>
   api<CommunicationsUpdates>(

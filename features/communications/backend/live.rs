@@ -90,7 +90,7 @@ pub fn stopped(state: &State, dsp: &str, conversation: &str, user: &str) {
     }
 }
 /// Who is writing in the DSP's conversations now, but `except`, and when the next of them stops
-/// counting as writing, if anyone is.
+/// counting as writing, if anyone is. Who each is to Driver Match, `conversations` adds.
 pub fn typing(dsp: &str, except: &str) -> (Typing, Option<i64>) {
     let mut all = writers();
     let theirs = all.entry(dsp.to_owned()).or_default();
@@ -110,6 +110,8 @@ pub fn typing(dsp: &str, except: &str) -> (Typing, Option<i64>) {
             user_id: writer.user.id.clone(),
             first_name: writer.user.first_name.clone(),
             name: writer.user.name(),
+            code: None,
+            photo: None,
         })
         .collect();
     (

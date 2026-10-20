@@ -66,14 +66,15 @@ pub(super) fn install_url(
     Ok(slack.install_url(&db.config.origin, state, team.as_deref()))
 }
 
-/// The DSP's workspaces and install link, as those who manage its connections see them.
+/// The DSP's workspaces and its install link for adding one, as those who manage its
+/// connections see them.
 pub fn account(db: &Store, dsp: &str) -> Result<SlackAccount> {
     let workspaces = db
         .slack_workspaces(dsp)?
         .into_iter()
         .map(|workspace| described(db, dsp, workspace))
         .collect::<Result<_>>()?;
-    let link = match db.slack_link(dsp)? {
+    let link = match db.slack_link(dsp, None)? {
         Some(link) => Some(SlackLink {
             created_by: db.actor_name(dsp, &link.created_by)?,
             expires_at: link.expires_at,
@@ -112,13 +113,15 @@ fn described(db: &Store, dsp: &str, workspace: Workspace) -> Result<SlackWorkspa
 
 /// Starts installing Dispatch in a workspace for the member, from the address `site` they're
 /// at: a new one, to have the name `label` in Dispatch, or one of the DSP's, `team`, to
-/// reconnect or update, which Slack then doesn't ask them to choose.
+/// reconnect or update, which Slack then doesn't ask them to choose. Slack sends them back to
+/// the DSP's page `page`, where they started, or else to Settings' Connections.
 pub fn start(
     db: &Store,
     c: &Context,
     site: &Site,
     team: Option<String>,
     label: Option<String>,
+    page: Option<String>,
 ) -> Result<SlackInstall> {
     let slack = Slack::of(&db.config)?;
     if let Some(team) = &team {
@@ -137,6 +140,7 @@ pub fn start(
         starter: Starter::Member(c.actor().to_owned()),
         team: team.clone(),
         label,
+        page,
     };
     db.start_slack_install(&c.dsp.id, &state, &install)?;
     Ok(SlackInstall {

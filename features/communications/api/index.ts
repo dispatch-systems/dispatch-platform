@@ -17,3 +17,4 @@ export type { MessageFile } from './generated/MessageFile';
 export type { Sender } from './generated/Sender';
 export type { Typing } from './generated/Typing';
 export type { Writing } from './generated/Writing';
+export type { PersonRole } from '../../../core/manifest/api/generated/PersonRole.js';

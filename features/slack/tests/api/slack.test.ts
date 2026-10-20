@@ -63,6 +63,19 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
   // Each install is used once.
   const again = await owner.post('/api/dsp/slack/connect/finish', { state, code });
   assert.equal(again.value.error, 'slack_connect_expired');
+  // Started on another of the DSP's pages, it comes back there to finish.
+  const fromPage = await owner.post('/api/dsp/slack/connect', {
+    label: '',
+    page: 'communications',
+  });
+  assert.equal(
+    await returnedTo(fromPage.value.url),
+    `${f.env.DISPATCH_ORIGIN}/#dsp/${north.id}/communications`,
+  );
+  // Only a page's address: it goes in the address Slack sends the browser back to.
+  const odd = await owner.post('/api/dsp/slack/connect', { label: '', page: 'team?x=1#' });
+  assert.equal(odd.status, 400);
+  assert.equal(odd.value.error, 'invalid_input');
 
   assert.equal((await connect(owner)).status, 200);
   assert.deepEqual(names(await owner.read('/api/dsp/slack/account')), ['Drivers', 'Operations']);
@@ -234,6 +247,44 @@ test('the install link adds one workspace, once, for whoever opens it', async (t
   assert.equal((await goes(cancelled)).status, 404);
   assert.equal((await goes(midway.location)).status, 404);
   assert.equal((await owner.read('/api/dsp/slack/account')).workspaces.length, 1);
+});
+
+test("each workspace's install link updates it on its own, beside the one adding a workspace", async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (d) => d.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  await connect(owner, 'T0FIXTURE1');
+  await connect(owner, 'T0FIXTURE2');
+  const linkFor = async (team: string) => {
+    const made = await owner.post(`/api/dsp/slack/workspaces/${team}/link`);
+    assert.equal(made.status, 200, made.body);
+    return made.value.url as string;
+  };
+  const replaced = await linkFor('T0FIXTURE1');
+  const operations = await linkFor('T0FIXTURE1');
+  const drivers = await linkFor('T0FIXTURE2');
+  const adding = (await owner.post('/api/dsp/slack/link')).value.url as string;
+  // A new link takes the place only of the one for the same workspace.
+  assert.equal((await goes(replaced)).status, 404);
+  // Each goes to its own workspace in Slack, which Slack then doesn't ask to choose.
+  const toSlack = await goes(operations);
+  assert.equal(install(toSlack.location).code, 'fixture:T0FIXTURE1');
+  const back = await goes(toSlack.location);
+  assert.equal(new URL(back.location).searchParams.get('team'), 'T0FIXTURE1');
+  assert.equal(install((await goes(drivers)).location).code, 'fixture:T0FIXTURE2');
+  // The one adding a workspace still works, and still shows on Connections.
+  assert.equal((await goes(adding)).status, 302);
+  assert.notEqual((await owner.read('/api/dsp/slack/account')).link, null);
+  // A workspace's link goes with it, and only one of the DSP's workspaces has one.
+  const leaving = await linkFor('T0FIXTURE2');
+  await owner.post('/api/dsp/slack/workspaces/T0FIXTURE2/disconnect');
+  assert.equal((await goes(leaving)).status, 404);
+  const unknown = await owner.post('/api/dsp/slack/workspaces/T0SOMEONEELSE/link');
+  assert.equal(unknown.value.error, 'slack_workspace_not_found');
 });
 
 test("Slack's requests count only signed, and each reaches only its workspace's DSP", async (t) => {

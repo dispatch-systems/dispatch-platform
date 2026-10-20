@@ -85,9 +85,11 @@ export const slackAccountChanged = () => {
 };
 /**
  * Starts installing Dispatch in a workspace: a new one, to have the name `label` in Dispatch,
- * or `team` to reconnect or update one of the DSP's. Where the browser goes next.
+ * or `team` to reconnect or update one of the DSP's. Slack sends the browser back to the DSP's
+ * page `page`, which finishes it with `useSlackReturn`, or else to Settings' Connections. Where
+ * the browser goes next.
  */
-export const connectSlack = (asked: { team: string } | { label: string }) =>
+export const connectSlack = (asked: ({ team: string } | { label: string }) & { page?: string }) =>
   call<SlackInstall>('/api/dsp/slack/connect', asked);
 /** Finishes the install Slack sent the browser back from. */
 export const finishSlack = (state: string, code: string) =>
@@ -138,10 +140,16 @@ export const channelLinking = <T>(path: string, changed: (answer: T) => T): Link
   };
 };
 /**
- * A new install link, in place of any the DSP had, for a workspace to have the name `label` in
- * Dispatch: shown this once.
+ * A new install link for adding a workspace, in place of the one the DSP had, for it to have the
+ * name `label` in Dispatch: shown this once.
  */
 export const createSlackLink = (label: string) =>
   call<SlackNewLink>('/api/dsp/slack/link', { label });
-/** Ends the DSP's install link. */
+/**
+ * A new install link for updating or reconnecting the workspace `team`, in place only of the
+ * one it had: shown this once.
+ */
+export const createWorkspaceLink = (team: string) =>
+  call<SlackNewLink>(`${workspaceUrl(team)}/link`, {});
+/** Ends the DSP's install link for adding a workspace. */
 export const cancelSlackLink = () => call<SlackAccount>('/api/dsp/slack/link/cancel', {});

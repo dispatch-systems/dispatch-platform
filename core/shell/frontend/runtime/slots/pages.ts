@@ -67,6 +67,11 @@ export type DspRoute = Page<DspPageContext> & {
   formerly?: readonly string[];
   /** Whether a DSP opens here when it has no last page to return to; one page at most does. */
   landing?: boolean;
+  /**
+   * Whether it fills the window below the app's bars, its parts scrolling within it, as a
+   * conversation does, so the page itself never scrolls.
+   */
+  fills?: boolean;
   /** Whether the page draws a DSP's Settings, every owner's sections of it; one at most does. */
   hostsSettings?: boolean;
   /**

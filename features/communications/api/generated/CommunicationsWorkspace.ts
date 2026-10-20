@@ -17,4 +17,9 @@ on: boolean,
  * The address that opens the app's Messages tab in the workspace, where its members write
  * to the DSP.
  */
-chatLink: string, };
+chatLink: string,
+/**
+ * Whether, Communications being on there, the workspace's admin has yet to approve a
+ * permission it uses: updating Slack there asks for it.
+ */
+needsUpdate: boolean, };

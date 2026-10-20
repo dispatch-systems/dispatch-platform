@@ -95,6 +95,7 @@ export function Shell({
   current,
   label,
   pending = false,
+  fills = false,
   navigation,
   logout,
   exitView,
@@ -110,6 +111,8 @@ export function Shell({
   current: string;
   label: string;
   pending?: boolean;
+  /** Whether the open page fills the window, its parts scrolling within it. */
+  fills?: boolean;
   navigation: readonly {
     id: string;
     label: string;
@@ -282,7 +285,7 @@ export function Shell({
           </Popover>
         </div>
       </aside>
-      <div className="main-area" inert={mobile}>
+      <div className={fills ? 'main-area fills' : 'main-area'} inert={mobile}>
         {view && session.user.platformOwner && (
           <Suspense fallback={null}>
             <DspViewBanner

@@ -755,6 +755,7 @@
         "POST /api/dsp/slack/workspaces/{team}/disconnect",
         "POST /api/dsp/slack/link",
         "POST /api/dsp/slack/link/cancel",
+        "POST /api/dsp/slack/workspaces/{team}/link",
         "GET /api/slack/return",
         "GET /api/slack/install",
         "POST /slack/events",

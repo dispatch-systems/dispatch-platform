@@ -26,6 +26,7 @@ POST /api/dsp/slack/workspaces/{team}/imports/links Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/imports/links/{channel}/folder Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/imports/links/{channel}/remove Dsp("slack.manage") Async
 POST /api/dsp/slack/workspaces/{team}/integrations/{integration} Dsp("slack.manage") Write
+POST /api/dsp/slack/workspaces/{team}/link Dsp("connections.manage") Write
 POST /api/dsp/slack/workspaces/{team}/rename Dsp("connections.manage") Write
 POST /slack/events Public Async
 POST /slack/interactions Public Async

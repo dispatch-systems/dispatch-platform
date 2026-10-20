@@ -20,6 +20,11 @@
 .modal-backdrop.modal-above {
   z-index: 120;
 }
+/* Over the page alone (`page`), beside the sidebar and under the app's bars, which stay in use. */
+.modal-backdrop.page-modal {
+  left: var(--sidebar-width);
+  z-index: 25;
+}
 .modal {
   width: 560px;
   max-width: 100%;
@@ -60,6 +65,11 @@
 .modal .modal-heading .modal-title button {
   margin-left: -6px;
   color: var(--muted-foreground);
+}
+@media (width <= 980px) {
+  .modal-backdrop.page-modal {
+    left: 0;
+  }
 }
 @media (max-width: 760px) {
   .modal-backdrop {

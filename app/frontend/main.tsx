@@ -387,6 +387,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       />
     );
   const scope = dspId ? 'dsp' : 'platform';
+  const opened = findRoute(scope, page);
   async function logout() {
     await leavePresence();
     await api('/api/auth/logout', {});
@@ -404,9 +405,11 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       view={view}
       dspId={dspId}
       page={page}
-      current={findRoute(scope, page)?.parent ?? page}
+      current={opened?.parent ?? page}
       label={routeLabel(scope, page)}
       pending={pending}
+      // Only once the DSP's view is admitted: what shows before it, as Retry connection, doesn't fill.
+      fills={Boolean(view) && opened?.scope === 'dsp' && opened.fills}
       navigation={navigation(scope, { session, view })}
       sidebar={sidebarOf(scope, page, { session, view })}
       // Signing out asks about unsaved edits first, as leaving the page does.
@@ -446,7 +449,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
         switching ? (
           <Loading />
         ) : view ? (
-          <div key={view.token}>
+          <div key={view.token} className="dsp-page">
             <Page session={session} view={view} page={page} reopen={reopen} />
           </div>
         ) : (

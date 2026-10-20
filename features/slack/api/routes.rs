@@ -6,7 +6,8 @@ use crate::backend::{
     app::{EVENTS_PATH, INSTALL_PATH, INTERACTIONS_PATH, RETURN_PATH},
     channels,
     connection::{self, Started},
-    inbound, integrations, link, pages, storage,
+    inbound, integrations, link, pages,
+    storage::{self, SlackStore},
 };
 use crate::integrations as own;
 use axum::{
@@ -72,6 +73,11 @@ pub fn routes() -> Vec<Route> {
         ),
         write("/api/dsp/slack/link", CONNECTIONS, create_link),
         write("/api/dsp/slack/link/cancel", CONNECTIONS, cancel_link),
+        write(
+            "/api/dsp/slack/workspaces/{team}/link",
+            CONNECTIONS,
+            create_workspace_link,
+        ),
         protocol(Method::GET, RETURN_PATH, |state, request| {
             Box::pin(returned(state, request))
         }),
@@ -127,6 +133,19 @@ fn integration(id: &str) -> Result<String> {
     )?;
     Ok(id.to_owned())
 }
+/// A DSP page's address, as its feature declares it: where an install started on it returns.
+fn page(id: &str) -> Result<String> {
+    ensure(
+        (1..=40).contains(&id.len())
+            && id.starts_with(|first: char| first.is_ascii_lowercase())
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+        "invalid_input",
+        400,
+    )?;
+    Ok(id.to_owned())
+}
 /// A workspace's name in Dispatch, as `body` gives it: left out or blank, it has none.
 fn label(body: &Value) -> Result<Option<String>> {
     let label = optional_text(body, "label", 60)?.trim();
@@ -138,14 +157,18 @@ fn account(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&connection::account(db, c.dsp_id())?)
 }
 /// Starts installing Dispatch in a workspace: a new one, with the name `label` in Dispatch, or
-/// with `team`, one of the DSP's to reconnect or update.
+/// with `team`, one of the DSP's to reconnect or update. Slack sends the browser back to the
+/// DSP's page `page`, where it started, or else to Settings' Connections.
 fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &["team", "label"])?;
+    v::fields(&input.body, &["team", "label", "page"])?;
     let asked = optional(&input.body, "team", |body, key| {
         team(v::text(body, key, 2, 32)?)
     })?;
     let label = label(&input.body)?;
-    Reply::of(&connection::start(db, c, &input.site, asked, label)?)
+    let back = optional(&input.body, "page", |body, key| {
+        page(v::text(body, key, 1, 40)?)
+    })?;
+    Reply::of(&connection::start(db, c, &input.site, asked, label, back)?)
 }
 async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -198,7 +221,13 @@ fn switch_integration(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 fn create_link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["label"])?;
-    Reply::of(&link::create(db, c, label(&input.body)?)?)
+    Reply::of(&link::create(db, c, None, label(&input.body)?)?)
+}
+/// The install link for updating or reconnecting the workspace `team`.
+fn create_workspace_link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    let team = team(input.param("team"))?;
+    Reply::of(&link::create(db, c, Some(&team), None)?)
 }
 fn cancel_link(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
@@ -219,9 +248,9 @@ fn field<'a>(sent: &'a [(String, String)], name: &str) -> Option<&'a str> {
 
 /// Slack sends the browser back here after installing, without the session: its cookie stays
 /// on Dispatch's own address. An install a member started goes on, with what Slack sent, to
-/// Settings' Connections at the address they started at, which finishes it as them, in the
-/// session that started it. One the install link started finishes here, as the link is all it
-/// needs, and goes on to Dispatch in Slack.
+/// the DSP's page it started on, Settings' Connections unless it named another, at the address
+/// they started at, which finishes it as them, in the session that started it. One the install
+/// link started finishes here, as the link is all it needs, and goes on to Dispatch in Slack.
 async fn returned(state: Arc<State>, request: Request) -> Response {
     let origin = state.config.origin.clone();
     let sent = query(&request);
@@ -239,9 +268,19 @@ async fn returned(state: Arc<State>, request: Request) -> Response {
             Err(error) => pages::stopped(&error.code),
         };
     }
+    let page = {
+        let (at, asked) = (dsp.to_owned(), sign_in.clone());
+        state
+            .read(move |db| db.slack_install_page(&at, &asked))
+            .await
+            .ok()
+            .flatten()
+    };
     let back = {
         let mut back = url::form_urlencoded::Serializer::new(String::new());
-        back.append_pair("tab", "connections");
+        if page.is_none() {
+            back.append_pair("tab", "connections");
+        }
         back.append_pair("slackState", &sign_in);
         match code {
             Some(code) => back.append_pair("slackCode", code),
@@ -261,9 +300,10 @@ async fn returned(state: Arc<State>, request: Request) -> Response {
         }
         _ => None,
     };
+    let page = page.as_deref().unwrap_or("settings");
     Reply::redirect(match own {
-        Some(address) => format!("{address}/#settings?{back}"),
-        None => format!("{origin}/#dsp/{dsp}/settings?{back}"),
+        Some(address) => format!("{address}/#{page}?{back}"),
+        None => format!("{origin}/#dsp/{dsp}/{page}?{back}"),
     })
     .into_response()
 }

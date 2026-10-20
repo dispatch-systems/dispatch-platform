@@ -1,5 +1,6 @@
 //! Fixture mode's Slack, in-process, so previews and tests never reach Slack. Installing comes
-//! straight back with a code naming the workspace, `fixture:<team>`; its tokens name their
+//! straight back with a code naming the workspace, `fixture:<team>`, which may name what its
+//! admin approved, as one that needs updating, `fixture:<team>:<scope>,<scope>`; its tokens name their
 //! workspace too, and one whose ID holds `GONE` is refused, as a workspace that removed the app
 //! is. Each workspace has the same channels, the bot in `general` and in the private
 //! `managers`, and what it joins and leaves is kept for the server's run. Its members are the
@@ -17,6 +18,7 @@ use axum::body::Bytes;
 use dispatch_core::{
     Error, Result,
     db::{Store, now},
+    ensure,
 };
 use futures_util::{TryStreamExt, stream};
 use serde_json::{Value, json};
@@ -346,22 +348,29 @@ pub fn free_team(db: &Store) -> Result<String> {
     Err(Error::new("slack_workspace_taken", 409))
 }
 
+/// The workspace an install's code names, `fixture:<team>`, its admin approving all the app
+/// asks for; or, as one approved before the app asked for more, only what it lists,
+/// `fixture:<team>:<scope>,<scope>`.
 pub fn install(code: &str) -> Result<Installed> {
-    let team = code
-        .strip_prefix("fixture:")
-        .filter(|team| {
-            !team.is_empty()
-                && team
-                    .bytes()
-                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-        })
-        .ok_or_else(|| Error::new("slack_install_failed", 502))?;
+    let named = code.strip_prefix("fixture:").unwrap_or_default();
+    let (team, approved) = match named.split_once(':') {
+        Some((team, listed)) => (team, listed.split(',').map(str::to_owned).collect()),
+        None => (
+            named,
+            scopes().iter().map(|scope| (*scope).to_owned()).collect(),
+        ),
+    };
+    let valid = !team.is_empty()
+        && team
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit());
+    ensure(valid, "slack_install_failed", 502)?;
     Ok(Installed {
         team: team.to_owned(),
         name: name(team),
         bot_user: "U0FIXTUREBOT".into(),
         app: "A0FIXTURE".into(),
-        scopes: scopes().iter().map(|scope| (*scope).to_owned()).collect(),
+        scopes: approved,
         tokens: tokens(team),
     })
 }
