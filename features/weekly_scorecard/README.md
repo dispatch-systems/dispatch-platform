@@ -9,7 +9,10 @@ The current names are `weekly_scorecard`, `cortex.weekly_scorecard.collect`,
 page of its own: Settings draws its section.
 
 Storage is `weekly_scorecard/weekly_scorecard.sqlite`. Historical publications and source
-rows are retained when a week is collected again. Provider daily datasets inside a weekly
+rows are retained when a week is collected again. A week recollected with fewer rows in any
+dataset than its active publication read, as Cortex answers while it republishes a week, is
+kept beside it unpublished until a read at least half an hour later sees the same counts, as a
+dispute that removed rows settles. Provider daily datasets inside a weekly
 capture are details of that week's publication; they do not become Daily Performance data.
 
 Weekly schedules refresh recent completed weeks, including already posted weeks whose
