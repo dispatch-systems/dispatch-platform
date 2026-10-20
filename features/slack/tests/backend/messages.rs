@@ -23,7 +23,10 @@ async fn only_a_message_a_person_wrote_anew_is_answered_that_dsp_messaging_is_un
         "user": "U0FIXJORDAN", "text": "Running late", "ts": "1760000000.000100"});
     let left = [
         // The app's own answer, and another bot's post.
-        with(&written, json!({"user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE"})),
+        with(
+            &written,
+            json!({"user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE"}),
+        ),
         with(&written, json!({"bot_id": "B0OTHER"})),
         // An edit, a deletion and a file shared.
         with(&written, json!({"subtype": "message_changed"})),
