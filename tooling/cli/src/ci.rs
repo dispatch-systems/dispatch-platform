@@ -8,7 +8,7 @@
 //! that feature alone: its runs are told apart by the name the workflow gives them.
 use crate::{
     REPOSITORY, Result, Runner, require,
-    ship::{ATTEMPTS, PAUSE, failed_jobs, rest},
+    ship::{ATTEMPTS, PAUSE, failed_jobs, report, rest},
     workspace::{self, Workspace},
 };
 use serde_json::Value;
@@ -243,7 +243,7 @@ fn follow(
             return Err(format!(
                 "{what} failed on {short} of {name}. Fix them, commit and run them again. Failed jobs{}:\n- {}",
                 if done { "" } else { " so far" },
-                failed.join("\n- ")
+                report(runner, &failed).join("\n- ")
             )
             .into());
         }

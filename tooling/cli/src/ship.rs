@@ -7,7 +7,7 @@
 //! stops with the reason when the PR closes or leaves the queue unmerged, naming the failed
 //! jobs of its queue run. A PR labelled `ai-review` is queued only once CodeRabbit reviewed it
 //! and resolved each of its threads it accepted the reply to.
-use crate::{REPOSITORY, Result, Runner};
+use crate::{REPOSITORY, Result, Runner, check};
 use serde_json::Value;
 
 /// Seconds between looks at the PR.
@@ -277,9 +277,9 @@ fn branch_run(runner: &dyn Runner, head: &str) -> Option<Value> {
 /// `tooling/tests/build_pipeline_test.py` holds this list to the workflow.
 const ADVISORY: &[&str] = &["tools"];
 
-/// The failed jobs of `run`, as "name: conclusion link" lines. With `gating`, only the
-/// failures that already fail the gate, while the rest of the run is still going.
-pub(crate) fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec<String> {
+/// The failed jobs of `run`. With `gating`, only the failures that already fail the gate,
+/// while the rest of the run is still going.
+pub(crate) fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec<Value> {
     let Ok(jobs) = rest(
         runner,
         &format!("actions/runs/{}/jobs?per_page=100", run["id"]),
@@ -307,15 +307,68 @@ pub(crate) fn failed_jobs(runner: &dyn Runner, run: &Value, gating: bool) -> Vec
     failed
         .into_iter()
         .filter(|job| job["name"] != REQUIRED || (!suites && !gating))
+        .cloned()
+        .collect()
+}
+
+/// `jobs` as "name: conclusion link" lines, each failure followed by the lines of its log that
+/// say why, indented. A cancelled job's log says nothing of a failure.
+pub(crate) fn report(runner: &dyn Runner, jobs: &[Value]) -> Vec<String> {
+    jobs.iter()
         .map(|job| {
-            format!(
+            let mut text = format!(
                 "{}: {} {}",
                 job["name"].as_str().unwrap_or("job"),
                 job["conclusion"].as_str().unwrap_or(""),
                 job["html_url"].as_str().unwrap_or("")
-            )
+            );
+            if job["conclusion"] != "cancelled" {
+                for line in failing_lines(runner, &job["id"]) {
+                    text.push_str(&format!("\n  {line}"));
+                }
+            }
+            text
         })
         .collect()
+}
+
+/// The lines of job `id`'s log that say why it failed, none while GitHub has no log for it.
+/// They come from the step that failed, from its `Run` header to the first error GitHub
+/// reports, so the steps setting up the job and those after the failure stay out.
+fn failing_lines(runner: &dyn Runner, id: &Value) -> Vec<String> {
+    let endpoint = format!("repos/{REPOSITORY}/actions/jobs/{id}/logs");
+    // A log keeps its commands' colour codes, which `gh` prints only when allowed to.
+    let Ok(log) = runner.command(
+        &["gh", "api", "--allow-escape-sequences", &endpoint],
+        None,
+        60,
+    ) else {
+        return vec![];
+    };
+    let log = String::from_utf8_lossy(&log);
+    let lines: Vec<&str> = log.lines().map(untimed).collect();
+    let step = match lines.iter().position(|line| line.starts_with("##[error]")) {
+        Some(end) => {
+            let start = lines[..end]
+                .iter()
+                .rposition(|line| line.starts_with("##[group]Run "))
+                .unwrap_or(0);
+            &lines[start..=end]
+        }
+        None => &lines[..],
+    };
+    check::failure(&step.join("\n"))
+}
+
+/// A job log's line without the time GitHub starts it with, as `2026-10-20T05:24:41.9021338Z`.
+fn untimed(line: &str) -> &str {
+    let line = line.trim_start_matches('\u{feff}');
+    let (at, text) = line.split_once(' ').unwrap_or((line, ""));
+    if at.get(10..11) == Some("T") && at.ends_with('Z') {
+        text
+    } else {
+        line
+    }
 }
 
 fn short(head: &Value) -> &str {
@@ -429,7 +482,7 @@ pub fn run(
                 if queued.as_ref() == Some(head) {
                     return Err(format!(
                         "#{number} failed its queue run, and GitHub takes it out of the queue at once, or once the run ends if another PR is queued ahead of it. Fix it, push and ship it again; shipping waits for it to leave the queue first. Failed jobs so far:\n- {}",
-                        failed.join("\n- ")
+                        report(runner, &failed).join("\n- ")
                     )
                     .into());
                 }
@@ -470,7 +523,7 @@ pub fn run(
                 } else {
                     format!(
                         "#{number} left the merge queue without merging: {reason}. Failed jobs of its queue run:\n- {}",
-                        failed.join("\n- ")
+                        report(runner, &failed).join("\n- ")
                     )
                 }
                 .into());
@@ -633,7 +686,7 @@ pub fn run(
                         "The checks on the branch failed on {} of #{number}. Fix them, push and ship it again. Failed jobs{}:\n- {}",
                         &head[..head.len().min(7)],
                         if done { "" } else { " so far" },
-                        failed.join("\n- ")
+                        report(runner, &failed).join("\n- ")
                     )
                     .into());
                 }
@@ -726,13 +779,14 @@ mod tests {
     const NEW: &str = "2222222222222222222222222222222222222222";
 
     /// GitHub as a script: each look answers with the next PR state, the last one repeating,
-    /// and each REST endpoint likewise.
+    /// and each REST endpoint likewise; a job's log is there once it is in `logs`.
     #[derive(Default)]
     struct GitHub {
         looks: RefCell<VecDeque<Result<Value>>>,
         refusals: RefCell<VecDeque<String>>,
         queued: RefCell<Vec<String>>,
         rest: RefCell<BTreeMap<String, VecDeque<Value>>>,
+        logs: RefCell<BTreeMap<String, &'static str>>,
         notices: RefCell<Option<Value>>,
         cancelled: RefCell<Vec<String>>,
     }
@@ -743,6 +797,12 @@ mod tests {
             if args.get(2..4) == Some(&["-X", "POST"][..]) {
                 self.cancelled.borrow_mut().push(args[4].into());
                 return Ok(vec![]);
+            }
+            if args[2] == "--allow-escape-sequences" {
+                let endpoint = args[3].strip_prefix(&format!("repos/{REPOSITORY}/"));
+                let logs = self.logs.borrow();
+                let log = endpoint.and_then(|endpoint| logs.get(endpoint));
+                return Ok(log.ok_or("not found")?.as_bytes().to_vec());
             }
             if let Some(endpoint) = args[2].strip_prefix(&format!("repos/{REPOSITORY}/")) {
                 assert_eq!(args.len(), 3);
@@ -974,6 +1034,66 @@ mod tests {
         assert_eq!(
             *running_run.cancelled.borrow(),
             [format!("repos/{REPOSITORY}/actions/runs/6/cancel")]
+        );
+    }
+
+    /// A failed job's log as GitHub serves it: each line timed, the step that failed between
+    /// the job's setup and a step that runs after a failure.
+    const LOG: &str = "\u{feff}2026-10-20T05:24:14.0026243Z ##[group]Run actions/cache/restore@55cc834\n\
+        2026-10-20T05:24:15.0443080Z Received 50078371 of 50078371 (100.0%), 59.5 MBs/sec\n\
+        2026-10-20T05:24:41.9021338Z ##[group]Run npm run check:ci -- core\n\
+        2026-10-20T05:24:41.9089623Z ##[endgroup]\n\
+        2026-10-20T05:27:28.1000000Z test pay::rounds_to_the_cent ... FAILED\n\
+        2026-10-20T05:27:28.2000000Z thread 'pay::rounds_to_the_cent' panicked at core/pay/tests/backend/pay.rs:12:5:\n\
+        2026-10-20T05:27:28.3000000Z   left: 3\n\
+        2026-10-20T05:27:28.4000000Z  right: 4\n\
+        2026-10-20T05:27:29.5876193Z ##[error]Process completed with exit code 1.\n\
+        2026-10-20T05:27:29.6013804Z ##[group]Run ./.github/actions/fail-queue-entry\n\
+        2026-10-20T05:27:29.6100000Z Reported the platform check failed, so the merge queue takes the PR out now.\n";
+
+    #[test]
+    fn each_failed_job_is_reported_with_the_lines_of_its_failing_step() {
+        let github = github(vec![open(OLD)]);
+        github.rest.borrow_mut().extend([
+            (
+                format!(
+                    "actions/workflows/checks.yml/runs?event=workflow_dispatch&head_sha={OLD}&per_page=20"
+                ),
+                VecDeque::from([
+                    json!({"workflow_runs":[{"id":5,"status":"completed","conclusion":"failure"}]}),
+                ]),
+            ),
+            (
+                "actions/runs/5/jobs?per_page=100".into(),
+                VecDeque::from([json!({"jobs":[
+                    {"id":2,"name":"core","conclusion":"failure","html_url":"https://github.com/job/2"},
+                    {"id":5,"name":"browser (3)","conclusion":"failure","html_url":"https://github.com/job/5"},
+                    {"id":6,"name":"browser (4)","conclusion":"cancelled","html_url":"https://github.com/job/6"}]})]),
+            ),
+        ]);
+        // The second job's log can't be read yet, and the cancelled one's says nothing of a
+        // failure: their lines stay alone.
+        github.logs.borrow_mut().extend([
+            ("actions/jobs/2/logs".to_owned(), LOG),
+            ("actions/jobs/6/logs".to_owned(), LOG),
+        ]);
+        let error = ship(&github).0.unwrap_err().to_string();
+        assert_eq!(
+            error.split_once("Failed jobs:\n").map(|(_, jobs)| jobs),
+            Some(
+                [
+                    "- core: failure https://github.com/job/2",
+                    "  test pay::rounds_to_the_cent ... FAILED",
+                    "  thread 'pay::rounds_to_the_cent' panicked at core/pay/tests/backend/pay.rs:12:5:",
+                    "  left: 3",
+                    "  right: 4",
+                    "- browser (3): failure https://github.com/job/5",
+                    "- browser (4): cancelled https://github.com/job/6",
+                ]
+                .join("\n")
+                .as_str()
+            ),
+            "{error}"
         );
     }
 

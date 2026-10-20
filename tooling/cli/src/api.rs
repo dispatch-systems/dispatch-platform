@@ -272,7 +272,8 @@ pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> R
     }
     args.push(&url);
     let reply = site.curl(runner, &args)?;
-    println!("HTTP {}", reply.status);
+    // The body alone on stdout, so it pipes into `jq`.
+    eprintln!("HTTP {}", reply.status);
     match serde_json::from_str::<Value>(&reply.body) {
         Ok(value) => println!("{}", serde_json::to_string_pretty(&value)?),
         Err(_) if !reply.body.is_empty() => println!("{}", reply.body),
