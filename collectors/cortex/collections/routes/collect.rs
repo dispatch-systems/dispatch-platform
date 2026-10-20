@@ -36,6 +36,13 @@ use tokio::time::Instant;
 const SUMMARIES: &str = "/operations/execution/api/summaries";
 pub(super) const ROUTE_SUMMARIES: &str = "/operations/execution/api/route-summaries";
 pub(super) const ITINERARY: &str = "/operations/execution/api/itineraries/";
+/// Where the application's API action asks for itinerary `id`.
+pub(crate) fn itinerary_path(id: &str) -> String {
+    format!(
+        "{ITINERARY}{}",
+        url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>()
+    )
+}
 /// How long a page may take to ask for its data.
 const PAGE_DEADLINE: Duration = Duration::from_secs(45);
 /// A move that failed for one of these is read by loading the itinerary's page instead:

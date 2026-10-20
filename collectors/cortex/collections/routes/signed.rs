@@ -9,7 +9,7 @@
 //! as downloads finish, so no signature waits long to be used. A read that fails is signed
 //! and downloaded once more; whatever is still unread is left to the application's moves.
 use super::capture::{ItineraryCapture, MAX_BODY};
-use super::collect::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, owned_by};
+use super::collect::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, itinerary_path, owned_by};
 use crate as cortex;
 use crate::{connection::Driver, discovery::Scope};
 use dispatch_core::{
@@ -237,12 +237,6 @@ fn decoded(segment: &str) -> Option<String> {
         }
     }
     String::from_utf8(text).ok()
-}
-fn itinerary_path(id: &str) -> String {
-    format!(
-        "{ITINERARY}{}",
-        url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>()
-    )
 }
 /// What the tab pauses while the application signs: its requests for either API, before
 /// they are sent.
