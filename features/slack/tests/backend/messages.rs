@@ -22,21 +22,32 @@ async fn only_a_message_a_person_wrote_anew_is_answered_that_dsp_messaging_is_un
     let written = json!({"type": "message", "channel_type": "im", "channel": DM,
         "user": "U0FIXJORDAN", "text": "Running late", "ts": "1760000000.000100"});
     let left = [
-        // The app's own answer, and another bot's post.
+        // The app's own answer, another bot's post, and one shared as a file.
         with(
             &written,
             json!({"user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE"}),
         ),
         with(&written, json!({"bot_id": "B0OTHER"})),
-        // An edit, a deletion and a file shared.
+        with(
+            &written,
+            json!({"bot_id": "B0OTHER", "subtype": "file_share"}),
+        ),
+        // An edit and a deletion.
         with(&written, json!({"subtype": "message_changed"})),
         with(&written, json!({"subtype": "message_deleted"})),
-        with(&written, json!({"subtype": "file_share"})),
     ];
+    let posted = || -> Vec<String> {
+        let posts = fixture::posted(TEAM, DM).into_iter();
+        posts.map(|post| post.text).collect()
+    };
     for event in &left {
         unheard(&bot, event).await.unwrap();
     }
-    assert!(fixture::posted(TEAM, DM).is_empty());
+    assert!(posted().is_empty());
+    // Written, or a file shared with nothing written.
+    let shared = with(&written, json!({"subtype": "file_share", "text": ""}));
     unheard(&bot, &written).await.unwrap();
-    assert_eq!(fixture::posted(TEAM, DM), ["DSP Messaging is unavailable"]);
+    unheard(&bot, &shared).await.unwrap();
+    let unavailable = "DSP Messaging is unavailable";
+    assert_eq!(posted(), [unavailable, unavailable]);
 }

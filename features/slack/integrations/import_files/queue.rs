@@ -5,6 +5,7 @@
 use super::{ID, LINKING, save, storage::ImportStore};
 use crate::backend::{
     channel_links::storage::LinkStore,
+    storage::SlackStore,
     work::{self, Queue},
 };
 use dispatch_core::{
@@ -71,7 +72,7 @@ pub(super) fn notice(
     let Some(link) = db.slack_channel_link(dsp, &LINKING, team, channel)? else {
         return Ok(false);
     };
-    let Some(on_since) = db.slack_import_on_since(dsp, team, ID)? else {
+    let Some(on_since) = db.slack_integration_on_since(dsp, team, ID)? else {
         return Ok(false);
     };
     // Slack says when a file was posted to the second: one posted the second it was linked counts.

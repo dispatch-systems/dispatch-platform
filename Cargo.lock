@@ -637,10 +637,16 @@ dependencies = [
 name = "dispatch-communications"
 version = "0.0.0"
 dependencies = [
+ "axum",
  "dispatch-core",
  "dispatch-slack",
+ "flate2",
+ "futures-util",
  "rusqlite",
  "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
  "ts-rs",
 ]
 

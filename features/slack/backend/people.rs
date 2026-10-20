@@ -86,5 +86,5 @@ fn members(store: &Store, dsp: &str) -> Result<Vec<Named>> {
 }
 /// The ID the member `member` of the workspace `team` is known by.
 pub(super) fn id(team: &str, member: &Member) -> String {
-    format!("{team}:{}", member.user)
+    super::kit::member_id(team, &member.user)
 }

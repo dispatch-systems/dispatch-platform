@@ -22,8 +22,10 @@ use dispatch_core::{
 };
 
 /// What another feature's integration through Slack uses of Slack, beside core's
-/// `Integration`: the bot that acts in a DSP's workspace, and linking a workspace's channels to
-/// folders where the DSP keeps its files, as Import Files and Sync Canvases do. Its folder takes
+/// `Integration`: the bot that acts in a DSP's workspace, calling Slack and downloading and
+/// uploading files there; what Slack keeps of the DSP's workspaces and their members, to read;
+/// linking a workspace's channels to folders where the DSP keeps its files, as Import Files and
+/// Sync Canvases do; and the queue their work that mustn't be lost is kept in. Its folder takes
 /// their shape, `integrations/<name>/` in its feature, as `dispatchdev new integration <name>
 /// --to <feature>` writes it, and its feature declares `slack` in `depends_on` once it uses this.
 pub mod kit {
@@ -32,6 +34,20 @@ pub mod kit {
         Linking,
         storage::{Link, LinkStore},
     };
+    pub use crate::backend::kit::{
+        SOURCE, integration_on_since, member_id, members, workspaces, workspaces_on,
+    };
+    pub use crate::backend::members::member;
+    pub use crate::backend::slack::Bytestream;
+    pub use crate::backend::storage::{Member, Workspace};
+    pub use crate::backend::work::{Queue, dsps, due, failed, pass};
+}
+/// What a dependant's tests use of Slack, behind its `testing` feature: connecting one of a
+/// DSP's fixture workspaces, and what the bot posted there.
+#[cfg(any(test, feature = "testing"))]
+pub mod testing {
+    pub use crate::backend::fixture::{DM_PHOTO, Posted, posted};
+    pub use crate::backend::testing::connect;
 }
 
 pub const FEATURE: Feature = Feature {
@@ -53,6 +69,7 @@ pub const FEATURE: Feature = Feature {
                 "slack_workspaces",
                 "slack_members",
                 "slack_integrations",
+                "slack_integrations_off",
                 "slack_import_links",
                 "slack_imports",
                 "slack_canvas_links",
@@ -109,6 +126,11 @@ pub const FEATURE: Feature = Feature {
                     apply: Sql(include_str!(
                         "integrations/sync_canvases/migrations/dsp/0006_slack_canvases.sql"
                     )),
+                },
+                Migration {
+                    id: 7,
+                    name: "slack_integrations_off",
+                    apply: Sql(include_str!("migrations/dsp/0007_slack_integrations_off.sql")),
                 },
             ],
         },

@@ -14,6 +14,8 @@ doctest = false
 [features]
 # TypeScript definitions of its API types, for the app's export test; never in a build.
 ts = ["dep:ts-rs", "dispatch-core/ts"]
+# `dispatch_slack::testing`, for a dependant's tests through their dev-dependencies.
+testing = []
 
 # Core, the collectors it uses and the features it declares: nothing else compiles.
 [dependencies]

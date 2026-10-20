@@ -17,11 +17,18 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 
 # Core, the collectors it uses and the features it declares: nothing else compiles.
 [dependencies]
+axum = { workspace = true }
 dispatch-core = { path = "../../core" }
+dispatch-slack = { path = "../slack" }
+flate2 = { workspace = true }
+futures-util = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true }
 ts-rs = { workspace = true, optional = true }
-dispatch-slack = { path = "../slack" }
 
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
+dispatch-slack = { path = "../slack", features = ["testing"] }

@@ -1,19 +1,11 @@
 //! What every Slack backend test installs. A test binary holds one registry, so each installs
 //! the same: Slack; a stand-in feature with an integration through it, which hears of Slack's
-//! events as an integration would and keeps what it heard, and hears when the DSP's people
-//! change; and a stand-in for where a DSP keeps its files, which keeps what's saved and written
+//! events as an integration would and keeps what it heard, and one that starts on, and hears
+//! when the DSP's people change; and a stand-in for where a DSP keeps its files, which keeps what's saved and written
 //! there in memory. And how a test starts: a platform with one DSP, and its workspaces connected.
-use crate::{
-    FEATURE,
-    backend::{
-        bot::Bot,
-        slack::Tokens,
-        storage::{SlackStore, Workspace},
-    },
-};
+use crate::FEATURE;
 use dispatch_core::{
     State,
-    db::now,
     manifest::{
         Feature, Upkeep,
         events::PeopleChanged,
@@ -34,6 +26,9 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
+
+/// Connects one of the DSP's workspaces, as a test of one starts.
+pub use crate::backend::testing::connect;
 
 /// The stand-in's integration: it needs to read files, hears of files shared and of messages
 /// written to the app directly, answers fixture mode's Slack for `listening.ping`, a method only
@@ -72,12 +67,17 @@ fn answer(
 ) -> Option<dispatch_core::Result<serde_json::Value>> {
     (method == "listening.ping").then(|| Ok(serde_json::json!({"ok": true, "team": team})))
 }
+/// The stand-in's integration that starts on in every workspace, and hears of nothing.
+pub const STARTING: Integration = Integration {
+    starts_on: true,
+    ..integration("slack", "listening.starting", "Starting")
+};
 /// A feature that works through Slack, on for a test's DSP as every feature is, until a test
 /// switches it off.
 static LISTENER: Feature = Feature {
     switch: optional("listening", "Listening", &[]),
     depends_on: &["slack"],
-    integrations: &[LISTENING],
+    integrations: &[LISTENING, STARTING],
     on: &[dispatch_core::on!(PeopleChanged, people_changed)],
     ..feature("listening")
 };
@@ -329,29 +329,4 @@ pub fn platform() -> (impl Drop, Arc<State>, String) {
     let config = store.config.clone();
     drop(store);
     (root, State::new(config).unwrap(), dsp)
-}
-/// Connects the DSP's workspace `team`, its admin having let the bot do what `scopes` say.
-pub async fn connect(state: &Arc<State>, dsp: &str, team: &str, scopes: &[&str]) -> Bot {
-    let workspace = Workspace {
-        team: team.into(),
-        name: team.into(),
-        broken: false,
-        scopes: scopes.iter().map(|scope| (*scope).to_owned()).collect(),
-        bot_user: "U0FIXTUREBOT".into(),
-        app: "A0FIXTURE".into(),
-        connected_by: None,
-        connected_at: "2026-01-01T00:00:00Z".into(),
-        label: None,
-    };
-    let tokens = Tokens {
-        access: format!("fixture-access:{team}:test"),
-        refresh: None,
-        expires_at: Some(now() + 3_600_000),
-    };
-    let of = dsp.to_owned();
-    state
-        .run(move |db| db.save_slack_workspace(&of, &workspace, &tokens))
-        .await
-        .unwrap();
-    Bot::new(state, dsp, team)
 }
