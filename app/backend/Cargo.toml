@@ -36,6 +36,7 @@ default = [
     "team",
     "timecard",
     "uniforms",
+    "vans",
     "weekly_scorecard",
 ]
 daily_performance = ["dep:dispatch-daily-performance"]
@@ -50,6 +51,7 @@ slack = ["dep:dispatch-slack"]
 team = ["dep:dispatch-team"]
 timecard = ["dep:dispatch-timecard"]
 uniforms = ["dep:dispatch-uniforms"]
+vans = ["dep:dispatch-vans"]
 weekly_scorecard = ["dep:dispatch-weekly-scorecard"]
 
 # Private live-provider diagnostics are compiled only when an operator asks for them.
@@ -75,6 +77,7 @@ dispatch-slack = { path = "../../features/slack", optional = true }
 dispatch-team = { path = "../../features/team", optional = true }
 dispatch-timecard = { path = "../../features/timecard", optional = true }
 dispatch-uniforms = { path = "../../features/uniforms", optional = true }
+dispatch-vans = { path = "../../features/vans", optional = true }
 dispatch-weekly-scorecard = { path = "../../features/weekly_scorecard", optional = true }
 
 axum = { workspace = true }
@@ -99,6 +102,7 @@ dispatch-routes = { path = "../../features/routes", features = ["ts"] }
 dispatch-slack = { path = "../../features/slack", features = ["ts"] }
 dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }
 dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
+dispatch-vans = { path = "../../features/vans", features = ["ts"] }
 dispatch-weekly-scorecard = { path = "../../features/weekly_scorecard", features = ["ts"] }
 
 base64 = { workspace = true }

@@ -144,5 +144,13 @@
     "migrations": [
       [1, "baseline", "21aa6c8f3431a72b"]
     ]
+  },
+  {
+    "name": "vans",
+    "user_version": 1,
+    "cache_size": -512,
+    "migrations": [
+      [1, "baseline", "7cdc21aa0e920fc0"]
+    ]
   }
 ]

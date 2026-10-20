@@ -56,5 +56,13 @@ export const collections = [
     "label": "Roster",
     "unit": "associate",
     "counted": "rows"
+  },
+  {
+    "kind": "cortex.vans.collect",
+    "provider": "cortex",
+    "schedule": "vans",
+    "label": "Vans",
+    "unit": "van",
+    "counted": "rows"
   }
 ] as const;

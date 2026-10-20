@@ -111,6 +111,14 @@
       "requires": [],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "vans",
+      "label": "Vans",
+      "permissions": ["vans.collect"],
+      "requires": ["vans"],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -179,6 +187,7 @@
     "team",
     "settings",
     "slack",
+    "vans",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

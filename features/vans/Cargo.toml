@@ -1,0 +1,30 @@
+[package]
+name = "dispatch-vans"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "feature.rs"
+doctest = false
+
+[features]
+# TypeScript definitions of its API types, for the app's export test; never in a build.
+ts = ["dep:ts-rs", "dispatch-core/ts"]
+
+# Core, the collectors it uses and the features it declares: nothing else compiles.
+[dependencies]
+dispatch-core = { path = "../../core" }
+dispatch-cortex = { path = "../../collectors/cortex" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+# Its answers keep the order their fields are written in.
+serde_json = { workspace = true, features = ["preserve_order"] }
+ts-rs = { workspace = true, optional = true }
+dispatch-vans-contract = { path = "contract" }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }

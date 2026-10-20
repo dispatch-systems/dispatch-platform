@@ -618,6 +618,7 @@ dependencies = [
  "dispatch-team",
  "dispatch-timecard",
  "dispatch-uniforms",
+ "dispatch-vans",
  "dispatch-weekly-scorecard",
  "libc",
  "reqwest",
@@ -1001,6 +1002,26 @@ dependencies = [
  "tempfile",
  "tokio",
  "ts-rs",
+]
+
+[[package]]
+name = "dispatch-vans"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
+ "dispatch-cortex",
+ "dispatch-vans-contract",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "ts-rs",
+]
+
+[[package]]
+name = "dispatch-vans-contract"
+version = "0.0.0"
+dependencies = [
+ "dispatch-core",
 ]
 
 [[package]]
