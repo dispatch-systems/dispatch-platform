@@ -3,4 +3,9 @@
 /**
  * Someone at the DSP writing in a conversation, other than whoever asks.
  */
-export type Writing = { conversationId: string, userId: string, firstName: string, name: string, };
+export type Writing = { conversationId: string, userId: string, firstName: string, name: string,
+/**
+ * The person Driver Match knows them as, by their email address, if it does, and their
+ * photo's version, as a message's sender's.
+ */
+code: string | null, photo: string | null, };

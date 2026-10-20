@@ -3,9 +3,9 @@ import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js
 import { hashQuery } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 
-// What Slack sent the browser back with, after an install started on Settings' Connections,
-// and finishing it there. Why one didn't finish shows at the top of the page: a workspace being
-// added has no card yet to show it on.
+// What Slack sent the browser back with, after an install started on Settings' Connections, or
+// on the page that named itself to `connectSlack`, and finishing it there. Why one didn't finish
+// shows at the top of the page: a workspace being added has no card yet to show it on.
 
 type SlackReturn = { state: string; code: string; error: string };
 /** What Slack sent back, until the card starts finishing it. */
@@ -15,7 +15,7 @@ const FIELDS = ['slackState', 'slackCode', 'slackError'];
 /**
  * What Slack sent the browser back with, taken out of the address so the code is neither used
  * twice nor left in the browser's history; the rest of the address stays. It is kept until the
- * card starts finishing it: React may set aside a first render and render it again, and that
+ * page starts finishing it: React may set aside a first render and render it again, and that
  * render finds the address already clean.
  */
 function takeSlackReturn() {
@@ -39,8 +39,8 @@ const cancelled = (error: string) =>
   error === 'access_denied' ? "Slack wasn't connected." : "Slack didn't finish. Try again.";
 
 /**
- * Finishes the install Slack sent the browser back from with `finish`: once, as soon as the
- * cards are drawn. Whether it's finishing.
+ * Finishes the install Slack sent the browser back from with `finish`: once, as soon as what
+ * calls it is drawn, as Slack's cards on Connections are. Whether it's finishing.
  */
 export function useSlackReturn(finish: (state: string, code: string) => Promise<void>) {
   const [returned] = useState(takeSlackReturn);

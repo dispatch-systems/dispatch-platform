@@ -387,6 +387,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       />
     );
   const scope = dspId ? 'dsp' : 'platform';
+  const opened = findRoute(scope, page);
   async function logout() {
     await leavePresence();
     await api('/api/auth/logout', {});
@@ -404,9 +405,10 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       view={view}
       dspId={dspId}
       page={page}
-      current={findRoute(scope, page)?.parent ?? page}
+      current={opened?.parent ?? page}
       label={routeLabel(scope, page)}
       pending={pending}
+      fills={opened?.fills}
       navigation={navigation(scope, { session, view })}
       sidebar={sidebarOf(scope, page, { session, view })}
       // Signing out asks about unsaved edits first, as leaving the page does.

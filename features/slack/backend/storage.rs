@@ -74,12 +74,14 @@ pub enum Starter {
 }
 
 /// An install someone started: who started it, the workspace it named to Slack, to reconnect
-/// or update, none for a new one, and the name the workspace it adds is to have.
+/// or update, none for a new one, the name the workspace it adds is to have, and the DSP page
+/// it returns to, none for Settings' Connections.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Install {
     pub starter: Starter,
     pub team: Option<String>,
     pub label: Option<String>,
+    pub page: Option<String>,
 }
 /// An install as stored until Slack sends it back, with when it expires.
 struct Requested {
@@ -101,6 +103,7 @@ impl FromRow for Requested {
                     starter,
                     team: row.get("team_id")?,
                     label: row.get("label")?,
+                    page: row.get("page")?,
                 }),
                 None => None,
             },
@@ -189,15 +192,33 @@ pub(crate) fn add_workspaces_added(db: &Db) -> Result<()> {
     )?;
     Ok(())
 }
+/// Slack's migration 10: the DSP page an install a member started returns to (`page`), when it
+/// started on another than Settings' Connections, as on Communications' page.
+pub(crate) fn add_install_pages(db: &Db) -> Result<()> {
+    add_column(db, "slack_connect_requests", "page", "TEXT")
+}
 
-/// The DSP's install link, as stored: never the link itself, only its hash.
+/// One of the DSP's install links, as stored: never the link itself, only its hash.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Link {
+    /// The workspace it updates or reconnects; none for one that adds a workspace.
+    pub team: Option<String>,
     pub created_by: String,
     pub created_at: String,
     pub expires_at: i64,
     /// The name the workspace it adds is to have.
     pub label: Option<String>,
+}
+impl FromRow for Link {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            team: row.get("team_id")?,
+            created_by: row.get("created_by")?,
+            created_at: row.get("created_at")?,
+            expires_at: row.get("expires_at")?,
+            label: row.get("label")?,
+        })
+    }
 }
 
 /// What Slack reads and writes.
@@ -211,6 +232,9 @@ pub trait SlackStore {
     fn start_slack_install(&self, dsp: &str, state: &str, install: &Install) -> Result<()>;
     /// The install `state` names, used up: each comes back once, before it expires.
     fn finish_slack_install(&self, dsp: &str, state: &str) -> Result<Install>;
+    /// The DSP page the install `state` names returns to, if it started on another than
+    /// Settings' Connections: a read, which leaves it to finish.
+    fn slack_install_page(&self, dsp: &str, state: &str) -> Result<Option<String>>;
     /// Keeps the workspace, which becomes the DSP's, and its tokens. One that another DSP has
     /// is refused, and nothing changes.
     fn save_slack_workspace(&self, dsp: &str, workspace: &Workspace, tokens: &Tokens)
@@ -256,20 +280,25 @@ pub trait SlackStore {
     /// was on.
     fn turn_off_slack_integration(&self, dsp: &str, team: &str, id: &str, by: &str)
     -> Result<bool>;
-    fn slack_link(&self, dsp: &str) -> Result<Option<Link>>;
-    /// Keeps a new install link for the DSP, by its hash, in place of any it had, with the
-    /// name the workspace it adds is to have.
+    /// The DSP's install link that works for adding a workspace, or for the workspace `team`.
+    fn slack_link(&self, dsp: &str, team: Option<&str>) -> Result<Option<Link>>;
+    /// Keeps a new install link for the DSP, by its hash, in place only of the one for the
+    /// same: for adding a workspace, with the name it's to have, or for the workspace `team`.
     fn save_slack_link(
         &self,
         dsp: &str,
+        team: Option<&str>,
         hash: &str,
         user: &str,
         label: Option<&str>,
     ) -> Result<Link>;
-    /// Whether the link with this hash is the DSP's, and still works.
-    fn slack_link_works(&self, dsp: &str, hash: &str) -> Result<bool>;
-    /// Ends the DSP's install link, or the one with `hash` only: whether there was one.
-    fn end_slack_link(&self, dsp: &str, hash: Option<&str>) -> Result<bool>;
+    /// The DSP's link with this hash, while it works.
+    fn working_slack_link(&self, dsp: &str, hash: &str) -> Result<Option<Link>>;
+    /// Ends the DSP's install link for adding a workspace, or for the workspace `team`:
+    /// whether there was one.
+    fn end_slack_link(&self, dsp: &str, team: Option<&str>) -> Result<bool>;
+    /// Ends the link with this hash, used: whether there was one.
+    fn use_slack_link(&self, dsp: &str, hash: &str) -> Result<bool>;
 }
 /// Whether the integration `id` starts on in every workspace, as its feature declares it.
 fn starts_on(id: &str) -> bool {
@@ -333,13 +362,15 @@ impl SlackStore for Store {
             )?;
             db.exec(
                 "INSERT INTO slack_connect_requests \
-                 (state_hash,user_id,link_hash,team_id,label,expires_at) VALUES (?,?,?,?,?,?)",
+                 (state_hash,user_id,link_hash,team_id,label,page,expires_at) \
+                 VALUES (?,?,?,?,?,?,?)",
                 params![
                     crypto::sha(state),
                     user,
                     link,
                     install.team,
                     install.label,
+                    install.page,
                     at + INSTALL_MS
                 ],
             )?;
@@ -363,6 +394,13 @@ impl SlackStore for Store {
                 .and_then(|found| found.install)
                 .ok_or_else(|| Error::new("slack_connect_expired", 409))
         })
+    }
+    fn slack_install_page(&self, dsp: &str, state: &str) -> Result<Option<String>> {
+        let found: Option<(Option<String>,)> = self.dsp(dsp)?.one_as(
+            "SELECT page FROM slack_connect_requests WHERE state_hash=? AND expires_at>?",
+            params![crypto::sha(state), now()],
+        )?;
+        Ok(found.and_then(|(page,)| page))
     }
     fn save_slack_workspace(
         &self,
@@ -635,60 +673,64 @@ impl SlackStore for Store {
             Ok(true)
         })
     }
-    fn slack_link(&self, dsp: &str) -> Result<Option<Link>> {
-        let found: Option<(String, String, i64, Option<String>)> = self.dsp(dsp)?.one_as(
-            "SELECT created_by,created_at,expires_at,label FROM slack_install_links \
-             WHERE id=1 AND expires_at>?",
-            [now()],
-        )?;
-        Ok(
-            found.map(|(created_by, created_at, expires_at, label)| Link {
-                created_by,
-                created_at,
-                expires_at,
-                label,
-            }),
+    fn slack_link(&self, dsp: &str, team: Option<&str>) -> Result<Option<Link>> {
+        self.dsp(dsp)?.one_as(
+            "SELECT * FROM slack_install_links WHERE team_id IS ? AND expires_at>?",
+            params![team, now()],
         )
     }
     fn save_slack_link(
         &self,
         dsp: &str,
+        team: Option<&str>,
         hash: &str,
         user: &str,
         label: Option<&str>,
     ) -> Result<Link> {
         let link = Link {
+            team: team.map(str::to_owned),
             created_by: user.to_owned(),
             created_at: iso(),
             expires_at: now() + LINK_MS,
             label: label.map(str::to_owned),
         };
-        self.dsp(dsp)?.exec(
-            "INSERT OR REPLACE INTO slack_install_links (id,link_hash,created_by,created_at,\
-             expires_at,label) VALUES (1,?,?,?,?,?)",
-            params![
-                hash,
-                link.created_by,
-                link.created_at,
-                link.expires_at,
-                link.label
-            ],
-        )?;
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            db.exec(
+                "DELETE FROM slack_install_links WHERE team_id IS ?",
+                [team],
+            )?;
+            db.exec(
+                "INSERT INTO slack_install_links (link_hash,team_id,created_by,created_at,\
+                 expires_at,label) VALUES (?,?,?,?,?,?)",
+                params![
+                    hash,
+                    link.team,
+                    link.created_by,
+                    link.created_at,
+                    link.expires_at,
+                    link.label
+                ],
+            )
+        })?;
         Ok(link)
     }
-    fn slack_link_works(&self, dsp: &str, hash: &str) -> Result<bool> {
-        let found: Option<(i64,)> = self.dsp(dsp)?.one_as(
-            "SELECT 1 FROM slack_install_links WHERE id=1 AND link_hash=? AND expires_at>?",
+    fn working_slack_link(&self, dsp: &str, hash: &str) -> Result<Option<Link>> {
+        self.dsp(dsp)?.one_as(
+            "SELECT * FROM slack_install_links WHERE link_hash=? AND expires_at>?",
             params![hash, now()],
-        )?;
-        Ok(found.is_some())
+        )
     }
-    fn end_slack_link(&self, dsp: &str, hash: Option<&str>) -> Result<bool> {
-        let db = self.dsp(dsp)?;
-        let ended = match hash {
-            Some(hash) => db.exec("DELETE FROM slack_install_links WHERE link_hash=?", [hash])?,
-            None => db.exec("DELETE FROM slack_install_links", [])?,
-        };
+    fn end_slack_link(&self, dsp: &str, team: Option<&str>) -> Result<bool> {
+        let ended = self
+            .dsp(dsp)?
+            .exec("DELETE FROM slack_install_links WHERE team_id IS ?", [team])?;
+        Ok(ended > 0)
+    }
+    fn use_slack_link(&self, dsp: &str, hash: &str) -> Result<bool> {
+        let ended = self
+            .dsp(dsp)?
+            .exec("DELETE FROM slack_install_links WHERE link_hash=?", [hash])?;
         Ok(ended > 0)
     }
 }

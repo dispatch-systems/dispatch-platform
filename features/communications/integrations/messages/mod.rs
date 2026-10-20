@@ -20,6 +20,7 @@ use dispatch_core::{
         integrations::{Heard, Integration, integration},
     },
 };
+use dispatch_slack::kit;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -40,6 +41,27 @@ pub const INTEGRATION: Integration = Integration {
     forget: Some(forget),
     ..integration("slack", ID, "Communications")
 };
+
+/// What Communications uses of what Slack asks for itself: reading what's written to the app
+/// (`im:history`) and answering it (`chat:write`), under the name and photo of whoever at the DSP
+/// does (`chat:write.customize`), opening a direct message (`im:write`), and telling who members
+/// are (`users:read`, `users:read.email`).
+const FROM_SLACK: &[&str] = &[
+    "im:history",
+    "chat:write",
+    "chat:write.customize",
+    "im:write",
+    "users:read",
+    "users:read.email",
+];
+/// Whether the workspace's admin has approved all Communications uses there, what Slack asks
+/// for itself and what it needs of its own: else updating Slack there asks for the rest.
+pub fn approved(workspace: &kit::Workspace) -> bool {
+    FROM_SLACK
+        .iter()
+        .chain(INTEGRATION.needs)
+        .all(|scope| workspace.scopes.iter().any(|had| had == scope))
+}
 
 /// Keeps what Slack told of, while it's on in the workspace and Communications is on for the
 /// DSP. A failure is logged by its code alone, never with what was written.

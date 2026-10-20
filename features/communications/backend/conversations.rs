@@ -12,9 +12,9 @@ use crate::{
     api::types::{
         Communications, CommunicationsUpdates, CommunicationsWaiting, CommunicationsWorkspace,
         Conversation, ConversationMessages, Conversations, Correspondent, Message, MessageFile,
-        Sender,
+        Sender, Typing,
     },
-    integrations::messages::ID,
+    integrations::messages::{self, ID},
 };
 use dispatch_core::{
     Error, Result, State,
@@ -57,19 +57,35 @@ impl People {
             photo: person.and_then(|person| person.photo.clone()),
         }
     }
-    /// Who at the DSP sent `message`, as the person their email address is, if any.
-    fn sender(&self, message: &storage::Message) -> Option<Sender> {
-        let user = message.sent_by.as_ref()?;
+    /// The person the DSP's member `user` is, by their email address, if any: their code and
+    /// their photo's version.
+    fn member(&self, user: &str) -> (Option<String>, Option<String>) {
         let person = self
             .emails
             .get(user)
             .and_then(|email| self.everyone.find(email).into_iter().next());
+        (
+            person.map(|person| person.code.clone()),
+            person.and_then(|person| person.photo.clone()),
+        )
+    }
+    /// Who at the DSP sent `message`, as the person their email address is, if any.
+    fn sender(&self, message: &storage::Message) -> Option<Sender> {
+        let user = message.sent_by.as_ref()?;
+        let (code, photo) = self.member(user);
         Some(Sender {
             user_id: user.clone(),
             name: message.sender_name.clone().unwrap_or_default(),
-            code: person.map(|person| person.code.clone()),
-            photo: person.and_then(|person| person.photo.clone()),
+            code,
+            photo,
         })
+    }
+    /// Who is writing, each as the person they are, if any.
+    fn writing(&self, mut typing: Typing) -> Typing {
+        for writer in &mut typing.writing {
+            (writer.code, writer.photo) = self.member(&writer.user_id);
+        }
+        typing
     }
 }
 
@@ -173,7 +189,7 @@ pub fn overview(db: &Store, state: &State, dsp: &str, me: &str) -> Result<Commun
         conversations: conversations(db, &people, dsp, [waiting, answered].concat())?,
         more,
         workspaces: workspaces(db, dsp)?,
-        typing: live::typing(dsp, me).0,
+        typing: people.writing(live::typing(dsp, me).0),
     })
 }
 /// The answered conversations before `before`, its latest message's time and its ID.
@@ -260,15 +276,19 @@ pub fn updates(
     me: &str,
 ) -> Result<(CommunicationsUpdates, Option<i64>)> {
     let (changed, revision) = db.communications_changed_since(dsp, after)?;
-    let (typing, next) = live::typing(dsp, me);
+    let (mut typing, next) = live::typing(dsp, me);
     let waiting = db.waiting_communications(dsp)?.len();
-    let conversations = match &changed {
-        Some(ids) if !ids.is_empty() => {
-            let people = People::read(db, state, dsp)?;
-            conversations(db, &people, dsp, db.communications_conversations(dsp, ids)?)?
+    let ids = changed.as_ref().filter(|ids| !ids.is_empty());
+    let mut conversations = Vec::new();
+    // Who anyone is, only when there's someone to name.
+    if ids.is_some() || !typing.writing.is_empty() {
+        let people = People::read(db, state, dsp)?;
+        typing = people.writing(typing);
+        if let Some(ids) = ids {
+            let kept = db.communications_conversations(dsp, ids)?;
+            conversations = self::conversations(db, &people, dsp, kept)?;
         }
-        _ => Vec::new(),
-    };
+    }
     Ok((
         CommunicationsUpdates {
             revision,
@@ -293,20 +313,24 @@ pub fn waiting(db: &Store, dsp: &str) -> Result<CommunicationsWaiting> {
         since,
     })
 }
-/// The DSP's workspaces, by name, each with whether Communications works there and the
-/// address of the app's Messages tab in it.
+/// The DSP's workspaces, by name, each with whether Communications works there, the address of
+/// the app's Messages tab in it, and whether it needs updating for Communications.
 pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>> {
     let on = kit::workspaces_on(db, dsp, ID)?;
     Ok(kit::workspaces(db, dsp)?
         .into_iter()
-        .map(|workspace| CommunicationsWorkspace {
-            on: on.contains(&workspace.team),
-            chat_link: format!(
-                "https://slack.com/app_redirect?app={}&team={}",
-                workspace.app, workspace.team
-            ),
-            name: workspace.label.unwrap_or(workspace.name),
-            team_id: workspace.team,
+        .map(|workspace| {
+            let on = on.contains(&workspace.team);
+            CommunicationsWorkspace {
+                on,
+                needs_update: on && !messages::approved(&workspace),
+                chat_link: format!(
+                    "https://slack.com/app_redirect?app={}&team={}",
+                    workspace.app, workspace.team
+                ),
+                name: workspace.label.unwrap_or(workspace.name),
+                team_id: workspace.team,
+            }
         })
         .collect())
 }

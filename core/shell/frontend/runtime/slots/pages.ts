@@ -43,6 +43,11 @@ type Page<Context> = {
    * (`parent`), is open, as Settings lists its pages there. Its code loads as the page's does.
    */
   sidebar?: { load: () => Promise<ComponentType<SidebarProps>> };
+  /**
+   * Whether it fills the window below the app's bars, its parts scrolling within it, as a
+   * conversation does, so the page itself never scrolls.
+   */
+  fills?: boolean;
   /** Whether the sidebar lists the page. */
   nav: boolean | ((access: Access) => boolean);
   /** Who may open the page; omitted means everyone in the scope. */

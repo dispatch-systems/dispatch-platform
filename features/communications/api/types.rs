@@ -65,6 +65,9 @@ pub struct CommunicationsWorkspace {
     /// The address that opens the app's Messages tab in the workspace, where its members write
     /// to the DSP.
     pub chat_link: String,
+    /// Whether, Communications being on there, the workspace's admin has yet to approve a
+    /// permission it uses: updating Slack there asks for it.
+    pub needs_update: bool,
 }
 
 /// A conversation with a member of one of the DSP's workspaces.
@@ -264,6 +267,10 @@ pub struct Writing {
     pub user_id: String,
     pub first_name: String,
     pub name: String,
+    /// The person Driver Match knows them as, by their email address, if it does, and their
+    /// photo's version, as a message's sender's.
+    pub code: Option<String>,
+    pub photo: Option<String>,
 }
 
 /// `GET /api/dsp/communications/updates`: what changed since `after`, and who is typing, once

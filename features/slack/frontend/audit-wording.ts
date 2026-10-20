@@ -32,7 +32,8 @@ const phrases: AuditPhrases = {
   ],
   'slack.integration_on': (e, { strong }) => ['turned on Slack integration ', strong(e.detail)],
   'slack.integration_off': (e, { strong }) => ['turned off Slack integration ', strong(e.detail)],
-  'slack.link_created': () => ['made a Slack install link'],
+  'slack.link_created': (e, { strong }) =>
+    e.detail ? ['made a Slack install link for ', strong(e.detail)] : ['made a Slack install link'],
   'slack.link_cancelled': () => ['cancelled the Slack install link'],
 };
 

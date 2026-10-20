@@ -21,6 +21,43 @@ unavailable.
   `users:read.email`), `files:read` to download what members attach, `files:write` to upload the
   photos someone at the DSP adds, and `im:read` to list the app's direct messages to catch up on.
 
+## The page
+
+- **Communications** in the sidebar, for those with `communications.use`, with how many
+  conversations wait beside it (`waiting`, read every 30 seconds while the page is closed, and
+  as the number changes while it's open). The page fills the window (`fills`), the list of
+  conversations beside the one open, each scrolling on its own; on a phone, the list, or the
+  conversation with a way back. The conversation open is in the address (`?open=<id>`).
+- **The list:** Waiting, the longest waiting first, each with how long it has, amber from 15
+  minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard,
+  that marks it done without a reply; then Responded, the latest first, each with the photo of
+  whoever at the DSP answered last; older ones read as the list is scrolled to its end. Each
+  shows who it's with, by their photo, when they last wrote, and what was written last, or who
+  at the DSP is writing in it. Search finds conversations by a name, misspelt or not, marking
+  the letters that matched.
+- **A conversation:** who it's with and, while it waits, how long and Done; its messages under
+  the day each was written, the member's beside their photo, the DSP's under the name and photo
+  of whoever sent them, each edited in Slack marked Edited, a reply in one of its threads in
+  its place among them, photos shown and other files to download, or why one isn't kept; older
+  ones read as it's scrolled to its start; and those at the DSP writing in it now. Writing in
+  it: text, with photos attached (the paperclip), Enter to send; while writing, teammates see
+  it. Photos show by Driver Match's person for each (`/api/dsp/people/{code}/photo`), never
+  Slack's own addresses.
+- **New message** finds whom to write to by name, misspelt or not, and opens their
+  conversation, or opens a direct message with them, kept at the top of the list until it holds
+  a message.
+- **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
+  Communications works, chosen from a menu with several, for employees to write to the DSP.
+  Neither it nor New message shows without such a workspace.
+- **Setting Slack up**, for those who also hold `connections.manage`, which connects and updates
+  the DSP's workspaces: while the DSP has none, Connect Slack takes the inbox's place; while a
+  workspace where Communications is on hasn't approved all it uses (`needsUpdate`), Update
+  Slack covers the page, not the sidebar, with no way to close it, each such workspace with
+  Update and Copy link (its own install link, for whoever approves apps in that Slack), until
+  the page reads that none needs it, which it does every 15 seconds while it asks. Connecting or
+  updating from here comes back here from Slack, which finishes it. Everyone else sees the page
+  as it is, empty without Slack.
+
 ## Messages in
 
 - **Kept:** each message a person writes to the app anew, a file they share there, or a reply
@@ -119,8 +156,10 @@ mark.
 Behind `communications.use`:
 
 - `GET /api/dsp/communications`: the conversations waiting, the longest waiting first, then the
-  fifty latest answered, with the DSP's workspaces (whether it works in each, and the address of
-  the app's Messages tab there, `chatLink`), who is typing and the latest change (`revision`).
+  fifty latest answered, with the DSP's workspaces (whether it works in each, the address of
+  the app's Messages tab there, `chatLink`, and whether, on there, it needs updating for what
+  Communications uses, `needsUpdate`), who is typing, each with their person and photo, and the
+  latest change (`revision`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar.
 - `GET …/updates?after=<revision>&typing=<version>`: the long poll.
 - `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`: the fifty conversations found

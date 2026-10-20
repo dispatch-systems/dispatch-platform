@@ -1,4 +1,5 @@
-//! A workspace forgotten, as on disconnecting it, keeps every message the DSP had there.
+//! A workspace forgotten, as on disconnecting it, keeps every message the DSP had there; and
+//! which of the DSP's workspaces need updating for Communications.
 use super::*;
 use crate::backend::{conversations, storage::CommunicationsStore, support};
 use dispatch_core::db::now;
@@ -43,4 +44,29 @@ async fn a_workspace_forgotten_keeps_its_messages_and_lets_go_of_conversations_w
             .await
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn a_workspace_needs_updating_only_while_communications_is_on_there_without_what_it_uses() {
+    // The admin of the first approved what Communications uses, if not all Slack asks for.
+    let (_root, state, bot) = support::connected(TEAM).await;
+    let dsp = bot.dsp.clone();
+    // The second's approved the app before it answered direct messages.
+    let earlier = &["users:read", "users:read.email", "im:history"];
+    slack::connect(&state, &dsp, "T0FIXTURE2", earlier).await;
+    let needs = || {
+        let at = dsp.clone();
+        state.read(move |db| {
+            let listed = conversations::workspaces(db, &at)?;
+            Ok(listed
+                .into_iter()
+                .map(|workspace| (workspace.team_id, workspace.needs_update))
+                .collect::<Vec<_>>())
+        })
+    };
+    let named = |second: bool| vec![("T0FIXTURE2".to_owned(), second), (TEAM.to_owned(), false)];
+    assert_eq!(needs().await.unwrap(), named(true));
+    // Switched off there, it needs nothing there.
+    slack::switch(&state, &dsp, "T0FIXTURE2", ID, false).await;
+    assert_eq!(needs().await.unwrap(), named(false));
 }
