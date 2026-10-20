@@ -2,5 +2,5 @@
 mod capture;
 mod collect;
 mod datasets;
-pub use capture::{Capture, Collection, JOB_KIND, Request, fixture};
+pub use capture::{Capture, Collection, Days, JOB_KIND, MAX_DATES, Request, fixture};
 pub use datasets::{DATASETS, dataset};

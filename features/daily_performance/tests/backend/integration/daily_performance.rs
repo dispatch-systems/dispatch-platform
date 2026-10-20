@@ -6,7 +6,7 @@ use dispatch_core::{
 };
 use dispatch_cortex::{
     self as cortex,
-    daily_performance::{self, Request},
+    daily_performance::{self, Days, Request},
     discovery::CollectionRequest,
 };
 use dispatch_daily_performance::DailyPerformanceStore;
@@ -35,6 +35,7 @@ fn collection() -> &'static Section {
         .find(|s| s.id == "daily_performance.collection")
         .unwrap()
 }
+/// The fixture's day `date`, published by a job of its own, which it answers.
 fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance::Capture {
     let queued = store
         .enqueue_daily_performance(dsp, None, key, date, date)
@@ -49,11 +50,11 @@ fn publish(store: &Store, dsp: &str, date: &str, key: &str) -> daily_performance
         panic!("discover")
     };
     let scope = discovery.scope("area-fixture", "company-fixture").unwrap();
-    let capture = daily_performance::fixture(&request).unwrap();
+    let days = daily_performance::fixture(&request).unwrap();
     store
-        .publish_daily_performance(dsp, job, &capture, &scope)
+        .publish_daily_performance(dsp, job, &days, &scope)
         .unwrap();
-    capture
+    days.days[0].clone()
 }
 #[test]
 fn unknown_stored_dataset_returns_an_error_without_panicking() {
@@ -80,7 +81,7 @@ fn daily_publications_supersede_without_losing_history_and_empty_datasets_are_un
         .unwrap();
     let request = Request {
         collection: daily_performance::Collection::DailyPerformance,
-        date: "2026-10-03".into(),
+        dates: vec!["2026-10-03".into()],
         station: "TST1".into(),
         timezone: "America/Los_Angeles".into(),
         dsp_name: "Fixture Delivery".into(),
@@ -93,7 +94,9 @@ fn daily_publications_supersede_without_losing_history_and_empty_datasets_are_un
         .publish_daily_performance(
             &dsp,
             s(&job[0], "id"),
-            &first,
+            &Days {
+                days: vec![first.clone()],
+            },
             &discovery.scope("area-fixture", "company-fixture").unwrap(),
         )
         .unwrap();
@@ -133,6 +136,61 @@ fn daily_publications_supersede_without_losing_history_and_empty_datasets_are_un
         (0, "unconfirmed")
     );
 }
+// A job over several days publishes each as that day's own active publication, and
+// publishing it again, as a retried publication would, adds nothing; a job queued before
+// jobs read several days still binds to its one.
+#[test]
+fn a_job_publishes_each_of_its_days_once() {
+    let (_root, store, dsp) = ready();
+    let queued = store
+        .enqueue_daily_performance(&dsp, None, "days", "2026-10-01", "2026-10-03")
+        .unwrap();
+    let job = s(&queued[0], "id");
+    let keeper = dispatch_core::manifest::registry().keeper(daily_performance::JOB_KIND);
+    let payload: Value =
+        serde_json::from_str(&store.job_row(job, Some(&dsp)).unwrap().request).unwrap();
+    let request: Request =
+        serde_json::from_value(keeper.bind(&store, &dsp, &payload).unwrap()).unwrap();
+    let CollectionRequest::Discover(discovery) = request.scope_request() else {
+        panic!()
+    };
+    let scope = discovery.scope("area-fixture", "company-fixture").unwrap();
+    let days = daily_performance::fixture(&request).unwrap();
+    for _ in 0..2 {
+        store
+            .publish_daily_performance(&dsp, job, &days, &scope)
+            .unwrap();
+    }
+    let data = store.daily_performance_db(&dsp).unwrap();
+    assert_eq!(
+        data.count(
+            "SELECT count(*) FROM daily_publications WHERE job_id=? AND active=1",
+            [job]
+        )
+        .unwrap(),
+        3
+    );
+    assert_eq!(
+        data.count("SELECT count(*) FROM daily_rows", []).unwrap(),
+        days.row_count() as i64
+    );
+    let published: Vec<String> = store
+        .daily_performance_days(&dsp)
+        .unwrap()
+        .days
+        .iter()
+        .map(|day| day.date.clone())
+        .collect();
+    assert_eq!(published, ["2026-10-03", "2026-10-02", "2026-10-01"]);
+    let legacy = keeper
+        .bind(
+            &store,
+            &dsp,
+            &json!({"collection":"daily_performance","date":"2026-10-02","station":"TST1"}),
+        )
+        .unwrap();
+    assert_eq!(legacy["dates"], json!(["2026-10-02"]));
+}
 #[test]
 fn cross_date_and_cross_company_rows_are_rejected_before_any_publication_changes() {
     let (_root, store, dsp) = ready();
@@ -149,14 +207,14 @@ fn cross_date_and_cross_company_rows_are_rejected_before_any_publication_changes
         panic!()
     };
     let scope = discovery.scope("area-fixture", "company-fixture").unwrap();
-    let capture = daily_performance::fixture(&request).unwrap();
+    let days = daily_performance::fixture(&request).unwrap();
     for (field, value) in [
         ("data_date", "2026-10-02"),
         ("company_id", "foreign"),
         ("station_code", "OTHER"),
     ] {
-        let mut wrong = capture.clone();
-        wrong.datasets[0].rows[0][field] = json!(value);
+        let mut wrong = days.clone();
+        wrong.days[0].datasets[0].rows[0][field] = json!(value);
         assert!(
             store
                 .publish_daily_performance(&dsp, job, &wrong, &scope)
@@ -178,11 +236,17 @@ fn schedules_refresh_configured_dates_and_manual_backfills_are_bounded_and_idemp
     let actor = testing::a_user(&store);
     let policy = json!({"lookback_days": 3, "refresh_hours": 12});
     settings::save(&store, &dsp, &actor, collection(), &policy, 0, false).unwrap();
-    let jobs = store.daily_performance_jobs(&dsp).unwrap();
-    assert_eq!(jobs.len(), 3);
-    let date = s(&jobs[0].1, "date").to_owned();
-    publish(&store, &dsp, &date, "recent");
-    assert_eq!(store.daily_performance_jobs(&dsp).unwrap().len(), 2);
+    // One job reads every date due, oldest first.
+    let due = |store: &Store| -> Vec<String> {
+        let jobs = store.daily_performance_jobs(&dsp).unwrap();
+        assert_eq!(jobs.len(), 1);
+        serde_json::from_value(jobs[0].1["dates"].clone()).unwrap()
+    };
+    let dates = due(&store);
+    assert_eq!(dates.len(), 3);
+    assert!(dates.windows(2).all(|pair| pair[0] < pair[1]));
+    publish(&store, &dsp, &dates[2], "recent");
+    assert_eq!(due(&store), dates[..2]);
     // Collected 15 hours ago, past the policy's 12 though within the default 20, it's due.
     store
         .daily_performance_db(&dsp)
@@ -192,11 +256,23 @@ fn schedules_refresh_configured_dates_and_manual_backfills_are_bounded_and_idemp
             [at(now() - 15 * 3_600_000)],
         )
         .unwrap();
-    assert_eq!(store.daily_performance_jobs(&dsp).unwrap().len(), 3);
+    assert_eq!(due(&store), dates);
+    // A backfill's range is one job.
     let first = store
         .enqueue_daily_performance(&dsp, None, "backfill", "2026-10-01", "2026-10-03")
         .unwrap();
-    assert_eq!(first.as_array().unwrap().len(), 3);
+    assert_eq!(first.as_array().unwrap().len(), 1);
+    let request: Value = serde_json::from_str(
+        &store
+            .job_row(s(&first[0], "id"), Some(&dsp))
+            .unwrap()
+            .request,
+    )
+    .unwrap();
+    assert_eq!(
+        request["dates"],
+        json!(["2026-10-01", "2026-10-02", "2026-10-03"])
+    );
     let again = store
         .enqueue_daily_performance(&dsp, None, "backfill", "2026-10-01", "2026-10-03")
         .unwrap();
@@ -241,7 +317,13 @@ fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
         policy(&other),
         json!({"lookback_days": 14, "refresh_hours": 12})
     );
-    assert_eq!(store.daily_performance_jobs(&dsp).unwrap().len(), 3);
+    assert_eq!(
+        store.daily_performance_jobs(&dsp).unwrap()[0].1["dates"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
     // Changed in Settings since, it isn't moved again; and the move itself recorded nothing.
     let changed = json!({"lookback_days": 5});
     settings::save(&store, &dsp, &actor, collection(), &changed, 1, false).unwrap();
@@ -251,4 +333,68 @@ fn a_policy_chosen_before_settings_kept_it_moves_in_once_for_its_own_dsp() {
         json!({"lookback_days": 5, "refresh_hours": 12})
     );
     assert!(testing::audit_actions(&store, &other, "settings.").is_empty());
+}
+// The rebuild that lets one job publish several days keeps every publication, dataset and
+// row, the children still reference their publication, and a job may publish another day
+// but not the same day twice.
+#[test]
+fn the_days_per_job_migration_keeps_every_row_and_allows_a_job_its_days() {
+    let db = rusqlite::Connection::open_in_memory().unwrap();
+    db.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+    db.execute_batch(include_str!(
+        "../../../migrations/daily_performance/0001_baseline.sql"
+    ))
+    .unwrap();
+    db.execute_batch(
+        "INSERT INTO daily_publications VALUES ('p1','job-1','2026-10-03','TST1','company-1','FXTR',\
+         '2026-10-04T00:00:00Z','2026-10-04T00:00:10Z',1,1); \
+         INSERT INTO daily_datasets VALUES ('p1','driver_quality','https://example.test/q',1,'observed'); \
+         INSERT INTO daily_rows VALUES ('p1','driver_quality',0,'2026-10-03','driver-1',NULL,NULL,NULL,'{\"delivered\":1}');",
+    )
+    .unwrap();
+    db.execute_batch(include_str!(
+        "../../../migrations/daily_performance/0002_days_per_job.sql"
+    ))
+    .unwrap();
+    let count = |sql: &str| -> i64 { db.query_row(sql, [], |r| r.get(0)).unwrap() };
+    assert_eq!(
+        count("SELECT count(*) FROM daily_publications WHERE id='p1' AND active=1"),
+        1
+    );
+    assert_eq!(
+        count("SELECT count(*) FROM daily_datasets WHERE publication_id='p1'"),
+        1
+    );
+    assert_eq!(
+        count(
+            "SELECT count(*) FROM daily_rows WHERE publication_id='p1' AND json_extract(row,'$.delivered')=1"
+        ),
+        1
+    );
+    for child in ["daily_datasets", "daily_rows"] {
+        let parent: String = db
+            .query_row(
+                &format!("SELECT \"table\" FROM pragma_foreign_key_list('{child}')"),
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(parent, "daily_publications", "{child}");
+    }
+    let publish = |id: &str, date: &str| {
+        db.execute(
+            "INSERT INTO daily_publications VALUES (?,'job-1',?,'TST1','company-1','FXTR',\
+             '2026-10-04T00:00:00Z','2026-10-04T00:00:10Z',0,0)",
+            [id, date],
+        )
+    };
+    publish("p2", "2026-10-02").unwrap();
+    assert!(publish("p3", "2026-10-03").is_err());
+    assert!(
+        db.execute(
+            "INSERT INTO daily_datasets VALUES ('missing','driver_quality','u',0,'unconfirmed')",
+            []
+        )
+        .is_err()
+    );
 }

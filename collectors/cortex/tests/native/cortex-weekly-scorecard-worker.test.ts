@@ -199,10 +199,13 @@ test(
         const dataSetId = url.searchParams.get('dataSetId')!;
         const to = url.searchParams.get('to')!;
         const week = url.searchParams.get('timeFrame') === 'Weekly' ? to : (SATURDAYS[to] ?? '');
-        const daily =
-          url.searchParams.get('timeFrame') === 'Daily' && url.searchParams.get('from') === to;
+        // Daily performance's days are in October; a week's daily datasets, in its own days.
+        const from = url.searchParams.get('from')!;
+        const daily = url.searchParams.get('timeFrame') === 'Daily' && /^2026-10-/.test(to);
         if (daily) {
-          assert.match(to, /^2026-10-0[34]$/);
+          assert.match(from, /^2026-10-0[3-7]$/);
+          assert.match(to, /^2026-10-0[3-7]$/);
+          assert.ok(from <= to);
           assert.equal(url.searchParams.get('dsp'), 'NLL');
           if (dataSetId.endsWith('_thresholds')) {
             assert.equal(url.searchParams.get('station'), null);
@@ -214,15 +217,22 @@ test(
           seen.dailyActive--;
           res.setHeader('content-type', 'application/json;charset=UTF-8');
           const empty = dataSetId.includes('lmcx') || dataSetId.endsWith('_thresholds');
+          // A row for each day of the range, naming its day.
+          const days: string[] = [];
+          const day = new Date(`${from}T00:00:00Z`);
+          while (day <= new Date(`${to}T00:00:00Z`)) {
+            days.push(day.toISOString().slice(0, 10));
+            day.setUTCDate(day.getUTCDate() + 1);
+          }
           return res.end(
             JSON.stringify({
               tableData: {
                 [dataSetId]: {
                   rows: empty
                     ? []
-                    : [
+                    : days.map((day) =>
                         JSON.stringify({
-                          data_date: to,
+                          data_date: day,
                           company_id: 'company-1',
                           dsp_code: 'NLL',
                           station_code: 'TST1',
@@ -232,7 +242,7 @@ test(
                           tracking_id: DAILY_MARKERS[0],
                           note: DAILY_MARKERS[2],
                         }),
-                      ],
+                      ),
                 },
               },
             }),
@@ -469,11 +479,42 @@ test(
       seen.dailyPeak > 6 && seen.dailyPeak <= 22,
       `Daily request concurrency: ${seen.dailyPeak}`,
     );
+    // A range of days is one job: every dataset read once for the whole range, its rows
+    // given back to their days, each day published.
+    const range = await owner.post('/api/dsp/daily-performance/collect', {
+      requestId: 'daily-range',
+      from: '2026-10-05',
+      to: '2026-10-07',
+    });
+    assert.equal(range.status, 202, range.body);
+    assert.equal(range.value.length, 1);
+    await until(async () => {
+      const current = (await owner.read('/api/dsp/daily-performance/jobs')).find(
+        (job: any) => job.id === range.value[0].id,
+      );
+      assert.notEqual(current.status, 'failed', JSON.stringify(current));
+      return current.status === 'succeeded';
+    }, 120000);
+    const ranged = requests.filter((url) => /^2026-10-0[5-7]$/.test(url.searchParams.get('to')!));
+    assert.equal(ranged.length, 22);
+    assert.ok(
+      ranged.every(
+        (url) =>
+          url.searchParams.get('from') === '2026-10-05' &&
+          url.searchParams.get('to') === '2026-10-07',
+      ),
+    );
     assert.equal(stored().publications.length, 4);
     const dailyDays = (await owner.read('/api/dsp/daily-performance')).days;
     assert.deepEqual(
       dailyDays.map((day: any) => day.date),
-      ['2026-10-04', '2026-10-03'],
+      ['2026-10-07', '2026-10-06', '2026-10-05', '2026-10-04', '2026-10-03'],
+    );
+    assert.ok(
+      dailyDays.every(
+        (day: any) =>
+          day.datasets.find((dataset: any) => dataset.dataset === 'driver_quality').rows === 1,
+      ),
     );
     assert.ok(dailyDays.every((day: any) => day.datasets.length === 22));
 

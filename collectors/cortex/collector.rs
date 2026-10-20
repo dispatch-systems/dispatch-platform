@@ -403,6 +403,13 @@ impl Collector for Cortex {
                 }),
             rows: total_rows(&data["reports"])
                 .or_else(|| total_rows(&data["datasets"]))
+                .or_else(|| {
+                    data["days"].as_array().map(|days| {
+                        days.iter()
+                            .map(|day| total_rows(&day["datasets"]).unwrap_or(0))
+                            .sum()
+                    })
+                })
                 .or_else(|| data["associates"].as_array().map(Vec::len)),
             ..Counts::default()
         }

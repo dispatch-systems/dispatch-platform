@@ -1,4 +1,5 @@
-//! A capture of exactly one date, with source scope verified before publication.
+//! Captures of the days a collection was asked for, each exactly one date, with source scope
+//! verified before publication.
 use super::DATASETS;
 use crate::{
     discovery::{CollectionRequest, Discovery, Scope},
@@ -8,6 +9,8 @@ use dispatch_core::{Error, Result, db::now, ensure, foundation::validate::token}
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 pub const JOB_KIND: &str = "cortex.daily_performance.collect";
+/// As many days as one collection reads: a month.
+pub const MAX_DATES: usize = 31;
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Collection {
@@ -17,7 +20,8 @@ pub enum Collection {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
     pub collection: Collection,
-    pub date: String,
+    /// The days read, oldest first, each once.
+    pub dates: Vec<String>,
     pub station: String,
     pub timezone: String,
     pub dsp_name: String,
@@ -36,9 +40,13 @@ impl Request {
         request.validate()?;
         Ok(Some(request))
     }
+    /// The newest day the collection reads, which discovery resolves the station on.
+    fn last(&self) -> &str {
+        self.dates.last().map_or("", String::as_str)
+    }
     pub fn scope_request(&self) -> CollectionRequest {
         CollectionRequest::Discover(Discovery {
-            date: self.date.clone(),
+            date: self.last().to_owned(),
             station: self.station.clone(),
             timezone: self.timezone.clone(),
             dsp_name: self.dsp_name.clone(),
@@ -46,9 +54,19 @@ impl Request {
         })
     }
     pub fn validate(&self) -> Result<()> {
-        let date = chrono::NaiveDate::parse_from_str(&self.date, "%Y-%m-%d")
-            .map_err(|_| Error::new("invalid_date", 400))?;
-        ensure(date.to_string() == self.date, "invalid_date", 400)?;
+        ensure(
+            (1..=MAX_DATES).contains(&self.dates.len()),
+            "invalid_date_range",
+            400,
+        )?;
+        let mut previous = None;
+        for text in &self.dates {
+            let date = chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
+                .map_err(|_| Error::new("invalid_date", 400))?;
+            ensure(&date.to_string() == text, "invalid_date", 400)?;
+            ensure(previous < Some(date), "invalid_date_range", 400)?;
+            previous = Some(date);
+        }
         let CollectionRequest::Discover(discovery) = self.scope_request() else {
             unreachable!()
         };
@@ -69,6 +87,34 @@ pub struct Capture {
     pub finished_at: i64,
     pub datasets: Vec<DatasetCapture>,
 }
+/// What a collection read: each day it was asked for, oldest first.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Days {
+    pub days: Vec<Capture>,
+}
+impl Days {
+    /// Each day the request asked for, once and in its order, each valid for `scope`.
+    pub fn validate_scope(&self, request: &Request, scope: &Scope) -> Result<()> {
+        ensure(
+            self.days.len() == request.dates.len()
+                && self
+                    .days
+                    .iter()
+                    .zip(&request.dates)
+                    .all(|(day, date)| &day.date == date),
+            "daily_performance_capture_invalid",
+            502,
+        )?;
+        for day in &self.days {
+            day.validate_scope(request, scope)?;
+        }
+        Ok(())
+    }
+    pub fn row_count(&self) -> usize {
+        self.days.iter().map(Capture::row_count).sum()
+    }
+}
 impl Capture {
     pub fn validate(&self, request: &Request) -> Result<()> {
         request.validate()?;
@@ -78,7 +124,7 @@ impl Capture {
             502,
         )?;
         ensure(
-            self.date == request.date
+            request.dates.contains(&self.date)
                 && self.station == request.station
                 && token(&self.company_id, 128)
                 && token(&self.dsp_code, 32)
@@ -157,13 +203,24 @@ impl Capture {
         self.datasets.iter().map(|dataset| dataset.rows.len()).sum()
     }
 }
-pub fn fixture(request: &Request) -> Result<Capture> {
+/// What fixture mode collects: every day asked for, each a small, complete day.
+pub fn fixture(request: &Request) -> Result<Days> {
     request.validate()?;
+    let days = Days {
+        days: request
+            .dates
+            .iter()
+            .map(|date| fixture_day(request, date))
+            .collect::<Result<_>>()?,
+    };
+    Ok(days)
+}
+fn fixture_day(request: &Request, date: &str) -> Result<Capture> {
     let started_at = now();
     let datasets = DATASETS
         .iter()
         .map(|dataset| {
-            let common = json!({"data_date":request.date, "station_code":request.station,
+            let common = json!({"data_date":date, "station_code":request.station,
             "company_id":"company-fixture", "dsp_code":request.dsp_abbreviation});
             let mut rows = Vec::new();
             match dataset.table {
@@ -209,8 +266,8 @@ pub fn fixture(request: &Request) -> Result<Capture> {
             }
             DatasetCapture {
                 id: dataset.id.into(),
-                from: request.date.clone(),
-                to: request.date.clone(),
+                from: date.into(),
+                to: date.into(),
                 source_url: format!(
                     "fixture://performance/api/v1/getData?dataSetId={}",
                     dataset.id
@@ -222,7 +279,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
     let capture = Capture {
         version: 1,
         collection: Collection::DailyPerformance,
-        date: request.date.clone(),
+        date: date.into(),
         station: request.station.clone(),
         company_id: "company-fixture".into(),
         dsp_code: request.dsp_abbreviation.clone(),

@@ -10,7 +10,7 @@ use dispatch_core::{
     server::cache::DataDomain,
 };
 use dispatch_cortex::{
-    daily_performance::{Capture, Collection, DATASETS, Request},
+    daily_performance::{Capture, Collection, DATASETS, Days, MAX_DATES, Request},
     discovery::Scope,
 };
 use rusqlite::params;
@@ -43,7 +43,7 @@ pub(crate) fn today(store: &Store, dsp: &str) -> Result<chrono::NaiveDate> {
         .map_err(|_| Error::new("invalid_timezone", 400))?;
     Ok(dispatch_core::foundation::clock::today(tz))
 }
-pub(crate) fn bind(store: &Store, dsp: &str, date: &str) -> Result<Value> {
+pub(crate) fn bind(store: &Store, dsp: &str, dates: &[String]) -> Result<Value> {
     let tenant = store.find_dsp(dsp)?;
     let profile = store.profile(dsp)?;
     ensure(
@@ -53,7 +53,7 @@ pub(crate) fn bind(store: &Store, dsp: &str, date: &str) -> Result<Value> {
     )?;
     let request = Request {
         collection: Collection::DailyPerformance,
-        date: date.into(),
+        dates: dates.to_vec(),
         station: profile.station_code,
         timezone: tenant.timezone,
         dsp_name: tenant.name,
@@ -62,9 +62,21 @@ pub(crate) fn bind(store: &Store, dsp: &str, date: &str) -> Result<Value> {
     request.validate()?;
     Ok(serde_json::to_value(request)?)
 }
-pub(crate) fn request(store: &Store, dsp: &str, date: &str) -> Result<Value> {
-    let bound = bind(store, dsp, date)?;
-    Ok(json!({"collection":"daily_performance", "date":date, "station":bound["station"]}))
+/// A job's request for `dates`, oldest first, which `bind` completes when it runs.
+pub(crate) fn request(store: &Store, dsp: &str, dates: &[String]) -> Result<Value> {
+    let bound = bind(store, dsp, dates)?;
+    Ok(json!({"collection":"daily_performance", "dates":dates, "station":bound["station"]}))
+}
+/// The days a job asks for: its `dates`, or the one `date` of a job queued before a job
+/// read several.
+pub(crate) fn requested_dates(request: &Value) -> Result<Vec<String>> {
+    if let Some(date) = request.get("date") {
+        let date = date
+            .as_str()
+            .ok_or_else(|| Error::new("invalid_input", 400))?;
+        return Ok(vec![date.to_owned()]);
+    }
+    serde_json::from_value(request["dates"].clone()).map_err(|_| Error::new("invalid_input", 400))
 }
 pub(crate) fn text(row: &Value, key: &str) -> Option<String> {
     match row.get(key)? {
@@ -86,6 +98,67 @@ pub(crate) fn flag(value: &Value) -> Option<i64> {
         _ => None,
     }
 }
+/// One day of a job's collection, published as that day's active publication.
+fn publish_day(data: &DspLease<'_>, job: &str, capture: &Capture) -> Result<()> {
+    let publication = crypto::id("daily_performance")?;
+    data.exec(
+        "INSERT INTO daily_publications VALUES (?,?,?,?,?,?,?,?,0,?)",
+        params![
+            publication,
+            job,
+            capture.date,
+            capture.station,
+            capture.company_id,
+            capture.dsp_code,
+            at(capture.started_at),
+            at(capture.finished_at),
+            capture.row_count() as i64
+        ],
+    )?;
+    for (dataset, captured) in DATASETS.iter().zip(&capture.datasets) {
+        data.exec(
+            "INSERT INTO daily_datasets VALUES (?,?,?,?,?)",
+            params![
+                publication,
+                dataset.table,
+                captured.source_url,
+                captured.rows.len() as i64,
+                if captured.rows.is_empty() {
+                    "unconfirmed"
+                } else {
+                    "observed"
+                }
+            ],
+        )?;
+        for (index, row) in captured.rows.iter().enumerate() {
+            let impact = dataset.impact.and_then(|field| flag(&row[field]));
+            data.exec(
+                "INSERT INTO daily_rows(publication_id,dataset,row_index,date,transporter_id,tracking_id,event_id,impact,row) \
+                 VALUES (?,?,?,?,?,?,?,?,?)",
+                params![
+                    publication,
+                    dataset.table,
+                    index as i64,
+                    capture.date,
+                    text(row, "transporter_id"),
+                    text(row, "tracking_id"),
+                    text(row, "event_id"),
+                    impact,
+                    row.to_string()
+                ],
+            )?;
+        }
+    }
+    data.exec(
+        "UPDATE daily_publications SET active=0 WHERE station=? AND date=? AND active=1",
+        params![capture.station, capture.date],
+    )?;
+    data.exec(
+        "UPDATE daily_publications SET active=1 WHERE id=?",
+        [&publication],
+    )?;
+    Ok(())
+}
 pub trait DailyPerformanceStore {
     fn daily_performance_db(&self, dsp: &str) -> Result<DspLease<'_>>;
     fn daily_performance_days(&self, dsp: &str) -> Result<DailyPerformanceSummary>;
@@ -102,7 +175,7 @@ pub trait DailyPerformanceStore {
         &self,
         dsp: &str,
         job: &str,
-        capture: &Capture,
+        days: &Days,
         scope: &Scope,
     ) -> Result<()>;
 }
@@ -116,15 +189,22 @@ impl DailyPerformanceStore for Store {
         let yesterday = today(self, dsp)? - chrono::Duration::days(1);
         let data = self.daily_performance_db(dsp)?;
         let cutoff = at(now() - i64::from(policy.refresh_hours) * 3_600_000);
-        let mut jobs = Vec::new();
-        for offset in 0..policy.lookback_days {
+        // Every date due, oldest first, read by one job.
+        let mut dates = Vec::new();
+        for offset in (0..policy.lookback_days).rev() {
             let date = (yesterday - chrono::Duration::days(i64::from(offset))).to_string();
             if data.one("SELECT id FROM daily_publications WHERE station=? AND date=? AND active=1 AND collected_at>=?",
                 [&station, &date, &cutoff])?.is_none() {
-                jobs.push((format!("daily_performance:{date}"), request(self, dsp, &date)?));
+                dates.push(date);
             }
         }
-        Ok(jobs)
+        let (Some(first), Some(last)) = (dates.first(), dates.last()) else {
+            return Ok(Vec::new());
+        };
+        Ok(vec![(
+            format!("daily_performance:{first}:{last}"),
+            request(self, dsp, &dates)?,
+        )])
     }
     fn enqueue_daily_performance(
         &self,
@@ -138,22 +218,25 @@ impl DailyPerformanceStore for Store {
             chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
                 .map_err(|_| Error::new("invalid_date", 400))
         };
-        let (mut date, last) = (parse(from)?, parse(to)?);
+        let (first, last) = (parse(from)?, parse(to)?);
         ensure(
-            date <= last && (last - date).num_days() < 31 && last <= today(self, dsp)?,
+            first <= last
+                && (last - first).num_days() < MAX_DATES as i64
+                && last <= today(self, dsp)?,
             "invalid_date_range",
             400,
         )?;
-        let mut jobs = Vec::new();
-        while date <= last {
-            let date_text = date.to_string();
-            jobs.push((
-                format!("{key}:{date}"),
-                dispatch_cortex::PROVIDER,
-                request(self, dsp, &date_text)?,
-            ));
-            date += chrono::Duration::days(1);
-        }
+        // The whole range, one job.
+        let dates: Vec<String> = first
+            .iter_days()
+            .take_while(|date| *date <= last)
+            .map(|date| date.to_string())
+            .collect();
+        let jobs = [(
+            format!("{key}:{from}:{to}"),
+            dispatch_cortex::PROVIDER,
+            request(self, dsp, &dates)?,
+        )];
         Ok(serde_json::to_value(
             self.enqueue_batch(dsp, actor, &jobs)?,
         )?)
@@ -162,82 +245,36 @@ impl DailyPerformanceStore for Store {
         &self,
         dsp: &str,
         job: &str,
-        capture: &Capture,
+        days: &Days,
         scope: &Scope,
     ) -> Result<()> {
         let job_request: Value = serde_json::from_str(&self.job_row(job, Some(dsp))?.request)?;
-        let bound: Request = serde_json::from_value(bind(self, dsp, s(&job_request, "date"))?)?;
+        let bound: Request =
+            serde_json::from_value(bind(self, dsp, &requested_dates(&job_request)?)?)?;
         ensure(
             job_request["station"] == bound.station,
             "daily_performance_scope_mismatch",
             409,
         )?;
-        capture.validate_scope(&bound, scope)?;
+        days.validate_scope(&bound, scope)?;
         let data = self.daily_performance_db(dsp)?;
+        // Each day its own publication, all of them together.
         data.transaction(|| {
-            if let Some(existing) = data.one("SELECT date,station,company_id FROM daily_publications WHERE job_id=?", [job])? {
-                ensure(existing["date"] == capture.date && existing["station"] == capture.station
-                    && existing["company_id"] == capture.company_id,
-                    "daily_performance_publication_conflict", 503)?;
-                return Ok(());
-            }
-            let publication = crypto::id("daily_performance")?;
-            data.exec(
-                "INSERT INTO daily_publications VALUES (?,?,?,?,?,?,?,?,0,?)",
-                params![
-                    publication,
-                    job,
-                    capture.date,
-                    capture.station,
-                    capture.company_id,
-                    capture.dsp_code,
-                    at(capture.started_at),
-                    at(capture.finished_at),
-                    capture.row_count() as i64
-                ],
-            )?;
-            for (dataset, captured) in DATASETS.iter().zip(&capture.datasets) {
-                data.exec(
-                    "INSERT INTO daily_datasets VALUES (?,?,?,?,?)",
-                    params![
-                        publication,
-                        dataset.table,
-                        captured.source_url,
-                        captured.rows.len() as i64,
-                        if captured.rows.is_empty() {
-                            "unconfirmed"
-                        } else {
-                            "observed"
-                        }
-                    ],
-                )?;
-                for (index, row) in captured.rows.iter().enumerate() {
-                    let impact = dataset.impact.and_then(|field| flag(&row[field]));
-                    data.exec(
-                        "INSERT INTO daily_rows(publication_id,dataset,row_index,date,transporter_id,tracking_id,event_id,impact,row) \
-                         VALUES (?,?,?,?,?,?,?,?,?)",
-                        params![
-                            publication,
-                            dataset.table,
-                            index as i64,
-                            capture.date,
-                            text(row, "transporter_id"),
-                            text(row, "tracking_id"),
-                            text(row, "event_id"),
-                            impact,
-                            row.to_string()
-                        ],
+            for capture in &days.days {
+                if let Some(existing) = data.one(
+                    "SELECT station,company_id FROM daily_publications WHERE job_id=? AND date=?",
+                    [job, &capture.date],
+                )? {
+                    ensure(
+                        existing["station"] == capture.station
+                            && existing["company_id"] == capture.company_id,
+                        "daily_performance_publication_conflict",
+                        503,
                     )?;
+                    continue;
                 }
+                publish_day(&data, job, capture)?;
             }
-            data.exec(
-                "UPDATE daily_publications SET active=0 WHERE station=? AND date=? AND active=1",
-                params![capture.station, capture.date],
-            )?;
-            data.exec(
-                "UPDATE daily_publications SET active=1 WHERE id=?",
-                [&publication],
-            )?;
             Ok(())
         })
     }
