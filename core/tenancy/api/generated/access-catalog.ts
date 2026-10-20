@@ -13,7 +13,8 @@ export const pages = [
   "documents",
   "team",
   "settings",
-  "slack"
+  "slack",
+  "vans"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -40,6 +41,7 @@ export const features = [
   "team",
   "settings",
   "slack",
+  "vans",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -191,6 +193,17 @@ export const featureCatalog = [
     "connects": true
   },
   {
+    "id": "vans",
+    "label": "Vans",
+    "permissions": [
+      "vans.collect"
+    ],
+    "requires": [
+      "vans"
+    ],
+    "kind": "page"
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -259,7 +272,8 @@ export const featureCatalog = [
       "dvic",
       "daily_performance",
       "weekly_scorecard",
-      "associates"
+      "associates",
+      "vans"
     ]
   }
 ] as const;
@@ -290,7 +304,8 @@ export const permissions = [
   "daily_performance.collect",
   "daily_performance.manage",
   "documents.use",
-  "slack.manage"
+  "slack.manage",
+  "vans.collect"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
@@ -317,6 +332,7 @@ export const permissionLabels = {
   "uniforms.adjust": "Adjust Uniform Inventory",
   "uniforms.manage": "Manage Uniform Inventory",
   "uniforms.view": "View Uniform Inventory",
+  "vans.collect": "Collect Vans",
   "weekly_scorecard.collect": "Collect Weekly Scorecard",
   "weekly_scorecard.manage": "Manage Weekly Scorecard",
   "weekly_scorecard.view": "View Weekly Scorecard"
@@ -392,6 +408,12 @@ export const permissionGroups = [
     "Slack",
     [
       "slack.manage"
+    ]
+  ],
+  [
+    "Vans",
+    [
+      "vans.collect"
     ]
   ],
   [

@@ -66,6 +66,9 @@ pub struct Driver {
     attempts: Attempts,
     /// What discovery found for the DSP's stations, for the next collections.
     pub(crate) known: KnownScopes,
+    /// The company list the start's session check read, which a collection needing it reads
+    /// no second time: none after a sign-in on the page.
+    pub(crate) companies: Option<Value>,
     credentials: Value,
     username_submitted: bool,
     password_submitted: bool,
@@ -89,6 +92,7 @@ impl Driver {
             origins,
             attempts: Attempts::beside(profile, "cortex")?,
             known: KnownScopes::beside(profile)?,
+            companies: None,
             credentials: Value::Null,
             username_submitted: false,
             password_submitted: false,
@@ -114,11 +118,12 @@ impl Driver {
     /// a sign-in or a verification, and the company list, which Amazon answers only a
     /// signed-in account, comes back with the account's companies. Anything else signs
     /// in on the page as before, where a verification reaches the owner. Amazon answered
-    /// both in under half a second when tried.
-    async fn saved_session(&self) -> Result<bool> {
+    /// both in under half a second when tried. Answers the company list when the session
+    /// stands.
+    async fn saved_session(&self) -> Result<Option<Value>> {
         let http = Http::signed_in(&self.browser, &self.origin, &crate::HOSTS).await?;
         if !http.carries_cookies() {
-            return Ok(false);
+            return Ok(None);
         }
         let landing = format!("{}{LANDING}", self.origin);
         let home = format!("{}/", self.origin);
@@ -143,7 +148,8 @@ impl Driver {
         };
         Ok(futures_util::future::try_join(console, companies)
             .await
-            .is_ok())
+            .ok()
+            .map(|(_, companies)| companies))
     }
     async fn script(&self, mut input: Value) -> Result<Value> {
         input["origins"] = json!(self.origins);
@@ -179,6 +185,7 @@ impl Driver {
                 "authenticated" => {
                     self.attempts.succeeded()?;
                     self.credentials = Value::Null;
+                    self.companies = None;
                     return Ok(json!({"type":"ready"}));
                 }
                 "invalid_credentials" | "account_locked" | "provider_unavailable" => {
@@ -236,10 +243,11 @@ impl Driver {
                     if s(&command, "action") == "start"
                         && command["ownerRetry"] != true
                         && self.page.id.is_empty()
-                        && self.saved_session().await?
+                        && let Some(companies) = self.saved_session().await?
                     {
                         self.attempts.succeeded()?;
                         self.credentials = Value::Null;
+                        self.companies = Some(companies);
                         return Ok(json!({"type":"ready"}));
                     }
                     self.ensure_page().await?;
@@ -310,6 +318,13 @@ impl Drives for Driver {
         Box::pin(async move {
             if let Some(request) = crate::associates::Request::parse(run.request)? {
                 let capture = self.collect_associates(&request, run).await?;
+                return Ok(Collected {
+                    data: serde_json::to_value(capture)?,
+                    scope: None,
+                });
+            }
+            if let Some(request) = crate::vans::Request::parse(run.request)? {
+                let capture = self.collect_vans(&request, run).await?;
                 return Ok(Collected {
                     data: serde_json::to_value(capture)?,
                     scope: None,

@@ -28,6 +28,8 @@ pub const FEATURES: &[&Feature] = &[
     &dispatch_timecard::FEATURE,
     #[cfg(feature = "uniforms")]
     &dispatch_uniforms::FEATURE,
+    #[cfg(feature = "vans")]
+    &dispatch_vans::FEATURE,
     #[cfg(feature = "weekly_scorecard")]
     &dispatch_weekly_scorecard::FEATURE,
 ];
@@ -57,6 +59,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     all.extend(dispatch_timecard::typescript(cfg));
     #[cfg(feature = "uniforms")]
     all.extend(dispatch_uniforms::typescript(cfg));
+    #[cfg(feature = "vans")]
+    all.extend(dispatch_vans::typescript(cfg));
     #[cfg(feature = "weekly_scorecard")]
     all.extend(dispatch_weekly_scorecard::typescript(cfg));
     all

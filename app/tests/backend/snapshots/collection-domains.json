@@ -5,5 +5,6 @@
   ["cortex.daily_performance.collect", "daily_performance"],
   ["cortex.routes.collect", "routes"],
   ["cortex.dvic.collect", "dvic"],
-  ["cortex.associates.collect", "driver_profiles"]
+  ["cortex.associates.collect", "driver_profiles"],
+  ["cortex.vans.collect", "vans"]
 ]

@@ -1,5 +1,5 @@
-//! Cortex: meal evidence, the weekly_scorecard, daily routes, short DVIC inspections and the
-//! DSP's associates from Amazon Logistics.
+//! Cortex: meal evidence, the weekly_scorecard, daily routes, short DVIC inspections, the
+//! DSP's associates and its vans from Amazon Logistics.
 //! Its storage was added to DSPs that already existed, which is the path every later
 //! provider takes.
 mod collections;
@@ -9,7 +9,7 @@ pub use connection::performance;
 #[cfg(feature = "operator-probes")]
 mod probes;
 
-pub use collections::{associates, daily_performance, dvic, meals, routes, weekly_scorecard};
+pub use collections::{associates, daily_performance, dvic, meals, routes, vans, weekly_scorecard};
 /// Measures a day's routes read by a method, with the rows the feature keeping them shapes
 /// them into, which only the app's registry holds: the app's tests run it.
 #[cfg(feature = "operator-probes")]
@@ -122,7 +122,7 @@ const MIGRATIONS: &[Migrations] = &[Migrations {
 }];
 
 /// What it reads, meal breaks first.
-static COLLECTIONS: [Collection; 6] = [
+static COLLECTIONS: [Collection; 7] = [
     Collection {
         job_kind: meals::JOB_KIND,
         schedule: "meal_break",
@@ -171,6 +171,14 @@ static COLLECTIONS: [Collection; 6] = [
         counted: Counted::Rows,
         unconnected: "schedule_associates_required",
     },
+    Collection {
+        job_kind: vans::JOB_KIND,
+        schedule: "vans",
+        label: "Vans",
+        unit: "van",
+        counted: Counted::Rows,
+        unconnected: "schedule_vans_required",
+    },
 ];
 
 pub struct Cortex;
@@ -207,6 +215,10 @@ impl Collector for Cortex {
                 id: "associates",
                 label: "an associates source",
             },
+            Capability {
+                id: "vans",
+                label: "a vans source",
+            },
         ]
     }
     fn collections(&self) -> &'static [Collection] {
@@ -215,6 +227,8 @@ impl Collector for Cortex {
     fn job_kind_for(&self, request: &Value) -> &'static str {
         if associates::Request::is(request) {
             associates::JOB_KIND
+        } else if vans::Request::is(request) {
+            vans::JOB_KIND
         } else if dvic::Request::is(request) {
             dvic::JOB_KIND
         } else if daily_performance::Request::is(request) {
@@ -290,6 +304,12 @@ impl Collector for Cortex {
                 scope: None,
             });
         }
+        if let Some(request) = vans::Request::parse(request)? {
+            return Ok(Collected {
+                data: serde_json::to_value(vans::fixture(&request)?)?,
+                scope: None,
+            });
+        }
         if let Some(request) = dvic::Request::parse(request)? {
             let scope = match request.scope_request() {
                 CollectionRequest::Discover(discovery) => {
@@ -354,6 +374,8 @@ impl Collector for Cortex {
     fn progress(&self, request: &Value) -> &'static str {
         if associates::Request::is(request) {
             "Collecting the roster"
+        } else if vans::Request::is(request) {
+            "Collecting vans"
         } else if dvic::Request::is(request) {
             "Collecting DVIC"
         } else if daily_performance::Request::is(request) {
@@ -410,7 +432,8 @@ impl Collector for Cortex {
                             .sum()
                     })
                 })
-                .or_else(|| data["associates"].as_array().map(Vec::len)),
+                .or_else(|| data["associates"].as_array().map(Vec::len))
+                .or_else(|| data["vans"].as_array().map(Vec::len)),
             ..Counts::default()
         }
     }

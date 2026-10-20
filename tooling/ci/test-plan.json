@@ -22,7 +22,8 @@
     "paycom-recovery": ["collectors/paycom/tests/native/native-browser-recovery.test.ts"],
     "cortex": [
       "collectors/cortex/tests/native/cortex-worker.test.ts",
-      "collectors/cortex/tests/native/cortex-weekly-scorecard-worker.test.ts"
+      "collectors/cortex/tests/native/cortex-weekly-scorecard-worker.test.ts",
+      "collectors/cortex/tests/native/cortex-vans-worker.test.ts"
     ],
     "cortex-meals": [
       "collectors/cortex/tests/native/cortex-meals-worker.test.ts",

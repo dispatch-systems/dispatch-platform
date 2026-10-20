@@ -35,7 +35,7 @@ const LANES: usize = 16;
 /// next brings the rest.
 const PHOTOS_BUDGET: usize = 96 * 1024 * 1024;
 
-fn refusal(error: Refusal) -> Error {
+pub(crate) fn refusal(error: Refusal) -> Error {
     match error {
         Refusal::Unavailable => Error::new("provider_unavailable", 502),
         Refusal::Unreadable("http_signed_out") => Error::new("verification_required", 409),

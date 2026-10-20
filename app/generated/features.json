@@ -999,6 +999,87 @@
     },
     "subfeatures": []
   },
+  "vans": {
+    "collectors": [
+      "cortex"
+    ],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [
+      "cortex.vans.collect"
+    ],
+    "migrations": {
+      "vans": [
+        {
+          "id": 1,
+          "name": "baseline"
+        }
+      ]
+    },
+    "permissions": [
+      "vans.collect"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [
+          [
+            "vans.",
+            "collections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [
+        "vans"
+      ],
+      "integrations": [],
+      "live": [
+        "vans.collect"
+      ],
+      "maintenance": [
+        600
+      ],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/vans/status",
+        "POST /api/dsp/vans/collect",
+        "POST /api/dsp/vans/jobs/{id}/cancel",
+        "GET /api/dsp/vans/schedules",
+        "POST /api/dsp/vans/schedules",
+        "POST /api/dsp/vans/schedules/preview",
+        "POST /api/dsp/vans/schedules/{key}",
+        "POST /api/dsp/vans/schedules/{key}/enabled",
+        "POST /api/dsp/vans/schedules/{key}/remove"
+      ],
+      "exposes": [
+        {
+          "name": "amazon_fleet",
+          "contract": "dispatch_vans_contract::AmazonFleet",
+          "about": "What Amazon's fleet says of each of the DSP's vans by VIN: the name the DSP gives it."
+        }
+      ],
+      "env": [],
+      "settings": [
+        "vans.fleet",
+        "vans.collection"
+      ]
+    },
+    "switch": "vans",
+    "mandatory": false,
+    "tables": {
+      "vans": [
+        "fleet_runs",
+        "settings",
+        "vans"
+      ]
+    },
+    "subfeatures": []
+  },
   "weekly_scorecard": {
     "collectors": [
       "cortex"
