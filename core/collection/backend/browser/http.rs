@@ -112,6 +112,8 @@ pub struct Http {
     client: Client,
     hosts: Hosts,
     origin: String,
+    /// How many of the browser's cookies its requests carry.
+    cookies: usize,
 }
 pub struct Download {
     pub body: Option<Vec<u8>>,
@@ -142,6 +144,7 @@ impl Http {
             client,
             hosts,
             origin: origin.into(),
+            cookies: 0,
         })
     }
     pub async fn download(
@@ -227,6 +230,7 @@ impl Http {
             .await?;
         let jar = Jar::default();
         let scheme = origin_url.scheme();
+        let mut carried = 0;
         for cookie in cookies["cookies"].as_array().into_iter().flatten() {
             let domain = s(cookie, "domain");
             let host = domain.trim_start_matches('.');
@@ -249,6 +253,7 @@ impl Http {
                 line.push_str("; Secure");
             }
             jar.add_cookie_str(&line, &url);
+            carried += 1;
         }
         let mut client = verification_proxy(
             Client::builder()
@@ -270,7 +275,13 @@ impl Http {
             client,
             hosts,
             origin: origin.trim_end_matches('/').to_owned(),
+            cookies: carried,
         })
+    }
+    /// Whether the browser held any cookie of the provider's for its requests: one that
+    /// never signed in, or whose session was cleared, holds none.
+    pub fn carries_cookies(&self) -> bool {
+        self.cookies > 0
     }
     fn target(&self, value: &str) -> std::result::Result<Url, Refusal> {
         Url::parse(value)

@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Where S3 serves the photos the application redirects to.
 pub const PHOTO_HOST: &str = "amazon-flex-da-photo-prod-usamazon.s3.amazonaws.com";
-const COMPANIES: &str = "/workforce/listCompanies";
+pub(crate) const COMPANIES: &str = "/workforce/listCompanies";
 const ROSTER: &str = "/workforce/api/v1/fetchDSPAssociates";
 /// As much as one reply may hold. A hundred associates are 60 KB.
 const LIMIT: usize = 16 * 1024 * 1024;

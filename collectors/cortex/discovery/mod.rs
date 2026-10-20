@@ -36,6 +36,7 @@ impl Driver {
             CollectionRequest::Discover(discovery) => discovery,
         };
         discovery.scope("discovery", "discovery")?;
+        self.ensure_page().await?;
         let path = |area: Option<&str>| {
             let mut query = url::form_urlencoded::Serializer::new(String::new());
             query

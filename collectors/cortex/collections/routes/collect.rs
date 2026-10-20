@@ -383,6 +383,7 @@ impl Driver {
             "routes_capture_invalid",
             502,
         )?;
+        self.ensure_page().await?;
         let started_at = now();
         progress(5, "Finding the station".into()).await?;
         let scope = self

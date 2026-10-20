@@ -99,6 +99,8 @@ async fn record_data_requests() -> Result<()> {
             "benchmark_verification_required",
             409,
         )?;
+        // A saved session opens no page: these probes read the page themselves.
+        driver.ensure_page().await?;
         let scope: Scope = serde_json::from_str(
             &std::env::var("DISPATCH_BENCHMARK_SCOPE")
                 .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
@@ -288,6 +290,8 @@ async fn compare_tabs() -> Result<()> {
             "benchmark_verification_required",
             409,
         )?;
+        // A saved session opens no page: these probes read the page themselves.
+        driver.ensure_page().await?;
         let scope: Scope = serde_json::from_str(
             &std::env::var("DISPATCH_BENCHMARK_SCOPE")
                 .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
@@ -434,6 +438,8 @@ async fn diagnose_tabs() -> Result<()> {
             "benchmark_verification_required",
             409,
         )?;
+        // A saved session opens no page: these probes read the page themselves.
+        driver.ensure_page().await?;
         let scope: Scope = serde_json::from_str(
             &std::env::var("DISPATCH_BENCHMARK_SCOPE")
                 .map_err(|_| Error::new("benchmark_configuration_required", 400))?,
@@ -661,6 +667,8 @@ async fn probe_scorecard_api() -> Result<()> {
             "benchmark_verification_required",
             409,
         )?;
+        // A saved session opens no page: these probes read the page themselves.
+        driver.ensure_page().await?;
         let driver = &driver;
         let page = &driver.page;
         let origin = driver.origin.clone();
@@ -1169,6 +1177,8 @@ async fn probe_routes_api() -> Result<()> {
             "benchmark_verification_required",
             409,
         )?;
+        // A saved session opens no page: these probes read the page themselves.
+        driver.ensure_page().await?;
         let driver = &driver;
         let output = output.as_deref();
         let origin = driver.origin.clone();

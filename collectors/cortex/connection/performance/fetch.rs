@@ -159,6 +159,7 @@ impl Driver {
         expected_dsp: &str,
         metrics: &Recorder,
     ) -> Result<Api> {
+        self.ensure_page().await?;
         self.page
             .command(
                 "Fetch.enable",
