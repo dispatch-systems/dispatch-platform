@@ -5,12 +5,42 @@ use serde_json::json;
 
 /// VIN, the name the DSP gives the van, its status and kind.
 const FLEET: [(&str, &str, &str, &str); 6] = [
-    ("1FTBW3XM5LKA00101", "CDV 101", "ACTIVE", "EXTRA_LARGE_CARGO_VAN"),
-    ("1FTBW3XM5LKA00102", "CDV 102", "ACTIVE", "EXTRA_LARGE_CARGO_VAN"),
-    ("1FTBW3XM5LKA00103", "CDV 103", "MAINTENANCE", "EXTRA_LARGE_CARGO_VAN"),
-    ("7FCTGAAA1NN000214", "EDV 214", "ACTIVE", "ELECTRIC_RPV_MEDIUM"),
-    ("7FCTGAAA1NN000215", "EDV 215", "ACTIVE", "ELECTRIC_RPV_MEDIUM"),
-    ("3C6LRVDG0ME000301", "Rental 301", "INACTIVE", "LARGE_CARGO_VAN"),
+    (
+        "1FTBW3XM5LKA00101",
+        "CDV 101",
+        "ACTIVE",
+        "EXTRA_LARGE_CARGO_VAN",
+    ),
+    (
+        "1FTBW3XM5LKA00102",
+        "CDV 102",
+        "ACTIVE",
+        "EXTRA_LARGE_CARGO_VAN",
+    ),
+    (
+        "1FTBW3XM5LKA00103",
+        "CDV 103",
+        "MAINTENANCE",
+        "EXTRA_LARGE_CARGO_VAN",
+    ),
+    (
+        "7FCTGAAA1NN000214",
+        "EDV 214",
+        "ACTIVE",
+        "ELECTRIC_RPV_MEDIUM",
+    ),
+    (
+        "7FCTGAAA1NN000215",
+        "EDV 215",
+        "ACTIVE",
+        "ELECTRIC_RPV_MEDIUM",
+    ),
+    (
+        "3C6LRVDG0ME000301",
+        "Rental 301",
+        "INACTIVE",
+        "LARGE_CARGO_VAN",
+    ),
 ];
 
 pub fn fixture(request: &Request) -> Result<Capture> {
@@ -28,7 +58,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
                 "serviceTier": tier,
                 "serviceStation": {"stationCode": "TST1"},
             }))?
-                .ok_or_else(|| Error::new("vans_row_invalid", 502))
+            .ok_or_else(|| Error::new("vans_row_invalid", 502))
         })
         .collect::<Result<Vec<_>>>()?;
     let capture = Capture {

@@ -36,7 +36,9 @@ fn changed() -> Error {
 pub(crate) fn sole_company(reply: &Value, code: &str) -> Result<(String, String)> {
     let found = company(reply, code)?;
     ensure(
-        reply["records"].as_array().is_some_and(|records| records.len() == 1),
+        reply["records"]
+            .as_array()
+            .is_some_and(|records| records.len() == 1),
         cortex::codes::CORTEX_PROVIDER_AMBIGUOUS.as_str(),
         502,
     )?;
@@ -76,7 +78,11 @@ pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<Vec<Van>> {
         ensure(vans.len() <= MAX_VANS, "vans_source_too_large", 502)?;
         key = match &reply["data"]["continuationKey"] {
             Value::Null => {
-                ensure(!vans.is_empty(), cortex::codes::CORTEX_SOURCE_CHANGED.as_str(), 502)?;
+                ensure(
+                    !vans.is_empty(),
+                    cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
+                    502,
+                )?;
                 return Ok(vans);
             }
             // A key that names the page just read would read it forever.
@@ -90,7 +96,11 @@ pub(crate) async fn fleet(http: &Http, origin: &str) -> Result<Vec<Van>> {
 }
 
 impl Driver {
-    pub(crate) async fn collect_vans(&mut self, request: &Request, run: &Run<'_>) -> Result<Capture> {
+    pub(crate) async fn collect_vans(
+        &mut self,
+        request: &Request,
+        run: &Run<'_>,
+    ) -> Result<Capture> {
         request.validate()?;
         let started_at = now();
         run.progress(15, "Finding the DSP's company".into()).await?;

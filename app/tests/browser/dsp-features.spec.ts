@@ -43,11 +43,19 @@ test('the platform switches a DSP’s features, their parts and connections, and
     'Weekly Scorecardneeds a weekly scorecard source',
     'Driver Profilesneeds an associates source',
     'Daily Performanceneeds a daily performance source',
+    'Vansneeds a vans source',
     'Timecard · Meal Breaksneeds a meal-break source',
   ]);
   await off.getByRole('button', { name: 'Switch off', exact: true }).click();
   await expect(cortex).not.toBeChecked();
-  for (const name of ['Routes', 'DVIC', 'Weekly Scorecard', 'Driver Profiles', 'Daily Performance'])
+  for (const name of [
+    'Routes',
+    'DVIC',
+    'Weekly Scorecard',
+    'Driver Profiles',
+    'Daily Performance',
+    'Vans',
+  ])
     await expect(toggle(name)).not.toBeChecked();
   await expect(timecard).toBeChecked();
   await expect(tab('Meal Breaks')).not.toBeChecked();

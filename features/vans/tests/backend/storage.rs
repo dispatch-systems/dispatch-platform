@@ -18,7 +18,8 @@ fn a_van_the_fleet_stops_listing_keeps_its_name() {
         .publish_fleet(&dsp, "job-1", &fleet(&store, &dsp, 1_790_830_800_000))
         .unwrap();
     let mut next = fleet(&store, &dsp, 1_790_917_200_000);
-    next.vans.retain(|van| van.name.as_deref() != Some("EDV 214"));
+    next.vans
+        .retain(|van| van.name.as_deref() != Some("EDV 214"));
     store.publish_fleet(&dsp, "job-2", &next).unwrap();
     let status = store.fleet_status(&dsp).unwrap();
     assert_eq!(

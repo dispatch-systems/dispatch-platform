@@ -53,11 +53,7 @@ fn first_schedule(db: &Store, dsp: &str) -> Result<bool> {
 }
 
 fn failed(error: &Error) {
-    observability::event(
-        "error",
-        "vans.schedule_failed",
-        json!({"error":error.code}),
-    );
+    observability::event("error", "vans.schedule_failed", json!({"error":error.code}));
 }
 
 fn schedule(state: Arc<State>, due: bool) -> Upkeep {

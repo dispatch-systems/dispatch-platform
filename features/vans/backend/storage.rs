@@ -72,7 +72,11 @@ impl VansStore for Store {
     fn enqueue_fleet(&self, dsp: &str, actor: Option<&str>, key: &str) -> Result<Value> {
         bind_fleet_request(self, dsp)?;
         let job = self
-            .enqueue_batch(dsp, actor, &[(key.into(), cortex::PROVIDER, fleet_request())])?
+            .enqueue_batch(
+                dsp,
+                actor,
+                &[(key.into(), cortex::PROVIDER, fleet_request())],
+            )?
             .remove(0);
         Ok(serde_json::to_value(job)?)
     }
@@ -150,7 +154,10 @@ impl VansStore for Store {
     }
     fn vans(&self, dsp: &str, vins: &[String]) -> Result<Vec<Van>> {
         validate::ids(vins, MAX_ASKED)?;
-        let asked: Vec<String> = vins.iter().map(|vin| vin.trim().to_ascii_uppercase()).collect();
+        let asked: Vec<String> = vins
+            .iter()
+            .map(|vin| vin.trim().to_ascii_uppercase())
+            .collect();
         let mut kept = self
             .vans_db(dsp)?
             .query_as::<Kept>(

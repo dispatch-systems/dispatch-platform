@@ -59,7 +59,10 @@ async fn the_fleet_is_read_page_after_page_each_van_once() {
                     .into_owned()
                     .collect();
             // Every status the list accepts, inactive vans with the rest.
-            assert_eq!(query["vehicleStatuses"], "ACTIVE,MAINTENANCE,PENDING,INACTIVE");
+            assert_eq!(
+                query["vehicleStatuses"],
+                "ACTIVE,MAINTENANCE,PENDING,INACTIVE"
+            );
             let key = query.get("continuationKey").map(String::as_str);
             match (*answers.lock().unwrap(), key) {
                 ("paged", None) => page(
@@ -101,7 +104,11 @@ async fn the_fleet_is_read_page_after_page_each_van_once() {
         ("ended", "verification_required"),
     ] {
         *scenario.lock().unwrap() = what;
-        assert_eq!(fleet(&http, &origin).await.unwrap_err().code, code, "{what}");
+        assert_eq!(
+            fleet(&http, &origin).await.unwrap_err().code,
+            code,
+            "{what}"
+        );
     }
     server.abort();
 }

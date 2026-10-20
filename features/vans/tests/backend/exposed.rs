@@ -13,17 +13,26 @@ fn vins(vins: &[&str]) -> Vec<String> {
 fn amazon_fleet_is_offered_only_while_vans_is_on() {
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     let (_root, db, dsp) = testing::bootstrapped();
-    assert!(dispatch_vans_contract::for_dsp(&db, &dsp).unwrap().is_some());
+    assert!(
+        dispatch_vans_contract::for_dsp(&db, &dsp)
+            .unwrap()
+            .is_some()
+    );
     db.set_feature(&dsp, "vans", false, &testing::a_user(&db))
         .unwrap();
-    assert!(dispatch_vans_contract::for_dsp(&db, &dsp).unwrap().is_none());
+    assert!(
+        dispatch_vans_contract::for_dsp(&db, &dsp)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
 fn amazon_fleet_names_the_vans_asked_for_by_vin_in_their_order() {
     testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
     let (_root, db, dsp) = testing::bootstrapped();
-    db.set_profile(&dsp, json!({"abbreviation":"FXTR"})).unwrap();
+    db.set_profile(&dsp, json!({"abbreviation":"FXTR"}))
+        .unwrap();
     let fleet_of = dispatch_vans_contract::for_dsp(&db, &dsp)
         .unwrap()
         .expect("Vans is on");
@@ -32,7 +41,8 @@ fn amazon_fleet_names_the_vans_asked_for_by_vin_in_their_order() {
     db.publish_fleet(&dsp, "job-1", &fleet(&db, &dsp, 1_790_830_800_000))
         .unwrap();
     let mut next = fleet(&db, &dsp, 1_790_917_200_000);
-    next.vans.retain(|van| van.name.as_deref() != Some("EDV 214"));
+    next.vans
+        .retain(|van| van.name.as_deref() != Some("EDV 214"));
     db.publish_fleet(&dsp, "job-2", &next).unwrap();
     assert_eq!(
         fleet_of.collected(&db, &dsp).unwrap().as_deref(),

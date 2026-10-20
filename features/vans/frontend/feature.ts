@@ -23,7 +23,8 @@ export const feature: FrontendFeature = {
   platformSlots: () => import('./platform-slots.js'),
   // A schedule meets it too, so the manifest words it.
   errors: {
-    vans_abbreviation_required: "Set your DSP's abbreviation in its profile before collecting vans.",
+    vans_abbreviation_required:
+      "Set your DSP's abbreviation in its profile before collecting vans.",
   },
   // A finished collection changes the fleet's own status.
   cache: {
