@@ -142,7 +142,8 @@ fn held(data: &DspLease<'_>, capture: &Capture, today: chrono::NaiveDate) -> Res
         return Ok(false);
     }
     let earlier = data.all(
-        "SELECT id FROM daily_publications WHERE station=? AND date=? AND active=0          AND collected_at>? AND collected_at<=?",
+        "SELECT id FROM daily_publications WHERE station=? AND date=? AND active=0 \
+         AND collected_at>? AND collected_at<=?",
         params![
             capture.station,
             capture.date,

@@ -74,7 +74,8 @@ fn held(db: &DspLease<'_>, capture: &Capture) -> Result<bool> {
         return Ok(false);
     }
     let earlier = db.all(
-        "SELECT id FROM weekly_scorecard_publications WHERE week=? AND station=? AND company_id=?          AND active=0 AND collected_at>? AND collected_at<=?",
+        "SELECT id FROM weekly_scorecard_publications WHERE week=? AND station=? AND company_id=? \
+         AND active=0 AND collected_at>? AND collected_at<=?",
         params![
             capture.week,
             capture.station,
