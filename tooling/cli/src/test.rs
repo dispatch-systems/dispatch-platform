@@ -1,7 +1,11 @@
 //! `dispatchdev test [--all | --owner <owner>] [--keep]`: the tests a change needs, or one
 //! owner's, built in a folder of the run's own and deleted when it ends, so a worktree keeps no
 //! test build and several can test at once. Each command runs below Dev (`workspace::logged`).
-use crate::{Result, Runner, check, require, workspace};
+use crate::{
+    Result, Runner, check, require,
+    slot::{self, Slot},
+    workspace,
+};
 use serde_json::Value;
 use std::{
     ffi::OsStr,
@@ -23,14 +27,16 @@ const RELEASE_PACKAGE: &str = "npm run build";
 /// Builds or reuses the browser tests' assessment fixture. It runs as the running dispatchdev, so
 /// a checkout whose own copy predates `--fixture` still gets it.
 const FIXTURE: &str = "dispatchdev build --fixture";
+/// Builds or reuses the debug backend the API and native tests run against.
+const BUILD: &str = "tooling/cli/dispatchdev build";
 
 /// One command of a run, in the run's build folder.
 #[derive(Debug, PartialEq)]
 pub struct Step {
     pub command: String,
 }
-/// The steps of `commands`: packaging the browser tests' runtime, then their fixture, before the
-/// tests themselves.
+/// The steps of `commands`: packaging the browser tests' runtime, then their fixture, or building
+/// the debug backend, before the tests themselves.
 pub fn steps(commands: &[String]) -> Vec<Step> {
     let step = |command: &str| Step {
         command: command.into(),
@@ -41,12 +47,23 @@ pub fn steps(commands: &[String]) -> Vec<Step> {
             if command == PACKAGE {
                 return vec![step(PACKAGE), step(FIXTURE)];
             }
+            if let Some(rest) = command.strip_prefix(&format!("{BUILD} && ")) {
+                return vec![step(BUILD), step(rest)];
+            }
             match command.strip_prefix(&format!("{PACKAGE} && ")) {
                 Some(rest) => vec![step(PACKAGE), step(FIXTURE), step(rest)],
                 None => vec![step(command)],
             }
         })
         .collect()
+}
+/// Whether a step builds, and so waits its turn for a build slot (`crate::slot`): Cargo, the
+/// debug backend's and the fixture's builds, packaging, and leaving a feature out, which builds
+/// the app without it. A step that only runs tests takes none.
+fn builds(command: &str) -> bool {
+    command.starts_with("cargo ")
+        || [BUILD, FIXTURE, PACKAGE, RELEASE_PACKAGE].contains(&command)
+        || command.starts_with("npm run check:removability ")
 }
 /// Every file the checkout changed from where it left `origin/main`, committed or not, deleted
 /// files aside.
@@ -321,7 +338,17 @@ impl Run {
             PACKAGE if !self.debug_package => (RELEASE_PACKAGE, false),
             command => (command, true),
         };
+        // A step that builds waits its turn, and passes its slot on to what it starts.
+        let slot = if builds(&step.command) {
+            let env = std::env::vars().collect();
+            Slot::take(&self.root, &label(&step.command), &env, &crate::Native)?
+        } else {
+            None
+        };
         let mut own: Vec<(&str, &OsStr)> = vec![("TMPDIR", self.tmp.as_os_str())];
+        if let Some(slot) = &slot {
+            own.push((slot::HELD, slot.path.as_os_str()));
+        }
         if isolated {
             own.extend([
                 ("CARGO_TARGET_DIR", self.build.as_os_str()),
@@ -483,6 +510,19 @@ mod tests {
         .map(str::to_owned)
         .to_vec();
         assert_eq!(steps(&owned), packaged);
+        // The debug build before API tests is a step of its own too, as an owner's tests list it,
+        // so it waits for a build slot where the run says so.
+        assert_eq!(
+            steps(&["tooling/cli/dispatchdev build && npx tsx --test a.test.ts".into()]),
+            [
+                Step {
+                    command: "tooling/cli/dispatchdev build".into(),
+                },
+                Step {
+                    command: "npx tsx --test a.test.ts".into(),
+                },
+            ]
+        );
     }
     #[test]
     fn an_owner_is_named_by_its_kind_and_name_or_found_by_its_name() {

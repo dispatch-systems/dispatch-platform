@@ -2,7 +2,7 @@
 //! this machine's Tailscale address with demo data. Each change keeps one port, so its link
 //! survives restarts.
 use crate::{
-    Result, Runner, require,
+    Result, Runner, require, slot,
     workspace::{self, Workspace},
 };
 use std::{
@@ -253,10 +253,16 @@ pub fn run(
         _ => {}
     }
     let started = Instant::now();
+    let mut waiting = false;
     let link = loop {
         let log = journal(name, runner)?;
         if let Some(link) = link(&log) {
             break link;
+        }
+        // Its build waits its turn for a build slot as any other does, and says so once.
+        if !waiting && let Some(line) = log.lines().find(|line| line.starts_with(slot::WAITING)) {
+            println!("{line}");
+            waiting = true;
         }
         let now = state(name, runner)?;
         if !matches!(now.as_str(), "active" | "activating") || started.elapsed() > READY {

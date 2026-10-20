@@ -7,7 +7,7 @@ mod key;
 mod store;
 #[cfg(test)]
 mod tests;
-use crate::{Result, Runner, require};
+use crate::{Result, Runner, require, slot::Slot};
 pub use key::{Environment, eligible, fingerprint, frontend, key};
 use std::{
     fs,
@@ -125,7 +125,9 @@ fn build_with_limit(
         located(root, env)
     };
     let env = &env;
+    let command = args.join(" ");
     if !eligible(root, env, ci)? {
+        let _slot = Slot::take(root, &command, env, runner)?;
         println!("Building {name} with Cargo.");
         runner.command(args, Some(root), 1200)?;
         return Ok(());
@@ -156,26 +158,42 @@ fn build_with_limit(
     store::directory(&cache)?;
     let entry = cache.join(&key);
     let targets = built(&folder, artifact);
-    let _lock = store::Lock::acquire(&cache, &key, true)?.ok_or("Cache lock unavailable")?;
-    if let Some(binaries) = store::cached_binaries(&entry, &targets) {
-        for (binary, target) in binaries.iter().zip(&targets) {
-            store::copy_binary(binary, target)?;
-        }
-        println!("Reused {name} for identical Rust inputs.");
+    let held = store::Lock::acquire(&cache, &key, true)?.ok_or("Cache lock unavailable")?;
+    let _lock = if reused(&entry, &targets, name)? {
+        held
     } else {
-        println!("Building {name} with Cargo.");
-        runner.command(args, Some(root), 1200)?;
-        require(
-            fingerprint(root, profile, &compiler, env)? == key,
-            "Rust inputs changed during the build; run it again before packaging",
-        )?;
-        store::save(&entry, &targets)?;
-        println!("Cached {name} for identical inputs.");
-    }
+        // Only a build waits its turn, and without the entry's lock: a step holding a slot may be
+        // waiting for it to reuse the entry.
+        drop(held);
+        let _slot = Slot::take(root, &command, env, runner)?;
+        let held = store::Lock::acquire(&cache, &key, true)?.ok_or("Cache lock unavailable")?;
+        if !reused(&entry, &targets, name)? {
+            println!("Building {name} with Cargo.");
+            runner.command(args, Some(root), 1200)?;
+            require(
+                fingerprint(root, profile, &compiler, env)? == key,
+                "Rust inputs changed during the build; run it again before packaging",
+            )?;
+            store::save(&entry, &targets)?;
+            println!("Cached {name} for identical inputs.");
+        }
+        held
+    };
     if !ci {
         fs::File::open(&entry)?
             .set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::now()))?;
         store::prune(&cache, keep, &key)?;
     }
     Ok(())
+}
+/// Copies the entry's executables to `targets` when it holds them, saying so: whether it did.
+fn reused(entry: &Path, targets: &[PathBuf], name: &str) -> Result<bool> {
+    let Some(binaries) = store::cached_binaries(entry, targets) else {
+        return Ok(false);
+    };
+    for (binary, target) in binaries.iter().zip(targets) {
+        store::copy_binary(binary, target)?;
+    }
+    println!("Reused {name} for identical Rust inputs.");
+    Ok(true)
 }
