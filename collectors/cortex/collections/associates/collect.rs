@@ -28,8 +28,9 @@ pub(crate) const COMPANIES: &str = "/workforce/listCompanies";
 const ROSTER: &str = "/workforce/api/v1/fetchDSPAssociates";
 /// As much as one reply may hold. A hundred associates are 60 KB.
 const LIMIT: usize = 16 * 1024 * 1024;
-/// Photo downloads at once: twenty took no longer than one.
-const LANES: usize = 8;
+/// Photo downloads at once: forty took 4.4 s sixteen at a time, against 5.4 s eight at a
+/// time and 4.2 s all forty together.
+const LANES: usize = 16;
 /// What one collection downloads of the photos the DSP lacks, about sixty of Amazon's; the
 /// next brings the rest.
 const PHOTOS_BUDGET: usize = 96 * 1024 * 1024;

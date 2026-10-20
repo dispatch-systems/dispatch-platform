@@ -1,4 +1,5 @@
 //! The station and day a Cortex collection covers, resolved from what it was asked for.
+pub(crate) mod known;
 mod scope;
 
 pub use scope::{CollectionRequest, Discovery, Scope};

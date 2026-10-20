@@ -257,6 +257,7 @@ impl Collector for Cortex {
         &[
             "cortex-browseros",
             "cortex-attempt.json",
+            discovery::known::FILE,
             ".cortex-browseros.browseros.lock",
         ]
     }
@@ -427,6 +428,7 @@ pub(crate) mod codes {
     pub const CORTEX_INVALID_IDENTITY: Code = Code::new("cortex_invalid_identity");
     pub const INVALID_CORTEX_SCOPE: Code = Code::new("invalid_cortex_scope");
     pub const DVIC_SOURCE_CHANGED: Code = Code::new("dvic_source_changed");
+    pub const DVIC_SOURCE_UNREADABLE: Code = Code::new("dvic_source_unreadable");
     pub const PERFORMANCE_API_UNREADABLE: Code = Code::new("performance_api_unreadable");
 
     /// A failed attempt with one of these is queued again while attempts remain.

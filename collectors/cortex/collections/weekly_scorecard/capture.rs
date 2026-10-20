@@ -285,6 +285,33 @@ impl Capture {
                 "weekly_scorecard_row_invalid",
                 502,
             )?;
+            // A row that names its station, company or DSP names this one.
+            for row in &captured.rows {
+                for field in ["station_code", "station"] {
+                    if let Some(station) = row[field].as_str().filter(|value| !value.is_empty()) {
+                        ensure(
+                            station == self.station,
+                            "weekly_scorecard_scope_mismatch",
+                            502,
+                        )?;
+                    }
+                }
+                if let Some(company) = row["company_id"].as_str().filter(|value| !value.is_empty())
+                {
+                    ensure(
+                        company == self.company_id,
+                        "weekly_scorecard_scope_mismatch",
+                        502,
+                    )?;
+                }
+                if let Some(code) = row["dsp_code"].as_str().filter(|value| !value.is_empty()) {
+                    ensure(
+                        code.eq_ignore_ascii_case(&self.dsp_code),
+                        "weekly_scorecard_scope_mismatch",
+                        502,
+                    )?;
+                }
+            }
         }
         let posted = self
             .datasets
@@ -326,7 +353,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
                 .enumerate()
                 .map(|(i, driver)| {
                     json!({"transporter_id":driver,"da_name":format!("Fixture Driver {}", i + 1),"week":"38","year":2026,
-                        "data_date":request.week,"station_code":request.station,"dsp_code":"FXTR",
+                        "data_date":request.week,"station_code":request.station,"dsp_code":request.dsp_abbreviation,
                         "da_overall_score":90 - i as i64,"da_overall_tier":"Fantastic","delivered":1000 + i as i64,
                         "cdf_metric_dpmo":100 * i as i64,"dsb_metric_dpmo":0,"rts_metric_adjusted":0})
                 })
@@ -361,14 +388,14 @@ pub fn fixture(request: &Request) -> Result<Capture> {
             "da_dsp_station_daily_safety_oss_events_intraday" => vec![json!({
                 "transporter_id":"driver-3","event_id":"90000001","data_date":last.to_string(),
                 "oss_impact_flag":1,"dashboard_metric_type":"Speeding"})],
-            "dsp_station_weekly_quality" => vec![json!({"dsp_code":"FXTR",
+            "dsp_station_weekly_quality" => vec![json!({"dsp_code":request.dsp_abbreviation,
                 "station_code":request.station,"data_date":request.week,
                 "dsp_final_score":88.5,"dsp_final_tier":"Great"})],
-            "dsp_weekly_cdf" => vec![json!({"dsp_code":"FXTR","data_date":request.week,
+            "dsp_weekly_cdf" => vec![json!({"dsp_code":request.dsp_abbreviation,"data_date":request.week,
                 "positive_response_cnt":40,"negative_response_cnt":1,"no_feedback_cnt":900})],
-            "dsp_weekly_psb" => vec![json!({"dsp_code":"FXTR","data_date":request.week,
+            "dsp_weekly_psb" => vec![json!({"dsp_code":request.dsp_abbreviation,"data_date":request.week,
                 "total_stops":12,"failed_stops":0})],
-            _ => vec![json!({"dsp_code":"FXTR","station_code":request.station,
+            _ => vec![json!({"dsp_code":request.dsp_abbreviation,"station_code":request.station,
                 "data_date":request.week})],
         };
         datasets.push(DatasetCapture {

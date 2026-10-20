@@ -2,7 +2,7 @@
 pub mod performance;
 use crate::collections::associates::collect::COMPANIES;
 use crate::collections::meals::collect as collection;
-use crate::discovery::Scope;
+use crate::discovery::{Scope, known::KnownScopes};
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
@@ -64,6 +64,8 @@ pub struct Driver {
     pub(crate) origin: String,
     pub(crate) origins: Vec<String>,
     attempts: Attempts,
+    /// What discovery found for the DSP's stations, for the next collections.
+    pub(crate) known: KnownScopes,
     credentials: Value,
     username_submitted: bool,
     password_submitted: bool,
@@ -86,6 +88,7 @@ impl Driver {
             origin,
             origins,
             attempts: Attempts::beside(profile, "cortex")?,
+            known: KnownScopes::beside(profile)?,
             credentials: Value::Null,
             username_submitted: false,
             password_submitted: false,

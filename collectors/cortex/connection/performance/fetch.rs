@@ -1,13 +1,15 @@
 //! Daily and weekly performance datasets over authenticated HTTP with the
-//! browser's session. The API's address, and how it names this DSP, come from the
-//! station's last publication; when there is none, or nothing answers there, the
-//! overview page's own first data request names them. Dataset reads have bounded concurrency,
-//! and the browser closes as soon as the API has answered one.
+//! browser's session. The station's scope is what discovery found for it last, kept
+//! beside the profile, or found now. The API's address, and how it names this DSP, come
+//! from the station's last publication, else from where it last answered for the
+//! station; when there is neither, or nothing answers there, the overview page's own
+//! first data request names them. Dataset reads have bounded concurrency, and the
+//! browser closes as soon as the API has answered one.
 use super::{Dataset, DatasetCapture, MAX_ROWS, Read};
 use crate as cortex;
 use crate::{
     connection::Driver,
-    discovery::{CollectionRequest, Scope},
+    discovery::{CollectionRequest, Scope, known},
 };
 use dispatch_core::{
     Error, Result,
@@ -18,7 +20,7 @@ use dispatch_core::{
         },
         metrics::Recorder,
     },
-    db::s,
+    db::{now, s},
     ensure,
     foundation::validate::token,
     manifest::registry,
@@ -32,9 +34,6 @@ use tokio::time::{Instant, sleep};
 
 /// As much as one reply may hold once decompressed. The largest week seen was 2 MB.
 const LIMIT: usize = 16 * 1024 * 1024;
-/// Reads at once: as many as the overview page itself sends when it opens. Cortex
-/// takes over a second to answer even the smallest, so they wait on it together.
-const LANES: usize = 6;
 
 /// Where the page sends its data requests, and how it names this DSP there.
 pub(crate) struct Api {
@@ -124,6 +123,25 @@ fn data_request(url: &str, origin: &str) -> Result<(String, String, String)> {
         dsp.clone(),
         query.get("station").cloned().unwrap_or_default(),
     ))
+}
+/// Where a collection's scope came from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Found {
+    /// What discovery found for the station before, kept beside the profile.
+    Known,
+    /// Discovery, now.
+    Discovered,
+}
+/// Whether `error` says what was read named another station, company or DSP than the
+/// scope it was read for: a kept scope that did is found again.
+pub(crate) fn mismatched(error: &Error) -> bool {
+    [
+        "cortex_scope_mismatch",
+        "daily_performance_scope_mismatch",
+        "weekly_scorecard_scope_mismatch",
+        "dvic_scope_mismatch",
+    ]
+    .contains(&error.code.as_str())
 }
 /// Reading every dataset failed: the first error, and whether the API had answered
 /// any read at that address.
@@ -290,7 +308,7 @@ impl Driver {
             })
         }))
     }
-    /// Bounded parallel reads, preserving the requested order.
+    /// Bounded parallel reads, `lanes` at once, preserving the requested order.
     /// The first answer shows the session and the address work, and the
     /// browser closes then: nothing after it needs a page.
     async fn read_all(
@@ -298,6 +316,7 @@ impl Driver {
         api: &Api,
         reads: &[Read],
         station: &str,
+        lanes: usize,
         run: &Run<'_>,
     ) -> std::result::Result<Vec<(String, Vec<Value>)>, Failed> {
         let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
@@ -306,7 +325,7 @@ impl Driver {
         let done = AtomicUsize::new(0);
         let answered = AtomicBool::new(false);
         let reporting = AtomicBool::new(false);
-        let lanes = futures_util::future::join_all((0..LANES).map(|_| async {
+        let lanes = futures_util::future::join_all((0..lanes).map(|_| async {
             let mut replies = Vec::new();
             loop {
                 let index = next.fetch_add(1, Ordering::SeqCst);
@@ -358,28 +377,82 @@ impl Driver {
             .map(|reply| reply.ok_or_else(|| Error::new("performance_capture_invalid", 502)))
             .collect::<Result<Vec<_>>>()?)
     }
+    /// The scope `request` covers: what discovery found for its station before, unless
+    /// `rediscover`, else what discovery finds now, kept for the next collections.
+    pub(crate) async fn scope_for(
+        &mut self,
+        request: &CollectionRequest,
+        rediscover: bool,
+        run: &Run<'_>,
+    ) -> Result<(Scope, Found)> {
+        if let CollectionRequest::Discover(discovery) = request
+            && !rediscover
+            && let Some(scope) = self.known.scope(discovery, now())
+        {
+            request.validate_scope(&scope)?;
+            return Ok((scope, Found::Known));
+        }
+        let scope = self.resolve_scope(request, run.metrics).await?;
+        // A scope that can't be kept is found again next time.
+        if matches!(request, CollectionRequest::Discover(_))
+            && self.known.keep(&scope, now()).is_err()
+        {
+            run.metrics.detail("known_scope_unwritten");
+        }
+        Ok((scope, Found::Discovered))
+    }
+    /// Where the API last answered for `scope`'s company at its station, kept with its scope.
+    pub(crate) fn known_api(&self, scope: &Scope, expected_dsp: &str) -> Option<Api> {
+        let kept = self.known.api(scope)?;
+        let (base, dsp, _) = data_request(
+            &format!("{}/getData?dsp={}", kept.base, kept.dsp),
+            &self.origin,
+        )
+        .ok()?;
+        (base == kept.base && dsp.eq_ignore_ascii_case(expected_dsp)).then(|| Api {
+            base,
+            dsp,
+            company_id: scope.provider.clone(),
+        })
+    }
+    /// Keeps where the API answered for `scope`, for the next collections.
+    pub(crate) fn keep_api(&self, scope: &Scope, api: &Api, run: &Run<'_>) {
+        let kept = known::Api {
+            base: api.base.clone(),
+            dsp: api.dsp.clone(),
+        };
+        if self.known.keep_api(scope, kept).is_err() {
+            run.metrics.detail("known_scope_unwritten");
+        }
+    }
+    /// Every read of `reads` for `scope`, `lanes` at once, with the company and DSP code
+    /// the API named.
     pub(crate) async fn read_performance(
         &mut self,
-        discovery: &CollectionRequest,
+        scope: &Scope,
         expected_dsp: &str,
         reads: &[Read],
+        lanes: usize,
         run: &Run<'_>,
-    ) -> Result<(String, String, Vec<DatasetCapture>, Scope)> {
+    ) -> Result<(String, String, Vec<DatasetCapture>)> {
         run.progress(10, "Finding the performance API".into())
             .await?;
-        let scope = self.resolve_scope(discovery, run.metrics).await?;
+        let scope = scope.clone();
         let (mut api, mut saved) = match self.saved_api(&scope, expected_dsp, run).await? {
             Some(api) => (api, true),
-            None => (
-                self.performance_api(&scope, expected_dsp, run.metrics)
-                    .await?,
-                false,
-            ),
+            None => match self.known_api(&scope, expected_dsp) {
+                Some(api) => (api, true),
+                None => (
+                    self.performance_api(&scope, expected_dsp, run.metrics)
+                        .await?,
+                    false,
+                ),
+            },
         };
         run.progress(20, "Reading performance datasets".into())
             .await?;
         let replies = loop {
-            match self.read_all(&api, reads, &scope.station, run).await {
+            match self.read_all(&api, reads, &scope.station, lanes, run).await {
                 Ok(replies) => break replies,
                 // Nothing answered where the last publication read: Cortex moved its
                 // API, and the page names it again.
@@ -396,6 +469,7 @@ impl Driver {
                 Err(failed) => return Err(failed.error),
             }
         };
+        self.keep_api(&scope, &api, run);
         let datasets = reads
             .iter()
             .zip(replies)
@@ -407,7 +481,7 @@ impl Driver {
                 rows,
             })
             .collect();
-        Ok((api.company_id, api.dsp, datasets, scope))
+        Ok((api.company_id, api.dsp, datasets))
     }
 }
 
