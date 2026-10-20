@@ -165,15 +165,10 @@ fn connect(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         team(v::text(body, key, 2, 32)?)
     })?;
     let label = label(&input.body)?;
-    let back = optional(&input.body, "page", |body, key| page(v::text(body, key, 1, 40)?))?;
-    Reply::of(&connection::start(
-        db,
-        c,
-        &input.site,
-        asked,
-        label,
-        back,
-    )?)
+    let back = optional(&input.body, "page", |body, key| {
+        page(v::text(body, key, 1, 40)?)
+    })?;
+    Reply::of(&connection::start(db, c, &input.site, asked, label, back)?)
 }
 async fn finish(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();

@@ -696,10 +696,7 @@ impl SlackStore for Store {
         };
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            db.exec(
-                "DELETE FROM slack_install_links WHERE team_id IS ?",
-                [team],
-            )?;
+            db.exec("DELETE FROM slack_install_links WHERE team_id IS ?", [team])?;
             db.exec(
                 "INSERT INTO slack_install_links (link_hash,team_id,created_by,created_at,\
                  expires_at,label) VALUES (?,?,?,?,?,?)",
