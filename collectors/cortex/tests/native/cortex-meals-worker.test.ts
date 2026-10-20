@@ -25,8 +25,17 @@ type Answer = (url: URL) => Promise<{ json: unknown } | { html: string } | { sta
 // Its landing page keeps a session the next job's browser starts from.
 async function site(t: TestContext, answer: Answer) {
   const seen = { landings: 0, companies: 0 };
+  // Asks of the application's API action it ignored, by route.
+  const ignored: Record<string, number> = {};
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://fixture.test');
+    if (url.pathname === '/fixture-ignored') {
+      const id = url.searchParams.get('itineraryId')!;
+      ignored[id] = (ignored[id] ?? 0) + 1;
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (url.pathname === '/workforce/listCompanies') {
       seen.companies++;
       const signedIn = req.headers.cookie?.includes('authenticated=yes');
@@ -109,7 +118,7 @@ async function site(t: TestContext, answer: Answer) {
     }, wait);
     return job;
   };
-  return { f, owner, dsp, collect, seen };
+  return { f, owner, dsp, collect, seen, ignored };
 }
 
 test(
@@ -376,7 +385,7 @@ test(
       for (const date of Object.keys(held)) releaseDay(date);
       for (const timer of timers) clearTimeout(timer);
     });
-    // The collection waits for twelve routes at once. Cortex answers over HTTP/2; this
+    // The collection waits for sixteen routes at once. Cortex answers over HTTP/2; this
     // stand-in over HTTP/1.1, to which the browser opens six connections, so six at once
     // is all it can see.
     const atOnce = (routes: number) => Math.min(6, routes);
@@ -574,7 +583,7 @@ test(
         ],
       };
     };
-    const { f, dsp, collect, owner } = await site(t, async (url) => {
+    const { f, dsp, collect, owner, ignored } = await site(t, async (url) => {
       if (url.pathname.startsWith(itineraryApi)) {
         const id = url.searchParams.get('itineraryId')!;
         requests[id] = (requests[id] ?? 0) + 1;
@@ -641,6 +650,7 @@ test(
     assert.equal(pages[failing], 3);
     // Unanswered by the application it was asked of, the route was read from its loaded
     // page.
+    assert.deepEqual(ignored, { [still]: 1 });
     assert.equal(requests[still], 1);
     assert.equal(pages[still], 1);
     assert.deepEqual(asked, {});

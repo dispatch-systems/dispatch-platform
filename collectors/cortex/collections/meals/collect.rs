@@ -109,10 +109,14 @@ pub(crate) struct MealMethod {
     pub hook: bool,
     /// With the hook, each route is asked of the application's own API action, as its
     /// pages ask for what they show, rather than moved to: the request is the
-    /// application's own, and nothing renders. A tab whose application has no store moves
-    /// to its routes as before.
-    #[serde(default)]
+    /// application's own, and nothing renders. A tab whose application declines, having
+    /// no store or an action that doesn't wait on a request, moves to its routes as
+    /// before, and a route the browser couldn't ask is moved to.
+    #[serde(default = "asks")]
     pub ask: bool,
+}
+fn asks() -> bool {
+    true
 }
 impl Default for MealMethod {
     fn default() -> Self {

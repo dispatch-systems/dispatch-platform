@@ -126,8 +126,9 @@ where
         Ok(reads)
     }
     /// Asks the tab's application for `candidate`'s itinerary: of its own API action
-    /// while `asking`, which stops once the application has no store for it, else by
-    /// moving it to the route. Whether the application took the ask.
+    /// while `asking`, else by moving it to the route. An application whose action
+    /// declines stops being asked; one the browser couldn't reach this once is moved for
+    /// this route alone. Whether the application took the ask.
     async fn ask(&self, page: &Page, candidate: &Candidate, asking: &mut bool) -> bool {
         let driver = self.driver;
         if *asking {
@@ -140,16 +141,14 @@ where
                 },
             });
             // The store lives in the application's own world, where the action runs.
-            if driver
-                .browser
-                .evaluate(&page.id, &call(ASK, &read))
-                .await
-                .is_ok_and(|v| v == true)
-            {
-                return true;
+            match driver.browser.evaluate(&page.id, &call(ASK, &read)).await {
+                Ok(taken) if taken == true => return true,
+                Ok(_) => {
+                    *asking = false;
+                    self.metrics.detail("meal_ask_unavailable");
+                }
+                Err(_) => self.metrics.detail("meal_ask_failed"),
             }
-            *asking = false;
-            self.metrics.detail("meal_ask_unavailable");
         }
         let url = driver.meal_url(self.scope, Some(candidate));
         page.evaluate(&call(MOVE, &json!(url)))

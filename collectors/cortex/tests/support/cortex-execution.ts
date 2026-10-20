@@ -13,7 +13,7 @@ export interface Quirks {
   /** It shows this itinerary's details instead of the address's, as Cortex sometimes does. */
   show?: string;
   /** It ignores moves to these itineraries, and asks of its API action for them, fetching
-   * nothing. */
+   * nothing; each ask it ignores is told to `/fixture-ignored`. */
   still?: string[];
   /** Its React tree is given no store, so nothing can be asked of its API action. */
   storeless?: boolean;
@@ -79,8 +79,11 @@ export function executionPage(quirks: Quirks = {}, props: object = {}): string {
       const call = action['Call API'];
       if (!call) return action;
       const id = call.params.itineraryId;
-      if (!call.endpoint.startsWith('${itineraryApi}') || (quirks.still || []).includes(id))
+      if (!call.endpoint.startsWith('${itineraryApi}')) return new Promise(() => {});
+      if ((quirks.still || []).includes(id)) {
+        fetch('/fixture-ignored?itineraryId=' + encodeURIComponent(id)).catch(() => {});
         return new Promise(() => {});
+      }
       return fetchDetails(id, true);
     } };
     if (!quirks.storeless) fiber.return = { memoizedProps: { store }, return: null };
