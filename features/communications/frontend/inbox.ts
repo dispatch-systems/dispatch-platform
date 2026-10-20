@@ -50,6 +50,7 @@ export const updated = (inbox: Communications, update: CommunicationsUpdates): C
   revision: update.revision,
   waiting: update.waiting,
   typing: update.typing,
+  workspaces: update.workspaces,
   conversations: merged(inbox, update.conversations),
 });
 /** The list with the older answered conversations read after its last. */

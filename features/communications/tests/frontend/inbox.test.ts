@@ -41,6 +41,7 @@ test('the list keeps the server’s order as it changes, and leaves older answer
     reset: false,
     waiting: 2,
     typing: { version: 0, writing: [] },
+    workspaces: [],
     conversations: [
       // Waiting longest, it comes first.
       conversation('e', 60, 50),

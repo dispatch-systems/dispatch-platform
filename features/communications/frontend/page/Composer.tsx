@@ -29,9 +29,12 @@ type Added = {
 
 export function Composer({
   conversation,
+  writable,
   sent,
 }: {
   conversation: Conversation;
+  /** Whether Communications works in its workspace now. */
+  writable: boolean;
   sent: (message: Message) => void;
 }) {
   const { fail } = useFeedback();
@@ -109,10 +112,7 @@ export function Composer({
   });
   const uploading = photos.some((photo) => !photo.uploaded);
   const ready =
-    conversation.canReply &&
-    !send.busy &&
-    !uploading &&
-    (text.trim().length > 0 || photos.length > 0);
+    writable && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
   const writing = (value: string) => {
     setText(value);
     if (value.trim() && Date.now() - said.current > TYPING_MS) {
@@ -151,7 +151,7 @@ export function Composer({
           type="button"
           className="round"
           aria-label="Attach photos"
-          disabled={!conversation.canReply || photos.length >= PHOTOS_MOST}
+          disabled={!writable || photos.length >= PHOTOS_MOST}
           onClick={() => picker.current?.click()}
         >
           <Paperclip size={18} />
@@ -174,7 +174,7 @@ export function Composer({
           placeholder={`Message ${first}`}
           maxLength={TEXT_MOST}
           value={text}
-          disabled={!conversation.canReply}
+          disabled={!writable}
           onChange={(event) => writing(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;

@@ -29,8 +29,9 @@ export function useInbox() {
   // The list the page's own writes and each update change in turn.
   const current = useRef<Communications | undefined>(undefined);
   const change = useCallback((next: Communications) => {
-    // The sidebar's count reads again once the number waiting changes.
-    if (current.current && current.current.waiting !== next.waiting)
+    // The sidebar's count reads again as the page first reads how many wait, and once that
+    // changes.
+    if (current.current?.waiting !== next.waiting)
       dataCache.invalidate((key) => key === waitingUrl);
     current.current = next;
     setInbox(next);

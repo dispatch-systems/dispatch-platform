@@ -24,8 +24,6 @@ import { useInbox } from './useInbox.js';
 
 /** How often the times waited move on. */
 const TICK_MS = 30_000;
-/** How often the page reads again whether Slack was updated, while it asks for that. */
-const UPDATED_MS = 15_000;
 /** Wide enough to show the list and a conversation side by side, as communications.css says. */
 const SIDE_BY_SIDE = '(width > 760px)';
 
@@ -67,15 +65,14 @@ export function CommunicationsPage({ view }: { view: DspView }) {
   useEffect(() => {
     if (!open && first && matchMedia(SIDE_BY_SIDE).matches) select(first);
   }, [open, first, select]);
+  // Each update brings the workspaces as they are, so it goes once Slack is updated.
   const updating = manages ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
-  useEffect(() => {
-    if (!updating.length) return;
-    const timer = setInterval(refresh, UPDATED_MS);
-    return () => clearInterval(timer);
-  }, [updating.length, refresh]);
   const done = useAction(async (conversation: Conversation) =>
     show(await markDone(conversation.id)),
   );
+  // One holding no message yet is kept at the top of the list until it does: as New message
+  // opens it, or as it's read, as when picked again or opened from the address.
+  const unlisted = useCallback((conversation: Conversation) => setDraft(conversation), []);
   const pick = useCallback(
     async (contact: Contact) => {
       let id = contact.conversationId;
@@ -135,6 +132,8 @@ export function CommunicationsPage({ view }: { view: DspView }) {
                 key={open}
                 id={open}
                 listed={listed ?? (draft?.id === open ? draft : undefined)}
+                working={working}
+                unlisted={unlisted}
                 changed={changed}
                 typing={inbox.typing.writing}
                 timeZone={timeZone}

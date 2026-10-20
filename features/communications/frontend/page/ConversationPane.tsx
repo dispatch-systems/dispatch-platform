@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
-import type { Conversation, Message, Writing } from '../../api/index.js';
+import type { CommunicationsWorkspace, Conversation, Message, Writing } from '../../api/index.js';
 import { markDone } from '../../api/client.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -17,6 +17,8 @@ import type { Changed } from './useInbox.js';
 export function ConversationPane({
   id,
   listed,
+  working,
+  unlisted,
   changed,
   typing,
   timeZone,
@@ -26,8 +28,12 @@ export function ConversationPane({
   closed,
 }: {
   id: string;
-  /** The conversation as the list has it, until it's read. */
+  /** The conversation as the list has it, which the page's own writes and each update keep. */
   listed?: Conversation;
+  /** The workspaces Communications works in now, as each update brings them. */
+  working: readonly CommunicationsWorkspace[];
+  /** Keeps a conversation read that holds no message yet, which the list doesn't, on the page. */
+  unlisted: (conversation: Conversation) => void;
   changed: Changed;
   typing: readonly Writing[];
   timeZone: string;
@@ -42,7 +48,11 @@ export function ConversationPane({
   useEffect(() => {
     if (gone) closed();
   }, [gone, closed]);
-  const conversation = opened?.conversation ?? listed;
+  useEffect(() => {
+    if (opened?.conversation.lastAt === null) unlisted(opened.conversation);
+  }, [opened, unlisted]);
+  const conversation = listed ?? opened?.conversation;
+  const writable = working.some((workspace) => workspace.teamId === conversation?.teamId);
   const done = useAction(async () => {
     const after = await markDone(id);
     read.show(after);
@@ -111,7 +121,7 @@ export function ConversationPane({
       ) : (
         <div className="thread">{!error && <Loading />}</div>
       )}
-      {conversation && <Composer conversation={conversation} sent={sent} />}
+      {conversation && <Composer conversation={conversation} writable={writable} sent={sent} />}
     </section>
   );
 }

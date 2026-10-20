@@ -276,7 +276,9 @@ pub struct Writing {
 /// `GET /api/dsp/communications/updates`: what changed since `after`, and who is typing, once
 /// either changes or twenty seconds pass. `reset` asks for `GET /api/dsp/communications` afresh,
 /// as for changes no longer kept. A conversation changes with any of its messages, as one
-/// edited or a file kept, so a page with one open reads it again when it's among them.
+/// edited or a file kept, so a page with one open reads it again when it's among them. The
+/// workspaces come as they are now, so a page follows one connected, updated, switched off or
+/// disconnected while it waits.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -292,6 +294,7 @@ pub struct CommunicationsUpdates {
     /// Each conversation changed, as it is now.
     pub conversations: Vec<Conversation>,
     pub typing: Typing,
+    pub workspaces: Vec<CommunicationsWorkspace>,
 }
 
 /// `POST /api/dsp/communications/uploads`: a photo added for a message not sent yet.

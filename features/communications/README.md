@@ -56,7 +56,7 @@ unavailable.
   workspace where Communications is on hasn't approved all it uses (`needsUpdate`), Update
   Slack covers the page, not the sidebar, with no way to close it, each such workspace with
   Update and Copy link (its own install link, for whoever approves apps in that Slack), until
-  the page reads that none needs it, which it does every 15 seconds while it asks. Connecting or
+  an update brings the workspaces with none needing it, within twenty seconds. Connecting or
   updating from here comes back here from Slack, which finishes it. Everyone else sees the page
   as it is, empty without Slack.
 
@@ -139,7 +139,9 @@ written before an answer, leaves it answered.
 
 The page waits on `updates`, a long poll as the dashboard's other live pages use (a `Topic`),
 which answers once a change it hasn't seen is kept, or who is writing changes, or twenty seconds
-pass: each conversation changed, as it is now, and how many wait. A conversation changes with any
+pass: each conversation changed, as it is now, how many wait, and the workspaces as they are, so
+the page follows one connected, updated, switched off or disconnected, and writes only where
+Communications works. A conversation changes with any
 of its messages, as one edited or a file kept, so a page with it open reads it again. Who at the DSP is writing in
 which conversation is kept in memory alone, each for six seconds after their page last said so
 (`typing`), or until they send, and shown to everyone else with Communications.
@@ -163,7 +165,8 @@ Behind `communications.use`:
   Communications uses, `needsUpdate`), who is typing, each with their person and photo, and the
   latest change (`revision`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar.
-- `GET …/updates?after=<revision>&typing=<version>`: the long poll.
+- `GET …/updates?after=<revision>&typing=<version>`: the long poll, with the workspaces as they
+  are.
 - `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`: the fifty conversations found
   closest to a name, or the answered ones before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or

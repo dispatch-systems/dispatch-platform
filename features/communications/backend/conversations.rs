@@ -266,8 +266,8 @@ pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversatio
     let people = People::read(db, state, dsp)?;
     Ok(conversations(db, &people, dsp, vec![kept])?.remove(0))
 }
-/// What changed since the change `after`, for the member `me`, and when who is writing next
-/// changes on its own, if anyone is.
+/// What changed since the change `after`, for the member `me`, with the workspaces as they are
+/// now, and when who is writing next changes on its own, if anyone is.
 pub fn updates(
     db: &Store,
     state: &State,
@@ -296,6 +296,7 @@ pub fn updates(
             waiting,
             conversations,
             typing,
+            workspaces: workspaces(db, dsp)?,
         },
         next,
     ))
