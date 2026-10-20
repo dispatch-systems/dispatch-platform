@@ -35,12 +35,12 @@ use std::{
     },
 };
 
-/// The stand-in's integration: it needs to read files, hears of files shared, answers fixture
-/// mode's Slack for `listening.ping`, a method only it calls, and clears what it keeps of a
-/// workspace Slack forgets.
+/// The stand-in's integration: it needs to read files, hears of files shared and of messages
+/// written to the app directly, answers fixture mode's Slack for `listening.ping`, a method only
+/// it calls, and clears what it keeps of a workspace Slack forgets.
 pub const LISTENING: Integration = Integration {
     needs: &["files:read"],
-    hears: &["file_shared"],
+    hears: &["file_shared", "message.im"],
     heard: Some(hear),
     fixture: Some(answer),
     forget: Some(forget),

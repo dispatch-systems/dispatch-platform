@@ -2,8 +2,9 @@
 
 Dispatch's app in a DSP's Slack workspaces. A DSP adds it to as many workspaces as it uses, and
 each workspace belongs to that DSP alone: everything Slack sends names its workspace, and that
-alone decides the DSP it reaches. The app does nothing in Slack yet but show, on its Home tab,
-which DSP the workspace belongs to; features add what it does, on this foundation.
+alone decides the DSP it reaches. On its own, the app shows, on its Home tab, which DSP the
+workspace belongs to, and answers what people write to it directly that DSP Messaging is
+unavailable; features add what it does, on this foundation.
 
 ## Switch and permissions
 
@@ -48,7 +49,9 @@ which DSP the workspace belongs to; features add what it does, on this foundatio
   each starts off in every workspace. The app asks for what every integration needs beside its
   own, whether it's on or not, and Slack hands each event an integration hears of to it once
   Slack's own handling is done, while it's on in the workspace and its feature is on for the
-  DSP. Switched off, it hears of nothing, and is never told of what it missed. The activity log
+  DSP. Switched off, it hears of nothing, and is never told of what it missed. One that hears
+  of what people write to the app directly (`message.im`) takes it from Slack, which answers
+  it only while none does (below). The activity log
   records each switch, as `<integration> in <workspace>`. A workspace's go with it.
 - **Channels:** the workspace's public channels and the private ones someone invited Dispatch to
   in Slack, by name, those Dispatch joined apart from the rest; Slack shows the bot only the
@@ -200,11 +203,16 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   answers at once, as Slack waits three seconds, and does the work after; an event Slack sends
   again is handled once. The app's removal from a workspace, or its tokens' revocation there, is
   kept before Dispatch answers, and a failure is answered as one, so Slack sends it again. A
-  request may be up to 64 KiB, as any request to the server may. The app is told when its Home
-  tab is opened, which shows the DSP's name; when someone joins a workspace or changes their
-  profile, which its members keep; when it's removed from a workspace, which Dispatch
+  request may be up to 64 KiB, as any request to the server may. An event goes by the name the
+  app is told of it by: a message by its conversation's, `message.im` for one written to the
+  app directly. The app is told when its Home tab is opened, which shows the DSP's name; when
+  someone joins a workspace or changes their profile, which its members keep; when someone
+  writes to it directly, in its Messages tab; when it's removed from a workspace, which Dispatch
   then forgets, with its members; and when its tokens there are revoked, which breaks the workspace until it's
-  reconnected. The app has no buttons or forms yet, so interactions are only answered for now:
+  reconnected. A message written to it directly goes to each integration on there that hears
+  of it; while none does, Slack answers it "DSP Messaging is unavailable", but only one a
+  person wrote anew: never the app's own answer, another bot's post, an edit, a deletion or a
+  file shared, so an answer is never answered. The app has no buttons or forms yet, so interactions are only answered for now:
   a feature's buttons, forms and shortcuts are handled there, for their workspace's DSP, as
   events are.
 - **Calling Slack:** everything that acts in Slack holds a `Bot`, the app's bot in one DSP's
@@ -228,8 +236,12 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   `dispatch-backend slack-manifest` prints the app to paste into Slack. The app asks for
   `team:read`, to keep each workspace's name as Slack has it, and for the channels' settings
   `channels:read` and `groups:read`, to list them, `channels:join`, to join public ones, and
-  `channels:manage` and `groups:write`, to leave them; and for Driver Match `users:read` and
-  `users:read.email`, to read its members with their email addresses.
+  `channels:manage` and `groups:write`, to leave them; for Driver Match `users:read` and
+  `users:read.email`, to read its members with their email addresses; and for what people
+  write to it directly `im:history`, to read it, and `chat:write`, to answer it. It asks too,
+  ahead of an integration that answers from Dispatch, for `im:write`, to open a conversation
+  with someone, and `chat:write.customize`, to answer under the name and photo of whoever at
+  the DSP does, so each workspace approves them in the same Update.
 
 ## API, data and upkeep
 
@@ -279,7 +291,9 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   in `dispatch`, each downloading as bytes made up to its size, and Morgan's Write-ups canvas in
   `photos`, downloading as Slack's HTML of it with a photo in it, which a test edits with
   `fixture::edit_canvas`. It signs with
-  `fixture-signing-secret`, so tests send requests as Slack would. It answers each method
+  `fixture-signing-secret`, so tests send requests as Slack would. The bot posts
+  (`chat.postMessage`) in a direct conversation or a channel it's in, and what it posted is
+  kept for the server's run, which a test reads with `fixture::posted`. It answers each method
   Dispatch calls, and an integration's own answer a method only that integration calls; any
   other fails, so a call nothing answers shows in a test or a preview.
 - **Exposed:** `chat_accounts`, through its contract in `contract/` (`dispatch-slack-contract`),
@@ -304,7 +318,7 @@ The server reads its environment variables, declared in its `env`, a group it ne
 only some, the server refuses to start.
 
 `dispatch-backend slack-manifest` prints the server's app as Slack's manifest: its name, its
-Home tab, the permissions it asks for, the events it's told of, the addresses Slack reaches it
+Home and Messages tabs, the permissions it asks for, the events it's told of, the addresses Slack reaches it
 at, and its tokens rotating. The app's tests hold it to `app/tests/backend/snapshots/slack-app.json`,
 so a change to what it asks for or hears of shows in review, as a change to make in Slack too. To make the app, or change it, paste that into Slack:
 

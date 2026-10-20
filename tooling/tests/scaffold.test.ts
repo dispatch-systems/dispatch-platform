@@ -1521,7 +1521,7 @@ test('a preset stands for its options, and --tabs, --connection and --people own
 });
 
 test('new integration writes one in a folder of its own, listed where its owner lists them', async () => {
-  const own = (await planIntegration(root, ['post_reminders', '--hears', 'message'])).plan;
+  const own = (await planIntegration(root, ['post_reminders', '--hears', 'message.channels'])).plan;
   assert(own.files.has('features/slack/integrations/post_reminders/api.rs'));
   assert.match(changed(own, 'features/slack/integrations/mod.rs'), /&post_reminders::OWN/);
   assert.match(

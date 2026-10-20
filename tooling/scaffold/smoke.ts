@@ -59,7 +59,7 @@ const MADE: [string, ...string[]][] = [
   // A mandatory feature's, which no test can switch.
   ['tool', 'smoke_always_reader', '--reads', 'smoke_always'],
   // One of Slack's own integrations, and one of another feature's through Slack.
-  ['integration', 'smoke_alerts', '--needs', 'chat:write', '--hears', 'message'],
+  ['integration', 'smoke_alerts', '--needs', 'chat:write', '--hears', 'message.channels'],
   ['integration', 'smoke_notes', '--to', 'smoke_people'],
   ['slot', 'smoke_badges', '--description', 'Its badges on the DSPs page.'],
   // A second slot, after the first.

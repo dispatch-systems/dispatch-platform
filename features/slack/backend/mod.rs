@@ -11,7 +11,8 @@
 //!   Sync Canvases are, each keeping what's in the channels `channel_links` links to folders.
 //! - `members` and `people`: the members of its workspaces, and how Driver Match reads them;
 //!   `author`, who one is to the DSP.
-//! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`.
+//! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`, its
+//!   Home tab, and `messages`, what people write to the app directly.
 //! - `storage`, `maintenance` and `pages`: what's kept, the hourly check, and the install
 //!   link's own page; `work`, what the passes share: the DSPs Slack works for, and the work
 //!   an integration keeps until it's done.
@@ -30,6 +31,7 @@ pub(crate) mod integrations;
 pub(crate) mod link;
 pub(crate) mod maintenance;
 pub(crate) mod members;
+pub(crate) mod messages;
 pub(crate) mod pages;
 pub(crate) mod people;
 pub(crate) mod settings;

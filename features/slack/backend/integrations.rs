@@ -2,7 +2,9 @@
 //! its connection: the permissions and events it needs, which `app` asks for beside Slack's own,
 //! and what it does with what it hears. Someone who manages Slack switches each on or off for
 //! each of the DSP's workspaces, in the workspace's settings; one hears of what happens there
-//! while it's on and its feature is on for the DSP. A new one needs nothing here.
+//! while it's on and its feature is on for the DSP. One that hears of what people write to the
+//! app directly (`message.im`) takes it from Slack, which otherwise answers it itself. A new
+//! one needs nothing here.
 use super::{bot::Bot, connection, storage::SlackStore};
 use crate::api::types::SlackAccount;
 use dispatch_core::{
@@ -55,14 +57,14 @@ pub fn switch(db: &Store, c: &Context, team: &str, id: &str, on: bool) -> Result
 }
 
 /// Hands what Slack told the bot of, an event of the kind `kind`, to each integration that
-/// hears of it and is on in the bot's workspace, while its feature is on for the DSP. Each runs
-/// on its own, and logs its own failures.
-pub async fn heard(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
+/// hears of it and is on in the bot's workspace, while its feature is on for the DSP: whether
+/// any did. Each runs on its own, and logs its own failures.
+pub async fn heard(bot: &Bot, kind: &str, event: &Value) -> Result<bool> {
     let listening: Vec<_> = declared()
         .filter(|(_, integration)| integration.hears.contains(&kind))
         .collect();
     if listening.is_empty() {
-        return Ok(());
+        return Ok(false);
     }
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     let on = bot
@@ -80,6 +82,7 @@ pub async fn heard(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
             Ok(hearing)
         })
         .await?;
+    let any = !on.is_empty();
     for heard in on.into_iter().filter_map(|integration| integration.heard) {
         let told = Heard {
             dsp: bot.dsp.clone(),
@@ -89,7 +92,7 @@ pub async fn heard(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
         };
         tokio::spawn(heard(bot.state.clone(), told));
     }
-    Ok(())
+    Ok(any)
 }
 
 #[cfg(test)]

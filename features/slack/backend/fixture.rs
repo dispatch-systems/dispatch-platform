@@ -6,8 +6,10 @@
 //! demo's people, some by another name, with Slackbot, a bot, a guest and someone deactivated.
 //! Its channels hold a few files, one too large to keep, which download as bytes made up to
 //! their size, and a canvas, which downloads as Slack's HTML of it, holding a photo that
-//! downloads as a picture; a test edits a workspace's canvas with `edit_canvas`. Requests it
-//! sends are signed with a secret the tests share.
+//! downloads as a picture; a test edits a workspace's canvas with `edit_canvas`. The bot posts
+//! in direct conversations and the channels it's in, and what it posted is kept for the
+//! server's run, which a test reads with `posted`. Requests it sends are signed with a secret
+//! the tests share.
 use super::slack::{Bytestream, Installed, Tokens};
 use super::{app::scopes, storage::SlackStore};
 use axum::body::Bytes;
@@ -343,8 +345,9 @@ pub fn refresh(refresh: &str) -> Result<Tokens> {
 /// Slack's answer to a call with `args`: the workspace for `team.info`; its members, on one
 /// page, for `users.list`; the channels the bot sees, joins, leaves or is asked of for
 /// `conversations.*`; a file, or a channel's files, for `files.*`; `ok` to publishing a Home
-/// tab; and an integration's own answer to a method only it calls. Any other method is a
-/// mistake: answering it would hide a call no test or preview tried.
+/// tab; the message posted, for `chat.postMessage`; and an integration's own answer to a method
+/// only it calls. Any other method is a mistake: answering it would hide a call no test or
+/// preview tried.
 pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
     let team = workspace(token, "fixture-access:")?;
     let asked = args["channel"].as_str().unwrap_or("");
@@ -402,6 +405,16 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
             json!({"ok": true, "files": listed, "paging": {"pages": 1}})
         }
         "views.publish" => json!({"ok": true}),
+        "chat.postMessage" => {
+            // In a direct conversation, or a channel the bot is in.
+            if !asked.starts_with('D') && seen(team, asked)?["is_member"] != true {
+                return Err(Error::new("slack_refused", 502));
+            }
+            let text = args["text"].as_str().unwrap_or("");
+            let ts = post(team, asked, text);
+            json!({"ok": true, "channel": asked, "ts": ts, "message": {"type": "message",
+                "user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE", "text": text, "ts": ts}})
+        }
         _ => {
             // An integration's own answer, whichever feature's it is.
             for (_, integration) in super::integrations::declared() {
@@ -420,6 +433,28 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
             return Err(Error::new("slack_fixture_unanswered", 500));
         }
     })
+}
+
+/// What the bot posted, in every workspace: each message's workspace, conversation and text.
+static POSTED: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
+/// Keeps what the bot posted in the workspace's conversation `channel`: the message's `ts`, as
+/// Slack writes one, each unlike the last.
+fn post(team: &str, channel: &str, text: &str) -> String {
+    static POSTS: AtomicU64 = AtomicU64::new(0);
+    let turn = POSTS.fetch_add(1, Ordering::Relaxed) % 1_000_000;
+    let mut posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
+    posted.push((team.to_owned(), channel.to_owned(), text.to_owned()));
+    format!("{}.{turn:06}", now() / 1000)
+}
+/// What the bot posted in the workspace's conversation `channel`, in order.
+#[cfg(test)]
+pub fn posted(team: &str, channel: &str) -> Vec<String> {
+    let posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
+    posted
+        .iter()
+        .filter(|(at, sent, _)| at == team && sent == channel)
+        .map(|(_, _, text)| text.clone())
+        .collect()
 }
 
 /// Whether the bot is in each channel it joined or left, by workspace and channel.

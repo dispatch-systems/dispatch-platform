@@ -34,7 +34,8 @@ export const usage = `Usage: dispatchdev new integration <name> [options]
   --label <label>     its name as people read it (default: from <name>)
   --icon <name>       its icon, from lucide-react (default: Blocks)
   --needs <scopes>    the Slack permissions it needs, as files:read,chat:write
-  --hears <events>    the Slack events it's told of, as file_shared, each handled in heard
+  --hears <events>    the Slack events it's told of, as file_shared or message.im, each
+                      handled in heard
   --dry-run           print what it would write and change nothing
   --json              print what it made, or would make, as JSON
   --out <dir>         with --dry-run, write the files under <dir> instead

@@ -8,11 +8,12 @@
 //!
 //! Each kind of event and interaction has its line in a routing table below, `on_event` or
 //! `on_interaction`, which hands it to the module that handles it, with the bot in its
-//! workspace.
+//! workspace. An event's kind is the name the app is told of it by, in `app::EVENTS` or an
+//! integration's `hears`.
 use super::{
     app::{EVENTS_PATH, INTERACTIONS_PATH},
     bot::Bot,
-    connection, home, integrations, members,
+    connection, home, integrations, members, messages,
     slack::Slack,
     storage::SlackStore,
 };
@@ -36,16 +37,35 @@ use std::{
     sync::{Arc, LazyLock, Mutex, MutexGuard},
 };
 
-/// What each event the app is told of does, by its type, for a workspace Dispatch acts in: what
-/// Slack itself does, and then what the integrations on there that hear of it do. An event added
-/// to `app::EVENTS` is handled here.
-async fn on_event(bot: &Bot, kind: &str, event: &Value) -> Result<()> {
+/// What each event the app is told of does, by its kind, for a workspace Dispatch acts in: what
+/// Slack itself does, then what the integrations on there that hear of it do, and then what
+/// Slack does with one none of them heard of. An event added to `app::EVENTS` is handled here.
+async fn on_event(bot: &Bot, event: &Value) -> Result<()> {
+    let kind = kind(event);
     match kind {
         "app_home_opened" => home::opened(bot, event).await?,
         "team_join" | "user_change" => members::told(bot, event).await?,
         _ => {}
     }
-    integrations::heard(bot, kind, event).await
+    if integrations::heard(bot, kind, event).await? {
+        return Ok(());
+    }
+    match kind {
+        "message.im" => messages::unheard(bot, event).await,
+        _ => Ok(()),
+    }
+}
+/// The kind of `event`, as the app is told of it: its type, but for a message, which Slack
+/// names by the conversation it's in, as `message.im` for one written to the app directly.
+fn kind(event: &Value) -> &str {
+    let kind = event["type"].as_str().unwrap_or("");
+    match (kind, event["channel_type"].as_str()) {
+        ("message", Some("channel")) => "message.channels",
+        ("message", Some("group")) => "message.groups",
+        ("message", Some("im")) => "message.im",
+        ("message", Some("mpim")) => "message.mpim",
+        _ => kind,
+    }
 }
 /// What each interaction does, by its type and the button, form or shortcut it names, for a
 /// workspace Dispatch acts in, with all Slack sent of it in `payload`. The app has none yet:
@@ -92,9 +112,8 @@ pub async fn events(state: Arc<State>, request: Request) -> Response {
                 };
             }
             after(state, "slack_event_failed", move |state| async move {
-                let kind = event["type"].as_str().unwrap_or("");
                 match Bot::serving(&state, &team).await? {
-                    Some(bot) => on_event(&bot, kind, &event).await,
+                    Some(bot) => on_event(&bot, &event).await,
                     None => Ok(()),
                 }
             });
