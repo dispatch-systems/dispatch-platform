@@ -121,8 +121,8 @@ pub trait FileStore {
     ) -> Result<Vec<File>>;
     /// Lets go of the photos `ids` names, claimed for a message Slack didn't take.
     fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()>;
-    /// Lets go of the photos added before `before` for a message never sent: the SHA-256 of
-    /// each whose bytes nothing keeps now.
+    /// Lets go of the photos added before `before` for a message never sent, but one going with
+    /// a message now: the SHA-256 of each whose bytes nothing keeps now.
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
     /// Whether any file is kept by the SHA-256 `sha256`.
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool>;
@@ -199,14 +199,16 @@ impl FileStore for Store {
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
+            // Not one going to Slack with a message now.
+            const UNSENT: &str =
+                "message_id IS NULL AND added_at<?1 AND coalesce(claimed_until,0)<?2";
             let unsent: Vec<(String,)> = db.query_as(
-                "SELECT DISTINCT sha256 FROM communications_files \
-                 WHERE message_id IS NULL AND added_at<?",
-                [before],
+                &format!("SELECT DISTINCT sha256 FROM communications_files WHERE {UNSENT}"),
+                params![before, now()],
             )?;
             db.exec(
-                "DELETE FROM communications_files WHERE message_id IS NULL AND added_at<?",
-                [before],
+                &format!("DELETE FROM communications_files WHERE {UNSENT}"),
+                params![before, now()],
             )?;
             let mut loose = Vec::new();
             for (sha256,) in unsent {
@@ -470,7 +472,7 @@ impl Queue for Downloads {
 }
 
 /// Downloads one of a member's files from Slack, while Communications is on in its workspace:
-/// one of a workspace the DSP no longer has is given up.
+/// one of a workspace the DSP no longer has fails, as any failure does.
 async fn download(state: &Arc<State>, dsp: &str, item: &Due) -> Result<Outcome> {
     let (at, team) = (dsp.to_owned(), item.team.clone());
     let (had, on) = state
@@ -481,8 +483,9 @@ async fn download(state: &Arc<State>, dsp: &str, item: &Due) -> Result<Outcome> 
             Ok((had, kit::workspaces_on(db, &at, ID)?.contains(&team)))
         })
         .await?;
+    // Tried again later each time, in case it's connected again, then given up.
     if !had {
-        return Ok(left(FileStatus::Unavailable, "slack_workspace_gone"));
+        return Err(Error::new("slack_workspace_gone", 404));
     }
     if !on {
         return Ok(wait("communications_off"));

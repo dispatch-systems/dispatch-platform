@@ -134,6 +134,12 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
         .await
         .unwrap_err();
     assert_eq!(refused.code, "communications_photo_kind");
+    // Named twice, it isn't taken as two.
+    let twice = [photo.id.clone(), photo.id.clone()];
+    let named = send(&state, &owner, USE, &id, "", &twice)
+        .await
+        .unwrap_err();
+    assert_eq!(named.code, "invalid_input");
     // Going with one message, it can't go with another at once.
     let (at, by, ids) = (
         dsp.clone(),

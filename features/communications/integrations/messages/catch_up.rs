@@ -129,8 +129,12 @@ pub async fn catch_up(state: &Arc<State>, dsp: &str) -> Result<()> {
                 Some((to, before)) => (to, Some(before)),
                 None => (now(), None),
             };
+            // What changed in the week before is read once, as a pass starts down, not again as
+            // the next goes on.
             let read = async {
-                earlier(state, &bot, &channel, from).await?;
+                if before.is_none() {
+                    earlier(state, &bot, &channel, from).await?;
+                }
                 since(state, &bot, &channel, from, before.as_deref()).await
             };
             let left = match read.await {

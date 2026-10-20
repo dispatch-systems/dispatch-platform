@@ -86,12 +86,11 @@ pub async fn keep(
         user.to_owned(),
         ts.to_owned(),
     );
-    let (since, kept, names) = state
+    let (since, kept) = state
         .read(move |db| {
             Ok((
                 kept_since(db, &at, &of)?,
                 db.communications_edited(&at, &of, &by, &sent_ts)?,
-                names(db, &at, &of)?,
             ))
         })
         .await?;
@@ -100,6 +99,8 @@ pub async fn keep(
     if since.is_none_or(|since| sent < since) || kept.is_some_and(|kept| edited_at <= kept) {
         return Ok(false);
     }
+    let (at, of) = (dsp.to_owned(), team.to_owned());
+    let names = state.read(move |db| names(db, &at, &of)).await?;
     let name = match names.get(user) {
         Some(name) => name.clone(),
         None => asked(state, dsp, team, user).await,

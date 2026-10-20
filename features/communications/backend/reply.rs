@@ -104,10 +104,15 @@ pub async fn send(
     photos: &[String],
 ) -> Result<Message> {
     let written = written.trim();
+    let distinct = photos
+        .iter()
+        .enumerate()
+        .all(|(n, photo)| !photos[..n].contains(photo));
     ensure(
         (!written.is_empty() || !photos.is_empty())
             && written.chars().count() <= TEXT_MOST
-            && photos.len() <= PHOTOS_MOST,
+            && photos.len() <= PHOTOS_MOST
+            && distinct,
         "invalid_input",
         400,
     )?;

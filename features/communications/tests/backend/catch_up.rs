@@ -121,7 +121,7 @@ async fn a_direct_message_with_more_than_a_pass_reads_is_caught_up_over_passes()
     // A pass reads the latest it can, and leaves where it stopped for the next.
     catch_up(&state, &dsp).await.unwrap();
     let (count, first) = kept().await;
-    assert!(count < 2050, "{count}");
+    assert_eq!(count, 2000);
     assert!(first.catching_up.is_some());
     // The next goes on from there, down to the start, and is caught up.
     catch_up(&state, &dsp).await.unwrap();

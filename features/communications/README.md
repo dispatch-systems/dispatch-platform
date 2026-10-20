@@ -39,8 +39,8 @@ unavailable.
   (`data/communications/files/`, by their bytes' SHA-256), so they outlive Slack. Each is tried
   at once, then, when it fails, after a minute, five, fifteen, an hour, three, six and twelve,
   and given up after that; it waits, uncounted, while the workspace's admin hasn't approved
-  reading files or the workspace needs reconnecting, and is given up once the DSP no longer has
-  the workspace. Only files Slack hosts are downloaded, up to 100 MB; a larger one, or a link to
+  reading files or the workspace needs reconnecting. One of a workspace the DSP no longer has
+  is tried again later each time, in case it's connected again, and then given up. Only files Slack hosts are downloaded, up to 100 MB; a larger one, or a link to
   elsewhere, keeps its name, type and size alone.
 - **Never before it was on:** a message is kept only if it was sent once Slack, Communications
   and its integration in that workspace were all on, the latest of the three
