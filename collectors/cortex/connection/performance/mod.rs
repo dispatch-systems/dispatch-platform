@@ -2,4 +2,5 @@
 mod fetch;
 mod types;
 
+pub(crate) use fetch::{Api, Found, mismatched};
 pub use types::{Dataset, DatasetCapture, MAX_ROWS, Read, TimeFrame};

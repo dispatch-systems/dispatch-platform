@@ -41,6 +41,8 @@ test(
     };
     // Each sign-in's session: an earlier one's cookies no longer sign anything in.
     let generation = 1;
+    // The next weekly quality read names another station, once.
+    let foreignOnce = false;
     // Weeks 38 and 36 are posted, 37 is not, and 35's returns are refused.
     const rows = (dataSetId: string, week: string): object[] => {
       if (week === '2026-W37') return [];
@@ -246,7 +248,11 @@ test(
           JSON.stringify({
             tableData: {
               [dataSetId]: {
-                rows: rows(dataSetId, week).map((r) => JSON.stringify(r)),
+                rows: (foreignOnce && dataSetId === 'dsp_station_weekly_quality'
+                  ? ((foreignOnce = false),
+                    rows(dataSetId, week).map((r) => ({ ...r, station_code: 'TST9' })))
+                  : rows(dataSetId, week)
+                ).map((r) => JSON.stringify(r)),
               },
             },
           }),
@@ -353,10 +359,10 @@ test(
       { tracking_id: 'TBA2', impact: 0, reason: 'CUSTOMER UNAVAILABLE' },
     ]);
 
-    // The next jobs re-resolve provider identity, then read at the stored address without
-    // loading the overview: a week not posted yet is noted, a posted one published. Each
-    // job's new browser starts from the session its profile kept: one check of the
-    // company list, then no landing page and no sign-in.
+    // The next jobs read at the stored address, for the station's scope discovery kept,
+    // without discovery or the overview: a week not posted yet is noted, a posted one
+    // published. Each job's new browser starts from the session its profile kept: one
+    // check of the company list, then no landing page and no sign-in.
     requests.length = 0;
     const session = { ...seen };
     await collect('week-37', '2026-W37');
@@ -365,6 +371,7 @@ test(
     assert.equal(seen.companies, session.companies + 2);
     assert.equal(seen.landing, session.landing);
     assert.equal(seen.signIns, session.signIns);
+    assert.equal(seen.discovery, session.discovery);
     assert.equal(seen.overview, overviews);
     assert.equal(requests.length, 14 * 2);
     assert.ok(requests.every((u) => u.pathname === '/performance/api/v1/getData'));
@@ -388,6 +395,25 @@ test(
     await collect('week-38-again', '2026-W38');
     assert.ok(seen.overview > overviews);
     assert.match(stored().urls.at(-1)!.url, /\/performance\/api\/v2\/getData\?/);
+
+    // A read naming another station than the kept scope's: the station is found again, and
+    // the week read again for what discovery finds.
+    foreignOnce = true;
+    const kept = seen.discovery;
+    const foreign = await collect('week-36-again', '2026-W36');
+    assert.equal(foreignOnce, false);
+    assert.ok(seen.discovery > kept);
+    assert.equal((await job(foreign)).metrics.length, 1, 'found again within the attempt');
+
+    // New credentials forget what discovery kept: the next job finds the station again.
+    const resaved = await owner.post('/api/dsp/connections/cortex', {
+      username: 'fixture@example.test',
+      password: 'fixture-password',
+    });
+    assert.equal(resaved.value.status, 'ready', resaved.body);
+    const forgotten = seen.discovery;
+    await collect('week-37-again', '2026-W37');
+    assert.ok(seen.discovery > forgotten);
 
     // A dataset the API refuses has no other source: the attempt fails for a retry.
     const refused = await owner.post('/api/dsp/weekly-scorecard/collect', {
@@ -440,10 +466,10 @@ test(
     assert.equal(seen.signIns, expired.signIns + 1);
     assert.equal(seen.landing, expired.landing + 1);
     assert.ok(
-      seen.dailyPeak > 1 && seen.dailyPeak <= 6,
+      seen.dailyPeak > 6 && seen.dailyPeak <= 22,
       `Daily request concurrency: ${seen.dailyPeak}`,
     );
-    assert.equal(stored().publications.length, 3);
+    assert.equal(stored().publications.length, 4);
     const dailyDays = (await owner.read('/api/dsp/daily-performance')).days;
     assert.deepEqual(
       dailyDays.map((day: any) => day.date),

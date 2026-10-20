@@ -1,7 +1,20 @@
 //! One date's datasets over the shared authenticated performance transport.
 use super::{Capture, Collection, DATASETS, Request};
-use crate::{connection::Driver, discovery::Scope, performance::Read};
+use crate::{
+    connection::{
+        Driver,
+        performance::{Found, mismatched},
+    },
+    discovery::Scope,
+    performance::Read,
+};
 use dispatch_core::{Result, collection::browser::Run, db::now};
+
+/// Reads at once: every dataset of the day together. Cortex answered all 22 at once
+/// without throttling, in about a fifth of the time six at once took. Each reply is held
+/// until all have answered; the largest seen was 2 MB.
+const LANES: usize = 22;
+
 impl Driver {
     pub(crate) async fn collect_daily_performance(
         &mut self,
@@ -9,6 +22,28 @@ impl Driver {
         run: &Run<'_>,
     ) -> Result<(Capture, Scope)> {
         request.validate()?;
+        // A kept scope whose reads named another station, company or DSP is found again.
+        let (scope, found) = self.scope_for(&request.scope_request(), false, run).await?;
+        match self.daily_capture(request, &scope, found, run).await {
+            Err(error) if mismatched(&error) => {
+                let _ = self.known.forget(&request.station);
+                if found == Found::Discovered {
+                    return Err(error);
+                }
+                run.metrics.detail("known_scope_mismatched");
+                let (scope, found) = self.scope_for(&request.scope_request(), true, run).await?;
+                self.daily_capture(request, &scope, found, run).await
+            }
+            captured => captured,
+        }
+    }
+    async fn daily_capture(
+        &mut self,
+        request: &Request,
+        scope: &Scope,
+        found: Found,
+        run: &Run<'_>,
+    ) -> Result<(Capture, Scope)> {
         let started_at = now();
         let reads: Vec<Read> = DATASETS
             .iter()
@@ -18,13 +53,8 @@ impl Driver {
                 to: request.date.clone(),
             })
             .collect();
-        let (company_id, dsp_code, datasets, scope) = self
-            .read_performance(
-                &request.scope_request(),
-                &request.dsp_abbreviation,
-                &reads,
-                run,
-            )
+        let (company_id, dsp_code, datasets) = self
+            .read_performance(scope, found, &request.dsp_abbreviation, &reads, LANES, run)
             .await?;
         let capture = Capture {
             version: 1,
@@ -37,7 +67,9 @@ impl Driver {
             finished_at: now().max(started_at),
             datasets,
         };
-        capture.validate_scope(request, &scope)?;
-        Ok((capture, scope))
+        capture.validate_scope(request, scope)?;
+        // Checked, the capture needs the browser no more.
+        self.browser.close().await;
+        Ok((capture, scope.clone()))
     }
 }

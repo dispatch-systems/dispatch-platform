@@ -1,7 +1,13 @@
 use super::capture as dvic;
 use super::capture::{Capture, Collection, KnownReport, Report, Request};
 use crate as cortex;
-use crate::{connection::Driver, discovery::Scope};
+use crate::{
+    connection::{
+        Driver,
+        performance::{Api, Found, mismatched},
+    },
+    discovery::Scope,
+};
 use chrono::NaiveDate;
 use dispatch_core::{
     Error, Result,
@@ -16,11 +22,19 @@ use dispatch_core::{
     ensure,
     manifest::registry,
 };
+use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
 pub const REPORT_HOST: &str = "flex-peer-performance-reports-prod-usamazon.s3.amazonaws.com";
 
+/// What a listing found: where the API answered, the reports DVIC already holds, and
+/// those listed.
+struct Listing {
+    api: Api,
+    known: HashMap<String, KnownReport>,
+    listed: Vec<Listed>,
+}
 struct Listed {
     name: String,
     path: String,
@@ -47,7 +61,7 @@ fn refusal(error: Refusal) -> Error {
         Refusal::Unavailable => Error::new("provider_unavailable", 502),
         Refusal::Unreadable("http_signed_out") => Error::new("verification_required", 409),
         Refusal::Unreadable("http_download_expired") => Error::new("dvic_source_changed", 502),
-        Refusal::Unreadable(_) => Error::new("dvic_source_unreadable", 502),
+        Refusal::Unreadable(_) => Error::new(cortex::codes::DVIC_SOURCE_UNREADABLE.as_str(), 502),
     }
 }
 fn listing(
@@ -159,6 +173,98 @@ fn listing(
     Ok(found)
 }
 
+/// Reports downloaded at once: two weeks' fourteen downloaded fourteen at a time in about
+/// a third of the time four at a time took.
+const DOWNLOADS: usize = 14;
+
+/// One week's listing, as the overview page asks for it.
+async fn list_week(
+    http: &Http,
+    api: &Api,
+    station: &str,
+    week: &str,
+    origin: &str,
+    metrics: &Recorder,
+) -> Result<Vec<Listed>> {
+    let mut url = url::Url::parse(&format!("{}/getData", api.base))
+        .map_err(|_| Error::new("dvic_listing_invalid", 502))?;
+    url.query_pairs_mut()
+        .append_pair("dataSetId", dvic::DATASET)
+        .append_pair("dsp", &api.dsp)
+        .append_pair("station", station)
+        .append_pair("timeFrame", "Weekly")
+        .append_pair("from", week)
+        .append_pair("to", week);
+    let data = http
+        .json(
+            url.as_str(),
+            &format!("{origin}/performance"),
+            2 * 1024 * 1024,
+        )
+        .await
+        .map_err(refusal)?;
+    listing(data, week, &api.dsp, station, origin, metrics)
+}
+/// One listed report, downloaded only when DVIC lacks it or it changed, and read.
+async fn report(
+    downloads: &Http,
+    file: &Listed,
+    prior: Option<&KnownReport>,
+    dsp: &str,
+    station: &str,
+) -> Result<Report> {
+    let download = downloads
+        .download(
+            &file.url,
+            prior.and_then(|r| r.etag.as_deref()),
+            dvic::MAX_FILE_BYTES,
+        )
+        .await
+        .map_err(refusal)?;
+    let (sha256, body, etag, modified_at) = if let Some(bytes) = download.body {
+        let sha256 = dvic::hash(&bytes);
+        let (dsp, station) = (dsp.to_owned(), station.to_owned());
+        let records =
+            tokio::task::spawn_blocking(move || dvic::xlsx::parse(&bytes, &dsp, &station))
+                .await
+                .map_err(|_| Error::new("dvic_workbook_invalid", 502))??;
+        (
+            sha256,
+            Some(records),
+            download.etag,
+            download.modified_at.unwrap_or(file.modified_at),
+        )
+    } else {
+        let prior = prior
+            .filter(|p| p.etag.is_some())
+            .ok_or_else(|| Error::new("dvic_cache_changed", 409))?;
+        ensure(
+            download
+                .etag
+                .as_ref()
+                .is_none_or(|e| Some(e) == prior.etag.as_ref()),
+            "dvic_source_changed",
+            502,
+        )?;
+        (
+            prior.sha256.clone(),
+            None,
+            prior.etag.clone(),
+            prior.modified_at,
+        )
+    };
+    Ok(Report {
+        name: file.name.clone(),
+        source_key: file.path.clone(),
+        week: file.week.clone(),
+        report_date: file.date.clone(),
+        modified_at,
+        etag,
+        sha256,
+        rows: body,
+    })
+}
+
 impl Driver {
     pub(crate) async fn collect_dvic(
         &mut self,
@@ -166,16 +272,64 @@ impl Driver {
         run: &Run<'_>,
     ) -> Result<(Capture, Scope)> {
         request.validate()?;
-        let started_at = now();
         run.progress(5, "Finding DVIC reports".into()).await?;
-        let scope = self
-            .resolve_scope(&request.scope_request(), run.metrics)
-            .await?;
-        let api = self
-            .performance_api(&scope, &request.dsp_abbreviation, run.metrics)
-            .await?;
-        let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
-        let downloads = reports(&self.origin)?;
+        let started_at = now();
+        // A kept scope whose listing named another station, company or DSP is found again,
+        // while the browser is still open for it. A report is checked after the browser
+        // has closed, against what its listing already bound it to: finding the station
+        // again would not change it.
+        let (scope, found) = self.scope_for(&request.scope_request(), false, run).await?;
+        let (scope, listing) = match self.dvic_list(request, &scope, run).await {
+            Err(error) if mismatched(&error) => {
+                let _ = self.known.forget(&request.station);
+                if found == Found::Discovered {
+                    return Err(error);
+                }
+                run.metrics.detail("known_scope_mismatched");
+                let (scope, _) = self.scope_for(&request.scope_request(), true, run).await?;
+                let listing = self.dvic_list(request, &scope, run).await?;
+                (scope, listing)
+            }
+            listing => (scope, listing?),
+        };
+        self.dvic_read(request, scope, listing, started_at, run)
+            .await
+    }
+    /// Every week's listing, read together, in the weeks' order.
+    async fn dvic_listing(
+        &self,
+        http: &Http,
+        api: &Api,
+        request: &Request,
+        run: &Run<'_>,
+    ) -> Result<Vec<Listed>> {
+        let weeks: Vec<_> = request
+            .weeks
+            .iter()
+            .map(|week| list_week(http, api, &request.station, week, &self.origin, run.metrics))
+            .collect();
+        let lists: Vec<_> = stream::iter(weeks).buffered(DOWNLOADS).collect().await;
+        let mut listed = Vec::new();
+        for list in lists {
+            listed.extend(list?);
+        }
+        Ok(listed)
+    }
+    /// Where the reports are, which DVIC already holds, and every week's listing.
+    async fn dvic_list(
+        &mut self,
+        request: &Request,
+        scope: &Scope,
+        run: &Run<'_>,
+    ) -> Result<Listing> {
+        let (mut api, mut kept) = match self.known_api(scope, &request.dsp_abbreviation) {
+            Some(api) => (api, true),
+            None => (
+                self.performance_api(scope, &request.dsp_abbreviation, run.metrics)
+                    .await?,
+                false,
+            ),
+        };
         let job = run.job.to_owned();
         let station = request.station.clone();
         let company = api.company_id.clone();
@@ -191,114 +345,83 @@ impl Driver {
             })
             .await?;
         let known: HashMap<String, KnownReport> = serde_json::from_value(known)?;
-        let mut listed = Vec::new();
-        for week in &request.weeks {
-            run.progress(10, format!("Checking DVIC reports for {week}"))
-                .await?;
-            let mut url = url::Url::parse(&format!("{}/getData", api.base))
-                .map_err(|_| Error::new("dvic_listing_invalid", 502))?;
-            url.query_pairs_mut()
-                .append_pair("dataSetId", dvic::DATASET)
-                .append_pair("dsp", &api.dsp)
-                .append_pair("station", &request.station)
-                .append_pair("timeFrame", "Weekly")
-                .append_pair("from", week)
-                .append_pair("to", week);
-            let data = http
-                .json(
-                    url.as_str(),
-                    &format!("{}/performance", self.origin),
-                    2 * 1024 * 1024,
-                )
-                .await
-                .map_err(refusal)?;
-            listed.extend(listing(
-                data,
-                week,
-                &api.dsp,
-                &request.station,
-                &self.origin,
-                run.metrics,
-            )?);
-        }
+        run.progress(10, "Checking DVIC reports".into()).await?;
+        let listed = loop {
+            // The browser's cookies as they are now: the overview may have renewed them.
+            let http = Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?;
+            match self.dvic_listing(&http, &api, request, run).await {
+                Ok(listed) => break listed,
+                // Nothing answers where the API last answered, or it answers as to no one
+                // signed in: the overview names it again, or shows the sign-out itself.
+                Err(error)
+                    if kept
+                        && error.is_any(&[
+                            cortex::codes::DVIC_SOURCE_UNREADABLE,
+                            dispatch_core::Code::VerificationRequired,
+                        ]) =>
+                {
+                    api = self
+                        .performance_api(scope, &request.dsp_abbreviation, run.metrics)
+                        .await?;
+                    kept = false;
+                }
+                Err(error) => return Err(error),
+            }
+        };
+        self.keep_api(scope, &api, run);
+        Ok(Listing { api, known, listed })
+    }
+    /// Every listed report, then the capture of them all.
+    async fn dvic_read(
+        &mut self,
+        request: &Request,
+        scope: Scope,
+        listing: Listing,
+        started_at: i64,
+        run: &Run<'_>,
+    ) -> Result<(Capture, Scope)> {
+        let Listing { api, known, listed } = listing;
+        // Nothing after the listing needs the browser: reports download without its session.
+        self.browser.close().await;
+        let downloads = reports(&self.origin)?;
         ensure(
             listed.len() <= dvic::MAX_REPORTS,
             "dvic_source_too_large",
             502,
         )?;
-        let mut reports = Vec::new();
         let total = listed.len();
-        let mut rows = 0;
-        // Four downloads per batch; publish only after every report has validated.
-        for batch in listed.chunks(4) {
-            run.progress(
-                15 + (75 * reports.len() / total.max(1)) as i64,
-                format!("Reading DVIC reports ({}/{total})", reports.len()),
-            )
+        run.progress(15, format!("Reading DVIC reports (0/{total})"))
             .await?;
-            let reads = futures_util::future::join_all(batch.iter().map(|file| async {
-                let prior = known.get(&file.path);
-                let download = downloads
-                    .download(
-                        &file.url,
-                        prior.and_then(|r| r.etag.as_deref()),
-                        dvic::MAX_FILE_BYTES,
-                    )
-                    .await
-                    .map_err(refusal)?;
-                let (sha256, body, etag, modified_at) = if let Some(bytes) = download.body {
-                    let sha256 = dvic::hash(&bytes);
-                    let dsp = api.dsp.clone();
-                    let station = request.station.clone();
-                    let records = tokio::task::spawn_blocking(move || {
-                        dvic::xlsx::parse(&bytes, &dsp, &station)
-                    })
-                    .await
-                    .map_err(|_| Error::new("dvic_workbook_invalid", 502))??;
-                    (
-                        sha256,
-                        Some(records),
-                        download.etag,
-                        download.modified_at.unwrap_or(file.modified_at),
-                    )
-                } else {
-                    let prior = prior
-                        .filter(|p| p.etag.is_some())
-                        .ok_or_else(|| Error::new("dvic_cache_changed", 409))?;
-                    ensure(
-                        download
-                            .etag
-                            .as_ref()
-                            .is_none_or(|e| Some(e) == prior.etag.as_ref()),
-                        "dvic_source_changed",
-                        502,
-                    )?;
-                    (
-                        prior.sha256.clone(),
-                        None,
-                        prior.etag.clone(),
-                        prior.modified_at,
-                    )
-                };
-                Ok::<_, Error>(Report {
-                    name: file.name.clone(),
-                    source_key: file.path.clone(),
-                    week: file.week.clone(),
-                    report_date: file.date.clone(),
-                    modified_at,
-                    etag,
-                    sha256,
-                    rows: body,
-                })
-            }))
-            .await;
-            for report in reads {
-                let report = report?;
-                rows += report.rows.as_ref().map_or(0, Vec::len);
-                ensure(rows <= dvic::MAX_CAPTURE_ROWS, "dvic_source_too_large", 502)?;
-                reports.push(report);
+        let reads: Vec<_> = listed
+            .iter()
+            .map(|file| {
+                report(
+                    &downloads,
+                    file,
+                    known.get(&file.path),
+                    &api.dsp,
+                    &request.station,
+                )
+            })
+            .collect();
+        let mut reads = stream::iter(reads).buffered(DOWNLOADS);
+        // Publish only after every report has validated.
+        let mut reports = Vec::new();
+        let mut rows = 0;
+        while let Some(report) = reads.next().await {
+            let report = report?;
+            rows += report.rows.as_ref().map_or(0, Vec::len);
+            ensure(rows <= dvic::MAX_CAPTURE_ROWS, "dvic_source_too_large", 502)?;
+            reports.push(report);
+            if reports.len() % DOWNLOADS == 0 && reports.len() < total {
+                run.progress(
+                    15 + (75 * reports.len() / total) as i64,
+                    format!("Reading DVIC reports ({}/{total})", reports.len()),
+                )
+                .await?;
             }
         }
+        drop(reads);
         run.progress(95, "Validating DVIC inspections".into())
             .await?;
         let capture = Capture {
