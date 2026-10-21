@@ -6,6 +6,7 @@
 use crate::backend::{
     contacts, conversations,
     files::{self, FileStatus, FileStore},
+    groups::{self, choices, send as group_send},
     initials, live, profile, reply,
     storage::CommunicationsStore,
 };
@@ -63,6 +64,20 @@ pub fn routes() -> Vec<Route> {
             typing,
         ),
         read("/api/dsp/communications/contacts", USE, listed),
+        read("/api/dsp/communications/groups/choices", USE, group_choices),
+        async_post("/api/dsp/communications/groups", USE, create_group),
+        read("/api/dsp/communications/groups/{id}", USE, group),
+        read(
+            "/api/dsp/communications/groups/{id}/people",
+            USE,
+            group_people,
+        ),
+        async_post(
+            "/api/dsp/communications/groups/{id}/messages",
+            USE,
+            message_group,
+        ),
+        write("/api/dsp/communications/groups/{id}/done", USE, group_done),
         upload(
             "/api/dsp/communications/uploads",
             USE,
@@ -218,6 +233,37 @@ fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&conversations::one(db, c.state, c.dsp_id(), &conversation)?)
 }
 
+/// Whom a group message can go to, and the groups to choose from, today being the DSP's own day.
+fn group_choices(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    Reply::of(&choices::choices(db, c.state, c.dsp_id(), &c.dsp.timezone)?)
+}
+/// A group and its latest messages and answers, or those before `before`, `<time>:<id>`.
+fn group(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &["before"])?;
+    let group = id(input.param("id"), "grp")?;
+    let before = before(&input.query)?;
+    Reply::of(&groups::opened(
+        db,
+        c.state,
+        c.dsp_id(),
+        &group,
+        before.as_ref().map(|(at, id)| (*at, id.as_str())),
+    )?)
+}
+/// Who a group went to, and where it stands with each.
+fn group_people(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    let group = id(input.param("id"), "grp")?;
+    Reply::of(&groups::people(db, c.state, c.dsp_id(), &group)?)
+}
+/// Marks done every conversation listed under a group that waits.
+fn group_done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    let group = id(input.param("id"), "grp")?;
+    Reply::of(&groups::done(db, c.state, c.dsp_id(), &group, c.actor())?)
+}
+
 /// Opens a direct message with a member of one of the DSP's workspaces: `teamId` and `userId`.
 async fn open(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
@@ -234,17 +280,61 @@ async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     v::fields(&input.body, &["text", "photos"])?;
     let conversation = id(input.param("id"), "cv")?;
     let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
-    let photos = match input.body.get("photos") {
-        None => Vec::new(),
+    let photos = photos(&input.body)?;
+    let message = reply::send(&state, &c, access, &conversation, text, &photos).await?;
+    Reply::of_status(&message, 201)
+}
+/// The `photos` added for a message: their IDs.
+fn photos(body: &Value) -> Result<Vec<String>> {
+    match body.get("photos") {
+        None => Ok(Vec::new()),
         Some(photos) => photos
             .as_array()
             .ok_or_else(|| Error::new("invalid_input", 400))?
             .iter()
             .map(|photo| id(photo.as_str().unwrap_or_default(), "file"))
-            .collect::<Result<_>>()?,
-    };
-    let message = reply::send(&state, &c, access, &conversation, text, &photos).await?;
-    Reply::of_status(&message, 201)
+            .collect(),
+    }
+}
+/// Messages a group: its `name`, its `people`, each `teamId` and `userId`, and the `text` and the
+/// `photos` added for it.
+async fn create_group(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["name", "people", "text", "photos"])?;
+    let name = optional_text(&input.body, "name", group_send::NAME_MOST * 4)?;
+    let people = input
+        .body
+        .get("people")
+        .and_then(Value::as_array)
+        .filter(|people| people.len() <= group_send::PEOPLE_MOST)
+        .ok_or_else(|| Error::new("invalid_input", 400))?
+        .iter()
+        .map(|member| {
+            v::fields(member, &["teamId", "userId"])?;
+            Ok((
+                slack_id(v::text(member, "teamId", 2, 32)?, b"T")?,
+                slack_id(v::text(member, "userId", 2, 32)?, b"UW")?,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
+    let photos = photos(&input.body)?;
+    let group = group_send::create(&state, &c, access, name, &people, text, &photos).await?;
+    group_send::send_soon(&state, &c.dsp.id);
+    Reply::of_status(&group, 201)
+}
+/// Sends a group another message, to the same people: its `text` and the `photos` added for it.
+async fn message_group(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &["text", "photos"])?;
+    let group = id(input.param("id"), "grp")?;
+    let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
+    let photos = photos(&input.body)?;
+    let entry = group_send::again(&state, &c, access, &group, text, &photos).await?;
+    group_send::send_soon(&state, &c.dsp.id);
+    Reply::of_status(&entry, 201)
 }
 /// Notes that the member is writing in a conversation, for the next few seconds.
 async fn typing(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
@@ -301,7 +391,11 @@ async fn file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     let file = file
         .filter(|file| file.status == FileStatus::Kept)
-        .filter(|file| file.message.is_some() || file.uploaded_by.as_ref() == Some(&c.auth.user.id))
+        .filter(|file| {
+            file.message.is_some()
+                || file.group_message.is_some()
+                || file.uploaded_by.as_ref() == Some(&c.auth.user.id)
+        })
         .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     let sha256 = file.sha256.unwrap_or_default();
     let bytes = files::read(&state, &c.dsp.id, &sha256).await?;

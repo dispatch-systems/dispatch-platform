@@ -47,8 +47,8 @@ name `routedata` on disk.
 - **People:** its drivers and their days are Driver Match's `routes` kind of data.
 - **Exposed:** `driver_routes`, through its contract in `contract/`
   (`dispatch-routes-contract`), for any feature or agent tool, while it's on for the DSP: the
-  source whose IDs name its drivers, the days collected, and a driver's itineraries over some
-  days at the DSP's station, each with its route, van, wave, times, stops, packages delivered,
+  source whose IDs name its drivers, the days collected, a driver's itineraries over some days
+  at the DSP's station, and every driver's on one day (`day`), each with its route, van, wave, times, stops, packages delivered,
   not delivered and taken off, and every package not delivered by tracking ID, with which of those
   days were collected and which were read while under way. Today, read by a Today so far
   schedule or a snapshot asked for, is there as its last read left it, not complete, until the

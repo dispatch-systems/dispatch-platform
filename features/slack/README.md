@@ -330,8 +330,9 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   (`chat.postMessage`) in a direct conversation or a channel it's in, under a name and photo of
   its choosing, with blocks showing only files it finished uploading
   (`files.getUploadURLExternal`, then `files.completeUploadExternal`), and what it posted is
-  kept for the server's run, each with its text, name, photo and blocks, which a test reads with
-  `fixture::posted`. Operations has a logo of its own, a box on orange, at an address on Slack's
+  kept for the server's run, each with its text, name, photo, blocks and metadata, which a test
+  reads with `fixture::posted`, and an integration's fixture lists among a conversation's
+  messages, as Slack would, with `kit::fixture_history`. Operations has a logo of its own, a box on orange, at an address on Slack's
   servers that fixture mode's Slack answers itself, and Drivers and Managers Slack's own. A
   dependant's tests read what the bot posted, connect a workspace, read its members, switch
   an integration and disconnect it through `dispatch_slack::testing`, behind Slack's `testing`

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
 import type { CommunicationsWorkspace, Conversation, Message, Writing } from '../../api/index.js';
-import { markDone } from '../../api/client.js';
+import { markDone, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Composer } from './Composer.js';
 import { Face } from './Face.js';
-import { opensProfile, roleText, Wait } from './parts.js';
+import { roleText, Wait } from './parts.js';
 import { Profile } from './Profile.js';
 import { Thread } from './Thread.js';
 import { useConversation } from './useConversation.js';
+import { usePanel } from './usePanel.js';
 import type { Changed } from './useInbox.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, and,
@@ -30,6 +31,7 @@ export function ConversationPane({
   show,
   back,
   closed,
+  openGroup,
 }: {
   id: string;
   /** The conversation as the list has it, which the page's own writes and each update keep. */
@@ -49,6 +51,8 @@ export function ConversationPane({
   back: () => void;
   /** Leaves a conversation that's no longer there. */
   closed: () => void;
+  /** Opens a group, as one a message went to. */
+  openGroup: (id: string) => void;
 }) {
   const { opened, error, gone, readOlder, ...read } = useConversation(id, changed);
   useEffect(() => {
@@ -89,22 +93,11 @@ export function ConversationPane({
   const about = [person && roleText(person), where].filter(Boolean).join(' · ');
   // The profile, and what opened it, which focus goes back to as it closes: the photo by the
   // messages, or who it's with when that photo is gone.
-  const [profile, setProfile] = useState(false);
-  const profileId = useId();
-  const opener = useRef<HTMLElement | null>(null);
-  const who = useRef<HTMLButtonElement>(null);
-  const toggleProfile = useCallback((from: HTMLElement) => {
-    opener.current = from;
-    setProfile((open) => !open);
-  }, []);
-  const closeProfile = useCallback((refocus: boolean) => {
-    setProfile(false);
-    if (refocus) (opener.current?.isConnected ? opener.current : who.current)?.focus();
-  }, []);
-  const opens = opensProfile(profileId, profile, toggleProfile);
+  const profile = usePanel();
+  const opens = profile.opens;
   return (
     <section
-      className={profile ? 'pane-thread profiled' : 'pane-thread'}
+      className={profile.open ? 'pane-thread profiled' : 'pane-thread'}
       aria-label={person?.name ?? 'Conversation'}
     >
       <header className="thread-head">
@@ -113,7 +106,7 @@ export function ConversationPane({
         </button>
         {person && conversation && (
           <>
-            <button ref={who} className={profile ? 'who open' : 'who'} {...opens}>
+            <button ref={profile.who} className={profile.open ? 'who open' : 'who'} {...opens}>
               <Face {...person} size="head" />
               <span>
                 <strong>{person.name}</strong>
@@ -139,15 +132,15 @@ export function ConversationPane({
           </>
         )}
       </header>
-      {profile && person && (
+      {profile.open && person && (
         <Profile
-          id={profileId}
+          id={profile.id}
           conversation={id}
           person={person}
           workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
           timeZone={timeZone}
           docked={docked}
-          close={closeProfile}
+          close={profile.close}
         />
       )}
       <ErrorBox message={error} />
@@ -161,11 +154,19 @@ export function ConversationPane({
           timeZone={timeZone}
           now={now}
           profile={opens}
+          openGroup={openGroup}
         />
       ) : (
         <div className="thread">{!error && <Loading />}</div>
       )}
-      {conversation && <Composer conversation={conversation} writable={writable} sent={sent} />}
+      {conversation && person && (
+        <Composer
+          placeholder={`Message ${person.name.split(' ')[0] ?? person.name}`}
+          writable={writable}
+          send={async (text, photos) => sent(await sendMessage(id, text, photos))}
+          typing={() => void sayTyping(id).catch(() => undefined)}
+        />
+      )}
     </section>
   );
 }

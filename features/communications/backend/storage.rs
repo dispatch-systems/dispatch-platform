@@ -3,9 +3,10 @@
 //! on them. Whether a conversation waits on an answer follows from its messages, and is kept
 //! beside them each time they change. The photos and files attached are `files`'. Only this
 //! crate writes SQL against its tables.
+use super::groups::storage::settle_group;
 use dispatch_core::{
     Error, Result,
-    db::{Db, FromRow, Row, Store, now},
+    db::{Db, FromRow, Row, Store, migrations::add_column, now},
     foundation::crypto,
     server::cache::DataDomain,
     text_enum,
@@ -61,6 +62,9 @@ pub struct Conversation {
     /// when it will have read once it's back down there, and the oldest message it read, by its
     /// `ts`.
     pub catching_up: Option<(i64, String)>,
+    /// The group it's listed under: the one the DSP last wrote to them in, while all they wait on
+    /// answers a message to a group.
+    pub group: Option<String>,
 }
 impl FromRow for Conversation {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -78,6 +82,7 @@ impl FromRow for Conversation {
                 (Some(to), Some(before)) => Some((to, before)),
                 _ => None,
             },
+            group: row.get("group_id")?,
         })
     }
 }
@@ -99,6 +104,9 @@ pub struct Message {
     pub at: i64,
     /// When its text was last edited in Slack.
     pub edited_at: Option<i64>,
+    /// For one the DSP sent, the group it went to; for one the member wrote, the group it
+    /// answers: that of the DSP's latest message to them before it.
+    pub group: Option<String>,
 }
 impl FromRow for Message {
     fn from_row(row: &Row<'_>) -> Result<Self> {
@@ -113,6 +121,7 @@ impl FromRow for Message {
             text: row.get("text")?,
             at: row.get("at")?,
             edited_at: row.get("edited_at")?,
+            group: row.get("group_id")?,
         })
     }
 }
@@ -142,7 +151,7 @@ pub struct Attached {
 }
 
 /// A message someone at the DSP sent, as Slack took it: its `ts`, its text, who sent it under
-/// what name, and the photos they added, as kept and as Slack has each.
+/// what name, and its photos, as kept and as Slack has each.
 pub struct Sent<'a> {
     pub ts: &'a str,
     pub text: &'a str,
@@ -207,15 +216,6 @@ pub trait CommunicationsStore {
     fn mark_communications_done(&self, dsp: &str, conversation: &str, by: &str) -> Result<bool>;
     /// The conversations waiting, the longest waiting first.
     fn waiting_communications(&self, dsp: &str) -> Result<Vec<Conversation>>;
-    /// The conversations answered or done, of the workspace `team` or every one, the latest
-    /// first: those before `before`, its latest message's time and its ID, `most` at most.
-    fn answered_communications(
-        &self,
-        dsp: &str,
-        team: Option<&str>,
-        before: Option<(i64, &str)>,
-        most: usize,
-    ) -> Result<Vec<Conversation>>;
     /// Every conversation with a message, the latest first.
     fn communications_with_messages(&self, dsp: &str) -> Result<Vec<Conversation>>;
     /// The conversations `ids` name, in no order.
@@ -359,7 +359,18 @@ impl CommunicationsStore for Store {
                 )?;
                 files.push(file);
             }
-            settle(&db, &conversation)?;
+            // The group it answers, if the DSP's latest message to them before it went to one.
+            let answers: Option<(Option<String>,)> = db.one_as(
+                "SELECT group_id FROM communications_messages WHERE conversation_id=? \
+                 AND direction='out' AND ts<? ORDER BY ts DESC LIMIT 1",
+                [&conversation, &written.ts],
+            )?;
+            let answers = answers.and_then(|(group,)| group);
+            db.exec(
+                "UPDATE communications_messages SET group_id=? WHERE id=?",
+                params![answers, id],
+            )?;
+            settle_with(&db, &conversation, answers.into_iter().collect())?;
             Ok(Some(Kept {
                 conversation,
                 files,
@@ -395,20 +406,7 @@ impl CommunicationsStore for Store {
     ) -> Result<Message> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let id = crypto::id("msg")?;
-            db.exec(
-                "INSERT INTO communications_messages (id,conversation_id,ts,direction,sent_by,\
-                 sender_name,text,at) VALUES (?,?,?,'out',?,?,?,?)",
-                params![
-                    id,
-                    conversation,
-                    sent.ts,
-                    sent.by,
-                    sent.name,
-                    sent.text,
-                    sent.at
-                ],
-            )?;
+            let (id, touched) = sent_out(&db, conversation, sent, None)?;
             for (photo, slack_id) in sent.photos {
                 db.exec(
                     "UPDATE communications_files SET message_id=?,slack_file_id=?,\
@@ -416,7 +414,7 @@ impl CommunicationsStore for Store {
                     params![id, slack_id, photo],
                 )?;
             }
-            settle(&db, conversation)?;
+            settle_with(&db, conversation, touched)?;
             db.one_as("SELECT * FROM communications_messages WHERE id=?", [&id])?
                 .ok_or_else(|| Error::new("communications_message_not_found", 404))
         })
@@ -440,22 +438,6 @@ impl CommunicationsStore for Store {
             "SELECT * FROM communications_conversations WHERE state='waiting' \
              ORDER BY waiting_since,id",
             [],
-        )
-    }
-    fn answered_communications(
-        &self,
-        dsp: &str,
-        team: Option<&str>,
-        before: Option<(i64, &str)>,
-        most: usize,
-    ) -> Result<Vec<Conversation>> {
-        let (at, id) = before.unwrap_or((i64::MAX, "\u{10FFFF}"));
-        self.dsp(dsp)?.query_as(
-            "SELECT * FROM communications_conversations WHERE state<>'waiting' \
-             AND last_at IS NOT NULL AND (last_at<?1 OR (last_at=?1 AND id<?2)) \
-             AND (?4 IS NULL OR team_id=?4) \
-             ORDER BY last_at DESC,id DESC LIMIT ?3",
-            params![at, id, most as i64, team],
         )
     }
     fn communications_with_messages(&self, dsp: &str) -> Result<Vec<Conversation>> {
@@ -577,7 +559,7 @@ impl CommunicationsStore for Store {
 
 /// The conversation with the workspace's member `user`, made if it's new, with their direct
 /// message `channel` and the name `name`: its ID.
-fn opened(db: &Db, team: &str, user: &str, channel: &str, name: &str) -> Result<String> {
+pub(crate) fn opened(db: &Db, team: &str, user: &str, channel: &str, name: &str) -> Result<String> {
     db.exec(
         "INSERT INTO communications_conversations (id,team_id,user_id,channel_id,name) \
          VALUES (?,?,?,?,?) ON CONFLICT(team_id,user_id) DO UPDATE SET \
@@ -603,47 +585,159 @@ fn edited(db: &Db, conversation: &str, ts: &str, text: &str, edited_at: i64) -> 
     )?;
     if changed > 0 {
         changed_conversation(db, conversation)?;
+        // A group it answers reads it again too.
+        let answers: Option<(Option<String>,)> = db.one_as(
+            "SELECT group_id FROM communications_messages WHERE conversation_id=? AND ts=?",
+            [conversation, ts],
+        )?;
+        if let Some((Some(group),)) = answers {
+            changed_conversation(db, &group)?;
+        }
     }
     Ok(changed > 0)
 }
 
+/// Keeps a message someone at the DSP sent in the conversation, alone or to the group `group`:
+/// its ID, and the groups whose answers it changed. What the member wrote after it, as one
+/// Slack told of while it went, answers it, and so its group, or none.
+pub(crate) fn sent_out(
+    db: &Db,
+    conversation: &str,
+    sent: &Sent,
+    group: Option<&str>,
+) -> Result<(String, Vec<String>)> {
+    let id = crypto::id("msg")?;
+    db.exec(
+        "INSERT INTO communications_messages (id,conversation_id,ts,direction,sent_by,\
+         sender_name,text,at,group_id) VALUES (?,?,?,'out',?,?,?,?,?)",
+        params![
+            id,
+            conversation,
+            sent.ts,
+            sent.by,
+            sent.name,
+            sent.text,
+            sent.at,
+            group
+        ],
+    )?;
+    let after = "FROM communications_messages WHERE conversation_id=?1 AND direction='in' \
+                 AND ts>?2 AND group_id IS NOT ?3";
+    let mut touched: Vec<String> = db
+        .query_as::<(String,)>(
+            &format!("SELECT DISTINCT group_id {after} AND group_id IS NOT NULL"),
+            params![conversation, sent.ts, group],
+        )?
+        .into_iter()
+        .map(|(group,)| group)
+        .collect();
+    db.exec(
+        &format!("UPDATE communications_messages SET group_id=?3 WHERE id IN (SELECT id {after})"),
+        params![conversation, sent.ts, group],
+    )?;
+    touched.extend(group.map(str::to_owned));
+    Ok((id, touched))
+}
+
 /// Keeps whether the conversation waits on an answer, and since when, from its messages and
-/// when it was marked done, and notes it changed. It waits while the member's latest message
-/// came after anyone at the DSP answered or marked it done: since the first of theirs after
-/// that.
-fn settle(db: &Db, conversation: &str) -> Result<()> {
-    let (last_in, last_out, done_at): (Option<i64>, Option<i64>, Option<i64>) = db
+/// when it was marked done, and the group it's listed under, and notes it changed, with each
+/// group that changed with it. It waits while the member's latest message came after anyone at
+/// the DSP answered them alone or marked it done: since the first of theirs after that. A
+/// message to a group answers no one. It's listed under the group the DSP's latest message to
+/// them went to, while all it waits on answers a message to a group: nothing they wrote before
+/// one, since the DSP last wrote to them alone, still waits.
+pub(crate) fn settle(db: &Db, conversation: &str) -> Result<()> {
+    settle_with(db, conversation, Vec::new())
+}
+/// `settle`, with the groups `touched` settled again too, as those whose answers changed.
+pub(crate) fn settle_with(db: &Db, conversation: &str, mut touched: Vec<String>) -> Result<()> {
+    let (last_in, last_alone, done_at, was): (
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<String>,
+    ) = db
         .one_as(
             "SELECT (SELECT max(at) FROM communications_messages \
              WHERE conversation_id=?1 AND direction='in'),\
              (SELECT max(at) FROM communications_messages \
-             WHERE conversation_id=?1 AND direction='out'),\
-             (SELECT done_at FROM communications_conversations WHERE id=?1)",
+             WHERE conversation_id=?1 AND direction='out' AND group_id IS NULL),\
+             done_at,group_id FROM communications_conversations WHERE id=?1",
             [conversation],
         )?
-        .unwrap_or_default();
-    let answered = last_out.max(done_at);
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let answered = last_alone.max(done_at);
     let waiting = last_in.is_some() && last_in > answered;
     let state = if waiting {
         ConversationState::Waiting
-    } else if done_at > last_out {
+    } else if done_at > last_alone {
         ConversationState::Done
     } else {
         ConversationState::Responded
     };
+    // What it waits on, if it waits: since when, and whether that first message answers a group.
+    let first: Option<(i64, Option<String>)> = if waiting {
+        db.one_as(
+            "SELECT at,group_id FROM communications_messages \
+             WHERE conversation_id=? AND direction='in' AND at>? ORDER BY at,ts LIMIT 1",
+            params![conversation, answered.unwrap_or(-1)],
+        )?
+    } else {
+        None
+    };
+    let since = first.as_ref().map(|(at, _)| *at);
+    // Under the group the DSP last wrote to them in, while all it waits on answers a group.
+    let latest: Option<(Option<String>,)> = db.one_as(
+        "SELECT group_id FROM communications_messages WHERE conversation_id=? \
+         AND direction='out' ORDER BY ts DESC LIMIT 1",
+        [conversation],
+    )?;
+    let group = latest
+        .and_then(|(group,)| group)
+        .filter(|_| first.as_ref().is_none_or(|(_, answers)| answers.is_some()));
     db.exec(
-        "UPDATE communications_conversations SET state=?2,\
-         waiting_since=CASE WHEN ?3 THEN (SELECT min(at) FROM communications_messages \
-         WHERE conversation_id=?1 AND direction='in' AND at>coalesce(?4,-1)) END,\
+        "UPDATE communications_conversations SET state=?2,waiting_since=?3,group_id=?4,\
          last_at=(SELECT max(at) FROM communications_messages WHERE conversation_id=?1) \
          WHERE id=?1",
-        params![conversation, state, waiting, answered],
+        params![conversation, state, since, group],
     )?;
-    changed_conversation(db, conversation)
+    changed_conversation(db, conversation)?;
+    touched.extend(was.into_iter().chain(group));
+    touched.sort();
+    touched.dedup();
+    for group in touched {
+        settle_group(db, &group)?;
+    }
+    Ok(())
 }
 
-/// Notes the conversation changed, for the pages waiting on changes, keeping the latest
-/// thousand.
+/// Communications' migration 3: what ties conversations, messages and photos to groups. A
+/// conversation's group is the one it's listed under (`group_id`); a message's, the group it
+/// went to or answers; a photo's, the group message it was sent with (`group_message_id`).
+pub(crate) fn add_groups(db: &Db) -> Result<()> {
+    add_column(db, "communications_conversations", "group_id", "TEXT")?;
+    add_column(db, "communications_messages", "group_id", "TEXT")?;
+    add_column(db, "communications_files", "group_message_id", "TEXT")?;
+    db.exec(
+        "CREATE INDEX IF NOT EXISTS communications_conversations_groups \
+         ON communications_conversations (group_id, state)",
+        [],
+    )?;
+    db.exec(
+        "CREATE INDEX IF NOT EXISTS communications_messages_groups \
+         ON communications_messages (group_id, at)",
+        [],
+    )?;
+    db.exec(
+        "CREATE INDEX IF NOT EXISTS communications_files_group_messages \
+         ON communications_files (group_message_id)",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Notes the conversation, or the group (by its own ID, which the column holds as well), changed,
+/// for the pages waiting on changes, keeping the latest thousand.
 pub(crate) fn changed_conversation(db: &Db, conversation: &str) -> Result<()> {
     db.exec(
         "INSERT INTO communications_changes (conversation_id) VALUES (?)",

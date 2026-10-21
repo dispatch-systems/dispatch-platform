@@ -1,5 +1,5 @@
 import { Fragment, useLayoutEffect, useRef } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, Users } from 'lucide-react';
 import type { Conversation, Message, MessageFile, Writing } from '../../api/index.js';
 import { fileUrl } from '../../api/client.js';
 import { clock, dayLabel, dayOf, fileStatus, isPhoto, size } from '../format.js';
@@ -12,7 +12,8 @@ import type { OpensProfile } from './parts.js';
 
 // A conversation's messages, in the order written, under the day each was written: the
 // member's on the left beside their photo, which opens their profile, the DSP's on the right
-// under the name and photo of whoever sent them; and below, those at the DSP writing in it now.
+// under the name and photo of whoever sent them, and the group one went to, which opens it; and
+// below, those at the DSP writing in it now.
 
 /** Messages one after another from the same writer, within a few minutes, shown together. */
 type Run = { key: string; writer: string; messages: Message[] };
@@ -25,7 +26,10 @@ function runs(messages: readonly Message[], timeZone: string) {
     const day = dayOf(message.at, timeZone);
     if (days.at(-1)?.day !== day) days.push({ day, at: message.at, runs: [] });
     const current = days.at(-1)!;
-    const writer = message.direction === 'in' ? 'in' : `out:${message.sender?.userId ?? ''}`;
+    const writer =
+      message.direction === 'in'
+        ? 'in'
+        : `out:${message.sender?.userId ?? ''}:${message.group?.id ?? ''}`;
     const run = current.runs.at(-1);
     if (run?.writer === writer && message.at - run.messages.at(-1)!.at < TOGETHER_MS)
       run.messages.push(message);
@@ -43,6 +47,7 @@ export function Thread({
   timeZone,
   now,
   profile,
+  openGroup,
 }: {
   conversation: Conversation;
   messages: readonly Message[];
@@ -53,6 +58,8 @@ export function Thread({
   now: number;
   /** What makes the member's photo open their profile. */
   profile: OpensProfile;
+  /** Opens the group a message went to. */
+  openGroup: (id: string) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   // Where it was before the latest change: at the latest message, or how far up, which older
@@ -110,7 +117,17 @@ export function Thread({
                     </button>
                   )}
                   <div className="stack">
-                    {sender && <div className="sender">{sender.name}</div>}
+                    {sender && (
+                      <div className="sender">
+                        {sender.name}
+                        {first.group && (
+                          <button className="to-group" onClick={() => openGroup(first.group!.id)}>
+                            <Users size={11} aria-hidden="true" />
+                            {first.group.name}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {written.map((message) => (
                       <Written key={message.id} message={message} />
                     ))}
@@ -140,7 +157,7 @@ export function Thread({
 }
 
 /** One message: its text, marked if edited in Slack, then its photos and files. */
-function Written({ message }: { message: Message }) {
+export function Written({ message }: { message: Pick<Message, 'text' | 'editedAt' | 'files'> }) {
   const photos = message.files.filter((file) => file.status === 'kept' && isPhoto(file.mime));
   const files = message.files.filter((file) => !photos.includes(file));
   return (

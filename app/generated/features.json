@@ -31,7 +31,8 @@
       "live": [],
       "maintenance": [
         3600,
-        3600
+        3600,
+        60
       ],
       "on": [],
       "people": [],
@@ -47,6 +48,12 @@
         "POST /api/dsp/communications/conversations/{id}/done",
         "POST /api/dsp/communications/conversations/{id}/typing",
         "GET /api/dsp/communications/contacts",
+        "GET /api/dsp/communications/groups/choices",
+        "POST /api/dsp/communications/groups",
+        "GET /api/dsp/communications/groups/{id}",
+        "GET /api/dsp/communications/groups/{id}/people",
+        "POST /api/dsp/communications/groups/{id}/messages",
+        "POST /api/dsp/communications/groups/{id}/done",
         "POST /api/dsp/communications/uploads",
         "GET /api/dsp/communications/files/{id}",
         "GET /api/dsp/communications/workspaces/{team}/logo",
@@ -62,7 +69,12 @@
       "dsp": [
         "communications_changes",
         "communications_conversations",
+        "communications_deliveries",
         "communications_files",
+        "communications_group_messages",
+        "communications_group_people",
+        "communications_group_uploads",
+        "communications_groups",
         "communications_messages"
       ]
     },

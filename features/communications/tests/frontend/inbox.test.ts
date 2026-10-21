@@ -1,14 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Communications, CommunicationsWorkspace, Conversation } from '../../api/index.js';
-import { marked, shownWorkspace, updated, withOlder } from '../../frontend/inbox.js';
+import type {
+  Communications,
+  CommunicationsWorkspace,
+  Contact,
+  Conversation,
+  Group,
+  GroupChoice,
+  Reachable,
+} from '../../api/index.js';
+import { marked, rows, shownWorkspace, updated, withOlder } from '../../frontend/inbox.js';
+import { groupName, recipients, type Pick } from '../../frontend/groups.js';
 import { letter, waited } from '../../frontend/format.js';
 
-/** A conversation, waiting since `since` or answered, its latest message written at `at`. */
+/** A conversation, waiting since `since` or answered, its latest message written at `at`, listed
+ * under the group `group`, if any. */
 const conversation = (
   id: string,
   at: number | null,
   since: number | null = null,
+  group: string | null = null,
 ): Conversation => ({
   id,
   teamId: 'T0FIXTURE1',
@@ -18,8 +29,21 @@ const conversation = (
   lastAt: at,
   last: null,
   matched: [],
+  groupId: group,
 });
-const ids = (inbox: Communications) => inbox.conversations.map((each) => each.id);
+/** A group, waiting since `since` or answered, last written in at `at`. */
+const group = (id: string, at: number, since: number | null = null): Group => ({
+  id,
+  name: id,
+  people: 2,
+  faces: [],
+  teamIds: ['T0FIXTURE1'],
+  state: since === null ? 'responded' : 'waiting',
+  waitingSince: since,
+  lastAt: at,
+  last: null,
+});
+const ids = (inbox: Communications) => rows(inbox).map((each) => each.row.id);
 
 test('the list keeps the server’s order as it changes, and leaves older answered ones to be read in turn', () => {
   const inbox: Communications = {
@@ -31,6 +55,7 @@ test('the list keeps the server’s order as it changes, and leaves older answer
       conversation('c', 900),
       conversation('d', 500),
     ],
+    groups: [group('g1', 800)],
     more: true,
     workspaces: [],
     typing: { version: 0, writing: [] },
@@ -38,7 +63,7 @@ test('the list keeps the server’s order as it changes, and leaves older answer
   const next = updated(inbox, {
     revision: 2,
     reset: false,
-    waiting: 2,
+    waiting: 3,
     typing: { version: 0, writing: [] },
     workspaces: [],
     conversations: [
@@ -52,17 +77,66 @@ test('the list keeps the server’s order as it changes, and leaves older answer
       conversation('f', 100),
       // Opened, with nothing written yet.
       conversation('g', null),
+      // Listed under a group, the group's row stands for it.
+      conversation('y', 80, 70, 'g2'),
     ],
+    // A group waits among the conversations by its longest wait.
+    groups: [group('g2', 80, 70)],
   });
-  assert.deepEqual(ids(next), ['e', 'a', 'c', 'b', 'd']);
+  assert.deepEqual(ids(next), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd']);
   assert.equal(next.revision, 2);
-  // Read in turn, older ones come after the last, each once.
+  // Read in turn, older ones come after the last, each once, groups among them.
   const older = withOlder(next, {
     conversations: [conversation('d', 500), conversation('f', 100), conversation('h', 50)],
+    groups: [group('g0', 300)],
     more: false,
   });
-  assert.deepEqual(ids(older), ['e', 'a', 'c', 'b', 'd', 'f', 'h']);
+  assert.deepEqual(ids(older), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd', 'g0', 'f', 'h']);
   assert.equal(older.more, false);
+});
+
+test('picks go to each person once: groups narrowed by the workspaces picked, someone by name always', () => {
+  const person = (key: string, ...teams: string[]): Reachable => ({
+    key,
+    person: { userId: `U${key}`, name: key, code: key, role: null, title: null, photo: null },
+    members: teams.map((teamId) => ({ teamId, userId: `U${key}` })),
+  });
+  const people = [person('ana', 'T1'), person('bo', 'T2'), person('cy', 'T1', 'T2')];
+  const choice = (kind: GroupChoice['kind'], keys: string[], teamId: string | null = null) => ({
+    kind: 'group' as const,
+    key: `${kind}:${teamId}`,
+    choice: { kind, waveAt: null, role: null, teamId, people: keys },
+  });
+  const drivers = choice('role', ['ana', 'bo', 'cy']);
+  const second = choice('workspace', ['bo', 'cy'], 'T2');
+  const everyone = choice('everyone', ['ana', 'bo', 'cy']);
+  const sent = (...picks: Pick[]) =>
+    recipients(picks, people).map(({ teamId, userId }) => `${teamId}:${userId}`);
+  assert.deepEqual(sent(drivers), ['T1:Uana', 'T2:Ubo', 'T1:Ucy']);
+  // A workspace narrows the others to it, by the account there; alone, it's everyone there.
+  assert.deepEqual(sent(drivers, second), ['T2:Ubo', 'T2:Ucy']);
+  assert.deepEqual(sent(second), ['T2:Ubo', 'T2:Ucy']);
+  assert.deepEqual(sent(everyone, drivers), ['T1:Uana', 'T2:Ubo', 'T1:Ucy']);
+  // Someone by name goes as picked, once.
+  const contact = { teamId: 'T2', person: { userId: 'Ucy', code: 'cy' } } as Contact;
+  const byName: Pick = { kind: 'person', key: 'cy', contact };
+  assert.deepEqual(sent(choice('role', ['ana', 'cy']), byName), ['T1:Uana', 'T2:Ucy']);
+  assert.deepEqual(sent(), []);
+});
+
+test('a group is named for what was picked', () => {
+  const named = (pick: Pick) => pick.key;
+  const person = (name: string): Pick => ({
+    kind: 'person',
+    key: name,
+    contact: { person: { name } } as Contact,
+  });
+  const wave: Pick = { kind: 'group', key: '9:20 AM wave', choice: {} as GroupChoice };
+  assert.equal(groupName([wave], named), '9:20 AM wave');
+  assert.equal(groupName([person('Andre Thompson')], named), 'Andre Thompson');
+  assert.equal(groupName([wave, person('Andre Thompson')], named), '9:20 AM wave and Andre');
+  const five = ['Andre T', 'Carlos M', 'Tyler N', 'Dustin H', 'Anna S'].map(person);
+  assert.equal(groupName(five, named), 'Andre, Carlos and 3 others');
 });
 
 test('the letters that matched are marked by the runs the server counts, UTF-16 code units', () => {

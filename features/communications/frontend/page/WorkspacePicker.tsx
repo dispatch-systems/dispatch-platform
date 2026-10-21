@@ -1,8 +1,7 @@
 import { Check, ChevronDown } from 'lucide-react';
 import type { CommunicationsWorkspace } from '../../api/index.js';
-import { SlackLogo } from '../../../slack/frontend/index.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
-import { WorkspaceMark } from './WorkspaceMark.js';
+import { AllWorkspacesMark, WorkspaceMark } from './WorkspaceMark.js';
 
 // Which workspace the lists show: every one, or one of them, each with how many of its
 // conversations wait on an answer. Only with two or more where Communications works.
@@ -74,11 +73,5 @@ function Choice({
 
 /** A workspace's mark, its logo or else its initials; Slack's for every one. */
 function Mark({ workspace }: { workspace?: CommunicationsWorkspace }) {
-  return workspace ? (
-    <WorkspaceMark workspace={workspace} />
-  ) : (
-    <span className="workspace-mark all" aria-hidden="true">
-      <SlackLogo size={14} />
-    </span>
-  );
+  return workspace ? <WorkspaceMark workspace={workspace} /> : <AllWorkspacesMark />;
 }

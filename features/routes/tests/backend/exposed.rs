@@ -1,5 +1,6 @@
 //! Each driver's routes, as a feature or agent tool reads them: only while Routes is on for the
-//! DSP, the right driver's days for the IDs given, and the days collected apart from the rest.
+//! DSP, the right driver's days for the IDs given, every driver's on a day, and the days
+//! collected apart from the rest.
 use super::*;
 use crate::backend::{routes_today, tests::publish};
 use chrono::Duration;
@@ -87,6 +88,29 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
         assert_eq!(absent.days.len(), 2);
         assert!(absent.routes.is_empty());
     }
+
+    // A day read whole is every driver's itineraries that day; one uncollected, nothing.
+    let today_all = offered.day(&db, &dsp, &day(0)).unwrap();
+    let drivers: Vec<_> = today_all
+        .routes
+        .iter()
+        .map(|r| (r.day.clone(), r.driver_id.clone()))
+        .collect();
+    assert_eq!(
+        drivers,
+        [(day(0), "driver-1".into()), (day(0), "driver-2".into())]
+    );
+    assert!(today_all.routes.iter().all(|r| r.wave_start_at.is_some()));
+    let days: Vec<_> = today_all
+        .days
+        .iter()
+        .map(|d| (d.day.clone(), d.complete))
+        .collect();
+    assert_eq!(days, [(day(0), false)]);
+    let uncollected = offered.day(&db, &dsp, &day(1)).unwrap();
+    assert!(uncollected.days.is_empty() && uncollected.routes.is_empty());
+    let refused = offered.day(&db, &dsp, "2026-9-25").unwrap_err();
+    assert_eq!(refused.code, "invalid_date");
 
     // Each refusal changes one thing from a read that's answered.
     let year = offered.routes(&db, &dsp, &driver, &day(365), &day(0));

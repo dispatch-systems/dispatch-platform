@@ -107,7 +107,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(initials.headers.get('content-type'), 'image/png');
 });
 
-test('Communications answers only those whose role gives them it, and the profile and logos with it alone', async (t) => {
+test('Communications answers only those whose role gives them it, and the profile, logos and groups with it alone', async (t) => {
   const f = await fixture();
   t.after(f.close);
   // No default role holds communications.use, so a member is refused until a role grants it.
@@ -155,4 +155,27 @@ test('Communications answers only those whose role gives them it, and the profil
   picture.resume();
   assert.equal(picture.statusCode, 200);
   assert.equal(picture.headers['content-type'], 'image/png');
+
+  // They message a group: whom it can go to, then each person gets it in the background.
+  const choices = await member.read(`${route}/groups/choices`);
+  const jordan = choices.people.find(
+    (each: { person: { name: string } }) => each.person.name === 'Jordan Ellis',
+  );
+  const made = await member.post(`${route}/groups`, {
+    name: 'Jordan Ellis',
+    people: [jordan.members[0]],
+    text: 'Station is behind',
+  });
+  assert.equal(made.status, 201, made.body);
+  const group = `${route}/groups/${made.value.id}`;
+  await until(async () => (await member.read(group)).entries[0]?.progress.sent === 1);
+  const { people } = await member.read(`${group}/people`);
+  assert.deepEqual(
+    people.map((each: { person: { name: string }; state: string }) => [
+      each.person.name,
+      each.state,
+    ]),
+    [['Jordan Ellis', 'sent']],
+  );
+  assert.equal((await member.read(route)).groups[0].id, made.value.id);
 });

@@ -482,12 +482,10 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
                 username: text("username"),
                 icon_url: text("icon_url"),
                 blocks: args["blocks"].clone(),
+                metadata: args["metadata"].clone(),
             };
-            let mut message = json!({"type": "message", "user": "U0FIXTUREBOT",
-                "bot_id": "B0FIXTURE", "text": posted.text});
-            let ts = post(team, asked, posted);
-            message["ts"] = json!(ts);
-            json!({"ok": true, "channel": asked, "ts": ts, "message": message})
+            let ts = post(team, asked, posted.clone());
+            json!({"ok": true, "channel": asked, "ts": ts, "message": listed(&posted, &ts)})
         }
         // A file the bot uploads, reserved first, sent to where Slack says, then finished.
         "files.getUploadURLExternal" => {
@@ -528,25 +526,52 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
 }
 
 /// A message the bot posted: its text, the name and photo it went under in place of the app's,
-/// if any, and its blocks.
+/// if any, its blocks, and the metadata it carries.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Posted {
     pub text: String,
     pub username: Option<String>,
     pub icon_url: Option<String>,
     pub blocks: Value,
+    pub metadata: Value,
 }
-/// What the bot posted, in every workspace: each message's workspace, conversation and post.
-static POSTED: Mutex<Vec<(String, String, Posted)>> = Mutex::new(Vec::new());
+/// What the bot posted, in every workspace: each message's workspace, conversation, `ts` and
+/// post.
+static POSTED: Mutex<Vec<(String, String, String, Posted)>> = Mutex::new(Vec::new());
 /// Keeps what the bot posted in the workspace's conversation `channel`: the message's `ts`, as
 /// Slack writes one, when it was posted and each unlike the last.
 fn post(team: &str, channel: &str, message: Posted) -> String {
     static POSTS: AtomicU64 = AtomicU64::new(0);
     let turn = POSTS.fetch_add(1, Ordering::Relaxed) % 1000;
-    let mut posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
-    posted.push((team.to_owned(), channel.to_owned(), message));
     let at = now();
-    format!("{}.{:03}{turn:03}", at / 1000, at % 1000)
+    let ts = format!("{}.{:03}{turn:03}", at / 1000, at % 1000);
+    let mut posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
+    posted.push((team.to_owned(), channel.to_owned(), ts.clone(), message));
+    ts
+}
+/// A message the bot posted, `ts`, as Slack describes one.
+fn listed(posted: &Posted, ts: &str) -> Value {
+    let mut message = json!({"type": "message", "user": "U0FIXTUREBOT", "bot_id": "B0FIXTURE",
+        "text": posted.text, "ts": ts});
+    if let Some(username) = &posted.username {
+        message["username"] = json!(username);
+    }
+    if !posted.metadata.is_null() {
+        message["metadata"] = posted.metadata.clone();
+    }
+    message
+}
+/// What the bot posted in the workspace's conversation `channel`, as Slack lists a
+/// conversation's messages: the latest first, each with its metadata. For an integration's
+/// fixture that lists one, so what the app posted there is among them.
+pub fn history(team: &str, channel: &str) -> Vec<Value> {
+    let posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
+    posted
+        .iter()
+        .rev()
+        .filter(|(at, sent, ..)| at == team && sent == channel)
+        .map(|(_, _, ts, message)| listed(message, ts))
+        .collect()
 }
 /// What the bot posted in the workspace's conversation `channel`, in order.
 #[cfg(any(test, feature = "testing"))]
@@ -554,8 +579,8 @@ pub fn posted(team: &str, channel: &str) -> Vec<Posted> {
     let posted = POSTED.lock().unwrap_or_else(|poison| poison.into_inner());
     posted
         .iter()
-        .filter(|(at, sent, _)| at == team && sent == channel)
-        .map(|(_, _, message)| message.clone())
+        .filter(|(at, sent, ..)| at == team && sent == channel)
+        .map(|(.., message)| message.clone())
         .collect()
 }
 

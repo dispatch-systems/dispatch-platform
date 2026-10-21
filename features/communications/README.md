@@ -69,7 +69,7 @@ unavailable.
   of a person to open, so it has no Full profile.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
   conversation, or opens a direct message with them, kept at the top of the list until it holds
-  a message.
+  a message. With nothing typed, Message a group comes first.
 - **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
   Communications works, chosen from a menu with several, for employees to write to the DSP.
   Neither it nor New message shows without such a workspace.
@@ -81,6 +81,57 @@ unavailable.
   an update brings the workspaces with none needing it, within twenty seconds. Connecting or
   updating from here comes back here from Slack, which finishes it. Everyone else sees the page
   as it is, empty without Slack.
+
+## Messaging a group
+
+One message to many members at once, as "the 9:20 wave is running 20 minutes late": each gets it
+in their own direct message with the app, and their answers come back together.
+
+- **Whom to:** Message a group, in New message, opens it beside the list, where the message being
+  written sits at the top. To finds people as New message does, and groups by name; each pick is
+  a chip, taken out again with its X, or Backspace. Below it, the groups to choose from, each
+  ticked and a chip once picked, and each left out while it holds nobody: **Today**, everyone on
+  a route on the DSP's own day, then each wave by when it starts, as Routes has read the day
+  (`driver_routes`), while it's on and has read some; **Roles**, drivers, helpers and the office,
+  as Driver Match knows them; and with two or more workspaces where Communications works,
+  **Workspaces**, everyone and each workspace's. Today's and the roles' groups hold their people
+  in every workspace where Communications works; a workspace picked narrows them to it, and
+  picked alone is everyone in it; someone picked by name always gets it. Each person gets it
+  once, by one of their accounts: the one picked by name, else the first in a workspace picked,
+  the one they last wrote from first. It's called what was picked: one pick's name, else theirs
+  joined, someone by their first name, and past three the first two and how many others.
+- **Writing it:** as in a conversation, photos too, sent with Send to and how many it goes to.
+- **Sending:** in the background, one at a time, at most one a second in each workspace, as Slack
+  asks of an app posting messages (`chat:write`), in each person's direct message, opened first
+  if need be (`im:write`), under the sender's full name and photo as an answer goes
+  (`chat:write.customize`), its photos uploaded once to each workspace (`files:write`). Slack
+  asking Dispatch to slow down is waited out as long as it says, and beyond half a minute tried
+  again a minute later; a try that fails is tried again after a minute, five and fifteen, then
+  given up; one to a workspace where Communications no longer works, or someone no longer in it,
+  isn't sent at all. Each is kept until it's sent or given up, so sending picks up after a
+  restart, from the pass every minute; a try that may have posted before the server stopped
+  looks for its post in their direct message first (`im:history`), by the metadata each post
+  carries, and keeps it rather than send a second.
+- **The group** is listed among the conversations: two of its people's faces, its name and how
+  many it went to, and the latest answer under its writer's first name, or the DSP's message. It
+  waits while any conversation listed under it waits, by the longest wait, with a check that
+  marks them all done, and it's counted as people: the counts go by those waiting. With one
+  workspace shown, it's listed while any of its people are in it.
+- **Under the group:** a message to a group answers no one. Someone's conversation is listed under
+  the group the DSP last wrote to them in, while all they wait on answers a message to a group,
+  so a question they asked before one stays on its own row; written to alone, it's listed on its
+  own again, and a later group message moves it under that group. An answer is what someone
+  wrote after a message to a group, until the DSP next writes to them alone.
+- **Open:** its faces, name and how many it went to, which opens its people, with how long it has
+  waited and Done, while anything under it waits; the DSP's messages to it under their sender,
+  each with how far it has gone (Sending 5 of 8, Sent to 8, Sent to 7 of 8); each answer under
+  its writer's name, which, with their photo, opens their own conversation, as Reply does, shown
+  as an answer is pointed at or reached by the keyboard; and Message all, to the same people. In
+  someone's own conversation, a message to a group carries its name beside its sender's, which
+  opens it.
+- **Its people,** in the profile's place: the group, who first sent it and when, and each of its
+  people with what they do and whether they replied, or its latest message is sending, was sent
+  or wasn't, each opening their own conversation.
 
 ## Messages in
 
@@ -172,15 +223,18 @@ which conversation is kept in memory alone, each for six seconds after their pag
 
 ## What it reads of other features
 
-The profile reads what other features expose, each only while the feature offering it is on
-for the DSP, for anyone with `communications.use`, who needs no permission of theirs:
+The profile, and the groups a group message can go to, read what other features expose, each
+only while the feature offering it is on for the DSP, for anyone with `communications.use`, who
+needs no permission of theirs:
 
 - **`directory`** (Driver Match): who the member is, by their Slack ID, and the first phone
   number and email address their sources have for them (Driver Profiles' roster, Slack's
   profile).
 - **`driver_routes`** (Routes): their route today, the day it is in the DSP's timezone, read for
   their IDs of its source, today alone, as Routes last read it: its code, van, wave and stops.
-  Of several, the one with the most stops, as a rescue they drove too has fewer.
+  Of several, the one with the most stops, as a rescue they drove too has fewer. And for a group
+  message, every driver's routes today, read whole (`day`), mapped to people by those IDs, then
+  to their Slack accounts as the profile does in reverse: who's on a route, and in which wave.
 - **`amazon_fleet`** (Vans): what the DSP calls that route's van, by its VIN alone.
 
 ## Finding people
@@ -197,7 +251,9 @@ name's UTF-16 code units, for the page to mark.
 Behind `communications.use`:
 
 - `GET /api/dsp/communications`, with `team=<id>` for one workspace's answered conversations
-  alone: the conversations waiting, the longest waiting first, then the fifty latest answered,
+  alone: the conversations waiting, the longest waiting first, and the groups waiting, then the
+  fifty latest answered conversations and groups (one listed under a group is the group's, as
+  its `groupId` says),
   with the DSP's workspaces (whether it works in each, the address of the app's Messages tab
   there, `chatLink`, whether, on there, it needs updating for what Communications uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
@@ -219,6 +275,17 @@ Behind `communications.use`:
 - `GET …/contacts?q=<name>&team=<id>`: whom the DSP can message, every one or those found
   by a name, in every workspace or one, each with their conversation, if any, since when it
   waits (`waitingSince`) and when it was last written in (`lastAt`).
+- `GET …/groups/choices`: whom a group message can go to, each person once with their accounts
+  (`people`), and the groups to choose from, each holding someone (`today`, `roles`,
+  `workspaces`), by their people's keys.
+- `POST …/groups` (`name`, `people`, each `teamId` and `userId`, `text`, `photos`): messages a
+  group, sent in the background.
+- `GET …/groups/{id}`, `?before=<at>:<id>`: a group and its fifty latest messages and answers, or
+  those before one, each of the DSP's with how far it has gone (`progress`).
+- `GET …/groups/{id}/people`: who it went to, who first sent it and when, and where it stands
+  with each.
+- `POST …/groups/{id}/messages` (`text`, `photos`), to the same people; `POST …/groups/{id}/done`,
+  for each conversation listed under it that waits.
 - `POST …/uploads?name=&type=`: a photo for a message not sent yet, as its bytes.
 - `GET …/files/{id}`: a photo or file attached to a message.
 - `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read
@@ -228,15 +295,24 @@ Public, on the admin's address: `GET /communications/initials/1/{letters}.png`.
 
 ## Data and upkeep
 
-- **Data:** in each DSP's own database, `communications_conversations`,
-  `communications_messages`, `communications_files` (each photo and file, and downloading it)
-  and `communications_changes` (each change, the latest thousand, for `updates`); the files'
-  bytes in the DSP's data, `data/communications/files/`, which backups keep.
-- **Upkeep:** catching up hourly and as the server starts; downloading what's due every minute,
-  and letting go of photos added and never sent hourly.
+- **Data:** in each DSP's own database, `communications_conversations` (with the group each is
+  listed under), `communications_messages` (with the group each went to or answers),
+  `communications_files` (each photo and file, and downloading it; a group message's own photos
+  too), `communications_changes` (each change to a conversation or a group, the latest thousand,
+  for `updates`); `communications_groups` (each group, its name, who made it and whether it
+  waits), `communications_group_people` (whom each went to, by workspace and member ID, under
+  their name then), `communications_group_messages` (each message to a group, its sender's name
+  and the letters of their initials), `communications_deliveries` (each going to each person:
+  waiting, sent with their message, or not sent and why) and `communications_group_uploads` (a
+  group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
+  `data/communications/files/`, which backups keep. Kept until the DSP is deleted, as the rest.
+- **Upkeep:** catching up hourly and as the server starts; downloading what's due, and sending
+  what's due to go to groups' people, every minute; letting go of photos added and never sent
+  hourly.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct
-  message with the app is `D` and the rest of their ID; Jordan Ellis's holds what they wrote
-  while Dispatch wasn't listening, for catching up: a message, a photo, a question with a reply
-  in its thread, the app's own answer, and one from before 2026.
+  message with the app is `D` and the rest of their ID, and holds what the app posted there, as
+  Slack lists it; Jordan Ellis's holds what they wrote while Dispatch wasn't listening, for
+  catching up: a message, a photo, a question with a reply in its thread, the app's own answer,
+  and one from before 2026.
 - **Server environment:** none of its own.

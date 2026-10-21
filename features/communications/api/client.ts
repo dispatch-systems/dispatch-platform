@@ -10,6 +10,12 @@ import type {
   Conversation,
   ConversationMessages,
   Conversations,
+  Group,
+  GroupChoices,
+  GroupEntry,
+  GroupMember,
+  GroupMessages,
+  GroupPeople,
   Message,
   Profile,
 } from './index.js';
@@ -19,6 +25,7 @@ import type {
 /** What its error codes say. Only its screens make the calls that raise them, so they load with them. */
 const api = wordedApi({
   communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
+  communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',
   communications_upload_not_found: 'A photo is no longer attached. Add it again.',
@@ -59,8 +66,9 @@ export const getCommunicationsUpdates = (after: number, typing: number, signal: 
 /** Conversations found by a name typed, misspelt or not, in every workspace or `team`'s. */
 export const searchConversations = (typed: string, team?: string) =>
   api<Conversations>(address(`${communicationsUrl}/conversations`, { q: typed, team }));
-/** The answered conversations, of every workspace or `team`'s, before the last one shown. */
-export const olderConversations = (last: Conversation, team?: string) =>
+/** The answered conversations and groups, of every workspace or `team`'s, before the last one
+ * shown. */
+export const olderConversations = (last: Pick<Conversation, 'id' | 'lastAt'>, team?: string) =>
   api<Conversations>(
     address(`${communicationsUrl}/conversations`, {
       before: `${last.lastAt ?? 0}:${last.id}`,
@@ -106,3 +114,32 @@ export const fileUrl = (id: string) => `${communicationsUrl}/files/${id}`;
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>
   `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;
+/** Whom a group message can go to, and the groups to choose from. */
+export const getGroupChoices = () => api<GroupChoices>(`${communicationsUrl}/groups/choices`);
+/** Messages a group of `people`, named `name`. */
+export const createGroup = (
+  name: string,
+  people: readonly GroupMember[],
+  text: string,
+  photos: string[] = [],
+) => api<Group>(`${communicationsUrl}/groups`, { name, people, text, photos });
+/** A group and its latest messages and answers, or those before `first`. */
+export const getGroup = (id: string, first?: GroupEntry) =>
+  api<GroupMessages>(
+    `${communicationsUrl}/groups/${id}${first ? `?before=${first.at}:${first.id}` : ''}`,
+  );
+/** Who a group went to, read as its people open, and again each time `refresh` changes. */
+export function useGroupPeople(id: string, refresh: string) {
+  const url = `${communicationsUrl}/groups/${id}/people`;
+  const read = useCallback(
+    (signal: AbortSignal) => api<GroupPeople>(url, undefined, signal),
+    [url],
+  );
+  return useData<GroupPeople>(url, 0, refresh, undefined, false, read);
+}
+/** Sends a group another message, to the same people. */
+export const messageGroup = (id: string, text: string, photos: string[] = []) =>
+  api<GroupEntry>(`${communicationsUrl}/groups/${id}/messages`, { text, photos });
+/** Marks done every conversation listed under a group that waits. */
+export const markGroupDone = (id: string) =>
+  api<Group>(`${communicationsUrl}/groups/${id}/done`, {});

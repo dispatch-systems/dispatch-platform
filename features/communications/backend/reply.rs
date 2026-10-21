@@ -8,7 +8,8 @@
 use super::{
     conversations, files,
     files::{File, FileStore},
-    live, sender,
+    live,
+    sender::{self, Identity},
     storage::{self, CommunicationsStore, DOMAIN, Sent},
     text,
 };
@@ -83,7 +84,12 @@ pub async fn open(
         .await
 }
 /// The direct message the app has with the workspace `team`'s member `user`, as Slack opens it.
-async fn opened(state: &Arc<State>, dsp: &str, team: &str, user: &str) -> Result<String> {
+pub(crate) async fn opened(
+    state: &Arc<State>,
+    dsp: &str,
+    team: &str,
+    user: &str,
+) -> Result<String> {
     let answer = Bot::new(state, dsp, team)
         .call("conversations.open", &json!({"users": user}))
         .await?;
@@ -103,19 +109,7 @@ pub async fn send(
     written: &str,
     photos: &[String],
 ) -> Result<Message> {
-    let written = written.trim();
-    let distinct = photos
-        .iter()
-        .enumerate()
-        .all(|(n, photo)| !photos[..n].contains(photo));
-    ensure(
-        (!written.is_empty() || !photos.is_empty())
-            && written.chars().count() <= TEXT_MOST
-            && photos.len() <= PHOTOS_MOST
-            && distinct,
-        "invalid_input",
-        400,
-    )?;
+    let written = checked(written, photos)?;
     let (dsp, at, by, chosen) = (
         c.dsp.id.clone(),
         id.to_owned(),
@@ -151,6 +145,25 @@ pub async fn send(
     }
     sent
 }
+/// What someone at the DSP wrote, trimmed, with the photos they added: refused when it's
+/// nothing, longer than Slack shows, or with too many photos or one twice.
+pub(crate) fn checked<'a>(written: &'a str, photos: &[String]) -> Result<&'a str> {
+    let written = written.trim();
+    let distinct = photos
+        .iter()
+        .enumerate()
+        .all(|(n, photo)| !photos[..n].contains(photo));
+    ensure(
+        (!written.is_empty() || !photos.is_empty())
+            && written.chars().count() <= TEXT_MOST
+            && photos.len() <= PHOTOS_MOST
+            && distinct,
+        "invalid_input",
+        400,
+    )?;
+    Ok(written)
+}
+
 /// Sends what the member `c` wrote in `conversation`, with the photos `uploads` they added, then
 /// keeps it: the message, as the page reads it.
 async fn deliver(
@@ -171,22 +184,7 @@ async fn deliver(
         shown.push((upload.id.clone(), slack_id, upload.name.clone()));
     }
     let identity = sender::identity(state, dsp, &conversation.team, &c.auth.user).await;
-    let mut args = json!({
-        "channel": conversation.channel,
-        "text": if written.is_empty() {
-            shown.iter().map(|(_, _, name)| text::escaped(name)).collect::<Vec<_>>().join(", ")
-        } else {
-            text::escaped(written)
-        },
-        "username": identity.name,
-        "icon_url": identity.icon,
-        // As written: Slack's markup, as `*` for bold, isn't read in it.
-        "mrkdwn": false,
-        "unfurl_links": false,
-    });
-    if !shown.is_empty() {
-        args["blocks"] = blocks(written, &shown);
-    }
+    let args = message(&conversation.channel, written, &shown, &identity);
     // Checked again before it goes to Slack: once Slack has it, it's kept.
     let asked = c.clone();
     let c = state.read(move |db| access.revalidate(db, &asked)).await?;
@@ -218,6 +216,33 @@ async fn deliver(
     live::changed(state, &c.dsp.id);
     Ok(message)
 }
+/// What `chat.postMessage` is asked in the direct message `channel`: what was written, as
+/// written, with the photos `shown` (each by its ID, Slack's ID of it and its name), under
+/// `identity`.
+pub(crate) fn message(
+    channel: &str,
+    written: &str,
+    shown: &[(String, String, String)],
+    identity: &Identity,
+) -> Value {
+    let mut args = json!({
+        "channel": channel,
+        "text": if written.is_empty() {
+            shown.iter().map(|(_, _, name)| text::escaped(name)).collect::<Vec<_>>().join(", ")
+        } else {
+            text::escaped(written)
+        },
+        "username": identity.name,
+        "icon_url": identity.icon,
+        // As written: Slack's markup, as `*` for bold, isn't read in it.
+        "mrkdwn": false,
+        "unfurl_links": false,
+    });
+    if !shown.is_empty() {
+        args["blocks"] = blocks(written, shown);
+    }
+    args
+}
 /// A message's blocks, for one with photos: what was written, as written, then each photo, by
 /// Slack's ID of it.
 fn blocks(written: &str, shown: &[(String, String, String)]) -> Value {
@@ -232,7 +257,7 @@ fn blocks(written: &str, shown: &[(String, String, String)]) -> Value {
 }
 /// Posts a message as the bot. Slack may not show a photo just uploaded until it has looked at
 /// it, so one with photos is tried again, twice, a second apart, when Slack refuses it.
-async fn post(bot: &Bot, args: &Value, photos: bool) -> Result<Value> {
+pub(crate) async fn post(bot: &Bot, args: &Value, photos: bool) -> Result<Value> {
     let mut tries = 0;
     loop {
         match bot.call("chat.postMessage", args).await {

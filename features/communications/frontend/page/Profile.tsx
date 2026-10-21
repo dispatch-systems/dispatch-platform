@@ -1,11 +1,12 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { Clock, Hash, Mail, MapPin, Phone, Route, Truck, X, type LucideIcon } from 'lucide-react';
+import { useId, type ReactNode } from 'react';
+import { Clock, Hash, Mail, MapPin, Phone, Route, Truck, type LucideIcon } from 'lucide-react';
 import type { CommunicationsWorkspace, Correspondent } from '../../api/index.js';
 import { useProfile } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { clock } from '../format.js';
 import { Face } from './Face.js';
+import { Panel } from './Panel.js';
 import { roleText } from './parts.js';
 import { WorkspaceMark } from './WorkspaceMark.js';
 
@@ -36,42 +37,11 @@ export function Profile({
   close: (refocus: boolean) => void;
 }) {
   const { data: profile, error } = useProfile(conversation);
-  const panel = useRef<HTMLElement>(null);
-  const closer = useRef<HTMLButtonElement>(null);
   const title = useId();
-  // Focus moves into it as it opens.
-  useEffect(() => closer.current?.focus(), []);
-  useEffect(() => {
-    if (docked) return;
-    // A press on what opens it is that control's own: it closes it.
-    const pressed = ({ target }: PointerEvent) => {
-      const opener = target instanceof Element && target.closest('[data-opens-profile]');
-      if (!panel.current?.contains(target as Node) && !opener) close(false);
-    };
-    document.addEventListener('pointerdown', pressed);
-    return () => document.removeEventListener('pointerdown', pressed);
-  }, [docked, close]);
   const today = profile?.today;
   const role = roleText(person);
   return (
-    <aside
-      ref={panel}
-      id={id}
-      className="profile"
-      role="dialog"
-      aria-labelledby={title}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') close(true);
-      }}
-    >
-      <button
-        ref={closer}
-        className="icon-button close"
-        aria-label="Close"
-        onClick={() => close(true)}
-      >
-        <X size={16} />
-      </button>
+    <Panel id={id} labelledBy={title} className="profile" docked={docked} close={close}>
       <div className="me">
         <Face {...person} size="profile" />
         <div>
@@ -121,7 +91,7 @@ export function Profile({
           ]}
         />
       )}
-    </aside>
+    </Panel>
   );
 }
 

@@ -4,11 +4,14 @@ import type {
   CommunicationsWorkspace,
   Contact,
   Conversation,
+  Group,
   Writing,
 } from '../../api/index.js';
+import type { Row } from '../inbox.js';
 import { SearchInput, Tabs } from '../../../../core/shell/frontend/ui/index.js';
 import { ContactList } from './ContactList.js';
 import { ConversationList } from './ConversationList.js';
+import type { Draft } from './GroupDraft.js';
 import { WorkspacePicker } from './WorkspacePicker.js';
 
 // The list beside the conversation: which workspace it shows, with two or more where
@@ -20,6 +23,7 @@ export function ListPane({
   working,
   team,
   choose,
+  draft,
   pinned,
   current,
   readOlder,
@@ -32,24 +36,30 @@ export function ListPane({
   /** The workspace chosen, if one is. */
   team?: string;
   choose: (team?: string) => void;
-  /** The conversation open, while the list doesn't hold it. */
-  pinned?: Conversation;
+  /** The message being written to a group, while it is. */
+  draft?: Draft;
+  /** What's open, while the list doesn't show it. */
+  pinned?: Row;
   /** The conversation open, as last read. */
   current?: Conversation;
   readOlder: () => void;
   /** Opens the conversation with a contact, or starts one. */
   pick: (contact: Contact) => Promise<void>;
+  /** What's open: a conversation or a group, by its ID. */
   open?: string;
   typing: readonly Writing[];
   timeZone: string;
   now: number;
   select: (id: string) => void;
+  openGroup: (id: string) => void;
   done: (conversation: Conversation) => void;
+  doneGroup: (group: Group) => void;
 }) {
   const [contacts, setContacts] = useState(false);
   const [typed, setTyped] = useState('');
   const name = typed.trim();
-  // How many wait, in all and in each workspace: every conversation waiting is listed.
+  // How many wait, in all and in each workspace: every conversation waiting is listed, those
+  // under a group too.
   const waitingIn = new Map<string, number>();
   for (const conversation of inbox.conversations)
     if (conversation.state === 'waiting')
@@ -105,6 +115,8 @@ export function ListPane({
             inbox={inbox}
             team={team}
             typed={name}
+            waiting={waiting}
+            draft={draft}
             pinned={pinned}
             readOlder={readOlder}
             {...listing}
