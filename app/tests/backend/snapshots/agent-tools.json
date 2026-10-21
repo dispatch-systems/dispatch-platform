@@ -69,7 +69,7 @@
               "type": "string"
             },
             "title": {
-              "description": "What they do in management, when someone gave them a title: owner, ops_manager,\nfleet_manager, dispatch, hr_manager or manager.",
+              "description": "What they do in management, when someone gave them a title: owner, ops_manager, fleet_manager, dispatch, hr_manager or manager.",
               "type": ["string", "null"]
             },
             "ids": {
