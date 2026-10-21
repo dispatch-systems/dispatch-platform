@@ -126,9 +126,7 @@ fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// The workspace `team` a list is of, if it's of one.
 fn team(query: &Value) -> Result<Option<String>> {
     let team = optional_text(query, "team", 32)?;
-    (!team.is_empty())
-        .then(|| slack_id(team, b"T"))
-        .transpose()
+    (!team.is_empty()).then(|| slack_id(team, b"T")).transpose()
 }
 /// Conversations found by a name typed, `q`, in the workspace `team` or every one, or the
 /// answered ones before `before`.
