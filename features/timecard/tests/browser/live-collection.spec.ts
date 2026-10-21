@@ -191,14 +191,20 @@ test('driver results update open timecards and meal breaks without resetting the
   await expect(page.locator('.meal-gap.over-limit')).toHaveText(['6m before lunch']);
   await expect(page.getByRole('button', { name: 'Gaps > 5 min 1', exact: true })).toBeVisible();
   await expect(page.getByText('Retrying live data')).not.toBeVisible();
+  // Hidden, the page drops its sleeping request and reads nothing, however long it waits.
+  await expect.poll(() => waiting.size).toBe(1);
+  const dropped = page.waitForEvent('requestfailed', (request) =>
+    request.url().includes('/api/dsp/collection-updates'),
+  );
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
+  await dropped;
   const hiddenReads = rowReads;
   meals = [{ ...meals[0]!, lastDelivery: `${date}T21:25:00Z` }];
   await announce();
-  await page.waitForTimeout(350);
+  await page.clock.runFor(1000);
   expect(rowReads).toBe(hiddenReads);
   await page.evaluate(() => {
     Reflect.deleteProperty(document, 'hidden');

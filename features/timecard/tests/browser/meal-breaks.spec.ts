@@ -444,7 +444,6 @@ test('members can open real collected punch data without management controls', a
 test('sync remains locked across dates, tabs and reloads until both sources stop', async ({
   page,
 }) => {
-  test.setTimeout(45000);
   let paycomStatus = 'succeeded';
   let flexStatus = 'succeeded';
   let jobDate: string | null = null;

@@ -9,6 +9,8 @@ export default defineConfig({
   workers: 4,
   timeout: 30000,
   retries: 0,
+  // A `test.only` left in would run its shard as that test alone, and pass.
+  forbidOnly: !!process.env.CI,
   reporter: 'list',
   outputDir: process.env.DISPATCH_TEST_OUTPUT || './test-results',
   use: {
