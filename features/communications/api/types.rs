@@ -4,7 +4,7 @@ pub use crate::backend::{
     files::FileStatus,
     storage::{ConversationState, Direction},
 };
-use dispatch_core::manifest::people::PersonRole;
+use dispatch_core::manifest::people::{PersonRole, PersonTitle};
 use serde::Serialize;
 
 /// `GET /api/dsp/communications`: the DSP's conversations, those waiting first, the longest
@@ -120,6 +120,7 @@ pub struct Correspondent {
     /// Their person's code, which their profile and photo go by.
     pub code: Option<String>,
     pub role: Option<PersonRole>,
+    pub title: Option<PersonTitle>,
     /// Their photo's version, for `/api/dsp/people/{code}/photo`.
     pub photo: Option<String>,
 }

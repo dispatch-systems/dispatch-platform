@@ -54,6 +54,7 @@ fn jordan() -> Person {
         name: "Jordan Ellis".into(),
         names: vec!["Jordan Ellis".into()],
         role: PersonRole::Driver,
+        title: None,
         ids: BTreeMap::from([
             (kit::SOURCE, vec![kit::member_id(TEAM, "U0FIXJORDAN")]),
             (DRIVERS, vec!["A1".into(), "A2".into()]),

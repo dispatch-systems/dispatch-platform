@@ -16,12 +16,13 @@ what was decided.
   names someone, or someone holds an ID it still could name, so no card says "Not in Slack"
   while a workspace waits for its admin to let Dispatch read its members, or once the last
   one is disconnected.
-- **Permission:** `driver_match.manage`, to see everyone's codes and decide who is whom.
+- **Permission:** `driver_match.manage`, to see everyone's codes, decide who is whom and give
+  people titles.
 - **Its page**, `driver-match` in a DSP's sidebar, is listed while the DSP has a feature on
   whose data names people, for those who hold `driver_match.manage`: the questions the backend
   sends, asked one at a time, then everyone as a card with their photo, from core's
-  `/api/dsp/people/{code}/photo`, and the sources that have them, by role or a source lacking
-  them. Beside its name in the sidebar, how many of those questions wait: the server keeps one
+  `/api/dsp/people/{code}/photo`, their title or role, and the sources that have them, by role
+  or a source lacking them; a person's sheet gives them a title. Beside its name in the sidebar, how many of those questions wait: the server keeps one
   count for all of the DSP's managers until a decision or a collection changes it, and the
   sidebar reads it again after each decision, after a collection a page following collections
   hears, and every five minutes. It was a tab of Settings: a link to
@@ -30,8 +31,9 @@ what was decided.
   questions waiting, as pairs that may be one person or name variants to confirm, by people's
   codes, and everyone), `…/counts` (how many questions wait), `…/people/{code}` (one person's
   IDs, what they appear in, their days and history), and the decisions `POST …/merge` (two codes become one), `…/split` (one ID moves to a new
-  person), `…/apart` (two people are kept apart) and `…/confirm` (a match by a name or a
-  contact was right), which answer with nothing. A decision made on stale data is refused
+  person), `…/apart` (two people are kept apart), `…/confirm` (a match by a name or a
+  contact was right) and `…/title` (a person is given a title, or with `null` loses theirs),
+  which answer with nothing. A decision made on stale data is refused
   (`person_changed`), as is splitting a person's only ID (`person_single_id`).
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
   platform (`driver_codes`). A person keeps their code for good; merged, both keep the code
@@ -56,7 +58,14 @@ what was decided.
   reach, as Slack's members, says nothing of who still works for it: someone only such lists
   know works in the office while one lists them, and has left once none does. People no
   source shows driving, outside the departments a source's settings count as drivers, work in
-  the office.
+  the office. The page calls everyone in the office Management.
+- **Titles:** Owner, OPs Manager, Fleet Manager, Dispatch, HR Manager or Manager (core's
+  `PersonTitle`), given on a person's sheet, for what no source says: Amazon's roster lists
+  office staff with a DA account as drivers, and a dispatcher covers a route now and then.
+  Someone with a title works in the office whatever their sources show, and is shown by it,
+  until it's taken away. Someone who has left is still former, their title kept for when they
+  come back. A merge carries the title of the one merged to whoever keeps the IDs, unless they
+  have one; an ID split off starts without one.
 - **Questions:** two people no source knows both of, whose names tie them, or any two sharing
   a contact only they have, with how many days they worked together; each reason says whether
   it argues for them being one (working fewer than half their days together argues against).
@@ -69,12 +78,12 @@ what was decided.
   (`backend/photos.rs`). The page, a person's photo and the directory answer by that one rule,
   so every feature showing people shows the same photo.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
-  `driver_match.kept_apart` and `driver_match.confirmed`, naming people by their codes; the
-  log puts today's names to them.
+  `driver_match.kept_apart`, `driver_match.confirmed` and `driver_match.titled` (with the title
+  before and after), naming people by their codes; the log puts today's names to them.
 - **Storage:** `driver_codes` in the platform's database (platform migration 10) and
-  `people`, `person_ids` and `people_apart` in each DSP's (DSP migration 7, and its own
-  migration 1, which lets `person_ids` hold any source, and 2, which made the links the
-  meal-break page saved before Driver Match its own decisions).
+  `people`, `person_ids`, `people_apart` and `person_titles` in each DSP's (DSP migration 7, and
+  its own migration 1, which lets `person_ids` hold any source, 2, which made the links the
+  meal-break page saved before Driver Match its own decisions, and 3, its titles).
 
 ## How it's built
 
@@ -91,7 +100,7 @@ of rule already is:
 - `codes.rs` writes and checks codes.
 - `gather.rs` reads what the page, a person's sheet and the count need, once for each answer;
   `overview.rs` makes the page and its questions, `details.rs` one person's sheet, `photos.rs`
-  photos, and `decisions.rs` the decisions a person makes.
+  photos, and `decisions.rs` the decisions a person makes, titles among them.
 
 ## Connecting a feature
 
@@ -132,8 +141,8 @@ sheet lists their kinds in this order.
 A feature that shows people, or uses what is known of them, asks core's directory, never Driver
 Match, which exposes it (`backend/directory.rs`): everyone as the page lists them,
 each with their code, the name they are shown by and every other way their sources write it,
-their role, every ID they hold by source, their email addresses and phone numbers, whether
-someone confirmed who they are and the version of their photo; and nobody in a build without
+their role and title, every ID they hold by source, their email addresses and phone numbers,
+whether someone confirmed who they are and the version of their photo; and nobody in a build without
 Driver Match. Core keeps it until a decision or a collection changes it (`people::everyone`), and
 serves it to every member of the DSP. Timecard's employees name their person by it, and its meal
 breaks find each driver's employee (`people.holding(cortex::SOURCE, id)`, then

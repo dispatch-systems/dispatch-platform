@@ -5,7 +5,7 @@ import { getContacts } from '../../api/client.js';
 import { Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Face } from './Face.js';
-import { Name, roles } from './parts.js';
+import { Name, roleText } from './parts.js';
 import { useFound } from './useFound.js';
 
 // New message: whom to write to, found by their name however it's spelt, the closest first,
@@ -86,10 +86,7 @@ export function NewMessage({
                   <Name name={contact.person.name} matched={contact.matched} />
                 </strong>
                 <small>
-                  {[
-                    contact.person.role && roles[contact.person.role],
-                    several && named.get(contact.teamId),
-                  ]
+                  {[roleText(contact.person), several && named.get(contact.teamId)]
                     .filter(Boolean)
                     .join(' · ')}
                 </small>

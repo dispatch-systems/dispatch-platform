@@ -5,7 +5,7 @@ import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { letter, listTime } from '../format.js';
 import { Face } from './Face.js';
-import { Name, Wait, roles } from './parts.js';
+import { Name, Wait, roleText } from './parts.js';
 import { useFound } from './useFound.js';
 
 // Contacts: everyone the DSP can message, of every workspace or the one chosen, A to Z under
@@ -73,9 +73,7 @@ export function ContactList({
               <Name name={person.name} matched={contact.matched} />
             </strong>
             <small>
-              {[person.role && roles[person.role], where?.get(contact.teamId)]
-                .filter(Boolean)
-                .join(' · ')}
+              {[roleText(person), where?.get(contact.teamId)].filter(Boolean).join(' · ')}
             </small>
           </span>
           {contact.waitingSince !== null ? (

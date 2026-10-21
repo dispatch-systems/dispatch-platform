@@ -1,7 +1,7 @@
 //! What Driver Match's endpoints answer with. Each type is written to TypeScript in
 //! `generated/`, which `client.ts` imports.
-/// What a person does for the DSP, as core's directory says.
-pub use dispatch_core::manifest::people::PersonRole;
+/// What a person does for the DSP, and the title someone gave them, as core's directory says.
+pub use dispatch_core::manifest::people::{PersonRole, PersonTitle};
 use dispatch_core::{
     manifest::people::{Kind, Source},
     text_enum,
@@ -104,6 +104,8 @@ pub struct Person {
     pub code: String,
     pub name: String,
     pub role: PersonRole,
+    /// Their title, while they are still there.
+    pub title: Option<PersonTitle>,
     pub ids: Vec<PersonId>,
     /// Their photo's version, when a feature holds one: its address carries it.
     pub photo: Option<String>,

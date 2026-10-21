@@ -1,11 +1,25 @@
 import { GitMerge } from 'lucide-react';
 import { useState } from 'react';
-import type { Person, PersonDetails, PersonId } from '../../api/index.js';
-import { splitOff, usePersonDetails } from '../../api/client.js';
+import type { Person, PersonDetails, PersonId, PersonTitle } from '../../api/index.js';
+import { giveTitle, splitOff, usePersonDetails } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';
-import { ConfirmDialog, DataState, Modal } from '../../../../core/shell/frontend/ui/index.js';
-import { dataAmount, dataLabel, eventText, goesBy, shortId, sourceLabel } from '../driver-match.js';
+import { personTitles } from '../../../../core/manifest/api/generated/people-data.js';
+import {
+  ConfirmDialog,
+  DataState,
+  ErrorBox,
+  Modal,
+} from '../../../../core/shell/frontend/ui/index.js';
+import {
+  dataAmount,
+  dataLabel,
+  eventText,
+  goesBy,
+  shortId,
+  sourceLabel,
+  titleLabel,
+} from '../driver-match.js';
 import { DataIcon } from '../parts/DataIcon.js';
 import { Face } from '../parts/Face.js';
 import { RoleTag } from '../parts/Tags.js';
@@ -13,7 +27,10 @@ import { DayStrip } from './DayStrip.js';
 import { MergeDialog } from './MergeDialog.js';
 import { SheetIds } from './SheetIds.js';
 
-/** One person in full: their IDs, what they appear in, their last fourteen days and history. */
+/**
+ * One person in full: their title, their IDs, what they appear in, their last fourteen days and
+ * history.
+ */
 export function PersonSheet({
   code,
   people,
@@ -43,6 +60,9 @@ export function PersonSheet({
       <DataState data={details.data} error={details.error} retry={details.refresh}>
         {(data) => (
           <>
+            {data.person.role !== 'former' && (
+              <TitlePicker key={data.person.title ?? ''} person={data.person} />
+            )}
             <SheetIds person={data.person} today={today} onSplit={setSplitting} />
             <Appears data={data} />
             {data.days.length > 0 && (
@@ -91,7 +111,7 @@ function SheetTitle({ person }: { person: Person }) {
         <span className="driver-sheet-name">{person.name}</span>
         <span className="driver-sheet-meta">
           <span className="driver-code">{person.code}</span>
-          <RoleTag role={person.role} />
+          <RoleTag person={person} />
           {alias && (
             <span>
               Goes by {alias.name} on {alias.source}
@@ -100,6 +120,39 @@ function SheetTitle({ person }: { person: Person }) {
         </span>
       </span>
     </span>
+  );
+}
+
+/** Their title, saved as it's chosen; one that fails goes back to what it was. */
+function TitlePicker({ person }: { person: Person }) {
+  const [chosen, setChosen] = useState(person.title ?? '');
+  const save = useAction((title: PersonTitle | null) => giveTitle(person.code, title), {
+    inline: true,
+    success: (title) =>
+      title ? `${person.name} is now ${titleLabel(title)}` : `${person.name} has no title`,
+  });
+  return (
+    <section className="driver-sheet-section" aria-labelledby="driver-title">
+      <h3 id="driver-title">Title</h3>
+      <ErrorBox message={save.error} />
+      <select
+        aria-labelledby="driver-title"
+        value={chosen}
+        disabled={save.busy}
+        onChange={async (event) => {
+          const title = event.target.value as PersonTitle | '';
+          setChosen(title);
+          if (!(await save.run(title || null))) setChosen(person.title ?? '');
+        }}
+      >
+        <option value="">None</option>
+        {personTitles.map((title) => (
+          <option key={title.id} value={title.id}>
+            {title.label}
+          </option>
+        ))}
+      </select>
+    </section>
   );
 }
 

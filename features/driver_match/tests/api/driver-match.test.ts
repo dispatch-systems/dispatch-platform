@@ -51,4 +51,20 @@ test('Driver Match answers only to its own permission, and its decisions to thei
       .status,
     400,
   );
+  // A title is one of the list, and every feature asking the directory sees it at once.
+  const here = result.people.find((person) => person.role !== 'former')!;
+  const directory = `/api/dsp/people/${here.code}`;
+  assert.equal((await owner.read(directory)).title, null);
+  const title = (body: object) => owner.post('/api/dsp/driver-match/title', body);
+  for (const body of [
+    { code: here.code, title: 'boss' },
+    { code: 'short', title: 'owner' },
+    { code: here.code, title: 'owner', extra: true },
+  ])
+    assert.equal((await title(body)).status, 400);
+  assert.deepEqual((await title({ code: here.code, title: 'dispatch' })).value, { ok: true });
+  const titled = await owner.read(directory);
+  assert.deepEqual([titled.role, titled.title], ['office', 'dispatch']);
+  await title({ code: here.code, title: null });
+  assert.equal((await owner.read(directory)).title, null);
 });

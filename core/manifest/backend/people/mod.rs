@@ -6,7 +6,7 @@ mod directory;
 mod ids;
 mod rows;
 
-pub use directory::{Directory, Everyone, Person, PersonRole};
+pub use directory::{Directory, Everyone, Person, PersonRole, PersonTitle};
 pub use ids::{Kind, KindInfo, Source, SourceInfo};
 pub use rows::{Named, Records, Workdays, named, records, worked};
 
@@ -233,5 +233,5 @@ pub(crate) fn check(registry: &Registry) {
 /// The sources and kinds of data that name people, which the app's export writes to TypeScript.
 #[cfg(feature = "ts")]
 pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
-    crate::typescript!(cfg, Source, Kind, PersonRole, Person)
+    crate::typescript!(cfg, Source, Kind, PersonRole, PersonTitle, Person)
 }

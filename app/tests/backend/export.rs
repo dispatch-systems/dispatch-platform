@@ -6,7 +6,10 @@ use dispatch_core::collection::{
     registry::Provider,
 };
 use dispatch_core::db::{Kind, Migrations};
-use dispatch_core::manifest::{Capability, Collection, Collector, people::Source};
+use dispatch_core::manifest::{
+    Capability, Collection, Collector,
+    people::{PersonTitle, Source},
+};
 use dispatch_core::tenancy::api::audit::*;
 use std::{
     collections::BTreeMap,
@@ -124,14 +127,16 @@ fn audit_subjects() -> String {
 
 /// Every kind of collected data the features' people declare, in their order, with how it is
 /// named, what one of its records is when it counts them, and its icon, imported from
-/// lucide-react by its name; then every source of IDs, in its order.
+/// lucide-react by its name; then every source of IDs, in its order; then every title a person
+/// may be given, in the order they are offered.
 fn people_data() -> String {
     use std::collections::BTreeSet;
     let quoted = |text: &str| serde_json::to_string(text).unwrap();
     let kinds = dispatch_core::manifest::registry().people();
     let icons: BTreeSet<_> = kinds.iter().map(|kind| kind.kind.icon).collect();
     let mut text =
-        "// Generated from the kinds of data the features' people declare, and their sources.\n\
+        "// Generated from the kinds of data the features' people declare, their sources \
+        and the titles a person may be given.\n\
         // Run `npm run contracts:generate` after changing them.\n"
             .to_owned();
     if !icons.is_empty() {
@@ -154,6 +159,14 @@ fn people_data() -> String {
             "  {{ id: {}, label: {} }},\n",
             quoted(source.as_str()),
             quoted(source.label())
+        );
+    }
+    text += "] as const;\nexport const personTitles = [\n";
+    for title in PersonTitle::ALL {
+        text += &format!(
+            "  {{ id: {}, label: {} }},\n",
+            quoted(title.as_str()),
+            quoted(title.label())
         );
     }
     text + "] as const;\n"

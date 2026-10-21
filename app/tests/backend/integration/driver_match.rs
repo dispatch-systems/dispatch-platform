@@ -13,7 +13,7 @@ use dispatch_core::{
 use dispatch_cortex::{associates, discovery::Scope, meals};
 use dispatch_driver_match::{
     DriverMatch, DriverMatchStore, EvidenceKind, IdLink, Person, PersonEventKind, PersonRole,
-    Question, Strength,
+    PersonTitle, Question, Strength,
 };
 use dispatch_driver_profiles::DriverProfilesStore;
 use dispatch_paycom::fixtures;
@@ -538,6 +538,83 @@ fn the_roster_says_who_drives_who_helps_and_who_has_left() {
     // Inactive, unseen and on no other roster, Pat has left.
     let pat = code(&result, AMAZON, "TPAT");
     assert_eq!(person(&result, &pat).role, PersonRole::Former);
+}
+
+/// A title says what no source can: someone the roster lists as a driver is management once
+/// given one, to every feature, until it's taken away; someone who has left is still former;
+/// and a merge carries it to whoever keeps the IDs.
+#[test]
+fn a_title_makes_someone_management_whatever_their_sources_show() {
+    dispatch_backend::install();
+    let (_root, db, id, context) = ready();
+    roster(
+        &db,
+        &id,
+        &[
+            ("TDANA", "Dana Whitfield", "ACTIVE", "Driver, Helper"),
+            ("TPAT", "Pat Quinn", "INACTIVE", "Driver"),
+        ],
+    );
+    pass(&db, &id).unwrap();
+    let before = db.driver_match(&id).unwrap();
+    let (dana, pat) = (
+        code(&before, AMAZON, "TDANA"),
+        code(&before, AMAZON, "TPAT"),
+    );
+    let (antonio, tony) = (
+        code(&before, PAYCOM, "E002"),
+        code(&before, AMAZON, "TREYES"),
+    );
+    db.set_title(&context, &dana, Some(PersonTitle::Dispatch))
+        .unwrap();
+    db.set_title(&context, &pat, Some(PersonTitle::Owner))
+        .unwrap();
+    let titled = db.driver_match(&id).unwrap();
+    let role = |result: &DriverMatch, code: &str| {
+        let person = person(result, code);
+        (person.role, person.title)
+    };
+    assert_eq!(
+        role(&titled, &dana),
+        (PersonRole::Office, Some(PersonTitle::Dispatch))
+    );
+    assert_eq!(role(&titled, &pat), (PersonRole::Former, None));
+    let everyone = people::read(&db, &id).unwrap();
+    let theirs = everyone.person(&dana).unwrap();
+    assert_eq!(
+        (theirs.role, theirs.title),
+        (PersonRole::Office, Some(PersonTitle::Dispatch))
+    );
+    let entry = db
+        .platform
+        .one(
+            "SELECT * FROM audit WHERE action='driver_match.titled' AND detail=?",
+            [&dana],
+        )
+        .unwrap()
+        .unwrap();
+    let data: Value = serde_json::from_str(s(&entry, "data")).unwrap();
+    assert_eq!(
+        data["changes"],
+        json!([{"field":"title","from":null,"to":"Dispatch"}])
+    );
+    db.set_title(&context, &dana, None).unwrap();
+    let cleared = db.driver_match(&id).unwrap();
+    assert_eq!(role(&cleared, &dana), (PersonRole::Driver, None));
+    // The person kept takes the title of the one merged into them.
+    db.set_title(&context, &tony, Some(PersonTitle::FleetManager))
+        .unwrap();
+    db.merge_people(&context, &tony, &antonio).unwrap();
+    let merged = db.driver_match(&id).unwrap();
+    assert_eq!(
+        role(&merged, &antonio),
+        (PersonRole::Office, Some(PersonTitle::FleetManager))
+    );
+    // A title for a code merged into another was chosen on a page since out of date.
+    let stale = db
+        .set_title(&context, &tony, Some(PersonTitle::Manager))
+        .unwrap_err();
+    assert_eq!(stale.code, "person_changed");
 }
 
 #[test]

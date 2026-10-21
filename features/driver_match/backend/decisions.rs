@@ -1,9 +1,10 @@
 //! The decisions a person makes about who is whom: two people are one, an ID belongs to
-//! someone else, two people are different, or a match was right. Each is audited by codes,
-//! never names: what a collection says about someone stays in its database.
+//! someone else, two people are different, a match was right, or what someone does in
+//! management. Each is audited by codes, never names: what a collection says about someone
+//! stays in its database.
 use super::audit::both;
 use super::codes::{new_person, valid_code};
-use crate::api::types::IdLink;
+use crate::api::types::{IdLink, PersonTitle};
 use dispatch_core::{
     Result,
     accounts::Context,
@@ -14,7 +15,8 @@ use dispatch_core::{
 use rusqlite::params;
 
 /// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from now
-/// on. Whom `code` was kept apart from, `into` is kept apart from.
+/// on. Whom `code` was kept apart from, `into` is kept apart from, and `code`'s title goes to
+/// `into` unless they have one.
 pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Result<()> {
     ensure(
         valid_code(code) && valid_code(into) && code != into,
@@ -54,6 +56,12 @@ pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Resul
                 apart(&db, into, &other, &at, by.as_deref())?;
             }
         }
+        db.exec(
+            "INSERT OR IGNORE INTO person_titles(code,title,decided_at,actor_id) \
+             SELECT ?1,title,decided_at,actor_id FROM person_titles WHERE code=?2",
+            params![into, code],
+        )?;
+        db.exec("DELETE FROM person_titles WHERE code=?", [code])?;
         Ok(())
     })?;
     drop(db);
@@ -165,6 +173,48 @@ pub(super) fn confirm(
     })?;
     drop(db);
     audited(store, c, "driver_match.confirmed", code, code, &[], code)
+}
+
+/// Gives `code` a title, or takes theirs away. Giving the title they have changes nothing.
+pub(super) fn title(
+    store: &Store,
+    c: &Context,
+    code: &str,
+    title: Option<PersonTitle>,
+) -> Result<()> {
+    ensure(valid_code(code), "invalid_input", 400)?;
+    let db = store.dsp(&c.dsp.id)?;
+    let before = db.transaction(|| {
+        current(&db, code)?;
+        let before = db
+            .one_as::<(PersonTitle,)>("SELECT title FROM person_titles WHERE code=?", [code])?
+            .map(|(title,)| title);
+        if title != before {
+            match title {
+                Some(title) => db.exec(
+                    "INSERT OR REPLACE INTO person_titles(code,title,decided_at,actor_id) \
+                     VALUES (?,?,?,?)",
+                    params![code, title, iso(), c.actor()],
+                ),
+                None => db.exec("DELETE FROM person_titles WHERE code=?", [code]),
+            }?;
+        }
+        Ok(before)
+    })?;
+    drop(db);
+    if before == title {
+        return Ok(());
+    }
+    let label = |title: Option<PersonTitle>| title.map(|title| title.label().to_owned());
+    audited(
+        store,
+        c,
+        "driver_match.titled",
+        code,
+        code,
+        &[("title", label(before), label(title))],
+        code,
+    )
 }
 
 /// Answers whether `code` is a person who still holds their IDs; a decision about anyone

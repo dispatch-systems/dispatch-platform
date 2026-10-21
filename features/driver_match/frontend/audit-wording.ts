@@ -23,6 +23,10 @@ const phrases: AuditPhrases = {
     strong(e.target ?? 'a person'),
     "'s match",
   ],
+  'driver_match.titled': (e, { strong }) => [
+    'changed the title of ',
+    strong(e.target ?? 'a person'),
+  ],
 };
 
 export const wording: AuditWording = { phrases };

@@ -134,17 +134,19 @@ collection; a feature whose people may gain new IDs outside a collection, as a c
 workspace's members do, publishes `events::PeopleChanged` once they're kept. The app's people
 test runs every connection's queries against a new DSP, so a connection is tried without a test
 of its own. `dispatchdev generate` writes the kinds and sources to TypeScript in
-`api/generated/`: each kind with its label, unit and icon, in their order (`people-data.ts`,
-which imports the icons from lucide-react), loaded only by the lists of people; and the
-features whose data names people, by their switches (`people-features.ts`), small enough for a
-frontend manifest to ask whether a DSP has one on.
+`api/generated/`: each kind with its label, unit and icon, in their order, then the sources and
+the titles a person may be given (`people-data.ts`, which imports the icons from lucide-react),
+loaded only by the lists of people; and the features whose data names people, by their switches
+(`people-features.ts`), small enough for a frontend manifest to ask whether a DSP has one on.
 
 The other way round, any feature that shows people or uses what is known of them asks the
 directory (`people/directory.rs`), a contract the feature that tells people apart exposes. Each
 `Person` has their code, theirs for good and the same in every feature, so it is what a feature
 keeps to name them; the name they are shown by and every other way their sources write it; their
-role (driver, helper, office or former); every ID they hold, by source; their email addresses
-and phone numbers; whether someone confirmed who they are; and the version of their photo.
+role (driver, helper, office for management, or former) and the title someone gave them, as
+Dispatch (`PersonTitle`, which `people-data.ts` lists with its label); every ID they hold, by
+source; their email addresses and phone numbers; whether someone confirmed who they are; and the
+version of their photo.
 
 ```rust
 let people = people::everyone(db, c.state, c.dsp_id())?; // everyone, by name

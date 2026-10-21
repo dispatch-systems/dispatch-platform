@@ -1,4 +1,4 @@
-// Generated from the kinds of data the features' people declare, and their sources.
+// Generated from the kinds of data the features' people declare, their sources and the titles a person may be given.
 // Run `npm run contracts:generate` after changing them.
 import { Award, CalendarDays, ClipboardCheck, Contact, MessageSquare, Route, Utensils } from 'lucide-react';
 export const peopleKinds = [
@@ -15,4 +15,12 @@ export const peopleSources = [
   { id: "paycom", label: "Paycom" },
   { id: "amazon", label: "Amazon" },
   { id: "slack", label: "Slack" },
+] as const;
+export const personTitles = [
+  { id: "owner", label: "Owner" },
+  { id: "ops_manager", label: "OPs Manager" },
+  { id: "fleet_manager", label: "Fleet Manager" },
+  { id: "dispatch", label: "Dispatch" },
+  { id: "hr_manager", label: "HR Manager" },
+  { id: "manager", label: "Manager" },
 ] as const;

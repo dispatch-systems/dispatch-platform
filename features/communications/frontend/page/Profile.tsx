@@ -6,7 +6,7 @@ import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { clock } from '../format.js';
 import { Face } from './Face.js';
-import { roles } from './parts.js';
+import { roleText } from './parts.js';
 import { WorkspaceMark } from './WorkspaceMark.js';
 
 // The profile beside a conversation: the member it's with, their route today and how to reach
@@ -52,6 +52,7 @@ export function Profile({
     return () => document.removeEventListener('pointerdown', pressed);
   }, [docked, close]);
   const today = profile?.today;
+  const role = roleText(person);
   return (
     <aside
       ref={panel}
@@ -75,7 +76,7 @@ export function Profile({
         <Face {...person} size="profile" />
         <div>
           <h2 id={title}>{person.name}</h2>
-          {person.role && <small>{roles[person.role]}</small>}
+          {role && <small>{role}</small>}
         </div>
       </div>
       {profile?.phone && (

@@ -2,7 +2,8 @@
 
 /**
  * What a person does for the DSP: a driver or a helper, as their sources' roles say or
- * their records show; office staff, outside the departments the DSP counts as drivers;
- * or someone who has left, whom no source lists and nothing has seen lately.
+ * their records show; management, outside the departments the DSP counts as drivers or
+ * given a title; or someone who has left, whom no source lists and nothing has seen
+ * lately.
  */
 export type PersonRole = "driver" | "helper" | "office" | "former";

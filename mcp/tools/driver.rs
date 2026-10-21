@@ -12,7 +12,7 @@ use dispatch_core::{
     accounts::api::types::Dsp,
     db::Store,
     foundation::{clock, validate, weeks},
-    manifest::people::{Everyone, Person, Source},
+    manifest::people::{Everyone, Person, PersonTitle, Source},
 };
 use dispatch_daily_performance_contract::{self as performance, DailyMetrics};
 use dispatch_driver_profiles_contract::{self as profiles, AmazonRoster};
@@ -206,8 +206,10 @@ pub struct Identity {
     pub name: String,
     /// Every way their sources write their name, the one shown first.
     pub names: Vec<String>,
-    /// driver, helper, office, or former for someone who has left.
+    /// driver, helper, office for management, or former for someone who has left.
     pub role: String,
+    /// What they do in management, when someone gave them a title: owner, ops_manager, fleet_manager, dispatch, hr_manager or manager.
+    pub title: Option<String>,
     /// Every ID they hold, by its source, such as amazon for transporter IDs.
     pub ids: BTreeMap<String, Vec<String>>,
     pub emails: Vec<String>,
@@ -1389,6 +1391,7 @@ impl From<&Person> for Identity {
             name: person.name.clone(),
             names: person.names.clone(),
             role: person.role.as_str().to_owned(),
+            title: person.title.map(|title| title.as_str().to_owned()),
             ids: (person.ids.iter())
                 .map(|(source, ids)| (source.as_str().to_owned(), ids.clone()))
                 .collect(),
@@ -1437,10 +1440,12 @@ fn summary(found: &Found, wanted: &[Section]) -> String {
         }
     }
     let person = &found.person;
-    let at = match person.role.as_str() {
-        "former" => format!("who has left {}", found.dsp),
-        "office" => format!("office staff at {}", found.dsp),
-        role => format!("a {role} at {}", found.dsp),
+    let title = person.title.as_deref().and_then(PersonTitle::parse);
+    let at = match (person.role.as_str(), title) {
+        ("former", _) => format!("who has left {}", found.dsp),
+        (_, Some(title)) => format!("{} at {}", title.label(), found.dsp),
+        ("office", None) => format!("in management at {}", found.dsp),
+        (role, None) => format!("a {role} at {}", found.dsp),
     };
     let (name, code, from) = (&person.name, &person.code, day(&found.from));
     let mut text = format!("{name} ({code}), {at}, {from}");

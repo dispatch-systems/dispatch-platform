@@ -22,6 +22,7 @@ fn person(code: &str, names: &[&str], ids: &[(Source, &str)], email: &str, phone
         name: names[0].into(),
         names: names.iter().map(|name| (*name).to_owned()).collect(),
         role: PersonRole::Driver,
+        title: None,
         ids: held,
         emails: vec![email.into()],
         phones: vec![phone.into()],

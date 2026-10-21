@@ -1,10 +1,10 @@
 import { CircleCheck, Mail, Phone } from 'lucide-react';
-import type { PeopleSource, IdLink, PersonRole } from '../../api/index.js';
-import { links, roles, sourceKinds, sourceLabel } from '../driver-match.js';
+import type { PeopleSource, IdLink, Person } from '../../api/index.js';
+import { links, roleLabel, roles, sourceKinds, sourceLabel } from '../driver-match.js';
 
-/** What a person does for the DSP. */
-export function RoleTag({ role }: { role: PersonRole }) {
-  return <span className={`driver-tag ${roles[role].tone}`}>{roles[role].label}</span>;
+/** What a person does for the DSP: their title, else their role, in their role's tone. */
+export function RoleTag({ person }: { person: Person }) {
+  return <span className={`driver-tag ${roles[person.role].tone}`}>{roleLabel(person)}</span>;
 }
 
 const linkIcons: Partial<Record<IdLink, typeof Mail>> = {
