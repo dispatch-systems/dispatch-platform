@@ -21,6 +21,7 @@ pub const SHARED_PAGES: &[SharedPage] = &[
     shared("theme", "Theme", Group::Personal, 90),
     shared("dsp", "DSP profile", Group::Dsp, 10),
     shared("connections", "Connections", Group::Dsp, 30),
+    shared("collectors", "Collectors", Group::Dsp, 40),
     shared("data", "Data", Group::Dsp, 50),
 ];
 
@@ -30,6 +31,7 @@ const CORE_SECTIONS: &[&Section] = &[
     &crate::accounts::settings::SECURITY,
     &crate::accounts::settings::THEME,
     &crate::collection::settings::CONNECTIONS,
+    &crate::collection::settings::COLLECTORS,
 ];
 
 /// A part of a Settings page: fields saved together, under one permission.
@@ -66,6 +68,9 @@ pub struct Section {
     pub saved: Option<OnSave>,
     /// The part of its feature (`x.what`) it goes with: off or hidden with it.
     pub part: Option<&'static str>,
+    /// The collection of its feature's it goes with, by its schedule name: drawn with it on
+    /// the Collectors page, under the permission that sets when it runs.
+    pub collection: Option<&'static str>,
     /// Its place on its page, lowest first; two at one place go by id.
     pub order: u16,
 }
@@ -91,6 +96,7 @@ pub const fn section(
         warn: None,
         saved: None,
         part: None,
+        collection: None,
         order: 0,
     }
 }
@@ -146,6 +152,15 @@ impl Section {
     pub const fn part(self, part: &'static str) -> Self {
         Self {
             part: Some(part),
+            ..self
+        }
+    }
+    /// With the collection `schedule` names, on the Collectors page, rather than on its
+    /// feature's own page.
+    pub const fn collection(self, schedule: &'static str) -> Self {
+        Self {
+            page: Page::Shared("collectors"),
+            collection: Some(schedule),
             ..self
         }
     }
@@ -227,7 +242,7 @@ pub type Found = fn(c: &Context) -> Vec<String>;
 /// member's Settings, and fails a save of them.
 pub type Listed = fn(&Store, dsp: &str) -> Result<Vec<(String, String)>>;
 
-/// One value of a section, or for `schedules`, what Settings draws in its place.
+/// One value of a section.
 #[derive(Clone, Copy)]
 pub struct Field {
     /// Its name in the section's values, a serde name of what its feature reads them as:
@@ -281,23 +296,6 @@ pub enum Kind {
     Time { default: &'static str },
     /// A timezone, by its IANA name.
     Timezone { default: &'static str },
-    /// The schedules of one of its feature's collections, which core's collection schedules
-    /// keep at `path`, the feature's `schedule_routes`; a new one starts as `starts` (its
-    /// name and `HH:MM`), collecting `collection`, or with `collects`, what each chooses.
-    /// Not a value: Settings draws core's schedule editor.
-    Schedules {
-        path: &'static str,
-        collection: &'static str,
-        starts: (&'static str, &'static str),
-        collects: Option<ScheduleChoice>,
-    },
-}
-/// What each schedule of a schedules field chooses to collect, under `label`: each option a
-/// collection its feature keeps or an alias it declares, with its label.
-#[derive(Clone, Copy)]
-pub struct ScheduleChoice {
-    pub label: &'static str,
-    pub options: &'static [(&'static str, &'static str)],
 }
 /// The options of a `many`: fixed, or listed as it's read.
 #[derive(Clone, Copy)]
@@ -394,24 +392,6 @@ pub const fn time(id: &'static str, label: &'static str, default: &'static str) 
 }
 pub const fn timezone(id: &'static str, label: &'static str, default: &'static str) -> Field {
     field(id, label, Kind::Timezone { default })
-}
-/// The schedules of `collection`, kept at `path`; a new one starts as `starts`, its name and
-/// `HH:MM`: `schedules("schedules", "Schedules", "/api/dsp/x/schedules", "x", ("Daily X",
-/// "18:00"))`.
-pub const fn schedules(
-    id: &'static str,
-    label: &'static str,
-    path: &'static str,
-    collection: &'static str,
-    starts: (&'static str, &'static str),
-) -> Field {
-    let kind = Kind::Schedules {
-        path,
-        collection,
-        starts,
-        collects: None,
-    };
-    field(id, label, kind)
 }
 impl Field {
     /// A number's unit: "days".
@@ -561,33 +541,6 @@ impl Field {
             _ => panic!("only a text is locked"),
         }
     }
-    /// What each of a schedules field's schedules chooses to collect, under `label`: `&[("x",
-    /// "Yesterday"), ("x_today", "Today so far")]`, collections its feature keeps or aliases it
-    /// declares, the field's own among them.
-    pub const fn collects(
-        self,
-        label: &'static str,
-        options: &'static [(&'static str, &'static str)],
-    ) -> Self {
-        match self.kind {
-            Kind::Schedules {
-                path,
-                collection,
-                starts,
-                ..
-            } => {
-                let collects = Some(ScheduleChoice { label, options });
-                let kind = Kind::Schedules {
-                    path,
-                    collection,
-                    starts,
-                    collects,
-                };
-                Self { kind, ..self }
-            }
-            _ => panic!("only a schedules field chooses what it collects"),
-        }
-    }
 }
 
 impl Registry {
@@ -642,7 +595,7 @@ pub(crate) fn check(registry: &Registry) {
             "{owner}'s section {id} has no label"
         );
         match feature {
-            Some(feature) => check_feature(feature, section),
+            Some(feature) => check_feature(registry, feature, section),
             None => check_core(registry, section),
         }
         // Its record is kept as `section:<id>`, a member's own as `section:<id>:<user>`: an
@@ -678,7 +631,7 @@ pub(crate) fn check(registry: &Registry) {
                 "{id}'s field {} has no label",
                 field.id
             );
-            if let Err(why) = check_field(registry, feature, section, field) {
+            if let Err(why) = check_field(field) {
                 panic!("{id}'s field {}: {why}", field.id);
             }
         }
@@ -692,8 +645,9 @@ fn snake_case(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 /// A feature's section: named under it, under its own permission, with one of its parts, on
-/// a page of its own whose id no shared page takes.
-fn check_feature(feature: &Feature, section: &Section) {
+/// a page of its own whose id no shared page takes; with a collection, one its feature keeps,
+/// under the permission that sets when it runs.
+fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
     let id = section.id;
     assert!(
         id.strip_prefix(feature.name)
@@ -731,6 +685,26 @@ fn check_feature(feature: &Feature, section: &Section) {
             feature.name
         );
     }
+    if let Some(collection) = section.collection {
+        let keeper = feature.keeps.iter().find(|keeper| {
+            registry
+                .collectors
+                .iter()
+                .flat_map(|collector| collector.collections())
+                .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == collection)
+        });
+        assert!(
+            keeper.is_some_and(|keeper| keeper.schedules().permission == section.permission),
+            "{}'s section {id} goes with {collection}, which isn't a collection it keeps under {}",
+            feature.name,
+            section.permission
+        );
+        assert!(
+            section.page == Page::Shared("collectors") && !section.custom,
+            "{}'s section {id} goes with {collection}, so Settings draws it on Collectors",
+            feature.name
+        );
+    }
 }
 /// One of core's: named under a core part, never a feature's name, under core's own
 /// permission, on a shared page.
@@ -756,19 +730,13 @@ fn check_core(registry: &Registry, section: &Section) {
         section.permission
     );
     assert!(
-        section.page != Page::Own && section.part.is_none(),
-        "core's section {id} is on no feature's page and goes with no feature's part"
+        section.page != Page::Own && section.part.is_none() && section.collection.is_none(),
+        "core's section {id} is on no feature's page and goes with no feature's part or collection"
     );
 }
 /// Why `field` doesn't hold, if it doesn't: its options are some, each once; its range is
-/// one, its presets in it; its default is a value it holds; and a schedules field names a
-/// collection its DSP-wide section's feature keeps, at one of its feature's paths.
-fn check_field(
-    registry: &Registry,
-    feature: Option<&Feature>,
-    section: &Section,
-    field: &Field,
-) -> std::result::Result<(), String> {
+/// one, its presets in it; and its default is a value it holds.
+fn check_field(field: &Field) -> std::result::Result<(), String> {
     let distinct = |options: &[(&str, &str)]| {
         let values: BTreeSet<_> = options.iter().map(|(value, _)| value).collect();
         !options.is_empty() && values.len() == options.len()
@@ -795,83 +763,14 @@ fn check_field(
         Kind::Text { min, max, .. } if min > max => {
             return Err(format!("its least, {min}, is more than its most, {max}"));
         }
-        Kind::Schedules {
-            path,
-            collection,
-            starts,
-            collects,
-        } => {
-            return check_schedules(
-                registry, feature, section, path, collection, starts, collects,
-            );
-        }
         _ => {}
     }
-    match crate::settings::kinds::default(field) {
-        Some(default) if !crate::settings::kinds::fits(field, &default) => {
-            Err(format!("its default {default} isn't a value it holds"))
-        }
-        _ => Ok(()),
-    }
-}
-/// Why a schedules field doesn't hold, if it doesn't: its collection, and each it offers to
-/// choose, is one its feature keeps or an alias it declares, its own among those offered, each
-/// once; at one of its feature's own routes, in a section of the DSP's, starting with a name and
-/// a time.
-fn check_schedules(
-    registry: &Registry,
-    feature: Option<&Feature>,
-    section: &Section,
-    path: &str,
-    collection: &str,
-    (name, at): (&str, &str),
-    collects: Option<ScheduleChoice>,
-) -> std::result::Result<(), String> {
-    let Some(feature) = feature else {
-        return Err("core keeps no schedules of its own".into());
-    };
-    if section.scope != Scope::Dsp {
-        return Err("schedules are the DSP's, never a member's".into());
-    }
-    let keeps = |collection: &str| {
-        let kept = feature.keeps.iter().any(|keeper| {
-            registry
-                .collectors
-                .iter()
-                .flat_map(|collector| collector.collections())
-                .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == collection)
-        });
-        let aliased = feature
-            .schedule_aliases
-            .iter()
-            .any(|alias| alias.schedule == collection);
-        kept || aliased
-    };
-    let offered: Vec<&str> = match collects {
-        Some(choice) => choice.options.iter().map(|(value, _)| *value).collect(),
-        None => vec![collection],
-    };
-    if let Some(other) = offered.iter().find(|offered| !keeps(offered)) {
-        return Err(format!("{other} is no collection its feature keeps"));
-    }
-    if !offered.contains(&collection) {
-        return Err(format!("what it offers to collect leaves out {collection}"));
-    }
-    if offered.iter().collect::<BTreeSet<_>>().len() != offered.len() {
-        return Err("what it offers to collect repeats one".into());
-    }
-    if !(feature.routes)()
-        .iter()
-        .any(|route| route.method == axum::http::Method::GET && route.path == path)
-    {
-        return Err(format!("{path} is none of its feature's routes"));
-    }
-    if name.is_empty() || !crate::settings::kinds::is_time(at) {
-        return Err("a new schedule starts with a name and HH:MM".into());
+    let default = crate::settings::kinds::default(field);
+    if !crate::settings::kinds::fits(field, &default) {
+        return Err(format!("its default {default} isn't a value it holds"));
     }
     Ok(())
 }
-
 #[cfg(test)]
 #[path = "../tests/backend/settings.rs"]
 mod tests;

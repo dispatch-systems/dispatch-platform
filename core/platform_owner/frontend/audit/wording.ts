@@ -50,6 +50,7 @@ const phrases: AuditPhrases = {
   'role.updated': (e) => ['updated ', ...named('role', e.target ?? e.detail)],
   'role.deleted': (e) => ['deleted ', ...named('role', e.detail)],
   'collection.cancelled': () => ['cancelled a collection'],
+  'collection.started': (e) => ['started collecting ', strong(e.detail)],
   'schedule.created': (e) => ['created ', ...named('schedule', e.detail)],
   'schedule.updated': (e) => ['updated ', ...named('schedule', e.target ?? e.detail)],
   'schedule.toggled': (e) => {
@@ -213,6 +214,7 @@ const spoken = new Set([
   'role.deleted',
   'collection.failed',
   'collection.retrying',
+  'collection.started',
   'schedule.created',
   'schedule.updated',
   'schedule.toggled',

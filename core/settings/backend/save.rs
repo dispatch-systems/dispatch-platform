@@ -213,7 +213,7 @@ fn merged(
 
 /// The section's field `id` and `value` as it keeps it, checked as its kind says, against what
 /// it holds `now` and the options it offers from `lists`: refused as `invalid_input` for a
-/// field the section hasn't, or a schedules field, which holds no value. With no lists, as for
+/// field the section hasn't. With no lists, as for
 /// values a feature carries over, a field whose options are listed as it's read takes any
 /// value that fits it.
 fn checked(
@@ -226,7 +226,7 @@ fn checked(
     let field = section
         .fields
         .iter()
-        .find(|field| field.id == id && kinds::default(field).is_some())
+        .find(|field| field.id == id)
         .ok_or_else(|| Error::new("invalid_input", 400))?;
     let options = match lists {
         Some(lists) => lists.options(field)?,

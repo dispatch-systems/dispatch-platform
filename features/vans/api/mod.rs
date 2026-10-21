@@ -1,4 +1,2 @@
-//! Both ends of Vans' HTTP API: its routes, the types they answer with, and in `client.ts` the
-//! frontend's function for each.
+//! Vans' HTTP API: its routes.
 pub(crate) mod routes;
-pub(crate) mod types;

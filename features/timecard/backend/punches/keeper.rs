@@ -4,7 +4,7 @@ use dispatch_core::{
     Result,
     collection::browser::Collected,
     db::{Db, Store, s},
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_paycom::{
@@ -23,6 +23,9 @@ impl Keeper for Timecards {
     }
     fn permission(&self) -> &'static str {
         "collections.run"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("timecard.manage")
     }
     fn domain(&self) -> DataDomain {
         super::DOMAIN

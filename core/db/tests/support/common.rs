@@ -4,10 +4,16 @@
 //! the `testing` feature.
 use crate::{
     Error, Result,
-    collection::{browser::Collected, registry::Provider},
+    collection::{
+        api::types::ScheduledCollection, browser::Collected, registry::Provider,
+        schedules::Scheduled,
+    },
     db::{self, Migration, Migrations, Store, migrations::Apply, s},
     foundation::config::Config,
-    manifest::{self, Agents, Collector, Feature, Keeper, Registry, feature, mandatory, optional},
+    manifest::{
+        self, Agents, Collector, Feature, Keeper, Permission, Registry, Schedules, feature,
+        mandatory, optional, perm, schedules,
+    },
     server::operations,
 };
 use serde_json::Value;
@@ -124,14 +130,17 @@ fn stand_in(
             });
         }
     }
-    // Running collections, it is switched like any page that does; else every DSP has it.
+    // Running collections, it is switched like any page that does, and owns the permission
+    // they run and are scheduled under; else every DSP has it.
     let runs = !keeps.is_empty();
+    const COLLECT: &[Permission] = &[perm("stand_in.collect", "Collect Stand-in", 1)];
     leak(Feature {
         switch: if runs {
             optional("stand_in", "Stand-in", &[])
         } else {
             mandatory("stand_in", "Stand-in")
         },
+        permissions: if runs { COLLECT } else { &[] },
         keeps: leak(keeps),
         migrations: leak(missing),
         ..feature("stand_in")
@@ -145,6 +154,9 @@ impl Keeper for Unkept {
     }
     fn permission(&self) -> &'static str {
         "stand_in.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("stand_in.collect")
     }
     fn publish(&self, _: &Store, _: &str, _: &str, _: Collected) -> Result<()> {
         Err(Error::new("collection_not_kept", 500))
@@ -297,6 +309,24 @@ pub fn schedule_due_at(db: &Store, dsp: &str, schedule: &str, deadline: &str) ->
         [deadline, schedule],
     )?;
     Ok(())
+}
+
+/// Saves `rules` as the whole schedule of the collection whose own schedule name is
+/// `collection`, as its Collectors page does, and answers it as saved.
+pub fn schedule(
+    db: &Store,
+    dsp: &str,
+    collection: &str,
+    rules: Value,
+) -> Result<ScheduledCollection> {
+    let scheduled = Scheduled::named(collection)?;
+    let revision = db.scheduled_collection(dsp, scheduled, false)?.revision;
+    db.save_rules(
+        dsp,
+        scheduled,
+        &serde_json::json!({"rules": rules, "revision": revision}),
+    )?;
+    db.scheduled_collection(dsp, scheduled, false)
 }
 
 /// Sets a job's status, as a worker would leave it.

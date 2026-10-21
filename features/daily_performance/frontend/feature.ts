@@ -5,7 +5,7 @@ import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots
 
 export const feature: FrontendFeature = {
   name: 'daily_performance',
-  // The icon of its page of Settings, as it has no page in the sidebar.
+  // The icon its collection shows on Settings' Collectors page, as it has no page in the sidebar.
   icon: LayoutGrid,
   // Its switch's icon on the DSPs page.
   platformSlots: () => import('./platform-slots.js'),

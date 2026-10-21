@@ -3,10 +3,7 @@
 use crate::backend::WeeklyScorecardStore;
 use dispatch_core::{
     Result,
-    collection::api::routes::{
-        jobs::{job_cancel, job_list},
-        schedules::schedule_routes,
-    },
+    collection::api::routes::jobs::{job_cancel, job_list},
     db::Store,
     foundation::{validate as v, weeks},
     server::http::{
@@ -18,10 +15,9 @@ use dispatch_cortex::weekly_scorecard;
 
 const VIEW: Dsp = Dsp("weekly_scorecard.view");
 const COLLECT: Dsp = Dsp("weekly_scorecard.collect");
-const MANAGE: Dsp = Dsp("weekly_scorecard.manage");
 
 pub fn routes() -> Vec<Route> {
-    let mut routes = vec![
+    vec![
         read("/api/dsp/weekly-scorecard/weeks", VIEW, weeks),
         job_list(
             "/api/dsp/weekly-scorecard/jobs",
@@ -36,13 +32,7 @@ pub fn routes() -> Vec<Route> {
             COLLECT,
             &[weekly_scorecard::JOB_KIND],
         ),
-    ];
-    routes.extend(schedule_routes(
-        "/api/dsp/weekly-scorecard/schedules",
-        MANAGE,
-        "weekly_scorecard",
-    ));
-    routes
+    ]
 }
 
 fn weeks(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

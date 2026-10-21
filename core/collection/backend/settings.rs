@@ -1,5 +1,6 @@
-//! Collection's section of a DSP's Settings: the DSP's connections and the member's own,
-//! drawn by collection's own Connections.
+//! Collection's sections of a DSP's Settings: the DSP's connections and the member's own,
+//! drawn by collection's own Connections; and when each collection runs, drawn by its
+//! Collectors.
 use crate::{
     accounts::Context,
     manifest::{Section, registry, section},
@@ -16,6 +17,23 @@ pub const CONNECTIONS: Section =
         .keywords(&["accounts", "sign-in", "credentials"])
         .found(connectable)
         .order(10);
+
+/// Every member's: the frontend shows it to those who set when one of the DSP's collections
+/// runs, and the page each of those collections the member does, as the server lists them.
+pub const COLLECTORS: Section = section("collection.collectors", "Collectors", roles::ACCESS, &[])
+    .on("collectors")
+    .custom()
+    .keywords(&["schedules", "collections", "collect"])
+    .found(scheduled)
+    .order(10);
+
+/// The collections whose schedules the member sets, by name, as "Routes" finds Collectors.
+fn scheduled(c: &Context) -> Vec<String> {
+    crate::collection::schedules::Scheduled::all()
+        .filter(|scheduled| c.can(scheduled.keeper.schedules().permission))
+        .map(|scheduled| scheduled.collection.label.to_owned())
+        .collect()
+}
 
 /// The accounts the DSP can connect, by name: each collector's it has, and each of its
 /// features' with a DSP account of its own, as "Cortex" and "Slack" find Connections.

@@ -1,10 +1,17 @@
 # Every route collection registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
-# Each changes with this file, so a reviewer sees who can reach what.
+# Each changes with this file, so a reviewer sees who can reach what. <scheduling> is the
+# permissions the features' keepers set schedules under, and <collecting> those they collect
+# under: the build's features decide them.
+GET /api/dsp/collectors Dsp(<scheduling>) Read
 GET /api/dsp/connections Dsp("connections.manage") Read
 GET /api/dsp/connections/{provider} Dsp("connections.manage") Async
 GET /api/dsp/connections/{provider}/screenshot Dsp("connections.manage") Async
 GET /api/platform/jobs PlatformOwner Read
+POST /api/dsp/collectors/{collection}/collect Dsp(<collecting>) Bookkeeping
+POST /api/dsp/collectors/{collection}/enabled Dsp(<scheduling>) Write wakes-scheduler
+POST /api/dsp/collectors/{collection}/preview Dsp(<scheduling>) Write
+POST /api/dsp/collectors/{collection}/schedule Dsp(<scheduling>) Write wakes-scheduler
 POST /api/dsp/connections/{provider} Dsp("connections.manage") Async
 POST /api/dsp/connections/{provider}/assist Dsp("connections.manage") Async
 POST /api/dsp/connections/{provider}/check Dsp("connections.manage") Async

@@ -5,7 +5,7 @@ use dispatch_core::{
     collection::browser::Collected,
     db::{Db, Store},
     ensure,
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_cortex::{
@@ -25,6 +25,9 @@ impl Keeper for MealBreaks {
     }
     fn permission(&self) -> &'static str {
         "collections.run"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("timecard.manage")
     }
     fn domain(&self) -> DataDomain {
         super::DOMAIN

@@ -1,16 +1,18 @@
-import { performancePolicy } from '../../shell/frontend/lib/performance-policy.js';
 import { api, useCachedData } from '../../shell/frontend/runtime/api.js';
 import type {
-  CollectionSchedule,
-  CollectionSchedules,
   CollectionUpdates,
+  Collectors,
   Connection,
-  ScheduleInput,
-  SchedulePreview,
+  Job,
+  ScheduleCollection,
+  ScheduledCollection,
+  ScheduleRuleInput,
+  ScheduleRuns,
 } from './index.js';
+import { collectorsRead } from './urls.js';
 
-// Collection's endpoints, as the frontend calls them: live updates, schedules and connections.
-// A feature serves its schedules under a prefix of its own, which it names to each call.
+// Collection's endpoints, as the frontend calls them: live updates, the Collectors page's
+// schedules and connections.
 
 export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
   api<CollectionUpdates>(
@@ -19,31 +21,28 @@ export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
     signal,
   );
 
-export const useSchedules = (schedules: string, dspId: string) =>
-  useCachedData<CollectionSchedules>(schedules, performancePolicy.recoveryPollMs, dspId);
-export const getSchedules = (schedules: string) => api<CollectionSchedules>(schedules);
-/** Saving an existing schedule names the revision it was read at. */
-export const saveSchedule = (
-  schedules: string,
-  id: string | undefined,
-  schedule: ScheduleInput & { revision?: number },
-) => api<CollectionSchedule>(id ? `${schedules}/${id}` : schedules, schedule);
-export const setScheduleEnabled = (
-  schedules: string,
-  id: string,
-  enabled: boolean,
-  revision: number,
-) => api<CollectionSchedule>(`${schedules}/${id}/enabled`, { enabled, revision });
-export const removeSchedule = (schedules: string, id: string, revision: number) =>
-  api(`${schedules}/${id}/remove`, { revision });
-/** When a schedule with this timing would run next. */
-export const previewSchedule = (
-  schedules: string,
-  timing: Pick<ScheduleInput, 'cadence' | 'intervalMinutes' | 'localTime'> & {
-    scheduleId?: string;
-  },
+/** The collections whose schedules the member sets, read again every `poll` milliseconds when given. */
+export const useCollectors = (dspId: string, poll = 0) =>
+  useCachedData<Collectors>(collectorsRead, poll, dspId);
+const collection = (name: ScheduleCollection) => `/api/dsp/collectors/${encodeURIComponent(name)}`;
+/** Saves a collection's rules together, as at the revision they were read at. */
+export const saveRules = (name: ScheduleCollection, rules: ScheduleRuleInput[], revision: string) =>
+  api<ScheduledCollection>(`${collection(name)}/schedule`, { rules, revision });
+/** Turns a collection's schedule on or off, every rule at once. */
+export const switchSchedule = (name: ScheduleCollection, enabled: boolean, revision: string) =>
+  api<ScheduledCollection>(`${collection(name)}/enabled`, { enabled, revision });
+/** When unsaved rules would run next, as though the collection were on. */
+export const previewRules = (
+  name: ScheduleCollection,
+  rules: ScheduleRuleInput[],
   signal: AbortSignal,
-) => api<SchedulePreview>(`${schedules}/preview`, timing, signal);
+) => api<ScheduleRuns>(`${collection(name)}/preview`, { rules }, signal);
+/** Queues now what one run of a schedule reading by `collects` queues, once for `requestId`. */
+export const collectNow = (
+  name: ScheduleCollection,
+  collects: ScheduleCollection,
+  requestId: string,
+) => api<Job[]>(`${collection(name)}/collect`, { collects, requestId });
 
 export const connectionUrl = (provider: Connection['provider']) =>
   `/api/dsp/connections/${provider}`;

@@ -100,13 +100,11 @@ dispatch-communications = { path = "../../features/communications", features = [
 dispatch-daily-performance = { path = "../../features/daily_performance", features = ["ts"] }
 dispatch-documents = { path = "../../features/documents", features = ["ts"] }
 dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"] }
-dispatch-driver-profiles = { path = "../../features/driver_profiles", features = ["ts"] }
 dispatch-dvic = { path = "../../features/dvic", features = ["ts"] }
 dispatch-routes = { path = "../../features/routes", features = ["ts"] }
 dispatch-slack = { path = "../../features/slack", features = ["ts"] }
 dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }
 dispatch-uniforms = { path = "../../features/uniforms", features = ["ts"] }
-dispatch-vans = { path = "../../features/vans", features = ["ts"] }
 dispatch-weekly-scorecard = { path = "../../features/weekly_scorecard", features = ["ts"] }
 
 base64 = { workspace = true }

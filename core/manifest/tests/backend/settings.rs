@@ -72,3 +72,17 @@ fn a_default_its_field_does_not_hold_is_refused() {
     };
     checked(&X);
 }
+
+#[test]
+#[should_panic(
+    expected = "x's section x.policy goes with routes, which isn't a collection it keeps under x.manage"
+)]
+fn a_section_with_a_collection_its_feature_does_not_keep_is_refused() {
+    static X: Feature = Feature {
+        switch: optional("x", "X", &[]),
+        permissions: &[perm("x.manage", "Manage X", 1)],
+        settings: &[section("x.policy", "Policy", "x.manage", FIELDS).collection("routes")],
+        ..feature("x")
+    };
+    checked(&X);
+}

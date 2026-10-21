@@ -5,7 +5,7 @@ use dispatch_core::{
     collection::{browser::Collected, registry::AddedStorage},
     db::{Store, s},
     ensure,
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_cortex::{discovery::Scope, weekly_scorecard::JOB_KIND};
@@ -18,6 +18,9 @@ impl Keeper for WeeklyScorecard {
     }
     fn permission(&self) -> &'static str {
         "weekly_scorecard.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("weekly_scorecard.manage")
     }
     fn domain(&self) -> DataDomain {
         super::DOMAIN

@@ -12,7 +12,8 @@ const credentials = {
 };
 
 // Core's own routes: a DSP's connections, and the platform owner's list of every DSP's jobs.
-// The jobs and schedules a feature mounts are tested with that feature.
+// The jobs a feature mounts are tested with that feature; the Collectors page's schedules, which
+// need a feature's collections, in app/tests/api/collectors.test.ts.
 test("a DSP's connections check and encrypt credentials, and only the platform owner lists every job", async (t) => {
   const f = await fixture();
   t.after(f.close);

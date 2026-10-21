@@ -48,29 +48,27 @@ test('Rust owns verification, encrypted credentials, collection, idempotency and
   );
   await until(async () => (await owner.read('/api/dsp/jobs'))[0].status === 'succeeded');
   assert.equal((await owner.get('/api/dsp/employees')).value.total, 12);
-  const schedule = await owner.post('/api/dsp/schedules', {
-    name: 'Morning',
-    collection: 'paycom',
-    cadence: 'daily',
-    intervalMinutes: null,
-    localTime: '06:00',
-    enabled: true,
+  const paycom = async () =>
+    (await owner.read('/api/dsp/collectors')).collections.find(
+      (each: { collection: string }) => each.collection === 'paycom',
+    );
+  const rule = { collects: 'paycom', kind: 'times', days: [0, 1, 2, 3, 4, 5, 6], times: ['06:00'] };
+  const schedule = await owner.post('/api/dsp/collectors/paycom/schedule', {
+    rules: [{ id: null, ...rule }],
+    revision: (await paycom()).revision,
   });
-  assert.equal(schedule.status, 201);
+  assert.equal(schedule.status, 200, schedule.body);
   assert.equal(schedule.value.enabled, true);
   assert.equal(
     (await owner.post('/api/dsp/connections/paycom/disable', { removeCredentials: true })).status,
     200,
   );
   assert.equal(fs.existsSync(vault), false);
-  const paused = (await owner.get('/api/dsp/schedules')).value.schedules;
+  const paused = await paycom();
+  assert.equal(paused.enabled, false);
   assert.deepEqual(
-    paused.map((s: { id: string; enabled: boolean; nextRun: string | null }) => [
-      s.id,
-      s.enabled,
-      s.nextRun,
-    ]),
-    [[schedule.value.id, false, null]],
+    paused.rules.map((s: { id: string; nextRun: string | null }) => [s.id, s.nextRun]),
+    [[schedule.value.rules[0].id, null]],
   );
   assert.equal((await owner.get('/api/dsp/employees')).value.total, 12);
 });

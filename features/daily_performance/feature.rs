@@ -30,7 +30,7 @@ pub const FEATURE: Feature = Feature {
     ],
     domains: &[backend::storage::DOMAIN],
     routes: api::routes::routes,
-    // Which dates its schedules recheck, and the schedules, on its own Settings page.
+    // Which dates its collection rechecks, drawn with it on Settings' Collectors page.
     settings: &[backend::settings::COLLECTION],
     upgrade_storage: Some(backend::settings::upgrade),
     keeps: &[&backend::keeper::DailyPerformanceKeeper],

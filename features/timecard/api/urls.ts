@@ -3,8 +3,6 @@ import type { EmployeeTimecardPeriod } from './index.js';
 // Timecard's addresses, which its prefetch builds before its page or client load: kept apart
 // from the client, so the manifest every page loads carries only these.
 
-/** Where its schedules are served, as core's schedule calls take it. */
-export const schedules = '/api/dsp/schedules';
 export const employeesPath = '/api/dsp/employees';
 export const mealBreaksPath = '/api/dsp/paycom/meal-breaks';
 export const mealPeriodPath = `${mealBreaksPath}/period`;

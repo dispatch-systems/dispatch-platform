@@ -5,7 +5,7 @@ export const collections = [
     "kind": "paycom.collect",
     "provider": "paycom",
     "schedule": "paycom",
-    "label": "Paycom",
+    "label": "Timecards",
     "unit": "employee",
     "counted": "employees"
   },

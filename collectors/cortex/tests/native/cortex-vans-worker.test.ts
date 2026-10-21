@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { collectNow } from '../../../../core/collection/tests/support/collect.js';
 import { fileContainsAny } from '../../../../core/shell/tests/support/files.js';
 
 // What only the collected vans carry, so any copy of them outside their database shows.
@@ -141,16 +142,7 @@ test(
       password: 'fixture-password',
     });
     assert.equal(saved.value.status, 'ready', saved.body);
-    const collect = async (requestId: string) => {
-      const queued = await owner.post('/api/dsp/vans/collect', { requestId });
-      assert.equal(queued.status, 202, queued.body);
-      await until(async () => {
-        const status = await owner.read('/api/dsp/vans/status');
-        const current = status.jobs.find((job: any) => job.id === queued.value.id);
-        assert.notEqual(current?.status, 'failed', JSON.stringify(current));
-        return current?.status === 'succeeded';
-      }, 120000);
-    };
+    const collect = (requestId: string) => collectNow(owner, 'vans', requestId, 120000);
     // The first job may go on in the browser the connection signed in with.
     await collect('fleet-1');
     assert.ok(seen.landings > 0, 'The sign-in on the page rendered the console');

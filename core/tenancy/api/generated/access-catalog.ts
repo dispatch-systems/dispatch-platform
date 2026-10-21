@@ -490,3 +490,12 @@ export const permissionParents = {
   "uniforms.adjust": "uniforms.view",
   "uniforms.manage": "uniforms.view"
 } as const;
+export const schedulingPermissions = [
+  "daily_performance.manage",
+  "driver_profiles.collect",
+  "dvic.manage",
+  "routes.manage",
+  "timecard.manage",
+  "vans.collect",
+  "weekly_scorecard.manage"
+] as const;

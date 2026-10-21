@@ -45,7 +45,6 @@ import { EmployeePeriodSync } from './tabs/employees/EmployeePeriodSync.js';
 const loadEmployees = () => import('./tabs/employees/EmployeesPage.js');
 const loadTimecards = () => import('./tabs/daily/TimecardsPage.js');
 const loadMeals = () => import('./tabs/meal-breaks/MealBreaksPage.js');
-const loadSettings = () => import('./settings/index.js');
 const EmployeesPage = lazy(() => loadEmployees().then((m) => ({ default: m.EmployeesPage })));
 const TimecardsPage = lazy(() => loadTimecards().then((m) => ({ default: m.TimecardsPage })));
 const MealBreaksPage = lazy(() => loadMeals().then((m) => ({ default: m.MealBreaksPage })));
@@ -172,7 +171,6 @@ export function PaycomPage({ view }: { view: DspView }) {
     ? settingsHash(view.dsp.id, 'timecard', view)
     : undefined;
   const warmSettings = () => {
-    void loadSettings().catch(() => undefined);
     const host = settingsPage();
     if (host) prefetchRouteData(host, view);
   };

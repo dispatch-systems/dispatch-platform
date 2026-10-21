@@ -2,7 +2,7 @@
 use crate::backend::DvicStore;
 use dispatch_core::{
     Result,
-    collection::api::routes::{jobs::job_cancel, schedules::schedule_routes},
+    collection::api::routes::jobs::job_cancel,
     db::Store,
     foundation::validate as v,
     server::http::{
@@ -13,7 +13,7 @@ use dispatch_core::{
 use dispatch_cortex::dvic;
 
 pub fn routes() -> Vec<Route> {
-    let mut routes = vec![
+    vec![
         read("/api/dsp/dvic/status", Dsp("dvic.view"), status),
         read("/api/dsp/dvic/inspections", Dsp("dvic.view"), inspections),
         coalesced_read("/api/dsp/dvic/summary", Dsp("dvic.view"), summary),
@@ -27,13 +27,7 @@ pub fn routes() -> Vec<Route> {
             Dsp("dvic.collect"),
             &[dvic::JOB_KIND],
         ),
-    ];
-    routes.extend(schedule_routes(
-        "/api/dsp/dvic/schedules",
-        Dsp("dvic.manage"),
-        "dvic",
-    ));
-    routes
+    ]
 }
 fn dashboard<T: serde::Serialize>(
     db: &Store,

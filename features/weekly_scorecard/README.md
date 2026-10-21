@@ -6,7 +6,7 @@ with their own permissions, schedules and storage.
 
 The current names are `weekly_scorecard`, `cortex.weekly_scorecard.collect`,
 `weekly_scorecard.view/collect/manage` and `/api/dsp/weekly-scorecard`. There is no
-page of its own: Settings draws its section.
+page of its own: Settings draws its section with its collection, on the Collectors page.
 
 Storage is `weekly_scorecard/weekly_scorecard.sqlite`. Historical publications and source
 rows are retained when a week is collected again. Provider daily datasets inside a weekly
@@ -17,15 +17,17 @@ answers while it republishes a week, is kept beside it, with its counts alone, u
 least half an hour later (twelve hours for a dataset gone empty) sees the same counts, as a
 dispute that removed rows settles.
 
-Weekly schedules refresh recent completed weeks, including already posted weeks whose
-dispute outcomes can change. Schedule times and cadence are independent of daily schedules.
+Its scheduled runs refresh recent completed weeks, including already posted weeks whose
+dispute outcomes can change. When they run is its own schedule, set on Settings' Collectors
+page behind `weekly_scorecard.manage`, apart from Daily Performance's.
 Manual recollection can target older weeks.
 
-Its Settings page (`?tab=weekly-scorecard`) holds one section, `weekly_scorecard.collection`
-"Collection", behind `weekly_scorecard.manage` (`backend/settings.rs`): `lookback_weeks` (1–8,
-default 1) and `refresh_hours` (1–168, default 20), the weeks a scheduled run rechecks and how
-long one checked stays fresh, then its schedules, kept by core's schedule routes at
-`/api/dsp/weekly-scorecard/schedules`. Scheduled runs read the values with `settings::read`;
+Its one section of Settings, `weekly_scorecard.collection` "Collection", goes with its
+collection (`.collection("weekly_scorecard")`), so Settings draws it below that collection's
+schedule on the Collectors page, behind `weekly_scorecard.manage` (`backend/settings.rs`):
+`lookback_weeks` (1–8, default 1) and `refresh_hours` (1–168, default 20), the weeks a run, by
+its rules or Collect now, rechecks and how long one checked stays fresh. Runs read the values
+with `settings::read`;
 core keeps them in the DSP's settings and records each change as `settings.changed`. A policy
 kept before in its database's `settings` (`collection_policy`) moves in once as the server
 starts, after the import below (`upgrade_storage`, through `settings::carry_over`), unless the

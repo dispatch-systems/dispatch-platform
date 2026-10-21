@@ -13,9 +13,14 @@ page: string, label: string, order: number, scope: SettingsScope,
 /**
  * Drawn by its owner's component, which the frontend registers under its id.
  */
-custom: boolean, fields: Array<SettingsField>,
+custom: boolean,
 /**
- * Every field's value by id, but a schedules field's, which holds none.
+ * The collection it goes with, by its schedule name: the Collectors page draws it with
+ * that collection.
+ */
+collection: string | null, fields: Array<SettingsField>,
+/**
+ * Every field's value by id.
  */
 values: Record<string, boolean | number | string | Array<string> | null>,
 /**

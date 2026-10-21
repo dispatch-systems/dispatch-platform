@@ -4,7 +4,6 @@ import type { FieldKind, FieldProps } from './kind.js';
 import { many } from './many.js';
 import { number } from './number.js';
 import { pick } from './pick.js';
-import { schedules } from './schedules.js';
 import { text } from './text.js';
 import { time } from './time.js';
 import { timezone } from './timezone.js';
@@ -21,7 +20,6 @@ const kinds: { [K in SettingsField['kind']]: FieldKind<K> } = {
   text,
   time,
   timezone,
-  schedules,
 };
 const kindOf = (field: SettingsField) =>
   kinds[field.kind] as unknown as FieldKind<SettingsField['kind']>;

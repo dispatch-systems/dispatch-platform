@@ -66,7 +66,7 @@ test('custom roles gate tenant APIs and never grant more than the actor holds', 
   assert.equal((await member.get('/api/dsp/employees')).value.error, 'dsp_view_expired');
   view = await member.select(north.id);
   assert.deepEqual(view.permissions, lead.permissions);
-  assert.equal((await member.get('/api/dsp/schedules')).status, 200);
+  assert.equal((await member.get('/api/dsp/collectors')).status, 200);
   assert.equal((await member.get('/api/dsp/connections')).status, 403);
   assert.equal((await member.post('/api/dsp/jobs', { requestId: 'denied' })).status, 403);
 

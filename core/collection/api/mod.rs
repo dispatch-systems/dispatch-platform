@@ -4,9 +4,9 @@ pub mod jobs;
 pub mod metrics;
 pub mod types;
 pub mod routes {
+    pub mod collectors;
     pub mod connections;
     pub mod jobs;
-    pub mod schedules;
 }
 
 /// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
@@ -23,15 +23,19 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         metrics::PageRead,
         metrics::PageReads,
         metrics::PageStage,
-        types::Cadence,
         types::CollectionChange,
-        types::CollectionSchedule,
-        types::CollectionSchedules,
         types::CollectionUpdates,
+        types::Collectors,
         types::Connection,
         types::ConnectionStatus,
+        types::LastRun,
+        types::RuleKind,
+        types::ScheduleChoice,
         types::ScheduleCollection,
-        types::SchedulePreview,
+        types::ScheduleOption,
+        types::ScheduleRule,
+        types::ScheduleRuns,
+        types::ScheduledCollection,
     )
 }
 
@@ -39,5 +43,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
 pub fn routes() -> Vec<crate::server::http::Route> {
     let mut all = routes::jobs::routes();
     all.extend(routes::connections::routes());
+    all.extend(routes::collectors::routes());
     all
 }

@@ -9,17 +9,20 @@ days they name, and a retry reads each date on its own.
 The feature owns `daily_performance/daily_performance.sqlite`, publication history, indexed
 rows and source coverage. Its switch, permissions (`view`, `collect`, `manage`), schedules
 and jobs are independent of `weekly_scorecard`. Existing weekly grants do not grant daily
-access. There is no page of its own: Settings draws its section.
+access. There is no page of its own: Settings draws its section with its collection, on the
+Collectors page.
 
 Management routes use `/api/dsp/daily-performance`: the base lists collected days;
-`/collect` accepts a date or an inclusive from/to backfill of up to 31 days; `/jobs` and
-`/schedules` manage this collection alone.
+`/collect` accepts a date or an inclusive from/to backfill of up to 31 days; `/jobs` manages
+this collection's alone. When it runs is set on Settings' Collectors page, under
+`daily_performance.manage` (its keeper's `schedules`), through core's
+`/api/dsp/collectors/daily_performance` routes.
 
-Its Settings page (`?tab=daily-performance`) holds one section, `daily_performance.collection`
-"Collection", behind `daily_performance.manage` (`backend/settings.rs`): `lookback_days`
-(1–30, default 7) and `refresh_hours` (1–168, default 20), the dates a scheduled run rechecks
-and how long one collected stays fresh, then its schedules, kept by core's schedule routes at
-`/schedules`. Wall-clock times and cadence stay in those schedules. Scheduled runs read the
+Its one section of Settings, `daily_performance.collection` "Collection", goes with its
+collection (`.collection("daily_performance")`), so Settings draws it below that collection's
+schedule on the Collectors page, behind `daily_performance.manage` (`backend/settings.rs`):
+`lookback_days` (1–30, default 7) and `refresh_hours` (1–168, default 20), the dates a run,
+by its rules or Collect now, rechecks and how long one collected stays fresh. Runs read the
 values with `settings::read`; core keeps them in the DSP's settings and records each change as
 `settings.changed`. A policy kept before in its database's `settings` (`collection_policy`)
 moves in once as the server starts (`upgrade_storage`, through `settings::carry_over`), unless

@@ -1,6 +1,5 @@
 //! Vans' storage: the fleet in a database of its own beside Cortex's. Only this crate writes
 //! SQL against it.
-use crate::api::types::FleetStatus;
 use dispatch_core::{
     Result,
     collection::registry::AddedStorage,
@@ -10,7 +9,7 @@ use dispatch_core::{
 };
 use dispatch_cortex::{
     self as cortex,
-    vans::{Capture, Collection, JOB_KIND, Request},
+    vans::{Capture, Collection, Request},
 };
 use dispatch_vans_contract::Van;
 use rusqlite::params;
@@ -55,12 +54,8 @@ pub(crate) fn bind_fleet_request(store: &Store, dsp: &str) -> Result<Value> {
 /// What Vans reads and writes for one DSP.
 pub trait VansStore {
     fn vans_db(&self, dsp: &str) -> Result<DspLease<'_>>;
-    /// Queues a collection of the fleet, answering with the job.
-    fn enqueue_fleet(&self, dsp: &str, actor: Option<&str>, key: &str) -> Result<Value>;
     /// Stores a fleet as the current one.
     fn publish_fleet(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
-    /// When the fleet was collected, what it holds, and when it is collected next.
-    fn fleet_status(&self, dsp: &str) -> Result<FleetStatus>;
     /// What the fleet says of each of `vins` it has listed, in their order. Refuses an empty
     /// VIN, one over 128 characters, or more than a hundred.
     fn vans(&self, dsp: &str, vins: &[String]) -> Result<Vec<Van>>;
@@ -68,17 +63,6 @@ pub trait VansStore {
 impl VansStore for Store {
     fn vans_db(&self, dsp: &str) -> Result<DspLease<'_>> {
         self.added_storage(dsp, cortex::PROVIDER, &STORAGE)
-    }
-    fn enqueue_fleet(&self, dsp: &str, actor: Option<&str>, key: &str) -> Result<Value> {
-        bind_fleet_request(self, dsp)?;
-        let job = self
-            .enqueue_batch(
-                dsp,
-                actor,
-                &[(key.into(), cortex::PROVIDER, fleet_request())],
-            )?
-            .remove(0);
-        Ok(serde_json::to_value(job)?)
     }
     fn publish_fleet(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()> {
         let request = Request::parse(&bind_fleet_request(self, dsp)?)?
@@ -124,35 +108,6 @@ impl VansStore for Store {
                 ],
             )?;
             Ok(())
-        })
-    }
-    fn fleet_status(&self, dsp: &str) -> Result<FleetStatus> {
-        let db = self.vans_db(dsp)?;
-        let collected_at = db
-            .query_as::<(String,)>(
-                "SELECT collected_at FROM fleet_runs ORDER BY collected_at DESC LIMIT 1",
-                [],
-            )?
-            .into_iter()
-            .next()
-            .map(|(at,)| at);
-        let count = |sql: &str| -> Result<usize> { Ok(db.count(sql, [])? as usize) };
-        let running = count("SELECT count(*) FROM vans WHERE listed=1 AND status<>'INACTIVE'")?;
-        let inactive = count("SELECT count(*) FROM vans WHERE listed=1 AND status='INACTIVE'")?;
-        drop(db);
-        let next_run = self
-            .collection_schedules(dsp)?
-            .schedules
-            .into_iter()
-            .filter(|s| s.enabled && s.collection.as_str() == "vans")
-            .filter_map(|s| s.next_run)
-            .min();
-        Ok(FleetStatus {
-            collected_at,
-            running,
-            inactive,
-            next_run,
-            jobs: self.recent_jobs_of(dsp, JOB_KIND)?,
         })
     }
     fn vans(&self, dsp: &str, vins: &[String]) -> Result<Vec<Van>> {

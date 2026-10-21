@@ -37,7 +37,7 @@ use dispatch_core::{
     manifest::{
         Audit,
         DefaultRole::{Manager, Member},
-        Feature, ScheduleAlias, feature, optional, perm, tab,
+        Feature, feature, optional, perm, tab,
     },
     server::cache::{Cached, DataDomain, Evicted::By, LISTINGS},
     tenancy::api::audit::AuditArea::Collections,
@@ -54,11 +54,9 @@ pub const FEATURE: Feature = Feature {
         tab("timecard.meal_breaks", "Meal Breaks").requires(&["meal_breaks"]),
         tab("timecard.employees", "Employee Search"),
     ],
-    // A schedule of `both` runs its two collections at once.
-    schedule_aliases: &[ScheduleAlias {
-        schedule: "both",
-        runs: &[paycom::timecards::JOB_KIND, cortex::meals::JOB_KIND],
-    }],
+    // A schedule of `both` ran its two collections at once; each runs by its own rules now,
+    // and those due together run together.
+    retired_schedule_aliases: &[("both", &["paycom", "meal_break"])],
     permissions: &[
         perm("timecard.view", "View Timecard", 20).demo(&[Manager, Member]),
         perm("timecard.manage", "Manage Timecard", 21).implies(&["timecard.view"]),
@@ -69,10 +67,9 @@ pub const FEATURE: Feature = Feature {
             .legacy_role("manager"),
     ],
     routes: api::routes::routes,
-    // Its schedules, which employees it lists, the departments that drive and when a DA is
-    // late, on its page of Settings.
+    // Which employees it lists, the departments that drive and when a DA is late, on its page
+    // of Settings.
     settings: &[
-        backend::settings::SCHEDULES,
         backend::settings::ROSTER,
         backend::settings::DRIVERS,
         backend::settings::LATE_DAS,

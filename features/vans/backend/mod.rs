@@ -2,7 +2,6 @@
 //! re-exports what the app or a declared dependant uses.
 pub(crate) mod exposed;
 pub(crate) mod keeper;
-pub(crate) mod settings;
 pub(crate) mod storage;
 
 #[cfg(test)]

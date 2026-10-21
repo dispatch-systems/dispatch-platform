@@ -30,11 +30,13 @@ pub use agents::Agents;
 pub use audit::Audit;
 pub use collectors::{Capability, Collection, Collector};
 pub use commands::{Commands, Demo};
-pub use keeping::{Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias};
+pub use keeping::{
+    Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias, Schedules, schedules,
+};
 pub use permissions::{DefaultRole, Permission, perm};
 pub use settings::{
     Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, choice, many, number,
-    pick, schedules, section, text, time, timezone, toggle,
+    pick, section, text, time, timezone, toggle,
 };
 pub use storage::Tables;
 pub use switches::{Sub, Switch, mandatory, optional, sub, tab};
@@ -159,9 +161,13 @@ pub struct Feature {
     /// The parts of its page switched on their own on the DSPs page, in the order the page
     /// shows them: its tabs, and any other part, each with the permissions it owns.
     pub subfeatures: &'static [Sub],
-    /// The names a schedule may give to several of the collections it keeps, to run them
-    /// at once, as Timecard's `both` runs Paycom's timecards and Cortex's meal breaks.
+    /// The names a schedule may read one of its collections by another way, as Routes'
+    /// `routes_today` reads today so far.
     pub schedule_aliases: &'static [ScheduleAlias],
+    /// Schedule names it no longer keeps, each with what replaces it: one rule of each of these
+    /// collections, timed as it was, as Timecard's `both` became Paycom's and meal breaks'.
+    /// Split as each DSP opens.
+    pub retired_schedule_aliases: &'static [(&'static str, &'static [&'static str])],
     /// The permissions it owns, for the role sheet.
     pub permissions: &'static [Permission],
     /// Whether it adds one of the DSP's own accounts to Settings' DSP Connections, as a
@@ -232,6 +238,7 @@ pub const fn feature(name: &'static str) -> Feature {
         switch: switches::UNDECLARED,
         subfeatures: &[],
         schedule_aliases: &[],
+        retired_schedule_aliases: &[],
         permissions: &[],
         dsp_connection: false,
         routes: Vec::new,

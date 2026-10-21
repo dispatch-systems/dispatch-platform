@@ -3,9 +3,9 @@
 Paycom's employees, punches and timecards and the meal breaks Cortex reports, on the Timecard
 page (Daily, Meal Breaks and Employee Search) and its page of Settings. Rust interprets punches and
 assesses meals; the frontend only formats the results. Its addresses keep their old names
-(`#dsp/<id>/paycom`, `/api/dsp/paycom/…`), and its jobs and schedules keep theirs from when
-they were the only ones (`/api/dsp/jobs`, `/api/dsp/schedules`), though they serve only
-Timecard's collections. It names drivers through Driver Match.
+(`#dsp/<id>/paycom`, `/api/dsp/paycom/…`), and its jobs keep theirs from when they were the
+only ones (`/api/dsp/jobs`), though they serve only Timecard's collections. It names drivers
+through Driver Match.
 
 - **Switch:** `timecard`, off for every DSP until the platform owner switches it on. It needs
   timecards (Paycom), and its Meal Breaks tab alone needs meal breaks (Cortex); each switches
@@ -17,7 +17,8 @@ Timecard's collections. It names drivers through Driver Match.
   in a build without it. Employee Search names each employee's person the same way, and shows
   their photo from core's `/api/dsp/people/{code}/photo`; without one, their initials.
 - **Permissions:** `timecard.view`, to read it; `timecard.manage`, which includes it, for its
-  settings and schedules; and `collections.run`, to sync now or cancel a sync. The demo DSPs
+  settings and the schedules of both its collections; and `collections.run`, to sync now or
+  cancel a sync. The demo DSPs
   give Managers and Members View, and Managers Run Collections.
 - **API:** behind `timecard.view`, `GET /api/dsp/timecards` (a day's), `…/employees`,
   `…/employees/{code}` (Employee Search's), `GET /api/dsp/paycom/meal-breaks`, its
@@ -27,14 +28,12 @@ Timecard's collections. It names drivers through Driver Match.
   `GET /api/dsp/jobs/meal-breaks`. Behind `collections.run`:
   `GET` and `POST /api/dsp/jobs` (its jobs, and a Paycom collection), `…/jobs/{id}/cancel`,
   `POST …/jobs/meal-breaks` (a day's meal breaks from both sources), `…/employees/{code}/sync`
-  and `…/cortex/meal-breaks/collect`. Behind `timecard.manage`, its schedules under
-  `/api/dsp/schedules`. A tab switched off answers its routes 404.
+  and `…/cortex/meal-breaks/collect`. A tab switched off answers its routes 404. Its schedules
+  are its collections' on core's Collectors routes, `/api/dsp/collectors/paycom` and
+  `…/meal_break`.
 - **Settings:** its own page of Settings (`?tab=timecard`), which the page's Settings button
   opens and old links to `#dsp/<id>/paycom-settings` land on, holds its sections, each behind
-  `timecard.manage` and saved through core's settings: `timecard.schedules`, Sync schedules,
-  drawn by its own component, as one schedule may run both collections, which core's
-  schedule editor doesn't offer, though its sheet asks Save or Discard for unsaved edits as
-  core's does (`useUnsavedEdits`) before the page moves on; `timecard.roster`, Employees:
+  `timecard.manage` and saved through core's settings: `timecard.roster`, Employees:
   the department and delivery station the Daily tab and Employee Search list (none for all)
   and the name order Meal Breaks writes and sorts names in; `timecard.drivers`, Driver
   departments: all, or those chosen, whom alone the Daily tab lists and Driver Match counts as
@@ -63,7 +62,11 @@ Timecard's collections. It names drivers through Driver Match.
   directory roster; employees retained from history are collected even if absent from the
   active source roster. An inaccessible known employee fails the job rather than becoming
   zero hours; inactive employees never seen by the application cannot be inferred.
-- **Schedules:** of Paycom's timecards, Cortex's meal breaks, or `both` at once.
+- **Schedules:** of Paycom's timecards (Timecards, under Paycom) and Cortex's meal breaks (Meal
+  breaks, under Cortex), each set on Settings' Collectors page behind `timecard.manage`; rules
+  of both due together run in one batch. A schedule of `both`, which ran them at once, is
+  retired: as a DSP opens, each becomes a rule of each, timed as it was
+  (`retired_schedule_aliases`).
 - **Live results:** the page follows collections through core's live collection updates, one
   waiting request for every tab, and refreshes only the days and employees a result changed.
 - **Errors** only its screens raise are worded in its API client, which loads with its page;

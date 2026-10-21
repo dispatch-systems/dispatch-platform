@@ -32,7 +32,6 @@ pub const FEATURE: Feature = Feature {
     ],
     routes: api::routes::routes,
     // When its reports are collected, on its own Settings page.
-    settings: &[backend::settings::COLLECTION],
     live: &["dvic.view"],
     keeps: &[&backend::keeper::Dvic],
     tables: &[(

@@ -1,5 +1,6 @@
 use crate::{
     Result,
+    collection::api::jobs::JobStatus,
     db::{FromRow, Row},
     manifest::registry,
     text_enum,
@@ -36,39 +37,103 @@ impl FromRow for Connection {
         })
     }
 }
+/// One rule of a collection's schedule: on `days`, Monday 0 to Sunday 6, at each of `times`,
+/// or every `every` minutes `from` `to`, `to` included; a `to` before `from` runs on past
+/// midnight, and the same as `from` all day. `collects` is what it reads by: its collection's
+/// own name, or one of its choice's. A new rule has no `id`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct CollectionSchedule {
-    pub id: String,
-    pub name: String,
-    pub collection: ScheduleCollection,
-    pub cadence: Cadence,
+pub struct ScheduleRule {
+    pub id: Option<String>,
+    pub collects: ScheduleCollection,
+    pub kind: RuleKind,
+    #[cfg_attr(feature = "ts", ts(type = "number[]"))]
+    pub days: Vec<i64>,
+    pub times: Vec<String>,
     #[cfg_attr(feature = "ts", ts(type = "number | null"))]
-    pub interval_minutes: Option<i64>,
-    pub local_time: String,
-    pub enabled: bool,
+    pub every: Option<i64>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    /// When it runs next, while its collection is on.
     pub next_run: Option<String>,
-    #[cfg_attr(feature = "ts", ts(type = "number"))]
-    pub revision: i64,
+    /// Why its run waits, if it does.
     pub last_error: Option<String>,
 }
+/// What each rule of a collection's schedule chooses to read, under `label`, as Routes'
+/// "Day".
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct CollectionSchedules {
-    pub timezone: String,
-    pub dsp_name: String,
-    pub schedules: Vec<CollectionSchedule>,
+pub struct ScheduleChoice {
+    pub label: String,
+    pub options: Vec<ScheduleOption>,
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub struct SchedulePreview {
-    pub next_run: String,
+pub struct ScheduleOption {
+    pub collection: ScheduleCollection,
+    pub label: String,
+}
+/// How a collection's latest finished run ended, and when.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct LastRun {
+    pub status: JobStatus,
+    pub at: String,
+    pub error: Option<String>,
+}
+/// One collection on Settings' Collectors page: what reads it, its schedule, and its runs.
+/// `revision` is what a save or switch of its schedule is made against.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledCollection {
+    pub collection: ScheduleCollection,
+    pub label: String,
+    /// The feature that keeps it.
+    pub feature: String,
+    pub collector: String,
+    pub collector_label: String,
+    /// Whether its collector is connected.
+    pub connected: bool,
+    pub choice: Option<ScheduleChoice>,
+    /// Whether its schedule is on: none of its rules runs while it's off.
+    pub enabled: bool,
+    pub rules: Vec<ScheduleRule>,
+    pub revision: String,
+    pub next_run: Option<String>,
+    pub last_run: Option<LastRun>,
+    /// Whether a run of it is queued or under way.
+    pub running: bool,
+    /// What that run says, as it waits or runs: empty until it says anything.
+    pub message: String,
+    /// Whether the member may collect it now.
+    pub can_collect: bool,
+}
+/// The collections whose schedules the member sets, in the DSP's `timezone`.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct Collectors {
+    pub timezone: String,
+    pub collections: Vec<ScheduledCollection>,
+}
+/// The next runs of a collection's rules, unsaved.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleRuns {
+    pub runs: Vec<String>,
 }
 
 /// A bounded collection change hint. Missing history falls back to `all`.
@@ -194,8 +259,8 @@ impl ts_rs::TS for ScheduleCollection {
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
-        pub enum Cadence {
-        Interval => "interval",
-        Daily => "daily",
+        pub enum RuleKind {
+        Times => "times",
+        Repeat => "repeat",
     }
 }

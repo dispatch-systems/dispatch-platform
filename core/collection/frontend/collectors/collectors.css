@@ -1,0 +1,724 @@
+/* Settings' Collectors page: the collections on the left, under their collectors; the one chosen
+   on the right, its rules each a card that opens to its pattern and fields, then its week. */
+.collectors {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.collectors-list {
+  padding: 8px 10px 12px;
+  border-right: 1px solid var(--border);
+}
+.collectors-group + .collectors-group {
+  margin-top: 10px;
+}
+.collectors-group h3 {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  padding: 12px 10px 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.collectors-group h3 > span + span {
+  font-weight: 400;
+}
+.collectors-group h3 em {
+  margin-left: 8px;
+  color: var(--warning);
+  font-style: normal;
+  font-weight: 400;
+}
+.collectors-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 450;
+  text-align: left;
+}
+.collectors-item + .collectors-item {
+  margin-top: 2px;
+}
+.collectors-item:hover {
+  background: var(--accent);
+}
+.collectors-tile {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.collectors-name {
+  display: grid;
+  min-width: 0;
+}
+.collectors-name > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.collectors-name small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collectors-next {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.collectors-item[aria-current] {
+  background: var(--selection);
+  color: var(--primary);
+  font-weight: 550;
+}
+.collectors-item[aria-current] .collectors-tile {
+  background: color-mix(in srgb, var(--primary) 16%, var(--card));
+  color: var(--primary);
+}
+.collectors-item[aria-current] .collectors-next {
+  color: color-mix(in srgb, var(--primary) 75%, var(--muted-foreground));
+}
+.collectors .dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.collectors .run-on,
+.collectors .run-ok {
+  color: var(--success);
+}
+.collectors .run-failed {
+  color: var(--destructive);
+}
+.collectors .run-off {
+  color: var(--muted-foreground);
+}
+
+/* The chosen collection. */
+.collectors-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.collectors-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 20px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.collectors-ident {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.collectors-ident .collectors-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--selection);
+  color: var(--primary);
+}
+.collectors-ident h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  letter-spacing: -0.3px;
+}
+.collectors-ident p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+}
+.collectors-stat {
+  margin: 0;
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+.collectors-stat dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+}
+.collectors-stat dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.collectors-stat dd small {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 400;
+}
+.collectors-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+.collectors-head-actions > button,
+.collectors-collect > summary {
+  gap: 8px;
+}
+.collectors-collect {
+  position: relative;
+}
+.collectors-collect > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--background);
+  font-size: 14px;
+  font-weight: 500;
+  list-style: none;
+  cursor: pointer;
+}
+.collectors-collect > summary::-webkit-details-marker {
+  display: none;
+}
+/* Placed against the viewport by the popover itself. */
+.collectors-collect .account-popover {
+  position: fixed;
+  inset: auto;
+  width: 180px;
+  visibility: hidden;
+}
+
+.collectors-body {
+  padding: 16px 24px 0;
+}
+.collectors-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.collectors-section-head > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.collectors-section-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.collectors-section-head .text-button {
+  gap: 6px;
+  min-height: 28px;
+  font-size: 13px;
+}
+.collectors-zone {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* A rule, coloured as the week draws it. */
+.collectors-rule,
+.collectors-track i {
+  --rule: var(--series-1);
+}
+[data-rule='1'] {
+  --rule: var(--series-2);
+}
+[data-rule='2'] {
+  --rule: var(--series-3);
+}
+[data-rule='3'] {
+  --rule: var(--series-4);
+}
+[data-rule='4'] {
+  --rule: var(--series-5);
+}
+.collectors-rule {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.collectors-rule + .collectors-rule {
+  margin-top: 8px;
+}
+.collectors-rule.is-open {
+  box-shadow:
+    0 1px 2px var(--shadow-color),
+    0 6px 20px -12px var(--shadow-color);
+}
+.collectors-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 8px 0 15px;
+}
+.collectors-rule-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 28px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--rule) 13%, var(--card));
+  --glyph-ink: var(--rule);
+  --glyph-track: color-mix(in srgb, var(--rule) 22%, var(--card));
+  --glyph-band: color-mix(in srgb, var(--rule) 34%, var(--card));
+}
+.collectors-rule-head strong {
+  font-size: 14px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.collectors-kind {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.collectors-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.collectors-issue {
+  color: var(--warning);
+  font-size: 13px;
+}
+.collectors-rule-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.collectors-rule-tools button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.collectors-rule-tools button:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.collectors-rule-tools button.icon-button {
+  width: 32px;
+  padding: 7px;
+}
+.collectors-rule-tools .collectors-edit {
+  gap: 6px;
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+.collectors-rule-body {
+  min-width: 0;
+  margin: 0;
+  padding: 2px 14px 14px;
+  border: 0;
+}
+
+/* The patterns: a card each, a tiny day. */
+.collectors-patterns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.collectors-pattern {
+  --glyph-bg: color-mix(in srgb, var(--muted) 62%, var(--card));
+  --glyph-ink: color-mix(in srgb, var(--muted-foreground) 82%, var(--card));
+  --glyph-track: var(--card);
+  --glyph-band: color-mix(in srgb, var(--muted-foreground) 22%, var(--card));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 7px 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  transition:
+    border-color var(--motion-duration),
+    box-shadow var(--motion-duration);
+}
+.collectors-pattern:hover {
+  --glyph-ink: var(--foreground);
+  border-color: var(--input);
+}
+.collectors-art {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  padding: 0 14px;
+  border-radius: 7px;
+  background: var(--glyph-bg);
+}
+.collectors-art .glyph {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.collectors-pattern > span:not(.collectors-art) {
+  padding: 0 7px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.collectors-pattern[aria-checked='true'] {
+  --glyph-bg: color-mix(in srgb, var(--primary) 11%, var(--card));
+  --glyph-ink: var(--primary);
+  --glyph-band: color-mix(in srgb, var(--primary) 30%, var(--card));
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.collectors-pattern .collectors-check {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px var(--card);
+  color: var(--primary-foreground);
+}
+.glyph .glyph-track {
+  fill: var(--glyph-track);
+}
+.glyph .glyph-band {
+  fill: var(--glyph-band);
+}
+.glyph .glyph-ink {
+  fill: var(--glyph-ink);
+}
+
+/* The chosen pattern's fields, under its card. */
+.collectors-fields {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.collectors-fields::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: calc(var(--points) - 6px);
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  transform: rotate(45deg);
+}
+.collectors-fields.at-once {
+  --points: calc((100% - 20px) / 6);
+}
+.collectors-fields.at-few {
+  --points: 50%;
+}
+.collectors-fields.at-repeat {
+  --points: calc(100% - (100% - 20px) / 6);
+}
+.collectors-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.collectors-days,
+.collectors-times {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.collectors-days button {
+  min-width: 46px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: var(--input);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.collectors-days button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--card));
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  color: var(--primary);
+  font-weight: 550;
+}
+.collectors-days button[aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+.collectors-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.collectors-fields input[type='time'] {
+  width: 132px;
+  min-height: 36px;
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+}
+.collectors-fields input[aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+.collectors-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.collectors-sentence select {
+  min-height: 36px;
+  background-color: var(--card);
+  color: var(--foreground);
+}
+
+/* The week: a strip a day, a tick a run, each in its rule's colour; then the next runs. */
+.collectors-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 28px;
+  margin: 16px 24px 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+.collectors-preview.is-off {
+  opacity: 0.55;
+}
+.collectors-preview h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.15px;
+}
+.collectors-strips {
+  display: grid;
+  gap: 4px;
+}
+.collectors-strip {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.collectors-strip > b {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+}
+.collectors-strip.is-today > b {
+  color: var(--primary);
+  font-weight: 650;
+}
+.collectors-track {
+  position: relative;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--muted);
+}
+.collectors-strip.is-today .collectors-track {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.collectors-track i {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--rule);
+}
+.collectors-track i.past {
+  opacity: 0.3;
+}
+.collectors-now {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--foreground);
+}
+.collectors-axis {
+  position: relative;
+  height: 14px;
+  margin: 5px 0 0 42px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.collectors-axis span {
+  position: absolute;
+  top: 0;
+  translate: -50% 0;
+  white-space: nowrap;
+}
+.collectors-axis span:first-child {
+  translate: 0 0;
+}
+.collectors-axis span:last-child {
+  translate: -100% 0;
+}
+.collectors-runs {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.collectors-runs li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 22px;
+  font-size: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.collectors-runs .dot {
+  width: 6px;
+  height: 6px;
+  color: var(--primary);
+}
+.collectors-runs li span:last-child {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+.collectors-runs li:first-child {
+  font-weight: 550;
+}
+.collectors-runs li:first-child span:last-child {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.collectors-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+}
+.collectors-actions .error {
+  flex: 1;
+  margin: 0;
+}
+
+/* The settings that go with the collection, as Settings draws them, inside its panel. */
+.collectors-settings {
+  margin: 0 24px;
+  border-top: 1px solid var(--border);
+}
+/* No card of its own; its ring, as search points it out, keeps clear of what it holds. */
+.collectors-settings .settings-section {
+  max-width: none;
+  margin: 8px -13px;
+  padding: 8px 12px;
+  border-color: transparent;
+  background: none;
+}
+.collectors-settings .settings-section > h2 {
+  font-size: 15px;
+  letter-spacing: -0.2px;
+}
+
+@media (max-width: 960px) {
+  .collectors {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .collectors-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .collectors-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .collectors-patterns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .collectors-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .collectors-fields::before {
+    display: none;
+  }
+  .collectors-stat {
+    padding-left: 0;
+    border-left: 0;
+  }
+}

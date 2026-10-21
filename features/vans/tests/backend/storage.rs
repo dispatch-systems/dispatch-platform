@@ -22,13 +22,20 @@ fn the_fleet_is_collected_by_the_dsps_abbreviation_and_counts_what_it_lists() {
         .retain(|van| van.name.as_deref() != Some("EDV 214"));
     store.publish_fleet(&dsp, "job-2", &next).unwrap();
     // The newest collection, and the vans it lists, those the DSP runs apart from the rest.
-    let status = store.fleet_status(&dsp).unwrap();
+    let db = store.vans_db(&dsp).unwrap();
+    let count = |sql: &str| db.count(sql, []).unwrap();
+    let newest: Vec<(String,)> = db
+        .query_as(
+            "SELECT collected_at FROM fleet_runs ORDER BY collected_at DESC LIMIT 1",
+            [],
+        )
+        .unwrap();
     assert_eq!(
         (
-            status.collected_at.as_deref(),
-            status.running,
-            status.inactive
+            newest[0].0.as_str(),
+            count("SELECT count(*) FROM vans WHERE listed=1 AND status<>'INACTIVE'"),
+            count("SELECT count(*) FROM vans WHERE listed=1 AND status='INACTIVE'")
         ),
-        (Some("2026-10-02T05:00:00.000Z"), 4, 1)
+        ("2026-10-02T05:00:00.000Z", 4, 1)
     );
 }

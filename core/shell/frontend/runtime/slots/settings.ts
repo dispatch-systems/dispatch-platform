@@ -9,8 +9,18 @@ import { manifests } from './installed.js';
 
 /** What a Settings section is drawn for: the person, and inside a DSP its view. */
 export type SettingsContext = { session: SessionView; view?: DspView };
-/** What a custom section is drawn with: its context, and `refresh`, which reads Settings again. */
-export type CustomSectionContext = SettingsContext & { refresh: () => void };
+/**
+ * What a custom section is drawn with: its context; `refresh`, which reads Settings again; and in
+ * a DSP's Settings, for the Collectors page, the declared sections that go with a collection,
+ * which it draws with that collection.
+ */
+export type CustomSectionContext = SettingsContext & {
+  refresh: () => void;
+  /** The sections that go with the collection `schedule` names, drawn as Settings draws its own. */
+  collectionSections?: (schedule: string) => ReactNode;
+  /** The collection of the section the address points out, which the page shows. */
+  pointed?: string;
+};
 /**
  * The component of a section its owner's backend declares `custom`. The page puts the space
  * between its sections: what it draws keeps none above it of its own.

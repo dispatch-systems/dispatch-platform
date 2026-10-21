@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { fixture, until } from '../../../../core/shell/tests/support/support.js';
+import { collectNow } from '../../../../core/collection/tests/support/collect.js';
+import type { fixture } from '../../../../core/shell/tests/support/support.js';
 
 type App = Awaited<ReturnType<typeof fixture>>;
 type Client = Awaited<ReturnType<App['client']>>;
@@ -22,13 +23,6 @@ export async function collectRoster(owner: Client) {
     password: 'fixture-password',
   });
   assert.equal(connected.status, 200, connected.body);
-  const job = await owner.post('/api/dsp/driver-profiles/collect', { requestId: 'roster' });
-  assert.equal(job.status, 202, job.body);
-  await until(async () => {
-    const status = await owner.read('/api/dsp/driver-profiles/status');
-    const current = status.jobs.find((item: { id: string }) => item.id === job.value.id);
-    assert.notEqual(current?.status, 'failed', JSON.stringify(current));
-    return current?.status === 'succeeded';
-  });
+  await collectNow(owner, 'associates', 'roster');
   return north as { id: string; name: string };
 }

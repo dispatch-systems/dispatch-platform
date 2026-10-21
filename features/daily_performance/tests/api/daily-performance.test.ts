@@ -90,28 +90,28 @@ test('daily collection, policy and reads stay separate from weekly data and perm
   await owner.select(summit.id);
   assert.deepEqual((await section(owner)).values, defaults);
   await owner.select(dsp.id);
-  const schedule = await owner.post(prefix + '/schedules', {
-    name: 'Daily Quality',
-    collection: 'daily_performance',
-    cadence: 'daily',
-    intervalMinutes: null,
-    localTime: '07:00',
-    enabled: true,
+  // Its schedule reads Daily Performance alone, never the weekly scorecard beside it.
+  const daily = (collects: string) => ({
+    id: null,
+    collects,
+    kind: 'times',
+    days: [0, 1, 2, 3, 4, 5, 6],
+    times: ['07:00'],
   });
-  assert.equal(schedule.status, 201, schedule.body);
-  assert.equal(schedule.value.collection, 'daily_performance');
-  assert.equal(
-    (
-      await owner.post(prefix + '/schedules', {
-        name: 'Wrong source',
-        collection: 'weekly_scorecard',
-        cadence: 'daily',
-        intervalMinutes: null,
-        localTime: '07:00',
-        enabled: true,
-      })
-    ).status,
-    403,
+  const collected = (await owner.read('/api/dsp/collectors')).collections.find(
+    (each: { collection: string }) => each.collection === 'daily_performance',
+  );
+  const schedule = async (collects: string) =>
+    owner.post('/api/dsp/collectors/daily_performance/schedule', {
+      rules: [daily(collects)],
+      revision: collected.revision,
+    });
+  assert.equal((await schedule('weekly_scorecard')).value.error, 'invalid_input');
+  const scheduled = await schedule('daily_performance');
+  assert.equal(scheduled.status, 200, scheduled.body);
+  assert.deepEqual(
+    scheduled.value.rules.map((rule: { collects: string }) => rule.collects),
+    ['daily_performance'],
   );
   const member = await f.client(demo.member);
   await member.select(dsp.id);

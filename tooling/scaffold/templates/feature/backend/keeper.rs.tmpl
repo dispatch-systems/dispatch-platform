@@ -7,7 +7,12 @@ use crate::{{pascal}}Store;
 use super::storage::STORAGE;
 use dispatch_core::collection::registry::AddedStorage;
 {{/ownDatabase}}
-use dispatch_core::{Result, collection::browser::Collected, db::Store, manifest::Keeper};
+use dispatch_core::{
+    Result,
+    collection::browser::Collected,
+    db::Store,
+    manifest::{Keeper, Schedules, schedules},
+};
 use {{siteIdent}}::{{collection}}::JOB_KIND;
 
 pub(crate) struct {{pascal}}Keeper;
@@ -17,6 +22,10 @@ impl Keeper for {{pascal}}Keeper {
     }
     fn permission(&self) -> &'static str {
         "{{name}}.collect"
+    }
+    /// Who sets when its collection runs, on Settings' Collectors page.
+    fn schedules(&self) -> Schedules {
+        schedules("{{name}}.collect")
     }
     /// Stores a finished collection: `collected.data` is what the collector returned.
     fn publish(&self, {{publishParameters}}) -> Result<()> {

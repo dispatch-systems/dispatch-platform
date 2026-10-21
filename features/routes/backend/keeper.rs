@@ -8,7 +8,7 @@ use dispatch_core::{
         registry::AddedStorage,
     },
     db::Store,
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_cortex::routes::{Capture, JOB_KIND, Mode};
@@ -22,6 +22,15 @@ impl Keeper for Routes {
     }
     fn permission(&self) -> &'static str {
         "routes.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("routes.manage").choose(
+            "Day",
+            &[
+                (super::COLLECTION, "Yesterday"),
+                (super::TODAY, "Today so far"),
+            ],
+        )
     }
     fn domain(&self) -> DataDomain {
         super::DOMAIN

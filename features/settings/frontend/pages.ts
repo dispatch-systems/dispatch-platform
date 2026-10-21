@@ -28,9 +28,12 @@ export function openPage(settings: SettingsAnswer, view: DspView, requested: str
   return (pages.find((page) => page.id === requested) ?? pages[0])?.id;
 }
 
-/** The sections drawn on a page, in their order. */
+/**
+ * The sections drawn on a page, in their order: those that go with a collection are drawn with it,
+ * by the Collectors page.
+ */
 export const sectionsOn = (settings: SettingsAnswer, view: DspView, page: string | undefined) =>
-  drawnSections(settings, view).filter((section) => section.page === page);
+  drawnSections(settings, view).filter((section) => section.page === page && !section.collection);
 /** The custom sections of a page, as their owners register them. */
 const customOn = (settings: SettingsAnswer, view: DspView, page: string | undefined) =>
   sectionsOn(settings, view, page).flatMap((section) =>

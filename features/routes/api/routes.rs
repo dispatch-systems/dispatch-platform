@@ -3,10 +3,7 @@
 use crate::backend::{self, MAX_DAYS_PER_REQUEST, RoutesStore};
 use dispatch_core::{
     Error, Result,
-    collection::api::routes::{
-        jobs::{job_cancel, job_list},
-        schedules::schedule_routes,
-    },
+    collection::api::routes::jobs::{job_cancel, job_list},
     db::Store,
     ensure,
     foundation::validate as v,
@@ -19,10 +16,9 @@ use dispatch_cortex::routes::{JOB_KIND, Mode, token};
 
 const VIEW: Dsp = Dsp("routes.view");
 const COLLECT: Dsp = Dsp("routes.collect");
-const MANAGE: Dsp = Dsp("routes.manage");
 
 pub fn routes() -> Vec<Route> {
-    let mut routes = vec![
+    vec![
         read("/api/dsp/routes/days", VIEW, days),
         read("/api/dsp/routes/days/{day}", VIEW, day),
         read(
@@ -41,13 +37,7 @@ pub fn routes() -> Vec<Route> {
             PlatformOwner,
             reprocess,
         ),
-    ];
-    routes.extend(schedule_routes(
-        "/api/dsp/routes/schedules",
-        MANAGE,
-        "routes",
-    ));
-    routes
+    ]
 }
 
 /// Rebuilds a DSP's route rows from the responses it stored, for every day or one,
