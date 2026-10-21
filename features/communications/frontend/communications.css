@@ -417,6 +417,13 @@
   width: 58%;
   height: 58%;
 }
+/* Beside a line of text, as the profile's workspace. */
+.workspace-mark.small {
+  width: calc(var(--ui-size) + 6px);
+  height: calc(var(--ui-size) + 6px);
+  border-radius: 5px;
+  font-size: calc(var(--ui-size) - 5px);
+}
 .workspace-picker .account-popover {
   inset: calc(100% + 6px) 0 auto;
   display: flex;
@@ -827,6 +834,11 @@
   min-width: 0;
   text-align: right;
   overflow-wrap: anywhere;
+}
+.profile-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 /* Writing a message. */

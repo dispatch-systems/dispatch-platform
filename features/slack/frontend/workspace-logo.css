@@ -1,13 +1,32 @@
-/* A workspace's logo, or what stands in for it. Its owner sizes it; the logo fills it. */
+/* A workspace's mark: its logo, or its initials in its tone. Its owner sizes it. */
 .workspace-logo {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
-}
-.workspace-logo:has(> img) {
-  background: none;
+  font-weight: 700;
+  line-height: 1;
 }
 .workspace-logo > img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.workspace-logo[data-tone='violet'] {
+  color: var(--violet);
+  background: var(--violet-surface);
+}
+.workspace-logo[data-tone='sage'] {
+  color: var(--sage);
+  background: var(--sage-surface);
+}
+.workspace-logo[data-tone='slate'] {
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+.workspace-logo[data-tone='steel'] {
+  color: var(--steel);
+  background: var(--steel-surface);
 }

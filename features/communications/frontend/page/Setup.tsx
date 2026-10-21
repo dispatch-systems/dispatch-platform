@@ -7,6 +7,7 @@ import { Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { WorkspaceMark } from './WorkspaceMark.js';
 
 // Setting Slack up from Communications, for those who manage the DSP's connections: connecting
 // it, in place of the inbox, while the DSP has no workspace; and updating each workspace that
@@ -98,6 +99,7 @@ function UpdateRow({ workspace, busy }: { workspace: CommunicationsWorkspace; bu
   const update = useAction(() => install({ team: workspace.teamId }));
   return (
     <li className="update-workspace">
+      <WorkspaceMark workspace={workspace} />
       <strong>{workspace.name}</strong>
       <span className="update-buttons">
         {made ? (

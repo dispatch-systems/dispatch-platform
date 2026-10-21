@@ -35,10 +35,12 @@ unavailable.
   the list, or the conversation open, which takes the whole page, with a way back. The
   conversation open is in the address (`?open=<id>`).
 - **The list:** with two or more workspaces where Communications works, which it shows, every
-  one or one of them, each by its logo, else the first letters of its name, with how many of its
+  one or one of them, each by its logo (else the first letters of its name), as the Update
+  popup, Copy chat link and the profile's Slack row show it too, with how many of its
   conversations wait; that choice is remembered in the browser for each member at each DSP, and
-  reads as every one once the workspace is no longer one of two or more where it works. Then Search, and Messages or Contacts, whichever
-  Search searches, by a name, misspelt or not, marking the letters that matched.
+  reads as every one once the workspace is no longer one of two or more where it works. Then
+  Search, and Messages or Contacts, whichever Search searches, by a name, misspelt or not,
+  marking the letters that matched.
 - **Messages:** Waiting, the longest waiting first, each with how long it has, amber from 15
   minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard
   beside the conversation, that marks it done without a reply; then Responded, the latest

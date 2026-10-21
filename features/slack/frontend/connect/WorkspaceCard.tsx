@@ -3,6 +3,7 @@ import type { SlackWorkspace } from '../../api/client.js';
 import { Badge } from '../../../../core/shell/frontend/ui/index.js';
 import { monthDay } from '../../../../core/shell/frontend/lib/format.js';
 import { SlackCard } from './SlackCard.js';
+import { WorkspaceMark } from '../WorkspaceMark.js';
 
 // One of the DSP's workspaces, on its own card, with what the member may do to it: its settings,
 // for those who manage Slack, where it's renamed too, and the rest for those who manage the DSP's
@@ -68,7 +69,10 @@ export function WorkspaceCard({
       </div>
       <dl className="slack-details">
         <dt>Workspace</dt>
-        <dd>{workspace.name}</dd>
+        <dd className="slack-workspace">
+          <WorkspaceMark workspace={workspace} className="slack-workspace-mark" />
+          {workspace.name}
+        </dd>
         <dt>Connected</dt>
         <dd>
           {monthDay(workspace.connectedAt, timeZone)}

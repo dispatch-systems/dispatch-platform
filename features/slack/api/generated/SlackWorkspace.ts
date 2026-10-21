@@ -25,4 +25,9 @@ integrations: Array<string>,
  * The member who connected it, by name; none when it came by the install link, or they've
  * left.
  */
-connectedBy: string | null, byLink: boolean, connectedAt: string, };
+connectedBy: string | null, byLink: boolean, connectedAt: string,
+/**
+ * The version of its logo, which `workspaces/{team}/logo?v=` shows: none for a workspace
+ * without one of its own, or whose logo hasn't come yet.
+ */
+logo: string | null, };

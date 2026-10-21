@@ -23,14 +23,14 @@ unavailable; features add what it does, on this foundation.
 ## Cards and a workspace's settings
 
 - **Cards:** under DSP Connections on Settings' Connections, each workspace has a card of its
-  own, under its name: whether it works, its name in Slack, who connected it and when, and what
-  can be done to it. The install link has one while it works, and an install Slack just sent
+  own, under its name: whether it works, its name in Slack with its logo, who connected it and
+  when, and what can be done to it. The install link has one while it works, and an install Slack just sent
   the browser back from has one while it finishes. A DSP with none has no Slack card at all.
 - **Settings:** each workspace's Settings opens its settings on Slack's own page of Settings
   (`?tab=slack`), its one section there, `slack.workspaces`, behind `slack.manage`, which its
   own component draws (declared in `backend/settings.rs`, drawn by `frontend/workspace/`): the
-  DSP's workspaces chosen from one at a time when there are several, the one open at the top,
-  and its sections down the side, one shown at a time; with none, a link to Connections. The
+  DSP's workspaces chosen from one at a time when there are several, each by its logo and name,
+  the one open at the top under its logo, and its sections down the side, one shown at a time; with none, a link to Connections. The
   address names the workspace and the section open (`&workspace=<team>&section=<id>`), beside
   Settings' own page, and old links to its page of its own (`#dsp/<id>/slack?workspace=…`)
   land there, keeping both. Its sections are Slack's own, Channels and Integrations, and those
@@ -133,15 +133,18 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   name in Slack again. Up to 60 characters.
 - **Logos:** each workspace's logo, as Slack describes it when asked about the workspace
   (`team.info`, which `team:read` allows): hourly, and once it's connected, reconnected or
-  updated. Dispatch keeps a copy of it to show, as the dashboard shows no picture from elsewhere:
+  updated, which waits a moment for it so the page that connected it shows it at once. Dispatch
+  keeps a copy of it to show, as the dashboard shows no picture from elsewhere:
   the one 132 pixels square, downloaded with no token from Slack's own servers alone (`https`,
   `slack-edge.com` or a server under it), never following a redirect, as a PNG, JPEG or GIF of up
   to 256 KB; and again only once Slack gives it at another address. A workspace whose logo is
   Slack's own (`image_default`) has none, and the copy kept goes; one that fails to download
-  leaves the copy kept until the next hourly check. A workspace's goes with it. Another feature
-  shows it through `kit` (`logos`, each one's version, and `logo`, the picture), at an address
-  of its own behind its own permission, with `WorkspaceLogo` from `frontend/index.ts`, as
-  Communications' workspace picker does.
+  leaves the copy kept until the next hourly check. A workspace's goes with it. Its cards and
+  settings show it from `GET /api/dsp/slack/workspaces/{team}/logo`; another feature shows it
+  through `kit` (`logos`, each one's version, and `logo`, the picture), at an address of its own
+  behind its own permission, as Communications does. Wherever it shows, `WorkspaceLogo` from
+  `frontend/index.ts` draws it, or the first letters of the workspace's name in its tone without
+  one.
 - **Connecting:** New on DSP Connections lists Slack, which asks for an optional name and opens
   Connect Slack and Copy install link. Connect Slack sends the browser to Slack, which asks which workspace and for
   the app's permissions, and sends it back to Settings' Connections at the address it started
@@ -266,13 +269,15 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
 
 ## API, data and upkeep
 
-- **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces and
-  install link for adding one; `POST /api/dsp/slack/connect` (with `team`, to reconnect or
+- **API:** behind `connections.manage`: `GET /api/dsp/slack/account`, the DSP's workspaces
+  (each with its logo's version, `logo`) and install link for adding one, and
+  `GET …/workspaces/{team}/logo?v=<logo>`, a workspace's logo, which the browser keeps until its
+  version changes; `POST /api/dsp/slack/connect` (with `team`, to reconnect or
   update one, and `page`, the DSP page to come back to), `…/connect/finish`,
   `…/workspaces/{team}/rename`, `…/workspaces/{team}/disconnect`, `…/workspaces/{team}/link`
   (the workspace's install link), `…/link` and `…/link/cancel` (the one for adding a
-  workspace); `…/connect` and `…/link` take the workspace's `label`. The account is
-  read behind `slack.manage` too, with the integrations on in each workspace. Behind
+  workspace); `…/connect` and `…/link` take the workspace's `label`. The account and the logo
+  are read behind `slack.manage` too, with the integrations on in each workspace. Behind
   `slack.manage`: `GET …/workspaces/{team}/channels`, and
   `POST …/workspaces/{team}/channels/{channel}/join` and `…/leave`, each answering with the
   channel; `POST …/workspaces/{team}/integrations/{integration}`, with `on`, answering with

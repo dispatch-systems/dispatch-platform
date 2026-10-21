@@ -747,6 +747,7 @@
       ],
       "routes": [
         "GET /api/dsp/slack/account",
+        "GET /api/dsp/slack/workspaces/{team}/logo",
         "GET /api/dsp/slack/workspaces/{team}/channels",
         "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/join",
         "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/leave",

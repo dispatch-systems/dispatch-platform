@@ -105,4 +105,4 @@ export const addPhoto = (photo: File, progress?: (sent: number) => void, signal?
 export const fileUrl = (id: string) => `${communicationsUrl}/files/${id}`;
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>
-  `${communicationsUrl}/workspaces/${team}/logo?v=${version}`;
+  `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;

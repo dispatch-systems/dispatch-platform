@@ -28,6 +28,8 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   const named = workspaces.filter({ has: page.getByRole('heading', { name: 'Dispatch Ops' }) });
   await expect(named).toContainText('Operations');
   await expect(named).toContainText('Connected');
+  // Beside its name in Slack, its logo, which Dispatch keeps a copy of.
+  await expect(named.locator('img')).toBeVisible();
   await expect(page).toHaveURL(/tab=connections/);
   expect(page.url()).not.toContain('slackCode');
 
@@ -49,9 +51,8 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await add();
   await expect(workspaces.getByRole('heading', { name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Slack', exact: true }).click();
-  await page
-    .getByRole('combobox', { name: 'Workspace', exact: true })
-    .selectOption({ label: 'Drivers' });
+  await page.getByLabel('Workspace: Dispatch Crew').click();
+  await page.getByRole('button', { name: 'Drivers', exact: true }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Connections', exact: true }).click();
   const renamed = workspaces.filter({ has: page.getByRole('heading', { name: 'Dispatch Crew' }) });

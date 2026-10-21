@@ -14,9 +14,72 @@
   font-size: 13px;
   font-weight: 500;
 }
-.slack-workspace-pick select {
-  width: auto;
-  min-width: 200px;
+/* The workspace open, and the others to open: each by its mark and name. */
+.slack-workspace-menu {
+  position: relative;
+}
+.slack-workspace-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  min-height: var(--control-height);
+  padding: 0 12px 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  font-size: 14px;
+  font-weight: 550;
+  cursor: pointer;
+  list-style: none;
+}
+.slack-workspace-button::-webkit-details-marker {
+  display: none;
+}
+.slack-workspace-button:hover {
+  background: var(--accent);
+}
+.slack-workspace-menu[open] > .slack-workspace-button {
+  border-color: var(--ring);
+}
+.slack-workspace-button > svg {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.slack-workspace-menu .account-popover {
+  inset: calc(100% + 6px) auto auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 6px;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px var(--shadow-color);
+}
+.slack-workspace-menu .account-popover button {
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 14px;
+}
+.slack-workspace-menu .account-popover button[aria-current] {
+  background: var(--accent);
+}
+.slack-workspace-menu .account-popover button > svg {
+  margin-left: auto;
+  color: var(--primary);
+}
+.slack-pick-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+.slack-workspace-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .slack-hero {
   display: flex;
@@ -38,6 +101,7 @@
   width: 56px;
   height: 56px;
   border-radius: 14px;
+  font-size: 20px;
 }
 .slack-hero-text {
   display: flex;

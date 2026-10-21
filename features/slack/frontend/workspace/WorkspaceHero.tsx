@@ -4,10 +4,10 @@ import { Badge } from '../../../../core/shell/frontend/ui/index.js';
 import { slackAccountChanged, type SlackWorkspace } from '../../api/client.js';
 import { monthDay } from '../../../../core/shell/frontend/lib/format.js';
 import { RenameWorkspace } from './RenameWorkspace.js';
-import { SlackLogo } from '../SlackLogo.js';
+import { WorkspaceMark } from '../WorkspaceMark.js';
 
-// The workspace at the top of its settings: its name, with a pencil to rename it for those who
-// manage the DSP's connections, where it came from, and whether it works.
+// The workspace at the top of its settings: its logo, its name, with a pencil to rename it for
+// those who manage the DSP's connections, where it came from, and whether it works.
 
 export function WorkspaceHero({
   workspace,
@@ -23,9 +23,7 @@ export function WorkspaceHero({
   const broken = workspace.status === 'broken';
   return (
     <header className="slack-hero">
-      <span className="slack-mark slack-hero-mark">
-        <SlackLogo size={28} />
-      </span>
+      <WorkspaceMark workspace={workspace} className="slack-hero-mark" />
       <div className="slack-hero-text">
         <div className="slack-hero-name">
           <h2>{workspace.label ?? workspace.name}</h2>
