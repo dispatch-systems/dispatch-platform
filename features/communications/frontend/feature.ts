@@ -43,11 +43,14 @@ export const feature: FrontendFeature = {
   connectionIntegrations: [messages],
   // Its page waits on changes to the DSP's conversations, and who is typing in them.
   longPolls: ['/api/dsp/communications/updates'],
-  // Each of its writes changes its reads, but saying who is typing, which changes none.
+  // Each of its writes changes its reads, but saying who is typing, which changes none; a Driver
+  // Match decision changes who a correspondent is, and their role or title.
   cache: {
-    write: (write, url) =>
-      write.startsWith('/api/dsp/communications') && !write.endsWith('/typing')
+    write: (write, url) => {
+      if (write.startsWith('/api/dsp/driver-match')) return begins(url, '/api/dsp/communications');
+      return write.startsWith('/api/dsp/communications') && !write.endsWith('/typing')
         ? begins(url, '/api/dsp/communications')
-        : undefined,
+        : undefined;
+    },
   },
 };

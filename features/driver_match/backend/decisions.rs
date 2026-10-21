@@ -16,7 +16,7 @@ use rusqlite::params;
 
 /// Makes two people one: `code`'s IDs move to `into`, and `code` leads to `into` from now
 /// on. Whom `code` was kept apart from, `into` is kept apart from, and `code`'s title goes to
-/// `into` unless they have one.
+/// `into` unless they have one, audited with the merge.
 pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Result<()> {
     ensure(
         valid_code(code) && valid_code(into) && code != into,
@@ -24,7 +24,8 @@ pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Resul
         400,
     )?;
     let db = store.dsp(&c.dsp.id)?;
-    db.transaction(|| {
+    // The title `into` took from `code`.
+    let taken = db.transaction(|| {
         current(&db, code)?;
         current(&db, into)?;
         let now = iso();
@@ -56,22 +57,29 @@ pub(super) fn merge(store: &Store, c: &Context, code: &str, into: &str) -> Resul
                 apart(&db, into, &other, &at, by.as_deref())?;
             }
         }
-        db.exec(
+        let title = db
+            .one_as::<(PersonTitle,)>("SELECT title FROM person_titles WHERE code=?", [code])?
+            .map(|(title,)| title);
+        let moved = db.exec(
             "INSERT OR IGNORE INTO person_titles(code,title,decided_at,actor_id) \
              SELECT ?1,title,decided_at,actor_id FROM person_titles WHERE code=?2",
             params![into, code],
-        )?;
+        )? == 1;
         db.exec("DELETE FROM person_titles WHERE code=?", [code])?;
-        Ok(())
+        Ok(title.filter(|_| moved))
     })?;
     drop(db);
+    let mut changes = vec![("code", Some(code.to_owned()), Some(into.to_owned()))];
+    if let Some(title) = taken {
+        changes.push(("title", None, Some(title.label().to_owned())));
+    }
     audited(
         store,
         c,
         "driver_match.merged",
         &format!("{code} into {into}"),
         &both(code, into),
-        &[("code", Some(code.to_owned()), Some(into.to_owned()))],
+        &changes,
         into,
     )
 }

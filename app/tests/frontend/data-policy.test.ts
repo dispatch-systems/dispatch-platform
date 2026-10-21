@@ -52,6 +52,11 @@ test('writes invalidate their dependencies without flushing unrelated features',
     true,
   );
   assert.equal(mutationAffects('/api/dsp/driver-match/split', '/api/dsp/timecards'), false);
+  // A title changes how Communications names a correspondent.
+  assert.equal(
+    mutationAffects('/api/dsp/driver-match/title', '/api/dsp/communications/contacts'),
+    true,
+  );
   // A finished collection can bring new drivers to match.
   assert.equal(
     collectionAffects('/api/dsp/driver-match', [

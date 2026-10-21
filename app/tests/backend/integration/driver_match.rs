@@ -610,6 +610,19 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
         role(&merged, &antonio),
         (PersonRole::Office, Some(PersonTitle::FleetManager))
     );
+    let entry = db
+        .platform
+        .one(
+            "SELECT * FROM audit WHERE action='driver_match.merged' AND detail=?",
+            [format!("{tony} into {antonio}")],
+        )
+        .unwrap()
+        .unwrap();
+    let data: Value = serde_json::from_str(s(&entry, "data")).unwrap();
+    assert_eq!(
+        data["changes"][1],
+        json!({"field":"title","from":null,"to":"Fleet Manager"})
+    );
     db.set_title(&context, &dana, Some(PersonTitle::Dispatch))
         .unwrap();
     db.merge_people(&context, &dana, &antonio).unwrap();
