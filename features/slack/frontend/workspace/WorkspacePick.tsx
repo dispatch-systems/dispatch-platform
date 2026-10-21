@@ -18,7 +18,7 @@ export function WorkspacePick({
   const name = (workspace: SlackWorkspace) => workspace.label ?? workspace.name;
   return (
     <div className="slack-workspace-pick">
-      <span>Workspace</span>
+      <span aria-hidden="true">Workspace</span>
       <Popover
         className="slack-workspace-menu"
         triggerClassName="slack-workspace-button"

@@ -20,7 +20,7 @@ use dispatch_core::{
     server::http::route::Dsp,
     tenancy::api::types::DspStatus,
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 /// Where an install started, as the state Slack carries back says: on the admin's address, on
 /// the DSP's own, or by the DSP's install link. The browser comes back to where it started.
@@ -204,11 +204,20 @@ pub async fn finish(
     let answer = state.read(move |db| account(db, &at)).await;
     // Whatever its admin approved now, its members are read as it allows, and its logo.
     members::read_soon(state, &id, &team);
-    logo::read_soon(state, &id, &team);
+    let reading = logo::read_soon(state, &id, &team);
     let again = action == RECONNECTED && named.is_none();
     ensure(!again, "slack_workspace_connected", 409)?;
-    answer
+    // The logo is waited for a moment, so the page shows it at once; one slower comes with the
+    // next read. The account is read again only once the logo was, so Slack refusing the
+    // workspace there can't change what the install answers.
+    match tokio::time::timeout(LOGO_WAIT, reading).await {
+        Ok(Ok(true)) => state.read(move |db| account(db, &id)).await,
+        _ => answer,
+    }
 }
+
+/// How long finishing an install waits for the workspace's logo.
+const LOGO_WAIT: Duration = Duration::from_secs(3);
 
 /// Takes back an install Slack made and Dispatch then refused, `(team, token)`, so the app
 /// isn't left in a workspace with tokens nobody holds. A workspace a DSP holds keeps its
