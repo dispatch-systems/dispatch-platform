@@ -27,32 +27,44 @@ unavailable.
 
 - **Communications** in the sidebar, for those with `communications.use`, with how many
   conversations wait beside it (`waiting`, read every 30 seconds while the page is closed, and
-  as the number changes while it's open). The page fills the window (`fills`), the list of
-  conversations beside the one open, each scrolling on its own; on a phone, the list, or the
-  conversation with a way back. The conversation open is in the address (`?open=<id>`).
-- **The list:** Waiting, the longest waiting first, each with how long it has, amber from 15
-  minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard,
-  that marks it done without a reply; then Responded, the latest first, each with the photo of
-  whoever at the DSP answered last; older ones read as the list is scrolled to its end. Each
-  shows who it's with, by their photo, when they last wrote, and what was written last, or who
-  at the DSP is writing in it. Search finds conversations by a name, misspelt or not, marking
-  the letters that matched.
-- **A conversation:** who it's with and, while it waits, how long and Done; its messages under
-  the day each was written, the member's beside their photo, the DSP's under the name and photo
-  of whoever sent them, each edited in Slack marked Edited, a reply in one of its threads in
-  its place among them, photos shown and other files to download, or why one isn't kept; older
-  ones read as it's scrolled to its start; and those at the DSP writing in it now. Writing in
-  it: text, with photos attached (the paperclip), Enter to send; while writing, teammates see
-  it. Photos show by Driver Match's person for each (`/api/dsp/people/{code}/photo`), never
-  Slack's own addresses.
+  as the number changes while it's open). The page fills the window, however wide (`fills`),
+  the list beside the conversation open, each scrolling on its own, and everything on it grows
+  with the page's own width, smoothly, from a laptop's to an ultrawide's, then stops (a
+  container query on the page). On a wide page, the messages and the box under them keep to a
+  centred column. Under 760 pixels of page, as on a phone, one pane at a time, edge to edge:
+  the list, or the conversation open, which takes the whole page, with a way back. The
+  conversation open is in the address (`?open=<id>`).
+- **The list:** with two or more workspaces where Communications works, which it shows, every
+  one or one of them, each with how many of its conversations wait; that choice is remembered
+  in the browser for each member at each DSP, and reads as every one once the workspace is no
+  longer one of two or more where it works. Then Search, and Messages or Contacts, whichever
+  Search searches, by a name, misspelt or not, marking the letters that matched.
+- **Messages:** Waiting, the longest waiting first, each with how long it has, amber from 15
+  minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard
+  beside the conversation, that marks it done without a reply; then Responded, the latest
+  first, each with the photo of whoever at the DSP answered last; older ones read as the list
+  is scrolled to its end. Each shows who it's with, by their photo, when they last wrote, and
+  what was written last, or who at the DSP is writing in it.
+- **Contacts:** everyone the DSP can message, A to Z under each first letter: their photo, name
+  and role, and with every workspace shown, the one they're in; how long they've waited, or
+  when they last wrote. Each opens their conversation, or starts one, as New message does.
+- **A conversation:** who it's with, the workspace it's in while there are several, and, while
+  it waits, how long and Done; its messages under the day each was written, the member's beside
+  their photo, the DSP's under the name and photo of whoever sent them, each edited in Slack
+  marked Edited, a reply in one of its threads in its place among them, photos shown and other
+  files to download, or why one isn't kept; older ones read as it's scrolled to its start; and
+  those at the DSP writing in it now. Writing in it: text, with photos attached (the paperclip),
+  Enter to send; while writing, teammates see it. Photos show by Driver Match's person for each
+  (`/api/dsp/people/{code}/photo`), never Slack's own addresses.
 - **The profile** of whom a conversation is with opens from who it's with, above it, or their
   photo by their messages, over the conversation, and closes with its X, Escape, or a press
-  anywhere else; its X and Escape put focus back on what opened it. Their photo, name and role; Call,
-  while they have a phone number; Today: their route on the DSP's own day, its van, when its
-  wave starts and how many stops it has; Contact: their phone number, email address and the
-  workspace the conversation is in. Each is left out when nothing knows it, and Today when
-  they have no route today. No feature has a page of a person to open, so it has no Full
-  profile.
+  anywhere else; from 1,500 pixels of page, it opens beside the conversation instead, a column
+  of its own covering nothing, and closes with its X or Escape. Its X and Escape put focus back
+  on what opened it. Their photo, name and role; Call, while they have a phone number; Today:
+  their route on the DSP's own day, its van, when its wave starts and how many stops it has;
+  Contact: their phone number, email address and the workspace the conversation is in. Each is
+  left out when nothing knows it, and Today when they have no route today. No feature has a page
+  of a person to open, so it has no Full profile.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
   conversation, or opens a direct message with them, kept at the top of the list until it holds
   a message.
@@ -170,27 +182,29 @@ for the DSP, for anyone with `communications.use`, who needs no permission of th
 
 ## Finding people
 
-New message lists every active member of the DSP's workspaces where it's on, with their photo,
-role and conversation, by name. A name typed, misspelt or not, finds them, and the list's
-conversations, the closest first: each word typed is matched to the word of a name it starts, or
-shares its first letter and most of its letters with in order; case and accents don't count. The
-letters that matched come with each, as runs of the name's UTF-16 code units, for the page to
-mark.
+New message and Contacts list every active member of the DSP's workspaces where it's on, or of
+one of them, with their photo, role and conversation, by name, up to 2,000. A name typed,
+misspelt or not, finds them, and the list's conversations, the closest first: each word typed is
+matched to the word of a name it starts, or shares its first letter and most of its letters with
+in order; case and accents don't count. The letters that matched come with each, as runs of the
+name's UTF-16 code units, for the page to mark.
 
 ## API
 
 Behind `communications.use`:
 
-- `GET /api/dsp/communications`: the conversations waiting, the longest waiting first, then the
-  fifty latest answered, with the DSP's workspaces (whether it works in each, the address of
-  the app's Messages tab there, `chatLink`, and whether, on there, it needs updating for what
-  Communications uses, `needsUpdate`), who is typing, each with their person and photo, and the
-  latest change (`revision`).
+- `GET /api/dsp/communications`, with `team=<id>` for one workspace's answered conversations
+  alone: the conversations waiting, the longest waiting first, then the fifty latest answered,
+  with the DSP's workspaces (whether it works in each, the address of the app's Messages tab
+  there, `chatLink`, and whether, on there, it needs updating for what Communications uses,
+  `needsUpdate`), who is typing, each with their person and photo, and the latest change
+  (`revision`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar.
 - `GET …/updates?after=<revision>&typing=<version>`: the long poll, with the workspaces as they
   are.
-- `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`: the fifty conversations found
-  closest to a name, or the answered ones before the last shown.
+- `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`, with `team=<id>` for one
+  workspace's alone: the fifty conversations found closest to a name, or the answered ones
+  before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written.
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, besides the
@@ -199,7 +213,9 @@ Behind `communications.use`:
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.
 - `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer.
 - `POST …/conversations/{id}/done`, and `…/typing`, which says the member is writing.
-- `GET …/contacts?q=<name>`: whom the DSP can message.
+- `GET …/contacts?q=<name>&team=<id>`: whom the DSP can message, every one or those found
+  by a name, in every workspace or one, each with their conversation, if any, since when it
+  waits (`waitingSince`) and when it was last written in (`lastAt`).
 - `POST …/uploads?name=&type=`: a photo for a message not sent yet, as its bytes.
 - `GET …/files/{id}`: a photo or file attached to a message.
 

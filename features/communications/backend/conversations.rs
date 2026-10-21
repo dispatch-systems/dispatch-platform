@@ -1,8 +1,8 @@
 //! The DSP's conversations as its pages read them: who each is with, as Driver Match knows them,
 //! else as their Slack profile last named them; each message with who at the DSP sent it and its
 //! files; and the workspaces they're in. Those waiting come first, the longest waiting first,
-//! then the latest answered, fifty at a time; a conversation's messages the latest fifty at a
-//! time, in the order written.
+//! then the latest answered, of every workspace or one, fifty at a time; a conversation's
+//! messages the latest fifty at a time, in the order written.
 use super::{
     files::{File, FileStore},
     live, search,
@@ -172,13 +172,20 @@ pub fn messages(
         .collect())
 }
 
-/// `GET /api/dsp/communications`, for the member `me`.
-pub fn overview(db: &Store, state: &State, dsp: &str, me: &str) -> Result<Communications> {
+/// `GET /api/dsp/communications`, for the member `me`: every conversation waiting, as the counts
+/// go by them, and the latest answered of the workspace `team`, or every one.
+pub fn overview(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    me: &str,
+    team: Option<&str>,
+) -> Result<Communications> {
     let people = People::read(db, state, dsp)?;
     let revision = db.communications_revision(dsp)?;
     let waiting = db.waiting_communications(dsp)?;
     let count = waiting.len();
-    let mut answered = db.answered_communications(dsp, None, PAGE + 1)?;
+    let mut answered = db.answered_communications(dsp, team, None, PAGE + 1)?;
     let more = answered.len() > PAGE;
     answered.truncate(PAGE);
     Ok(Communications {
@@ -190,10 +197,17 @@ pub fn overview(db: &Store, state: &State, dsp: &str, me: &str) -> Result<Commun
         typing: people.writing(live::typing(dsp, me).0),
     })
 }
-/// The answered conversations before `before`, its latest message's time and its ID.
-pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Result<Conversations> {
+/// The answered conversations, of the workspace `team` or every one, before `before`, its latest
+/// message's time and its ID.
+pub fn older(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    team: Option<&str>,
+    before: (i64, &str),
+) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
-    let mut answered = db.answered_communications(dsp, Some(before), PAGE + 1)?;
+    let mut answered = db.answered_communications(dsp, team, Some(before), PAGE + 1)?;
     let more = answered.len() > PAGE;
     answered.truncate(PAGE);
     Ok(Conversations {
@@ -203,12 +217,20 @@ pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Resul
 }
 /// A conversation found by a name typed: how like it its name is, and its letters that matched.
 type Found = (f64, Vec<(u32, u32)>, storage::Conversation);
-/// The conversations whose names are like `typed`, the closest first, fifty at most.
-pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conversations> {
+/// The conversations, of the workspace `team` or every one, whose names are like `typed`, the
+/// closest first, fifty at most.
+pub fn search(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    team: Option<&str>,
+    typed: &str,
+) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let mut found: Vec<Found> = db
         .communications_with_messages(dsp)?
         .into_iter()
+        .filter(|conversation| team.is_none_or(|team| conversation.team == team))
         .filter_map(|conversation| {
             let named =
                 people.correspondent(&conversation.team, &conversation.user, &conversation.name);

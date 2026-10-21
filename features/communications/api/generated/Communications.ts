@@ -5,7 +5,8 @@ import type { Typing } from "./Typing";
 
 /**
  * `GET /api/dsp/communications`: the DSP's conversations, those waiting first, the longest
- * waiting first, then the latest answered, with the workspaces they're in and who is typing.
+ * waiting first, then the latest answered, of every workspace or the one asked for, with the
+ * workspaces they're in and who is typing.
  */
 export type Communications = {
 /**
@@ -17,6 +18,7 @@ revision: number,
  */
 waiting: number, conversations: Array<Conversation>,
 /**
- * Whether older answered conversations are left to read, with `conversations?before=`.
+ * Whether older answered conversations are left to read, with `conversations?before=`, of
+ * the same workspaces.
  */
 more: boolean, workspaces: Array<CommunicationsWorkspace>, typing: Typing, };

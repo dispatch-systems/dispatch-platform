@@ -1,6 +1,7 @@
 import type {
   Communications,
   CommunicationsUpdates,
+  CommunicationsWorkspace,
   Conversation,
   Conversations,
 } from '../api/index.js';
@@ -21,6 +22,18 @@ function above(a: Conversation, b: Conversation) {
   return a.lastAt !== b.lastAt ? (a.lastAt ?? 0) > (b.lastAt ?? 0) : a.id > b.id;
 }
 const order = (a: Conversation, b: Conversation) => (a.id === b.id ? 0 : above(a, b) ? -1 : 1);
+
+/** The workspace `chosen`, while it's one of two or more Communications works in; else none,
+ * for every one. */
+export function shownWorkspace(
+  chosen: string | undefined,
+  workspaces: readonly CommunicationsWorkspace[] = [],
+) {
+  const working = workspaces.filter((workspace) => workspace.on);
+  return working.length > 1 && working.some((workspace) => workspace.teamId === chosen)
+    ? chosen
+    : undefined;
+}
 
 /** The last answered conversation listed, which reading older ones goes on from. */
 export const lastAnswered = (inbox: Communications) =>

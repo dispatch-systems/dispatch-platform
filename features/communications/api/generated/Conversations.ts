@@ -3,7 +3,7 @@ import type { Conversation } from "./Conversation";
 
 /**
  * `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
- * to it, the closest first, or the answered ones before `before`.
+ * to it, the closest first, or the answered ones before `before`, in every workspace or one.
  */
 export type Conversations = { conversations: Array<Conversation>,
 /**

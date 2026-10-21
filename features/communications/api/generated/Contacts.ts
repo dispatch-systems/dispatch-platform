@@ -2,7 +2,7 @@
 import type { Contact } from "./Contact";
 
 /**
- * `GET /api/dsp/communications/contacts`: the members of the DSP's workspaces, by name, or
- * those like what was searched, the closest first.
+ * `GET /api/dsp/communications/contacts`: the members of the DSP's workspaces, or of one of
+ * them, by name, or those like what was searched, the closest first.
  */
 export type Contacts = { contacts: Array<Contact>, };

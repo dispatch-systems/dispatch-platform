@@ -8,7 +8,8 @@ use dispatch_core::manifest::people::PersonRole;
 use serde::Serialize;
 
 /// `GET /api/dsp/communications`: the DSP's conversations, those waiting first, the longest
-/// waiting first, then the latest answered, with the workspaces they're in and who is typing.
+/// waiting first, then the latest answered, of every workspace or the one asked for, with the
+/// workspaces they're in and who is typing.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -23,7 +24,8 @@ pub struct Communications {
     /// How many conversations wait on an answer.
     pub waiting: usize,
     pub conversations: Vec<Conversation>,
-    /// Whether older answered conversations are left to read, with `conversations?before=`.
+    /// Whether older answered conversations are left to read, with `conversations?before=`, of
+    /// the same workspaces.
     pub more: bool,
     pub workspaces: Vec<CommunicationsWorkspace>,
     pub typing: Typing,
@@ -179,7 +181,7 @@ pub struct MessageFile {
 }
 
 /// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
-/// to it, the closest first, or the answered ones before `before`.
+/// to it, the closest first, or the answered ones before `before`, in every workspace or one.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -247,8 +249,8 @@ pub struct ProfileToday {
     pub stops: Option<i64>,
 }
 
-/// `GET /api/dsp/communications/contacts`: the members of the DSP's workspaces, by name, or
-/// those like what was searched, the closest first.
+/// `GET /api/dsp/communications/contacts`: the members of the DSP's workspaces, or of one of
+/// them, by name, or those like what was searched, the closest first.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -272,6 +274,12 @@ pub struct Contact {
     pub person: Correspondent,
     /// Their conversation, if they have one.
     pub conversation_id: Option<String>,
+    /// Since when their conversation waits on an answer, as `Conversation`'s.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub waiting_since: Option<i64>,
+    /// When their conversation's latest message was written, as `Conversation`'s.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_at: Option<i64>,
     /// The letters of their name that matched what was searched, as `Conversation`'s.
     pub matched: Vec<(u32, u32)>,
 }

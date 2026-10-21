@@ -1,5 +1,17 @@
 /* The Communications page: the list of conversations beside the one open, filling the window so
-   each scrolls on its own; on a phone, one or the other. */
+   each scrolls on its own. Every size on it grows with the page's own width, smoothly, from a
+   laptop's (about 1,000px of page) to an ultrawide's (about 3,100px), then stops: measured
+   against the page itself (a container query, `cqi`), so the sidebar showing or not is counted.
+
+     page width   layout
+     < 760        one pane, edge to edge: the list, or the conversation open
+     760 – 1499   the list beside the conversation; the profile over the conversation
+     ≥ 1500       the profile, open, a column of its own beside the conversation
+
+   useLayout.ts tells the page the same widths. Sizes go by a hundredth of the page's width
+   (`--cq`): within the page, its container's (`1cqi`), which each size reads where it's used; in
+   New message and the Update popup, which lie outside the page's container to cover the window or
+   the page beside the sidebar, the page's width as useLayout.ts measures it, set on the page. */
 .communications {
   --bubble-in: #eef1f5;
   --bubble-out: #2055ed;
@@ -17,10 +29,35 @@
   --late-surface: #432630;
 }
 .communications-page {
+  container: communications / inline-size;
+  --cq: 1cqi;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+/* The sizes, each declared where its `--cq` is: the page, and each popup. */
+.communications-page,
+.communications > .modal-backdrop {
+  --list-width: clamp(296px, calc(18 * var(--cq) + 120px), 440px);
+  /* The conversation's messages and the box under them, centred on a wide page. */
+  --column-width: clamp(880px, calc(56 * var(--cq)), 1320px);
+  --text-size: clamp(14px, calc(10.6px + 0.3 * var(--cq)), 17.5px);
+  --name-size: clamp(14px, calc(10.9px + 0.27 * var(--cq)), 17px);
+  --title-size: clamp(15px, calc(11px + 0.35 * var(--cq)), 20px);
+  --ui-size: clamp(13px, calc(10.3px + 0.24 * var(--cq)), 16px);
+  --small-size: clamp(11.5px, calc(9.4px + 0.18 * var(--cq)), 14px);
+  --face-list: clamp(40px, calc(28px + 1.05 * var(--cq)), 56px);
+  --face-head: clamp(40px, calc(28px + 1.05 * var(--cq)), 54px);
+  --face-message: clamp(30px, calc(21px + 0.78 * var(--cq)), 42px);
+  --face-profile: clamp(72px, calc(56px + 1.3 * var(--cq)), 96px);
+  --field-height: clamp(38px, calc(28px + 0.88 * var(--cq)), 50px);
+  --composer-height: clamp(46px, calc(33px + 1.1 * var(--cq)), 60px);
+  --round-size: clamp(34px, calc(25px + 0.78 * var(--cq)), 44px);
+  --gap: clamp(12px, calc(8px + 0.35 * var(--cq)), 18px);
+  --pad: clamp(18px, calc(8px + 0.9 * var(--cq)), 40px);
+  --photo-width: clamp(232px, calc(140px + 8 * var(--cq)), 340px);
+  --profile-width: clamp(300px, calc(200px + 9 * var(--cq)), 400px);
 }
 .communications .page-heading {
   margin-bottom: 22px;
@@ -30,31 +67,40 @@
   align-items: center;
   gap: 10px;
 }
+/* Loading, in the list, the conversation or the profile. */
+.communications .loading {
+  font-size: var(--ui-size);
+}
+.communications .loading svg {
+  width: calc(var(--ui-size) + 6px);
+  height: calc(var(--ui-size) + 6px);
+}
 
-/* People: a photo, or initials in their tone. */
+/* People: a photo, or initials in their tone, as large as where they're shown. */
 .communications .face {
+  width: var(--face);
+  height: var(--face);
+  font-size: calc(var(--face) * 0.36);
   font-weight: 600;
   letter-spacing: 0.2px;
 }
-.communications .face-40 {
-  width: 40px;
-  height: 40px;
-  font-size: 14px;
+.communications .face-list {
+  --face: var(--face-list);
 }
-.communications .face-30 {
-  width: 30px;
-  height: 30px;
-  font-size: 11px;
+.communications .face-contact {
+  --face: calc(var(--face-list) - 6px);
 }
-.communications .face-72 {
-  width: 72px;
-  height: 72px;
-  font-size: 26px;
+.communications .face-sender {
+  --face: calc(var(--small-size) + 6.5px);
 }
-.communications .face-18 {
-  width: 18px;
-  height: 18px;
-  font-size: 7px;
+.communications .face-head {
+  --face: var(--face-head);
+}
+.communications .face-message {
+  --face: var(--face-message);
+}
+.communications .face-profile {
+  --face: var(--face-profile);
 }
 .communications .tone-violet {
   color: var(--violet);
@@ -77,11 +123,23 @@
   color: var(--primary);
   font-weight: 650;
 }
+/* How many wait. */
+.communications .count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: calc(var(--small-size) - 0.5px);
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+}
 
 /* The list beside the conversation. */
 .chat-frame {
   display: grid;
-  grid-template-columns: 318px minmax(0, 1fr);
+  grid-template-columns: var(--list-width) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -96,14 +154,51 @@
   border-right: 1px solid var(--border);
 }
 .pane-list .list-tools {
-  padding: 14px 14px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) * 0.65);
+  padding: var(--gap) var(--gap) 6px;
 }
 .pane-list .search {
   width: 100%;
 }
+.pane-list .search > svg {
+  left: calc(var(--field-height) * 0.3);
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
+}
 .pane-list .search input {
-  min-height: 38px;
-  font-size: 14px;
+  min-height: var(--field-height);
+  padding-left: calc(var(--field-height) * 0.3 + var(--ui-size) + 11px);
+  font-size: var(--name-size);
+}
+/* Messages or Contacts: two segments. */
+.pane-list .restored-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  height: auto;
+  margin: 0;
+  padding: 3px;
+  overflow: visible;
+  border: 0;
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--muted);
+}
+.pane-list .restored-tabs button {
+  gap: 8px;
+  height: auto;
+  min-height: calc(var(--field-height) - 6px);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  font-size: var(--ui-size);
+  font-weight: 600;
+}
+.pane-list .restored-tabs button[aria-selected='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px var(--shadow-color);
 }
 .list-scroll {
   flex: 1;
@@ -115,28 +210,28 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 18px 4px;
+  padding: calc(var(--gap) * 0.8) calc(var(--gap) + 6px) 4px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--small-size);
   font-weight: 600;
 }
 .list-head span {
   padding: 0 7px;
   border-radius: 10px;
   background: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--small-size);
 }
 .list-empty {
   padding: 18px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--ui-size);
   text-align: center;
 }
 .convos {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 0 8px;
+  padding: 0 calc(var(--gap) * 0.6);
   list-style: none;
 }
 .convo {
@@ -145,10 +240,10 @@
 .convo-open {
   display: flex;
   justify-content: flex-start;
-  gap: 12px;
+  gap: var(--gap);
   width: 100%;
   min-height: 0;
-  padding: 8px 10px;
+  padding: calc(var(--gap) * 0.7) calc(var(--gap) * 0.8);
   border: 0;
   border-radius: 10px;
   background: transparent;
@@ -179,9 +274,10 @@
   align-items: baseline;
   justify-content: space-between;
 }
-.convo .line1 strong {
+.convo .line1 strong,
+.contact strong {
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--name-size);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -189,7 +285,7 @@
 .convo time {
   flex-shrink: 0;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--small-size);
 }
 .convo .line2 .face {
   margin-right: -2px;
@@ -199,7 +295,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: calc(var(--name-size) - 1px);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -218,30 +314,135 @@
   color: var(--primary);
   font-style: italic;
 }
-/* Pointed at or reached by the keyboard, a waiting one shows the check that marks it done. */
+/* Pointed at or reached by the keyboard beside the conversation, a waiting one shows the check
+   that marks it done (below). */
 .convo-done {
   position: absolute;
   top: 50%;
   right: 18px;
   display: none;
-  width: 34px;
-  min-height: 34px;
-  height: 34px;
+  width: var(--round-size);
+  min-height: var(--round-size);
+  height: var(--round-size);
   padding: 0;
   border-radius: 50%;
   background: var(--card);
   box-shadow: 0 2px 6px var(--shadow-color);
   transform: translateY(-50%);
 }
-.convo:hover .convo-done,
-.convo:focus-within .convo-done {
-  display: inline-flex;
+.convo-done svg {
+  width: 47%;
+  height: 47%;
 }
-.convo.waits:hover time,
-.convo.waits:hover .wait,
-.convo.waits:focus-within time,
-.convo.waits:focus-within .wait {
-  visibility: hidden;
+@container communications (width >= 760px) {
+  .convo:hover .convo-done,
+  .convo:focus-within .convo-done {
+    display: inline-flex;
+  }
+  .convo.waits:hover time,
+  .convo.waits:hover .wait,
+  .convo.waits:focus-within time,
+  .convo.waits:focus-within .wait {
+    visibility: hidden;
+  }
+}
+/* A contact: who they are, and how long they've waited or when they last wrote. */
+.contact .convo-open {
+  align-items: center;
+  padding-block: calc(var(--gap) * 0.5);
+}
+.contact .convo-body {
+  gap: 0;
+}
+.contact small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: calc(var(--name-size) - 1.5px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Which workspace the lists show. */
+.workspace-picker {
+  position: relative;
+}
+.workspace-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--field-height);
+  padding: 0 12px 0 calc(var(--field-height) * 0.18);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  font-size: var(--ui-size);
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+.workspace-button::-webkit-details-marker {
+  display: none;
+}
+.workspace-button:hover {
+  background: var(--accent);
+}
+.workspace-picker[open] > .workspace-button {
+  border-color: var(--ring);
+}
+.workspace-button > svg {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.workspace-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: calc(var(--field-height) - 14px);
+  height: calc(var(--field-height) - 14px);
+  border-radius: 7px;
+  font-size: calc(var(--ui-size) - 3px);
+  font-weight: 700;
+}
+.workspace-mark.all {
+  border: 1px solid var(--border);
+  background: #fff;
+}
+.workspace-mark svg {
+  width: 58%;
+  height: 58%;
+}
+.workspace-picker .account-popover {
+  inset: calc(100% + 6px) 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px var(--shadow-color);
+}
+.workspace-picker .account-popover button {
+  gap: 10px;
+  min-height: 0;
+  padding: 8px 10px;
+  font-size: var(--ui-size);
+}
+.workspace-picker .account-popover button[aria-current] {
+  background: var(--accent);
+}
+.workspace-picker .account-popover .count {
+  margin-left: auto;
+}
+.workspace-check {
+  color: var(--primary);
+}
+.workspace-picker .account-popover .workspace-name + .workspace-check {
+  margin-left: auto;
 }
 
 /* How long someone has waited: amber from 15 minutes, red from 30. */
@@ -254,9 +455,13 @@
   border-radius: 10px;
   background: var(--muted);
   color: var(--muted-foreground);
-  font-size: 11.5px;
+  font-size: var(--small-size);
   font-weight: 600;
   font-style: normal;
+}
+.wait svg {
+  width: calc(var(--small-size) - 0.5px);
+  height: calc(var(--small-size) - 0.5px);
 }
 .wait.slow {
   background: var(--warning-surface);
@@ -267,8 +472,10 @@
   color: var(--late);
 }
 
-/* The conversation open. */
+/* The conversation open: its messages and the box under them keep to a centred column once
+   it's wider than that. */
 .pane-thread {
+  --side: max(var(--pad), calc((100% - var(--column-width)) / 2));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -278,9 +485,9 @@
 .thread-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 66px;
-  padding: 12px 18px;
+  gap: var(--gap);
+  min-height: calc(var(--face-head) + 2 * var(--gap) + 2px);
+  padding: var(--gap) var(--pad);
   border-bottom: 1px solid var(--border);
 }
 .thread-head .back {
@@ -293,7 +500,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: var(--gap);
   flex: 0 1 auto;
   min-width: 0;
   min-height: 0;
@@ -314,7 +521,7 @@
 .thread-head .who strong {
   display: block;
   overflow: hidden;
-  font-size: 15px;
+  font-size: var(--title-size);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -324,17 +531,21 @@
   align-items: center;
   gap: 6px;
   color: var(--muted-foreground);
-  font-size: 12.5px;
+  font-size: calc(var(--small-size) + 1px);
 }
 .thread-head .actions button {
-  min-height: 36px;
-  font-size: 13px;
+  min-height: calc(var(--field-height) - 2px);
+  font-size: var(--ui-size);
+}
+.thread-head .actions svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
 }
 .thread {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 24px 6px;
+  padding: calc(var(--pad) - 2px) var(--side) 6px;
 }
 .thread > .loading {
   justify-content: center;
@@ -349,21 +560,22 @@
   align-self: center;
   margin: 14px 0 0;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--small-size);
   font-weight: 500;
 }
 .msg-group {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  margin-top: 12px;
+  gap: calc(var(--gap) * 0.7);
+  margin-top: var(--gap);
 }
 .msg-group.out {
   flex-direction: row-reverse;
 }
+/* By the last of a run, above its time. */
 .msg-group > .face,
 .msg-group > .face-button {
-  margin-bottom: 19px;
+  margin-bottom: calc(var(--small-size) * 1.5 + 2px);
 }
 .face-button {
   flex-shrink: 0;
@@ -382,21 +594,21 @@
   align-items: flex-start;
   gap: 3px;
   min-width: 0;
-  max-width: min(72%, 560px);
+  max-width: min(72%, calc(var(--text-size) * 40));
 }
 .msg-group.out .stack {
   align-items: flex-end;
 }
 .sender {
   margin: 0 12px 1px;
-  font-size: 12px;
+  font-size: var(--small-size);
   font-weight: 600;
 }
 .bubble {
-  padding: 8px 13px;
-  border-radius: 18px;
+  padding: 0.55em 0.95em;
+  border-radius: 1.3em;
   background: var(--bubble-in);
-  font-size: 14px;
+  font-size: var(--text-size);
   line-height: 1.42;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -407,23 +619,23 @@
 }
 .bubble .edited {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: 0.8em;
   opacity: 0.7;
 }
 /* The last of a run, by its writer's photo. */
 .msg-group.in .stack > :nth-last-child(2) {
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: calc(var(--text-size) * 0.43);
 }
 .msg-group.out .stack > :nth-last-child(2) {
-  border-bottom-right-radius: 6px;
+  border-bottom-right-radius: calc(var(--text-size) * 0.43);
 }
 .photo {
   display: block;
   overflow: hidden;
-  width: 232px;
-  height: 164px;
+  width: var(--photo-width);
   max-width: 100%;
-  border-radius: 16px;
+  aspect-ratio: 232 / 164;
+  border-radius: calc(var(--text-size) * 1.15);
   background: var(--muted);
 }
 .photo img {
@@ -436,16 +648,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 0.75em;
   max-width: 100%;
   min-height: 0;
-  padding: 10px 13px;
+  padding: 0.75em 1em;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--text-size);
   background: var(--card);
   color: var(--foreground);
-  font-size: 13px;
+  font-size: var(--ui-size);
   font-weight: 400;
+}
+.file svg {
+  width: 1.4em;
+  height: 1.4em;
 }
 .file .file-name {
   overflow: hidden;
@@ -455,6 +671,7 @@
 .file small {
   flex-shrink: 0;
   color: var(--muted-foreground);
+  font-size: var(--small-size);
 }
 .file.unkept {
   border-style: dashed;
@@ -463,18 +680,20 @@
 .meta {
   margin: 2px 12px 0;
   color: var(--muted-foreground);
-  font-size: 11.5px;
+  font-size: var(--small-size);
+  line-height: 1.5;
 }
 .typing {
   display: inline-flex;
-  gap: 4px;
-  padding: 12px 14px;
-  border-radius: 18px 18px 6px 18px;
+  gap: 0.3em;
+  padding: 0.85em 1em;
+  border-radius: 1.3em 1.3em 0.43em 1.3em;
   background: var(--bubble-in);
+  font-size: var(--text-size);
 }
 .typing i {
-  width: 7px;
-  height: 7px;
+  width: 0.5em;
+  height: 0.5em;
   border-radius: 50%;
   background: var(--muted-foreground);
   opacity: 0.55;
@@ -500,8 +719,9 @@
   height: 1px;
 }
 
-/* The profile of who it's with, over the conversation. */
+/* The profile of who it's with, over the conversation; on a wide page beside it (below). */
 .profile {
+  --profile-pad: calc(var(--pad) + 4px);
   position: absolute;
   top: 0;
   right: 0;
@@ -509,9 +729,9 @@
   z-index: 10;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  width: 300px;
-  padding: 26px 22px;
+  gap: calc(var(--gap) + 4px);
+  width: var(--profile-width);
+  padding: calc(var(--profile-pad) + 4px) var(--profile-pad);
   overflow-y: auto;
   border-left: 1px solid var(--border);
   background: var(--card);
@@ -521,10 +741,11 @@
    taking no room from what's below. */
 .profile .close {
   position: sticky;
-  top: -14px;
+  top: calc(8px - var(--profile-pad));
   z-index: 1;
   align-self: flex-end;
-  margin: -14px -10px -38px 0;
+  margin: calc(8px - var(--profile-pad)) calc(12px - var(--profile-pad))
+    calc(var(--profile-pad) - var(--gap) - 48px) 0;
 }
 .profile .me {
   display: flex;
@@ -534,7 +755,7 @@
   text-align: center;
 }
 .profile .me h2 {
-  font-size: 16px;
+  font-size: calc(var(--title-size) + 1px);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -542,7 +763,7 @@
   display: block;
   margin-top: 2px;
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--ui-size);
 }
 .profile-buttons {
   display: flex;
@@ -554,33 +775,41 @@
   justify-content: center;
   gap: 8px;
   flex: 1;
-  min-height: 34px;
+  min-height: calc(var(--field-height) - 4px);
   padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--background);
   color: var(--foreground);
-  font-size: 13px;
+  font-size: var(--ui-size);
   font-weight: 500;
   text-decoration: none;
+}
+.profile-button svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
+}
+.profile dt svg {
+  width: calc(var(--ui-size) + 1px);
+  height: calc(var(--ui-size) + 1px);
 }
 .profile-button:hover {
   background: var(--accent);
 }
 .profile section {
-  padding-top: 16px;
+  padding-top: calc(var(--gap) + 4px);
   border-top: 1px solid var(--border);
 }
 .profile h3 {
   margin-bottom: 8px;
-  font-size: 13px;
+  font-size: var(--ui-size);
   font-weight: 600;
 }
 .profile dl {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
+  gap: calc(var(--gap) * 0.67);
+  font-size: var(--ui-size);
 }
 .profile dl > div {
   display: flex;
@@ -603,16 +832,16 @@
 /* Writing a message. */
 .composer {
   margin: 0;
-  padding: 10px 18px 16px;
+  padding: 10px var(--side) calc(var(--pad) - 2px);
 }
 .composer .box {
   display: flex;
   align-items: flex-end;
   gap: 4px;
-  min-height: 46px;
-  padding: 5px 6px;
+  min-height: var(--composer-height);
+  padding: calc((var(--composer-height) - var(--round-size)) / 2 - 1px) 6px;
   border: 1px solid var(--input);
-  border-radius: 24px;
+  border-radius: calc(var(--composer-height) / 2);
   background: var(--background);
 }
 .composer .box:focus-within {
@@ -620,28 +849,32 @@
 }
 .composer textarea {
   flex: 1;
-  min-height: 34px;
-  max-height: 140px;
-  padding: 7px 6px;
+  min-height: var(--round-size);
+  max-height: calc(var(--text-size) * 10);
+  padding: calc((var(--round-size) - var(--text-size) * 1.42) / 2) 6px;
   border: 0;
   background: transparent;
   resize: none;
   outline: none;
-  font-size: 14px;
+  font-size: var(--text-size);
   line-height: 1.42;
 }
 .composer textarea:disabled {
   cursor: default;
 }
 .communications button.round {
-  width: 34px;
-  min-height: 34px;
-  height: 34px;
+  width: var(--round-size);
+  min-height: var(--round-size);
+  height: var(--round-size);
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: var(--muted-foreground);
+}
+.communications button.round svg {
+  width: 53%;
+  height: 53%;
 }
 .communications button.round:hover:not(:disabled) {
   background: var(--accent);
@@ -665,8 +898,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: calc(var(--composer-height) * 1.4);
+  height: calc(var(--composer-height) * 1.4);
   overflow: hidden;
   border-radius: 12px;
   background: var(--muted);
@@ -729,17 +962,28 @@
 }
 
 /* New message: whom to write to. */
+.modal:has(.new-message) {
+  width: calc(var(--list-width) + 240px);
+}
+.communications .modal-heading h2 {
+  font-size: calc(var(--title-size) + 3px);
+}
 .new-message .new-search {
   width: 100%;
 }
+.new-message .new-search > svg {
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
+}
 .new-message .new-search input {
-  min-height: 44px;
-  font-size: 15px;
+  min-height: calc(var(--field-height) + 6px);
+  padding-left: calc(var(--ui-size) + 22px);
+  font-size: calc(var(--name-size) + 1px);
 }
 .new-message .results {
   display: flex;
   flex-direction: column;
-  max-height: min(420px, calc(100dvh - 260px));
+  max-height: min(calc(var(--face-list) * 10.5), calc(100dvh - 260px));
   margin: 10px -8px 0;
   overflow-y: auto;
   list-style: none;
@@ -747,8 +991,8 @@
 .new-message .result {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: var(--gap);
+  padding: calc(var(--gap) * 0.8) var(--gap);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -762,14 +1006,16 @@
   min-width: 0;
 }
 .new-message .result-body strong {
-  font-size: 14px;
+  font-size: var(--name-size);
   font-weight: 500;
 }
 .new-message .result-body small {
   color: var(--muted-foreground);
-  font-size: 12.5px;
+  font-size: calc(var(--small-size) + 1px);
 }
 .new-message .result > svg {
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
   color: var(--muted-foreground);
 }
 
@@ -779,7 +1025,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: calc(var(--gap) + 10px);
   flex: 1;
   min-height: 0;
   padding: 24px;
@@ -792,37 +1038,41 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 76px;
-  height: 76px;
+  width: calc(var(--face-profile) + 4px);
+  height: calc(var(--face-profile) + 4px);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: calc(var(--face-profile) * 0.27);
   background: var(--background);
   box-shadow: 0 6px 18px var(--shadow-color);
+}
+.setup-mark svg {
+  width: 50%;
+  height: 50%;
 }
 .setup-why {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-width: 420px;
+  max-width: calc(var(--text-size) * 30);
 }
 .setup-why h2 {
-  font-size: 18px;
+  font-size: calc(var(--title-size) + 3px);
   font-weight: 600;
 }
 .setup-why p {
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: var(--text-size);
 }
 .setup button {
-  min-height: 44px;
+  min-height: calc(var(--field-height) + 6px);
   padding: 0 20px;
-  font-size: 15px;
+  font-size: calc(var(--ui-size) + 2px);
 }
 
 /* Slack needing an update: over the page, a row for each workspace. */
 .modal:has(.update-workspaces) {
-  width: 460px;
-  padding: 26px;
+  width: calc(var(--list-width) + 140px);
+  padding: calc(var(--pad) + 8px);
 }
 .update-title {
   display: flex;
@@ -833,16 +1083,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: var(--field-height);
+  height: var(--field-height);
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #fff;
 }
+.update-mark svg {
+  width: 53%;
+  height: 53%;
+}
 .update-why {
-  margin: -14px 0 18px 50px;
+  margin: -14px 0 18px calc(var(--field-height) + 12px);
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: var(--text-size);
 }
 .update-workspaces {
   display: flex;
@@ -853,8 +1107,8 @@
 .update-workspace {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 12px 12px 14px;
+  gap: var(--gap);
+  padding: var(--gap) var(--gap) var(--gap) calc(var(--gap) + 2px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
@@ -862,7 +1116,7 @@
 .update-workspace strong {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--text-size);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -872,21 +1126,40 @@
 }
 .update-buttons button {
   gap: 7px;
-  min-height: 36px;
-  font-size: 13.5px;
+  min-height: calc(var(--field-height) - 2px);
+  font-size: calc(var(--ui-size) + 0.5px);
+}
+.update-buttons svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
 }
 .update-buttons input {
-  width: 180px;
-  min-height: 36px;
-  font-size: 12px;
+  width: calc(var(--list-width) * 0.56);
+  min-height: calc(var(--field-height) - 2px);
+  font-size: calc(var(--small-size) + 0.5px);
 }
 
-/* On a phone: the list, or the conversation open with a way back. */
-@media (width <= 760px) {
+/* On a wide page, the profile, open, is a column of its own beside the conversation, which it
+   no longer covers. */
+@container communications (width >= 1500px) {
+  .pane-thread.profiled {
+    padding-right: var(--profile-width);
+  }
+  .profile {
+    box-shadow: none;
+  }
+}
+
+/* On a phone: one pane at a time, edge to edge, the list or the conversation open, which takes
+   the whole page, with a way back. Without hover, Done in the conversation marks it done. */
+@container communications (width < 760px) {
   .communications .page-heading {
     flex-wrap: nowrap;
     align-items: center;
     margin-bottom: 14px;
+  }
+  .communications.reading .page-heading {
+    display: none;
   }
   .communications .heading-actions {
     gap: 8px;
@@ -901,6 +1174,9 @@
   }
   .chat-frame {
     grid-template-columns: minmax(0, 1fr);
+    margin: 0 calc(-1 * var(--page-gutter)) calc(-1 * var(--page-bottom));
+    border-width: 1px 0 0;
+    border-radius: 0;
   }
   .communications .pane-thread,
   .communications.reading .pane-list {
@@ -924,8 +1200,8 @@
     border-left: 0;
     box-shadow: none;
   }
-  .thread {
-    padding: 12px 14px 6px;
+  .pane-thread {
+    --side: 14px;
   }
   .composer {
     padding: 8px 10px 10px;
@@ -933,6 +1209,9 @@
   .stack {
     max-width: 80%;
   }
+}
+/* The Update popup, over a phone's window. */
+@media (width <= 760px) {
   .update-why {
     margin-left: 0;
   }

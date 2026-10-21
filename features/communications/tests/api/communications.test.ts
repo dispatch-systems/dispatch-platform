@@ -77,10 +77,28 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(done.value.state, 'done');
   assert.equal((await read()).waiting, 0);
 
-  // Whom the DSP can message, found by a misspelt name.
-  const { contacts } = await owner.read(`${route}/contacts?q=jordn`);
+  // Whom the DSP can message, found by a misspelt name, with when they last wrote.
+  const { contacts } = await owner.read(`${route}/contacts?q=jordn&team=T0FIXTURE1`);
   assert.equal(contacts[0].person.name, 'Jordan Ellis');
   assert.equal(contacts[0].conversationId, conversation.id);
+  assert.equal(contacts[0].lastAt, (await read()).conversations[0].lastAt);
+  assert.equal(contacts[0].waitingSince, null);
+
+  // A workspace's lists hold its own alone: answered, older, found, and whom it can message.
+  const older = `${route}/conversations?before=${Date.now() + 60_000}:${conversation.id}`;
+  for (const [team, ids] of [
+    ['T0FIXTURE1', [conversation.id]],
+    ['T0ELSEWHERE', []],
+  ] as const) {
+    const listed = (path: string) => owner.read(`${path}team=${team}`);
+    const of = async (path: string) =>
+      ((await listed(path)).conversations as { id: string }[]).map(({ id }) => id);
+    assert.deepEqual(await of(`${route}?`), ids);
+    assert.deepEqual(await of(`${older}&`), ids);
+    assert.deepEqual(await of(`${route}/conversations?q=jordn&`), ids);
+    const reached = await listed(`${route}/contacts?`);
+    assert.equal(reached.contacts.length > 0, ids.length > 0);
+  }
 
   // The image of someone's initials is public, at the admin's address, as Slack fetches it.
   const initials = await fetch(`${f.env.DISPATCH_ORIGIN}/communications/initials/1/PO.png`);
