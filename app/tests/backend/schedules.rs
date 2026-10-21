@@ -55,6 +55,12 @@ fn saved(db: &Store, id: &str, collection: &str) -> (Vec<(String, Option<String>
         .collect();
     (rules, shown.revision)
 }
+/// When the collection runs next, as the Collectors page shows it.
+fn next_run(db: &Store, id: &str, collection: &str) -> Option<String> {
+    db.scheduled_collection(id, Scheduled::named(collection).unwrap(), false)
+        .unwrap()
+        .next_run
+}
 fn save(db: &Store, id: &str, collection: &str, rules: Value, revision: &str) -> String {
     let scheduled = Scheduled::named(collection).unwrap();
     let value = json!({"rules":rules,"revision":revision});
@@ -164,15 +170,15 @@ fn a_collections_rules_are_saved_together_as_they_were_read() {
     );
     let (rules, _) = saved(&db, &id, "paycom");
     assert_eq!(rules, [(second, None)]);
-    assert_eq!(db.next_scheduled(&id, "paycom").unwrap(), None);
+    assert_eq!(next_run(&db, &id, "paycom"), None);
     assert_eq!(switch(&db, &id, "paycom", true), "switched");
-    assert!(db.next_scheduled(&id, "paycom").unwrap().is_some());
+    assert!(next_run(&db, &id, "paycom").is_some());
     // A collection whose collector isn't connected starts off, and doesn't come on.
     assert_eq!(
         save(&db, &id, "vans", json!([daily("vans", &["06:00"])]), ""),
         "saved"
     );
-    assert_eq!(db.next_scheduled(&id, "vans").unwrap(), None);
+    assert_eq!(next_run(&db, &id, "vans"), None);
     assert_eq!(switch(&db, &id, "vans", true), "schedule_vans_required");
 }
 
@@ -309,7 +315,7 @@ fn a_rule_that_cannot_run_waits_without_holding_back_the_rest() {
             .iter()
             .any(|(_, next)| next.is_some())
     );
-    assert!(db.next_scheduled(&id, "paycom").unwrap().is_some());
+    assert!(next_run(&db, &id, "paycom").is_some());
 }
 
 #[test]
@@ -321,7 +327,7 @@ fn a_timezone_change_retimes_every_rule() {
         "saved"
     );
     db.retime_schedules(&id, "Asia/Tokyo").unwrap();
-    let next = db.next_scheduled(&id, "paycom").unwrap().unwrap();
+    let next = next_run(&db, &id, "paycom").unwrap();
     let local = chrono::DateTime::parse_from_rfc3339(&next)
         .unwrap()
         .with_timezone(&chrono_tz::Asia::Tokyo);

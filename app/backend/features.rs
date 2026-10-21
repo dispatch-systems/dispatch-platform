@@ -51,8 +51,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     all.extend(dispatch_documents::typescript(cfg));
     #[cfg(feature = "driver_match")]
     all.extend(dispatch_driver_match::typescript(cfg));
-    #[cfg(feature = "driver_profiles")]
-    all.extend(dispatch_driver_profiles::typescript(cfg));
     #[cfg(feature = "dvic")]
     all.extend(dispatch_dvic::typescript(cfg));
     #[cfg(feature = "routes")]
@@ -63,8 +61,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     all.extend(dispatch_timecard::typescript(cfg));
     #[cfg(feature = "uniforms")]
     all.extend(dispatch_uniforms::typescript(cfg));
-    #[cfg(feature = "vans")]
-    all.extend(dispatch_vans::typescript(cfg));
     #[cfg(feature = "weekly_scorecard")]
     all.extend(dispatch_weekly_scorecard::typescript(cfg));
     all

@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import type { SettingsAnswer, SettingsSection } from '../../../../core/settings/api/index.js';
 import { installFeatures } from '../../../../core/shell/frontend/runtime/slots.js';
-import { drawnPages, openPage } from '../../frontend/pages.js';
+import { drawnPages, openPage, sectionsOn } from '../../frontend/pages.js';
 
 // Settings draws the pages the server says the member has, each with a section on it to draw:
 // a custom section only with the component its owner registers, while that has something to
@@ -26,6 +26,7 @@ test('Settings lists each page with a section it draws, and opens on the one nam
     order: 10,
     scope: 'dsp',
     custom,
+    collection: null,
     fields: [],
     values: {},
     revision: 0,
@@ -54,4 +55,38 @@ test('Settings lists each page with a section it draws, and opens on the one nam
   assert.equal(openPage(settings, view, 'data'), 'data');
   assert.equal(openPage(settings, view, 'connections'), 'general');
   assert.equal(openPage(settings, view, null), 'general');
+});
+
+// A section that goes with a collection is drawn with it by the Collectors page, not on its own.
+test('a section that goes with a collection is left to the Collectors page to draw', () => {
+  const drawn = { load: () => Promise.resolve(), render: () => null };
+  installFeatures([
+    { name: 'collection', settingsSections: [{ id: 'collection.collectors', ...drawn }] },
+  ]);
+  const section = (id: string, custom: boolean, collection: string | null): SettingsSection => ({
+    id,
+    page: 'collectors',
+    label: id,
+    order: 0,
+    scope: 'dsp',
+    custom,
+    collection,
+    fields: [],
+    values: {},
+    revision: 0,
+    sources: [],
+    keywords: [],
+  });
+  const settings: SettingsAnswer = {
+    pages: [{ id: 'collectors', label: 'Collectors', group: 'dsp', order: 40 }],
+    sections: [
+      section('collection.collectors', true, null),
+      section('daily_performance.collection', false, 'daily_performance'),
+    ],
+  };
+  const view = {} as DspView;
+  assert.deepEqual(
+    sectionsOn(settings, view, 'collectors').map(({ id }) => id),
+    ['collection.collectors'],
+  );
 });

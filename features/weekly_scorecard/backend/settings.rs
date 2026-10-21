@@ -1,5 +1,5 @@
-//! Weekly Scorecard's settings, on its own page: which weeks a scheduled run rechecks; and the
-//! policy a DSP chose before Settings kept it, moved in once.
+//! Weekly Scorecard's settings, with its collection on the Collectors page: which weeks a run
+//! rechecks; and the policy a DSP chose before Settings kept it, moved in once.
 use super::{STORAGE, WeeklyScorecardStore};
 use dispatch_core::{
     Result,
@@ -10,8 +10,8 @@ use dispatch_core::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-/// Which completed weeks a scheduled run rechecks, apart from when its schedules run: the
-/// latest `lookback_weeks`, posted ones too, as disputes change them, each unless checked
+/// Which completed weeks a run of its collection rechecks, apart from when its rules run it:
+/// the latest `lookback_weeks`, posted ones too, as disputes change them, each unless checked
 /// within `refresh_hours`.
 pub const COLLECTION: Section = section(
     "weekly_scorecard.collection",
@@ -21,9 +21,10 @@ pub const COLLECTION: Section = section(
         number("lookback_weeks", "Look back", 1, 8, Some(1)).unit("weeks"),
         number("refresh_hours", "Refresh after", 1, 168, Some(20)).unit("hours"),
     ],
-);
+)
+.collection("weekly_scorecard");
 
-/// `COLLECTION`'s values, as a scheduled run reads them.
+/// `COLLECTION`'s values, as a run reads them.
 #[derive(Deserialize)]
 pub struct Policy {
     pub lookback_weeks: u32,

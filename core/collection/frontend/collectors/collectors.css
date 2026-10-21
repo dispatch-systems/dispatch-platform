@@ -677,6 +677,24 @@
   margin: 0;
 }
 
+/* The settings that go with the collection, as Settings draws them, inside its panel. */
+.collectors-settings {
+  margin: 0 24px;
+  border-top: 1px solid var(--border);
+}
+/* No card of its own; its ring, as search points it out, keeps clear of what it holds. */
+.collectors-settings .settings-section {
+  max-width: none;
+  margin: 8px -13px;
+  padding: 8px 12px;
+  border-color: transparent;
+  background: none;
+}
+.collectors-settings .settings-section > h2 {
+  font-size: 15px;
+  letter-spacing: -0.2px;
+}
+
 @media (max-width: 960px) {
   .collectors {
     grid-template-columns: minmax(0, 1fr);

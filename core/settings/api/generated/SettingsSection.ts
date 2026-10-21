@@ -13,7 +13,12 @@ page: string, label: string, order: number, scope: SettingsScope,
 /**
  * Drawn by its owner's component, which the frontend registers under its id.
  */
-custom: boolean, fields: Array<SettingsField>,
+custom: boolean,
+/**
+ * The collection it goes with, by its schedule name: the Collectors page draws it with
+ * that collection.
+ */
+collection: string | null, fields: Array<SettingsField>,
 /**
  * Every field's value by id.
  */

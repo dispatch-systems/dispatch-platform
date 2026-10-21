@@ -68,6 +68,9 @@ pub struct Section {
     pub saved: Option<OnSave>,
     /// The part of its feature (`x.what`) it goes with: off or hidden with it.
     pub part: Option<&'static str>,
+    /// The collection of its feature's it goes with, by its schedule name: drawn with it on
+    /// the Collectors page, under the permission that sets when it runs.
+    pub collection: Option<&'static str>,
     /// Its place on its page, lowest first; two at one place go by id.
     pub order: u16,
 }
@@ -93,6 +96,7 @@ pub const fn section(
         warn: None,
         saved: None,
         part: None,
+        collection: None,
         order: 0,
     }
 }
@@ -148,6 +152,15 @@ impl Section {
     pub const fn part(self, part: &'static str) -> Self {
         Self {
             part: Some(part),
+            ..self
+        }
+    }
+    /// With the collection `schedule` names, on the Collectors page, rather than on its
+    /// feature's own page.
+    pub const fn collection(self, schedule: &'static str) -> Self {
+        Self {
+            page: Page::Shared("collectors"),
+            collection: Some(schedule),
             ..self
         }
     }
@@ -582,7 +595,7 @@ pub(crate) fn check(registry: &Registry) {
             "{owner}'s section {id} has no label"
         );
         match feature {
-            Some(feature) => check_feature(feature, section),
+            Some(feature) => check_feature(registry, feature, section),
             None => check_core(registry, section),
         }
         // Its record is kept as `section:<id>`, a member's own as `section:<id>:<user>`: an
@@ -632,8 +645,9 @@ fn snake_case(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 /// A feature's section: named under it, under its own permission, with one of its parts, on
-/// a page of its own whose id no shared page takes.
-fn check_feature(feature: &Feature, section: &Section) {
+/// a page of its own whose id no shared page takes; with a collection, one its feature keeps,
+/// under the permission that sets when it runs.
+fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
     let id = section.id;
     assert!(
         id.strip_prefix(feature.name)
@@ -671,6 +685,26 @@ fn check_feature(feature: &Feature, section: &Section) {
             feature.name
         );
     }
+    if let Some(collection) = section.collection {
+        let keeper = feature.keeps.iter().find(|keeper| {
+            registry
+                .collectors
+                .iter()
+                .flat_map(|collector| collector.collections())
+                .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == collection)
+        });
+        assert!(
+            keeper.is_some_and(|keeper| keeper.schedules().permission == section.permission),
+            "{}'s section {id} goes with {collection}, which isn't a collection it keeps under {}",
+            feature.name,
+            section.permission
+        );
+        assert!(
+            section.page == Page::Shared("collectors") && !section.custom,
+            "{}'s section {id} goes with {collection}, so Settings draws it on Collectors",
+            feature.name
+        );
+    }
 }
 /// One of core's: named under a core part, never a feature's name, under core's own
 /// permission, on a shared page.
@@ -696,8 +730,8 @@ fn check_core(registry: &Registry, section: &Section) {
         section.permission
     );
     assert!(
-        section.page != Page::Own && section.part.is_none(),
-        "core's section {id} is on no feature's page and goes with no feature's part"
+        section.page != Page::Own && section.part.is_none() && section.collection.is_none(),
+        "core's section {id} is on no feature's page and goes with no feature's part or collection"
     );
 }
 /// Why `field` doesn't hold, if it doesn't: its options are some, each once; its range is

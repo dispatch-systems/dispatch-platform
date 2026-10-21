@@ -1,6 +1,4 @@
 # Every route vans registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
-POST /api/dsp/vans/collect Dsp("vans.collect") Bookkeeping
 POST /api/dsp/vans/jobs/{id}/cancel Dsp("vans.collect") Async
-GET /api/dsp/vans/status Dsp("vans.collect") Read

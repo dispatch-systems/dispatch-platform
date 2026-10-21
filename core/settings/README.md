@@ -32,7 +32,10 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
   Collectors page.
 - **Pages:** a section is on its feature's own page (its switch's id, `-` for `_`, ordered by
   its `place`) unless `.on(..)` puts it on a shared page: `general`, `security` and `theme`, the
-  member's own; `dsp`, `connections`, `collectors` and `data`, the DSP's.
+  member's own; `dsp`, `connections`, `collectors` and `data`, the DSP's. `.collection(..)` puts
+  it with a collection its feature keeps, on `collectors`, under the permission that sets when
+  that collection runs: the Collectors page draws it below the collection's schedule, as Daily
+  Performance's `daily_performance.collection` is.
 - **Who:** `permission`, one its feature declares, or `roles::ACCESS` for every member; a write
   under a `.recently_verified()` permission asks for a recent verification. `.part(..)` makes it
   go with a part of its feature. `.member()` gives each member their own values, which the log
@@ -44,7 +47,8 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
 - `Registry::check` refuses, at startup, a section not named `<feature>.<what>` with its
   `what` snake_case (a `:` would read as a member's own record), under a permission its
   feature doesn't declare, on a page or with a part that doesn't exist, with no fields unless
-  it's custom, or with a field whose default its kind doesn't hold.
+  it's custom, with a field whose default its kind doesn't hold, or with a collection its
+  feature doesn't keep under the section's permission, or custom, or moved off `collectors`.
 
 Core's own sections are custom ones its screens draw: accounts' `accounts.profile`,
 `accounts.security` and `accounts.theme`, each member's own, and collection's

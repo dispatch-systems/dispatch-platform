@@ -221,6 +221,7 @@ fn view(
             Scope::Member => SettingsScope::Member,
         },
         custom: section.custom,
+        collection: section.collection.map(str::to_owned),
         fields,
         values: now.values,
         revision: now.revision,

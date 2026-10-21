@@ -1,6 +1,7 @@
 import { createElement, lazy } from 'react';
 import { schedulingPermissions } from '../../tenancy/api/generated/access-catalog.js';
 import { collectorsRead } from '../api/urls.js';
+import { begins } from '../../shell/frontend/runtime/data-policy.js';
 import { connectionFeatures } from '../../shell/frontend/runtime/features.js';
 import { can } from '../../shell/frontend/runtime/permissions.js';
 import {
@@ -55,20 +56,21 @@ export const feature: FrontendFeature = {
       id: 'collection.collectors',
       visible: (view) => schedulingPermissions.some((permission) => can(view, permission)),
       load: loadCollectors,
-      render: ({ view }) => view && createElement(CollectorsTab, { view }),
+      render: ({ view, collectionSections, pointed }) =>
+        view && createElement(CollectorsTab, { view, collectionSections, pointed }),
       prefetch: () => [collectorsRead],
     },
   ],
-  // Its collections' runs and their collectors' connections change it. A save of a schedule, or
-  // its switch, changes any DSP read, as a feature's status shows when it next runs; a preview
-  // changes nothing.
+  // Its collections' runs, as they start and end, and their collectors' connections change it. A
+  // save of a schedule, or its switch, changes it alone, and a preview nothing; Collect now starts
+  // a run, as any collect does.
   cache: {
+    collected: [collectorsRead],
     jobs: [collectorsRead],
     connections: [collectorsRead],
     write: (write, url) => {
-      if (!write.startsWith('/api/dsp/collectors/')) return undefined;
-      if (write.endsWith('/preview')) return false;
-      return url.startsWith('/api/dsp/');
+      if (!write.startsWith('/api/dsp/collectors/') || write.endsWith('/collect')) return undefined;
+      return !write.endsWith('/preview') && begins(url, collectorsRead);
     },
   },
 };

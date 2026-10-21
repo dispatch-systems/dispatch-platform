@@ -56,6 +56,9 @@ pub struct SettingsSection {
     pub scope: SettingsScope,
     /// Drawn by its owner's component, which the frontend registers under its id.
     pub custom: bool,
+    /// The collection it goes with, by its schedule name: the Collectors page draws it with
+    /// that collection.
+    pub collection: Option<String>,
     pub fields: Vec<SettingsField>,
     /// Every field's value by id.
     #[cfg_attr(

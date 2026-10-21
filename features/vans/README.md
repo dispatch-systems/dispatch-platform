@@ -2,17 +2,15 @@
 
 Every vehicle Amazon's fleet lists for the DSP's company, with the name the DSP gives it,
 collected from Cortex's fleet management Vehicles page. A route names its van by VIN alone; Vans
-turns that VIN into the DSP's own name for it ("EDV 214"). It has no page of its own: its fleet
-bar is on its Settings page, and when the fleet is collected on Settings' Collectors page.
+turns that VIN into the DSP's own name for it ("EDV 214"). It has no page of its own: the fleet
+is collected, on demand and by its rules, from Settings' Collectors page.
 
 - **Switch:** `vans`, off for every DSP until the platform owner switches it on. It needs the
   `vans` connection (Cortex), which switches on with it.
 - **Permission:** `vans.collect`, to see when the fleet was collected, collect it on demand and
-  set when it's collected (its keeper's `schedules`).
-- **API**, all behind `vans.collect`: `GET /api/dsp/vans/status` (when it was collected, how
-  many vans the DSP runs and how many are inactive, the next scheduled run and the recent
-  jobs), `POST …/collect` and `POST …/jobs/{id}/cancel`. Its schedule is the `vans`
-  collection's on core's Collectors routes.
+  set when it's collected, on the Collectors page (its keeper's `permission` and `schedules`).
+- **API:** `POST /api/dsp/vans/jobs/{id}/cancel`, behind `vans.collect`. The fleet is
+  collected, and its schedule set, as the `vans` collection on core's Collectors routes.
 - **Collection:** Cortex's `vans` reads the fleet as Amazon's fleet management page lists it,
   `/fleet-management/api/vehicles`, over plain HTTP with the session the job's browser started
   from, which closes once it is copied: every status the list accepts (active, maintenance,
@@ -34,11 +32,8 @@ bar is on its Settings page, and when the fleet is collected on Settings' Collec
   Amazon sent it. A name is reused: a returned rental's may be the next one's, so a van is named
   by its VIN and never the other way round. A van the fleet stops listing keeps its row, with
   `listed` 0, so a route that names its VIN still finds its name.
-- **Settings:** its own page (`?tab=vans`), for those who hold `vans.collect`
-  (`backend/settings.rs`): `vans.fleet` "Amazon fleet", a custom section its fleet bar draws
-  (when the fleet was collected and is collected next, and Collect now). It stores no values of
-  its own there.
-- **Log:** `vans.collection_requested`, under Collections.
+- **Log:** `vans.collection_requested`, under Collections, which its own Collect now wrote
+  before the Collectors page collected the fleet; it's worded still, for those entries.
 - **Exposed:** `amazon_fleet`, through its contract in `contract/` (`dispatch-vans-contract`),
   for any feature or agent tool, while it's on for the DSP: when the fleet was last collected, or
   none before the first, and for the VINs asked, in their order, the name the DSP gives each van,

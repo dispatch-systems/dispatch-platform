@@ -4,8 +4,6 @@
 mod api;
 mod backend;
 
-/// What its API answers with, which the app writes to TypeScript.
-pub use api::types::RosterStatus;
 /// What the app uses: the roster's storage and the cache domain its collections change.
 pub use backend::{DOMAIN, storage::DriverProfilesStore};
 
@@ -26,8 +24,6 @@ pub const FEATURE: Feature = Feature {
         59,
     )],
     routes: api::routes::routes,
-    // Its roster bar and its schedules, on its own Settings page.
-    settings: &[backend::settings::ROSTER],
     live: &["driver_profiles.collect"],
     keeps: &[&backend::keeper::Roster],
     tables: &[("driver_profiles", &["associates", "photos", "roster_runs"])],
@@ -63,9 +59,3 @@ pub const FEATURE: Feature = Feature {
     )],
     ..feature("driver_profiles")
 };
-
-/// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
-#[cfg(feature = "ts")]
-pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
-    dispatch_core::typescript!(cfg, RosterStatus)
-}

@@ -380,8 +380,6 @@
         "driver_profiles"
       ],
       "routes": [
-        "GET /api/dsp/driver-profiles/status",
-        "POST /api/dsp/driver-profiles/collect",
         "POST /api/dsp/driver-profiles/jobs/{id}/cancel"
       ],
       "exposes": [
@@ -392,9 +390,7 @@
         }
       ],
       "env": [],
-      "settings": [
-        "driver_profiles.roster"
-      ]
+      "settings": []
     },
     "switch": "driver_profiles",
     "mandatory": false,
@@ -1085,8 +1081,6 @@
       "on": [],
       "people": [],
       "routes": [
-        "GET /api/dsp/vans/status",
-        "POST /api/dsp/vans/collect",
         "POST /api/dsp/vans/jobs/{id}/cancel"
       ],
       "exposes": [
@@ -1097,9 +1091,7 @@
         }
       ],
       "env": [],
-      "settings": [
-        "vans.fleet"
-      ]
+      "settings": []
     },
     "switch": "vans",
     "mandatory": false,

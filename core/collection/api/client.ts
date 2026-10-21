@@ -1,4 +1,3 @@
-import { performancePolicy } from '../../shell/frontend/lib/performance-policy.js';
 import { api, useCachedData } from '../../shell/frontend/runtime/api.js';
 import type {
   CollectionUpdates,
@@ -22,8 +21,9 @@ export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
     signal,
   );
 
-export const useCollectors = (dspId: string) =>
-  useCachedData<Collectors>(collectorsRead, performancePolicy.recoveryPollMs, dspId);
+/** The collections whose schedules the member sets, read again every `poll` milliseconds when given. */
+export const useCollectors = (dspId: string, poll = 0) =>
+  useCachedData<Collectors>(collectorsRead, poll, dspId);
 const collection = (name: ScheduleCollection) => `/api/dsp/collectors/${encodeURIComponent(name)}`;
 /** Saves a collection's rules together, as at the revision they were read at. */
 export const saveRules = (name: ScheduleCollection, rules: ScheduleRuleInput[], revision: string) =>

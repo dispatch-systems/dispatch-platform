@@ -22,8 +22,10 @@ Connections page: the server shows it to every member, and its component in
 
 Its Collectors page is another, `collection.collectors`, on the shared page `collectors`
 (`frontend/collectors/`): every collection whose schedule the member sets, under the collector
-that reads it, with its schedule in words, when it ran last and runs next, on or off, and
-Collect now. Who sets a collection's schedule is its keeper's to say (`Keeper::schedules`), and
+that reads it, with its schedule in words, when it ran last and runs next, or what a run under
+way says it's doing, on or off, and Collect now; then the sections of Settings that go with it
+(`.collection(..)`), which Settings draws there. It follows each collection's end as it comes,
+and reads the collections every few seconds while one runs. Who sets a collection's schedule is its keeper's to say (`Keeper::schedules`), and
 the page shows only to those holding one of those permissions (`schedulingPermissions`, which
 the access catalog generates). No collection is scheduled until a member makes it a rule.
 

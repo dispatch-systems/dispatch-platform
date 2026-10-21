@@ -46,7 +46,7 @@ pub const FEATURE: Feature = Feature {
             .implies(&["weekly_scorecard.view"]),
     ],
     routes: api::routes::routes,
-    // Which weeks its schedules recheck, and the schedules, on its own Settings page.
+    // Which weeks its collection rechecks, drawn with it on Settings' Collectors page.
     settings: &[backend::settings::COLLECTION],
     upgrade_storage: Some(backend::upgrade),
     keeps: &[&backend::keeper::WeeklyScorecard],

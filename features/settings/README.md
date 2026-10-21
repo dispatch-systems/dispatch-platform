@@ -45,6 +45,9 @@ part. Mandatory: every DSP has it.
 - **A custom section** is drawn by the component its owner registers in the `settingsSections`
   slot under the section's id, with `refresh` to read Settings again; with `visible` it says
   whether the member has anything there, and a page with nothing to draw isn't listed.
+- **A section with a collection** isn't drawn on its own: Settings hands the Collectors page
+  `collectionSections`, which draws a collection's sections as any declared section is drawn,
+  and `pointed`, the collection of the one a search opens, which the page shows.
 - **Its section:** `settings.profile`, DSP profile, on the DSP's page (`?tab=dsp`): the DSP's
   name, its short code, which names its address and can't change once given, its station code
   and its timezone. Settings draws it from its declaration (`backend/mod.rs`) and checks each

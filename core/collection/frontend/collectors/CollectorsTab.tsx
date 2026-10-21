@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DspView } from '../../../accounts/api/index.js';
 import type { ScheduledCollection, ScheduleCollection } from '../../api/index.js';
 import { useCollectors } from '../../api/client.js';
 import type { Leave } from '../../../shell/frontend/runtime/leave.js';
 import { hashQuery, replaceHashQuery } from '../../../shell/frontend/runtime/navigation.js';
 import { DataState } from '../../../shell/frontend/ui/index.js';
+import { useCollectionUpdates } from '../live-collection.js';
 import { CollectionIcon } from './CollectionIcon.js';
 import { CollectionSchedule } from './CollectionSchedule.js';
 import { runShort } from './WeekPreview.js';
@@ -13,7 +14,10 @@ import './collectors.css';
 
 // Settings' Collectors page: every collection whose schedule the member sets, under the
 // collector that reads it, each with its schedule in words and when it runs next; and the one
-// chosen, `?collection=`, its schedule to set.
+// chosen, `?collection=`, its schedule to set, with the settings that go with it.
+
+/** How often the collections are read again while one runs, for what it says it's doing. */
+const POLL_MS = 3000;
 
 /** How a collection's last run ended, as its dot shows it. */
 const state = (collection: ScheduledCollection) =>
@@ -23,16 +27,42 @@ const state = (collection: ScheduledCollection) =>
       ? 'failed'
       : 'on';
 
-export function CollectorsTab({ view }: { view: DspView }) {
-  const collectors = useCollectors(view.dsp.id);
+export function CollectorsTab({
+  view,
+  collectionSections,
+  pointed,
+}: {
+  view: DspView;
+  /** The settings that go with a collection, as Settings draws them. */
+  collectionSections?: (schedule: string) => ReactNode;
+  /** The collection of a section the address points out, shown as it's pointed out. */
+  pointed?: string;
+}) {
+  // It hears each collection end, as a rule's run ends, wherever it was started.
+  useCollectionUpdates();
+  const [watching, setWatching] = useState(false);
+  const collectors = useCollectors(view.dsp.id, watching ? POLL_MS : 0);
   // What a change answered, shown until the collections are read again.
   const [answers, setAnswers] = useState<Partial<Record<ScheduleCollection, ScheduledCollection>>>(
     {},
   );
   const data = collectors.data;
   useEffect(() => setAnswers({}), [data]);
+  const running = Boolean(data?.collections.some((each) => each.running));
+  useEffect(() => setWatching(running), [running]);
   const leaveRef = useRef<Leave | null>(null);
   const [chosen, setChosen] = useState(() => hashQuery().get('collection'));
+  const choose = useCallback((collection: string) => {
+    const move = () => {
+      setChosen(collection);
+      replaceHashQuery({ ...Object.fromEntries(hashQuery()), collection });
+    };
+    if (leaveRef.current) leaveRef.current(move);
+    else move();
+  }, []);
+  useEffect(() => {
+    if (pointed) choose(pointed);
+  }, [pointed, choose]);
   return (
     <DataState
       data={data}
@@ -45,14 +75,6 @@ export function CollectorsTab({ view }: { view: DspView }) {
         const current = collections.find((each) => each.collection === chosen) ?? collections[0];
         if (!current) return null;
         const groups = [...new Set(collections.map((each) => each.collectorLabel))];
-        const choose = (collection: ScheduleCollection) => {
-          const move = () => {
-            setChosen(collection);
-            replaceHashQuery({ ...Object.fromEntries(hashQuery()), collection });
-          };
-          if (leaveRef.current) leaveRef.current(move);
-          else move();
-        };
         return (
           <div className="collectors">
             <nav className="collectors-list" aria-label="Collections">
@@ -113,6 +135,7 @@ export function CollectorsTab({ view }: { view: DspView }) {
                 collectors.refresh();
               }}
               refresh={collectors.refresh}
+              settings={collectionSections?.(current.collection)}
             />
           </div>
         );

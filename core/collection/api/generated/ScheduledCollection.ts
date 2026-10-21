@@ -26,6 +26,10 @@ enabled: boolean, rules: Array<ScheduleRule>, revision: string, nextRun: string 
  */
 running: boolean,
 /**
+ * What that run says, as it waits or runs: empty until it says anything.
+ */
+message: string,
+/**
  * Whether the member may collect it now.
  */
 canCollect: boolean, };

@@ -113,6 +113,8 @@ pub struct ScheduledCollection {
     pub last_run: Option<LastRun>,
     /// Whether a run of it is queued or under way.
     pub running: bool,
+    /// What that run says, as it waits or runs: empty until it says anything.
+    pub message: String,
     /// Whether the member may collect it now.
     pub can_collect: bool,
 }

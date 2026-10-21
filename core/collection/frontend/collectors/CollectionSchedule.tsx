@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ChevronDown, CircleCheck, CircleX, Globe, Plus, RefreshCw } from 'lucide-react';
 import type { ScheduledCollection, ScheduleRule, ScheduleRuleInput } from '../../api/index.js';
 import { collectNow, previewRules, saveRules, switchSchedule } from '../../api/client.js';
@@ -18,7 +18,7 @@ import { finished, newRule, type Draft } from './rules.js';
 
 // One collection's schedule on the Collectors page: when it last ran and runs next, on or off
 // and Collect now, and its rules, edited together and saved or discarded together, as they'd
-// run this week and next.
+// run this week and next; then the settings that go with it, each section saved on its own.
 
 const draftsOf = (rules: ScheduleRule[]): Draft[] =>
   rules.map(({ nextRun: _next, lastError: _error, ...rule }) => ({ ...rule, key: rule.id! }));
@@ -31,6 +31,7 @@ export function CollectionSchedule({
   leaveRef,
   saved,
   refresh,
+  settings,
 }: {
   collection: ScheduledCollection;
   timezone: string;
@@ -40,6 +41,8 @@ export function CollectionSchedule({
   saved: (collection: ScheduledCollection) => void;
   /** Reads the collections again. */
   refresh: () => void;
+  /** The settings that go with it, as Settings draws them. */
+  settings?: ReactNode;
 }) {
   const { notify } = useFeedback();
   // The rules as read, and the revision they were read at: edits are made against them.
@@ -298,6 +301,7 @@ export function CollectionSchedule({
           )}
         </footer>
       )}
+      {settings && <div className="collectors-settings">{settings}</div>}
       {asking}
     </section>
   );
@@ -311,7 +315,7 @@ function LastRun({ collection, timezone }: { collection: ScheduledCollection; ti
       <dt>Last run</dt>
       <dd>
         {collection.running ? (
-          'Collecting'
+          collection.message || 'Collecting'
         ) : last ? (
           <>
             {last.status === 'succeeded' ? (

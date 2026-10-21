@@ -52,6 +52,12 @@ const ACTIVE_JOB: &str = concat!(
     job_statuses!(active),
     " LIMIT 1"
 );
+/// What the newest run of a collection queued or under way says it's doing.
+const RUNNING: &str = concat!(
+    "SELECT message FROM jobs WHERE dsp_id=? AND kind=? AND status IN ",
+    job_statuses!(active),
+    " ORDER BY created_at DESC LIMIT 1"
+);
 const LAST_RUN: &str = "SELECT status,completed_at,error FROM jobs WHERE dsp_id=? AND kind=? \
     AND status IN ('succeeded','failed') ORDER BY created_at DESC LIMIT 1";
 /// How many runs a preview lists.
@@ -366,15 +372,6 @@ impl Store {
             [scheduled.names()?],
         )
     }
-    /// The soonest run of `collection`'s schedule, while it's on.
-    pub fn next_scheduled(&self, id: &str, collection: &str) -> Result<Option<String>> {
-        let rows = self.rows_of(id, Scheduled::named(collection)?)?;
-        Ok(rows
-            .into_iter()
-            .filter(|row| row.enabled)
-            .filter_map(|row| row.next_run)
-            .min())
-    }
     /// How the activity log names the run of the rule `schedule`, while there is one: by the
     /// collection it runs, as "Routes".
     pub fn schedule_label(&self, id: &str, schedule: &str) -> Result<Option<&'static str>> {
@@ -443,8 +440,7 @@ impl Store {
         let kind = scheduled.collection.job_kind;
         let last: Option<(JobStatus, Option<String>, Option<String>)> =
             self.jobs.one_as(LAST_RUN, [id, kind])?;
-        let kinds = serde_json::to_string(&[kind])?;
-        let running = self.jobs.one(ACTIVE_JOB, [id, kinds.as_str()])?.is_some();
+        let running: Option<(String,)> = self.jobs.one_as(RUNNING, [id, kind])?;
         let choice = scheduled
             .keeper
             .schedules()
@@ -488,7 +484,8 @@ impl Store {
                     error,
                 })
             }),
-            running,
+            running: running.is_some(),
+            message: running.map(|(message,)| message).unwrap_or_default(),
             can_collect,
         })
     }

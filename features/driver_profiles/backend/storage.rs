@@ -1,7 +1,6 @@
 //! Driver Profiles' storage: the roster in a database of its own beside Cortex's, and the
 //! photos in the DSP's cache. Only this crate writes SQL against it.
 use super::photos;
-use crate::api::types::RosterStatus;
 use dispatch_core::{
     Result,
     collection::registry::AddedStorage,
@@ -12,7 +11,7 @@ use dispatch_core::{
 };
 use dispatch_cortex::{
     self as cortex,
-    associates::{Capture, Collection, JOB_KIND, Request},
+    associates::{Capture, Collection, Request},
 };
 use dispatch_driver_profiles_contract::Associate;
 use rusqlite::params;
@@ -62,15 +61,11 @@ pub(crate) fn bind_roster_request(store: &Store, dsp: &str) -> Result<Value> {
 /// What Driver Profiles reads and writes for one DSP.
 pub trait DriverProfilesStore {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>>;
-    /// Queues a collection of the roster, answering with the job.
-    fn enqueue_roster(&self, dsp: &str, actor: Option<&str>, key: &str) -> Result<Value>;
     /// The addresses of the photos kept for `company`'s associates that still stand, whose
     /// files are there: a collection downloads only the rest.
     fn kept_photos(&self, dsp: &str, company: &str) -> Result<Vec<String>>;
     /// Stores a roster as the current one. The photos' files are written already.
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
-    /// When the roster was collected, what it holds, and when it is collected next.
-    fn roster_status(&self, dsp: &str) -> Result<RosterStatus>;
     /// The photo of the first of `transporters` the roster lists with one: its kind and its
     /// bytes.
     fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<Photo>>;
@@ -81,17 +76,6 @@ pub trait DriverProfilesStore {
 impl DriverProfilesStore for Store {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>> {
         self.added_storage(dsp, cortex::PROVIDER, &STORAGE)
-    }
-    fn enqueue_roster(&self, dsp: &str, actor: Option<&str>, key: &str) -> Result<Value> {
-        bind_roster_request(self, dsp)?;
-        let job = self
-            .enqueue_batch(
-                dsp,
-                actor,
-                &[(key.into(), cortex::PROVIDER, roster_request())],
-            )?
-            .remove(0);
-        Ok(serde_json::to_value(job)?)
     }
     fn kept_photos(&self, dsp: &str, company: &str) -> Result<Vec<String>> {
         let rows = self
@@ -199,30 +183,6 @@ impl DriverProfilesStore for Store {
             Ok(before.difference(&after).cloned().collect::<Vec<_>>())
         })?;
         photos::remove(&dir, &gone)
-    }
-    fn roster_status(&self, dsp: &str) -> Result<RosterStatus> {
-        let db = self.driver_profiles_db(dsp)?;
-        let last = db.query_as::<(String, i64)>(
-            "SELECT collected_at,photos_waiting FROM roster_runs ORDER BY collected_at DESC LIMIT 1",
-            [],
-        )?;
-        let count = |sql: &str| -> Result<usize> { Ok(db.count(sql, [])? as usize) };
-        let status = RosterStatus {
-            collected_at: last.first().map(|(at, _)| at.clone()),
-            active: count("SELECT count(*) FROM associates WHERE listed=1 AND status='ACTIVE'")?,
-            inactive: count("SELECT count(*) FROM associates WHERE listed=1 AND status<>'ACTIVE'")?,
-            photos: count("SELECT count(*) FROM photos")?,
-            photos_waiting: last.first().map_or(0, |(_, waiting)| *waiting as usize),
-            next_run: None,
-            jobs: vec![],
-        };
-        drop(db);
-        let next_run = self.next_scheduled(dsp, "associates")?;
-        Ok(RosterStatus {
-            next_run,
-            jobs: self.recent_jobs_of(dsp, JOB_KIND)?,
-            ..status
-        })
     }
     fn photo(&self, dsp: &str, transporters: &[String]) -> Result<Option<Photo>> {
         let rows = self

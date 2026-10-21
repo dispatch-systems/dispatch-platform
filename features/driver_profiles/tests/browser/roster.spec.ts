@@ -1,6 +1,6 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
-test('an open roster bar shows a collection that ran elsewhere, as a schedule runs it', async ({
+test('Collectors shows the end of a roster collection that ran elsewhere, as a rule runs it', async ({
   page,
   dispatch,
 }) => {
@@ -22,12 +22,17 @@ test('an open roster bar shows a collection that ran elsewhere, as a schedule ru
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
-    .getByRole('link', { name: 'Driver Profiles', exact: true })
+    .getByRole('link', { name: 'Collectors', exact: true })
     .click();
-  const roster = page.locator('.driver-roster');
-  await expect(roster).toContainText('Not collected yet');
-  // Started by another session, as a schedule starts it, the page hears only that it finished.
-  const job = await owner.post('/api/dsp/driver-profiles/collect', { requestId: 'elsewhere' });
-  expect(job.status, job.body).toBe(202);
-  await expect(roster).toContainText('Updated', { timeout: 30_000 });
+  await page
+    .getByRole('navigation', { name: 'Collections', exact: true })
+    .getByRole('button', { name: /^Roster/ })
+    .click();
+  const roster = page.getByRole('region', { name: 'Roster', exact: true });
+  await expect(roster.getByRole('definition').first()).toHaveText('Never');
+  // Started by another session, as a rule starts it, the page hears only that it finished.
+  const now = { collects: 'associates', requestId: 'elsewhere' };
+  const queued = await owner.post('/api/dsp/collectors/associates/collect', now);
+  expect(queued.status, queued.body).toBe(202);
+  await expect(roster.getByLabel('Succeeded', { exact: true })).toBeVisible({ timeout: 30_000 });
 });

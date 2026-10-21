@@ -11,11 +11,6 @@ autotests = false
 path = "feature.rs"
 doctest = false
 
-[features]
-# TypeScript definitions of its API types, for the app's export test; never in a build. They
-# name core's, whose definitions core's own ts feature brings.
-ts = ["dep:ts-rs", "dispatch-core/ts"]
-
 # Core, the collectors it uses and the features it declares: nothing else compiles.
 [dependencies]
 dispatch-core = { path = "../../core" }
@@ -27,7 +22,6 @@ serde = { workspace = true }
 # Its answers keep the order their fields are written in.
 serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true }
-ts-rs = { workspace = true, optional = true }
 dispatch-driver-profiles-contract = { path = "contract" }
 
 [dev-dependencies]

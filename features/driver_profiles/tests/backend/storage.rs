@@ -30,13 +30,16 @@ fn a_photo_stays_while_amazon_lists_whoever_it_shows() {
     next.photos.clear();
     publish(&store, &dsp, "job-2", next);
     assert_eq!(files(), 6);
-    let status = store.roster_status(&dsp).unwrap();
-    assert_eq!((status.active, status.inactive, status.photos), (5, 1, 6));
-    // Whoever the roster no longer lists keeps their name, for what still names them.
     let db = store.driver_profiles_db(&dsp).unwrap();
+    let count = |sql: &str| db.count(sql, []).unwrap();
     assert_eq!(
-        db.count("SELECT count(*) FROM associates WHERE listed=0", [])
-            .unwrap(),
-        2
+        (
+            count("SELECT count(*) FROM associates WHERE listed=1 AND status='ACTIVE'"),
+            count("SELECT count(*) FROM associates WHERE listed=1 AND status<>'ACTIVE'"),
+            count("SELECT count(*) FROM photos")
+        ),
+        (5, 1, 6)
     );
+    // Whoever the roster no longer lists keeps their name, for what still names them.
+    assert_eq!(count("SELECT count(*) FROM associates WHERE listed=0"), 2);
 }

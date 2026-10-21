@@ -30,6 +30,7 @@ const section = (
   order: 10,
   scope: 'dsp',
   custom: false,
+  collection: null,
   fields: [],
   values: {},
   revision: 0,
