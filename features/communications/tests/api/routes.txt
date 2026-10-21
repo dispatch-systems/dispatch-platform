@@ -5,6 +5,7 @@ GET /api/dsp/communications Dsp("communications.use") Read
 GET /api/dsp/communications/contacts Dsp("communications.use") Read
 GET /api/dsp/communications/conversations Dsp("communications.use") Read
 GET /api/dsp/communications/conversations/{id} Dsp("communications.use") Read
+GET /api/dsp/communications/conversations/{id}/profile Dsp("communications.use") Read
 GET /api/dsp/communications/files/{id} Dsp("communications.use") Async
 GET /api/dsp/communications/updates Dsp("communications.use") Async
 GET /api/dsp/communications/waiting Dsp("communications.use") Read

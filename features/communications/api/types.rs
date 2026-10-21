@@ -209,6 +209,44 @@ pub struct ConversationMessages {
     pub more: bool,
 }
 
+/// `GET /api/dsp/communications/conversations/{id}/profile`: what the profile beside a
+/// conversation shows of the member it's with, besides the name, role and photo the
+/// conversation has: their route today, and how to reach them. Each is left out when the
+/// feature that would know it is off for the DSP, or knows none.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    /// Their route on the DSP's own day today, as Routes has read it so far.
+    pub today: Option<ProfileToday>,
+    /// Their phone number and email address, the first Driver Match has from their sources.
+    pub phone: Option<String>,
+    pub email: Option<String>,
+    /// The name of the workspace the conversation is in, while the DSP has it.
+    pub slack: Option<String>,
+}
+/// Someone's route today: its code, what the DSP calls its van, when its wave starts, and how
+/// many stops it has in all.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileToday {
+    pub route: Option<String>,
+    pub van: Option<String>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub wave_at: Option<i64>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub stops: Option<i64>,
+}
+
 /// `GET /api/dsp/communications/contacts`: the members of the DSP's workspaces, by name, or
 /// those like what was searched, the closest first.
 #[derive(Clone, Debug, Serialize)]

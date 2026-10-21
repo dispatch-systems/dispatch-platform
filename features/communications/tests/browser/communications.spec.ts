@@ -74,6 +74,24 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(conversation.getByText('On my way')).toBeVisible();
   await expect(list.getByRole('heading', { name: 'Responded' })).toBeVisible();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+
+  // Who it's with, above, opens their profile over the conversation, and Escape closes it, back
+  // to where it opened; their photo by their messages opens it too, and a press elsewhere
+  // closes it.
+  const opensProfile = conversation.getByRole('button', { name: /^Jordan Ellis/ });
+  await opensProfile.first().click();
+  const profile = page.getByRole('dialog', { name: 'Jordan Ellis' });
+  await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
+  await expect(profile).toContainText('jordan.ellis@example.com');
+  await expect(profile).toContainText('Operations');
+  await page.keyboard.press('Escape');
+  await expect(profile).toHaveCount(0);
+  await expect(opensProfile.first()).toBeFocused();
+  await opensProfile.last().click();
+  await expect(profile).toBeVisible();
+  await page.getByRole('heading', { name: 'Communications', level: 1 }).click();
+  await expect(profile).toHaveCount(0);
+
   // Written to again, it waits, until the check on its row marks it done without a reply.
   expect((await write('Thanks')).status).toBe(200);
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();

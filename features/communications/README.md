@@ -45,6 +45,14 @@ unavailable.
   it: text, with photos attached (the paperclip), Enter to send; while writing, teammates see
   it. Photos show by Driver Match's person for each (`/api/dsp/people/{code}/photo`), never
   Slack's own addresses.
+- **The profile** of whom a conversation is with opens from who it's with, above it, or their
+  photo by their messages, over the conversation, and closes with its X, Escape, or a press or
+  focus anywhere else, focus going back to what opened it. Their photo, name and role; Call,
+  while they have a phone number; Today: their route on the DSP's own day, its van, when its
+  wave starts and how many stops it has; Contact: their phone number, email address and the
+  workspace the conversation is in. Each is left out when nothing knows it, and Today when
+  they have no route today. No feature has a page of a person to open, so it has no Full
+  profile.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
   conversation, or opens a direct message with them, kept at the top of the list until it holds
   a message.
@@ -147,6 +155,19 @@ of its messages, as one edited or a file kept, so a page with it open reads it a
 which conversation is kept in memory alone, each for six seconds after their page last said so
 (`typing`), or until they send, and shown to everyone else with Communications.
 
+## What it reads of other features
+
+The profile reads what other features expose, each only while the feature offering it is on
+for the DSP, for anyone with `communications.use`, who needs no permission of theirs:
+
+- **`directory`** (Driver Match): who the member is, by their Slack ID, and the first phone
+  number and email address their sources have for them (Driver Profiles' roster, Slack's
+  profile).
+- **`driver_routes`** (Routes): their route today, the day it is in the DSP's timezone, read for
+  their IDs of its source, today alone, as Routes last read it: its code, van, wave and stops.
+  Of several, the one with the most stops, as a rescue they drove too has fewer.
+- **`amazon_fleet`** (Vans): what the DSP calls that route's van, by its VIN alone.
+
 ## Finding people
 
 New message lists every active member of the DSP's workspaces where it's on, with their photo,
@@ -172,6 +193,9 @@ Behind `communications.use`:
   closest to a name, or the answered ones before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written.
+- `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, besides the
+  name, role and photo the conversation has: their route `today` (`route`, `van`, `waveAt`,
+  `stops`), `phone`, `email`, and the workspace's name (`slack`), each none when unknown.
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.
 - `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer.
 - `POST …/conversations/{id}/done`, and `…/typing`, which says the member is writing.

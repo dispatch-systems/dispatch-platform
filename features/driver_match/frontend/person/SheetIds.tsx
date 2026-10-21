@@ -3,7 +3,8 @@ import type { Person, PersonId } from '../../api/index.js';
 import { confirmLink } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
-import { phoneText, seenRange, shortId, sourceLabel } from '../driver-match.js';
+import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
+import { seenRange, shortId, sourceLabel } from '../driver-match.js';
 import { LinkTag, SourceTag } from '../parts/Tags.js';
 
 /**

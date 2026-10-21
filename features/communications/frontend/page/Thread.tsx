@@ -8,10 +8,11 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { Face } from './Face.js';
 import { More } from './More.js';
+import type { OpensProfile } from './parts.js';
 
 // A conversation's messages, in the order written, under the day each was written: the
-// member's on the left beside their photo, the DSP's on the right under the name and photo of
-// whoever sent them; and below, those at the DSP writing in it now.
+// member's on the left beside their photo, which opens their profile, the DSP's on the right
+// under the name and photo of whoever sent them; and below, those at the DSP writing in it now.
 
 /** Messages one after another from the same writer, within a few minutes, shown together. */
 type Run = { key: string; writer: string; messages: Message[] };
@@ -41,6 +42,7 @@ export function Thread({
   writing,
   timeZone,
   now,
+  profile,
 }: {
   conversation: Conversation;
   messages: readonly Message[];
@@ -49,6 +51,8 @@ export function Thread({
   writing: readonly Writing[];
   timeZone: string;
   now: number;
+  /** What makes the member's photo open their profile. */
+  profile: OpensProfile;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   // Where it was before the latest change: at the latest message, or how far up, which older
@@ -90,7 +94,15 @@ export function Thread({
                   {sender ? (
                     <Face name={sender.name} code={sender.code} photo={sender.photo} size={30} />
                   ) : (
-                    <Face {...person} size={30} />
+                    // Left out of Tab's order: who it's with, above, opens it from the keyboard.
+                    <button
+                      className="face-button"
+                      tabIndex={-1}
+                      aria-label={person.name}
+                      {...profile}
+                    >
+                      <Face {...person} size={30} />
+                    </button>
                   )}
                   <div className="stack">
                     {sender && <div className="sender">{sender.name}</div>}

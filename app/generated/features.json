@@ -42,6 +42,7 @@
         "GET /api/dsp/communications/conversations",
         "POST /api/dsp/communications/conversations",
         "GET /api/dsp/communications/conversations/{id}",
+        "GET /api/dsp/communications/conversations/{id}/profile",
         "POST /api/dsp/communications/conversations/{id}/messages",
         "POST /api/dsp/communications/conversations/{id}/done",
         "POST /api/dsp/communications/conversations/{id}/typing",

@@ -61,6 +61,8 @@ pub struct RouteDay {
     pub progress: Option<String>,
     /// The van driven.
     pub vin: Option<String>,
+    /// When its wave starts at the station.
+    pub wave_start_at: Option<i64>,
     pub planned_departure_at: Option<i64>,
     pub departed_at: Option<i64>,
     pub first_delivery_at: Option<i64>,

@@ -14,7 +14,7 @@ export function Face({
   name: string;
   code?: string | null;
   photo?: string | null;
-  size: 18 | 30 | 40;
+  size: 18 | 30 | 40 | 72;
 }) {
   return (
     <PersonAvatar

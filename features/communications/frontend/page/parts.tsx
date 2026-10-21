@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react';
 import { Clock } from 'lucide-react';
 import type { PersonRole, Writing } from '../../api/index.js';
 import { marked } from '../inbox.js';
@@ -48,3 +49,15 @@ export const roles: Record<PersonRole, string> = {
   office: 'Office',
   former: 'Former',
 };
+
+/** What makes a button open the profile `id` beside a conversation and close it again. */
+export function opensProfile(id: string, open: boolean, toggle: (from: HTMLElement) => void) {
+  return {
+    'data-opens-profile': '',
+    'aria-haspopup': 'dialog',
+    'aria-expanded': open,
+    'aria-controls': open ? id : undefined,
+    onClick: (event: MouseEvent<HTMLElement>) => toggle(event.currentTarget),
+  } as const;
+}
+export type OpensProfile = ReturnType<typeof opensProfile>;

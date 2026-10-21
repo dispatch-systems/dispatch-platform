@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
 import type { CommunicationsWorkspace, Conversation, Message, Writing } from '../../api/index.js';
 import { markDone } from '../../api/client.js';
@@ -6,13 +6,15 @@ import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Composer } from './Composer.js';
 import { Face } from './Face.js';
-import { roles, Wait } from './parts.js';
+import { opensProfile, roles, Wait } from './parts.js';
+import { Profile } from './Profile.js';
 import { Thread } from './Thread.js';
 import { useConversation } from './useConversation.js';
 import type { Changed } from './useInbox.js';
 
 // The conversation open: who it's with and, while it waits, how long and Done; its messages;
-// and writing in it. On a phone it takes the page, with a way back to the list.
+// and writing in it. On a phone it takes the page, with a way back to the list. Who it's with,
+// or their photo by their messages, opens their profile over it.
 
 export function ConversationPane({
   id,
@@ -73,6 +75,21 @@ export function ConversationPane({
   };
   const writing = typing.filter((writer) => writer.conversationId === id);
   const person = conversation?.with;
+  // The profile, and what opened it, which focus goes back to as it closes: the photo by the
+  // messages, or who it's with when that photo is gone.
+  const [profile, setProfile] = useState(false);
+  const profileId = useId();
+  const opener = useRef<HTMLElement | null>(null);
+  const who = useRef<HTMLButtonElement>(null);
+  const toggleProfile = useCallback((from: HTMLElement) => {
+    opener.current = from;
+    setProfile((open) => !open);
+  }, []);
+  const closeProfile = useCallback((refocus: boolean) => {
+    setProfile(false);
+    if (refocus) (opener.current?.isConnected ? opener.current : who.current)?.focus();
+  }, []);
+  const opens = opensProfile(profileId, profile, toggleProfile);
   return (
     <section className="pane-thread" aria-label={person?.name ?? 'Conversation'}>
       <header className="thread-head">
@@ -81,9 +98,9 @@ export function ConversationPane({
         </button>
         {person && conversation && (
           <>
-            <div className="who">
+            <button ref={who} className={profile ? 'who open' : 'who'} {...opens}>
               <Face {...person} size={40} />
-              <div>
+              <span>
                 <strong>{person.name}</strong>
                 {(person.role || conversation.waitingSince !== null) && (
                   <small>
@@ -94,8 +111,8 @@ export function ConversationPane({
                     )}
                   </small>
                 )}
-              </div>
-            </div>
+              </span>
+            </button>
             {conversation.state === 'waiting' && (
               <div className="actions">
                 <button disabled={done.busy} onClick={() => void done.run()}>
@@ -107,6 +124,15 @@ export function ConversationPane({
           </>
         )}
       </header>
+      {profile && person && (
+        <Profile
+          id={profileId}
+          conversation={id}
+          person={person}
+          timeZone={timeZone}
+          close={closeProfile}
+        />
+      )}
       <ErrorBox message={error} />
       {opened && conversation ? (
         <Thread
@@ -117,6 +143,7 @@ export function ConversationPane({
           writing={writing}
           timeZone={timeZone}
           now={now}
+          profile={opens}
         />
       ) : (
         <div className="thread">{!error && <Loading />}</div>
