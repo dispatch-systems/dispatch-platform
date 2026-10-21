@@ -53,7 +53,7 @@ async fn the_hourly_check_keeps_a_workspaces_own_logo_and_forgets_slacks() {
         "https://avatars.slack-edge.com.example.com/T0FIXTURE1_132.png",
         "https://notslack-edge.com/T0FIXTURE1_132.png",
         "https://avatars.slack-edge.com:8443/fixture/T0FIXTURE1_132.png",
-        "https://someone@avatars.slack-edge.com/fixture/T0FIXTURE1_132.png",
+        "https://avatars.slack-edge.com@example.com/fixture/T0FIXTURE1_132.png",
     ] {
         let refused = keep(&operations, &json!({"image_132": elsewhere})).await;
         assert_eq!(refused.unwrap_err().code, "slack_refused", "{elsewhere}");

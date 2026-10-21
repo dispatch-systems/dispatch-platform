@@ -95,6 +95,7 @@
     "core/accounts/frontend/member-profile/assets/member-profile-map.svg": "1a8e01c2c9a349ba968645d1948fb71c7240035933390e031e5ef0dbf99a1faf",
     "core/accounts/frontend/sign-in/assets/login-van-poster.png": "b2f96ee29f7b4b8ca2661ef94760fd6bb52db810b54e047ab440658e456a4d84",
     "core/accounts/frontend/sign-in/assets/login-van.glb": "0970dc3fee57cf3ec77c5553482146ba0cfcd856ce8a0cd45b88741b15f5bfb4",
+    "features/slack/backend/fixture-logo.png": "2d1950df0e829f75590fbf5351789d20efecf64bf71bb079de4d82fdc695d047",
     "features/slack/tooling/icons/dispatch-dev.png": "fd3d69a1eb444eb1e614fe3a9a68a8060f63562bc604a008f7f7b2b8236e8b71",
     "features/slack/tooling/icons/dispatch-dev.svg": "3d373e6c6fc9ddfb065668b80985052b43279f30f024c25a8d4cfdae90713d15",
     "features/slack/tooling/icons/dispatch.png": "975e66d61bc9bdec4274d9ede03439f1461b64cfa848dc27c9580d2bde85339c",
