@@ -1,6 +1,6 @@
 import { Check, X } from 'lucide-react';
 import type { PeopleSource, Person } from '../../api/index.js';
-import { knows, roles, sourceLabel, working } from '../driver-match.js';
+import { knows, roleLabel, sourceLabel, working } from '../driver-match.js';
 import { Face } from '../parts/Face.js';
 
 /** One person: their face, what they do, which sources have them, and a question about them. */
@@ -23,7 +23,7 @@ export function PersonCard({
       <button type="button" className="driver-card-person" onClick={() => onOpen(person.code)}>
         <Face person={person} size="portrait" />
         <strong>{person.name}</strong>
-        <span>{roles[person.role].label}</span>
+        <span>{roleLabel(person)}</span>
       </button>
       {listed.length > 0 && (
         <ul className="driver-card-sources">

@@ -4,7 +4,7 @@ use super::IdRow;
 use super::contacts::Contact;
 use super::photos;
 use super::sources::{DriverDepartments, Found, Identity, Key, Seen};
-use crate::api::types::{Person, PersonId, PersonRole};
+use crate::api::types::{Person, PersonId, PersonRole, PersonTitle};
 use dispatch_core::{
     foundation::names,
     manifest::people::{Kind, Source},
@@ -48,19 +48,23 @@ pub(super) struct Context<'a> {
     pub departments: &'a DriverDepartments,
     /// The kinds whose records show someone driving.
     pub driving: &'a BTreeSet<Kind>,
+    /// The titles someone gave people, by their codes.
+    pub titles: &'a BTreeMap<String, PersonTitle>,
     /// The first day that still counts as recent.
     pub recent: &'a str,
 }
 
 /// What a person does for the DSP: no roster lists them and nothing has seen them lately,
 /// they have left, unless only lists of people the DSP can reach know them, and one still
-/// does, so they work in the office; none of their sources shows them driving and the
-/// departments the DSP counts as drivers leave them out, they work in the office; else the
-/// roles their sources give say whether they drive or only help.
+/// does, so they work in the office; someone gave them a title, they are management; none of
+/// their sources shows them driving and the departments the DSP counts as drivers leave them
+/// out, they work in the office; else the roles their sources give say whether they drive or
+/// only help.
 fn role(
     keys: &[Key],
     described: &[&Identity],
     last_seen: Option<&str>,
+    titled: bool,
     context: &Context,
 ) -> PersonRole {
     // A list of people the DSP can reach says nothing of who still works for it.
@@ -74,6 +78,10 @@ fn role(
         } else {
             PersonRole::Former
         };
+    }
+    // A title says what no source can: a dispatcher who covers a route is still dispatch.
+    if titled {
+        return PersonRole::Office;
     }
     // Driving shows in a source that says what they do, or in records of a kind that says each
     // shows them driving (`.driving()`).
@@ -129,13 +137,23 @@ pub(super) fn person(code: &str, ids: &[(&IdRow, Source)], context: &Context) ->
         .flat_map(|data| data.values().filter_map(|s| s.last.clone()))
         .chain(described.iter().filter_map(|x| x.last_seen.clone()))
         .max();
+    let title = context.titles.get(code).copied();
+    let role = role(
+        &keys,
+        &described,
+        last_seen.as_deref(),
+        title.is_some(),
+        context,
+    );
     Person {
         code: code.to_owned(),
         // An ID no source holds any more names a person no source describes.
         name: shown_name(ids, context.found)
             .or_else(|| ids.first().map(|(row, _)| row.external_id.clone()))
             .unwrap_or_default(),
-        role: role(&keys, &described, last_seen.as_deref(), context),
+        role,
+        // Someone who has left keeps their title for when they come back.
+        title: title.filter(|_| !role.left()),
         ids: ids
             .iter()
             .map(|(row, source)| row.public(*source, context.found))

@@ -65,8 +65,12 @@
               "items": {"type": "string"}
             },
             "role": {
-              "description": "driver, helper, office, or former for someone who has left.",
+              "description": "driver, helper, office for management, or former for someone who has left.",
               "type": "string"
+            },
+            "title": {
+              "description": "What they do in management, when someone gave them a title: owner, ops_manager, fleet_manager, dispatch, hr_manager or manager.",
+              "type": ["string", "null"]
             },
             "ids": {
               "description": "Every ID they hold, by its source, such as amazon for transporter IDs.",

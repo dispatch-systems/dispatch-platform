@@ -1,5 +1,5 @@
 import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
-import type { DriverMatch, PeopleSource, PersonDetails } from './index.js';
+import type { DriverMatch, PeopleSource, PersonDetails, PersonTitle } from './index.js';
 
 // Driver Match's endpoints, as its page calls them. A decision answers with nothing: the page
 // reads itself again.
@@ -26,3 +26,6 @@ export const confirmLink = (code: string, source: PeopleSource, id: string) =>
   api(`${driverMatch}/confirm`, { code, source, id });
 export const keepApart = (code: string, other: string) =>
   api(`${driverMatch}/apart`, { code, other });
+/** `code` is given `title`, or with `null` loses theirs. */
+export const giveTitle = (code: string, title: PersonTitle | null) =>
+  api(`${driverMatch}/title`, { code, title });

@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
-import { phoneKey, roles } from '../driver-match.js';
+import { phoneKey, roleLabel } from '../driver-match.js';
 import { Face } from '../parts/Face.js';
 import { SourceTag } from '../parts/Tags.js';
 import type { CheckSide } from './checks.js';
@@ -94,7 +94,7 @@ export function Comparison({ sides: [left, right] }: { sides: [CheckSide, CheckS
         right={listed(phone(right))}
         same={shared(phones(left), phones(right), phoneKey)}
       />
-      <Row label="Role" left={roles[left.role].label} right={roles[right.role].label} />
+      <Row label="Role" left={roleLabel(left)} right={roleLabel(right)} />
     </div>
   );
 }

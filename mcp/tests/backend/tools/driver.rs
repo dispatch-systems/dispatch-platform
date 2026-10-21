@@ -66,6 +66,7 @@ fn person(code: &str, name: &str, ids: &[(&'static SourceInfo, &[&str])]) -> Per
         name: name.into(),
         names: vec![name.into()],
         role: PersonRole::Driver,
+        title: None,
         ids: ids
             .iter()
             .map(|(source, ids)| (Source::new(source), strings(ids)))

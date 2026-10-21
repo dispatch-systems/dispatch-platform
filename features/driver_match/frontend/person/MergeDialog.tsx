@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Person } from '../../api/index.js';
 import { mergePeople } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { found, roles, searchTerms } from '../driver-match.js';
+import { found, roleLabel, searchTerms } from '../driver-match.js';
 import { ErrorBox, Modal, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
 import { Face } from '../parts/Face.js';
 
@@ -47,7 +47,7 @@ export function MergeDialog({
             <span className="driver-person">
               <strong>{option.name}</strong>
               <small>
-                {option.code} · {roles[option.role].label}
+                {option.code} · {roleLabel(option)}
               </small>
             </span>
           </label>

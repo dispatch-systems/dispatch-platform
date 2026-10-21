@@ -25,7 +25,7 @@ mod sources;
 pub(crate) use audit::name_driver_events;
 pub(crate) use directory::Directory;
 
-use crate::api::types::{DriverMatch, IdLink, MatchCounts, PersonDetails};
+use crate::api::types::{DriverMatch, IdLink, MatchCounts, PersonDetails, PersonTitle};
 use dispatch_core::{
     Error, Result,
     accounts::Context,
@@ -103,6 +103,8 @@ pub trait DriverMatchStore {
     fn keep_apart(&self, c: &Context, code: &str, other: &str) -> Result<()>;
     /// Confirms one of `code`'s IDs is theirs, as a match only suggested it.
     fn confirm_link(&self, c: &Context, code: &str, source: Source, id: &str) -> Result<()>;
+    /// Gives `code` a title, or with `None` takes theirs away.
+    fn set_title(&self, c: &Context, code: &str, title: Option<PersonTitle>) -> Result<()>;
 }
 impl DriverMatchStore for Store {
     fn read_pass(&self, dsp: &str) -> Result<Collected> {
@@ -131,6 +133,9 @@ impl DriverMatchStore for Store {
     }
     fn confirm_link(&self, c: &Context, code: &str, source: Source, id: &str) -> Result<()> {
         decisions::confirm(self, c, code, source, id)
+    }
+    fn set_title(&self, c: &Context, code: &str, title: Option<PersonTitle>) -> Result<()> {
+        decisions::title(self, c, code, title)
     }
 }
 

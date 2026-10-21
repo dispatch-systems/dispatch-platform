@@ -91,7 +91,8 @@ unavailable.
   when that's another, a mention by the member's name, a channel by its name.
 - **Conversations:** one with each member of each workspace, in the direct message the app has
   with them there, under the name their Slack profile last gave them; who they are, their photo
-  and their role come from Driver Match (`directory`), by their Slack ID.
+  and their role, or title when they have one, come from Driver Match (`directory`), by their
+  Slack ID.
 - **Edits:** a member editing a message in Slack replaces its text, and marks it edited; nothing
   of what it said before is kept, logged or read. Slack changing a message itself, as to show a
   link's preview, isn't an edit.

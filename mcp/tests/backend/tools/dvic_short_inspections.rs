@@ -102,6 +102,7 @@ fn a_driver_goes_by_every_name_id_and_contact_the_directory_has_for_them() {
         name: names[0].into(),
         names: names.iter().map(|name| (*name).to_owned()).collect(),
         role: PersonRole::Driver,
+        title: None,
         ids: BTreeMap::from([(
             dispatch_cortex::SOURCE,
             ids.iter().map(|id| (*id).to_owned()).collect(),

@@ -8,18 +8,29 @@ import type {
   PersonEvent,
   PersonId,
   PersonRole,
+  PersonTitle,
 } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { phoneText } from '../../../core/shell/frontend/lib/format.js';
-import { peopleKinds, peopleSources } from '../../../core/manifest/api/generated/people-data.js';
+import {
+  peopleKinds,
+  peopleSources,
+  personTitles,
+} from '../../../core/manifest/api/generated/people-data.js';
 
 /** How each role reads: its name, the name of its filter, and its colour. */
 export const roles: Record<PersonRole, { label: string; filter: string; tone: string }> = {
   driver: { label: 'Driver', filter: 'Drivers', tone: 'sage' },
   helper: { label: 'Helper', filter: 'Helpers', tone: 'steel' },
-  office: { label: 'Office', filter: 'Office', tone: 'violet' },
+  office: { label: 'Management', filter: 'Management', tone: 'violet' },
   former: { label: 'Former', filter: 'Former', tone: 'neutral' },
 };
+/** How a title is named: "OPs Manager". */
+export const titleLabel = (title: PersonTitle) =>
+  personTitles.find((t) => t.id === title)?.label ?? title;
+/** What a person does, as it reads: their title, else their role. */
+export const roleLabel = (person: Pick<Person, 'role' | 'title'>) =>
+  person.title ? titleLabel(person.title) : roles[person.role].label;
 /** Who the page shows: everyone still there, those of one role, or those a source lacks. */
 export type PeopleFilter = 'all' | PersonRole | 'missing';
 export const peopleFilters: [PeopleFilter, string][] = [

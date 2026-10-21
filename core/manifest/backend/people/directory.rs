@@ -21,8 +21,9 @@ text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "core/manifest/api/generated/"))]
     /// What a person does for the DSP: a driver or a helper, as their sources' roles say or
-    /// their records show; office staff, outside the departments the DSP counts as drivers;
-    /// or someone who has left, whom no source lists and nothing has seen lately.
+    /// their records show; management, outside the departments the DSP counts as drivers or
+    /// given a title; or someone who has left, whom no source lists and nothing has seen
+    /// lately.
     pub enum PersonRole {
         Driver => "driver",
         Helper => "helper",
@@ -34,6 +35,43 @@ impl PersonRole {
     /// Whether they have left.
     pub fn left(self) -> bool {
         self == Self::Former
+    }
+}
+
+text_enum! {
+    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+    #[cfg_attr(feature = "ts", ts(export_to = "core/manifest/api/generated/"))]
+    /// What someone decided a person does in management, which no source says: whoever holds
+    /// one is management, whatever their sources show.
+    pub enum PersonTitle {
+        Owner => "owner",
+        OpsManager => "ops_manager",
+        FleetManager => "fleet_manager",
+        Dispatch => "dispatch",
+        HrManager => "hr_manager",
+        Manager => "manager",
+    }
+}
+impl PersonTitle {
+    /// Every title, in the order they are offered.
+    pub const ALL: [Self; 6] = [
+        Self::Owner,
+        Self::OpsManager,
+        Self::FleetManager,
+        Self::Dispatch,
+        Self::HrManager,
+        Self::Manager,
+    ];
+    /// The title as people read it.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Owner => "Owner",
+            Self::OpsManager => "OPs Manager",
+            Self::FleetManager => "Fleet Manager",
+            Self::Dispatch => "Dispatch",
+            Self::HrManager => "HR Manager",
+            Self::Manager => "Manager",
+        }
     }
 }
 
@@ -51,6 +89,8 @@ pub struct Person {
     /// Every way their sources write their name, the one shown first.
     pub names: Vec<String>,
     pub role: PersonRole,
+    /// Their title, while they are still there.
+    pub title: Option<PersonTitle>,
     /// Every ID they hold, by its source, the first linked first.
     pub ids: BTreeMap<Source, Vec<String>>,
     /// The email addresses and phone numbers their sources have for them, as written.

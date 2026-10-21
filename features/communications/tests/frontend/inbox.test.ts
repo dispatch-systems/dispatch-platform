@@ -12,7 +12,7 @@ const conversation = (
 ): Conversation => ({
   id,
   teamId: 'T0FIXTURE1',
-  with: { userId: `U${id}`, name: id, code: null, role: null, photo: null },
+  with: { userId: `U${id}`, name: id, code: null, role: null, title: null, photo: null },
   state: since === null ? 'responded' : 'waiting',
   waitingSince: since,
   lastAt: at,

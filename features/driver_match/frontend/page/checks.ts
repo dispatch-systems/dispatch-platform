@@ -4,7 +4,7 @@ import { confirmLink, keepApart, mergePeople, splitOff } from '../../api/client.
 import { evidenceText } from '../driver-match.js';
 
 /** One side of a question: a person, or the IDs on one side of a name variant. */
-export type CheckSide = Pick<Person, 'code' | 'name' | 'role' | 'photo' | 'ids'>;
+export type CheckSide = Pick<Person, 'code' | 'name' | 'role' | 'title' | 'photo' | 'ids'>;
 
 /** A question, ready to show and answer: are its two sides one person? */
 export interface Check {

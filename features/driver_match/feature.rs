@@ -6,7 +6,8 @@ mod backend;
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     Appearance, DriverMatch, Evidence, EvidenceKind, IdLink, MatchCounts, Person, PersonDetails,
-    PersonEvent, PersonEventKind, PersonId, PersonRole, Question, SourceDays, Strength,
+    PersonEvent, PersonEventKind, PersonId, PersonRole, PersonTitle, Question, SourceDays,
+    Strength,
 };
 /// Its storage and what one pass reads, for the app's tests. Other features ask core's
 /// directory who an ID is.
@@ -32,7 +33,10 @@ pub const FEATURE: Feature = Feature {
     routes: api::routes::routes,
     tables: &[
         ("platform", &["driver_codes"]),
-        ("dsp", &["people", "person_ids", "people_apart"]),
+        (
+            "dsp",
+            &["people", "person_ids", "people_apart", "person_titles"],
+        ),
     ],
     migrations: &[
         Migrations {
@@ -64,6 +68,11 @@ pub const FEATURE: Feature = Feature {
                 id: 2,
                 name: "meal_break_links",
                 apply: Sql(include_str!("migrations/dsp/0002_meal_break_links.sql")),
+            },
+            Migration {
+                id: 3,
+                name: "person_titles",
+                apply: Sql(include_str!("migrations/dsp/0003_person_titles.sql")),
             },
         ],
     }],

@@ -310,7 +310,8 @@
         "POST /api/dsp/driver-match/merge",
         "POST /api/dsp/driver-match/split",
         "POST /api/dsp/driver-match/apart",
-        "POST /api/dsp/driver-match/confirm"
+        "POST /api/dsp/driver-match/confirm",
+        "POST /api/dsp/driver-match/title"
       ],
       "exposes": [
         {
@@ -328,7 +329,8 @@
       "dsp": [
         "people",
         "people_apart",
-        "person_ids"
+        "person_ids",
+        "person_titles"
       ],
       "platform": [
         "driver_codes"

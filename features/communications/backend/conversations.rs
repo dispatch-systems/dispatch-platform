@@ -54,6 +54,7 @@ impl People {
             name: person.map_or_else(|| name.to_owned(), |person| person.name.clone()),
             code: person.map(|person| person.code.clone()),
             role: person.map(|person| person.role),
+            title: person.and_then(|person| person.title),
             photo: person.and_then(|person| person.photo.clone()),
         }
     }

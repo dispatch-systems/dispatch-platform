@@ -6,7 +6,7 @@ import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Composer } from './Composer.js';
 import { Face } from './Face.js';
-import { opensProfile, roles, Wait } from './parts.js';
+import { opensProfile, roleText, Wait } from './parts.js';
 import { Profile } from './Profile.js';
 import { Thread } from './Thread.js';
 import { useConversation } from './useConversation.js';
@@ -86,7 +86,7 @@ export function ConversationPane({
   const writing = typing.filter((writer) => writer.conversationId === id);
   const person = conversation?.with;
   // What they do for the DSP, and where.
-  const about = [person?.role && roles[person.role], where].filter(Boolean).join(' · ');
+  const about = [person && roleText(person), where].filter(Boolean).join(' · ');
   // The profile, and what opened it, which focus goes back to as it closes: the photo by the
   // messages, or who it's with when that photo is gone.
   const [profile, setProfile] = useState(false);

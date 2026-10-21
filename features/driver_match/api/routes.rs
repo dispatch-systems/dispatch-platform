@@ -1,7 +1,7 @@
 //! Driver Match's endpoints: every person the DSP's features name, and the decisions that
-//! join or part them, which answer with nothing: the page reads itself again. Its one
-//! permission gates them all.
-use crate::backend::DriverMatchStore;
+//! join or part them or give them a title, which answer with nothing: the page reads itself
+//! again. Its one permission gates them all.
+use crate::{api::types::PersonTitle, backend::DriverMatchStore};
 use dispatch_core::{
     Error, Result,
     db::Store,
@@ -27,6 +27,7 @@ pub fn routes() -> Vec<Route> {
         write("/api/dsp/driver-match/split", MANAGE, split),
         write("/api/dsp/driver-match/apart", MANAGE, apart),
         write("/api/dsp/driver-match/confirm", MANAGE, confirm),
+        write("/api/dsp/driver-match/title", MANAGE, title),
     ]
 }
 fn overview(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
@@ -75,6 +76,23 @@ fn confirm(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(b, &["code", "source", "id"])?;
     let (source, id) = source_id(b)?;
     db.confirm_link(c, v::text(b, "code", 6, 6)?, source, id)?;
+    Ok(Reply::ok())
+}
+/// `code` is given `title`, or with `null` loses theirs.
+fn title(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    let b = &input.body;
+    v::fields(b, &["code", "title"])?;
+    let given = b
+        .get("title")
+        .ok_or_else(|| Error::new("invalid_input", 400))?;
+    let title = match given {
+        serde_json::Value::Null => None,
+        _ => Some(
+            PersonTitle::parse(v::text(b, "title", 1, 32)?)
+                .ok_or_else(|| Error::new("invalid_input", 400))?,
+        ),
+    };
+    db.set_title(c, v::text(b, "code", 6, 6)?, title)?;
     Ok(Reply::ok())
 }
 fn apart(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

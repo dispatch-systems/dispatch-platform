@@ -74,6 +74,11 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await page.getByRole('button', { name: 'Split off', exact: true }).last().click();
   await expect(page.getByText(/is now its own person/)).toBeVisible();
   await expect(sheet.locator('.driver-id')).toHaveCount(1);
+  // A title says what the sources can't, and puts them under Management.
+  await sheet.getByRole('combobox', { name: 'Title' }).selectOption('Dispatch');
+  await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
   await sheet.getByRole('button', { name: 'Close dialog' }).click();
   await expect(card('Ben Collins')).toHaveCount(1);
+  await show.getByRole('button', { name: /^Management/ }).click();
+  await expect(card('Benjamin Collins')).toContainText('Dispatch');
 });

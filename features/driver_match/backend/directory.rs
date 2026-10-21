@@ -47,6 +47,7 @@ fn person(gathered: &Gathered, code: &str, ids: &[(&IdRow, Source)]) -> Person {
         names: vec![listed.name.clone()],
         name: listed.name,
         role: listed.role,
+        title: listed.title,
         ids: BTreeMap::new(),
         emails: vec![],
         phones: vec![],

@@ -16,6 +16,7 @@ CREATE TABLE owner_migrations (owner TEXT NOT NULL, id INTEGER NOT NULL, name TE
 CREATE TABLE people ( code TEXT PRIMARY KEY, created_at TEXT NOT NULL, merged_into TEXT REFERENCES people(code), merged_at TEXT, merged_by TEXT, split_from TEXT REFERENCES people(code), created_by TEXT );
 CREATE TABLE people_apart ( first TEXT NOT NULL REFERENCES people(code), second TEXT NOT NULL REFERENCES people(code), decided_at TEXT NOT NULL, actor_id TEXT, PRIMARY KEY(first, second), CHECK(first < second) );
 CREATE TABLE "person_ids" ( source TEXT NOT NULL, external_id TEXT NOT NULL, code TEXT NOT NULL REFERENCES people(code), linked_by TEXT NOT NULL, linked_at TEXT NOT NULL, actor_id TEXT, PRIMARY KEY(source, external_id) );
+CREATE TABLE person_titles ( code TEXT PRIMARY KEY REFERENCES people(code), title TEXT NOT NULL, decided_at TEXT NOT NULL, actor_id TEXT );
 CREATE TABLE recovery_codes ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE );
 CREATE TABLE resets ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), user_version INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER );
 CREATE TABLE roles ( id TEXT PRIMARY KEY, dsp_id TEXT NOT NULL, name TEXT NOT NULL COLLATE NOCASE, permissions TEXT NOT NULL DEFAULT '[]', system INTEGER NOT NULL DEFAULT 0 CHECK(system IN (0,1)), created_at TEXT NOT NULL, UNIQUE(dsp_id,name) );

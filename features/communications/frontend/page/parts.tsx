@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import { Clock } from 'lucide-react';
-import type { PersonRole, Writing } from '../../api/index.js';
+import type { Correspondent, PersonRole, Writing } from '../../api/index.js';
+import { personTitles } from '../../../../core/manifest/api/generated/people-data.js';
 import { marked } from '../inbox.js';
 import { waited } from '../format.js';
 
@@ -43,12 +44,15 @@ export function typingNote(writing: readonly Writing[]) {
 }
 
 /** What someone does for the DSP, as Driver Match knows them. */
-export const roles: Record<PersonRole, string> = {
+const roles: Record<PersonRole, string> = {
   driver: 'Driver',
   helper: 'Helper',
-  office: 'Office',
+  office: 'Management',
   former: 'Former',
 };
+/** What someone does, as it reads: their title, else their role; nothing when unknown. */
+export const roleText = ({ role, title }: Pick<Correspondent, 'role' | 'title'>) =>
+  personTitles.find((t) => t.id === title)?.label ?? (role && roles[role]);
 
 /** What makes a button open the profile `id` beside a conversation and close it again. */
 export function opensProfile(id: string, open: boolean, toggle: (from: HTMLElement) => void) {
