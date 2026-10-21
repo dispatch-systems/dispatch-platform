@@ -165,8 +165,10 @@ test('a feature switched back on brings its parts as they were, and a part the c
   // The next switch goes by what the last one answered, before the DSP's features are read
   // again, so the last tab on still asks first.
   const reading = `**/api/platform/dsps/${north.id}/features`;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
   await page.route(reading, async (route) => {
-    if (route.request().method() === 'GET') await new Promise((done) => setTimeout(done, 1500));
+    if (route.request().method() === 'GET') await held;
     await route.continue();
   });
   await tab('Timecard').click();
@@ -175,6 +177,7 @@ test('a feature switched back on brings its parts as they were, and a part the c
   await expect(last.getByRole('listitem')).toHaveText(['Timecardhas no other tab on']);
   await last.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(tab('Meal Breaks')).toBeChecked();
+  release();
   await page.unroute(reading);
   await tab('Timecard').click();
   await expect(tab('Timecard')).toBeChecked();

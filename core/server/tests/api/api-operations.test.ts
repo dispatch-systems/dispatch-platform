@@ -56,13 +56,18 @@ test('SQLite write contention leaves health responsive and the pending write rec
     timeout: 5000,
   });
   let pending: Promise<unknown> | undefined;
+  let written = false;
   try {
     db.exec('BEGIN IMMEDIATE');
-    pending = owner.post('/api/platform/dsps', { ownerEmail: 'blocked@dispatch.test' });
+    pending = owner
+      .post('/api/platform/dsps', { ownerEmail: 'blocked@dispatch.test' })
+      .finally(() => {
+        written = true;
+      });
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const started = Date.now();
     assert.equal((await f.request('/api/health')).status, 200);
-    assert(Date.now() - started < 500);
+    // Health answered while the write still waits on the lock, not once it gave up.
+    assert(!written, 'health waited out the blocked write');
     db.exec('ROLLBACK');
     assert.equal(((await pending) as { status: number }).status, 201);
   } finally {

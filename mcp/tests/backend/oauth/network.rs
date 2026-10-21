@@ -101,12 +101,11 @@ impl Network for Silent {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_fetch_gives_up_after_five_seconds() {
-    let started = std::time::Instant::now();
+    let started = tokio::time::Instant::now();
     let url = web_client_id("https://slow.example.com/client.json").unwrap();
     let failed = fetch(&Silent, &url, 1024).await.unwrap_err();
     assert_eq!(failed.code, "app_unavailable");
-    let took = started.elapsed();
-    assert!(took >= TIMEOUT && took < TIMEOUT * 2, "{took:?}");
+    assert_eq!(started.elapsed(), TIMEOUT);
 }

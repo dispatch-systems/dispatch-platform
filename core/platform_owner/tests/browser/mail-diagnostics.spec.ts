@@ -38,7 +38,6 @@ test('owner diagnostics shows pending mail, a failed delivery, and later recover
   dispatch: f,
   mailWorker,
 }) => {
-  test.setTimeout(60000);
   await page.clock.install();
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

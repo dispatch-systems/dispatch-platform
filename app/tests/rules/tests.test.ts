@@ -1,7 +1,17 @@
 import test from 'node:test';
+import ts from 'typescript';
 import { holds } from './support/holds.js';
-import { files, isDirectory, isFile, ownerOf, owners, templated } from './support/repo.js';
-import { lexFile, rust, testAttributes } from './support/rust.js';
+import {
+  files,
+  isDirectory,
+  isFile,
+  isTestFile,
+  ownerOf,
+  owners,
+  read,
+  templated,
+} from './support/repo.js';
+import { lexFile, lineOf, rust, testAttributes } from './support/rust.js';
 
 // The folder decides how a test runs.
 const kinds = ['api', 'browser', 'frontend', 'backend', 'native', 'support'];
@@ -128,4 +138,102 @@ test('an owner with endpoints has tests/api/', () => {
     .filter(({ dir }) => !isDirectory(`${dir}/tests/api`))
     .map(({ dir }) => `${dir} has api/ and no tests/api/`);
   holds('tests', 'api tests', untested);
+});
+
+// A test runs whole and waits on what it waits for: an answer, an event, or a clock it moves
+// itself. Nothing focuses, skips or retries one, and nothing gives one longer than the suite
+// does. Only a test that skips itself unless a run opts in, as the native and artifact tests do
+// for their real browsers and builds, sets a timeout of its own.
+const registers = new Set(['test', 'it', 'describe', 'suite']);
+const narrows = new Set(['only', 'skip', 'todo', 'fixme', 'fail']);
+const lengthens = new Set(['slow', 'setTimeout']);
+
+function waits(file: string): string[] {
+  const source = ts.createSourceFile(file, read(file), ts.ScriptTarget.Latest, true);
+  const at = (node: ts.Node) =>
+    `${file}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`;
+  // What a file's constants hold, so `test(name, native, …)` and `{ skip: native }` read them.
+  const constants = new Map<string, ts.Expression>();
+  for (const statement of source.statements)
+    if (ts.isVariableStatement(statement))
+      for (const { name, initializer } of statement.declarationList.declarations)
+        if (ts.isIdentifier(name) && initializer) constants.set(name.text, initializer);
+  const named = (node: ts.Expression): ts.Expression =>
+    ts.isIdentifier(node) && constants.has(node.text) ? named(constants.get(node.text)!) : node;
+  // A run opts in through the environment, as `DISPATCH_TEST_NATIVE=1` does.
+  const optsIn = (node: ts.Node): boolean =>
+    ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      node.expression.getText() === 'process.env') ||
+    (ts.isIdentifier(node) && constants.has(node.text) && optsIn(constants.get(node.text)!)) ||
+    (ts.forEachChild(node, optsIn) ?? false);
+  const options = (node: ts.Expression | undefined) => {
+    const object = node && named(node);
+    if (!object || !ts.isObjectLiteralExpression(object)) return new Map<string, ts.Node>();
+    return new Map(
+      object.properties.flatMap((property) =>
+        ts.isPropertyAssignment(property) && ts.isIdentifier(property.name)
+          ? [[property.name.text, property.initializer] as const]
+          : ts.isShorthandPropertyAssignment(property)
+            ? [[property.name.text, property.name] as const]
+            : [],
+      ),
+    );
+  };
+  // The name a call is made through: `test` in `test.describe.only(…)`.
+  const root = (node: ts.Expression): string | undefined =>
+    ts.isIdentifier(node)
+      ? node.text
+      : ts.isPropertyAccessExpression(node) || ts.isCallExpression(node)
+        ? root(node.expression)
+        : undefined;
+
+  const found: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      const member = ts.isPropertyAccessExpression(callee) ? callee.name.text : undefined;
+      if (member === 'waitForTimeout')
+        found.push(`${at(node)} waits for time to pass: wait for what it waits on`);
+      else if (registers.has(root(callee) ?? '')) {
+        if (member && narrows.has(member))
+          found.push(`${at(node)} narrows the run with .${member}: every test runs whole`);
+        if (member && lengthens.has(member))
+          found.push(`${at(node)} gives a test longer with .${member}: the suite's timeout holds`);
+        const given = options(member === 'configure' ? node.arguments[0] : node.arguments[1]);
+        for (const option of ['only', 'todo', 'retries'])
+          if (given.has(option))
+            found.push(`${at(node)} sets ${option}: every test runs whole, once`);
+        const skip = given.get('skip');
+        const optedIn = skip !== undefined && optsIn(skip);
+        if (skip && !optedIn) found.push(`${at(node)} skips a test no run opts in to`);
+        if (given.has('timeout') && !optedIn)
+          found.push(`${at(node)} sets a timeout, which only a test a run opts in to may`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+}
+
+test('tests run whole and wait on what they wait for, not on time passing', () => {
+  holds(
+    'tests',
+    'waits',
+    files
+      .filter((file) => /\.tsx?$/.test(templated(file)) && isTestFile(templated(file)))
+      .flatMap(waits),
+  );
+});
+
+test('an ignored Rust test says why', () => {
+  const silent = files
+    .filter((file) => templated(file).endsWith('.rs'))
+    .flatMap((file) => {
+      const { text, masked } = lexFile(file);
+      return [...masked.matchAll(/#\[\s*ignore\s*\]/g)].map(
+        (match) => `${file}:${lineOf(text, match.index)} ignores a test: #[ignore = "<why>"]`,
+      );
+    });
+  holds('tests', 'ignored tests', silent);
 });

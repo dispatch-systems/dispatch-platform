@@ -36,6 +36,9 @@ export function nodeTests(
     args: [
       'node_modules/tsx/dist/cli.mjs',
       '--test',
+      // A hung test fails by name instead of running out its job. Only a test a run opts in to,
+      // such as a native one, sets a longer timeout of its own.
+      '--test-timeout=60000',
       ...(options.concurrency === undefined ? [] : [`--test-concurrency=${options.concurrency}`]),
       ...(options.args ?? []),
       ...files,
