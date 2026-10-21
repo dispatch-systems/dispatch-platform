@@ -48,9 +48,15 @@ export const getCommunicationsUpdates = (after: number, typing: number, signal: 
     undefined,
     signal,
   );
-/** Conversations found by a name typed, misspelt or not. */
-export const searchConversations = (typed: string) =>
-  api<Conversations>(`${communicationsUrl}/conversations?q=${encodeURIComponent(typed)}`);
+/** `?q=`, with `team=` for one workspace's alone. */
+const query = (typed: string, team?: string) =>
+  new URLSearchParams([
+    ...(typed ? [['q', typed]] : []),
+    ...(team ? [['team', team]] : []),
+  ]).toString();
+/** Conversations found by a name typed, misspelt or not, in every workspace or `team`'s. */
+export const searchConversations = (typed: string, team?: string) =>
+  api<Conversations>(`${communicationsUrl}/conversations?${query(typed, team)}`);
 /** The answered conversations before the last one shown. */
 export const olderConversations = (last: Conversation) =>
   api<Conversations>(
@@ -67,9 +73,11 @@ export function useProfile(id: string) {
   const read = useCallback((signal: AbortSignal) => api<Profile>(url, undefined, signal), [url]);
   return useData<Profile>(url, 0, undefined, undefined, false, read);
 }
-/** The members of the DSP's workspaces, or those found by a name typed. */
-export const getContacts = (typed = '') =>
-  api<Contacts>(`${communicationsUrl}/contacts${typed ? `?q=${encodeURIComponent(typed)}` : ''}`);
+/** The members of the DSP's workspaces, or of `team`, or those found by a name typed. */
+export function getContacts(typed = '', team?: string) {
+  const asked = query(typed, team);
+  return api<Contacts>(`${communicationsUrl}/contacts${asked ? `?${asked}` : ''}`);
+}
 /** Opens a direct message with a member, to message them first. */
 export const openConversation = (teamId: string, userId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations`, { teamId, userId });

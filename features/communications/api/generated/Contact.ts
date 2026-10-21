@@ -10,6 +10,14 @@ export type Contact = { teamId: string, person: Correspondent,
  */
 conversationId: string | null,
 /**
+ * Since when their conversation waits on an answer, as `Conversation`'s.
+ */
+waitingSince: number | null,
+/**
+ * When their conversation's latest message was written, as `Conversation`'s.
+ */
+lastAt: number | null,
+/**
  * The letters of their name that matched what was searched, as `Conversation`'s.
  */
 matched: Array<[number, number]>, };

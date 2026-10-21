@@ -97,7 +97,7 @@ export function NewMessage({
               onMouseEnter={() => setActive(at)}
               onClick={() => choose(contact)}
             >
-              <Face {...contact.person} size={40} />
+              <Face {...contact.person} size="list" />
               <span className="result-body">
                 <strong>
                   <Name name={contact.person.name} matched={contact.matched} />

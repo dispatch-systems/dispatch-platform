@@ -123,13 +123,29 @@ fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     Reply::of(&conversations::waiting(db, c.dsp_id())?)
 }
-/// Conversations found by a name typed, `q`, or the answered ones before `before`.
+/// The workspace `team` a list is of, if it's of one.
+fn team(query: &Value) -> Result<Option<String>> {
+    let team = optional_text(query, "team", 32)?;
+    (!team.is_empty())
+        .then(|| slack_id(team, b"T"))
+        .transpose()
+}
+/// Conversations found by a name typed, `q`, in the workspace `team` or every one, or the
+/// answered ones before `before`.
 fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.query, &["q", "before"])?;
+    v::fields(&input.query, &["q", "team", "before"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();
+    let team = team(&input.query)?;
     if !typed.is_empty() {
-        return Reply::of(&conversations::search(db, c.state, c.dsp_id(), typed)?);
+        return Reply::of(&conversations::search(
+            db,
+            c.state,
+            c.dsp_id(),
+            team.as_deref(),
+            typed,
+        )?);
     }
+    ensure(team.is_none(), "invalid_input", 400)?;
     let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
     Reply::of(&conversations::older(db, c.state, c.dsp_id(), (at, &id))?)
 }
@@ -165,11 +181,20 @@ fn profile(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         &conversation,
     )?)
 }
+/// Whom the DSP can message, in the workspace `team` or every one, or those found by a name
+/// typed, `q`.
 fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.query, &["q"])?;
+    v::fields(&input.query, &["q", "team"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();
     let typed = (!typed.is_empty()).then_some(typed);
-    Reply::of(&contacts::contacts(db, c.state, c.dsp_id(), typed)?)
+    let team = team(&input.query)?;
+    Reply::of(&contacts::contacts(
+        db,
+        c.state,
+        c.dsp_id(),
+        team.as_deref(),
+        typed,
+    )?)
 }
 fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;

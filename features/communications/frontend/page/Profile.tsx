@@ -9,14 +9,16 @@ import { Face } from './Face.js';
 import { roles } from './parts.js';
 
 // The profile beside a conversation: the member it's with, their route today and how to reach
-// them, over the conversation until its X, Escape, or a press anywhere else closes it.
-// What nobody knows of them is left out, as is a section left with nothing.
+// them, over the conversation until its X, Escape, or a press anywhere else closes it; or, on a
+// wide page (`docked`), a column of its own beside it, covering nothing, until its X or Escape
+// does. What nobody knows of them is left out, as is a section left with nothing.
 
 export function Profile({
   id,
   conversation,
   person,
   timeZone,
+  docked,
   close,
 }: {
   /** The panel's own ID, which its openers control. */
@@ -24,6 +26,8 @@ export function Profile({
   conversation: string;
   person: Correspondent;
   timeZone: string;
+  /** Whether it's a column of its own beside the conversation. */
+  docked: boolean;
   /** Closes it: `refocus`, focus goes back to what opened it. */
   close: (refocus: boolean) => void;
 }) {
@@ -34,6 +38,7 @@ export function Profile({
   // Focus moves into it as it opens.
   useEffect(() => closer.current?.focus(), []);
   useEffect(() => {
+    if (docked) return;
     // A press on what opens it is that control's own: it closes it.
     const pressed = ({ target }: PointerEvent) => {
       const opener = target instanceof Element && target.closest('[data-opens-profile]');
@@ -41,7 +46,7 @@ export function Profile({
     };
     document.addEventListener('pointerdown', pressed);
     return () => document.removeEventListener('pointerdown', pressed);
-  }, [close]);
+  }, [docked, close]);
   const today = profile?.today;
   return (
     <aside
@@ -63,7 +68,7 @@ export function Profile({
         <X size={16} />
       </button>
       <div className="me">
-        <Face {...person} size={72} />
+        <Face {...person} size="profile" />
         <div>
           <h2 id={title}>{person.name}</h2>
           {person.role && <small>{roles[person.role]}</small>}

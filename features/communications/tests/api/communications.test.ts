@@ -77,10 +77,16 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(done.value.state, 'done');
   assert.equal((await read()).waiting, 0);
 
-  // Whom the DSP can message, found by a misspelt name.
-  const { contacts } = await owner.read(`${route}/contacts?q=jordn`);
+  // Whom the DSP can message, found by a misspelt name, with when they last wrote; and in a
+  // workspace the DSP doesn't have, no one, nor any conversation.
+  const { contacts } = await owner.read(`${route}/contacts?q=jordn&team=T0FIXTURE1`);
   assert.equal(contacts[0].person.name, 'Jordan Ellis');
   assert.equal(contacts[0].conversationId, conversation.id);
+  assert.equal(contacts[0].lastAt, (await read()).conversations[0].lastAt);
+  assert.equal(contacts[0].waitingSince, null);
+  assert.deepEqual((await owner.read(`${route}/contacts?team=T0ELSEWHERE`)).contacts, []);
+  const elsewhere = await owner.read(`${route}/conversations?q=jordn&team=T0ELSEWHERE`);
+  assert.deepEqual(elsewhere.conversations, []);
 
   // The image of someone's initials is public, at the admin's address, as Slack fetches it.
   const initials = await fetch(`${f.env.DISPATCH_ORIGIN}/communications/initials/1/PO.png`);

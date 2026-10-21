@@ -1,17 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { Check } from 'lucide-react';
 import type { Communications, Conversation, Writing } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
-import { SearchInput } from '../../../../core/shell/frontend/ui/index.js';
-import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { listTime, preview } from '../format.js';
 import { Face } from './Face.js';
 import { More } from './More.js';
 import { Name, Wait, typingNote } from './parts.js';
+import { useFound } from './useFound.js';
 
-// The list of conversations: those waiting on an answer, then those answered, or those found by
-// a name typed, misspelt or not; with the conversation open at the top while the list doesn't
-// hold it, as one New message opened before it holds a message.
+// Messages: the conversations, of every workspace or the one chosen, those waiting on an answer,
+// then those answered; or those found by a name typed, misspelt or not. The conversation open is
+// at the top while the list doesn't hold it, as one New message opened before it holds a message.
 
 type Listing = {
   open?: string;
@@ -24,48 +23,26 @@ type Listing = {
 
 export function ConversationList({
   inbox,
+  team,
+  typed,
   pinned,
   readOlder,
   ...listing
 }: Listing & {
   inbox: Communications;
+  /** The workspace chosen, if one is. */
+  team?: string;
+  /** What's typed in Search, trimmed. */
+  typed: string;
   /** The conversation open, while the list doesn't hold it. */
   pinned?: Conversation;
   readOlder: () => void;
 }) {
-  const [typed, setTyped] = useState('');
-  const [found, setFound] = useState<Conversation[]>();
-  const [failed, setFailed] = useState('');
-  // Found again as the conversations change, a moment after typing stops.
-  useEffect(() => {
-    const name = typed.trim();
-    if (!name) {
-      setFound(undefined);
-      setFailed('');
-      return;
-    }
-    let live = true;
-    const timer = setTimeout(() => {
-      searchConversations(name).then(
-        (result) => {
-          if (!live) return;
-          setFound(result.conversations);
-          setFailed('');
-        },
-        (cause) => {
-          if (!live) return;
-          setFound([]);
-          setFailed(messageOf(cause));
-        },
-      );
-    }, 200);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [typed, inbox.revision]);
-  const waiting = inbox.conversations.filter((conversation) => conversation.state === 'waiting');
-  const answered = inbox.conversations.filter((conversation) => conversation.state !== 'waiting');
+  const search = useCallback(
+    () => searchConversations(typed, team).then((found) => found.conversations),
+    [typed, team],
+  );
+  const { found, failed } = useFound(typed ? search : undefined, inbox.revision, 200);
   const rows = (conversations: readonly Conversation[]) => (
     <ul className="convos">
       {conversations.map((conversation) => (
@@ -73,59 +50,53 @@ export function ConversationList({
       ))}
     </ul>
   );
+  if (typed) {
+    if (failed || found?.length === 0)
+      return <p className="list-empty">{failed || 'No matches'}</p>;
+    return found ? rows(found) : null;
+  }
+  const shown = inbox.conversations.filter((conversation) => !team || conversation.teamId === team);
+  const waiting = shown.filter((conversation) => conversation.state === 'waiting');
+  const answered = shown.filter((conversation) => conversation.state !== 'waiting');
   return (
-    <section className="pane-list" aria-label="Conversations">
-      <div className="list-tools">
-        <SearchInput label="Search" placeholder="Search" value={typed} onChange={setTyped} />
-      </div>
-      <div className="list-scroll">
-        {found ? (
-          found.length ? (
-            rows(found)
-          ) : (
-            <p className="list-empty">{failed || 'No matches'}</p>
-          )
+    <>
+      {pinned &&
+        (!team || pinned.teamId === team) &&
+        (pinned.lastAt === null ? (
+          <ul className="convos">
+            <li className="convo selected">
+              <button className="convo-open" onClick={() => listing.select(pinned.id)}>
+                <Face {...pinned.with} size="list" />
+                <span className="convo-body">
+                  <span className="line1">
+                    <strong>{pinned.with.name}</strong>
+                  </span>
+                  <span className="line2">
+                    <span className="preview">New message</span>
+                  </span>
+                </span>
+              </button>
+            </li>
+          </ul>
         ) : (
-          <>
-            {pinned &&
-              (pinned.lastAt === null ? (
-                <ul className="convos">
-                  <li className="convo selected">
-                    <button className="convo-open" onClick={() => listing.select(pinned.id)}>
-                      <Face {...pinned.with} size={40} />
-                      <span className="convo-body">
-                        <span className="line1">
-                          <strong>{pinned.with.name}</strong>
-                        </span>
-                        <span className="line2">
-                          <span className="preview">New message</span>
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                </ul>
-              ) : (
-                rows([pinned])
-              ))}
-            {waiting.length > 0 && (
-              <>
-                <h2 className="list-head">
-                  Waiting<span>{waiting.length}</span>
-                </h2>
-                {rows(waiting)}
-              </>
-            )}
-            {answered.length > 0 && (
-              <>
-                <h2 className="list-head">Responded</h2>
-                {rows(answered)}
-              </>
-            )}
-            {inbox.more && <More read={readOlder} />}
-          </>
-        )}
-      </div>
-    </section>
+          rows([pinned])
+        ))}
+      {waiting.length > 0 && (
+        <>
+          <h2 className="list-head">
+            Waiting<span>{waiting.length}</span>
+          </h2>
+          {rows(waiting)}
+        </>
+      )}
+      {answered.length > 0 && (
+        <>
+          <h2 className="list-head">Responded</h2>
+          {rows(answered)}
+        </>
+      )}
+      {inbox.more && <More read={readOlder} />}
+    </>
   );
 }
 
@@ -154,7 +125,7 @@ function Row({
         aria-current={selected || undefined}
         onClick={() => select(conversation.id)}
       >
-        <Face {...person} size={40} />
+        <Face {...person} size="list" />
         <span className="convo-body">
           <span className="line1">
             <strong>
@@ -174,7 +145,7 @@ function Row({
                     name={last.sender.name}
                     code={last.sender.code}
                     photo={last.sender.photo}
-                    size={18}
+                    size="sender"
                   />
                 )}
                 <span className="preview">{last ? preview(last) : ''}</span>

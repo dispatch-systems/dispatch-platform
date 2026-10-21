@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SquarePen } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import type { Contact, Conversation } from '../../api/index.js';
@@ -9,23 +9,23 @@ import { ErrorBox, Header, Loading } from '../../../../core/shell/frontend/ui/in
 import { hashQuery, replaceHashQuery } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { ConversationList } from './ConversationList.js';
 import { ConversationPane } from './ConversationPane.js';
 import { CopyChatLink } from './CopyChatLink.js';
+import { ListPane } from './ListPane.js';
 import { NewMessage } from './NewMessage.js';
 import { ConnectSlack, UpdateSlack } from './Setup.js';
 import { useInbox } from './useInbox.js';
+import { useLayout } from './useLayout.js';
+import { useWorkspaceChoice } from './useWorkspaceChoice.js';
 
 // The Communications page: the DSP's conversations with the members of its Slack workspaces,
-// those waiting on an answer first, and the one open beside them, all kept up to date as they
-// change. Those who manage the DSP's connections connect Slack here while it isn't, and update
-// it while a workspace hasn't approved what Communications uses. The conversation open is kept
-// in the address (`?open=`).
+// those waiting on an answer first, or everyone it can message, of every workspace or one; and
+// the conversation open beside them, all kept up to date as they change. Those who manage the
+// DSP's connections connect Slack here while it isn't, and update it while a workspace hasn't
+// approved what Communications uses. The conversation open is kept in the address (`?open=`).
 
 /** How often the times waited move on. */
 const TICK_MS = 30_000;
-/** Wide enough to show the list and a conversation side by side, as communications.css says. */
-const SIDE_BY_SIDE = '(width > 760px)';
 
 /** The time now, moving on every `every` milliseconds. */
 function useNow(every: number) {
@@ -37,8 +37,10 @@ function useNow(every: number) {
   return now;
 }
 
-export function CommunicationsPage({ view }: { view: DspView }) {
+export function CommunicationsPage({ view, user }: { view: DspView; user: string }) {
   const timeZone = view.dsp.timezone;
+  const page = useRef<HTMLDivElement>(null);
+  const layout = useLayout(page);
   const manages = can(view, 'connections.manage');
   const { inbox, changed, error, refresh, show, readOlder } = useInbox();
   // Slack sends those who connected or updated it from here back here, to finish.
@@ -52,6 +54,7 @@ export function CommunicationsPage({ view }: { view: DspView }) {
   const [open, setOpen] = useState(() => hashQuery().get('open') ?? undefined);
   const [pinned, setPinned] = useState<Conversation>();
   const [composing, setComposing] = useState(false);
+  const [chosen, choose] = useWorkspaceChoice(view.dsp.id, user);
   const now = useNow(TICK_MS);
   const select = useCallback((id?: string) => {
     setOpen(id);
@@ -60,18 +63,21 @@ export function CommunicationsPage({ view }: { view: DspView }) {
     replaceHashQuery(id ? { open: id } : {});
   }, []);
   const closed = useCallback(() => select(undefined), [select]);
-  // Side by side, a conversation is always open: the first, until another is chosen, and as the
-  // window widens to show both.
-  const first = inbox?.conversations[0]?.id;
+  const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
+  // The workspace the lists show, while it's still one of two or more Communications works in;
+  // else every one.
+  const team =
+    working.length > 1 && working.some((workspace) => workspace.teamId === chosen)
+      ? chosen
+      : undefined;
+  // Side by side, a conversation is always open: the first listed, until another is chosen, and
+  // as the page widens to show both.
+  const first = inbox?.conversations.find(
+    (conversation) => !team || conversation.teamId === team,
+  )?.id;
   useEffect(() => {
-    const wide = matchMedia(SIDE_BY_SIDE);
-    const openFirst = () => {
-      if (!open && first && wide.matches) select(first);
-    };
-    openFirst();
-    wide.addEventListener('change', openFirst);
-    return () => wide.removeEventListener('change', openFirst);
-  }, [open, first, select]);
+    if (!open && first && layout && layout !== 'phone') select(first);
+  }, [open, first, layout, select]);
   // Each update brings the workspaces as they are, so it goes once Slack is updated.
   const updating = manages ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
   const done = useAction(async (conversation: Conversation) =>
@@ -94,12 +100,12 @@ export function CommunicationsPage({ view }: { view: DspView }) {
     [select],
   );
 
-  const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
   const connect = manages && inbox?.workspaces.length === 0;
   const listed = inbox?.conversations.find((conversation) => conversation.id === open);
   const unlisted = pinned && !inbox?.conversations.some((each) => each.id === pinned.id);
+  const current = listed ?? (pinned?.id === open ? pinned : undefined);
   return (
-    <div className={open ? 'communications reading' : 'communications'}>
+    <div ref={page} className={open ? 'communications reading' : 'communications'}>
       <div className="communications-page" inert={updating.length > 0}>
         <Header title="Communications">
           {working.length > 0 && (
@@ -123,10 +129,15 @@ export function CommunicationsPage({ view }: { view: DspView }) {
           <ConnectSlack busy={returned.busy} />
         ) : (
           <div className="chat-frame">
-            <ConversationList
+            <ListPane
               inbox={inbox}
+              working={working}
+              team={team}
+              choose={choose}
               pinned={unlisted ? pinned : undefined}
+              current={current}
               readOlder={readOlder}
+              pick={pick}
               open={open}
               typing={inbox.typing.writing}
               timeZone={timeZone}
@@ -138,8 +149,9 @@ export function CommunicationsPage({ view }: { view: DspView }) {
               <ConversationPane
                 key={open}
                 id={open}
-                listed={listed ?? (pinned?.id === open ? pinned : undefined)}
-                working={working}
+                listed={current}
+                workspaces={inbox.workspaces}
+                docked={layout === 'docked'}
                 seen={seen}
                 changed={changed}
                 typing={inbox.typing.writing}

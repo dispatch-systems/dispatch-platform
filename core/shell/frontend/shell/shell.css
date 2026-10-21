@@ -139,26 +139,30 @@
   position: relative;
   z-index: 26;
 }
+/* Its padding at the sides (`--page-gutter`) and below (`--page-bottom`), which a page reaching
+   the window's edges goes into. */
 .page-container {
+  --page-bottom: 48px;
   max-width: 1600px;
-  padding: var(--page-gutter) var(--page-gutter) 48px;
+  padding: var(--page-gutter) var(--page-gutter) var(--page-bottom);
   outline: none;
   margin: 0 auto;
 }
-/* A DSP page that fills the window (`fills`): the page takes what the app's bars leave, and its
-   parts scroll within it. */
+/* A DSP page that fills the window (`fills`): the page takes all the app's bars leave, however
+   wide, and its parts scroll within it. */
 .main-area.fills {
   display: flex;
   flex-direction: column;
   height: 100dvh;
 }
 .main-area.fills > .page-container {
+  --page-bottom: 24px;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   width: 100%;
-  padding-bottom: 24px;
+  max-width: none;
 }
 .main-area.fills .dsp-page {
   display: flex;
@@ -219,15 +223,19 @@
     position: static;
   }
   .page-container {
-    padding: 16px 24px 40px;
+    --page-gutter: 24px;
+    --page-bottom: 40px;
+    padding: 16px var(--page-gutter) var(--page-bottom);
   }
 }
 @media (width <= 600px) {
   .page-container {
-    padding: 12px 18px 32px;
+    --page-gutter: 18px;
+    --page-bottom: 32px;
+    padding: 12px var(--page-gutter) var(--page-bottom);
   }
   .main-area.fills > .page-container {
-    padding-bottom: 12px;
+    --page-bottom: 12px;
   }
   .topbar {
     height: 58px;

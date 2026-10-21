@@ -203,12 +203,20 @@ pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Resul
 }
 /// A conversation found by a name typed: how like it its name is, and its letters that matched.
 type Found = (f64, Vec<(u32, u32)>, storage::Conversation);
-/// The conversations whose names are like `typed`, the closest first, fifty at most.
-pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conversations> {
+/// The conversations, of the workspace `team` or every one, whose names are like `typed`, the
+/// closest first, fifty at most.
+pub fn search(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    team: Option<&str>,
+    typed: &str,
+) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let mut found: Vec<Found> = db
         .communications_with_messages(dsp)?
         .into_iter()
+        .filter(|conversation| team.is_none_or(|team| conversation.team == team))
         .filter_map(|conversation| {
             let named =
                 people.correspondent(&conversation.team, &conversation.user, &conversation.name);
