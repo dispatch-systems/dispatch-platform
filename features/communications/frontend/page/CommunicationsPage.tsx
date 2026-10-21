@@ -146,13 +146,16 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const current =
     listed ??
     (pinnedNow?.kind === 'conversation' && pinnedNow.row.id === open ? pinnedNow.row : undefined);
+  const currentGroup =
+    listedGroup ??
+    (pinnedNow?.kind === 'group' && pinnedNow.row.id === group ? pinnedNow.row : undefined);
   // Choosing a workspace leaves a conversation of another open, or a group with nobody there, for
   // the first of the one chosen.
   const chooseWorkspace = (team?: string) => {
     choose(team);
     const elsewhere =
       (current && current.teamId !== team) ||
-      (listedGroup && !listedGroup.teamIds.includes(team ?? ''));
+      (currentGroup && !currentGroup.teamIds.includes(team ?? ''));
     if (team && elsewhere && !drafting) closed();
   };
   const reading = open || group || drafting;

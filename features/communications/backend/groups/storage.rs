@@ -261,7 +261,8 @@ pub trait GroupStore {
         name: &str,
         delivered: &Delivered,
     ) -> Result<()>;
-    /// Tries the delivery again at `at`, for `reason`, counted as a failure or not.
+    /// Tries the delivery again at `at`, for `reason`, counted as a failure or not; `unposted`,
+    /// known to be nowhere in Slack, so the next try needn't look for an earlier post.
     fn retry_communications_delivery(
         &self,
         dsp: &str,
@@ -269,6 +270,7 @@ pub trait GroupStore {
         at: i64,
         reason: &str,
         counted: bool,
+        unposted: bool,
     ) -> Result<()>;
     /// Gives the delivery up, for `reason`: the message wasn't sent them.
     fn fail_communications_delivery(&self, dsp: &str, due: &Due, reason: &str) -> Result<()>;
@@ -663,17 +665,20 @@ impl GroupStore for Store {
         at: i64,
         reason: &str,
         counted: bool,
+        unposted: bool,
     ) -> Result<()> {
         self.dsp(dsp)?.exec(
             "UPDATE communications_deliveries SET due_at=?4,reason=?5,claimed_until=NULL,\
-             attempts=attempts+?6 WHERE message_id=?1 AND team_id=?2 AND user_id=?3",
+             attempts=attempts+?6,posting_since=CASE WHEN ?7 THEN NULL ELSE posting_since END \
+             WHERE message_id=?1 AND team_id=?2 AND user_id=?3",
             params![
                 due.message,
                 due.team,
                 due.user,
                 at,
                 reason,
-                i64::from(counted)
+                i64::from(counted),
+                unposted
             ],
         )?;
         Ok(())

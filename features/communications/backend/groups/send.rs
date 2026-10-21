@@ -2,12 +2,12 @@
 //! message, and the message goes to each of its people in the background, in their own direct
 //! message with the app (`chat:write`, opened first if need be, `im:write`), under the sender's
 //! full name and photo (`chat:write.customize`), as an answer does, its photos uploaded once to
-//! each workspace (`files:write`). One at a time, at most one a second in each workspace, as
-//! Slack asks of an app posting messages; Slack asking Dispatch to slow down (429, Retry-After) is
-//! waited out as long as it says, up to two minutes, and beyond that tried again two minutes later,
-//! uncounted. A try that fails is tried
-//! again after a minute, five and fifteen, then given up: not sent. One to a workspace where
-//! Communications no longer works, or a member no longer there, isn't sent at all.
+//! each workspace (`files:write`). One at a time, at most one a second in each workspace, as Slack
+//! asks of an app posting messages; Slack asking Dispatch to slow down (429, Retry-After) is
+//! waited out as long as it says, up to two minutes, and beyond that tried again two minutes
+//! later, uncounted. A try that fails is tried again after a minute, five and fifteen, then given
+//! up: not sent. One to a workspace where Communications no longer works, or a member no longer
+//! there, isn't sent at all.
 //!
 //! Each message to each person is kept until it's sent or given up, so sending picks up where it
 //! was after a restart, from the maintenance pass every minute. A try that may have posted before
@@ -299,10 +299,13 @@ pub enum Outcome {
         at: i64,
         photos: Vec<(String, String)>,
     },
+    /// Tried again at `at`, counted as a failure or not; `unposted` once it's known nothing of it
+    /// is in Slack, so the next try needn't look for an earlier post.
     Later {
         reason: String,
         at: i64,
         counted: bool,
+        unposted: bool,
     },
     Failed {
         reason: String,
@@ -363,7 +366,8 @@ impl Queue for Deliveries {
                 reason,
                 at,
                 counted,
-            } => db.retry_communications_delivery(dsp, item, *at, reason, *counted),
+                unposted,
+            } => db.retry_communications_delivery(dsp, item, *at, reason, *counted, *unposted),
             Outcome::Failed { reason } => db.fail_communications_delivery(dsp, item, reason),
         }
     }
@@ -452,7 +456,18 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
     .await;
     let mut args = reply::message(&channel, &message.text, &shown, &identity);
     args["metadata"] = json!({"event_type": EVENT, "event_payload": {"message": message.id}});
-    let answer = reply::post(&bot, &args, !shown.is_empty()).await?;
+    let answer = match reply::post(&bot, &args, !shown.is_empty()).await {
+        // Slack took nothing, and no earlier try's post is there: the next needn't look for one.
+        Err(error) if error.code == "slack_rate_limited" => {
+            return Ok(Outcome::Later {
+                reason: error.code,
+                at: now() + SLOWED_MS,
+                counted: false,
+                unposted: true,
+            });
+        }
+        answer => answer?,
+    };
     sent(answer["ts"].as_str().unwrap_or_default().to_owned())
 }
 
@@ -513,6 +528,7 @@ fn failure(item: &Due, error: &Error) -> Outcome {
             reason: code,
             at: now() + SLOWED_MS,
             counted: false,
+            unposted: false,
         };
     }
     let gone = [
@@ -527,6 +543,7 @@ fn failure(item: &Due, error: &Error) -> Outcome {
             reason: code,
             at: now() + after,
             counted: true,
+            unposted: false,
         },
         _ => Outcome::Failed { reason: code },
     }

@@ -88,30 +88,30 @@ One message to many members at once, as "the 9:20 wave is running 20 minutes lat
 in their own direct message with the app, and their answers come back together.
 
 - **Whom to:** Message a group, in New message, opens it beside the list, where the message being
-  written sits at the top. To finds people as New message does, and groups by name; each pick is
-  a chip, taken out again with its X, or Backspace. Below it, the groups to choose from, each
-  ticked and a chip once picked, and each left out while it holds nobody: **Today**, everyone on
-  a route on the DSP's own day, then each wave by when it starts, as Routes has read the day
+  written sits at the top. To finds people as New message does, and groups by name; each pick is a
+  chip, taken out again with its X, or Backspace. Below it, the groups to choose from, each ticked
+  and a chip once picked, and each left out while it holds nobody: **Today**, everyone on a route
+  on the DSP's own day, then each wave by when it starts, as Routes has read the day
   (`driver_routes`), while it's on and has read some; **Roles**, drivers, helpers and the office,
   as Driver Match knows them; and with two or more workspaces where Communications works,
   **Workspaces**, everyone and each workspace's. Today's and the roles' groups hold their people
-  in every workspace where Communications works; a workspace picked narrows them to it, and
-  picked alone is everyone in it; someone picked by name always gets it. Each person gets it
-  once, by one of their accounts: the one picked by name, else the first in a workspace picked,
-  the one they last wrote from first. It's called what was picked: one pick's name, else theirs
-  joined, someone by their first name, and past three the first two and how many others.
+  in every workspace where Communications works; a workspace picked narrows them to it, and picked
+  alone is everyone in it; someone picked by name always gets it. Each person gets it once, by one
+  of their accounts: the one picked by name, else the first in a workspace picked, the one last
+  written in first. It's called what was picked: one pick's name, else theirs joined, someone by
+  their first name, and past three the first two and how many others.
 - **Writing it:** as in a conversation, photos too, sent with Send to and how many it goes to.
 - **Sending:** in the background, one at a time, at most one a second in each workspace, as Slack
-  asks of an app posting messages (`chat:write`), in each person's direct message, opened first
-  if need be (`im:write`), under the sender's full name and photo as an answer goes
+  asks of an app posting messages (`chat:write`), in each person's direct message, opened first if
+  need be (`im:write`), under the sender's full name and photo as an answer goes
   (`chat:write.customize`), its photos uploaded once to each workspace (`files:write`). Slack
   asking Dispatch to slow down (429, Retry-After) is waited out as long as it says, up to two
   minutes, and beyond that tried again two minutes later; a try that fails is tried again after a
-  minute, five and fifteen, then given up; one to a workspace where Communications no longer works, or someone no longer in it,
-  isn't sent at all. Each is kept until it's sent or given up, so sending picks up after a
-  restart, from the pass every minute; a try that may have posted before the server stopped
-  looks for its post in their direct message first (`im:history`), by the metadata each post
-  carries, and keeps it rather than send a second.
+  minute, five and fifteen, then given up; one to a workspace where Communications no longer
+  works, or someone no longer in it, isn't sent at all. Each is kept until it's sent or given up,
+  so sending picks up after a restart, from the pass every minute; a try that may have posted
+  before the server stopped looks for its post in their direct message first (`im:history`), by
+  the metadata each post carries, and keeps it rather than send a second.
 - **The group** is listed among the conversations: two of its people's faces, its name and how
   many it went to, and the latest answer under its writer's first name, or the DSP's message. It
   waits while any conversation listed under it waits, by the longest wait, with a check that
