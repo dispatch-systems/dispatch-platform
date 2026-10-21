@@ -197,10 +197,12 @@ pub fn send_soon(state: &Arc<State>, dsp: &str) {
     let (state, dsp) = (state.clone(), dsp.to_owned());
     tokio::spawn(async move { drain(&state, &dsp).await });
 }
+/// Each DSP sends what's due on its own, so one with much to send, or waiting on Slack, holds up
+/// no other.
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
         for dsp in kit::dsps(&state, FAILED).await {
-            drain(&state, &dsp).await;
+            send_soon(&state, &dsp);
         }
     })
 }
