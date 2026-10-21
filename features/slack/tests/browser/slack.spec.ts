@@ -64,7 +64,7 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await add();
   await expect(workspaces.getByRole('heading', { name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Slack', exact: true }).click();
-  await page.getByLabel('Workspace: Dispatch Crew').click();
+  await page.getByLabel(/^Workspace: /).click();
   await page.getByRole('button', { name: 'Drivers', exact: true }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Connections', exact: true }).click();

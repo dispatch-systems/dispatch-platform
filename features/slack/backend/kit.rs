@@ -18,8 +18,8 @@ use std::collections::BTreeMap;
 pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<Workspace>> {
     db.slack_workspaces(dsp)
 }
-/// The version of each of the DSP's workspaces' logos, by team ID, for the address that shows
-/// it: of each Slack keeps one of. It changes as the logo does.
+/// The version of each logo Slack keeps of the DSP's workspaces, by team ID: what the address
+/// that shows it carries, which changes as the logo does.
 pub fn logos(db: &Store, dsp: &str) -> Result<BTreeMap<String, String>> {
     db.slack_logos(dsp)
 }

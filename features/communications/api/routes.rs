@@ -26,7 +26,6 @@ use dispatch_core::{
         upload::Upload,
     },
 };
-use dispatch_slack::kit;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 
@@ -284,7 +283,7 @@ fn logo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["v"])?;
     let team = slack_id(input.param("team"), b"T")?;
     let (kind, picture) =
-        kit::logo(db, c.dsp_id(), &team)?.ok_or_else(|| Error::new("not_found", 404))?;
+        conversations::logo(db, c.dsp_id(), &team)?.ok_or_else(|| Error::new("not_found", 404))?;
     Ok(Reply::picture(kind, picture.into()))
 }
 /// A photo or file attached to a message, as kept. One added for a message not sent yet is its

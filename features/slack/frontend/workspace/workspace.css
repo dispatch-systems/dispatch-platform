@@ -54,6 +54,8 @@
   width: max-content;
   min-width: 100%;
   max-width: min(320px, calc(100vw - 32px));
+  max-height: min(320px, calc(100dvh - 96px));
+  overflow-y: auto;
   padding: 6px;
   border-radius: 12px;
   box-shadow: 0 14px 36px var(--shadow-color);

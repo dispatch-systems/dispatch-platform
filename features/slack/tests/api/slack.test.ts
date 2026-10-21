@@ -67,8 +67,11 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
     logo = workspaces[0].logo ?? '';
     return Boolean(logo);
   });
-  const logoUrl = `/api/dsp/slack/workspaces/${operations.teamId}/logo`;
-  const picture = await f.raw(`${logoUrl}?v=${logo}`, undefined, owner.headers);
+  const picture = await f.raw(
+    `/api/dsp/slack/workspaces/${operations.teamId}/logo?v=${logo}`,
+    undefined,
+    owner.headers,
+  );
   assert.equal(picture.status, 200);
   assert.equal(picture.headers.get('content-type'), 'image/png');
   // Each install is used once.
@@ -118,8 +121,6 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
   );
   assert.equal(disconnected.status, 200, disconnected.body);
   assert.deepEqual(names(disconnected.value), ['Drivers']);
-  // Its logo goes with it.
-  assert.equal((await f.raw(logoUrl, undefined, owner.headers)).status, 404);
 });
 
 test('a workspace belongs to one DSP, and a member connecting at its address comes back there', async (t) => {

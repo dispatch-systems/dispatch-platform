@@ -29,7 +29,7 @@ const KINDS: &[(&[u8], &str)] = &[
 ];
 
 /// The address `url` names, if a picture may come from there: Slack's own servers, over HTTPS.
-pub fn address(url: &str) -> Option<url::Url> {
+fn address(url: &str) -> Option<url::Url> {
     let url = url::Url::parse(url).ok()?;
     let host = url.host_str()?;
     let slacks = host == HOSTS
@@ -40,7 +40,7 @@ pub fn address(url: &str) -> Option<url::Url> {
     (url.scheme() == "https" && slacks && plain).then_some(url)
 }
 /// The kind of picture `bytes` are, if one that's kept: a PNG, JPEG or GIF, and not too large.
-pub fn kind(bytes: &[u8]) -> Option<&'static str> {
+fn kind(bytes: &[u8]) -> Option<&'static str> {
     if bytes.len() > MOST {
         return None;
     }
@@ -58,16 +58,19 @@ pub async fn keep(bot: &Bot, icon: &Value) -> Result<()> {
     let lock = bot::lock("logo", &bot.dsp, &bot.team);
     let _keeping = lock.lock().await;
     let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
+    let kept = bot.state.read(move |db| db.slack_logo(&dsp, &team)).await?;
+    let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     if icon["image_default"] == true {
-        return bot
-            .state
-            .run(move |db| db.drop_slack_logo(&dsp, &team))
-            .await;
+        if kept.is_some() {
+            bot.state
+                .run(move |db| db.drop_slack_logo(&dsp, &team))
+                .await?;
+        }
+        return Ok(());
     }
     let Some(source) = icon[SIZE].as_str().map(str::to_owned) else {
         return Ok(());
     };
-    let kept = bot.state.read(move |db| db.slack_logo(&dsp, &team)).await?;
     if kept.is_some_and(|kept| kept.source == source) {
         return Ok(());
     }
@@ -75,7 +78,6 @@ pub async fn keep(bot: &Bot, icon: &Value) -> Result<()> {
     let url = address(&source).ok_or_else(refused)?;
     let picture = Slack::of(&bot.state.config)?.picture(&url, MOST).await?;
     kind(&picture).ok_or_else(refused)?;
-    let (dsp, team) = (bot.dsp.clone(), bot.team.clone());
     let logo = Logo { source, picture };
     bot.state
         .run(move |db| db.keep_slack_logo(&dsp, &team, &logo))

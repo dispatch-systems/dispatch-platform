@@ -19,7 +19,7 @@ use crate::{
 use dispatch_core::{
     Error, Result, State,
     db::Store,
-    manifest::people::{self, Everyone},
+    manifest::people::{self, Everyone, Photo},
 };
 use dispatch_slack::kit;
 use std::{collections::HashMap, sync::Arc};
@@ -340,6 +340,10 @@ pub fn named(workspace: &kit::Workspace) -> String {
         .label
         .clone()
         .unwrap_or_else(|| workspace.name.clone())
+}
+/// The workspace `team`'s logo, the copy Slack keeps of it: its kind, and its picture.
+pub fn logo(db: &Store, dsp: &str, team: &str) -> Result<Option<Photo>> {
+    kit::logo(db, dsp, team)
 }
 /// The DSP's workspaces, by name, each with whether Communications works there, the address of
 /// the app's Messages tab in it, whether it needs updating for Communications, and its logo's
