@@ -27,13 +27,7 @@ import {
   paycomSettingsPath,
 } from './urls.js';
 
-export {
-  dailyPageUrl,
-  mealPageUrl,
-  dailyTimecardsUrl,
-  employeeTimecardUrl,
-  mealComparisonUrl,
-};
+export { dailyPageUrl, mealPageUrl, dailyTimecardsUrl, employeeTimecardUrl, mealComparisonUrl };
 
 // Timecard's endpoints, as its pages call them. Only its own screens raise these, so their
 // words load with them.
