@@ -6,7 +6,7 @@
 use super::{
     app::scopes,
     bot::Bot,
-    fixture, members,
+    fixture, logo, members,
     slack::{Installed, Slack},
     storage::{Install, SlackStore, Starter, Workspace},
 };
@@ -189,8 +189,9 @@ pub async fn finish(
         undo(state, made).await;
     }
     let action = kept?;
-    // Whatever its admin approved now, its members are read as it allows.
+    // Whatever its admin approved now, its members are read as it allows, and its logo.
     members::read_soon(state, &id, &team);
+    logo::read_soon(state, &id, &team);
     let again = action == RECONNECTED && named.is_none();
     ensure(!again, "slack_workspace_connected", 409)?;
     state.read(move |db| account(db, &id)).await

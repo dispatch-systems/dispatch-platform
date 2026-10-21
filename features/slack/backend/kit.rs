@@ -1,17 +1,32 @@
-//! What another feature's integration reads of Slack beside the bot: the DSP's workspaces and
-//! their members, as Slack keeps them, which workspaces an integration works in and since when,
-//! and the IDs Driver Match knows each member by. Only reads: what Slack keeps, Slack alone
-//! writes.
+//! What another feature's integration reads of Slack beside the bot: the DSP's workspaces, their
+//! logos and their members, as Slack keeps them, which workspaces an integration works in and
+//! since when, and the IDs Driver Match knows each member by. Only reads: what Slack keeps,
+//! Slack alone writes.
 use super::{
-    people,
+    logo, people,
     storage::{Member, SlackStore, Workspace},
     work,
 };
-use dispatch_core::{Result, db::Store, manifest::people::Source};
+use dispatch_core::{
+    Result,
+    db::Store,
+    manifest::people::{Photo, Source},
+};
+use std::collections::BTreeMap;
 
 /// The DSP's workspaces, by name.
 pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<Workspace>> {
     db.slack_workspaces(dsp)
+}
+/// The version of each of the DSP's workspaces' logos, by team ID, for the address that shows
+/// it: of each Slack keeps one of. It changes as the logo does.
+pub fn logos(db: &Store, dsp: &str) -> Result<BTreeMap<String, String>> {
+    db.slack_logos(dsp)
+}
+/// The workspace `team`'s logo, as Slack keeps a copy of it, to show: its kind, as `image/png`,
+/// and its picture. None for a workspace without one of its own, or whose logo hasn't come yet.
+pub fn logo(db: &Store, dsp: &str, team: &str) -> Result<Option<Photo>> {
+    logo::picture(db, dsp, team)
 }
 /// Every member of the DSP's workspaces, with their workspace: bots aren't members.
 pub fn members(db: &Store, dsp: &str) -> Result<Vec<(String, Member)>> {

@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from 'lucide-react';
 import type { CommunicationsWorkspace } from '../../api/index.js';
-import { SlackLogo } from '../../../slack/frontend/index.js';
+import { workspaceLogoUrl } from '../../api/client.js';
+import { SlackLogo, WorkspaceLogo } from '../../../slack/frontend/index.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
 import { initials, tone } from '../format.js';
 
@@ -72,12 +73,18 @@ function Choice({
   );
 }
 
-/** A workspace's mark, the first letters of its name in its tone; Slack's for every one. */
+/**
+ * A workspace's mark: its logo, or the first letters of its name in its tone until it comes or
+ * without one; Slack's for every one.
+ */
 function Mark({ workspace }: { workspace?: CommunicationsWorkspace }) {
   return workspace ? (
-    <span className={`workspace-mark tone-${tone(workspace.name)}`} aria-hidden="true">
+    <WorkspaceLogo
+      src={workspace.logo ? workspaceLogoUrl(workspace.teamId, workspace.logo) : undefined}
+      className={`workspace-mark tone-${tone(workspace.name)}`}
+    >
       {initials(workspace.name)}
-    </span>
+    </WorkspaceLogo>
   ) : (
     <span className="workspace-mark all" aria-hidden="true">
       <SlackLogo size={14} />

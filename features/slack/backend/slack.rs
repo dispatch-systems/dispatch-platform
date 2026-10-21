@@ -1,6 +1,7 @@
 //! Slack, as Dispatch talks to it: installing the app in a workspace, calling Slack's API there
-//! as the app's bot, downloading the files it may read and sending those it uploads. Fixture
-//! mode's Slack answers in-process instead.
+//! as the app's bot, downloading the files it may read and sending those it uploads, and
+//! downloading the pictures Slack names, as a workspace's logo. Fixture mode's Slack answers
+//! in-process instead.
 use super::{
     app::{RETURN_PATH, scopes},
     fixture,
@@ -40,6 +41,15 @@ static DOWNLOADS: LazyLock<reqwest::Client> = LazyLock::new(|| {
 });
 /// Where Slack keeps the files its API names: a download from anywhere else is refused.
 const FILES_HOST: &str = "https://files.slack.com/";
+/// Downloads a picture from the address Slack names alone: one that sends it elsewhere is
+/// refused, not followed.
+static PICTURES: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("the TLS backend is built in")
+});
 
 /// A file's bytes as they arrive from Slack.
 pub type Bytestream = Pin<Box<dyn Stream<Item = std::io::Result<Bytes>> + Send>>;
@@ -285,6 +295,35 @@ impl Slack {
         Ok(Box::pin(
             response.bytes_stream().map_err(std::io::Error::other),
         ))
+    }
+    /// Downloads the picture Slack keeps at `url`, one of its own addresses that needs no token,
+    /// as a workspace's logo's is: its bytes, at most `most` of them, else it's refused.
+    pub async fn picture(&self, url: &url::Url, most: usize) -> Result<Vec<u8>> {
+        if let Self::Fixture = self {
+            return fixture::picture(url.as_str());
+        }
+        let response = timed("team.icon", PICTURES.get(url.clone()))
+            .await
+            .map_err(unreachable)?;
+        if response.status() != reqwest::StatusCode::OK {
+            return Err(Error::new("slack_unreachable", 502));
+        }
+        let too_large = || Error::new("slack_refused", 502);
+        if response
+            .content_length()
+            .is_some_and(|length| length > most as u64)
+        {
+            return Err(too_large());
+        }
+        let mut picture = Vec::new();
+        let mut bytes = response.bytes_stream();
+        while let Some(chunk) = bytes.try_next().await.map_err(unreachable)? {
+            if picture.len() + chunk.len() > most {
+                return Err(too_large());
+            }
+            picture.extend_from_slice(&chunk);
+        }
+        Ok(picture)
     }
     /// Sends a file's `length` bytes to `url`, where `files.getUploadURLExternal` said it goes,
     /// as they arrive. The address is Slack's own for this one file, so it needs no token.

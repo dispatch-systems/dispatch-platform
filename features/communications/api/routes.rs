@@ -26,6 +26,7 @@ use dispatch_core::{
         upload::Upload,
     },
 };
+use dispatch_slack::kit;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 
@@ -70,6 +71,7 @@ pub fn routes() -> Vec<Route> {
             add_photo,
         ),
         async_get("/api/dsp/communications/files/{id}", USE, file),
+        read("/api/dsp/communications/workspaces/{team}/logo", USE, logo),
         protocol(Method::GET, initials::PATH, |_, request| {
             Box::pin(async move { picture(request) })
         }),
@@ -275,6 +277,15 @@ async fn add_photo(state: Arc<State>, input: Input, access: Dsp, photo: Upload) 
     let kind = v::text(&input.query, "type", 1, 100)?;
     let added = reply::upload(&state, &c, access, &name, kind, photo).await?;
     Reply::of_status(&added, 201)
+}
+/// A workspace's logo, as Slack keeps a copy of it. Its address carries its version, `v`, so the
+/// browser keeps it until the logo changes.
+fn logo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &["v"])?;
+    let team = slack_id(input.param("team"), b"T")?;
+    let (kind, picture) =
+        kit::logo(db, c.dsp_id(), &team)?.ok_or_else(|| Error::new("not_found", 404))?;
+    Ok(Reply::picture(kind, picture.into()))
 }
 /// A photo or file attached to a message, as kept. One added for a message not sent yet is its
 /// adder's alone.

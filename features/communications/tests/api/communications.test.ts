@@ -106,7 +106,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(initials.headers.get('content-type'), 'image/png');
 });
 
-test('Communications answers only those whose role gives them it, and the profile with it alone', async (t) => {
+test('Communications answers only those whose role gives them it, and the profile and logos with it alone', async (t) => {
   const f = await fixture();
   t.after(f.close);
   // No default role holds communications.use, so a member is refused until a role grants it.
@@ -134,4 +134,18 @@ test('Communications answers only those whose role gives them it, and the profil
   const profile = await member.read(`${route}/conversations/${conversation.id}/profile`);
   assert.equal(profile.email, 'jordan.ellis@example.com');
   assert.equal(profile.slack, 'Operations');
+
+  // And the workspace's logo, the copy Slack keeps of it, though they don't manage Slack.
+  let logo = '';
+  await until(async () => {
+    logo = (await member.read(route)).workspaces[0].logo ?? '';
+    return Boolean(logo);
+  });
+  const picture = await f.raw(
+    `${route}/workspaces/T0FIXTURE1/logo?v=${logo}`,
+    undefined,
+    member.headers,
+  );
+  assert.equal(picture.status, 200);
+  assert.equal(picture.headers.get('content-type'), 'image/png');
 });

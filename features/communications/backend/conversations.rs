@@ -342,9 +342,11 @@ pub fn named(workspace: &kit::Workspace) -> String {
         .unwrap_or_else(|| workspace.name.clone())
 }
 /// The DSP's workspaces, by name, each with whether Communications works there, the address of
-/// the app's Messages tab in it, and whether it needs updating for Communications.
+/// the app's Messages tab in it, whether it needs updating for Communications, and its logo's
+/// version.
 pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>> {
     let on = kit::workspaces_on(db, dsp, ID)?;
+    let mut logos = kit::logos(db, dsp)?;
     Ok(kit::workspaces(db, dsp)?
         .into_iter()
         .map(|workspace| {
@@ -352,6 +354,7 @@ pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>>
             CommunicationsWorkspace {
                 on,
                 needs_update: on && !messages::approved(&workspace),
+                logo: logos.remove(&workspace.team),
                 chat_link: format!(
                     "https://slack.com/app_redirect?app={}&team={}",
                     workspace.app, workspace.team

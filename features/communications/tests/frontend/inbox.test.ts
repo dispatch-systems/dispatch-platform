@@ -100,6 +100,7 @@ test('the workspace chosen is shown while it is one of two or more where it work
     on,
     chatLink: '',
     needsUpdate: false,
+    logo: null,
   });
   const both = [workspace('T1'), workspace('T2')];
   assert.equal(shownWorkspace('T2', both), 'T2');

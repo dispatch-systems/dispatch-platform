@@ -72,7 +72,7 @@ Each is a folder of its own, `integrations/<name>/`, holding all of it:
 - `frontend/`: its card, section, calls and audit wording.
 - `migrations/` and `tests/`.
 
-Slack's manifest lists each one's integration, upkeep, migration and tables. `integrations/mod.rs` lists each folder. `dispatchdev new integration <name>` writes a new one, listed in each of these places. Another feature's integration through Slack takes the same shape in its own `integrations/`, using `kit` once it acts in Slack: the bot, which calls Slack and downloads and uploads files there; what Slack keeps of the DSP's workspaces and their members, to read, with which workspaces an integration works in and since when; linking channels to folders; and the queue for work that mustn't be lost. Another feature's screens use Slack's through `frontend/index.ts`: its mark (`SlackLogo`), and finishing an install Slack sent the browser back from (`useSlackReturn`) on a page that started one with `connectSlack({ page })`.
+Slack's manifest lists each one's integration, upkeep, migration and tables. `integrations/mod.rs` lists each folder. `dispatchdev new integration <name>` writes a new one, listed in each of these places. Another feature's integration through Slack takes the same shape in its own `integrations/`, using `kit` once it acts in Slack: the bot, which calls Slack and downloads and uploads files there; what Slack keeps of the DSP's workspaces, their logos and their members, to read, with which workspaces an integration works in and since when; linking channels to folders; and the queue for work that mustn't be lost. Another feature's screens use Slack's through `frontend/index.ts`: its mark (`SlackLogo`), a workspace's logo (`WorkspaceLogo`), and finishing an install Slack sent the browser back from (`useSlackReturn`) on a page that started one with `connectSlack({ page })`.
 
 - **Import Files,** Slack's own integration (`slack.import_files`, `integrations/import_files/`): the files
   and photos posted in the channels a workspace links to folders are saved there, where the DSP
@@ -131,6 +131,17 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   else its name in Slack, which follows Slack's. The pencil by its name at the top of its
   settings changes it, for those who manage the DSP's connections, and blank, has it go by its
   name in Slack again. Up to 60 characters.
+- **Logos:** each workspace's logo, as Slack describes it when asked about the workspace
+  (`team.info`, which `team:read` allows): hourly, and once it's connected, reconnected or
+  updated. Dispatch keeps a copy of it to show, as the dashboard shows no picture from elsewhere:
+  the one 132 pixels square, downloaded with no token from Slack's own servers alone (`https`,
+  `slack-edge.com` or a server under it), never following a redirect, as a PNG, JPEG or GIF of up
+  to 256 KB; and again only once Slack gives it at another address. A workspace whose logo is
+  Slack's own (`image_default`) has none, and the copy kept goes; one that fails to download
+  leaves the copy kept until the next hourly check. A workspace's goes with it. Another feature
+  shows it through `kit` (`logos`, each one's version, and `logo`, the picture), at an address
+  of its own behind its own permission, with `WorkspaceLogo` from `frontend/index.ts`, as
+  Communications' workspace picker does.
 - **Connecting:** New on DSP Connections lists Slack, which asks for an optional name and opens
   Connect Slack and Copy install link. Connect Slack sends the browser to Slack, which asks which workspace and for
   the app's permissions, and sends it back to Settings' Connections at the address it started
@@ -169,8 +180,8 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   install link. A link that no longer works, a
   workspace another DSP has, or an install cancelled at Slack ends on a page of its own, which
   says so in a line.
-- **Disconnecting** a workspace forgets it, its members, its integrations, what Import Files
-  and Sync Canvases linked, chose and noticed there, any reconnect of it started and not
+- **Disconnecting** a workspace forgets it, its members, its logo, its integrations, what
+  Import Files and Sync Canvases linked, chose and noticed there, any reconnect of it started and not
   finished (every table Slack declares in the DSP's database that keeps rows by `team_id`, an
   integration's too), and its tokens, frees it for any DSP, and then has Slack remove the app
   from it. Another feature's integration clears what it keeps of the workspace first, with its
@@ -285,13 +296,14 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   linked channels, the canvases chosen on their own, and each canvas kept with its document),
   `slack_connect_requests` (each with the workspace it named to Slack, to reconnect or update,
   the name the workspace it adds is to have, and the page it comes back to, migration 10) and
-  `slack_install_links` (each with the workspace it's for, none for adding one, migration 9), in
-  each DSP's own
+  `slack_install_links` (each with the workspace it's for, none for adding one, migration 9) and
+  `slack_logos` (migration 11: each workspace's logo, with the address it came from and its
+  version, the start of its picture's SHA-256), in each DSP's own
   database; `slack_teams`, which DSP each workspace belongs to, in the platform's;
   each workspace's tokens, encrypted in the DSP's secrets as `slack-<team>.enc`.
 - **Upkeep:** hourly, each working workspace of each active DSP with Slack on is asked for, as
-  the bot: that renews its token as it nears its end, keeps the workspace's name as Slack has
-  it, reads its members, and marks it broken if Slack no longer honours its tokens, so its card offers to
+  the bot: that renews its token as it nears its end, keeps the workspace's name and logo as
+  Slack has them, reads its members, and marks it broken if Slack no longer honours its tokens, so its card offers to
   reconnect it. Import Files saves the files due every minute, and catches up hourly. Sync
   Canvases syncs the canvases due every minute, and lists its channels' every ten minutes.
 - **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as
@@ -314,7 +326,9 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   its choosing, with blocks showing only files it finished uploading
   (`files.getUploadURLExternal`, then `files.completeUploadExternal`), and what it posted is
   kept for the server's run, each with its text, name, photo and blocks, which a test reads with
-  `fixture::posted`; a dependant's tests read it, connect a workspace, read its members, switch
+  `fixture::posted`. Operations has a logo of its own, a box on orange, at an address on Slack's
+  servers that fixture mode's Slack answers itself, and Drivers and Managers Slack's own. A
+  dependant's tests read what the bot posted, connect a workspace, read its members, switch
   an integration and disconnect it through `dispatch_slack::testing`, behind Slack's `testing`
   feature. It answers each method
   Dispatch calls, and an integration's own answer a method only that integration calls; any

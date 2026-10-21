@@ -70,6 +70,9 @@ pub struct CommunicationsWorkspace {
     /// Whether, Communications being on there, the workspace's admin has yet to approve a
     /// permission it uses: updating Slack there asks for it.
     pub needs_update: bool,
+    /// The version of its logo, which `workspaces/{team}/logo?v=` shows: none for a workspace
+    /// without one of its own, or whose logo hasn't come yet.
+    pub logo: Option<String>,
 }
 
 /// A conversation with a member of one of the DSP's workspaces.
