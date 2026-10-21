@@ -645,7 +645,7 @@
   min-height: 0;
   padding: 0.75em 1em;
   border: 1px solid var(--border);
-  border-radius: calc(var(--text-size));
+  border-radius: var(--text-size);
   background: var(--card);
   color: var(--foreground);
   font-size: var(--ui-size);
@@ -777,7 +777,10 @@
   font-weight: 500;
   text-decoration: none;
 }
-.profile-button svg,
+.profile-button svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
+}
 .profile dt svg {
   width: calc(var(--ui-size) + 1px);
   height: calc(var(--ui-size) + 1px);

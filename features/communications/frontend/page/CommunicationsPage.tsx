@@ -42,7 +42,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const page = useRef<HTMLDivElement>(null);
   const layout = useLayout(page);
   const manages = can(view, 'connections.manage');
-  const { inbox, changed, error, refresh, show, readOlder } = useInbox();
+  const [chosen, choose] = useWorkspaceChoice(view.dsp.id, user);
+  const { inbox, team, changed, error, refresh, show, readOlder } = useInbox(chosen);
   // Slack sends those who connected or updated it from here back here, to finish.
   const returned = useSlackReturn(async (state, code) => {
     try {
@@ -54,7 +55,6 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [open, setOpen] = useState(() => hashQuery().get('open') ?? undefined);
   const [pinned, setPinned] = useState<Conversation>();
   const [composing, setComposing] = useState(false);
-  const [chosen, choose] = useWorkspaceChoice(view.dsp.id, user);
   const now = useNow(TICK_MS);
   const select = useCallback((id?: string) => {
     setOpen(id);
@@ -64,12 +64,6 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   }, []);
   const closed = useCallback(() => select(undefined), [select]);
   const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
-  // The workspace the lists show, while it's still one of two or more Communications works in;
-  // else every one.
-  const team =
-    working.length > 1 && working.some((workspace) => workspace.teamId === chosen)
-      ? chosen
-      : undefined;
   // Side by side, a conversation is always open: the first listed, until another is chosen, and
   // as the page widens to show both.
   const first = inbox?.conversations.find(

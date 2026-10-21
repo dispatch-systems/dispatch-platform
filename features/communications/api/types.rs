@@ -8,7 +8,8 @@ use dispatch_core::manifest::people::PersonRole;
 use serde::Serialize;
 
 /// `GET /api/dsp/communications`: the DSP's conversations, those waiting first, the longest
-/// waiting first, then the latest answered, with the workspaces they're in and who is typing.
+/// waiting first, then the latest answered, of every workspace or the one asked for, with the
+/// workspaces they're in and who is typing.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -23,7 +24,8 @@ pub struct Communications {
     /// How many conversations wait on an answer.
     pub waiting: usize,
     pub conversations: Vec<Conversation>,
-    /// Whether older answered conversations are left to read, with `conversations?before=`.
+    /// Whether older answered conversations are left to read, with `conversations?before=`, of
+    /// the same workspaces.
     pub more: bool,
     pub workspaces: Vec<CommunicationsWorkspace>,
     pub typing: Typing,
@@ -179,7 +181,7 @@ pub struct MessageFile {
 }
 
 /// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
-/// to it, the closest first, in every workspace or one, or the answered ones before `before`.
+/// to it, the closest first, or the answered ones before `before`, in every workspace or one.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(

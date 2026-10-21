@@ -61,9 +61,15 @@ pub async fn connected(team: &str) -> (impl Drop, Arc<State>, Bot) {
     let config = store.config.clone();
     drop(store);
     let state = State::new(config).unwrap();
-    let bot = slack::connect(&state, &dsp, team, APPROVED).await;
-    slack::read_members(&bot).await.unwrap();
+    let bot = workspace(&state, &dsp, team).await;
     (root, state, bot)
+}
+/// Connects the DSP's workspace `team`, its admin having approved all the app asks for, and
+/// reads its members.
+pub async fn workspace(state: &Arc<State>, dsp: &str, team: &str) -> Bot {
+    let bot = slack::connect(state, dsp, team, APPROVED).await;
+    slack::read_members(&bot).await.unwrap();
+    bot
 }
 /// The DSP's owner, Test Owner, signed in and acting with Communications, under the name
 /// `first` `last` and the email address `email` in place of theirs.

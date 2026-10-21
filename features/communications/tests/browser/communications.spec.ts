@@ -210,13 +210,14 @@ test('with two workspaces, the lists show the one chosen, still chosen later, an
 
   // Contacts: Drivers' members, A to Z; one with no conversation yet starts one.
   await list.getByRole('tab', { name: 'Contacts' }).click();
-  await expect(list.getByRole('listitem')).toHaveText([
+  const contacts = page.getByRole('region', { name: 'Contacts' });
+  await expect(contacts.getByRole('listitem')).toHaveText([
     /Cameron Hayes/,
     /Casey Rivera/,
     /Drew Sullivan/,
     /Jordan Ellis/,
   ]);
-  await list.getByRole('button', { name: /^Casey Rivera/ }).click();
+  await contacts.getByRole('button', { name: /^Casey Rivera/ }).click();
   const casey = page.getByRole('region', { name: 'Casey Rivera' });
   await expect(casey.getByLabel('Message')).toBeEnabled();
 

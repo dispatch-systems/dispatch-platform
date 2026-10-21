@@ -42,7 +42,9 @@ export function ContactList({
     () => getContacts(typed, team).then((found) => found.contacts),
     [typed, team],
   );
-  const { found, failed } = useFound(read, revision, typed ? 200 : 0);
+  // Those found by a name are another list from all of them, as is each workspace's.
+  const list = `${team ?? ''} ${typed ? 'found' : 'all'}`;
+  const { found, failed } = useFound(read, list, revision, typed ? 200 : 0);
   const chosen = useAction(pick);
   if (failed || (typed && found?.length === 0))
     return <p className="list-empty">{failed || 'No matches'}</p>;

@@ -42,7 +42,7 @@ export function ConversationList({
     () => searchConversations(typed, team).then((found) => found.conversations),
     [typed, team],
   );
-  const { found, failed } = useFound(typed ? search : undefined, inbox.revision, 200);
+  const { found, failed } = useFound(typed ? search : undefined, team ?? '', inbox.revision, 200);
   const rows = (conversations: readonly Conversation[]) => (
     <ul className="convos">
       {conversations.map((conversation) => (

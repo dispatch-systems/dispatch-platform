@@ -56,7 +56,7 @@ export function ListPane({
       waitingIn.set(conversation.teamId, (waitingIn.get(conversation.teamId) ?? 0) + 1);
   const waiting = team ? (waitingIn.get(team) ?? 0) : inbox.waiting;
   return (
-    <section className="pane-list" aria-label="Conversations">
+    <section className="pane-list" aria-label={contacts ? 'Contacts' : 'Conversations'}>
       <div className="list-tools">
         {working.length > 1 && (
           <WorkspacePicker
@@ -73,7 +73,7 @@ export function ListPane({
           onChange={setTyped}
         />
         <Tabs
-          label="List"
+          label="Show"
           value={contacts ? 'contacts' : 'messages'}
           onChange={(value) => setContacts(value === 'contacts')}
           items={[

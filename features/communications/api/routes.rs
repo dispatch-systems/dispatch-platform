@@ -110,13 +110,16 @@ fn before(query: &Value) -> Result<Option<(i64, String)>> {
     Ok(Some((at, id.to_owned())))
 }
 
+/// The conversations waiting, and the latest answered of the workspace `team` or every one.
 fn overview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.query, &[])?;
+    v::fields(&input.query, &["team"])?;
+    let team = team(&input.query)?;
     Reply::of(&conversations::overview(
         db,
         c.state,
         c.dsp_id(),
         c.actor(),
+        team.as_deref(),
     )?)
 }
 fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -128,8 +131,8 @@ fn team(query: &Value) -> Result<Option<String>> {
     let team = optional_text(query, "team", 32)?;
     (!team.is_empty()).then(|| slack_id(team, b"T")).transpose()
 }
-/// Conversations found by a name typed, `q`, in the workspace `team` or every one, or the
-/// answered ones before `before`.
+/// Conversations found by a name typed, `q`, or the answered ones before `before`, in the
+/// workspace `team` or every one.
 fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["q", "team", "before"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();
@@ -143,9 +146,14 @@ fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
             typed,
         )?);
     }
-    ensure(team.is_none(), "invalid_input", 400)?;
     let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
-    Reply::of(&conversations::older(db, c.state, c.dsp_id(), (at, &id))?)
+    Reply::of(&conversations::older(
+        db,
+        c.state,
+        c.dsp_id(),
+        team.as_deref(),
+        (at, &id),
+    )?)
 }
 fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["before"])?;

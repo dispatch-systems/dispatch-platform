@@ -183,27 +183,28 @@ for the DSP, for anyone with `communications.use`, who needs no permission of th
 ## Finding people
 
 New message and Contacts list every active member of the DSP's workspaces where it's on, or of
-one of them, with their photo, role and conversation, by name, up to 2,000. A name typed, misspelt or not, finds them, and the list's
-conversations, the closest first: each word typed is matched to the word of a name it starts, or
-shares its first letter and most of its letters with in order; case and accents don't count. The
-letters that matched come with each, as runs of the name's UTF-16 code units, for the page to
-mark.
+one of them, with their photo, role and conversation, by name, up to 2,000. A name typed,
+misspelt or not, finds them, and the list's conversations, the closest first: each word typed is
+matched to the word of a name it starts, or shares its first letter and most of its letters with
+in order; case and accents don't count. The letters that matched come with each, as runs of the
+name's UTF-16 code units, for the page to mark.
 
 ## API
 
 Behind `communications.use`:
 
-- `GET /api/dsp/communications`: the conversations waiting, the longest waiting first, then the
-  fifty latest answered, with the DSP's workspaces (whether it works in each, the address of
-  the app's Messages tab there, `chatLink`, and whether, on there, it needs updating for what
-  Communications uses, `needsUpdate`), who is typing, each with their person and photo, and the
-  latest change (`revision`).
+- `GET /api/dsp/communications`, with `team=<id>` for one workspace's answered conversations
+  alone: the conversations waiting, the longest waiting first, then the fifty latest answered,
+  with the DSP's workspaces (whether it works in each, the address of the app's Messages tab
+  there, `chatLink`, and whether, on there, it needs updating for what Communications uses,
+  `needsUpdate`), who is typing, each with their person and photo, and the latest change
+  (`revision`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar.
 - `GET …/updates?after=<revision>&typing=<version>`: the long poll, with the workspaces as they
   are.
-- `GET …/conversations?q=<name>`, with `team=<id>` for one workspace's alone, or
-  `?before=<lastAt>:<id>`: the fifty conversations found closest to a name, or the answered
-  ones before the last shown.
+- `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`, with `team=<id>` for one
+  workspace's alone: the fifty conversations found closest to a name, or the answered ones
+  before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written.
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, besides the
