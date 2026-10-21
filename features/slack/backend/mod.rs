@@ -10,7 +10,7 @@
 //!   Slack's own are a folder each in `integrations/`, at the crate's root, as Import Files and
 //!   Sync Canvases are, each keeping what's in the channels `channel_links` links to folders.
 //! - `members` and `people`: the members of its workspaces, and how Driver Match reads them;
-//!   `author`, who one is to the DSP.
+//!   `author`, who one is to the DSP. `logo`: each workspace's logo, kept to show.
 //! - `inbound`: Slack's requests, checked and routed to what handles them, such as `home`, its
 //!   Home tab, and `messages`, what people write to the app directly.
 //! - `storage`, `maintenance` and `pages`: what's kept, the hourly check, and the install
@@ -32,6 +32,7 @@ pub(crate) mod inbound;
 pub(crate) mod integrations;
 pub(crate) mod kit;
 pub(crate) mod link;
+pub(crate) mod logo;
 pub(crate) mod maintenance;
 pub(crate) mod members;
 pub(crate) mod messages;

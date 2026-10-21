@@ -1,3 +1,4 @@
+import http from 'node:http';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
@@ -106,7 +107,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(initials.headers.get('content-type'), 'image/png');
 });
 
-test('Communications answers only those whose role gives them it, and the profile with it alone', async (t) => {
+test('Communications answers only those whose role gives them it, and the profile and logos with it alone', async (t) => {
   const f = await fixture();
   t.after(f.close);
   // No default role holds communications.use, so a member is refused until a role grants it.
@@ -134,4 +135,24 @@ test('Communications answers only those whose role gives them it, and the profil
   const profile = await member.read(`${route}/conversations/${conversation.id}/profile`);
   assert.equal(profile.email, 'jordan.ellis@example.com');
   assert.equal(profile.slack, 'Operations');
+
+  // And the workspace's logo, the copy Slack keeps of it, though they don't manage Slack.
+  let logo = '';
+  await until(async () => {
+    logo = (await member.read(route)).workspaces[0].logo ?? '';
+    return Boolean(logo);
+  });
+  // At the DSP's own address, where the member signs in, which `fetch` can't name.
+  const picture = await new Promise<http.IncomingMessage>((resolve, reject) =>
+    http
+      .get(
+        `${f.env.DISPATCH_ORIGIN}${route}/workspaces/T0FIXTURE1/logo?v=${logo}`,
+        { headers: member.headers },
+        resolve,
+      )
+      .on('error', reject),
+  );
+  picture.resume();
+  assert.equal(picture.statusCode, 200);
+  assert.equal(picture.headers['content-type'], 'image/png');
 });

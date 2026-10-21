@@ -19,7 +19,7 @@ use crate::{
 use dispatch_core::{
     Error, Result, State,
     db::Store,
-    manifest::people::{self, Everyone},
+    manifest::people::{self, Everyone, Photo},
 };
 use dispatch_slack::kit;
 use std::{collections::HashMap, sync::Arc};
@@ -341,10 +341,16 @@ pub fn named(workspace: &kit::Workspace) -> String {
         .clone()
         .unwrap_or_else(|| workspace.name.clone())
 }
+/// The workspace `team`'s logo, the copy Slack keeps of it: its kind, and its picture.
+pub fn logo(db: &Store, dsp: &str, team: &str) -> Result<Option<Photo>> {
+    kit::logo(db, dsp, team)
+}
 /// The DSP's workspaces, by name, each with whether Communications works there, the address of
-/// the app's Messages tab in it, and whether it needs updating for Communications.
+/// the app's Messages tab in it, whether it needs updating for Communications, and its logo's
+/// version.
 pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>> {
     let on = kit::workspaces_on(db, dsp, ID)?;
+    let mut logos = kit::logos(db, dsp)?;
     Ok(kit::workspaces(db, dsp)?
         .into_iter()
         .map(|workspace| {
@@ -352,6 +358,7 @@ pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>>
             CommunicationsWorkspace {
                 on,
                 needs_update: on && !messages::approved(&workspace),
+                logo: logos.remove(&workspace.team),
                 chat_link: format!(
                     "https://slack.com/app_redirect?app={}&team={}",
                     workspace.app, workspace.team

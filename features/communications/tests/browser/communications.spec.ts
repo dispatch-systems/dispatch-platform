@@ -163,7 +163,7 @@ test('Slack needing an update covers Communications alone, with no way to close 
   await expect(update).toHaveCount(0);
 });
 
-test('with two workspaces, the lists show the one chosen, still chosen later, and Contacts opens a conversation', async ({
+test('with two workspaces, each by its logo or initials, the lists show the one chosen, still chosen later, and Contacts opens a conversation', async ({
   page,
   dispatch,
 }) => {
@@ -190,6 +190,15 @@ test('with two workspaces, the lists show the one chosen, still chosen later, an
     );
   expect((await write('T0FIXTURE1', 'U0FIXJORDAN', 'Running late')).status).toBe(200);
   expect((await write('T0FIXTURE2', 'U0FIXCAM', 'Can I swap Saturday?')).status).toBe(200);
+  // Operations' logo, which Dispatch keeps a copy of once it's connected.
+  await expect
+    .poll(async () => {
+      const { workspaces } = await owner.read('/api/dsp/communications');
+      return (workspaces as { teamId: string; logo: string | null }[]).some(
+        (workspace) => workspace.teamId === 'T0FIXTURE1' && workspace.logo,
+      );
+    })
+    .toBe(true);
 
   await login(page);
   await openDsp(page, 'Northline Logistics');
@@ -199,8 +208,12 @@ test('with two workspaces, the lists show the one chosen, still chosen later, an
   const cameron = list.getByRole('listitem').filter({ hasText: 'Cameron Hayes' });
   await expect(jordan).toBeVisible();
   await expect(cameron).toBeVisible();
-  // Drivers alone, which stays chosen when the page opens again.
+  // Each workspace by its logo, or the first letters of its name without one.
   await list.getByLabel('Workspace: All workspaces').click();
+  await expect(list.getByRole('button', { name: /^Operations/ }).locator('img')).toBeVisible();
+  await expect(list.getByRole('button', { name: /^Drivers/ })).toContainText('DR');
+  await expect(list.getByRole('button', { name: /^Drivers/ }).locator('img')).toHaveCount(0);
+  // Drivers alone, which stays chosen when the page opens again.
   await list.getByRole('button', { name: /^Drivers/ }).click();
   await expect(jordan).toHaveCount(0);
   await expect(cameron).toBeVisible();

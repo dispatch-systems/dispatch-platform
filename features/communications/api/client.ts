@@ -103,3 +103,6 @@ export const addPhoto = (photo: File, progress?: (sent: number) => void, signal?
   );
 /** Where a photo or file attached to a message is read from. */
 export const fileUrl = (id: string) => `${communicationsUrl}/files/${id}`;
+/** The address of the workspace `team`'s logo, at its `version`, which it carries. */
+export const workspaceLogoUrl = (team: string, version: string) =>
+  `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;

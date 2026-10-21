@@ -37,6 +37,9 @@ pub struct SlackWorkspace {
     pub connected_by: Option<String>,
     pub by_link: bool,
     pub connected_at: String,
+    /// The version of its logo, which `workspaces/{team}/logo?v=` shows: none for a workspace
+    /// without one of its own, or whose logo hasn't come yet.
+    pub logo: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]

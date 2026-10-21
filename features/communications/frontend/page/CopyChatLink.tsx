@@ -3,6 +3,7 @@ import type { CommunicationsWorkspace } from '../../api/index.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
+import { WorkspaceMark } from './WorkspaceMark.js';
 
 // Copy chat link: the address that opens the DSP's chat with Dispatch in Slack, for employees
 // to write to it. With one workspace it's copied at once; with several, picked from a menu.
@@ -33,7 +34,8 @@ export function CopyChatLink({ workspaces }: { workspaces: readonly Communicatio
     >
       {workspaces.map((workspace) => (
         <button key={workspace.teamId} onClick={() => void copy.run(workspace)}>
-          {workspace.name}
+          <WorkspaceMark workspace={workspace} />
+          <span className="workspace-name">{workspace.name}</span>
         </button>
       ))}
     </Popover>

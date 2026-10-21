@@ -9,6 +9,7 @@
 //! few files, one too large to keep, which download as bytes made up to their size, and a
 //! canvas, which downloads as Slack's HTML of it, holding a photo that downloads as a picture;
 //! a test edits a workspace's canvas with `edit_canvas`. Jordan sent the app a photo directly.
+//! Operations has a logo of its own, which downloads as a picture, and the others Slack's.
 //! The bot posts in direct conversations and the channels it's in, under a name and photo of
 //! its choosing, showing the files it uploaded, and what it posted is kept for the server's run,
 //! which a test reads with `posted`. Requests it sends are signed with a secret the tests share.
@@ -335,6 +336,25 @@ fn users(workspace: &str) -> Vec<Value> {
 }
 /// Where its members' photos are, as Slack's are on its own servers.
 const AVATARS: &str = "https://avatars.example.com/fixture/";
+/// Where Operations' logo is, as a workspace's own is on Slack's servers.
+const LOGO: &str = "https://avatars.slack-edge.com/fixture/T0FIXTURE1_132.png";
+/// Slack's own logo, which a workspace that gave it none shows.
+const SLACKS_LOGO: &str = "https://a.slack-edge.com/80588/img/avatars-teams/ava_0001-132.png";
+/// Operations' logo: a box on orange, 132 pixels square.
+const LOGO_PICTURE: &[u8] = include_bytes!("fixture-logo.png");
+/// The workspace's logo, as `team.info` describes it: Operations' its own, the others' Slack's.
+fn icon(team: &str) -> Value {
+    if team == TEAMS[0].0 {
+        json!({"image_132": LOGO, "image_default": false})
+    } else {
+        json!({"image_132": SLACKS_LOGO, "image_default": true})
+    }
+}
+/// The picture at `url`: Operations' logo, its only one.
+pub fn picture(url: &str) -> Result<Vec<u8>> {
+    ensure(url == LOGO, "slack_unreachable", 502)?;
+    Ok(LOGO_PICTURE.to_vec())
+}
 /// How long its tokens last, as Slack's rotating tokens do.
 const LASTS_MS: i64 = 12 * 60 * 60 * 1000;
 
@@ -377,9 +397,9 @@ pub fn install(code: &str) -> Result<Installed> {
 pub fn refresh(refresh: &str) -> Result<Tokens> {
     Ok(tokens(workspace(refresh, "fixture-refresh:")?))
 }
-/// Slack's answer to a call with `args`: the workspace for `team.info`; its members, on one
-/// page, for `users.list`; the channels the bot sees, joins, leaves or is asked of for
-/// `conversations.*`; a file, or a channel's files, for `files.*`; `ok` to publishing a Home
+/// Slack's answer to a call with `args`: the workspace, with its logo, for `team.info`; its
+/// members, on one page, for `users.list`; the channels the bot sees, joins, leaves or is asked
+/// of for `conversations.*`; a file, or a channel's files, for `files.*`; `ok` to publishing a Home
 /// tab; the message posted, for `chat.postMessage`; a file the bot uploads, for
 /// `files.getUploadURLExternal` and `files.completeUploadExternal`; and an integration's own
 /// answer to a method only it calls. Any other method is a mistake: answering it would hide a call no test or
@@ -388,7 +408,8 @@ pub fn call(token: &str, method: &str, args: &Value) -> Result<Value> {
     let team = workspace(token, "fixture-access:")?;
     let asked = args["channel"].as_str().unwrap_or("");
     Ok(match method {
-        "team.info" => json!({"ok": true, "team": {"id": team, "name": name(team)}}),
+        "team.info" => json!({"ok": true, "team": {"id": team, "name": name(team),
+            "icon": icon(team)}}),
         "users.list" => json!({
             "ok": true,
             "members": users(&name(team)),

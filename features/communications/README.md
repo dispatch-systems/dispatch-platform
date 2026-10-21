@@ -35,10 +35,12 @@ unavailable.
   the list, or the conversation open, which takes the whole page, with a way back. The
   conversation open is in the address (`?open=<id>`).
 - **The list:** with two or more workspaces where Communications works, which it shows, every
-  one or one of them, each with how many of its conversations wait; that choice is remembered
-  in the browser for each member at each DSP, and reads as every one once the workspace is no
-  longer one of two or more where it works. Then Search, and Messages or Contacts, whichever
-  Search searches, by a name, misspelt or not, marking the letters that matched.
+  one or one of them, each by its logo (else the first letters of its name), as the Update
+  popup, Copy chat link and the profile's Slack row show it too, with how many of its
+  conversations wait; that choice is remembered in the browser for each member at each DSP, and
+  reads as every one once the workspace is no longer one of two or more where it works. Then
+  Search, and Messages or Contacts, whichever Search searches, by a name, misspelt or not,
+  marking the letters that matched.
 - **Messages:** Waiting, the longest waiting first, each with how long it has, amber from 15
   minutes and red from 30, and a check, shown as it's pointed at or reached by the keyboard
   beside the conversation, that marks it done without a reply; then Responded, the latest
@@ -196,9 +198,9 @@ Behind `communications.use`:
 - `GET /api/dsp/communications`, with `team=<id>` for one workspace's answered conversations
   alone: the conversations waiting, the longest waiting first, then the fifty latest answered,
   with the DSP's workspaces (whether it works in each, the address of the app's Messages tab
-  there, `chatLink`, and whether, on there, it needs updating for what Communications uses,
-  `needsUpdate`), who is typing, each with their person and photo, and the latest change
-  (`revision`).
+  there, `chatLink`, whether, on there, it needs updating for what Communications uses,
+  `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
+  with their person and photo, and the latest change (`revision`).
 - `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar.
 - `GET …/updates?after=<revision>&typing=<version>`: the long poll, with the workspaces as they
   are.
@@ -218,6 +220,8 @@ Behind `communications.use`:
   waits (`waitingSince`) and when it was last written in (`lastAt`).
 - `POST …/uploads?name=&type=`: a photo for a message not sent yet, as its bytes.
 - `GET …/files/{id}`: a photo or file attached to a message.
+- `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read
+  through Slack's `kit`; the browser keeps it until its version changes.
 
 Public, on the admin's address: `GET /communications/initials/1/{letters}.png`.
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Communications, CommunicationsWorkspace, Conversation } from '../../api/index.js';
 import { marked, shownWorkspace, updated, withOlder } from '../../frontend/inbox.js';
-import { initials, letter, waited } from '../../frontend/format.js';
+import { letter, waited } from '../../frontend/format.js';
 
 /** A conversation, waiting since `since` or answered, its latest message written at `at`. */
 const conversation = (
@@ -100,6 +100,7 @@ test('the workspace chosen is shown while it is one of two or more where it work
     on,
     chatLink: '',
     needsUpdate: false,
+    logo: null,
   });
   const both = [workspace('T1'), workspace('T2')];
   assert.equal(shownWorkspace('T2', both), 'T2');
@@ -110,18 +111,12 @@ test('the workspace chosen is shown while it is one of two or more where it work
   assert.equal(shownWorkspace('T2', [workspace('T2'), workspace('T3', false)]), undefined);
 });
 
-test('a contact is listed under their name’s first letter, and a workspace marked by its initials', () => {
+test('a contact is listed under their name’s first letter', () => {
   assert.deepEqual(['Ana Silva', 'émile Roy', 'Øyvind Berg', '2nd Shift', ' kevin'].map(letter), [
     'A',
     'E',
     'Ø',
     '#',
     'K',
-  ]);
-  assert.deepEqual(['BHL Drivers', 'Drivers', 'blue heron logistics', ''].map(initials), [
-    'BD',
-    'DR',
-    'BH',
-    '?',
   ]);
 });

@@ -22,4 +22,9 @@ chatLink: string,
  * Whether, Communications being on there, the workspace's admin has yet to approve a
  * permission it uses: updating Slack there asks for it.
  */
-needsUpdate: boolean, };
+needsUpdate: boolean,
+/**
+ * The version of its logo, which `workspaces/{team}/logo?v=` shows: none for a workspace
+ * without one of its own, or whose logo hasn't come yet.
+ */
+logo: string | null, };

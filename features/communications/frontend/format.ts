@@ -84,7 +84,7 @@ export function preview(message: Message) {
     : first.name;
 }
 
-/** The identity tone a name's initials are drawn in. */
+/** The identity tone someone's initials are drawn in. */
 export const tone = (name: string) =>
   ['violet', 'sage', 'slate', 'steel'][
     [...name].reduce((hash, ch) => (hash * 31 + ch.codePointAt(0)!) >>> 0, 0) % 4
@@ -94,13 +94,4 @@ export const tone = (name: string) =>
 export function letter(name: string) {
   const first = [...name.trim().normalize('NFD')][0]?.toLocaleUpperCase('en-US') ?? '';
   return /\p{L}/u.test(first) ? first : '#';
-}
-/** A workspace's mark: the first letters of its first two words, or of its one word. */
-export function initials(name: string) {
-  const words = (name.toLocaleUpperCase('en-US').match(/[\p{L}\p{N}]+/gu) ?? []).map((word) => [
-    ...word,
-  ]);
-  const [first, second] = words;
-  if (!first) return '?';
-  return second ? `${first[0]}${second[0]}` : first.slice(0, 2).join('');
 }

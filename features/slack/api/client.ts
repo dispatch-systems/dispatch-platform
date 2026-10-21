@@ -102,6 +102,9 @@ export const disconnectSlack = (team: string) =>
   call<SlackAccount>(`/api/dsp/slack/workspaces/${encodeURIComponent(team)}/disconnect`, {});
 export const workspaceUrl = (team: string) =>
   `/api/dsp/slack/workspaces/${encodeURIComponent(team)}`;
+/** The address of the workspace `team`'s logo, at its `version`, which it carries. */
+export const workspaceLogoUrl = (team: string, version: string) =>
+  `${workspaceUrl(team)}/logo?v=${version}`;
 /** The channels of the workspace `team` Dispatch may be in, with whether it's in each. */
 export function useSlackChannels(team: string) {
   const url = `${workspaceUrl(team)}/channels`;

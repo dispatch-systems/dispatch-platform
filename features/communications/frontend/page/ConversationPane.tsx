@@ -144,6 +144,7 @@ export function ConversationPane({
           id={profileId}
           conversation={id}
           person={person}
+          workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
           timeZone={timeZone}
           docked={docked}
           close={closeProfile}

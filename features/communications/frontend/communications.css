@@ -417,11 +417,20 @@
   width: 58%;
   height: 58%;
 }
+/* Beside a line of text, as the profile's workspace. */
+.workspace-mark.small {
+  width: calc(var(--ui-size) + 6px);
+  height: calc(var(--ui-size) + 6px);
+  border-radius: 5px;
+  font-size: calc(var(--ui-size) - 5px);
+}
 .workspace-picker .account-popover {
   inset: calc(100% + 6px) 0 auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-height: min(calc(var(--field-height) * 9), calc(100dvh - 96px));
+  overflow-y: auto;
   padding: 6px;
   border-radius: 12px;
   box-shadow: 0 14px 36px var(--shadow-color);
@@ -828,6 +837,11 @@
   text-align: right;
   overflow-wrap: anywhere;
 }
+.profile-workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
 
 /* Writing a message. */
 .composer {
@@ -959,6 +973,8 @@
   width: max-content;
   min-width: 100%;
   max-width: min(280px, calc(100vw - 32px));
+  max-height: min(320px, calc(100dvh - 96px));
+  overflow-y: auto;
 }
 
 /* New message: whom to write to. */
@@ -1164,11 +1180,11 @@
   .communications .heading-actions {
     gap: 8px;
   }
-  .communications .heading-actions button > span,
+  .communications .heading-actions > button > span,
   .chat-link-button > span {
     display: none;
   }
-  .communications .heading-actions button,
+  .communications .heading-actions > button,
   .chat-link-button {
     padding: 8px 10px;
   }
@@ -1217,5 +1233,12 @@
   }
   .update-workspace {
     flex-wrap: wrap;
+  }
+  /* Its buttons a line of their own, under its mark and name. */
+  .update-buttons {
+    flex-basis: 100%;
+  }
+  .update-buttons > * {
+    flex: 1;
   }
 }

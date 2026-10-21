@@ -14,6 +14,7 @@ import { DataState, Empty, Loading } from '../../../../core/shell/frontend/ui/in
 import { useSlackAccount, type SlackWorkspace } from '../../api/client.js';
 import { INTEGRATIONS } from '../sections.js';
 import { WorkspaceHero } from './WorkspaceHero.js';
+import { WorkspacePick } from './WorkspacePick.js';
 
 // The DSP's workspaces' settings, Slack's custom section of its page of Settings, for those who
 // manage Slack: one workspace at a time, chosen from them when there are several, with its
@@ -51,19 +52,11 @@ export function Workspaces({ session, view }: { session: SessionView; view: DspV
           return (
             <>
               {data.workspaces.length > 1 && (
-                <label className="slack-workspace-pick">
-                  <span>Workspace</span>
-                  <select
-                    value={workspace.teamId}
-                    onChange={(event) => choose({ workspace: event.target.value, section: '' })}
-                  >
-                    {data.workspaces.map((each) => (
-                      <option key={each.teamId} value={each.teamId}>
-                        {each.label ?? each.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <WorkspacePick
+                  workspaces={data.workspaces}
+                  open={workspace}
+                  choose={(team) => choose({ workspace: team, section: '' })}
+                />
               )}
               <WorkspaceHero
                 workspace={workspace}
