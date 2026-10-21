@@ -85,7 +85,7 @@ export function Profile({
           facts={[
             [Route, 'Route', today.route],
             [Truck, 'Van', today.van],
-            [Clock, 'Wave', today.waveAt !== null && clock(today.waveAt, timeZone)],
+            [Clock, 'Wave', today.waveAt === null ? null : clock(today.waveAt, timeZone)],
             [MapPin, 'Stops', today.stops],
           ]}
         />
@@ -94,7 +94,7 @@ export function Profile({
         <Facts
           title="Contact"
           facts={[
-            [Phone, 'Phone', profile.phone && phoneText(profile.phone)],
+            [Phone, 'Phone', profile.phone === null ? null : phoneText(profile.phone)],
             [Mail, 'Email', profile.email],
             [Hash, 'Slack', profile.slack],
           ]}
@@ -104,9 +104,9 @@ export function Profile({
   );
 }
 
-/** A section of what's known, each by its icon and label; one not known is left out. */
+/** A section of what's known, each by its icon and label; one not known (null) is left out. */
 function Facts({ title, facts }: { title: string; facts: [LucideIcon, string, ReactNode][] }) {
-  const known = facts.filter(([, , value]) => value !== null && value !== false && value !== '');
+  const known = facts.filter(([, , value]) => value !== null);
   if (known.length === 0) return null;
   return (
     <section>

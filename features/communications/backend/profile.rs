@@ -66,17 +66,16 @@ fn today(db: &Store, dsp: &str, zone: &str, person: &Person) -> Result<Option<Pr
     let Some(route) = driven.into_iter().max_by_key(|route| route.stops) else {
         return Ok(None);
     };
-    let van = match (route.vin, fleet::for_dsp(db, dsp)?) {
-        (Some(vin), Some(fleet)) => fleet
-            .vans(db, dsp, &[vin])?
-            .into_iter()
-            .next()
-            .and_then(|van| van.name),
-        _ => None,
+    let van = match route.vin {
+        Some(vin) => match fleet::for_dsp(db, dsp)? {
+            Some(fleet) => fleet.vans(db, dsp, &[vin])?.into_iter().next(),
+            None => None,
+        },
+        None => None,
     };
     let today = ProfileToday {
         route: route.route_code,
-        van,
+        van: van.and_then(|van| van.name),
         wave_at: route.wave_start_at,
         stops: (route.stops > 0).then_some(route.stops),
     };

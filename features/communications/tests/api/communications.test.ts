@@ -88,7 +88,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(initials.headers.get('content-type'), 'image/png');
 });
 
-test('Communications answers only those whose role gives them it', async (t) => {
+test('Communications answers only those whose role gives them it, and the profile with it alone', async (t) => {
   const f = await fixture();
   t.after(f.close);
   // No default role holds communications.use, so a member is refused until a role grants it.

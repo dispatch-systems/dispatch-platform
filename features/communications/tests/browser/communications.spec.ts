@@ -76,8 +76,8 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 
   // Who it's with, above, opens their profile over the conversation, and Escape closes it, back
-  // to where it opened; their photo by their messages opens it too, and a press elsewhere
-  // closes it.
+  // to where it opened; their photo by their messages opens it too, its X closes it, back to that
+  // photo, and a press elsewhere closes it.
   const opensProfile = conversation.getByRole('button', { name: /^Jordan Ellis/ });
   await opensProfile.first().click();
   const profile = page.getByRole('dialog', { name: 'Jordan Ellis' });
@@ -87,6 +87,10 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await page.keyboard.press('Escape');
   await expect(profile).toHaveCount(0);
   await expect(opensProfile.first()).toBeFocused();
+  await opensProfile.last().click();
+  await profile.getByRole('button', { name: 'Close' }).click();
+  await expect(profile).toHaveCount(0);
+  await expect(opensProfile.last()).toBeFocused();
   await opensProfile.last().click();
   await expect(profile).toBeVisible();
   await page.getByRole('heading', { name: 'Communications', level: 1 }).click();
