@@ -184,27 +184,29 @@ pub(super) fn title(
 ) -> Result<()> {
     ensure(valid_code(code), "invalid_input", 400)?;
     let db = store.dsp(&c.dsp.id)?;
-    let before = db.transaction(|| {
+    // The title they had, when this one changes it.
+    let changed = db.transaction(|| {
         current(&db, code)?;
         let before = db
             .one_as::<(PersonTitle,)>("SELECT title FROM person_titles WHERE code=?", [code])?
             .map(|(title,)| title);
-        if title != before {
-            match title {
-                Some(title) => db.exec(
-                    "INSERT OR REPLACE INTO person_titles(code,title,decided_at,actor_id) \
-                     VALUES (?,?,?,?)",
-                    params![code, title, iso(), c.actor()],
-                ),
-                None => db.exec("DELETE FROM person_titles WHERE code=?", [code]),
-            }?;
+        if before == title {
+            return Ok(None);
         }
-        Ok(before)
+        match title {
+            Some(title) => db.exec(
+                "INSERT OR REPLACE INTO person_titles(code,title,decided_at,actor_id) \
+                 VALUES (?,?,?,?)",
+                params![code, title, iso(), c.actor()],
+            ),
+            None => db.exec("DELETE FROM person_titles WHERE code=?", [code]),
+        }?;
+        Ok(Some(before))
     })?;
     drop(db);
-    if before == title {
+    let Some(before) = changed else {
         return Ok(());
-    }
+    };
     let label = |title: Option<PersonTitle>| title.map(|title| title.label().to_owned());
     audited(
         store,

@@ -58,6 +58,7 @@ test('Driver Match answers only to its own permission, and its decisions to thei
   const title = (body: object) => owner.post('/api/dsp/driver-match/title', body);
   for (const body of [
     { code: here.code, title: 'boss' },
+    { code: here.code },
     { code: 'short', title: 'owner' },
     { code: here.code, title: 'owner', extra: true },
   ])

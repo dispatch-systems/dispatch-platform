@@ -52,7 +52,7 @@ const roles: Record<PersonRole, string> = {
 };
 /** What someone does, as it reads: their title, else their role; nothing when unknown. */
 export const roleText = ({ role, title }: Pick<Correspondent, 'role' | 'title'>) =>
-  title ? personTitles.find((t) => t.id === title)?.label : role && roles[role];
+  personTitles.find((t) => t.id === title)?.label ?? (role && roles[role]);
 
 /** What makes a button open the profile `id` beside a conversation and close it again. */
 export function opensProfile(id: string, open: boolean, toggle: (from: HTMLElement) => void) {

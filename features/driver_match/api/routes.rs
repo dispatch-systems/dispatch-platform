@@ -78,11 +78,14 @@ fn confirm(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     db.confirm_link(c, v::text(b, "code", 6, 6)?, source, id)?;
     Ok(Reply::ok())
 }
-/// `code` is given `title`, or with none loses theirs.
+/// `code` is given `title`, or with `null` loses theirs.
 fn title(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
     v::fields(b, &["code", "title"])?;
-    let title = match &b["title"] {
+    let given = b
+        .get("title")
+        .ok_or_else(|| Error::new("invalid_input", 400))?;
+    let title = match given {
         serde_json::Value::Null => None,
         _ => Some(
             PersonTitle::parse(v::text(b, "title", 1, 32)?)

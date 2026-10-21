@@ -601,13 +601,21 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
     db.set_title(&context, &dana, None).unwrap();
     let cleared = db.driver_match(&id).unwrap();
     assert_eq!(role(&cleared, &dana), (PersonRole::Driver, None));
-    // The person kept takes the title of the one merged into them.
+    // The person kept takes the title of the one merged into them, unless they have their own.
     db.set_title(&context, &tony, Some(PersonTitle::FleetManager))
         .unwrap();
     db.merge_people(&context, &tony, &antonio).unwrap();
     let merged = db.driver_match(&id).unwrap();
     assert_eq!(
         role(&merged, &antonio),
+        (PersonRole::Office, Some(PersonTitle::FleetManager))
+    );
+    db.set_title(&context, &dana, Some(PersonTitle::Dispatch))
+        .unwrap();
+    db.merge_people(&context, &dana, &antonio).unwrap();
+    let kept = db.driver_match(&id).unwrap();
+    assert_eq!(
+        role(&kept, &antonio),
         (PersonRole::Office, Some(PersonTitle::FleetManager))
     );
     // A title for a code merged into another was chosen on a page since out of date.
