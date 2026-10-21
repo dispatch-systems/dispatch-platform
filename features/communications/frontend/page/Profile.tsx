@@ -9,7 +9,7 @@ import { Face } from './Face.js';
 import { roles } from './parts.js';
 
 // The profile beside a conversation: the member it's with, their route today and how to reach
-// them, over the conversation until its X, Escape, or a press or focus anywhere else closes it.
+// them, over the conversation until its X, Escape, or a press anywhere else closes it.
 // What nobody knows of them is left out, as is a section left with nothing.
 
 export function Profile({
@@ -31,13 +31,13 @@ export function Profile({
   const panel = useRef<HTMLElement>(null);
   const closer = useRef<HTMLButtonElement>(null);
   const title = useId();
-  const opener = (target: EventTarget | null) =>
-    target instanceof Element && target.closest('[data-opens-profile]') !== null;
   // Focus moves into it as it opens.
   useEffect(() => closer.current?.focus(), []);
   useEffect(() => {
-    const pressed = (event: PointerEvent) => {
-      if (!panel.current?.contains(event.target as Node) && !opener(event.target)) close(false);
+    // A press on what opens it is that control's own: it closes it.
+    const pressed = ({ target }: PointerEvent) => {
+      const opener = target instanceof Element && target.closest('[data-opens-profile]');
+      if (!panel.current?.contains(target as Node) && !opener) close(false);
     };
     document.addEventListener('pointerdown', pressed);
     return () => document.removeEventListener('pointerdown', pressed);
@@ -52,10 +52,6 @@ export function Profile({
       aria-labelledby={title}
       onKeyDown={(event) => {
         if (event.key === 'Escape') close(true);
-      }}
-      onBlur={(event) => {
-        const to = event.relatedTarget;
-        if (to && !event.currentTarget.contains(to) && !opener(to)) close(false);
       }}
     >
       <button

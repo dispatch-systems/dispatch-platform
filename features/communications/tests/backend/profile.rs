@@ -12,6 +12,10 @@ use std::{collections::BTreeMap, sync::Arc};
 
 /// A workspace the tests connect, named by its ID.
 const TEAM: &str = "T0FIXTURE2";
+/// When a route's wave starts, in milliseconds, and an hour and a day of them.
+const WAVE: i64 = 1_792_482_000_000;
+const HOUR: i64 = 3_600_000;
+const DAY: i64 = 24 * HOUR;
 
 /// The conversation the member `user` started.
 async fn started(state: &Arc<State>, bot: &Bot, user: &str) -> String {
@@ -60,8 +64,9 @@ fn jordan() -> Person {
         photo: None,
     }
 }
-/// The route `code` the driver `driver` drove on `day` in the van `vin`, with `stops` stops.
-fn route(day: &str, driver: &str, code: &str, vin: &str, stops: i64) -> RouteDay {
+/// The route `code` the driver `driver` drove on `day` in the van `vin`, with `stops` stops, its
+/// wave starting at `wave`.
+fn route(day: &str, driver: &str, code: &str, vin: &str, stops: i64, wave: i64) -> RouteDay {
     RouteDay {
         day: day.into(),
         driver_id: driver.into(),
@@ -69,7 +74,7 @@ fn route(day: &str, driver: &str, code: &str, vin: &str, stops: i64) -> RouteDay
         status: None,
         progress: None,
         vin: Some(vin.into()),
-        wave_start_at: Some(stops * 1_000),
+        wave_start_at: Some(wave),
         planned_departure_at: None,
         departed_at: None,
         first_delivery_at: None,
@@ -104,12 +109,13 @@ async fn the_profile_shows_the_route_driven_today_and_how_to_reach_the_member() 
     let (today, yesterday) = days(&state, &dsp).await;
     // Their route today, beside a rescue they drove today and their route yesterday.
     support::know(
+        &state,
         &dsp,
         vec![jordan()],
         vec![
-            route(&yesterday, "A1", "CX9", "1FTVAN009", 190),
-            route(&today, "A2", "CX20", "1FTVAN020", 12),
-            route(&today, "A1", "CX14", "1FTVAN214", 168),
+            route(&yesterday, "A1", "CX9", "1FTVAN009", 190, WAVE - DAY),
+            route(&today, "A2", "CX20", "1FTVAN020", 12, WAVE + HOUR),
+            route(&today, "A1", "CX14", "1FTVAN214", 168, WAVE),
         ],
         vec![van("1FTVAN214", "214"), van("1FTVAN009", "9")],
     );
@@ -119,7 +125,7 @@ async fn the_profile_shows_the_route_driven_today_and_how_to_reach_the_member() 
     let today = shown.today.expect("a route today");
     assert_eq!(today.route.as_deref(), Some("CX14"));
     assert_eq!(today.van.as_deref(), Some("214"));
-    assert_eq!((today.wave_at, today.stops), (Some(168_000), Some(168)));
+    assert_eq!((today.wave_at, today.stops), (Some(WAVE), Some(168)));
     assert_eq!(shown.phone.as_deref(), Some("+16125550100"));
     assert_eq!(shown.email.as_deref(), Some("jordan.ellis@example.com"));
     assert_eq!(shown.slack.as_deref(), Some(TEAM));
@@ -144,9 +150,10 @@ async fn the_profile_shows_no_route_of_another_day_and_no_contact_for_someone_un
     let cam = started(&state, &bot, "U0FIXCAM").await;
     let (_, yesterday) = days(&state, &dsp).await;
     support::know(
+        &state,
         &dsp,
         vec![jordan()],
-        vec![route(&yesterday, "A1", "CX9", "1FTVAN009", 190)],
+        vec![route(&yesterday, "A1", "CX9", "1FTVAN009", 190, WAVE - DAY)],
         vec![van("1FTVAN009", "9")],
     );
     support::switch(&state, &dsp, "driving", true).await;

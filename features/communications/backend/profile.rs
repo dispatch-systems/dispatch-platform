@@ -16,9 +16,6 @@ use dispatch_routes_contract as routes;
 use dispatch_slack::kit;
 use dispatch_vans_contract as fleet;
 
-/// The most of someone's IDs one read of their routes names, as Routes reads at most.
-const MOST_IDS: usize = 16;
-
 /// The profile of the member the conversation `id` is with, today being the day it is in
 /// `zone`, the DSP's timezone.
 pub fn of(db: &Store, state: &State, dsp: &str, zone: &str, id: &str) -> Result<Profile> {
@@ -34,10 +31,10 @@ pub fn of(db: &Store, state: &State, dsp: &str, zone: &str, id: &str) -> Result<
         Some(person) => today(db, dsp, zone, person)?,
         None => None,
     };
-    let slack = conversations::workspaces(db, dsp)?
-        .into_iter()
-        .find(|workspace| workspace.team_id == conversation.team)
-        .map(|workspace| workspace.name);
+    let slack = kit::workspaces(db, dsp)?
+        .iter()
+        .find(|workspace| workspace.team == conversation.team)
+        .map(conversations::named);
     Ok(Profile {
         today,
         phone: person.and_then(|person| person.phones.first().cloned()),
@@ -48,13 +45,13 @@ pub fn of(db: &Store, state: &State, dsp: &str, zone: &str, id: &str) -> Result<
 
 /// The route `person` has today, if Routes has read one.
 fn today(db: &Store, dsp: &str, zone: &str, person: &Person) -> Result<Option<ProfileToday>> {
-    let Some(routes) = routes::for_dsp(db, dsp)? else {
+    let Some(reader) = routes::for_dsp(db, dsp)? else {
         return Ok(None);
     };
     let ids: Vec<String> = person
-        .ids_of(routes.source())
+        .ids_of(reader.source())
         .iter()
-        .take(MOST_IDS)
+        .take(routes::MOST_IDS)
         .cloned()
         .collect();
     if ids.is_empty() {
@@ -65,7 +62,7 @@ fn today(db: &Store, dsp: &str, zone: &str, person: &Person) -> Result<Option<Pr
         .map_err(|_| Error::new("invalid_timezone", 400))?;
     let day = clock::today(zone).to_string();
     // Their own route, beside any they rescued, which has fewer stops.
-    let driven = routes.routes(db, dsp, &ids, &day, &day)?.routes;
+    let driven = reader.routes(db, dsp, &ids, &day, &day)?.routes;
     let Some(route) = driven.into_iter().max_by_key(|route| route.stops) else {
         return Ok(None);
     };

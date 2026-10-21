@@ -185,8 +185,9 @@ fn known<T>(dsp: &str, read: impl FnOnce(&Known) -> T) -> T {
     let known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
     read(known.get(dsp).unwrap_or(&Known::default()))
 }
-/// Has the stand-ins answer, for the DSP `dsp`, who `people` are, their `routes`, and its `vans`.
-pub fn know(dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>, vans: Vec<Van>) {
+/// Has the stand-ins answer, for the DSP `dsp`, who `people` are, their `routes`, and its `vans`,
+/// letting go of the DSP's cached reads, as who everyone is, so the next reads them anew.
+pub fn know(state: &State, dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>, vans: Vec<Van>) {
     let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
     known.insert(
         dsp.to_owned(),
@@ -196,6 +197,7 @@ pub fn know(dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>, vans: Vec<Van
             vans,
         },
     );
+    state.changed(Some(dsp));
 }
 /// Switches the stand-in `feature`, `driving` or `fleet`, on or off for the DSP.
 pub async fn switch(state: &Arc<State>, dsp: &str, feature: &'static str, on: bool) {

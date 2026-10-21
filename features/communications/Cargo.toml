@@ -15,7 +15,8 @@ doctest = false
 # TypeScript definitions of its API types, for the app's export test; never in a build.
 ts = ["dep:ts-rs", "dispatch-core/ts"]
 
-# Core, the collectors it uses and the features it declares: nothing else compiles.
+# Core, the collectors it uses, the features it declares and the contracts it reads: nothing else
+# compiles.
 [dependencies]
 axum = { workspace = true }
 chrono-tz = { workspace = true }

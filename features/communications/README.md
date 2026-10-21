@@ -46,8 +46,8 @@ unavailable.
   it. Photos show by Driver Match's person for each (`/api/dsp/people/{code}/photo`), never
   Slack's own addresses.
 - **The profile** of whom a conversation is with opens from who it's with, above it, or their
-  photo by their messages, over the conversation, and closes with its X, Escape, or a press or
-  focus anywhere else, focus going back to what opened it. Their photo, name and role; Call,
+  photo by their messages, over the conversation, and closes with its X, Escape, or a press
+  anywhere else; its X and Escape put focus back on what opened it. Their photo, name and role; Call,
   while they have a phone number; Today: their route on the DSP's own day, its van, when its
   wave starts and how many stops it has; Contact: their phone number, email address and the
   workspace the conversation is in. Each is left out when nothing knows it, and Today when

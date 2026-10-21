@@ -312,6 +312,13 @@ pub fn waiting(db: &Store, dsp: &str) -> Result<CommunicationsWaiting> {
         since,
     })
 }
+/// What the page calls a workspace: its name in Dispatch, else its name in Slack.
+pub fn named(workspace: &kit::Workspace) -> String {
+    workspace
+        .label
+        .clone()
+        .unwrap_or_else(|| workspace.name.clone())
+}
 /// The DSP's workspaces, by name, each with whether Communications works there, the address of
 /// the app's Messages tab in it, and whether it needs updating for Communications.
 pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>> {
@@ -327,7 +334,7 @@ pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>>
                     "https://slack.com/app_redirect?app={}&team={}",
                     workspace.app, workspace.team
                 ),
-                name: workspace.label.unwrap_or(workspace.name),
+                name: named(&workspace),
                 team_id: workspace.team,
             }
         })

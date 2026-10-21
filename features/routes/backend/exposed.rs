@@ -8,7 +8,7 @@ use dispatch_core::{
     manifest::people::Source,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, RouteDay, Undelivered,
+    Collected, CollectedDay, Driven, DriverRoutes, MOST_IDS, RouteDay, Undelivered,
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -16,8 +16,6 @@ use std::collections::HashMap;
 
 /// The most days one read covers.
 const LONGEST: i64 = 366;
-/// The most IDs one read names.
-const MOST_IDS: usize = 16;
 
 /// The days of a range with an active publication at the station, and whether each is final.
 const DAYS: &str = "SELECT day,min(mode='final') complete FROM route_publications \
