@@ -27,12 +27,13 @@ use rusqlite::params;
 use serde_json::Value;
 
 const SAVE: &str = "INSERT INTO collection_schedules(id,name,collection,cadence,interval_minutes,\
-    local_time,anchor,enabled,next_run,created_at,days,times,until_time) \
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,\
+    local_time,anchor,enabled,next_run,created_at,days,times,until_time,position) \
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,\
     collection=excluded.collection,cadence=excluded.cadence,\
     interval_minutes=excluded.interval_minutes,local_time=excluded.local_time,\
     anchor=excluded.anchor,enabled=excluded.enabled,next_run=excluded.next_run,last_error=NULL,\
     days=excluded.days,times=excluded.times,until_time=excluded.until_time,\
+    position=excluded.position,\
     revision=collection_schedules.revision+1";
 const SWITCH: &str = "UPDATE collection_schedules SET enabled=?,next_run=?,last_error=NULL,\
     revision=revision+1 WHERE id=?";
@@ -313,7 +314,7 @@ impl Store {
     fn rows_of(&self, id: &str, scheduled: Scheduled) -> Result<Vec<ScheduleRow>> {
         self.dsp(id)?.query_as(
             "SELECT * FROM collection_schedules \
-            WHERE collection IN (SELECT value FROM json_each(?)) ORDER BY created_at,id",
+            WHERE collection IN (SELECT value FROM json_each(?)) ORDER BY position,created_at,id",
             [scheduled.names()?],
         )
     }
@@ -495,7 +496,7 @@ impl Store {
                 ready()?;
             }
             let mut kept = Vec::new();
-            for (key, collects, rule) in &requested {
+            for (position, (key, collects, rule)) in requested.iter().enumerate() {
                 let row = match key {
                     Some(key) => Some(
                         before
@@ -548,7 +549,8 @@ impl Store {
                         iso(),
                         rule.days,
                         times,
-                        until
+                        until,
+                        position as i64
                     ],
                 )?;
                 kept.push(key);

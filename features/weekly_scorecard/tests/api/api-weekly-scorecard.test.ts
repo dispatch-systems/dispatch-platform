@@ -149,33 +149,27 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   assert.deepEqual((await section(owner)).values, defaults);
   await owner.select(dsp.id);
 
-  // A scorecard schedule is its own collection, behind its own routes.
-  const body = {
-    name: 'Weekly Scorecard',
-    collection: 'weekly_scorecard',
-    cadence: 'daily',
-    intervalMinutes: null,
-    localTime: '07:00',
-    enabled: true,
+  // A scorecard schedule is its own collection on Collectors, and reads only it.
+  const rule = {
+    id: null,
+    collects: 'weekly_scorecard',
+    kind: 'times',
+    days: [0],
+    times: ['07:00'],
+    every: null,
+    from: null,
+    to: null,
   };
-  assert.equal((await owner.post('/api/dsp/schedules', body)).status, 403);
-  const schedule = await owner.post('/api/dsp/weekly-scorecard/schedules', body);
-  assert.equal(schedule.status, 201, schedule.body);
+  const collectors = '/api/dsp/collectors/weekly_scorecard';
+  const save = (rules: unknown[]) => owner.post(`${collectors}/schedule`, { rules, revision: '' });
+  assert.equal((await save([{ ...rule, collects: 'paycom' }])).status, 400);
+  assert.equal((await owner.post('/api/dsp/collectors/scorecard/schedule', {})).status, 404);
+  const schedule = await save([rule]);
+  assert.equal(schedule.status, 200, schedule.body);
   assert.equal(schedule.value.collection, 'weekly_scorecard');
-  assert.equal((await owner.get('/api/dsp/scorecard/schedules')).status, 404);
-  assert.equal(
-    (await owner.post('/api/dsp/weekly-scorecard/schedules', { ...body, collection: 'paycom' }))
-      .status,
-    403,
-  );
-  assert.ok(
-    !(await owner.get('/api/dsp/schedules')).value.schedules.some(
-      (s: any) => s.id === schedule.value.id,
-    ),
-  );
   const scheduled = async () =>
-    (await owner.get('/api/dsp/weekly-scorecard/schedules')).value.schedules.find(
-      (s: any) => s.id === schedule.value.id,
+    (await owner.get('/api/dsp/collectors')).value.collections.find(
+      (c: any) => c.collection === 'weekly_scorecard',
     );
 
   // The timecard switched off leaves the scorecard as it was.
@@ -210,12 +204,9 @@ test('a scorecard week is collected on request, stored per dataset and listed, a
   const off = await owner.post(switches, { feature: 'weekly_scorecard', enabled: false });
   assert.deepEqual(off.value.changed, [{ feature: 'weekly_scorecard', enabled: false }]);
   await owner.select(dsp.id);
-  for (const url of [
-    '/api/dsp/weekly-scorecard/weeks',
-    '/api/dsp/weekly-scorecard/jobs',
-    '/api/dsp/weekly-scorecard/schedules',
-  ])
+  for (const url of ['/api/dsp/weekly-scorecard/weeks', '/api/dsp/weekly-scorecard/jobs'])
     assert.equal((await owner.get(url)).status, 403, url);
+  assert.equal(await scheduled(), undefined);
   assert.equal(
     (await owner.post('/api/dsp/weekly-scorecard/collect', { requestId: 'switched-off' })).status,
     403,

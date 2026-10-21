@@ -129,8 +129,8 @@ fn split(data: &Db, old: &str, into: &[&str]) -> Result<()> {
             data.exec(
                 "INSERT INTO collection_schedules(id,name,collection,cadence,interval_minutes,\
                 local_time,anchor,enabled,next_run,revision,last_error,created_at,days,times,\
-                until_time) SELECT ?,name,?,cadence,interval_minutes,local_time,anchor,enabled,\
-                next_run,revision,last_error,created_at,days,times,until_time \
+                until_time,position) SELECT ?,name,?,cadence,interval_minutes,local_time,anchor,\
+                enabled,next_run,revision,last_error,created_at,days,times,until_time,position \
                 FROM collection_schedules WHERE id=?",
                 [
                     crate::foundation::crypto::id("schedule")?.as_str(),
