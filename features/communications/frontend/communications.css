@@ -9,16 +9,36 @@
      ≥ 1500       the profile, open, a column of its own beside the conversation
 
    useLayout.ts tells the page the same widths. Sizes go by a hundredth of the page's width
-   (`--cq`): within the page, its container's (`1cqi`); in New message and the Update popup, which
-   lie outside the page's container to cover the window or the page beside the sidebar, the
-   width useLayout.ts measures. */
+   (`--cq`): within the page, its container's (`1cqi`), which each size reads where it's used; in
+   New message and the Update popup, which lie outside the page's container to cover the window or
+   the page beside the sidebar, the page's width as useLayout.ts measures it, set on the page. */
 .communications {
-  --cq: 1cqi;
   --bubble-in: #eef1f5;
   --bubble-out: #2055ed;
   --bubble-out-foreground: #fff;
   --late: var(--destructive);
   --late-surface: #fbeaec;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+[data-theme='dark'] .communications {
+  --bubble-in: #262f3f;
+  --bubble-out: #3a62e6;
+  --late-surface: #432630;
+}
+.communications-page {
+  container: communications / inline-size;
+  --cq: 1cqi;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+/* The sizes, each declared where its `--cq` is: the page, and each popup. */
+.communications-page,
+.communications > .modal-backdrop {
   --list-width: clamp(296px, calc(18 * var(--cq) + 120px), 440px);
   /* The conversation's messages and the box under them, centred on a wide page. */
   --column-width: clamp(880px, calc(56 * var(--cq)), 1320px);
@@ -38,23 +58,6 @@
   --pad: clamp(18px, calc(8px + 0.9 * var(--cq)), 40px);
   --photo-width: clamp(232px, calc(140px + 8 * var(--cq)), 340px);
   --profile-width: clamp(300px, calc(200px + 9 * var(--cq)), 400px);
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-[data-theme='dark'] .communications {
-  --bubble-in: #262f3f;
-  --bubble-out: #3a62e6;
-  --late-surface: #432630;
-}
-.communications-page {
-  container: communications / inline-size;
-  --cq: 1cqi;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
 }
 .communications .page-heading {
   margin-bottom: 22px;
