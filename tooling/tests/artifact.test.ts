@@ -101,8 +101,8 @@ test(
         transferred: 150_000,
       },
       {
-        name: 'Timecard settings',
-        entries: ['../../features/timecard/frontend/settings/index.ts'],
+        name: 'Collectors',
+        entries: ['../../core/collection/frontend/collectors/index.ts'],
         raw: 490_000,
         transferred: 145_000,
       },

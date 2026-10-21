@@ -1,7 +1,6 @@
 import { createElement, lazy } from 'react';
 import { schedulingPermissions } from '../../tenancy/api/generated/access-catalog.js';
 import { collectorsRead } from '../api/urls.js';
-import { begins } from '../../shell/frontend/runtime/data-policy.js';
 import { connectionFeatures } from '../../shell/frontend/runtime/features.js';
 import { can } from '../../shell/frontend/runtime/permissions.js';
 import {
@@ -60,11 +59,12 @@ export const feature: FrontendFeature = {
       prefetch: () => [collectorsRead],
     },
   ],
-  // Its collections' runs, their collectors' connections and their schedules' saves change it.
+  // Its collections' runs and their collectors' connections change it, as a save of a schedule
+  // does any DSP read; a preview of one changes nothing.
   cache: {
     jobs: [collectorsRead],
     connections: [collectorsRead],
-    write: (write, url) =>
-      write.startsWith('/api/dsp/collectors/') && begins(url, collectorsRead) ? true : undefined,
+    write: (write) =>
+      write.startsWith('/api/dsp/collectors/') && write.endsWith('/preview') ? false : undefined,
   },
 };

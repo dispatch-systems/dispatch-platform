@@ -1,0 +1,24 @@
+[
+  [
+    { "kind": "times", "days": [0, 1, 2, 3, 4, 5, 6], "times": ["06:00", "14:00"] },
+    "Every day at 6:00 AM and 2:00 PM"
+  ],
+  [
+    { "kind": "times", "days": [0, 1, 2, 3, 4], "times": ["06:00", "09:30", "14:00"] },
+    "Weekdays at 6:00 AM, 9:30 AM and 2:00 PM"
+  ],
+  [{ "kind": "times", "days": [0, 1, 2, 3], "times": ["12:00"] }, "Mon–Thu at 12:00 PM"],
+  [{ "kind": "times", "days": [0, 2, 4], "times": ["00:00"] }, "Mon, Wed, Fri at 12:00 AM"],
+  [
+    { "kind": "repeat", "days": [5, 6], "every": 90, "from": "22:00", "to": "06:00" },
+    "Weekends, every 1 hr 30 min, 10:00 PM to 6:00 AM"
+  ],
+  [
+    { "kind": "repeat", "days": [2], "every": 30, "from": "06:00", "to": "06:00" },
+    "Wednesdays, every 30 min, all day"
+  ],
+  [
+    { "kind": "repeat", "days": [0, 1], "every": 120, "from": "08:00", "to": "18:00" },
+    "Mon, Tue, every 2 hr, 8:00 AM to 6:00 PM"
+  ]
+]

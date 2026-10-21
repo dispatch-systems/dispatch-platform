@@ -179,3 +179,14 @@ fn a_rule_is_refused_unless_its_days_and_times_hold() {
         assert_eq!(Rule::parse(&value).unwrap_err().code, code, "{value}");
     }
 }
+
+/// The words the activity log keeps of a rule, which the page's own match (the same table,
+/// `tests/frontend/rules.test.ts`).
+#[test]
+fn a_rule_reads_in_the_activity_log_as_the_page_words_it() {
+    let table: Vec<(Value, String)> =
+        serde_json::from_str(include_str!("../support/rule-words.json")).unwrap();
+    for (value, expected) in table {
+        assert_eq!(rule(value).describe(), expected);
+    }
+}

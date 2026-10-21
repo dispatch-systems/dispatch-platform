@@ -61,9 +61,10 @@ export function runShort(value: string, timeZone: string, now = new Date()) {
     return `${dateFormatter('en-US', { timeZone, weekday: 'short' }).format(at)} ${clock}`;
   return dateFormatter('en-US', { timeZone, month: 'short', day: 'numeric' }).format(at);
 }
-/** How long until a run: "in 4 min", "in 1 hr 4 min", "in 6 hr", "in 3 days". */
+/** How long until a run: "now", "in 4 min", "in 1 hr 4 min", "in 6 hr", "in 3 days". */
 export function until(value: string, now = Date.now()) {
-  const minutes = Math.max(0, Math.round((Date.parse(value) - now) / 60_000));
+  const minutes = Math.round((Date.parse(value) - now) / 60_000);
+  if (minutes <= 0) return 'now';
   if (minutes < 60) return `in ${minutes} min`;
   if (minutes < 120) return `in 1 hr${minutes > 60 ? ` ${minutes - 60} min` : ''}`;
   if (minutes < DAY) return `in ${Math.round(minutes / 60)} hr`;

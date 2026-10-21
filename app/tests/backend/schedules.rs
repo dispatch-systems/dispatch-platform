@@ -211,10 +211,7 @@ fn rules_due_together_queue_one_batch_once() {
     }
     assert!(db.schedule_due(&id).unwrap().unwrap() > now());
     assert_eq!(jobs(&db), ["cortex.meal_breaks.collect", "paycom.collect"]);
-    let today = chrono::Utc::now()
-        .with_timezone(&chrono_tz::America::Chicago)
-        .format("%Y-%m-%d")
-        .to_string();
+    let today = db.local_date(&id).unwrap();
     let meal = db
         .jobs
         .one(
@@ -333,34 +330,82 @@ fn a_timezone_change_retimes_every_rule() {
 
 /// Timecard's `both` ran Paycom's timecards and Cortex's meal breaks at once. As a DSP opens,
 /// each of its schedules becomes one rule of each, timed as it was; a rule the previous release
-/// changed reads as that release ran it; and one it wrote reads as one time every day.
+/// changed reads as that release ran it, and one it wrote as it runs it: one time every day, or
+/// a repeat all day, or, repeating less often than a rule may, the times it falls at.
 #[cfg(feature = "timecard")]
 #[test]
 fn schedules_the_previous_release_left_read_as_it_ran_them() {
     crate::install();
     let (_root, db, id) = setup();
-    let old = |key: &str, collection: &str, time: &str, created: &str| {
+    let old = |key: &str, collection: &str, time: &str, interval: Option<i64>, created: &str| {
         db.dsp(&id)
             .unwrap()
             .exec(
-                "INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
-                enabled,next_run,created_at) VALUES (?,'Sync',?,'daily',?,0,1,\
+                "INSERT INTO collection_schedules(id,name,collection,cadence,interval_minutes,\
+                local_time,anchor,enabled,next_run,created_at) VALUES (?,'Sync',?,?,?,?,0,1,\
                 '2030-01-01T22:00:00.000Z',?)",
-                params![key, collection, time, created],
+                params![
+                    key,
+                    collection,
+                    if interval.is_some() {
+                        "interval"
+                    } else {
+                        "daily"
+                    },
+                    interval,
+                    time,
+                    created
+                ],
             )
             .unwrap();
     };
-    old("sch_both", "both", "16:00", "2026-01-01T00:00:01.000Z");
-    old("sch_paycom", "paycom", "11:00", "2026-01-01T00:00:02.000Z");
+    let set = |key: &str, columns: &str| {
+        let sql = format!("UPDATE collection_schedules SET {columns} WHERE id=?");
+        db.dsp(&id).unwrap().exec(&sql, [key]).unwrap();
+    };
+    old(
+        "sch_both",
+        "both",
+        "16:00",
+        None,
+        "2026-01-01T00:00:01.000Z",
+    );
+    old(
+        "sch_paycom",
+        "paycom",
+        "11:00",
+        None,
+        "2026-01-01T00:00:02.000Z",
+    );
     // A weekday rule of two times whose first time the previous release moved to 08:00.
-    old("sch_moved", "paycom", "08:00", "2026-01-01T00:00:03.000Z");
-    db.dsp(&id)
-        .unwrap()
-        .exec(
-            "UPDATE collection_schedules SET days=31,times='[\"06:00\",\"14:00\"]' WHERE id='sch_moved'",
-            [],
-        )
-        .unwrap();
+    old(
+        "sch_moved",
+        "paycom",
+        "08:00",
+        None,
+        "2026-01-01T00:00:03.000Z",
+    );
+    set("sch_moved", "days=31,times='[\"06:00\",\"14:00\"]'");
+    // A Monday and Wednesday repeat, 6:00 AM to 6:00 PM, that it moved to start at 8:00 PM.
+    old(
+        "sch_repeat",
+        "paycom",
+        "20:00",
+        Some(60),
+        "2026-01-01T00:00:04.000Z",
+    );
+    set(
+        "sch_repeat",
+        "days=5,times='{\"from\":\"06:00\",\"every\":60}',until_time='18:00'",
+    );
+    // Every 15 hours around the clock, as the previous release allowed.
+    old(
+        "sch_long",
+        "paycom",
+        "06:00",
+        Some(900),
+        "2026-01-01T00:00:05.000Z",
+    );
     db.open_collectors(&id).unwrap();
     let rules = |collection: &str| -> Vec<Value> {
         let shown = db
@@ -369,22 +414,39 @@ fn schedules_the_previous_release_left_read_as_it_ran_them() {
         shown
             .rules
             .into_iter()
-            .map(|rule| json!([rule.collects, rule.days, rule.times, rule.next_run]))
+            .map(|rule| {
+                let when = json!([rule.kind, rule.times, rule.every, rule.from, rule.to]);
+                json!([rule.collects, rule.days, when, rule.next_run])
+            })
             .collect()
     };
     let every_day = json!([0, 1, 2, 3, 4, 5, 6]);
-    let at = |collection: &str, time: &str| {
-        json!([collection, every_day, [time], "2030-01-01T22:00:00.000Z"])
+    let pending = "2030-01-01T22:00:00.000Z";
+    let at = |collection: &str, times: &[&str]| {
+        json!([
+            collection,
+            every_day,
+            ["times", times, null, null, null],
+            pending
+        ])
     };
+    let all_day = json!([
+        "paycom",
+        every_day,
+        ["repeat", [], 60, "20:00", "20:00"],
+        pending
+    ]);
     assert_eq!(
         rules("paycom"),
         [
-            at("paycom", "16:00"),
-            at("paycom", "11:00"),
-            at("paycom", "08:00")
+            at("paycom", &["16:00"]),
+            at("paycom", &["11:00"]),
+            at("paycom", &["08:00"]),
+            all_day,
+            at("paycom", &["06:00", "21:00"]),
         ]
     );
-    assert_eq!(rules("meal_break"), [at("meal_break", "16:00")]);
+    assert_eq!(rules("meal_break"), [at("meal_break", &["16:00"])]);
     let both = db
         .dsp(&id)
         .unwrap()

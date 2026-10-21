@@ -30,6 +30,7 @@ export function CollectionSchedule({
   timezone,
   leaveRef,
   saved,
+  refresh,
 }: {
   collection: ScheduledCollection;
   timezone: string;
@@ -37,6 +38,8 @@ export function CollectionSchedule({
   leaveRef: RefObject<Leave | null>;
   /** Shows the collection as the server answered a change of it. */
   saved: (collection: ScheduledCollection) => void;
+  /** Reads the collections again. */
+  refresh: () => void;
 }) {
   const { notify } = useFeedback();
   // The rules as read, and the revision they were read at: edits are made against them.
@@ -79,7 +82,10 @@ export function CollectionSchedule({
       return true;
     } catch (cause) {
       setError(messageOf(cause));
-      setStale(cause instanceof ApiError && cause.code === 'schedule_changed');
+      const changed = cause instanceof ApiError && cause.code === 'schedule_changed';
+      setStale(changed);
+      // Saved since by another session: read as it is now, to reload the edits from.
+      if (changed) refresh();
       return false;
     } finally {
       setBusy(false);
@@ -264,7 +270,11 @@ export function CollectionSchedule({
         <footer className="collectors-actions">
           <ErrorBox message={error} />
           {stale && (
-            <button type="button" disabled={busy} onClick={reload}>
+            <button
+              type="button"
+              disabled={busy || collection.revision === base.revision}
+              onClick={reload}
+            >
               Reload schedule
             </button>
           )}

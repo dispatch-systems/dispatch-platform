@@ -112,6 +112,7 @@ export function CollectorsTab({ view }: { view: DspView }) {
                 setAnswers((before) => ({ ...before, [answer.collection]: answer }));
                 collectors.refresh();
               }}
+              refresh={collectors.refresh}
             />
           </div>
         );

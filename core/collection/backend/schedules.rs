@@ -77,40 +77,31 @@ pub struct ScheduleRow {
 impl FromRow for ScheduleRow {
     fn from_row(row: &Row<'_>) -> Result<Self> {
         let first = rules::time(&row.get::<String>("local_time")?)?;
+        let written: Option<String> = row.get("times")?;
         let days: i64 = row.get("days")?;
-        // The previous release reads a rule as its first time, or a repeat all day from its
-        // start, and saves only those: a rule whose first time it changed is what it ran.
-        let (days, timing) = match row.get::<String>("cadence")?.as_str() {
-            "daily" => {
-                let times: Option<String> = row.get("times")?;
-                let times = match times {
-                    Some(times) => serde_json::from_str::<Vec<String>>(&times)?
-                        .iter()
-                        .map(|time| rules::time(time))
-                        .collect::<Result<Vec<_>>>()?,
-                    None => vec![],
-                };
-                match times.first() {
-                    Some(at) if *at == first => (days, Timing::At(times)),
-                    _ => (rules::EVERY_DAY, Timing::At(vec![first])),
-                }
-            }
-            _ => {
-                let to: Option<String> = row.get("until_time")?;
-                let to = to.as_deref().map(rules::time).transpose()?;
-                let timing = Timing::Repeat {
-                    every: row.get("interval_minutes")?,
-                    from: first,
-                    to: to.unwrap_or(first),
-                };
-                (days, timing)
-            }
+        let interval: Option<i64> = match row.get::<String>("cadence")?.as_str() {
+            "daily" => None,
+            _ => Some(row.get("interval_minutes")?),
+        };
+        let rule = match interval {
+            None => written_times(written.as_deref(), first),
+            Some(every) => written_repeat(written.as_deref(), first, every, row.get("until_time")?),
+        }
+        .map(|timing| Rule { days, timing });
+        // A row this release didn't write, or the previous release changed since, is what that
+        // release ran: one time every day, or a repeat all day from its start.
+        let rule = match rule {
+            Some(rule) => rule,
+            None => Rule {
+                days: rules::EVERY_DAY,
+                timing: legacy_timing(first, interval)?,
+            },
         };
         Ok(Self {
             id: row.get("id")?,
             name: row.get("name")?,
             collection: row.get("collection")?,
-            rule: Rule { days, timing },
+            rule,
             enabled: row.get("enabled")?,
             next_run: row.get("next_run")?,
             revision: row.get("revision")?,
@@ -118,6 +109,62 @@ impl FromRow for ScheduleRow {
             anchor: row.get("anchor")?,
         })
     }
+}
+
+/// The times of a times rule as this release wrote them, while the previous release kept its
+/// first.
+fn written_times(written: Option<&str>, first: NaiveTime) -> Option<Timing> {
+    let times: Vec<String> = serde_json::from_str(written?).ok()?;
+    let times = times
+        .iter()
+        .map(|at| rules::time(at).ok())
+        .collect::<Option<Vec<_>>>()?;
+    (times.first() == Some(&first)).then_some(Timing::At(times))
+}
+/// What this release wrote of a repeat: its start and interval, beside the time it runs until,
+/// while the previous release kept both.
+#[derive(serde::Deserialize, serde::Serialize)]
+struct Written {
+    from: String,
+    every: i64,
+}
+fn written_repeat(
+    written: Option<&str>,
+    first: NaiveTime,
+    interval: i64,
+    until: Option<String>,
+) -> Option<Timing> {
+    let written: Written = serde_json::from_str(written?).ok()?;
+    let to = rules::time(&until?).ok()?;
+    (rules::time(&written.from).ok()? == first && written.every == interval).then_some(
+        Timing::Repeat {
+            every: written.every,
+            from: first,
+            to,
+        },
+    )
+}
+/// How the previous release runs a row: once a day at its time, or every `interval` minutes all
+/// day from it, which, longer than a rule repeats, are the times it falls at.
+fn legacy_timing(first: NaiveTime, interval: Option<i64>) -> Result<Timing> {
+    let Some(every) = interval else {
+        return Ok(Timing::At(vec![first]));
+    };
+    ensure(every > 0, "invalid_schedule", 500)?;
+    if every <= rules::EVERY.1 {
+        return Ok(Timing::Repeat {
+            every,
+            from: first,
+            to: first,
+        });
+    }
+    let mut times: Vec<NaiveTime> = (0..)
+        .map(|run| run * every)
+        .take_while(|offset| *offset < 24 * 60)
+        .map(|offset| first + chrono::Duration::minutes(offset))
+        .collect();
+    times.sort();
+    Ok(Timing::At(times))
 }
 
 fn timezone(tz: &str) -> Result<Tz> {
@@ -526,9 +573,16 @@ impl Store {
                 let (times, until) = match &rule.timing {
                     Timing::At(times) => {
                         let times: Vec<String> = times.iter().map(|at| rules::text(*at)).collect();
-                        (Some(serde_json::to_string(&times)?), None)
+                        (serde_json::to_string(&times)?, None)
                     }
-                    Timing::Repeat { to, .. } => (None, Some(rules::text(*to))),
+                    Timing::Repeat { every, from, to } => {
+                        let from = rules::text(*from);
+                        let written = Written {
+                            from,
+                            every: *every,
+                        };
+                        (serde_json::to_string(&written)?, Some(rules::text(*to)))
+                    }
                 };
                 let key = match row {
                     Some(row) => row.id.clone(),
@@ -538,7 +592,7 @@ impl Store {
                     SAVE,
                     params![
                         key,
-                        rule.describe(),
+                        rule.describe().chars().take(60).collect::<String>(),
                         collects,
                         cadence,
                         interval,
