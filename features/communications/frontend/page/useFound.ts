@@ -15,7 +15,10 @@ export function useFound<T>(
 ) {
   const [last, setLast] = useState<{ list: string; found?: T; failed: string }>();
   useEffect(() => {
-    if (!read) return;
+    if (!read) {
+      setLast(undefined);
+      return;
+    }
     let live = true;
     const timer = setTimeout(() => {
       read().then(
@@ -28,6 +31,6 @@ export function useFound<T>(
       clearTimeout(timer);
     };
   }, [read, list, revision, wait]);
-  const shown = read && last?.list === list ? last : undefined;
+  const shown = last?.list === list ? last : undefined;
   return { found: shown?.found, failed: shown?.failed ?? '' };
 }

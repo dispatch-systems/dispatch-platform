@@ -8,33 +8,36 @@
      760 – 1499   the list beside the conversation; the profile over the conversation
      ≥ 1500       the profile, open, a column of its own beside the conversation
 
-   useLayout.ts tells the page the same widths. */
+   useLayout.ts tells the page the same widths. Sizes go by a hundredth of the page's width
+   (`--cq`): within the page, its container's (`1cqi`); in New message and the Update popup, which
+   lie outside the page's container to cover the window or the page beside the sidebar, the
+   width useLayout.ts measures. */
 .communications {
-  container: communications / inline-size;
+  --cq: 1cqi;
   --bubble-in: #eef1f5;
   --bubble-out: #2055ed;
   --bubble-out-foreground: #fff;
   --late: var(--destructive);
   --late-surface: #fbeaec;
-  --list-width: clamp(296px, calc(18cqi + 120px), 440px);
+  --list-width: clamp(296px, calc(18 * var(--cq) + 120px), 440px);
   /* The conversation's messages and the box under them, centred on a wide page. */
-  --column-width: clamp(880px, 56cqi, 1320px);
-  --text-size: clamp(14px, calc(10.6px + 0.3cqi), 17.5px);
-  --name-size: clamp(14px, calc(10.9px + 0.27cqi), 17px);
-  --title-size: clamp(15px, calc(11px + 0.35cqi), 20px);
-  --ui-size: clamp(13px, calc(10.3px + 0.24cqi), 16px);
-  --small-size: clamp(11.5px, calc(9.4px + 0.18cqi), 14px);
-  --face-list: clamp(40px, calc(28px + 1.05cqi), 56px);
-  --face-head: clamp(40px, calc(28px + 1.05cqi), 54px);
-  --face-message: clamp(30px, calc(21px + 0.78cqi), 42px);
-  --face-profile: clamp(72px, calc(56px + 1.3cqi), 96px);
-  --field-height: clamp(38px, calc(28px + 0.88cqi), 50px);
-  --composer-height: clamp(46px, calc(33px + 1.1cqi), 60px);
-  --round-size: clamp(34px, calc(25px + 0.78cqi), 44px);
-  --gap: clamp(12px, calc(8px + 0.35cqi), 18px);
-  --pad: clamp(18px, calc(8px + 0.9cqi), 40px);
-  --photo-width: clamp(232px, calc(140px + 8cqi), 340px);
-  --profile-width: clamp(300px, calc(200px + 9cqi), 400px);
+  --column-width: clamp(880px, calc(56 * var(--cq)), 1320px);
+  --text-size: clamp(14px, calc(10.6px + 0.3 * var(--cq)), 17.5px);
+  --name-size: clamp(14px, calc(10.9px + 0.27 * var(--cq)), 17px);
+  --title-size: clamp(15px, calc(11px + 0.35 * var(--cq)), 20px);
+  --ui-size: clamp(13px, calc(10.3px + 0.24 * var(--cq)), 16px);
+  --small-size: clamp(11.5px, calc(9.4px + 0.18 * var(--cq)), 14px);
+  --face-list: clamp(40px, calc(28px + 1.05 * var(--cq)), 56px);
+  --face-head: clamp(40px, calc(28px + 1.05 * var(--cq)), 54px);
+  --face-message: clamp(30px, calc(21px + 0.78 * var(--cq)), 42px);
+  --face-profile: clamp(72px, calc(56px + 1.3 * var(--cq)), 96px);
+  --field-height: clamp(38px, calc(28px + 0.88 * var(--cq)), 50px);
+  --composer-height: clamp(46px, calc(33px + 1.1 * var(--cq)), 60px);
+  --round-size: clamp(34px, calc(25px + 0.78 * var(--cq)), 44px);
+  --gap: clamp(12px, calc(8px + 0.35 * var(--cq)), 18px);
+  --pad: clamp(18px, calc(8px + 0.9 * var(--cq)), 40px);
+  --photo-width: clamp(232px, calc(140px + 8 * var(--cq)), 340px);
+  --profile-width: clamp(300px, calc(200px + 9 * var(--cq)), 400px);
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -46,6 +49,8 @@
   --late-surface: #432630;
 }
 .communications-page {
+  container: communications / inline-size;
+  --cq: 1cqi;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1201,6 +1206,9 @@
   .stack {
     max-width: 80%;
   }
+}
+/* The Update popup, over a phone's window. */
+@media (width <= 760px) {
   .update-why {
     margin-left: 0;
   }

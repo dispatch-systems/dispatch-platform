@@ -98,6 +98,11 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const listed = inbox?.conversations.find((conversation) => conversation.id === open);
   const unlisted = pinned && !inbox?.conversations.some((each) => each.id === pinned.id);
   const current = listed ?? (pinned?.id === open ? pinned : undefined);
+  // Choosing a workspace leaves a conversation of another open, for the first of the one chosen.
+  const chooseWorkspace = (team?: string) => {
+    choose(team);
+    if (team && current && current.teamId !== team) select(undefined);
+  };
   return (
     <div ref={page} className={open ? 'communications reading' : 'communications'}>
       <div className="communications-page" inert={updating.length > 0}>
@@ -127,7 +132,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
               inbox={inbox}
               working={working}
               team={team}
-              choose={choose}
+              choose={chooseWorkspace}
               pinned={unlisted ? pinned : undefined}
               current={current}
               readOlder={readOlder}

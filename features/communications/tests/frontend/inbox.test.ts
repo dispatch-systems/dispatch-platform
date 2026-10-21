@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Communications, Conversation } from '../../api/index.js';
-import { marked, updated, withOlder } from '../../frontend/inbox.js';
-import { waited } from '../../frontend/format.js';
+import type { Communications, CommunicationsWorkspace, Conversation } from '../../api/index.js';
+import { marked, shownWorkspace, updated, withOlder } from '../../frontend/inbox.js';
+import { initials, letter, waited } from '../../frontend/format.js';
 
 /** A conversation, waiting since `since` or answered, its latest message written at `at`. */
 const conversation = (
@@ -91,4 +91,37 @@ test('a wait turns amber at 15 minutes and red at 30', () => {
   assert.deepEqual(minutes(15), { label: '15m', tone: 'slow' });
   assert.deepEqual(minutes(30), { label: '30m', tone: 'late' });
   assert.deepEqual(minutes(125), { label: '2h', tone: 'late' });
+});
+
+test('the workspace chosen is shown while it is one of two or more where it works, else every one', () => {
+  const workspace = (teamId: string, on = true): CommunicationsWorkspace => ({
+    teamId,
+    name: teamId,
+    on,
+    chatLink: '',
+    needsUpdate: false,
+  });
+  const both = [workspace('T1'), workspace('T2')];
+  assert.equal(shownWorkspace('T2', both), 'T2');
+  assert.equal(shownWorkspace(undefined, both), undefined);
+  // Disconnected, switched off there, or the only one left.
+  assert.equal(shownWorkspace('T3', both), undefined);
+  assert.equal(shownWorkspace('T2', [workspace('T1'), workspace('T2', false)]), undefined);
+  assert.equal(shownWorkspace('T2', [workspace('T2'), workspace('T3', false)]), undefined);
+});
+
+test('a contact is listed under their name’s first letter, and a workspace marked by its initials', () => {
+  assert.deepEqual(['Ana Silva', 'émile Roy', 'Øyvind Berg', '2nd Shift', ' kevin'].map(letter), [
+    'A',
+    'E',
+    'Ø',
+    '#',
+    'K',
+  ]);
+  assert.deepEqual(['BHL Drivers', 'Drivers', 'blue heron logistics', ''].map(initials), [
+    'BD',
+    'DR',
+    'BH',
+    '?',
+  ]);
 });

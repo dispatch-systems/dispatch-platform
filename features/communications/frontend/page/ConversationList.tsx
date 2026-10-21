@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { Check } from 'lucide-react';
 import type { Communications, Conversation, Writing } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
+import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { listTime, preview } from '../format.js';
 import { Face } from './Face.js';
 import { More } from './More.js';
@@ -53,7 +54,7 @@ export function ConversationList({
   if (typed) {
     if (failed || found?.length === 0)
       return <p className="list-empty">{failed || 'No matches'}</p>;
-    return found ? rows(found) : null;
+    return found ? rows(found) : <Loading />;
   }
   const shown = inbox.conversations.filter((conversation) => !team || conversation.teamId === team);
   const waiting = shown.filter((conversation) => conversation.state === 'waiting');
