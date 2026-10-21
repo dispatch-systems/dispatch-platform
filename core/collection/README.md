@@ -34,10 +34,12 @@ past midnight, and the same as its start all day. Times are where the DSP is: a 
 clock change repeats runs once, at its first, and one it skips doesn't run. A rule may read
 its collection another way when its keeper offers the choice, as Routes' rules read Yesterday
 (`routes`) or Today so far (`routes_today`, a schedule alias). The rules are saved together,
-against the revision they were read at, and the collection is on or off as a whole; one with
-no rules starts on, and coming on needs its collector connected. Each row also keeps the one
-time, or the start and interval, the previous release runs it by, and a row that release wrote,
-or a rule of times whose first it changed, reads as that release ran it.
+against the revision they were read at, and the collection is on or off as a whole; its first
+rules start it on once its collector is connected, and off till then, and coming on needs it.
+Each row also keeps the one time, or the start and interval, the previous release runs it by,
+beside what this release wrote of it, so a row that release wrote, or changed since, reads as
+it runs it: one time every day, a repeat all day from its start, or, repeating less often than
+a rule may, the times it falls at.
 
 The scheduler queues every rule due in one batch, so the collections due together run
 together, each collection once however many of its rules are due: the others it runs for move

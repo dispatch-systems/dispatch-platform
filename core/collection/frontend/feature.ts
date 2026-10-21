@@ -59,12 +59,16 @@ export const feature: FrontendFeature = {
       prefetch: () => [collectorsRead],
     },
   ],
-  // Its collections' runs and their collectors' connections change it, as a save of a schedule
-  // does any DSP read; a preview of one changes nothing.
+  // Its collections' runs and their collectors' connections change it. A save of a schedule, or
+  // its switch, changes any DSP read, as a feature's status shows when it next runs; a preview
+  // changes nothing.
   cache: {
     jobs: [collectorsRead],
     connections: [collectorsRead],
-    write: (write) =>
-      write.startsWith('/api/dsp/collectors/') && write.endsWith('/preview') ? false : undefined,
+    write: (write, url) => {
+      if (!write.startsWith('/api/dsp/collectors/')) return undefined;
+      if (write.endsWith('/preview')) return false;
+      return url.startsWith('/api/dsp/');
+    },
   },
 };

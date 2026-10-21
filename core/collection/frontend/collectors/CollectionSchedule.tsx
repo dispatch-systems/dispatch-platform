@@ -59,6 +59,8 @@ export function CollectionSchedule({
     const fresh = { drafts: draftsOf(collection.rules), revision: collection.revision };
     setBase(fresh);
     setDrafts(fresh.drafts);
+    setStale(false);
+    setError('');
   }, [collection, base.revision, dirty]);
   const rules = useMemo(() => drafts.map(finished), [drafts]);
   const whole = rules.every(Boolean);
@@ -150,6 +152,7 @@ export function CollectionSchedule({
       saved(answer);
     } catch (cause) {
       setError(messageOf(cause));
+      if (cause instanceof ApiError && cause.code === 'schedule_changed') refresh();
     } finally {
       switching.current = false;
       setBusy(false);

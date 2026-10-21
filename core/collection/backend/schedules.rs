@@ -89,7 +89,8 @@ impl FromRow for ScheduleRow {
         }
         .map(|timing| Rule { days, timing });
         // A row this release didn't write, or the previous release changed since, is what that
-        // release ran: one time every day, or a repeat all day from its start.
+        // release ran: one time every day, or a repeat all day from its start. Changed back
+        // just as it was, it is this release's again.
         let rule = match rule {
             Some(rule) => rule,
             None => Rule {

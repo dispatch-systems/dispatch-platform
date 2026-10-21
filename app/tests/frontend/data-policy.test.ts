@@ -41,6 +41,16 @@ test('a driver checkpoint touches its employee and days, not another driver, ros
 
 test('writes invalidate their dependencies without flushing unrelated features', () => {
   assert.equal(mutationAffects('/api/dsp/settings/timecard.roster', '/api/dsp/employees/A'), true);
+  // A schedule saved on Collectors moves the next run a feature's status shows; a preview of
+  // one moves nothing.
+  const roster = '/api/dsp/driver-profiles/status';
+  assert.equal(mutationAffects('/api/dsp/collectors/associates/schedule', roster), true);
+  assert.equal(mutationAffects('/api/dsp/collectors/associates/enabled', roster), true);
+  assert.equal(mutationAffects('/api/dsp/collectors/associates/preview', roster), false);
+  assert.equal(
+    mutationAffects('/api/dsp/collectors/associates/preview', '/api/dsp/collectors'),
+    false,
+  );
   assert.equal(mutationAffects('/api/dsp/uniforms/stock/A', '/api/dsp/employees/A'), false);
   // A Driver Match decision moves drivers between meal-break rows, and nothing else.
   assert.equal(
