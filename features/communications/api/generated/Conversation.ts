@@ -34,6 +34,6 @@ last: Message | null,
 matched: Array<[number, number]>,
 /**
  * The group it's listed under, as its row stands for it: the one the DSP last wrote to
- * them in, while nothing it waits on is from before that.
+ * them in, while all it waits on answers a message to a group.
  */
 groupId: string | null, };
