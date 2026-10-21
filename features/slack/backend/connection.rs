@@ -20,7 +20,7 @@ use dispatch_core::{
     server::http::route::Dsp,
     tenancy::api::types::DspStatus,
 };
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 /// Where an install started, as the state Slack carries back says: on the admin's address, on
 /// the DSP's own, or by the DSP's install link. The browser comes back to where it started.
@@ -199,14 +199,15 @@ pub async fn finish(
         undo(state, made).await;
     }
     let action = kept?;
-    // Whatever its admin approved now, its members are read as it allows. Its logo is waited
-    // for a moment, so the page shows it at once; a slower one comes with the next read.
+    // The account as the install left it, before Slack is asked anything more there.
+    let at = id.clone();
+    let answer = state.read(move |db| account(db, &at)).await;
+    // Whatever its admin approved now, its members are read as it allows, and its logo.
     members::read_soon(state, &id, &team);
-    let reading = logo::read_soon(state, &id, &team);
-    let _ = tokio::time::timeout(LOGO_WAIT, reading).await;
+    logo::read_soon(state, &id, &team);
     let again = action == RECONNECTED && named.is_none();
     ensure(!again, "slack_workspace_connected", 409)?;
-    state.read(move |db| account(db, &id)).await
+    answer
 }
 
 /// Takes back an install Slack made and Dispatch then refused, `(team, token)`, so the app
@@ -218,9 +219,6 @@ pub(super) async fn undo(state: &Arc<State>, (team, token): (String, String)) {
         slack.uninstall(&token).await;
     }
 }
-
-/// How long finishing an install waits for the workspace's logo.
-const LOGO_WAIT: Duration = Duration::from_secs(3);
 
 /// What the activity log records for an install that gave the DSP a workspace it had already.
 const RECONNECTED: &str = "slack.reconnected";

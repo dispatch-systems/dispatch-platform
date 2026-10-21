@@ -133,8 +133,7 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   name in Slack again. Up to 60 characters.
 - **Logos:** each workspace's logo, as Slack describes it when asked about the workspace
   (`team.info`, which `team:read` allows): hourly, and once it's connected, reconnected or
-  updated, which waits a moment for it so the page that connected it shows it at once. Dispatch
-  keeps a copy of it to show, as the dashboard shows no picture from elsewhere:
+  updated. Dispatch keeps a copy of it to show, as the dashboard shows no picture from elsewhere:
   the one 132 pixels square, downloaded with no token from Slack's own servers alone (`https`,
   `slack-edge.com` or a server under it), never following a redirect, as a PNG, JPEG or GIF of up
   to 256 KB; and again only once Slack gives it at another address. A workspace whose logo is

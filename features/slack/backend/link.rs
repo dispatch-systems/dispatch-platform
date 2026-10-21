@@ -131,7 +131,6 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
         return kept.map(|()| opened);
     }
     members::read_soon(state, &at, &opened.0);
-    // Its logo comes in its own time: no page shows the account here.
-    drop(logo::read_soon(state, &at, &opened.0));
+    logo::read_soon(state, &at, &opened.0);
     kept.map(|()| opened)
 }

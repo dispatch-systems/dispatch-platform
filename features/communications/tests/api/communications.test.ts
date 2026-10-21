@@ -1,3 +1,4 @@
+import http from 'node:http';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
@@ -141,11 +142,17 @@ test('Communications answers only those whose role gives them it, and the profil
     logo = (await member.read(route)).workspaces[0].logo ?? '';
     return Boolean(logo);
   });
-  const picture = await f.raw(
-    `${route}/workspaces/T0FIXTURE1/logo?v=${logo}`,
-    undefined,
-    member.headers,
+  // At the DSP's own address, where the member signs in, which `fetch` can't name.
+  const picture = await new Promise<http.IncomingMessage>((resolve, reject) =>
+    http
+      .get(
+        `${f.env.DISPATCH_ORIGIN}${route}/workspaces/T0FIXTURE1/logo?v=${logo}`,
+        { headers: member.headers },
+        resolve,
+      )
+      .on('error', reject),
   );
-  assert.equal(picture.status, 200);
-  assert.equal(picture.headers.get('content-type'), 'image/png');
+  picture.resume();
+  assert.equal(picture.statusCode, 200);
+  assert.equal(picture.headers['content-type'], 'image/png');
 });

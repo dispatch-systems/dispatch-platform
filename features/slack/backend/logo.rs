@@ -13,7 +13,6 @@ use dispatch_core::{
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 
 /// The size kept, in pixels square: three times a mark of forty-odd.
 const SIZE: &str = "image_132";
@@ -83,9 +82,8 @@ pub async fn keep(bot: &Bot, icon: &Value) -> Result<()> {
         .await
 }
 /// Reads the DSP's workspace `team`'s logo once it was connected, reconnected or updated, so it
-/// shows before the hourly check: the reading, to wait on if need be. A failure waits for that
-/// check.
-pub fn read_soon(state: &Arc<State>, dsp: &str, team: &str) -> JoinHandle<()> {
+/// shows before the hourly check. A failure waits for that check.
+pub fn read_soon(state: &Arc<State>, dsp: &str, team: &str) {
     let bot = Bot::new(state, dsp, team);
     tokio::spawn(async move {
         let read = async {
@@ -95,7 +93,7 @@ pub fn read_soon(state: &Arc<State>, dsp: &str, team: &str) -> JoinHandle<()> {
         if let Err(error) = read.await {
             failed(&error);
         }
-    })
+    });
 }
 /// The workspace `team`'s logo, as kept, to show: its kind, and its picture.
 pub fn picture(db: &Store, dsp: &str, team: &str) -> Result<Option<Photo>> {
