@@ -349,6 +349,10 @@ impl DriverRoutes for Fake {
             routes: rows.iter().map(driven).collect(),
         })
     }
+    /// The driver tool reads one driver's routes, never a whole day's.
+    fn day(&self, _: &Store, _: &str, _: &str) -> Result<route::Driven> {
+        unreachable!("the driver tool reads one driver's routes")
+    }
 }
 impl timecard::Timecards for Fake {
     fn source(&self) -> Source {

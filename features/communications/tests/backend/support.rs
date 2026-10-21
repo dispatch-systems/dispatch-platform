@@ -244,17 +244,33 @@ impl DriverRoutes for Standing {
                 .cloned()
                 .collect()
         });
-        let days: BTreeSet<String> = routes.iter().map(|route| route.day.clone()).collect();
-        Ok(Driven {
-            days: days
-                .into_iter()
-                .map(|day| CollectedDay {
-                    day,
-                    complete: false,
-                })
-                .collect(),
-            routes,
-        })
+        Ok(driven(routes))
+    }
+    /// Every route it knows driven on `day`.
+    fn day(&self, _: &Store, dsp: &str, day: &str) -> Result<Driven> {
+        let routes = known(dsp, |known| {
+            known
+                .routes
+                .iter()
+                .filter(|route| route.day == day)
+                .cloned()
+                .collect()
+        });
+        Ok(driven(routes))
+    }
+}
+/// `routes`, with each day they're on read while under way.
+fn driven(routes: Vec<RouteDay>) -> Driven {
+    let days: BTreeSet<String> = routes.iter().map(|route| route.day.clone()).collect();
+    Driven {
+        days: days
+            .into_iter()
+            .map(|day| CollectedDay {
+                day,
+                complete: false,
+            })
+            .collect(),
+        routes,
     }
 }
 impl AmazonFleet for Standing {

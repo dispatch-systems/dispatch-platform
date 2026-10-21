@@ -71,6 +71,8 @@
       ["documents", 2, "documents_full_access", "code"],
       ["documents", 3, "documents_outside_names", "code"],
       ["communications", 1, "communications", "03c747841d5a3ef6"],
+      ["communications", 2, "communications_groups", "6924efa62282f4c3"],
+      ["communications", 3, "communications_grouped", "code"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],

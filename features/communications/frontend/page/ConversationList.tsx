@@ -1,31 +1,41 @@
 import { useCallback } from 'react';
-import { Check } from 'lucide-react';
-import type { Communications, Conversation, Writing } from '../../api/index.js';
+import { Check, Users } from 'lucide-react';
+import type { Communications, Conversation, Group, Writing } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { listTime, preview } from '../format.js';
+import { rows as listed, type Row } from '../inbox.js';
 import { Face } from './Face.js';
+import type { Draft } from './GroupDraft.js';
+import { GroupFaces } from './GroupFaces.js';
 import { More } from './More.js';
 import { Name, Wait, typingNote } from './parts.js';
 import { useFound } from './useFound.js';
 
-// Messages: the conversations, of every workspace or the one chosen, those waiting on an answer,
-// then those answered; or those found by a name typed, misspelt or not. The conversation open is
-// at the top while the list doesn't hold it, as one New message opened before it holds a message.
+// Messages: the conversations and groups, of every workspace or the one chosen, those waiting on
+// an answer, then those answered; or the conversations found by a name typed, misspelt or not. A
+// conversation listed under a group is the group's row. The message being written to a group is
+// at the top while it's written, and what's open at the top while the list doesn't show it, as
+// one New message opened before it holds a message.
 
 type Listing = {
+  /** What's open: a conversation or a group, by its ID. */
   open?: string;
   typing: readonly Writing[];
   timeZone: string;
   now: number;
   select: (id: string) => void;
+  openGroup: (id: string) => void;
   done: (conversation: Conversation) => void;
+  doneGroup: (group: Group) => void;
 };
 
 export function ConversationList({
   inbox,
   team,
   typed,
+  waiting: waitingPeople,
+  draft,
   pinned,
   readOlder,
   ...listing
@@ -35,8 +45,12 @@ export function ConversationList({
   team?: string;
   /** What's typed in Search, trimmed. */
   typed: string;
-  /** The conversation open, while the list doesn't hold it. */
-  pinned?: Conversation;
+  /** How many people wait, in the workspace chosen or every one. */
+  waiting: number;
+  /** The message being written to a group, while it is. */
+  draft?: Draft;
+  /** What's open, while the list doesn't show it. */
+  pinned?: Row;
   readOlder: () => void;
 }) {
   const search = useCallback(
@@ -44,33 +58,63 @@ export function ConversationList({
     [typed, team],
   );
   const { found, failed } = useFound(typed ? search : undefined, team ?? '', inbox.revision, 200);
-  const rows = (conversations: readonly Conversation[]) => (
+  const list = (rows: readonly Row[]) => (
     <ul className="convos">
-      {conversations.map((conversation) => (
-        <Row key={conversation.id} conversation={conversation} {...listing} />
-      ))}
+      {rows.map((each) =>
+        each.kind === 'group' ? (
+          <GroupRow key={each.row.id} group={each.row} {...listing} />
+        ) : (
+          <ConversationRow key={each.row.id} conversation={each.row} {...listing} />
+        ),
+      )}
     </ul>
   );
   if (typed) {
     if (failed || found?.length === 0)
       return <p className="list-empty">{failed || 'No matches'}</p>;
-    return found ? rows(found) : <Loading />;
+    return found ? (
+      list(found.map((conversation) => ({ kind: 'conversation', row: conversation })))
+    ) : (
+      <Loading />
+    );
   }
-  const shown = inbox.conversations.filter((conversation) => !team || conversation.teamId === team);
-  const waiting = shown.filter((conversation) => conversation.state === 'waiting');
-  const answered = shown.filter((conversation) => conversation.state !== 'waiting');
+  const shown = listed(inbox, team);
+  const waiting = shown.filter((each) => each.row.state === 'waiting');
+  const answered = shown.filter((each) => each.row.state !== 'waiting');
+  const pinnedShown =
+    pinned &&
+    (!team ||
+      (pinned.kind === 'group' ? pinned.row.teamIds.includes(team) : pinned.row.teamId === team));
   return (
     <>
-      {pinned &&
-        (!team || pinned.teamId === team) &&
-        (pinned.lastAt === null ? (
+      {draft && (
+        <ul className="convos">
+          <li className="convo selected draft">
+            <span className="convo-open">
+              <span className="face face-list draft-face">
+                <Users aria-hidden="true" />
+              </span>
+              <span className="convo-body">
+                <span className="line1">
+                  <strong>
+                    {draft.name || 'New message'}
+                    {draft.name && <span className="people"> · {draft.people}</span>}
+                  </strong>
+                </span>
+              </span>
+            </span>
+          </li>
+        </ul>
+      )}
+      {pinnedShown &&
+        (pinned.kind === 'conversation' && pinned.row.lastAt === null ? (
           <ul className="convos">
             <li className="convo selected">
-              <button className="convo-open" onClick={() => listing.select(pinned.id)}>
-                <Face {...pinned.with} size="list" />
+              <button className="convo-open" onClick={() => listing.select(pinned.row.id)}>
+                <Face {...pinned.row.with} size="list" />
                 <span className="convo-body">
                   <span className="line1">
-                    <strong>{pinned.with.name}</strong>
+                    <strong>{pinned.row.with.name}</strong>
                   </span>
                   <span className="line2">
                     <span className="preview">New message</span>
@@ -80,20 +124,20 @@ export function ConversationList({
             </li>
           </ul>
         ) : (
-          rows([pinned])
+          list([pinned])
         ))}
       {waiting.length > 0 && (
         <>
           <h2 className="list-head">
-            Waiting<span>{waiting.length}</span>
+            Waiting<span>{waitingPeople}</span>
           </h2>
-          {rows(waiting)}
+          {list(waiting)}
         </>
       )}
       {answered.length > 0 && (
         <>
           <h2 className="list-head">Responded</h2>
-          {rows(answered)}
+          {list(answered)}
         </>
       )}
       {inbox.more && <More read={readOlder} />}
@@ -106,7 +150,7 @@ export function ConversationList({
  * who at the DSP is writing in it. One waiting shows how long it has, and a check that marks it
  * done without a reply while it's pointed at.
  */
-function Row({
+function ConversationRow({
   conversation,
   open,
   typing,
@@ -160,6 +204,56 @@ function Row({
       </button>
       {waits && (
         <button className="convo-done" aria-label="Done" onClick={() => done(conversation)}>
+          <Check size={16} />
+        </button>
+      )}
+    </li>
+  );
+}
+
+/**
+ * A group in the list: two of its people, its name and how many it went to, when it was last
+ * written in, and what was, with its writer's first name. While anything under it waits, how
+ * long the longest has, and a check that marks all of it done while it's pointed at.
+ */
+function GroupRow({
+  group,
+  open,
+  timeZone,
+  now,
+  openGroup,
+  doneGroup,
+}: Listing & { group: Group }) {
+  const waits = group.state === 'waiting';
+  const selected = open === group.id;
+  const last = group.last;
+  const writer = last?.sender?.name ?? last?.from?.name ?? '';
+  return (
+    <li className={`convo group${selected ? ' selected' : ''}${waits ? ' waits' : ''}`}>
+      <button
+        className="convo-open"
+        aria-current={selected || undefined}
+        onClick={() => openGroup(group.id)}
+      >
+        <GroupFaces faces={group.faces} size="list" />
+        <span className="convo-body">
+          <span className="line1">
+            <strong>
+              {group.name}
+              <span className="people"> · {group.people}</span>
+            </strong>
+            <time>{listTime(group.lastAt, timeZone, now)}</time>
+          </span>
+          <span className="line2">
+            <span className="preview">
+              {last ? `${writer.split(' ')[0] ?? writer}: ${preview(last)}` : ''}
+            </span>
+            {waits && group.waitingSince !== null && <Wait since={group.waitingSince} now={now} />}
+          </span>
+        </span>
+      </button>
+      {waits && (
+        <button className="convo-done" aria-label="Done" onClick={() => doneGroup(group)}>
           <Check size={16} />
         </button>
       )}

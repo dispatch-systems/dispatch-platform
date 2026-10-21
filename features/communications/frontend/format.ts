@@ -73,7 +73,7 @@ export function size(bytes: number) {
 export const isPhoto = (mime: string) => /^image\/(png|jpeg|gif|webp)$/.test(mime);
 
 /** A message as a row of the list shows it: its text, else what it holds. */
-export function preview(message: Message) {
+export function preview(message: Pick<Message, 'text' | 'files'>) {
   if (message.text.trim()) return message.text;
   const [first] = message.files;
   if (!first) return '';

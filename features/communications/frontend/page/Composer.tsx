@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, X } from 'lucide-react';
-import type { CommunicationsUpload, Conversation, Message } from '../../api/index.js';
-import { addPhoto, sayTyping, sendMessage } from '../../api/client.js';
+import type { CommunicationsUpload } from '../../api/index.js';
+import { addPhoto } from '../../api/client.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 
-// Writing in a conversation: up to 3,000 characters, and up to ten photos, each PNG, JPEG or GIF
-// up to 20 MB, uploaded as they're added. Enter sends, Shift+Enter starts a new line. While
-// someone writes, their teammates see they are, said again every few seconds.
+// Writing a message, in a conversation or to a group: up to 3,000 characters, and up to ten
+// photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added. Enter sends, Shift+Enter
+// starts a new line. While someone writes in a conversation, their teammates see they are, said
+// again every few seconds.
 
 const TEXT_MOST = 3000;
 const PHOTOS_MOST = 10;
@@ -28,14 +29,24 @@ type Added = {
 };
 
 export function Composer({
-  conversation,
+  placeholder,
   writable,
-  sent,
+  ready: whom = true,
+  send: deliver,
+  typing,
+  label,
 }: {
-  conversation: Conversation;
-  /** Whether Communications works in its workspace now. */
+  placeholder: string;
+  /** Whether it can be written in: Communications works where it goes now. */
   writable: boolean;
-  sent: (message: Message) => void;
+  /** Whether what's written can go, as once there's someone to send it to. */
+  ready?: boolean;
+  /** Sends what's written with the photos added for it, by their IDs. */
+  send: (text: string, photos: string[]) => Promise<void>;
+  /** Says the member is writing, for the next few seconds. */
+  typing?: () => void;
+  /** What sending says beside its arrow, as "Send to 8"; else the arrow alone. */
+  label?: string;
 }) {
   const { fail } = useFeedback();
   const [text, setText] = useState('');
@@ -99,8 +110,7 @@ export function Composer({
       );
   };
   const send = useAction(async () => {
-    const message = await sendMessage(
-      conversation.id,
+    await deliver(
       text.trim(),
       photos.map((photo) => photo.uploaded!.id),
     );
@@ -108,19 +118,18 @@ export function Composer({
     setPhotos([]);
     setText('');
     said.current = 0;
-    sent(message);
   });
   const uploading = photos.some((photo) => !photo.uploaded);
   const ready =
-    writable && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
+    writable && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
   const writing = (value: string) => {
     setText(value);
-    if (value.trim() && Date.now() - said.current > TYPING_MS) {
+    if (typing && value.trim() && Date.now() - said.current > TYPING_MS) {
       said.current = Date.now();
-      void sayTyping(conversation.id).catch(() => undefined);
+      typing();
     }
   };
-  const first = conversation.with.name.split(' ')[0] ?? conversation.with.name;
+  const sending = send.busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />;
   return (
     <form
       className="composer"
@@ -146,7 +155,7 @@ export function Composer({
           ))}
         </ul>
       )}
-      <div className="box">
+      <div className={label && text ? 'box writing' : 'box'}>
         <button
           type="button"
           className="round"
@@ -171,7 +180,7 @@ export function Composer({
           ref={field}
           rows={1}
           aria-label="Message"
-          placeholder={`Message ${first}`}
+          placeholder={placeholder}
           maxLength={TEXT_MOST}
           value={text}
           disabled={!writable}
@@ -182,9 +191,16 @@ export function Composer({
             if (ready) void send.run();
           }}
         />
-        <button type="submit" className="round send" aria-label="Send" disabled={!ready}>
-          {send.busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
-        </button>
+        {label ? (
+          <button type="submit" className="send-to" disabled={!ready}>
+            {label}
+            {sending}
+          </button>
+        ) : (
+          <button type="submit" className="round send" aria-label="Send" disabled={!ready}>
+            {sending}
+          </button>
+        )}
       </div>
     </form>
   );

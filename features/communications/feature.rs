@@ -8,11 +8,16 @@ mod integrations;
 pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
     CommunicationsWorkspace, Contact, Contacts, Conversation, ConversationMessages,
-    ConversationState, Conversations, Correspondent, Direction, FileStatus, Message, MessageFile,
-    Profile, ProfileToday, Sender, Typing, Writing,
+    ConversationState, Conversations, Correspondent, Direction, FileStatus, Group, GroupChoice,
+    GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages, GroupPeople,
+    GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGroup, Profile,
+    ProfileToday, Reachable, Sender, Typing, Writing,
 };
 
-use dispatch_core::db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql};
+use dispatch_core::db::{
+    Kind, Migration, OwnMigrations,
+    migrations::Apply::{Code, Sql},
+};
 use dispatch_core::manifest::{Feature, feature, optional, perm};
 
 pub const FEATURE: Feature = Feature {
@@ -31,21 +36,41 @@ pub const FEATURE: Feature = Feature {
             "communications_messages",
             "communications_files",
             "communications_changes",
+            "communications_groups",
+            "communications_group_people",
+            "communications_group_messages",
+            "communications_deliveries",
+            "communications_group_uploads",
         ],
     )],
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,
-        list: &[Migration {
-            id: 1,
-            name: "communications",
-            apply: Sql(include_str!("migrations/dsp/0001_communications.sql")),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "communications",
+                apply: Sql(include_str!("migrations/dsp/0001_communications.sql")),
+            },
+            Migration {
+                id: 2,
+                name: "communications_groups",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0002_communications_groups.sql"
+                )),
+            },
+            Migration {
+                id: 3,
+                name: "communications_grouped",
+                apply: Code(backend::storage::add_groups),
+            },
+        ],
     }],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
-    // what members attach, every minute.
+    // what members attach, and sending what's due to go to groups' people, every minute.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,
+        backend::groups::send::MAINTENANCE,
     ],
     // On from the start in every workspace, in place of Slack's answer that DSP Messaging is
     // unavailable.
@@ -79,5 +104,18 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         Writing,
         CommunicationsUpdates,
         CommunicationsUpload,
+        MessageGroup,
+        Group,
+        GroupEntry,
+        GroupProgress,
+        GroupMessages,
+        GroupPeople,
+        GroupPerson,
+        GroupPersonState,
+        GroupChoices,
+        Reachable,
+        GroupMember,
+        GroupChoice,
+        GroupChoiceKind,
     )
 }

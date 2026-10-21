@@ -14,17 +14,24 @@ use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     sync::{Arc, LazyLock, Mutex},
+    time::Duration,
 };
 
 /// How near its end a token is renewed before it's used: within the hourly check's hour, and
 /// five minutes more, so the check renews one before it ends.
 const RENEW_WITHIN_MS: i64 = 65 * 60 * 1000;
+/// How long Slack asking the bot to slow down is waited out, at most: half a minute, as someone
+/// may be waiting on the answer; and for work in the background, two minutes.
+const WAITED: Duration = Duration::from_secs(30);
+const WAITED_PATIENTLY: Duration = Duration::from_secs(2 * 60);
 
 /// The bot in the DSP's workspace `team`.
 pub struct Bot {
     pub state: Arc<State>,
     pub dsp: String,
     pub team: String,
+    /// How long Slack asking it to slow down is waited out, at most.
+    waits: Duration,
 }
 impl Bot {
     pub fn new(state: &Arc<State>, dsp: &str, team: &str) -> Self {
@@ -32,6 +39,15 @@ impl Bot {
             state: state.clone(),
             dsp: dsp.to_owned(),
             team: team.to_owned(),
+            waits: WAITED,
+        }
+    }
+    /// The bot for work in the background, nobody waiting on its answers: Slack asking it to slow
+    /// down is waited out for as long as Slack says, up to two minutes.
+    pub fn patient(self) -> Self {
+        Self {
+            waits: WAITED_PATIENTLY,
+            ..self
         }
     }
     /// The bot in the workspace `team`, for the DSP it belongs to, while Dispatch acts there:
@@ -53,15 +69,16 @@ impl Bot {
     }
 
     /// Calls Slack's API method `method` with `args`: Slack's answer. A token Slack says
-    /// expired is renewed and the call made again, once. Slack no longer honouring the
+    /// expired is renewed and the call made again, once. Slack asking it to slow down is waited
+    /// out, up to half a minute, or two for a `patient` bot. Slack no longer honouring the
     /// workspace's tokens breaks it, until someone reconnects it.
     pub async fn call(&self, method: &str, args: &Value) -> Result<Value> {
         let slack = Slack::of(&self.state.config)?;
         let token = self.token().await?;
-        let answer = match slack.call(&token, method, args).await {
+        let answer = match slack.call(&token, method, args, self.waits).await {
             Err(error) if error.code == "slack_token_expired" => {
                 slack
-                    .call(&self.instead_of(&token).await?, method, args)
+                    .call(&self.instead_of(&token).await?, method, args, self.waits)
                     .await
             }
             answer => answer,

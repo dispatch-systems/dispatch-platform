@@ -45,15 +45,15 @@ name `routedata` on disk.
   so far as collecting "Routes, today so far". `routes.retention_changed`, from before Settings
   kept it, still reads.
 - **People:** its drivers and their days are Driver Match's `routes` kind of data.
-- **Exposed:** `driver_routes`, through its contract in `contract/`
-  (`dispatch-routes-contract`), for any feature or agent tool, while it's on for the DSP: the
-  source whose IDs name its drivers, the days collected, and a driver's itineraries over some
-  days at the DSP's station, each with its route, van, wave, times, stops, packages delivered,
+- **Exposed:** `driver_routes`, through its contract in `contract/` (`dispatch-routes-contract`),
+  for any feature or agent tool, while it's on for the DSP: the source whose IDs name its drivers,
+  the days collected, a driver's itineraries over some days at the DSP's station, and every
+  driver's on one day (`day`), each with its route, van, wave, times, stops, packages delivered,
   not delivered and taken off, and every package not delivered by tracking ID, with which of those
-  days were collected and which were read while under way. Today, read by a Today so far
-  schedule or a snapshot asked for, is there as its last read left it, not complete, until the
-  day's final read replaces it. A driver without a route didn't drive only on a complete day:
-  one read while under way may be read before dispatch. Never addresses, locations, order IDs or
-  phone numbers. IDs are matched exactly, and none reads the days alone. It refuses a day that
-  isn't YYYY-MM-DD (`invalid_date`); and `from` after `to`, more than 366 days, more than 16
-  IDs, or an ID that's empty or over 128 characters (`invalid_input`).
+  days were collected and which were read while under way. Today, read by a Today so far schedule
+  or a snapshot asked for, is there as its last read left it, not complete, until the day's final
+  read replaces it. A driver without a route didn't drive only on a complete day: one read while
+  under way may be read before dispatch. Never addresses, locations, order IDs or phone numbers.
+  IDs are matched exactly, and none reads the days alone. It refuses a day that isn't YYYY-MM-DD
+  (`invalid_date`); and `from` after `to`, more than 366 days, more than 16 IDs, or an ID that's
+  empty or over 128 characters (`invalid_input`).

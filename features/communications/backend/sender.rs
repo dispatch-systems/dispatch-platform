@@ -28,13 +28,42 @@ pub struct Identity {
 
 /// Who `user`, at the DSP, sends a message in its workspace `team` as.
 pub async fn identity(state: &Arc<State>, dsp: &str, team: &str, user: &PublicUser) -> Identity {
-    let name: String = user.name().trim().chars().take(NAME_MOST).collect();
-    let icon = match photo(state, dsp, team, &user.email).await {
-        Some(photo) => Some(photo),
-        None => initials::of(&user.first_name, &user.last_name)
-            .map(|letters| initials::address(&state.config.origin, &letters)),
+    let letters = initials::of(&user.first_name, &user.last_name);
+    named(
+        state,
+        dsp,
+        team,
+        &name(user),
+        Some(&user.email),
+        letters.as_deref(),
+    )
+    .await
+}
+/// The name a message from `user` goes out under: their full name, as Slack shows one.
+pub fn name(user: &PublicUser) -> String {
+    user.name().trim().chars().take(NAME_MOST).collect()
+}
+/// Who someone at the DSP named `name` sends a message in its workspace `team` as: their Slack
+/// photo by their email address `email`, while they have one, else the image of their initials
+/// `letters`, if any.
+pub async fn named(
+    state: &Arc<State>,
+    dsp: &str,
+    team: &str,
+    name: &str,
+    email: Option<&str>,
+    letters: Option<&str>,
+) -> Identity {
+    let photo = match email {
+        Some(email) => photo(state, dsp, team, email).await,
+        None => None,
     };
-    Identity { name, icon }
+    let icon =
+        photo.or_else(|| letters.map(|letters| initials::address(&state.config.origin, letters)));
+    Identity {
+        name: name.to_owned(),
+        icon,
+    }
 }
 
 /// The Slack profile photo of the member of the DSP's workspaces with the email address

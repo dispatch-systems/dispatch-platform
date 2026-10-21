@@ -31,4 +31,9 @@ last: Message | null,
  * The letters of its name that matched what was searched, as runs of the name's UTF-16
  * code units: start and end. None unless searched.
  */
-matched: Array<[number, number]>, };
+matched: Array<[number, number]>,
+/**
+ * The group it's listed under, as its row stands for it: the one the DSP last wrote to
+ * them in, while all it waits on answers a message to a group.
+ */
+groupId: string | null, };

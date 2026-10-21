@@ -22,6 +22,10 @@ pub trait DriverRoutes: Send + Sync {
     /// an ID that's empty or over 128 characters.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str)
     -> Result<Driven>;
+    /// What every driver drove on `day`, YYYY-MM-DD in the DSP's own time, each itinerary by
+    /// the ID that drove it, and whether the day was collected. Routes refuses a day that isn't
+    /// YYYY-MM-DD with `invalid_date`.
+    fn day(&self, db: &Store, dsp: &str, day: &str) -> Result<Driven>;
 }
 
 /// The days collected, YYYY-MM-DD in the DSP's own time. Days between may be missing.
@@ -31,7 +35,7 @@ pub struct Collected {
     pub through: String,
 }
 
-/// What a driver drove over the days asked.
+/// What a driver, or every driver, drove over the days asked.
 #[derive(Clone, Debug)]
 pub struct Driven {
     /// Each day asked that was collected, oldest first. A day missing is unknown.
@@ -55,7 +59,7 @@ pub struct CollectedDay {
 pub struct RouteDay {
     /// Its day, YYYY-MM-DD in the DSP's own time.
     pub day: String,
-    /// The ID asked for that drove it.
+    /// The ID that drove it: one of those asked for.
     pub driver_id: String,
     pub route_code: Option<String>,
     /// How Amazon says it went, such as COMPLETE.

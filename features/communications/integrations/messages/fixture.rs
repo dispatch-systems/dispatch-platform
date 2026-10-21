@@ -1,14 +1,15 @@
 //! Fixture mode's answers to the Slack methods only Communications calls, so previews and tests
-//! never reach Slack. The app has a direct message with each member, `D` and the rest of their
-//! ID (`D0FIXJORDAN` with `U0FIXJORDAN`), which `conversations.open` opens; Slack lists the app
-//! as having Jordan's and Slackbot's. Jordan's holds what they wrote while Dispatch wasn't
-//! listening: a message, a photo, a question with a reply in its thread, and the app's own
-//! answer, each stamped when a workspace's is first read, so it's newer than when Communications
-//! came on; and one from before 2026, before it ever was. A test reads a workspace's once, and
-//! may add a reply to the question later (`reply_later`). In Managers, Slack lists the app as
-//! having Cameron's too, holding more than a pass reads. Each lists as Slack does: the latest
-//! first, within `oldest` and `latest`, a page at a time.
+//! never reach Slack. The app has a direct message with each member, `D` and the rest of their ID
+//! (`D0FIXJORDAN` with `U0FIXJORDAN`), which `conversations.open` opens, holding what the app
+//! posted there; Slack lists the app as having Jordan's and Slackbot's. Jordan's holds what they
+//! wrote while Dispatch wasn't listening: a message, a photo, a question with a reply in its
+//! thread, and the app's own answer, each stamped when a workspace's is first read, so it's newer
+//! than when Communications came on; and one from before 2026, before it ever was. A test reads a
+//! workspace's once, and may add a reply to the question later (`reply_later`). In Managers, Slack
+//! lists the app as having Cameron's too, holding more than a pass reads. Each lists as Slack
+//! does: the latest first, within `oldest` and `latest`, a page at a time.
 use dispatch_core::{Result, db::now};
+use dispatch_slack::kit;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -44,14 +45,17 @@ pub fn answer(team: &str, method: &str, args: &Value) -> Option<Result<Value>> {
             }
             json!({"ok": true, "channels": channels, "response_metadata": {"next_cursor": ""}})
         }
-        "conversations.history" => listed(
-            match channel {
+        "conversations.history" => {
+            let mut messages = match channel {
                 JORDAN => history(team),
                 BUSY if busy => chatter(team),
                 _ => Vec::new(),
-            },
-            args,
-        ),
+            };
+            // What the app posted there too, as Slack lists it among them.
+            messages.extend(kit::fixture_history(team, channel));
+            messages.sort_by(|a, b| b["ts"].as_str().cmp(&a["ts"].as_str()));
+            listed(messages, args)
+        }
         "conversations.replies" => {
             let thread = args["ts"].as_str().unwrap_or_default();
             let replied: Vec<Value> = if channel == JORDAN {

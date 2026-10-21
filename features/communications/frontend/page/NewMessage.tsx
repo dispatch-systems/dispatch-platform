@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from 'react';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, Search, Users } from 'lucide-react';
 import type { CommunicationsWorkspace, Contact } from '../../api/index.js';
 import { getContacts } from '../../api/client.js';
 import { Modal } from '../../../../core/shell/frontend/ui/index.js';
@@ -9,16 +9,20 @@ import { Name, roleText } from './parts.js';
 import { useFound } from './useFound.js';
 
 // New message: whom to write to, found by their name however it's spelt, the closest first,
-// with the letters that matched marked. The arrow keys move through them and Enter picks one.
+// with the letters that matched marked; with nothing typed, Message a group first. The arrow keys
+// move through them and Enter picks one.
 
 export function NewMessage({
   workspaces,
   pick,
+  group,
   close,
 }: {
   workspaces: readonly CommunicationsWorkspace[];
   /** Opens the conversation with whoever was picked. */
   pick: (contact: Contact) => Promise<void>;
+  /** Starts a message to a group. */
+  group: () => void;
   close: () => void;
 }) {
   const [typed, setTyped] = useState('');
@@ -39,7 +43,12 @@ export function NewMessage({
   const named = new Map(workspaces.map((workspace) => [workspace.teamId, workspace.name]));
   const several = named.size > 1;
   const option = (at: number) => `${list}-${at}`;
-  const choose = (contact: Contact | undefined) => {
+  // With nothing typed, a group comes first, then everyone.
+  const grouping = !name;
+  const options = (found?.length ?? 0) + (grouping ? 1 : 0);
+  const choose = (at: number) => {
+    if (grouping && at === 0) return group();
+    const contact = found?.[grouping ? at - 1 : at];
     if (contact && !chosen.busy) void chosen.run(contact);
   };
   return (
@@ -50,18 +59,18 @@ export function NewMessage({
           <input
             role="combobox"
             aria-label="Name"
-            aria-expanded={Boolean(found?.length)}
+            aria-expanded={options > 0}
             aria-controls={list}
-            aria-activedescendant={found?.length ? option(active) : undefined}
+            aria-activedescendant={options ? option(active) : undefined}
             aria-autocomplete="list"
             placeholder="Name"
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             onKeyDown={(event) => {
-              const count = found?.length ?? 0;
-              if (event.key === 'ArrowDown' && count) setActive((active + 1) % count);
-              else if (event.key === 'ArrowUp' && count) setActive((active - 1 + count) % count);
-              else if (event.key === 'Enter') choose(found?.[active]);
+              if (event.key === 'ArrowDown' && options) setActive((active + 1) % options);
+              else if (event.key === 'ArrowUp' && options)
+                setActive((active - 1 + options) % options);
+              else if (event.key === 'Enter' && options) choose(active);
               else return;
               event.preventDefault();
             }}
@@ -70,30 +79,51 @@ export function NewMessage({
         {failed && <p className="list-empty">{failed}</p>}
         {found && !found.length && name && <p className="list-empty">No matches</p>}
         <ul id={list} role="listbox" aria-label="People" className="results">
-          {found?.map((contact, at) => (
+          {grouping && (
             <li
-              key={`${contact.teamId}:${contact.person.userId}`}
-              id={option(at)}
+              id={option(0)}
               role="option"
-              aria-selected={at === active}
-              className={at === active ? 'result active' : 'result'}
-              onMouseEnter={() => setActive(at)}
-              onClick={() => choose(contact)}
+              aria-selected={active === 0}
+              className={active === 0 ? 'result group active' : 'result group'}
+              onMouseEnter={() => setActive(0)}
+              onClick={() => choose(0)}
             >
-              <Face {...contact.person} size="list" />
+              <span className="lead">
+                <Users size={19} aria-hidden="true" />
+              </span>
               <span className="result-body">
-                <strong>
-                  <Name name={contact.person.name} matched={contact.matched} />
-                </strong>
-                <small>
-                  {[roleText(contact.person), several && named.get(contact.teamId)]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </small>
+                <strong>Message a group</strong>
               </span>
               <ChevronRight size={16} aria-hidden="true" />
             </li>
-          ))}
+          )}
+          {found?.map((contact, index) => {
+            const at = grouping ? index + 1 : index;
+            return (
+              <li
+                key={`${contact.teamId}:${contact.person.userId}`}
+                id={option(at)}
+                role="option"
+                aria-selected={at === active}
+                className={at === active ? 'result active' : 'result'}
+                onMouseEnter={() => setActive(at)}
+                onClick={() => choose(at)}
+              >
+                <Face {...contact.person} size="list" />
+                <span className="result-body">
+                  <strong>
+                    <Name name={contact.person.name} matched={contact.matched} />
+                  </strong>
+                  <small>
+                    {[roleText(contact.person), several && named.get(contact.teamId)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </small>
+                </span>
+                <ChevronRight size={16} aria-hidden="true" />
+              </li>
+            );
+          })}
         </ul>
       </div>
     </Modal>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Communications, Conversation } from '../../api/index.js';
+import type { Communications, Conversation, Group } from '../../api/index.js';
 import {
   getCommunications,
   getCommunicationsUpdates,
@@ -10,18 +10,26 @@ import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { backoff } from '../../../../core/shell/frontend/lib/backoff.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
-import { lastAnswered, shownWorkspace, updated, withConversation, withOlder } from '../inbox.js';
+import {
+  lastAnswered,
+  shownWorkspace,
+  updated,
+  withConversation,
+  withGroup,
+  withOlder,
+} from '../inbox.js';
 
-/** What changed in the latest update: the conversations, or every one after reading afresh. */
+/** What changed in the latest update: the conversations and groups, or every one after reading
+ * afresh. */
 export type Changed = { at: number; ids: readonly string[] | 'all' };
 
 /**
- * The DSP's conversations as they are now: every one waiting, and those answered of every
- * workspace or the one `chosen` (`team`, while it's one of two or more Communications works
+ * The DSP's conversations and groups as they are now: every one waiting, and those answered of
+ * every workspace or the one `chosen` (`team`, while it's one of two or more Communications works
  * in); read, then kept up to date by waiting on each change (`updates`), and read afresh when the
  * server says to, the page comes back into view, the browser comes back online or another
- * workspace is chosen. `changed` says which conversations the latest update changed, for the one
- * open to read again.
+ * workspace is chosen. `changed` says which conversations and groups the latest update changed,
+ * for the one open to read again.
  */
 export function useInbox(chosen?: string) {
   const [inbox, setInbox] = useState<Communications>();
@@ -78,7 +86,7 @@ export function useInbox(chosen?: string) {
           if (update.reset) fresh = true;
           else {
             change(updated(current.current ?? listed, update));
-            const ids = update.conversations.map((conversation) => conversation.id);
+            const ids = [...update.conversations, ...update.groups].map((each) => each.id);
             if (ids.length) setChanged((last) => ({ at: last.at + 1, ids }));
           }
         }
@@ -122,8 +130,15 @@ export function useInbox(chosen?: string) {
     },
     [change],
   );
+  /** Shows a group as one of the page's own writes left it. */
+  const showGroup = useCallback(
+    (group: Group) => {
+      if (current.current) change(withGroup(current.current, group));
+    },
+    [change],
+  );
   const [reading, setReading] = useState(false);
-  /** Reads the answered conversations older than the last listed. */
+  /** Reads the answered conversations and groups older than the last listed. */
   const readOlder = useCallback(async () => {
     const listed = current.current;
     const last = listed && lastAnswered(listed);
@@ -140,5 +155,5 @@ export function useInbox(chosen?: string) {
       setReading(false);
     }
   }, [change, reading]);
-  return { inbox, team, changed, error, refresh, show, readOlder };
+  return { inbox, team, changed, error, refresh, show, showGroup, readOlder };
 }

@@ -68,8 +68,10 @@ dispatch_core::text_enum! {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct File {
     pub id: String,
-    /// Its message; none for a photo added for one not sent yet.
+    /// Its message; none for a photo added for one not sent yet, or sent to a group.
     pub message: Option<String>,
+    /// The group message it was sent with, which each of the group's people's own message shows.
+    pub group_message: Option<String>,
     /// Who added it, for a photo someone at the DSP added.
     pub uploaded_by: Option<String>,
     pub name: String,
@@ -84,6 +86,7 @@ impl FromRow for File {
         Ok(Self {
             id: row.get("id")?,
             message: row.get("message_id")?,
+            group_message: row.get("group_message_id")?,
             uploaded_by: row.get("uploaded_by")?,
             name: row.get("name")?,
             mime: row.get("mime")?,
@@ -99,6 +102,8 @@ pub trait FileStore {
     fn communications_file(&self, dsp: &str, id: &str) -> Result<Option<File>>;
     /// The files of the messages `ids` name, in the order they were added.
     fn communications_files(&self, dsp: &str, messages: &[String]) -> Result<Vec<File>>;
+    /// The photos of the group messages `ids` name, in the order they were added.
+    fn communications_group_files(&self, dsp: &str, messages: &[String]) -> Result<Vec<File>>;
     /// Keeps a photo the member `by` added for a message not sent yet: its ID.
     fn add_communications_upload(
         &self,
@@ -139,6 +144,13 @@ impl FileStore for Store {
             [serde_json::to_string(messages)?],
         )
     }
+    fn communications_group_files(&self, dsp: &str, messages: &[String]) -> Result<Vec<File>> {
+        self.dsp(dsp)?.query_as(
+            "SELECT * FROM communications_files \
+             WHERE group_message_id IN (SELECT value FROM json_each(?)) ORDER BY added_at,id",
+            [serde_json::to_string(messages)?],
+        )
+    }
     fn add_communications_upload(
         &self,
         dsp: &str,
@@ -167,7 +179,8 @@ impl FileStore for Store {
         db.transaction(|| {
             let found: Vec<File> = db.query_as(
                 "SELECT * FROM communications_files WHERE id IN (SELECT value FROM json_each(?)) \
-                 AND uploaded_by=? AND message_id IS NULL AND coalesce(claimed_until,0)<=?",
+                 AND uploaded_by=? AND message_id IS NULL AND group_message_id IS NULL \
+                 AND coalesce(claimed_until,0)<=?",
                 params![serde_json::to_string(ids)?, by, now()],
             )?;
             let claimed = ids
@@ -191,7 +204,8 @@ impl FileStore for Store {
     fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()> {
         self.dsp(dsp)?.exec(
             "UPDATE communications_files SET claimed_until=NULL \
-             WHERE id IN (SELECT value FROM json_each(?)) AND message_id IS NULL",
+             WHERE id IN (SELECT value FROM json_each(?)) AND message_id IS NULL \
+             AND group_message_id IS NULL",
             [serde_json::to_string(ids)?],
         )?;
         Ok(())
@@ -199,9 +213,9 @@ impl FileStore for Store {
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            // Not one going to Slack with a message now.
-            const UNSENT: &str =
-                "message_id IS NULL AND added_at<?1 AND coalesce(claimed_until,0)<?2";
+            // Not one going to Slack with a message now, nor a group message's.
+            const UNSENT: &str = "message_id IS NULL AND group_message_id IS NULL \
+                AND added_at<?1 AND coalesce(claimed_until,0)<?2";
             let unsent: Vec<(String,)> = db.query_as(
                 &format!("SELECT DISTINCT sha256 FROM communications_files WHERE {UNSENT}"),
                 params![before, now()],

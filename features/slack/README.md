@@ -247,7 +247,8 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   once. One renewal runs at a time for each workspace, and the new pair is written at once. A
   token Slack says expired is renewed and the call made again, once, unless another call has
   renewed it meanwhile. When Slack asks Dispatch to slow down, it waits as long as Slack
-  says, up to half a minute, and tries again, twice at most. Every call is logged by its method
+  says, up to half a minute, or two minutes for a bot working in the background (`patient`),
+  and tries again, twice at most. Every call is logged by its method
   and how long Slack took (`slack.api`), and each refusal with Slack's reason (`slack.refused`),
   never what was sent.
 - **Adding to what the app does:** another feature adds what it does through Slack as an
@@ -311,33 +312,34 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   Slack has them, reads its members, and marks it broken if Slack no longer honours its tokens, so its card offers to
   reconnect it. Import Files saves the files due every minute, and catches up hourly. Sync
   Canvases syncs the canvases due every minute, and lists its channels' every ten minutes.
-- **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as
-  the code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet,
-  or the one being reconnected; a code that lists what the admin approved,
-  `fixture:<team>:<scope>,<scope>`, gives a workspace that needs updating. Its tokens name their workspace; one whose ID holds `GONE` is
-  refused. Each workspace has the same channels, `general`, `dispatch`, `photos`, `random` and
-  the private `managers`, the bot in `general` and `managers` to start, and what it joins and
-  leaves is kept for the server's run. Its members are some of the demo's people, by
-  example.com addresses: Jordan Ellis in Operations and Drivers, the owner Morgan Lane in
-  Operations and Managers, and in Drivers Cameron Hayes, Casey Rivera by phone, the guest Drew
-  Sullivan and the deactivated Jesse Kline, with Slackbot and a bot everywhere. Morgan's profile has a photo of their own
-  (`is_custom_image`), and everyone else's Slack's drawn one. Its channels hold
-  a few files: Morgan's van photo and a video too large to keep in `photos`, Casey's route sheet
-  in `dispatch`, each downloading as bytes made up to its size, and Morgan's Write-ups canvas in
-  `photos`, downloading as Slack's HTML of it with a photo in it, which a test edits with
-  `fixture::edit_canvas`; and a photo Jordan sent the app directly. It signs with
-  `fixture-signing-secret`, so tests send requests as Slack would. The bot posts
+- **Fixture mode** never calls Slack: installing comes straight back with `fixture:<team>` as the
+  code, the first of its workspaces (Operations, Drivers, Managers) that no DSP has yet, or the
+  one being reconnected; a code that lists what the admin approved,
+  `fixture:<team>:<scope>,<scope>`, gives a workspace that needs updating. Its tokens name their
+  workspace; one whose ID holds `GONE` is refused. Each workspace has the same channels,
+  `general`, `dispatch`, `photos`, `random` and the private `managers`, the bot in `general` and
+  `managers` to start, and what it joins and leaves is kept for the server's run. Its members are
+  some of the demo's people, by example.com addresses: Jordan Ellis in Operations and Drivers, the
+  owner Morgan Lane in Operations and Managers, and in Drivers Cameron Hayes, Casey Rivera by
+  phone, the guest Drew Sullivan and the deactivated Jesse Kline, with Slackbot and a bot
+  everywhere. Morgan's profile has a photo of their own (`is_custom_image`), and everyone else's
+  Slack's drawn one. Its channels hold a few files: Morgan's van photo and a video too large to
+  keep in `photos`, Casey's route sheet in `dispatch`, each downloading as bytes made up to its
+  size, and Morgan's Write-ups canvas in `photos`, downloading as Slack's HTML of it with a photo
+  in it, which a test edits with `fixture::edit_canvas`; and a photo Jordan sent the app directly.
+  It signs with `fixture-signing-secret`, so tests send requests as Slack would. The bot posts
   (`chat.postMessage`) in a direct conversation or a channel it's in, under a name and photo of
   its choosing, with blocks showing only files it finished uploading
-  (`files.getUploadURLExternal`, then `files.completeUploadExternal`), and what it posted is
-  kept for the server's run, each with its text, name, photo and blocks, which a test reads with
-  `fixture::posted`. Operations has a logo of its own, a box on orange, at an address on Slack's
-  servers that fixture mode's Slack answers itself, and Drivers and Managers Slack's own. A
-  dependant's tests read what the bot posted, connect a workspace, read its members, switch
-  an integration and disconnect it through `dispatch_slack::testing`, behind Slack's `testing`
-  feature. It answers each method
-  Dispatch calls, and an integration's own answer a method only that integration calls; any
-  other fails, so a call nothing answers shows in a test or a preview.
+  (`files.getUploadURLExternal`, then `files.completeUploadExternal`), and what it posted is kept
+  for the server's run, each with its text, name, photo, blocks and metadata, which a test reads
+  with `fixture::posted`, and an integration's fixture lists among a conversation's messages, as
+  Slack would, with `kit::fixture_history`. Operations has a logo of its own, a box on orange, at
+  an address on Slack's servers that fixture mode's Slack answers itself, and Drivers and Managers
+  Slack's own. A dependant's tests read what the bot posted, connect a workspace, read its
+  members, switch an integration and disconnect it through `dispatch_slack::testing`, behind
+  Slack's `testing` feature. It answers each method Dispatch calls, and an integration's own
+  answer a method only that integration calls; any other fails, so a call nothing answers shows in
+  a test or a preview.
 - **Exposed:** `chat_accounts`, through its contract in `contract/` (`dispatch-slack-contract`),
   for any feature or agent tool, while it's on for the DSP: the accounts some of its `slack` IDs
   name, in their order, each with its workspace (by its name in Dispatch, else its name in

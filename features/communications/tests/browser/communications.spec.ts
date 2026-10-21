@@ -245,3 +245,69 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
   await page.getByRole('heading', { name: 'Communications', level: 1 }).click();
   await expect(profile).toBeVisible();
 });
+
+test('an owner messages a group from New message, its answers come back together, and Reply opens one person’s own conversation', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Communications' }).click();
+  // Message a group comes first in New message, and Enter picks it.
+  await page.getByRole('button', { name: 'New message' }).click();
+  await expect(page.getByRole('option', { name: 'Message a group' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.keyboard.press('Enter');
+  // To finds people by a misspelt name, each a chip; the message goes to each of them.
+  const draft = page.getByRole('region', { name: 'New message' });
+  const to = draft.getByRole('combobox', { name: 'To' });
+  for (const typed of ['camron', 'casey']) {
+    await to.fill(typed);
+    await expect(draft.getByRole('option').first()).toBeVisible();
+    await to.press('Enter');
+  }
+  await expect(draft.getByRole('button', { name: /^Remove/ })).toHaveCount(2);
+  await draft.getByLabel('Message').fill('Vests are by the door');
+  await draft.getByRole('button', { name: 'Send to 2' }).click();
+  const group = page.getByRole('region', { name: 'Cameron and Casey' });
+  await expect(group.getByText('Sent to 2')).toBeVisible();
+
+  // An answer comes back under the group, which waits.
+  const answer = fromSlack(
+    dispatch,
+    '/slack/events',
+    event('T0FIXTURE2', {
+      type: 'message',
+      channel_type: 'im',
+      channel: 'D0FIXCAM',
+      user: 'U0FIXCAM',
+      text: 'Copy that',
+      ts: (Date.now() / 1000).toFixed(6),
+    }),
+  );
+  expect((await answer).status).toBe(200);
+  await expect(group.getByText('Copy that')).toBeVisible();
+  const list = page.getByRole('region', { name: 'Conversations' });
+  const row = list.getByRole('listitem').filter({ hasText: 'Cameron and Casey' });
+  await expect(row).toContainText('Cameron: Copy that');
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toBeVisible();
+
+  // Reply opens Cameron's own conversation, where the group message carries its name, which
+  // opens the group again.
+  await group.getByText('Copy that').hover();
+  await group.getByRole('button', { name: 'Reply to Cameron Hayes' }).click();
+  const cameron = page.getByRole('region', { name: 'Cameron Hayes' });
+  await cameron.getByRole('button', { name: 'Cameron and Casey' }).click();
+  // Done marks everything waiting under it done.
+  await group.getByRole('button', { name: 'Done' }).click();
+  await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+});
