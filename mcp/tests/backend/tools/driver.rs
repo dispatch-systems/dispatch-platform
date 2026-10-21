@@ -321,6 +321,7 @@ impl DriverRoutes for Fake {
             status: Some("COMPLETE".into()),
             progress: None,
             vin: None,
+            wave_start_at: None,
             planned_departure_at: None,
             departed_at: Some(at(day, 15, 30)),
             first_delivery_at: None,

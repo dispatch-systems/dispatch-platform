@@ -8,7 +8,7 @@ use dispatch_core::{
     manifest::people::Source,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, RouteDay, Undelivered,
+    Collected, CollectedDay, Driven, DriverRoutes, MOST_IDS, RouteDay, Undelivered,
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -16,18 +16,16 @@ use std::collections::HashMap;
 
 /// The most days one read covers.
 const LONGEST: i64 = 366;
-/// The most IDs one read names.
-const MOST_IDS: usize = 16;
 
 /// The days of a range with an active publication at the station, and whether each is final.
 const DAYS: &str = "SELECT day,min(mode='final') complete FROM route_publications \
     WHERE station=?1 AND active=1 AND day BETWEEN ?2 AND ?3 GROUP BY day ORDER BY day";
 /// The drivers' itineraries over a range, with their day summaries and removed packages.
 const ROUTES: &str = "SELECT d.publication_id,d.itinerary_id,d.day,d.transporter_id,i.route_code,\
-    i.execution_status,i.progress_status,i.vin,i.planned_departure_at,d.departed_at,d.first_stop_at,\
-    d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,d.delivered,d.not_delivered,\
-    d.breaks_secs,d.overtime_secs,(SELECT count(*) FROM tasks t WHERE t.publication_id=d.publication_id \
-    AND t.itinerary_id=d.itinerary_id AND t.active=0) removed \
+    i.execution_status,i.progress_status,i.vin,i.wave_start_at,i.planned_departure_at,d.departed_at,\
+    d.first_stop_at,d.last_stop_at,d.session_end_at,d.stops_total,d.stops_completed,d.delivered,\
+    d.not_delivered,d.breaks_secs,d.overtime_secs,(SELECT count(*) FROM tasks t \
+    WHERE t.publication_id=d.publication_id AND t.itinerary_id=d.itinerary_id AND t.active=0) removed \
     FROM driver_days d JOIN route_publications p ON p.id=d.publication_id AND p.active=1 AND p.station=?1 \
     JOIN itineraries i ON i.publication_id=d.publication_id AND i.itinerary_id=d.itinerary_id \
     WHERE d.day BETWEEN ?2 AND ?3 AND d.transporter_id IN (SELECT value FROM json_each(?4)) \
@@ -123,6 +121,7 @@ fn route_day(row: &Value) -> RouteDay {
         status: text(row, "execution_status"),
         progress: text(row, "progress_status"),
         vin: text(row, "vin"),
+        wave_start_at: row["wave_start_at"].as_i64(),
         planned_departure_at: row["planned_departure_at"].as_i64(),
         departed_at: row["departed_at"].as_i64(),
         first_delivery_at: row["first_stop_at"].as_i64(),

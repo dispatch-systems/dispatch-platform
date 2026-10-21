@@ -1,18 +1,29 @@
 //! What every Communications backend test installs, and how one starts. A test binary holds one
-//! registry, so each installs the same: Slack and Communications. A test starts with a platform
-//! with one DSP, every feature on for it, and one of its fixture workspaces connected, its
-//! members read: the workspace's admin has approved all the app asks for.
+//! registry, so each installs the same: Slack, Communications, and stand-ins for what other
+//! features expose that it reads. A test starts with a platform with one DSP, every feature on
+//! for it, and one of its fixture workspaces connected, its members read: the workspace's admin
+//! has approved all the app asks for.
 use crate::api::types::Message;
 use crate::backend::{conversations, storage::CommunicationsStore};
 use dispatch_core::{
-    State,
+    Result, State,
     accounts::{Context, SessionLifetime},
+    db::Store,
     foundation::config::Site,
+    manifest::{
+        Feature, feature, mandatory, optional,
+        people::{Directory, Everyone, Person, Photo, Source, SourceInfo},
+    },
     server::http::route::Dsp,
     testing,
 };
+use dispatch_routes_contract::{Collected, CollectedDay, Driven, DriverRoutes, RouteDay};
 use dispatch_slack::{kit::Bot, testing as slack};
-use std::sync::Arc;
+use dispatch_vans_contract::{AmazonFleet, Van};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Arc, Mutex},
+};
 
 /// Reading the DSP's conversations and answering them.
 pub const USE: Dsp = Dsp("communications.use");
@@ -29,9 +40,18 @@ const APPROVED: &[&str] = &[
     "im:read",
 ];
 
-/// Installs Slack and Communications.
+/// Installs Slack, Communications and the stand-ins.
 pub fn install() {
-    testing::install(&[], &[&dispatch_slack::FEATURE, &crate::FEATURE]);
+    testing::install(
+        &[],
+        &[
+            &dispatch_slack::FEATURE,
+            &crate::FEATURE,
+            &NAMING,
+            &DRIVING,
+            &FLEET,
+        ],
+    );
 }
 /// A platform with one DSP, and its server's state, with the DSP's workspace `team` connected
 /// and its members read.
@@ -108,4 +128,141 @@ pub async fn conversation_with(
         .read(move |db| db.communications_conversation_with(&dsp, &team, &user))
         .await
         .unwrap()
+}
+
+/// Stand-ins for what other features expose that Communications reads, which it may not name:
+/// who people are (`directory`, always), their routes (`driver_routes`, while `driving` is on)
+/// and the DSP's vans (`amazon_fleet`, while `fleet` is on). Each answers what a test says of
+/// its DSP with `know`, and nothing else.
+pub struct Standing;
+static STANDING: Standing = Standing;
+static NAMING: Feature = Feature {
+    switch: mandatory("naming", "Naming"),
+    exposes: &[dispatch_core::expose!(
+        dyn Directory,
+        &STANDING,
+        "directory",
+        "Who people are, as a test says.",
+    )],
+    ..feature("naming")
+};
+static DRIVING: Feature = Feature {
+    switch: optional("driving", "Driving", &[]),
+    exposes: &[dispatch_core::expose!(
+        dyn DriverRoutes,
+        &STANDING,
+        "driver_routes",
+        "Drivers' routes, as a test says.",
+    )],
+    ..feature("driving")
+};
+static FLEET: Feature = Feature {
+    switch: optional("fleet", "Fleet", &[]),
+    exposes: &[dispatch_core::expose!(
+        dyn AmazonFleet,
+        &STANDING,
+        "amazon_fleet",
+        "The DSP's vans, as a test says.",
+    )],
+    ..feature("fleet")
+};
+/// The source whose IDs name the stand-in's drivers.
+pub const DRIVERS: Source = Source::new(&SourceInfo {
+    id: "drivers",
+    label: "Drivers",
+    order: 90,
+});
+
+/// What the stand-ins know of a DSP.
+#[derive(Default)]
+struct Known {
+    people: Vec<Person>,
+    routes: Vec<RouteDay>,
+    vans: Vec<Van>,
+}
+static KNOWN: Mutex<BTreeMap<String, Known>> = Mutex::new(BTreeMap::new());
+fn known<T>(dsp: &str, read: impl FnOnce(&Known) -> T) -> T {
+    let known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
+    read(known.get(dsp).unwrap_or(&Known::default()))
+}
+/// Has the stand-ins answer, for the DSP `dsp`, who `people` are, their `routes`, and its `vans`,
+/// letting go of the DSP's cached reads, as who everyone is, so the next reads them anew.
+pub fn know(state: &State, dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>, vans: Vec<Van>) {
+    let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
+    known.insert(
+        dsp.to_owned(),
+        Known {
+            people,
+            routes,
+            vans,
+        },
+    );
+    state.changed(Some(dsp));
+}
+/// Switches the stand-in `feature`, `driving` or `fleet`, on or off for the DSP.
+pub async fn switch(state: &Arc<State>, dsp: &str, feature: &'static str, on: bool) {
+    let dsp = dsp.to_owned();
+    state
+        .run(move |db| {
+            let owner = testing::a_user(db);
+            db.set_feature(&dsp, feature, on, &owner).map(drop)
+        })
+        .await
+        .unwrap();
+}
+
+impl Directory for Standing {
+    fn everyone(&self, _: &Store, dsp: &str) -> Result<Everyone> {
+        let people = known(dsp, |known| known.people.clone());
+        Ok(Everyone::new(people, BTreeMap::new()))
+    }
+    fn photo(&self, _: &Store, _: &str, _: &str) -> Result<Option<Photo>> {
+        Ok(None)
+    }
+}
+impl DriverRoutes for Standing {
+    fn source(&self) -> Source {
+        DRIVERS
+    }
+    fn collected(&self, _: &Store, _: &str) -> Result<Option<Collected>> {
+        Ok(None)
+    }
+    /// The routes it knows driven by `ids` from `from` to `to`, and their days.
+    fn routes(&self, _: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Driven> {
+        let routes: Vec<RouteDay> = known(dsp, |known| {
+            known
+                .routes
+                .iter()
+                .filter(|route| ids.contains(&route.driver_id))
+                .filter(|route| (from..=to).contains(&route.day.as_str()))
+                .cloned()
+                .collect()
+        });
+        let days: BTreeSet<String> = routes.iter().map(|route| route.day.clone()).collect();
+        Ok(Driven {
+            days: days
+                .into_iter()
+                .map(|day| CollectedDay {
+                    day,
+                    complete: false,
+                })
+                .collect(),
+            routes,
+        })
+    }
+}
+impl AmazonFleet for Standing {
+    fn collected(&self, _: &Store, _: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
+    fn vans(&self, _: &Store, dsp: &str, vins: &[String]) -> Result<Vec<Van>> {
+        Ok(known(dsp, |known| {
+            known
+                .vans
+                .iter()
+                .filter(|van| vins.contains(&van.vin))
+                .cloned()
+                .collect()
+        }))
+    }
 }

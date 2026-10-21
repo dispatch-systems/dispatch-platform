@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { phoneKey, phoneText, roles } from '../driver-match.js';
+import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
+import { phoneKey, roles } from '../driver-match.js';
 import { Face } from '../parts/Face.js';
 import { SourceTag } from '../parts/Tags.js';
 import type { CheckSide } from './checks.js';

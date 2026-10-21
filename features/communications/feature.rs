@@ -9,7 +9,7 @@ pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
     CommunicationsWorkspace, Contact, Contacts, Conversation, ConversationMessages,
     ConversationState, Conversations, Correspondent, Direction, FileStatus, Message, MessageFile,
-    Sender, Typing, Writing,
+    Profile, ProfileToday, Sender, Typing, Writing,
 };
 
 use dispatch_core::db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql};
@@ -73,6 +73,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         ConversationMessages,
         Contacts,
         Contact,
+        Profile,
+        ProfileToday,
         Typing,
         Writing,
         CommunicationsUpdates,

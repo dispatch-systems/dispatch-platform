@@ -59,6 +59,9 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
         (1, 1, 1)
     );
     assert!(route.departed_at.is_some() && route.session_end_at.is_some());
+    // Its wave as Amazon gives it: the fixture's starts 20 minutes before 08:00 UTC.
+    let wave = format!("{}T07:40:00Z", day(2)).parse::<chrono::DateTime<chrono::Utc>>();
+    assert_eq!(route.wave_start_at, Some(wave.unwrap().timestamp_millis()));
     assert_eq!(route.undelivered.len(), 1);
     let package = &route.undelivered[0];
     assert_eq!(package.tracking_id.as_deref(), Some("TBA000000000002"));

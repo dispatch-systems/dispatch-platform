@@ -6,6 +6,9 @@
 //! outside what's collected is unknown. Routes exposes it as `driver_routes`.
 use dispatch_core::{Result, db::Store, manifest::people::Source};
 
+/// The most IDs one read of a driver's routes names.
+pub const MOST_IDS: usize = 16;
+
 /// Reads the routes a DSP's drivers drove, as Routes keeps them for the DSP's station.
 pub trait DriverRoutes: Send + Sync {
     /// The source whose IDs name its drivers, to find them among the DSP's people.
@@ -15,8 +18,8 @@ pub trait DriverRoutes: Send + Sync {
     /// What the driver holding `ids` drove from `from` to `to`, YYYY-MM-DD in the DSP's own
     /// time, and which of those days were collected; no IDs answer the days alone. An ID is
     /// matched exactly. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`; and
-    /// with `invalid_input`, `from` after `to`, more than 366 days, more than 16 IDs, or an ID
-    /// that's empty or over 128 characters.
+    /// with `invalid_input`, `from` after `to`, more than 366 days, more than `MOST_IDS` IDs, or
+    /// an ID that's empty or over 128 characters.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str)
     -> Result<Driven>;
 }
@@ -61,6 +64,8 @@ pub struct RouteDay {
     pub progress: Option<String>,
     /// The van driven.
     pub vin: Option<String>,
+    /// When its wave starts at the station.
+    pub wave_start_at: Option<i64>,
     pub planned_departure_at: Option<i64>,
     pub departed_at: Option<i64>,
     pub first_delivery_at: Option<i64>,

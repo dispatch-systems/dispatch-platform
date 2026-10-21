@@ -1,4 +1,5 @@
-import { useCachedData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import { useCallback } from 'react';
+import { useCachedData, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   Communications,
@@ -10,6 +11,7 @@ import type {
   ConversationMessages,
   Conversations,
   Message,
+  Profile,
 } from './index.js';
 
 // Communications' endpoints, as its screens call them.
@@ -59,6 +61,12 @@ export const getConversation = (id: string, first?: Message) =>
   api<ConversationMessages>(
     `${communicationsUrl}/conversations/${id}${first ? `?before=${first.ts}` : ''}`,
   );
+/** What the profile beside a conversation shows of the member it's with, read as it opens. */
+export function useProfile(id: string) {
+  const url = `${communicationsUrl}/conversations/${id}/profile`;
+  const read = useCallback((signal: AbortSignal) => api<Profile>(url, undefined, signal), [url]);
+  return useData<Profile>(url, 0, undefined, undefined, false, read);
+}
 /** The members of the DSP's workspaces, or those found by a name typed. */
 export const getContacts = (typed = '') =>
   api<Contacts>(`${communicationsUrl}/contacts${typed ? `?q=${encodeURIComponent(typed)}` : ''}`);

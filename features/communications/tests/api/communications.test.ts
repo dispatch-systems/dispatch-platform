@@ -3,9 +3,25 @@ import assert from 'node:assert/strict';
 import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
 import { connect, event, fromSlack } from '../../../slack/tests/support/slack.js';
 
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+
 const route = '/api/dsp/communications';
 /** Slack's `ts` for now: seconds, a point and microseconds. */
 const now = () => (Date.now() / 1000).toFixed(6);
+/** Jordan Ellis writing to the app in Operations, as Slack tells of it. */
+const fromJordan = (f: Fixture, fields: Record<string, unknown>) =>
+  fromSlack(
+    f,
+    '/slack/events',
+    event('T0FIXTURE1', {
+      type: 'message',
+      channel_type: 'im',
+      channel: 'D0APITEST',
+      user: 'U0FIXJORDAN',
+      ts: now(),
+      ...fields,
+    }),
+  );
 
 test('a direct message reaches Communications live, and its answer and photo go back', async (t) => {
   const f = await fixture();
@@ -14,19 +30,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
   await owner.select(north.id);
   assert.equal((await connect(owner, 'T0FIXTURE1')).status, 200);
-  const write = (fields: Record<string, unknown>) =>
-    fromSlack(
-      f,
-      '/slack/events',
-      event('T0FIXTURE1', {
-        type: 'message',
-        channel_type: 'im',
-        channel: 'D0APITEST',
-        user: 'U0FIXJORDAN',
-        ts: now(),
-        ...fields,
-      }),
-    );
+  const write = (fields: Record<string, unknown>) => fromJordan(f, fields);
   const read = () => owner.read(route);
 
   // A member writes to the app, and the page waiting on changes hears of it.
@@ -84,12 +88,32 @@ test('a direct message reaches Communications live, and its answer and photo go 
   assert.equal(initials.headers.get('content-type'), 'image/png');
 });
 
-test('Communications answers only those whose role gives them it', async (t) => {
+test('Communications answers only those whose role gives them it, and the profile with it alone', async (t) => {
   const f = await fixture();
   t.after(f.close);
   // No default role holds communications.use, so a member is refused until a role grants it.
+  const refused = await f.client(demo.member);
+  const north = refused.session.dsps[0];
+  await refused.select(north.id);
+  assert.equal((await refused.get(route)).status, 403);
+
+  // Granted it alone, they read the profile of whom a conversation is with, which shows what
+  // other features know of them without their permissions.
+  const owner = await f.client();
+  await owner.select(north.id);
+  assert.equal((await connect(owner, 'T0FIXTURE1')).status, 200);
+  assert.equal((await fromJordan(f, { text: 'Running late' })).status, 200);
+  const role = await owner.post('/api/dsp/roles', {
+    name: 'Dispatcher',
+    permissions: ['communications.use'],
+  });
+  const members = (await owner.get('/api/dsp/members')).value;
+  const memberId = members.find((m: { email: string }) => m.email === demo.member).id;
+  await owner.post(`/api/dsp/members/${memberId}`, { role: role.value.id });
   const member = await f.client(demo.member);
-  const north = member.session.dsps[0];
   await member.select(north.id);
-  assert.equal((await member.get(route)).status, 403);
+  const [conversation] = (await member.read(route)).conversations;
+  const profile = await member.read(`${route}/conversations/${conversation.id}/profile`);
+  assert.equal(profile.email, 'jordan.ellis@example.com');
+  assert.equal(profile.slack, 'Operations');
 });

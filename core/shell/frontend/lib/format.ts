@@ -82,3 +82,8 @@ export function countdown(until: string, now = Date.now()) {
 }
 export const bytes = (value: number, unit: 'MiB' | 'GiB', digits = 0) =>
   `${(value / 1024 ** (unit === 'GiB' ? 3 : 2)).toFixed(digits)} ${unit}`;
+/** A phone number as it is read in the US, `(612) 555-0103`; any other as written. */
+export function phoneText(phone: string) {
+  const parts = /^(?:\+?1)?(\d{3})(\d{3})(\d{4})$/.exec(phone.replace(/[\s().-]/g, ''));
+  return parts ? `(${parts[1]}) ${parts[2]}-${parts[3]}` : phone;
+}

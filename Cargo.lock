@@ -638,8 +638,11 @@ name = "dispatch-communications"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "chrono-tz",
  "dispatch-core",
+ "dispatch-routes-contract",
  "dispatch-slack",
+ "dispatch-vans-contract",
  "flate2",
  "futures-util",
  "rusqlite",

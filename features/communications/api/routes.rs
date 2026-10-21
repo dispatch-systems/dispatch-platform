@@ -6,7 +6,7 @@
 use crate::backend::{
     contacts, conversations,
     files::{self, FileStatus, FileStore},
-    initials, live, reply,
+    initials, live, profile, reply,
     storage::CommunicationsStore,
 };
 use axum::{
@@ -45,6 +45,11 @@ pub fn routes() -> Vec<Route> {
             "/api/dsp/communications/conversations/{id}",
             USE,
             conversation,
+        ),
+        read(
+            "/api/dsp/communications/conversations/{id}/profile",
+            USE,
+            profile,
         ),
         async_post(
             "/api/dsp/communications/conversations/{id}/messages",
@@ -145,6 +150,19 @@ fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         c.dsp_id(),
         &conversation,
         before,
+    )?)
+}
+/// What the profile beside a conversation shows of the member it's with: behind
+/// `communications.use` alone, as it reads what other features know of them for the page.
+fn profile(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    let conversation = id(input.param("id"), "cv")?;
+    Reply::of(&profile::of(
+        db,
+        c.state,
+        c.dsp_id(),
+        &c.dsp.timezone,
+        &conversation,
     )?)
 }
 fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {

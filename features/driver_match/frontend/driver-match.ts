@@ -10,6 +10,7 @@ import type {
   PersonRole,
 } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
+import { phoneText } from '../../../core/shell/frontend/lib/format.js';
 import { peopleKinds, peopleSources } from '../../../core/manifest/api/generated/people-data.js';
 
 /** How each role reads: its name, the name of its filter, and its colour. */
@@ -138,11 +139,6 @@ export function goesBy(person: Person) {
   return undefined;
 }
 
-/** A phone number as it is read in the US, `(612) 555-0103`; any other as written. */
-export function phoneText(phone: string) {
-  const parts = /^(?:\+?1)?(\d{3})(\d{3})(\d{4})$/.exec(phone.replace(/[\s().-]/g, ''));
-  return parts ? `(${parts[1]}) ${parts[2]}-${parts[3]}` : phone;
-}
 /** A North American number's ten digits, as Driver Match compares phones; none for any other. */
 export function phoneKey(phone: string) {
   const digits = phone.replace(/\D/g, '');
