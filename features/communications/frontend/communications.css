@@ -1176,11 +1176,11 @@
   .communications .heading-actions {
     gap: 8px;
   }
-  .communications .heading-actions button > span,
+  .communications .heading-actions > button > span,
   .chat-link-button > span {
     display: none;
   }
-  .communications .heading-actions button,
+  .communications .heading-actions > button,
   .chat-link-button {
     padding: 8px 10px;
   }
@@ -1229,5 +1229,12 @@
   }
   .update-workspace {
     flex-wrap: wrap;
+  }
+  /* Its buttons a line of their own, under its mark and name. */
+  .update-buttons {
+    flex-basis: 100%;
+  }
+  .update-buttons > * {
+    flex: 1;
   }
 }
