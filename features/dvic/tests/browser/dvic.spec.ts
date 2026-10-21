@@ -249,7 +249,7 @@ test('its schedule is set on Collectors: saved together, switched off, stale edi
   await expect(dvic.getByRole('switch', { name: 'On schedule' })).toBeChecked();
   await dvic.getByRole('button', { name: 'Delete rule' }).click();
   await dvic.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(dvic.getByText('Not scheduled', { exact: true })).toBeVisible();
+  await expect(dvic.getByRole('heading', { name: 'Not scheduled' })).toBeVisible();
   expect((await stored()).rules).toHaveLength(0);
   // Leaving the page with unsaved edits asks first, the address staying put meanwhile: Back,
   // which then returns to the DVIC page its Collection settings opened from, and the browser's

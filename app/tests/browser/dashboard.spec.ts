@@ -396,7 +396,8 @@ test('Timecard opens while its view loads, and its collections are scheduled on 
   await save(timecards);
   await expect(listed).toContainText('Every day at 9:00 PM');
   const on = timecards.getByRole('switch', { name: 'On schedule' });
-  await on.uncheck();
+  // It moves once the server has turned the schedule off.
+  await on.click();
   await expect(on).not.toBeChecked();
   await page.reload();
   await expect(on).not.toBeChecked();

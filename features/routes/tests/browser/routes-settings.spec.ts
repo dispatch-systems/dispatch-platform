@@ -191,13 +191,13 @@ test('a Routes rule reads yesterday unless it is set to read today so far', asyn
   const day = routes.getByRole('radiogroup', { name: 'Day' });
   await expect(day.getByRole('radio', { name: 'Yesterday' })).toBeChecked();
   await routes.getByLabel('Time 1').fill('09:00');
-  await day.getByRole('radio', { name: 'Today so far' }).check();
+  await day.getByText('Today so far', { exact: true }).click();
   await routes.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(rule).toContainText('Every day at 9:00 AMToday so far');
   expect((await stored())[0].collects).toBe('routes_today');
   // Set back, it reads yesterday.
   await routes.getByRole('button', { name: 'Edit', exact: true }).click();
-  await day.getByRole('radio', { name: 'Yesterday' }).check();
+  await day.getByText('Yesterday', { exact: true }).click();
   await routes.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(rule).toContainText('Every day at 9:00 AMYesterday');
   expect((await stored())[0].collects).toBe('routes');

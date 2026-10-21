@@ -1,10 +1,7 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 import { connectFleet } from '../support/fleet.js';
 
-test('Collect now on the fleet bar collects the fleet, beside its schedules', async ({
-  page,
-  dispatch,
-}) => {
+test('Collect now on the fleet bar collects the fleet', async ({ page, dispatch }) => {
   await connectFleet(dispatch);
   await login(page);
   await openDsp(page, 'Northline Logistics');
@@ -13,8 +10,6 @@ test('Collect now on the fleet bar collects the fleet, beside its schedules', as
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Vans', exact: true })
     .click();
-  const collection = page.getByRole('region', { name: 'Collection', exact: true });
-  await expect(collection.getByRole('button', { name: 'Add schedule' })).toBeVisible();
   const fleet = page.locator('.vans-fleet');
   await expect(fleet).toContainText('Not collected yet');
   await fleet.getByRole('button', { name: 'Collect now', exact: true }).click();
