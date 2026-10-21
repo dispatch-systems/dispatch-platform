@@ -247,7 +247,8 @@ Slack's manifest lists each one's integration, upkeep, migration and tables. `in
   once. One renewal runs at a time for each workspace, and the new pair is written at once. A
   token Slack says expired is renewed and the call made again, once, unless another call has
   renewed it meanwhile. When Slack asks Dispatch to slow down, it waits as long as Slack
-  says, up to half a minute, and tries again, twice at most. Every call is logged by its method
+  says, up to half a minute, or two minutes for a bot working in the background (`patient`),
+  and tries again, twice at most. Every call is logged by its method
   and how long Slack took (`slack.api`), and each refusal with Slack's reason (`slack.refused`),
   never what was sent.
 - **Adding to what the app does:** another feature adds what it does through Slack as an

@@ -224,8 +224,14 @@ impl Slack {
     /// Calls Slack's API method `method` as the bot, with `args`: any method, as a form,
     /// where a value that isn't text goes as JSON, as Slack takes a view or blocks. Slack's
     /// answer when it says `ok`. When Slack asks Dispatch to slow down, it waits as long as
-    /// Slack says, up to half a minute, and tries again, twice at most.
-    pub async fn call(&self, token: &str, method: &str, args: &Value) -> Result<Value> {
+    /// Slack says, up to `longest`, and tries again, twice at most.
+    pub async fn call(
+        &self,
+        token: &str,
+        method: &str,
+        args: &Value,
+        longest: Duration,
+    ) -> Result<Value> {
         if let Self::Fixture = self {
             return fixture::call(token, method, args);
         }
@@ -252,7 +258,7 @@ impl Slack {
                     .get("retry-after")
                     .and_then(|value| value.to_str().ok()?.parse::<u64>().ok())
                     .unwrap_or(1);
-                if attempt >= 2 || wait > 30 {
+                if attempt >= 2 || wait > longest.as_secs() {
                     return Err(Error::new("slack_rate_limited", 503));
                 }
                 tokio::time::sleep(Duration::from_secs(wait)).await;

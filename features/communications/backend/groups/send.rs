@@ -3,8 +3,9 @@
 //! message with the app (`chat:write`, opened first if need be, `im:write`), under the sender's
 //! full name and photo (`chat:write.customize`), as an answer does, its photos uploaded once to
 //! each workspace (`files:write`). One at a time, at most one a second in each workspace, as
-//! Slack asks of an app posting messages; Slack asking Dispatch to slow down is waited out as long
-//! as it says, and beyond half a minute tried again a minute later. A try that fails is tried
+//! Slack asks of an app posting messages; Slack asking Dispatch to slow down (429, Retry-After) is
+//! waited out as long as it says, up to two minutes, and beyond that tried again two minutes later,
+//! uncounted. A try that fails is tried
 //! again after a minute, five and fifteen, then given up: not sent. One to a workspace where
 //! Communications no longer works, or a member no longer there, isn't sent at all.
 //!
@@ -56,13 +57,14 @@ pub const PEOPLE_MOST: usize = 2000;
 pub const NAME_MOST: usize = 100;
 /// How far apart two posts to one workspace go: Slack takes about one message a second.
 const PACE: Duration = Duration::from_secs(1);
-/// How long a try holds its message, in milliseconds: longer than uploading its photos takes.
-const CLAIM_MS: i64 = 10 * 60 * 1000;
+/// How long a try holds its message, in milliseconds: longer than uploading its photos and
+/// waiting out Slack asking to slow down take.
+const CLAIM_MS: i64 = 15 * 60 * 1000;
 /// How long a failed try waits before the next, in milliseconds: given up after the last.
 const RETRIES_MS: &[i64] = &[60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000];
-/// How long a message waits, uncounted, while Slack asks Dispatch to slow down for longer than it
-/// waits itself, in milliseconds.
-const SLOWED_MS: i64 = 60 * 1000;
+/// How long a message waits, uncounted, while Slack asks Dispatch to slow down for longer than a
+/// patient bot waits itself, in milliseconds: as long again.
+const SLOWED_MS: i64 = 2 * 60 * 1000;
 /// What each post carries, as Slack's message metadata, to be found again by.
 const EVENT: &str = "dispatch_group_message";
 /// How a failure is reported.
@@ -238,17 +240,21 @@ pub(crate) async fn drain(state: &Arc<State>, dsp: &str) {
         due(state, dsp).await;
     }
 }
-/// Sends the DSP's messages due now, one at a time, telling the pages waiting of each, until none
-/// is due, or one comes to nothing, which the next pass tries again.
+/// Sends the DSP's messages due now, one at a time, telling the pages waiting of each that came to
+/// something they show, until none is due, or one comes to nothing, which the next pass tries
+/// again.
 async fn due(state: &Arc<State>, dsp: &str) {
     let mut last = None;
     loop {
         let at = dsp.to_owned();
-        let first = state
-            .read(move |db| db.due_communications_deliveries(&at, now(), 1))
+        let read = state
+            .read(move |db| {
+                let first = db.due_communications_deliveries(&at, now(), 1)?;
+                Ok((first.into_iter().next(), db.communications_revision(&at)?))
+            })
             .await;
-        let first = match first {
-            Ok(first) => first.into_iter().next(),
+        let (first, before) = match read {
+            Ok(read) => read,
             Err(error) => return kit::failed(FAILED, &error),
         };
         let Some(first) = first else {
@@ -259,7 +265,11 @@ async fn due(state: &Arc<State>, dsp: &str) {
             return;
         }
         kit::due::<Deliveries>(state, dsp).await;
-        live::changed(state, dsp);
+        let at = dsp.to_owned();
+        let after = state.read(move |db| db.communications_revision(&at)).await;
+        if after.ok() != Some(before) {
+            live::changed(state, dsp);
+        }
         last = Some(key);
     }
 }
@@ -400,11 +410,12 @@ async fn deliver(state: &Arc<State>, dsp: &str, item: &Due, since: Option<i64>) 
         });
     };
     pace(dsp, &item.team).await;
+    // Nobody waits on it: Slack asking to slow down is waited out as long as it says.
+    let bot = Bot::new(state, dsp, &item.team).patient();
     let channel = match channel {
         Some(channel) => channel,
-        None => reply::opened(state, dsp, &item.team, &item.user).await?,
+        None => reply::opened(&bot, &item.user).await?,
     };
-    let bot = Bot::new(state, dsp, &item.team);
     let mut shown: Vec<(String, String, String)> = Vec::new();
     for photo in &photos {
         let slack_id = match uploaded.iter().find(|(file, _)| *file == photo.id) {

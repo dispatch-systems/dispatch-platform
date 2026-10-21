@@ -33,17 +33,17 @@ export function useGroup(id: string, changed: Changed) {
     kept.current = next;
     setOpened(next);
   }, []);
-  // The reads in turn: one answered after a later one is left.
+  // The reads in turn: one answered after a later one is left. The pane is the group's alone, so
+  // every read is of it.
   const reads = useRef({ asked: 0, shown: 0 });
 
   useEffect(() => {
     const ours = kept.current?.id === id;
     if (ours && changed.ids !== 'all' && !changed.ids.includes(id)) return;
-    let live = true;
     const turn = ++reads.current.asked;
     getGroup(id).then(
       (latest: GroupMessages) => {
-        if (!live || turn < reads.current.shown) return;
+        if (turn < reads.current.shown) return;
         reads.current.shown = turn;
         const before = kept.current?.id === id ? kept.current : undefined;
         keep({
@@ -56,14 +56,10 @@ export function useGroup(id: string, changed: Changed) {
         setError('');
       },
       (cause) => {
-        if (!live) return;
         if (cause instanceof ApiError && cause.status === 404) setGone(true);
         else setError(messageOf(cause));
       },
     );
-    return () => {
-      live = false;
-    };
   }, [id, changed, keep]);
 
   /** Reads the fifty entries before the first shown. */

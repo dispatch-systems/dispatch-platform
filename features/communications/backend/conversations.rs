@@ -49,6 +49,10 @@ impl People {
                 .collect(),
         })
     }
+    /// Everyone Driver Match tells apart.
+    pub fn everyone(&self) -> &Everyone {
+        &self.everyone
+    }
     /// The workspace `team`'s member `user`, whose Slack profile last named them `name`.
     pub fn correspondent(&self, team: &str, user: &str, name: &str) -> Correspondent {
         let person = self

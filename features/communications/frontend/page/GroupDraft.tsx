@@ -179,10 +179,11 @@ function ToLine({
         .map((choice): Pick => ({ kind: 'group', key: choiceKey(choice), choice }))
         .filter((pick) => named(pick).toLocaleLowerCase().includes(name.toLocaleLowerCase()))
     : [];
-  const found: Pick[] = [
-    ...groups,
-    ...(contacts ?? []).map((contact): Pick => ({ kind: 'person', key: keyOf(contact), contact })),
-  ];
+  // Someone with accounts in several workspaces is found once, by the closest.
+  const someone = (contacts ?? [])
+    .map((contact): Pick => ({ kind: 'person', key: keyOf(contact), contact }))
+    .filter((pick, at, all) => all.findIndex((each) => each.key === pick.key) === at);
+  const found: Pick[] = [...groups, ...someone];
   // Each answer is gone through from its first.
   useEffect(() => setActive(0), [contacts, name]);
   useEffect(() => {

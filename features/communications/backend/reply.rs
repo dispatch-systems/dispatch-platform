@@ -66,7 +66,7 @@ pub async fn open(
         .await?;
     let channel = match kept {
         Some(kept) => kept.channel,
-        None => opened(state, &c.dsp.id, team, user).await?,
+        None => opened(&Bot::new(state, &c.dsp.id, team), user).await?,
     };
     let (shared, c, team, user) = (state.clone(), c.clone(), team.to_owned(), user.to_owned());
     state
@@ -83,14 +83,10 @@ pub async fn open(
         })
         .await
 }
-/// The direct message the app has with the workspace `team`'s member `user`, as Slack opens it.
-pub(crate) async fn opened(
-    state: &Arc<State>,
-    dsp: &str,
-    team: &str,
-    user: &str,
-) -> Result<String> {
-    let answer = Bot::new(state, dsp, team)
+/// The direct message the app has with the member `user` of the bot's workspace, as Slack opens
+/// it.
+pub(crate) async fn opened(bot: &Bot, user: &str) -> Result<String> {
+    let answer = bot
         .call("conversations.open", &json!({"users": user}))
         .await?;
     answer["channel"]["id"]

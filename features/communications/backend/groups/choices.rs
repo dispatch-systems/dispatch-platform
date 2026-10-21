@@ -1,6 +1,6 @@
 //! Whom a group message can go to: every active member of the DSP's workspaces where
 //! Communications works, each person once, as Driver Match tells them apart, with their accounts
-//! there, the one they last wrote to the DSP from first; and the groups to choose from, each
+//! there, the one last written in first; and the groups to choose from, each
 //! holding someone. Today: everyone on a route today, then each wave by when it starts, as Routes
 //! has read the DSP's own day (`driver_routes`), while it's on and has read some. Roles: drivers,
 //! helpers and the office, as Driver Match knows them. Workspaces, with two or more where
@@ -31,7 +31,7 @@ const ROLES: [PersonRole; 3] = [PersonRole::Driver, PersonRole::Helper, PersonRo
 /// in `zone`, the DSP's timezone.
 pub fn choices(db: &Store, state: &State, dsp: &str, zone: &str) -> Result<GroupChoices> {
     let people = People::read(db, state, dsp)?;
-    let everyone = people::everyone(db, state, dsp)?;
+    let everyone = people.everyone();
     let on = kit::workspaces_on(db, dsp, ID)?;
     // Workspaces in the order the DSP's are listed, by name.
     let order: Vec<String> = kit::workspaces(db, dsp)?
@@ -39,11 +39,11 @@ pub fn choices(db: &Store, state: &State, dsp: &str, zone: &str) -> Result<Group
         .map(|workspace| workspace.team)
         .filter(|team| on.contains(team))
         .collect();
-    let mut last_wrote: HashMap<(String, String), i64> = HashMap::new();
+    let mut last_written: HashMap<(String, String), i64> = HashMap::new();
     for team in &order {
         for conversation in db.communications_in(dsp, team)? {
             if let Some(at) = conversation.last_at {
-                last_wrote.insert((conversation.team, conversation.user), at);
+                last_written.insert((conversation.team, conversation.user), at);
             }
         }
     }
@@ -68,10 +68,10 @@ pub fn choices(db: &Store, state: &State, dsp: &str, zone: &str) -> Result<Group
         .iter()
         .map(|(key, (_, accounts))| {
             let mut accounts = accounts.clone();
-            // The one they last wrote from first, then by workspace.
+            // The one last written in first, then by workspace.
             accounts.sort_by(|a, b| {
                 let wrote = |(team, user, _): &(String, String, String)| {
-                    last_wrote.get(&(team.clone(), user.clone())).copied()
+                    last_written.get(&(team.clone(), user.clone())).copied()
                 };
                 wrote(b)
                     .cmp(&wrote(a))
@@ -102,7 +102,7 @@ pub fn choices(db: &Store, state: &State, dsp: &str, zone: &str) -> Result<Group
     };
 
     let mut today = Vec::new();
-    if let Some((driving, waves)) = on_routes(db, dsp, zone, &everyone)? {
+    if let Some((driving, waves)) = on_routes(db, dsp, zone, everyone)? {
         today.push(choice(
             GroupChoiceKind::Route,
             keys(&|each| driving.contains(&each.key)),

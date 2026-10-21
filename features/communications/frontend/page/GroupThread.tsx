@@ -9,7 +9,7 @@ import { Written } from './Thread.js';
 // A group's messages, in the order written, under the day each was written: the DSP's on the
 // right under whoever sent each, with how far it has gone; each answer on the left under the name
 // of whoever wrote it, which, with their photo, opens their own conversation, as Reply does,
-// shown as an answer is pointed at or reached by the keyboard.
+// shown as an answer is pointed at or reached by the keyboard (Tab reaches the name, then Reply).
 
 /** Answers one after another from the same person, within a few minutes, shown together. */
 type Run = { key: string; entries: GroupEntry[] };
@@ -122,6 +122,7 @@ export function GroupThread({
               const name = from?.name ?? '';
               return (
                 <div key={key} className="msg-group in answer">
+                  {/* Left out of Tab's order: their name, above the answer, opens it from the keyboard. */}
                   <button
                     className="face-button"
                     tabIndex={-1}
@@ -131,7 +132,7 @@ export function GroupThread({
                     {from && <Face {...from} size="message" />}
                   </button>
                   <div className="stack">
-                    <button className="sender" tabIndex={-1} onClick={() => reply(first)}>
+                    <button className="sender" onClick={() => reply(first)}>
                       {name}
                     </button>
                     {written.map((entry) => (

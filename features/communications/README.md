@@ -105,9 +105,9 @@ in their own direct message with the app, and their answers come back together.
   asks of an app posting messages (`chat:write`), in each person's direct message, opened first
   if need be (`im:write`), under the sender's full name and photo as an answer goes
   (`chat:write.customize`), its photos uploaded once to each workspace (`files:write`). Slack
-  asking Dispatch to slow down is waited out as long as it says, and beyond half a minute tried
-  again a minute later; a try that fails is tried again after a minute, five and fifteen, then
-  given up; one to a workspace where Communications no longer works, or someone no longer in it,
+  asking Dispatch to slow down (429, Retry-After) is waited out as long as it says, up to two
+  minutes, and beyond that tried again two minutes later; a try that fails is tried again after a
+  minute, five and fifteen, then given up; one to a workspace where Communications no longer works, or someone no longer in it,
   isn't sent at all. Each is kept until it's sent or given up, so sending picks up after a
   restart, from the pass every minute; a try that may have posted before the server stopped
   looks for its post in their direct message first (`im:history`), by the metadata each post
@@ -120,7 +120,8 @@ in their own direct message with the app, and their answers come back together.
 - **Under the group:** a message to a group answers no one. Someone's conversation is listed under
   the group the DSP last wrote to them in, while all they wait on answers a message to a group,
   so a question they asked before one stays on its own row; written to alone, it's listed on its
-  own again, and a later group message moves it under that group. An answer is what someone
+  own again, and a later group message moves it under that group. Done, on the group or on
+  them, doesn't: what they write next is listed under the group again. An answer is what someone
   wrote after a message to a group, until the DSP next writes to them alone.
 - **Open:** its faces, name and how many it went to, which opens its people, with how long it has
   waited and Done, while anything under it waits; the DSP's messages to it under their sender,

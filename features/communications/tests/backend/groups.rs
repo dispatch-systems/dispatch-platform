@@ -123,7 +123,7 @@ async fn listed(state: &Arc<State>, dsp: &str, id: &str) -> crate::api::types::G
         .unwrap()
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_group_message_goes_once_to_each_person_in_their_own_direct_message() {
     let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
     let dsp = bot.dsp.clone();
@@ -177,7 +177,7 @@ async fn a_group_message_goes_once_to_each_person_in_their_own_direct_message() 
     assert_eq!((progress.people, progress.sent, progress.failed), (2, 2, 0));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
     let dsp = bot.dsp.clone();
@@ -304,7 +304,7 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     assert_eq!(groups, [later.id.as_str(), group.id.as_str()]);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn sending_picks_up_after_a_restart_without_a_second_copy() {
     let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
     let dsp = bot.dsp.clone();

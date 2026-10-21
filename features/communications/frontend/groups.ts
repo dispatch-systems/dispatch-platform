@@ -43,7 +43,11 @@ export function choiceName(
     case 'everyone':
       return 'Everyone';
     case 'workspace':
-      return workspaces.find((workspace) => workspace.teamId === choice.teamId)?.name ?? '';
+      return (
+        workspaces.find((workspace) => workspace.teamId === choice.teamId)?.name ??
+        choice.teamId ??
+        ''
+      );
   }
 }
 
