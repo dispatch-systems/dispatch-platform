@@ -517,10 +517,14 @@
   background: var(--card);
   box-shadow: -18px 0 44px var(--shadow-color);
 }
+/* Its X stays in reach while it scrolls, 12px from its corner (sticking within its padding),
+   taking no room from what's below. */
 .profile .close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  align-self: flex-end;
+  margin: -14px -10px -38px 0;
 }
 .profile .me {
   display: flex;
