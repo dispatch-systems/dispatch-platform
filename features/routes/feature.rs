@@ -42,9 +42,8 @@ pub const FEATURE: Feature = Feature {
         perm("routes.manage", "Manage Routes", 32).implies(&["routes.view"]),
     ],
     routes: api::routes::routes,
-    // Its schedules, on its own page of Settings, and how long its data is kept, on the Data
-    // page.
-    settings: &[backend::settings::SCHEDULES, backend::settings::RETENTION],
+    // How long its data is kept, on Settings' Data page.
+    settings: &[backend::settings::RETENTION],
     upgrade_storage: Some(backend::settings::upgrade),
     keeps: &[&backend::keeper::Routes],
     tables: &[(

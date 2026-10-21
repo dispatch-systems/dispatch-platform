@@ -107,7 +107,7 @@ function pathOf(span: Span, parameter?: string): { literal?: string; suffix: str
   return undefined;
 }
 type Template = { method: string; suffix: string };
-/** Helpers such as `schedule_routes(prefix, …)`: the routes each registers under its path. */
+/** Helpers such as `job_cancel(path, …)`: the routes each registers under its path. */
 function helpers(): Map<string, Template[]> {
   const found = new Map<string, Template[]>();
   const definitions = files.filter(productRust).flatMap((file) => {

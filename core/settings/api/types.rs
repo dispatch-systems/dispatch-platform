@@ -1,5 +1,4 @@
 //! What a DSP's Settings is drawn from, and what saving a section sends and answers.
-use crate::collection::api::types::ScheduleCollection;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -58,7 +57,7 @@ pub struct SettingsSection {
     /// Drawn by its owner's component, which the frontend registers under its id.
     pub custom: bool,
     pub fields: Vec<SettingsField>,
-    /// Every field's value by id, but a schedules field's, which holds none.
+    /// Every field's value by id.
     #[cfg_attr(
         feature = "ts",
         ts(type = "Record<string, boolean | number | string | Array<string> | null>")
@@ -129,15 +128,6 @@ pub enum SettingsKind {
     Time,
     /// An IANA timezone's name.
     Timezone,
-    /// No value: the schedules of `collection`, which its feature serves at `path`, drawn
-    /// with core's schedule editor; a new one starts as `starts`, collecting `collection`, or
-    /// with `collects`, what each chooses.
-    Schedules {
-        path: String,
-        collection: ScheduleCollection,
-        starts: SettingsStart,
-        collects: Option<SettingsScheduleChoice>,
-    },
 }
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -152,32 +142,6 @@ pub struct SettingsOption {
 pub struct SettingsPreset {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub value: i64,
-    pub label: String,
-}
-/// How a new schedule starts: its name and time of day.
-#[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "core/settings/api/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct SettingsStart {
-    pub name: String,
-    pub local_time: String,
-}
-
-/// What each schedule chooses to collect, under `label`.
-#[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "core/settings/api/generated/"))]
-pub struct SettingsScheduleChoice {
-    pub label: String,
-    pub options: Vec<SettingsScheduleOption>,
-}
-/// One collection a schedule may choose, with its label.
-#[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export_to = "core/settings/api/generated/"))]
-pub struct SettingsScheduleOption {
-    pub collection: ScheduleCollection,
     pub label: String,
 }
 

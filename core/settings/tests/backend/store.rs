@@ -6,8 +6,8 @@ use crate::{
     Error, Result,
     db::Store,
     manifest::settings::{
-        Field, Kept, Options, Section, choice, many, number, pick, schedules, section, text, time,
-        timezone, toggle,
+        Field, Kept, Options, Section, choice, many, number, pick, section, text, time, timezone,
+        toggle,
     },
     testing,
 };
@@ -42,13 +42,6 @@ const FIELDS: &[Field] = &[
     text("code", "Short code", 2, 16, "").code().locked(),
     time("at", "Collects at", "18:00"),
     timezone("zone", "Timezone", "America/Chicago"),
-    schedules(
-        "schedules",
-        "Schedules",
-        "/api/dsp/stand-in/schedules",
-        "stand_in",
-        ("Daily", "18:00"),
-    ),
 ];
 const POLICY: Section = section("stand_in.policy", "Policy", "stand_in.manage", FIELDS);
 
@@ -141,7 +134,6 @@ fn a_value_its_field_does_not_hold_is_refused_and_keeps_nothing() {
         json!({"at": "24:00"}),
         json!({"at": "6:00"}),
         json!({"zone": "Mars/Olympus"}),
-        json!({"schedules": []}),
         json!({"unknown": true}),
         json!([]),
     ] {

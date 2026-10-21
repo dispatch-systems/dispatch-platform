@@ -217,13 +217,7 @@ impl DriverProfilesStore for Store {
             jobs: vec![],
         };
         drop(db);
-        let next_run = self
-            .collection_schedules(dsp)?
-            .schedules
-            .into_iter()
-            .filter(|s| s.enabled && s.collection.as_str() == "associates")
-            .filter_map(|s| s.next_run)
-            .min();
+        let next_run = self.next_scheduled(dsp, "associates")?;
         Ok(RosterStatus {
             next_run,
             jobs: self.recent_jobs_of(dsp, JOB_KIND)?,

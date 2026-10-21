@@ -644,8 +644,8 @@ impl Store {
             .idempotency_key
             .strip_prefix("schedule:")
             .and_then(|key| key.split(':').next())
-            .and_then(|id| self.collection_schedule(dsp, id).ok())
-            .map(|row| row.name);
+            .and_then(|id| self.schedule_label(dsp, id).ok().flatten())
+            .map(str::to_owned);
         // Only a registered kind is ever claimed, so a job always names its provider.
         let provider = job.provider.map_or("", Provider::id);
         // The collection names the outcome; the provider words one written before it did.

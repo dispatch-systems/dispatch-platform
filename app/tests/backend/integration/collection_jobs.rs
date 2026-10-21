@@ -6,7 +6,7 @@
 use common::{seeded, store};
 use dispatch_core::testing as common;
 use dispatch_core::{
-    collection::jobs::JobFacts,
+    collection::{jobs::JobFacts, schedules::Scheduled},
     db::{self, Store, s},
 };
 use dispatch_cortex as cortex;
@@ -223,14 +223,8 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
             .iter()
             .any(|(d, _)| d == id)
     );
-    let schedule = db
-        .save_schedule(
-            id,
-            None,
-            &json!({"name":"Morning","collection":"paycom","cadence":"daily","intervalMinutes":null,"localTime":"06:00","enabled":true}),
-        )
-        .unwrap();
-    let key = schedule.id.as_str();
+    let rule = json!({"collects":"paycom","kind":"times","days":[0,1,2,3,4,5,6],"times":["06:00"]});
+    common::schedule(&db, id, "paycom", json!([rule])).unwrap();
     assert!(
         db.schedule_deadlines()
             .unwrap()
@@ -247,12 +241,10 @@ fn schedule_deadlines_track_changes_and_due_ticks_are_idempotent() {
     assert!(db.schedule_due(id).unwrap().unwrap() > db::now());
     assert!(db.schedule_due(id).unwrap().unwrap() > db::now());
     assert_eq!(db.recent_jobs(Some(id)).unwrap().len(), 1);
-    db.enable_schedule(
-        id,
-        key,
-        &json!({"revision":schedule.revision,"enabled":false}),
-    )
-    .unwrap();
+    let paycom = Scheduled::named("paycom").unwrap();
+    let revision = db.scheduled_collection(id, paycom, false).unwrap().revision;
+    db.switch_rules(id, paycom, &json!({"revision":revision,"enabled":false}))
+        .unwrap();
     assert_eq!(db.schedule_due(id).unwrap(), None);
     assert!(
         !db.schedule_deadlines()
@@ -338,12 +330,8 @@ fn nothing_collects_for_a_dsp_without_the_timecard() {
     let job = db.claim_job("worker", |_, _| true).unwrap().unwrap();
     let jid = job.id.as_str();
     db.guard(jid, "worker").unwrap();
-    db.save_schedule(
-        id,
-        None,
-        &json!({"name":"Morning","collection":"paycom","cadence":"daily","intervalMinutes":null,"localTime":"06:00","enabled":true}),
-    )
-    .unwrap();
+    let rule = json!({"collects":"paycom","kind":"times","days":[0,1,2,3,4,5,6],"times":["06:00"]});
+    common::schedule(&db, id, "paycom", json!([rule])).unwrap();
     assert!(
         db.schedule_deadlines()
             .unwrap()

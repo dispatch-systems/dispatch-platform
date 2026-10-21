@@ -24,6 +24,36 @@ pub struct ScheduleAlias {
     pub runs: &'static [&'static str],
 }
 
+/// Who sets when a collection runs, on Settings' Collectors page, and what each rule of its
+/// schedule may choose to read: `schedules("x.manage")`, or with `.choose(..)`, as Routes'
+/// "Day", Yesterday or Today so far.
+#[derive(Clone, Copy)]
+pub struct Schedules {
+    /// A permission its feature declares.
+    pub permission: &'static str,
+    /// What each rule chooses, under its label: the collection's own schedule name first, then
+    /// each alias of its feature that reads only it, each by its label.
+    pub choice: Option<(&'static str, &'static [(&'static str, &'static str)])>,
+}
+pub const fn schedules(permission: &'static str) -> Schedules {
+    Schedules {
+        permission,
+        choice: None,
+    }
+}
+impl Schedules {
+    pub const fn choose(
+        self,
+        label: &'static str,
+        options: &'static [(&'static str, &'static str)],
+    ) -> Self {
+        Self {
+            choice: Some((label, options)),
+            ..self
+        }
+    }
+}
+
 /// Minimum backlog capacity a collection keeper may declare.
 pub const MIN_QUEUE_CAPACITY: i64 = 5;
 /// Maximum backlog capacity a collection keeper may declare.
@@ -43,6 +73,8 @@ pub trait Keeper: Sync {
     /// The permission its collection runs under: what a member needs to queue or cancel
     /// it, and what a job a member queued still needs when it runs.
     fn permission(&self) -> &'static str;
+    /// Who sets when its collection runs, and what each rule may choose to read.
+    fn schedules(&self) -> Schedules;
     /// What publishing its collection changes, for the read cache. Without one of its own,
     /// it evicts every read the DSP's settings do.
     fn domain(&self) -> DataDomain {
@@ -179,8 +211,9 @@ impl Registry {
 }
 
 /// Panics unless every collection has exactly one keeper, every keeper keeps a registered
-/// collection, and every schedule alias has a name of its own and runs only collections its
-/// feature keeps.
+/// collection, every schedule alias has a name of its own and runs only collections its
+/// feature keeps, and each collection's schedules are set under a permission of its feature's,
+/// choosing among its own name and aliases that read it alone, every alias chosen once.
 pub(crate) fn check(registry: &Registry) {
     let kinds: Vec<&str> = registry
         .collectors
@@ -222,5 +255,57 @@ pub(crate) fn check(registry: &Registry) {
                 );
             }
         }
+        check_schedules(registry, feature);
+    }
+}
+fn check_schedules(registry: &Registry, feature: &Feature) {
+    let mut chosen = Vec::new();
+    for keeper in feature.keeps {
+        let schedules = keeper.schedules();
+        assert!(
+            feature
+                .permissions
+                .iter()
+                .any(|p| p.id == schedules.permission),
+            "{}'s schedules are set under {}, which it doesn't declare",
+            keeper.keeps(),
+            schedules.permission
+        );
+        let own = registry
+            .collectors
+            .iter()
+            .flat_map(|collector| collector.collections())
+            .find(|collection| collection.job_kind == keeper.keeps())
+            .map(|collection| collection.schedule);
+        let Some((_, options)) = schedules.choice else {
+            continue;
+        };
+        let names: Vec<&str> = options.iter().map(|(name, _)| *name).collect();
+        assert!(
+            names.first().copied() == own,
+            "{}'s choice doesn't start with its own schedule name",
+            keeper.keeps()
+        );
+        for name in &names[1..] {
+            let alias = feature
+                .schedule_aliases
+                .iter()
+                .find(|a| a.schedule == *name);
+            assert!(
+                alias.is_some_and(|alias| alias.runs == [keeper.keeps()]),
+                "{}'s choice {name} is no alias of its feature's that reads it alone",
+                keeper.keeps()
+            );
+            assert!(!chosen.contains(name), "{name} is chosen twice");
+            chosen.push(*name);
+        }
+    }
+    for alias in feature.schedule_aliases {
+        assert!(
+            chosen.contains(&alias.schedule),
+            "{}'s {} schedule is no collection's choice",
+            feature.name,
+            alias.schedule
+        );
     }
 }

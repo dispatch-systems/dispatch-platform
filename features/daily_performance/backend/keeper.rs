@@ -5,7 +5,7 @@ use dispatch_core::{
     collection::{browser::Collected, registry::AddedStorage},
     db::{Store, s},
     ensure,
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_cortex::{daily_performance::JOB_KIND, discovery::Scope};
@@ -20,6 +20,9 @@ impl Keeper for DailyPerformanceKeeper {
     }
     fn permission(&self) -> &'static str {
         "daily_performance.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("daily_performance.manage")
     }
     fn domain(&self) -> DataDomain {
         super::storage::DOMAIN

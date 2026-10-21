@@ -3,22 +3,23 @@
 Everyone Amazon lists for the DSP's company, active or not, with their contacts, roles,
 qualifications, license expiry and photo, collected from Cortex's associates page (Amazon's DA
 Console). Driver Match reads them as it reads every feature's people. It has no page of its own:
-its roster bar and its schedules are on its Settings page.
+its roster bar is on its Settings page, and when the roster is collected on Settings' Collectors
+page.
 
 - **Switch:** `driver_profiles`, off for every DSP until the platform owner switches it on. It
   needs the `associates` connection (Cortex), which switches on with it. It began as Driver
   Match's home, so a DSP that had Driver Match on before it existed has it switched on, once.
 - **Permission:** `driver_profiles.collect`, to see when the roster was collected, collect it
-  on demand and change its schedules.
+  on demand and set when it's collected (its keeper's `schedules`).
 - **API**, all behind `driver_profiles.collect`: `GET /api/dsp/driver-profiles/status` (when
   it was collected, how many are active and inactive, the photos kept and waiting, the next
-  scheduled run and the recent jobs), `POST …/collect`, `POST …/jobs/{id}/cancel`, and core's
-  schedule routes under `…/schedules` for the `associates` collection.
+  scheduled run and the recent jobs), `POST …/collect` and `POST …/jobs/{id}/cancel`. Its
+  schedule is the `associates` collection's on core's Collectors routes.
 - **Collection:** Cortex's `associates` reads the company whose short code is the DSP's
   abbreviation, then its whole roster in one request over HTTP, then downloads the photos the
   DSP lacks or holds for over 30 days, about sixty at most a run; the next brings the rest. A
   roster naming no one is refused rather than taken to mean everyone left.
-- **Schedules:** only the DSP's own, added on its Settings page; Driver Profiles makes none.
+- **Schedules:** only the DSP's own, set on the Collectors page; Driver Profiles makes none.
 - **Data:** `associates`, `photos` and `roster_runs`, in a database of its own beside
   Cortex's. Someone the roster stops listing keeps their row, with `listed` 0, so what names
   them elsewhere still finds a name.
@@ -29,8 +30,7 @@ its roster bar and its schedules are on its Settings page.
 - **Settings:** its own page (`?tab=driver-profiles`), for those who hold
   `driver_profiles.collect` (`backend/settings.rs`): `driver_profiles.roster` "Amazon roster", a
   custom section its roster bar draws (when the roster was collected and is collected next, and
-  Collect now), then `driver_profiles.collection` "Collection", the `associates` schedules, kept
-  by core's schedule routes under `…/schedules`. It stores no values of its own there.
+  Collect now). It stores no values of its own there.
 - **People:** its `Roster` names everyone Amazon has listed by the name Amazon has on file,
   read first among Amazon's spellings; someone counts as listed while the roster lists them
   as active. It names each listed associate's photo by its digest and serves it, so Driver

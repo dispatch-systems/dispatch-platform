@@ -4,7 +4,8 @@ import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
 // Driver Profiles' frontend manifest, loaded up front. It has no page of its own: its roster
-// bar is its custom section of Settings, on its Settings page beside its schedules.
+// bar is its custom section of Settings, on its Settings page; when the roster is collected is
+// set on Settings' Collectors page.
 
 const load = () => import('./index.js');
 const RosterBar = lazy(() => load().then((module) => ({ default: module.RosterBar })));

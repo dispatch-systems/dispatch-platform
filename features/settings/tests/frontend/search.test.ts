@@ -80,7 +80,7 @@ const sections = [
   }),
   section('timecard.meal_breaks', 'timecard', 'Meal breaks', {
     sources: ['Paycom', 'Cortex'],
-    fields: [field('runs', 'Collection schedules', { kind: 'schedules' })],
+    fields: [field('runs', 'Collection schedules', { kind: 'toggle' })],
   }),
   section('dvic.inspections', 'dvic', 'Inspections', {
     sources: ['Cortex'],
@@ -91,14 +91,11 @@ const sections = [
   section('routes.collection', 'routes', 'Collection', {
     fields: [
       field('schedules', 'Schedules', {
-        kind: 'schedules',
-        collects: {
-          label: 'Day',
-          options: [
-            { collection: 'routes', label: 'Yesterday' },
-            { collection: 'routes_today', label: 'Today so far' },
-          ],
-        },
+        kind: 'choice',
+        options: [
+          { value: 'routes', label: 'Yesterday' },
+          { value: 'routes_today', label: 'Today so far' },
+        ],
       }),
     ],
   }),

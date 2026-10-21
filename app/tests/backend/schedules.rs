@@ -1,18 +1,12 @@
-//! Schedules of the collections Timecard keeps from Paycom and Cortex: what they queue,
-//! when, and what stops them.
+//! Collection schedules as the Collectors page sets them, of the collections Timecard keeps
+//! from Paycom and Cortex: their rules saved together, switched on and off, what they queue
+//! and when, and what stops them.
+#[cfg(feature = "timecard")]
+use dispatch_core::testing::schedule;
 use dispatch_core::{
-    collection::schedules::{anchor, next_daily},
+    collection::schedules::Scheduled,
     db::{Store, iso, now, s},
     foundation::{config::Config, crypto},
-};
-#[cfg(feature = "timecard")]
-use dispatch_core::{
-    collection::{
-        browser::{Collected, Driver, Pending, browseros},
-        metrics::Counted,
-    },
-    db::{Kind, Migrations},
-    manifest::{Capability, Collection, Collector, Registry},
     testing::schedule_due_at,
 };
 use dispatch_cortex as cortex;
@@ -22,11 +16,7 @@ use dispatch_timecard::TimecardStore;
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::os::unix::fs::PermissionsExt;
-fn ms(value: &str) -> i64 {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .unwrap()
-        .timestamp_millis()
-}
+
 fn setup() -> (tempfile::TempDir, Store, String) {
     let root = tempfile::tempdir().unwrap();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -49,8 +39,38 @@ fn setup() -> (tempfile::TempDir, Store, String) {
         .unwrap();
     (root, db, id)
 }
-fn input(collection: &str) -> Value {
-    json!({"name":"Collection","collection":collection,"cadence":"interval","intervalMinutes":120,"localTime":"00:00","enabled":true})
+/// A rule of `collection`'s at `times` every day.
+fn daily(collection: &str, times: &[&str]) -> Value {
+    json!({"collects":collection,"kind":"times","days":[0,1,2,3,4,5,6],"times":times})
+}
+/// `collection`'s schedule as saved: its rules' ids and pending runs, and its revision.
+fn saved(db: &Store, id: &str, collection: &str) -> (Vec<(String, Option<String>)>, String) {
+    let shown = db
+        .scheduled_collection(id, Scheduled::named(collection).unwrap(), false)
+        .unwrap();
+    let rules = shown
+        .rules
+        .into_iter()
+        .map(|rule| (rule.id.unwrap(), rule.next_run))
+        .collect();
+    (rules, shown.revision)
+}
+fn save(db: &Store, id: &str, collection: &str, rules: Value, revision: &str) -> String {
+    let scheduled = Scheduled::named(collection).unwrap();
+    let value = json!({"rules":rules,"revision":revision});
+    match db.save_rules(id, scheduled, &value) {
+        Ok(_) => "saved".into(),
+        Err(error) => error.code,
+    }
+}
+fn switch(db: &Store, id: &str, collection: &str, enabled: bool) -> String {
+    let scheduled = Scheduled::named(collection).unwrap();
+    let revision = saved(db, id, collection).1;
+    let value = json!({"enabled":enabled,"revision":revision});
+    match db.switch_rules(id, scheduled, &value) {
+        Ok(_) => "switched".into(),
+        Err(error) => error.code,
+    }
 }
 #[cfg(feature = "timecard")]
 fn meals(db: &Store, id: &str) {
@@ -68,150 +88,314 @@ fn meals(db: &Store, id: &str) {
     db.publish_meals(id, "seed-meals", &cortex::meals::fixture(&scope), &scope)
         .unwrap();
 }
+#[cfg(feature = "timecard")]
+fn jobs(db: &Store) -> Vec<String> {
+    let mut kinds: Vec<String> = db
+        .jobs
+        .all("SELECT kind FROM jobs", [])
+        .unwrap()
+        .iter()
+        .map(|job| s(job, "kind").to_owned())
+        .collect();
+    kinds.sort();
+    kinds
+}
+
+/// A collection's rules are saved together, as at the revision they were read at: a rule
+/// kept by its id keeps its row and, unchanged, its pending run; one left out is removed; and
+/// a collection stays on or off as it was, one with no rules starting on.
 #[test]
-fn resuming_preview_preserves_the_saved_interval_anchor() {
+fn a_collections_rules_are_saved_together_as_they_were_read() {
     crate::install();
     let (_root, db, id) = setup();
-    let mut value = input("paycom");
-    value["intervalMinutes"] = json!(300);
-    value["enabled"] = json!(false);
-    let saved = db.save_schedule(&id, None, &value).unwrap();
-    let key = saved.id.as_str();
-    // Simulate an interval created on a prior day. Five hours does not
-    // divide into a day, so anchoring anew would change its future runs.
-    let old_anchor = anchor("00:00", "America/Chicago", now()).unwrap() - 86400000;
-    db.dsp(&id)
-        .unwrap()
-        .exec(
-            "UPDATE collection_schedules SET anchor=? WHERE id=?",
-            params![old_anchor, key],
-        )
-        .unwrap();
-    let preview = db
-        .preview_schedule(
-            &id,
-            &json!({"scheduleId":key,"cadence":"interval",
-        "intervalMinutes":300,"localTime":"00:00"}),
-        )
-        .unwrap();
-    let resumed = db
-        .enable_schedule(&id, key, &json!({"revision":1,"enabled":true}))
-        .unwrap();
-    assert_eq!(Some(&preview.next_run), resumed.next_run.as_ref());
-    assert_eq!((ms(&preview.next_run) - old_anchor) % (300 * 60000), 0);
-    let changed = db
-        .preview_schedule(
-            &id,
-            &json!({"scheduleId":key,"cadence":"daily","intervalMinutes":null,
-        "localTime":"06:00"}),
-        )
-        .unwrap();
     assert_eq!(
-        changed.next_run,
-        next_daily("06:00", "America/Chicago", now()).unwrap()
+        save(&db, &id, "paycom", json!([daily("paycom", &["06:00"])]), ""),
+        "saved"
     );
+    let (rules, revision) = saved(&db, &id, "paycom");
+    let (first, pending) = rules[0].clone();
+    assert!(pending.is_some());
+    // A run moved by the scheduler stays put while another rule is added.
+    schedule_due_at(&db, &id, &first, "2030-01-01T12:00:00.000Z").unwrap();
+    let mut kept = daily("paycom", &["06:00"]);
+    kept["id"] = json!(first);
+    let rules = json!([kept, daily("paycom", &["14:00", "09:30"])]);
+    assert_eq!(save(&db, &id, "paycom", rules.clone(), &revision), "saved");
+    let (now_saved, revision) = saved(&db, &id, "paycom");
+    assert_eq!(now_saved.len(), 2);
+    assert_eq!(
+        now_saved[0],
+        (first.clone(), Some("2030-01-01T12:00:00.000Z".into()))
+    );
+    // What another save passed, or a rule it removed, is stale.
+    assert_eq!(
+        save(&db, &id, "paycom", rules, "paycom.1"),
+        "schedule_changed"
+    );
+    let mut gone = daily("paycom", &["06:00"]);
+    gone["id"] = json!("schedule_gone");
+    assert_eq!(
+        save(&db, &id, "paycom", json!([gone]), &revision),
+        "schedule_changed"
+    );
+    // A rule reads only by what its collection offers.
+    assert_eq!(
+        save(
+            &db,
+            &id,
+            "paycom",
+            json!([daily("dvic", &["06:00"])]),
+            &revision
+        ),
+        "invalid_input"
+    );
+    assert_eq!(saved(&db, &id, "paycom").1, revision);
+
+    // Off, a collection keeps no pending run, and what's saved stays off; on, each runs again.
+    assert_eq!(switch(&db, &id, "paycom", false), "switched");
+    let (rules, revision) = saved(&db, &id, "paycom");
+    assert!(rules.iter().all(|(_, next)| next.is_none()));
+    let second = rules[1].0.clone();
+    let mut changed = daily("paycom", &["07:00"]);
+    changed["id"] = json!(second);
+    assert_eq!(
+        save(&db, &id, "paycom", json!([changed]), &revision),
+        "saved"
+    );
+    let (rules, _) = saved(&db, &id, "paycom");
+    assert_eq!(rules, [(second, None)]);
+    assert_eq!(db.next_scheduled(&id, "paycom").unwrap(), None);
+    assert_eq!(switch(&db, &id, "paycom", true), "switched");
+    assert!(db.next_scheduled(&id, "paycom").unwrap().is_some());
+    // A collection whose collector isn't connected starts off, and doesn't come on.
+    assert_eq!(
+        save(&db, &id, "vans", json!([daily("vans", &["06:00"])]), ""),
+        "saved"
+    );
+    assert_eq!(db.next_scheduled(&id, "vans").unwrap(), None);
+    assert_eq!(switch(&db, &id, "vans", true), "schedule_vans_required");
 }
+
+/// The rules due together are queued in one batch, a collection once however many of its
+/// rules are due, and each moves on to its next run; a run queued before a restart isn't
+/// queued again.
 #[cfg(feature = "timecard")]
 #[test]
-fn each_collection_target_queues_the_correct_jobs_and_replay_is_idempotent() {
-    crate::install();
-    for collection in ["paycom", "meal_break", "both"] {
-        let (_root, db, id) = setup();
-        meals(&db, &id);
-        let row = db.save_schedule(&id, None, &input(collection)).unwrap();
-        let key = row.id.as_str();
-        let deadline = "2026-01-01T00:00:00.000Z";
-        schedule_due_at(&db, &id, key, deadline).unwrap();
-        let next = db.schedule_due(&id).unwrap().unwrap();
-        assert!(next > now());
-        let jobs = db.jobs.all("SELECT * FROM jobs", []).unwrap();
-        assert_eq!(jobs.len(), if collection == "both" { 2 } else { 1 });
-        assert_eq!(
-            jobs.iter()
-                .filter(|j| s(j, "kind") == "paycom.collect")
-                .count(),
-            usize::from(collection != "meal_break")
-        );
-        for job in jobs
-            .iter()
-            .filter(|j| s(j, "kind") == "cortex.meal_breaks.collect")
-        {
-            let request: Value = serde_json::from_str(s(job, "request")).unwrap();
-            assert_eq!(request["station"], "DEMO1");
-            assert_eq!(
-                request["date"],
-                chrono::Utc::now()
-                    .with_timezone(&chrono_tz::America::Chicago)
-                    .format("%Y-%m-%d")
-                    .to_string()
-            );
-        }
-        schedule_due_at(&db, &id, key, deadline).unwrap(); // Crash after the batch committed, before advancing the schedule.
-        db.schedule_due(&id).unwrap();
-        assert_eq!(
-            db.jobs.all("SELECT id FROM jobs", []).unwrap().len(),
-            jobs.len()
-        );
-        assert_eq!(db.collection_schedule(&id, key).unwrap().last_error, None);
-    }
-}
-#[cfg(feature = "timecard")]
-#[test]
-fn blocked_and_overlapping_schedules_never_start_half_a_batch() {
+fn rules_due_together_queue_one_batch_once() {
     crate::install();
     let (_root, db, id) = setup();
     meals(&db, &id);
-    let first = db.save_schedule(&id, None, &input("paycom")).unwrap().id;
-    let second = db.save_schedule(&id, None, &input("both")).unwrap().id;
-    let stored = |key: &str| db.collection_schedule(&id, key).unwrap();
-    schedule_due_at(&db, &id, &first, "2026-01-01T00:00:00.000Z").unwrap();
-    schedule_due_at(&db, &id, &second, "2026-01-02T00:00:00.000Z").unwrap();
-    db.schedule_due(&id).unwrap();
-    assert_eq!(db.jobs.all("SELECT id FROM jobs", []).unwrap().len(), 1);
-    assert_eq!(
-        stored(&second).last_error.as_deref(),
-        Some("sync_in_progress")
-    );
-    db.jobs
-        .exec("UPDATE jobs SET status='succeeded'", [])
+    let timecards = schedule(
+        &db,
+        &id,
+        "paycom",
+        json!([daily("paycom", &["06:00"]), daily("paycom", &["18:00"])]),
+    )
+    .unwrap();
+    let breaks = schedule(
+        &db,
+        &id,
+        "meal_break",
+        json!([daily("meal_break", &["06:00"])]),
+    )
+    .unwrap();
+    let due = "2026-01-01T00:00:00.000Z";
+    let rules: Vec<String> = timecards
+        .rules
+        .iter()
+        .chain(&breaks.rules)
+        .map(|rule| rule.id.clone().unwrap())
+        .collect();
+    for rule in &rules {
+        schedule_due_at(&db, &id, rule, due).unwrap();
+    }
+    assert!(db.schedule_due(&id).unwrap().unwrap() > now());
+    assert_eq!(jobs(&db), ["cortex.meal_breaks.collect", "paycom.collect"]);
+    let today = chrono::Utc::now()
+        .with_timezone(&chrono_tz::America::Chicago)
+        .format("%Y-%m-%d")
+        .to_string();
+    let meal = db
+        .jobs
+        .one(
+            "SELECT request FROM jobs WHERE kind='cortex.meal_breaks.collect'",
+            [],
+        )
+        .unwrap()
         .unwrap();
+    let request: Value = serde_json::from_str(s(&meal, "request")).unwrap();
+    assert_eq!(
+        (request["station"].as_str(), request["date"].as_str()),
+        (Some("DEMO1"), Some(today.as_str()))
+    );
+    for (_, next) in saved(&db, &id, "paycom").0 {
+        assert!(next.is_some_and(|next| next.as_str() > due));
+    }
+    // Stopped after queueing, before moving on the rules that queued it: started again, it
+    // queues nothing.
+    let first = |shown: &dispatch_core::collection::api::types::ScheduledCollection| {
+        shown
+            .rules
+            .iter()
+            .filter_map(|rule| rule.id.clone())
+            .min()
+            .unwrap()
+    };
+    for rule in [first(&timecards), first(&breaks)] {
+        schedule_due_at(&db, &id, &rule, due).unwrap();
+    }
+    db.schedule_due(&id).unwrap();
+    assert_eq!(jobs(&db).len(), 2);
+    let waiting = db
+        .dsp(&id)
+        .unwrap()
+        .count(
+            "SELECT count(*) FROM collection_schedules WHERE last_error IS NOT NULL",
+            [],
+        )
+        .unwrap();
+    assert_eq!(waiting, 0);
+}
+
+/// A rule that can't run yet waits, saying why, without holding back the others due with it;
+/// while any collection runs, every rule due waits for it; and a collector disconnected
+/// pauses only the rules that need it.
+#[cfg(feature = "timecard")]
+#[test]
+fn a_rule_that_cannot_run_waits_without_holding_back_the_rest() {
+    crate::install();
+    let (_root, db, id) = setup();
+    meals(&db, &id);
+    let timecards = schedule(&db, &id, "paycom", json!([daily("paycom", &["06:00"])])).unwrap();
+    let breaks = schedule(
+        &db,
+        &id,
+        "meal_break",
+        json!([daily("meal_break", &["06:00"])]),
+    )
+    .unwrap();
+    let paycom = timecards.rules[0].id.clone().unwrap();
+    let meal = breaks.rules[0].id.clone().unwrap();
+    let error = |rule: &str| {
+        db.dsp(&id)
+            .unwrap()
+            .one_as::<(Option<String>,)>(
+                "SELECT last_error FROM collection_schedules WHERE id=?",
+                [rule],
+            )
+            .unwrap()
+            .unwrap()
+            .0
+    };
     db.collector(&id, cortex::PROVIDER)
         .unwrap()
         .exec("UPDATE connections SET enabled=0", [])
         .unwrap();
+    for rule in [&paycom, &meal] {
+        schedule_due_at(&db, &id, rule, "2026-01-01T00:00:00.000Z").unwrap();
+    }
     db.schedule_due(&id).unwrap();
-    assert_eq!(db.jobs.all("SELECT id FROM jobs", []).unwrap().len(), 1);
-    assert_eq!(
-        stored(&second).last_error.as_deref(),
-        Some("schedule_meals_required")
-    );
+    assert_eq!(jobs(&db), ["paycom.collect"]);
+    assert_eq!(error(&paycom), None);
+    assert_eq!(error(&meal).as_deref(), Some("schedule_meals_required"));
+
+    // Paycom's run is queued: its next, due, waits for it.
+    schedule_due_at(&db, &id, &paycom, "2026-01-02T00:00:00.000Z").unwrap();
+    db.schedule_due(&id).unwrap();
+    assert_eq!(jobs(&db).len(), 1);
+    assert_eq!(error(&paycom).as_deref(), Some("sync_in_progress"));
+
     db.pause_provider_schedules(&id, cortex::PROVIDER).unwrap();
-    assert!(!stored(&second).enabled);
-    assert!(stored(&first).enabled);
+    assert!(
+        !saved(&db, &id, "meal_break")
+            .0
+            .iter()
+            .any(|(_, next)| next.is_some())
+    );
+    assert!(db.next_scheduled(&id, "paycom").unwrap().is_some());
 }
+
 #[test]
-fn timezone_changes_recompute_deadlines_and_stale_edits_are_rejected() {
+fn a_timezone_change_retimes_every_rule() {
     crate::install();
     let (_root, db, id) = setup();
-    let mut value = input("paycom");
-    value["cadence"] = json!("daily");
-    value["intervalMinutes"] = Value::Null;
-    value["localTime"] = json!("06:00");
-    let row = db.save_schedule(&id, None, &value).unwrap();
+    assert_eq!(
+        save(&db, &id, "paycom", json!([daily("paycom", &["06:00"])]), ""),
+        "saved"
+    );
     db.retime_schedules(&id, "Asia/Tokyo").unwrap();
-    let changed = db.collection_schedule(&id, &row.id).unwrap();
-    assert_eq!(
-        changed.next_run,
-        Some(next_daily("06:00", "Asia/Tokyo", now()).unwrap())
-    );
-    value["revision"] = json!(1);
-    assert_eq!(
-        db.save_schedule(&id, Some(&row.id), &value)
-            .unwrap_err()
-            .code,
-        "schedule_changed"
-    );
+    let next = db.next_scheduled(&id, "paycom").unwrap().unwrap();
+    let local = chrono::DateTime::parse_from_rfc3339(&next)
+        .unwrap()
+        .with_timezone(&chrono_tz::Asia::Tokyo);
+    assert_eq!(local.format("%H:%M").to_string(), "06:00");
 }
+
+/// Timecard's `both` ran Paycom's timecards and Cortex's meal breaks at once. As a DSP opens,
+/// each of its schedules becomes one rule of each, timed as it was; a rule the previous release
+/// changed reads as that release ran it; and one it wrote reads as one time every day.
+#[cfg(feature = "timecard")]
+#[test]
+fn schedules_the_previous_release_left_read_as_it_ran_them() {
+    crate::install();
+    let (_root, db, id) = setup();
+    let old = |key: &str, collection: &str, time: &str, created: &str| {
+        db.dsp(&id)
+            .unwrap()
+            .exec(
+                "INSERT INTO collection_schedules(id,name,collection,cadence,local_time,anchor,\
+                enabled,next_run,created_at) VALUES (?,'Sync',?,'daily',?,0,1,\
+                '2030-01-01T22:00:00.000Z',?)",
+                params![key, collection, time, created],
+            )
+            .unwrap();
+    };
+    old("sch_both", "both", "16:00", "2026-01-01T00:00:01.000Z");
+    old("sch_paycom", "paycom", "11:00", "2026-01-01T00:00:02.000Z");
+    // A weekday rule of two times whose first time the previous release moved to 08:00.
+    old("sch_moved", "paycom", "08:00", "2026-01-01T00:00:03.000Z");
+    db.dsp(&id)
+        .unwrap()
+        .exec(
+            "UPDATE collection_schedules SET days=31,times='[\"06:00\",\"14:00\"]' WHERE id='sch_moved'",
+            [],
+        )
+        .unwrap();
+    db.open_collectors(&id).unwrap();
+    let rules = |collection: &str| -> Vec<Value> {
+        let shown = db
+            .scheduled_collection(&id, Scheduled::named(collection).unwrap(), false)
+            .unwrap();
+        shown
+            .rules
+            .into_iter()
+            .map(|rule| json!([rule.collects, rule.days, rule.times, rule.next_run]))
+            .collect()
+    };
+    let every_day = json!([0, 1, 2, 3, 4, 5, 6]);
+    let at = |collection: &str, time: &str| {
+        json!([collection, every_day, [time], "2030-01-01T22:00:00.000Z"])
+    };
+    assert_eq!(
+        rules("paycom"),
+        [
+            at("paycom", "16:00"),
+            at("paycom", "11:00"),
+            at("paycom", "08:00")
+        ]
+    );
+    assert_eq!(rules("meal_break"), [at("meal_break", "16:00")]);
+    let both = db
+        .dsp(&id)
+        .unwrap()
+        .count(
+            "SELECT count(*) FROM collection_schedules WHERE collection='both'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(both, 0);
+}
+
 /// After a rollback, a newer release's schedule and queued job name a collection no
 /// registered collector offers. This release lists, counts, retimes and runs neither, runs
 /// the DSP's own as before, and leaves them as they were for the release that knows them.
@@ -221,7 +405,12 @@ fn timezone_changes_recompute_deadlines_and_stale_edits_are_rejected() {
 fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
     crate::install();
     let (_root, db, id) = setup();
-    let own = db.save_schedule(&id, None, &input("paycom")).unwrap().id;
+    let own = schedule(&db, &id, "paycom", json!([daily("paycom", &["06:00"])]))
+        .unwrap()
+        .rules[0]
+        .id
+        .clone()
+        .unwrap();
     db.dsp(&id)
         .unwrap()
         .exec(
@@ -255,16 +444,8 @@ fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
     };
     let left = newer();
 
-    let listed: Vec<_> = db
-        .collection_schedules(&id)
-        .unwrap()
-        .schedules
-        .into_iter()
-        .map(|schedule| schedule.id)
-        .collect();
-    assert_eq!(listed, [own.as_str()]);
-    let unknown = db.collection_schedule(&id, "sch_newer").unwrap_err();
-    assert_eq!(unknown.code, "schedule_not_found");
+    assert_eq!(db.schedule_label(&id, "sch_newer").unwrap(), None);
+    assert_eq!(db.schedule_label(&id, &own).unwrap(), Some("Timecards"));
     assert!(db.recent_jobs(None).unwrap().is_empty());
     assert!(db.recent_jobs(Some(&id)).unwrap().is_empty());
     assert_eq!(
@@ -275,7 +456,7 @@ fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
     // The DSP's own schedule runs, neither held back by the job nor timed by the schedule.
     schedule_due_at(&db, &id, &own, "2026-01-01T00:00:00.000Z").unwrap();
     db.schedule_due(&id).unwrap();
-    assert_eq!(db.collection_schedule(&id, &own).unwrap().last_error, None);
+    assert_eq!(jobs(&db), ["newer.collect", "paycom.collect"]);
     let deadlines = db.schedule_deadlines().unwrap();
     let (_, deadline) = deadlines.iter().find(|(dsp, _)| *dsp == id).unwrap();
     assert!(*deadline > now());
@@ -303,104 +484,4 @@ fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
     assert_eq!(db.recent_jobs(Some(&id)).unwrap().len(), 2);
 
     assert_eq!(newer(), left);
-}
-
-/// A collector added later: one collection, which no feature names in an alias.
-#[cfg(feature = "timecard")]
-struct Later;
-#[cfg(feature = "timecard")]
-impl Collector for Later {
-    fn id(&self) -> &'static str {
-        "later"
-    }
-    fn label(&self) -> &'static str {
-        "Later"
-    }
-    fn capabilities(&self) -> &'static [Capability] {
-        &[]
-    }
-    fn collections(&self) -> &'static [Collection] {
-        &[Collection {
-            job_kind: "later.records.collect",
-            schedule: "later_records",
-            label: "Later records",
-            unit: "record",
-            counted: Counted::Rows,
-            unconnected: "schedule_later_required",
-        }]
-    }
-    fn database(&self) -> Kind {
-        unreachable!("a schedule's collections need no database")
-    }
-    fn migrations(&self) -> &'static [Migrations] {
-        &[]
-    }
-    fn seed(&self, _: &str) -> String {
-        String::new()
-    }
-    fn marker(&self) -> Option<&'static str> {
-        None
-    }
-    fn browser_entries(&self) -> &'static [&'static str] {
-        &[]
-    }
-    fn network(&self) -> browseros::NetworkPolicy {
-        unreachable!("a schedule's collections need no browser")
-    }
-    fn validate_credentials(&self, _: &Value) -> dispatch_core::Result<()> {
-        Ok(())
-    }
-    fn driver<'a>(
-        &self,
-        _: browseros::Session,
-        _: &'a std::path::Path,
-        _: Option<&'a str>,
-    ) -> Pending<'a, Box<dyn Driver>> {
-        unreachable!("a schedule's collections need no browser")
-    }
-    fn fixture(&self, _: &str, _: &Value) -> dispatch_core::Result<Collected> {
-        unreachable!("a schedule's collections collect nothing")
-    }
-    fn progress(&self, _: &Value) -> &'static str {
-        ""
-    }
-}
-
-#[cfg(feature = "timecard")]
-#[test]
-fn a_new_collection_leaves_what_both_runs_as_it_is() {
-    crate::install();
-    let registry = &crate::REGISTRY;
-    let collectors: Vec<&'static dyn Collector> = registry
-        .collectors
-        .iter()
-        .copied()
-        .chain([&Later as &'static dyn Collector])
-        .collect();
-    let later = Registry {
-        collectors: Box::leak(collectors.into_boxed_slice()),
-        features: registry.features,
-        agents: registry.agents,
-    };
-    let runs = |registry: &Registry, collection: &str| -> Vec<(&str, &str)> {
-        registry
-            .scheduled(collection)
-            .map(|(collector, scheduled)| (collector.id(), scheduled.job_kind))
-            .collect()
-    };
-    // `both` is Timecard's: its timecards from Paycom and its meal breaks from Cortex.
-    let both = [
-        ("paycom", "paycom.collect"),
-        ("cortex", "cortex.meal_breaks.collect"),
-    ];
-    assert_eq!(runs(registry, "both"), both);
-    assert_eq!(runs(&later, "both"), both);
-    // The new collection is a choice of its own, after every other, and runs alone.
-    let mut choices = registry.schedule_collections();
-    choices.push("later_records");
-    assert_eq!(later.schedule_collections(), choices);
-    assert_eq!(
-        runs(&later, "later_records"),
-        [("later", "later.records.collect")]
-    );
 }

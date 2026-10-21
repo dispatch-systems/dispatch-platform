@@ -15,7 +15,7 @@ page: string, label: string, order: number, scope: SettingsScope,
  */
 custom: boolean, fields: Array<SettingsField>,
 /**
- * Every field's value by id, but a schedules field's, which holds none.
+ * Every field's value by id.
  */
 values: Record<string, boolean | number | string | Array<string> | null>,
 /**

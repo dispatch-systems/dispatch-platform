@@ -14,7 +14,6 @@ import {
   mealPeriodGapsPath,
   mealPeriodPath,
   paycomStatusPath,
-  schedules,
 } from '../api/urls.js';
 import { isTimecardDataReady, prefetchTimecard } from './prefetch.js';
 
@@ -31,11 +30,7 @@ const load = (access?: Access) =>
     if (access?.view) await module.preloadTimecardPage(access.view);
     return module;
   });
-const loadSettings = () => import('./settings/index.js');
 const PaycomPage = lazy(() => load().then((module) => ({ default: module.PaycomPage })));
-const TimecardSchedules = lazy(() =>
-  loadSettings().then((module) => ({ default: module.TimecardSchedules })),
-);
 
 export const feature: FrontendFeature = {
   name: 'timecard',
@@ -54,16 +49,6 @@ export const feature: FrontendFeature = {
       render: ({ view }) => createElement(PaycomPage, { view }),
       ready: (view) => Boolean(pageReady?.(view) && isTimecardDataReady(view)),
       prefetch: ({ view, immediate }) => prefetchTimecard(view, immediate),
-    },
-  ],
-  // Its sync schedules, its custom section of its page of Settings, where its own settings
-  // page once was.
-  settingsSections: [
-    {
-      id: 'timecard.schedules',
-      load: loadSettings,
-      render: ({ view }) => view && createElement(TimecardSchedules, { dspId: view.dsp.id }),
-      prefetch: () => [schedules],
     },
   ],
   movedToSettings: { 'paycom-settings': 'timecard' },
@@ -102,9 +87,7 @@ export const feature: FrontendFeature = {
       });
     },
     jobs: ['/api/dsp/jobs', paycomStatusPath],
-    connections: [schedules],
     write: (write, url) => {
-      if (write.startsWith(schedules)) return begins(url, schedules);
       // A Driver Match decision moves drivers between rows of the meal-break comparison, and
       // changes whose photo an employee shows.
       if (write.startsWith('/api/dsp/driver-match'))

@@ -289,6 +289,12 @@ fn access_catalog() -> String {
     assert!(implied.iter().all(|(from, to)| {
         labels.contains_key(from) && to.iter().all(|to| labels.contains_key(to.as_str()))
     }));
+    // What a member needs to open the Collectors page: one of these.
+    let mut scheduling: Vec<&str> = dispatch_core::collection::schedules::Scheduled::all()
+        .map(|scheduled| scheduled.keeper.schedules().permission)
+        .collect();
+    scheduling.sort();
+    scheduling.dedup();
     let constants = [
         ("pages", json!(ids(catalog::Kind::Page))),
         ("subfeatures", json!(ids(catalog::Kind::Sub("")))),
@@ -303,6 +309,7 @@ fn access_catalog() -> String {
         ("permissionGroups", json!(groups)),
         ("impliedPermissions", json!(implied)),
         ("permissionParents", json!(parents)),
+        ("schedulingPermissions", json!(scheduling)),
     ];
     generated(
         "backend feature, collector and permission catalogs",

@@ -1,4 +1,7 @@
 import { createElement, lazy } from 'react';
+import { schedulingPermissions } from '../../tenancy/api/generated/access-catalog.js';
+import { collectorsRead } from '../api/urls.js';
+import { begins } from '../../shell/frontend/runtime/data-policy.js';
 import { connectionFeatures } from '../../shell/frontend/runtime/features.js';
 import { can } from '../../shell/frontend/runtime/permissions.js';
 import {
@@ -18,6 +21,10 @@ const load = () =>
     ...connectionPieces('personal').map((piece) => piece.load()),
   ]).then(([module]) => module);
 const ConnectionsTab = lazy(() => load().then((module) => ({ default: module.ConnectionsTab })));
+const loadCollectors = () => import('./collectors/index.js');
+const CollectorsTab = lazy(() =>
+  loadCollectors().then((module) => ({ default: module.CollectorsTab })),
+);
 
 export const feature: FrontendFeature = {
   name: 'collection',
@@ -43,5 +50,21 @@ export const feature: FrontendFeature = {
         ...connectionPieces('personal', view).flatMap((piece) => piece.reads),
       ],
     },
+    {
+      // Settings' Collectors page: when each of the DSP's collections runs, for those who set
+      // when one does.
+      id: 'collection.collectors',
+      visible: (view) => schedulingPermissions.some((permission) => can(view, permission)),
+      load: loadCollectors,
+      render: ({ view }) => view && createElement(CollectorsTab, { view }),
+      prefetch: () => [collectorsRead],
+    },
   ],
+  // Its collections' runs, their collectors' connections and their schedules' saves change it.
+  cache: {
+    jobs: [collectorsRead],
+    connections: [collectorsRead],
+    write: (write, url) =>
+      write.startsWith('/api/dsp/collectors/') && begins(url, collectorsRead) ? true : undefined,
+  },
 };

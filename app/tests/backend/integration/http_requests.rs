@@ -728,7 +728,7 @@ async fn only_dsp_and_schedule_writes_that_succeed_wake_the_scheduler() {
     let before = revision();
     let call = Call::post("/api/dsp/profile", json!({})).who(&owner);
     server.expect(call, 400, "invalid_input").await;
-    let call = Call::post("/api/dsp/schedules/preview", json!({})).who(&owner);
+    let call = Call::post("/api/dsp/collectors/paycom/preview", json!({})).who(&owner);
     assert_ne!(server.send(call).await.status, 404);
     assert_eq!(revision(), before);
     let profile = json!({

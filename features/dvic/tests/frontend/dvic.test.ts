@@ -58,10 +58,6 @@ test('inspection weeks use Sunday dates across year and DST boundaries; source c
 });
 test('DVIC mutations refresh DVIC without invalidating timecard data', () => {
   assert.equal(mutationAffects('/api/dsp/dvic/collect', '/api/dsp/dvic/status'), true);
-  assert.equal(
-    mutationAffects('/api/dsp/dvic/schedules/a/enabled', '/api/dsp/dvic/schedules'),
-    true,
-  );
   assert.equal(mutationAffects('/api/dsp/dvic/collect', '/api/dsp/timecards'), false);
 });
 

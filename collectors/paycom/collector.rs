@@ -107,7 +107,7 @@ const TABLES: Tables = &[(
 static COLLECTIONS: [Collection; 1] = [Collection {
     job_kind: timecards::JOB_KIND,
     schedule: "paycom",
-    label: "Paycom",
+    label: "Timecards",
     unit: "employee",
     counted: Counted::Employees,
     unconnected: "schedule_paycom_required",

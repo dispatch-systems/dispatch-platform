@@ -38,10 +38,17 @@ test('unconfigured collection explains the missing station and Cortex connection
   await expect(
     page.getByText('Connect Cortex in Settings → Connections before syncing DVIC.'),
   ).toBeVisible();
+  // Its schedule saves while Cortex isn't connected, but stays off till it is.
   await page.getByRole('button', { name: 'Collection settings' }).click();
-  await page.getByRole('button', { name: 'Add schedule' }).click();
-  await page.getByRole('button', { name: 'Save schedule' }).click();
+  const dvic = page.getByRole('region', { name: 'DVIC', exact: true });
+  await dvic.getByRole('button', { name: 'Add rule' }).click();
+  await dvic.getByLabel('Time 1').fill('18:00');
+  await dvic.getByRole('button', { name: 'Save', exact: true }).click();
+  const on = dvic.getByRole('switch', { name: 'On schedule' });
+  await expect(on).not.toBeChecked();
+  await on.click();
   await expect(page.getByText('Connect Cortex before enabling DVIC collections.')).toBeVisible();
+  await expect(on).not.toBeChecked();
 });
 
 test('the day digest and week grid read the same inspections, with details on desktop and mobile', async ({
@@ -175,79 +182,91 @@ test('a large week opens without downloading every inspection and never shows a 
   await expect(page.getByText('No short inspections stored', { exact: true })).toBeVisible();
 });
 
-test('schedules persist, pause, reject stale edits and delete; manual sync reaches a terminal state', async ({
+test('its schedule is set on Collectors: saved together, switched off, stale edits refused, unsaved edits asked about; manual sync reaches a terminal state', async ({
   page,
   dispatch,
 }) => {
   const { dsp, owner } = await seedDvic(dispatch);
+  const stored = async () =>
+    (await owner.read('/api/dsp/collectors')).collections.find(
+      (collection: { collection: string }) => collection.collection === 'dvic',
+    );
   await login(page);
   await openDsp(page, dsp.name);
   await page.getByRole('link', { name: 'DVIC', exact: true }).click();
-  // Its schedules are on its own page of Settings.
+  // Its schedule is on Settings' Collectors page, which opens on it.
   await page.getByRole('button', { name: 'Collection settings' }).click();
-  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
-  const collection = page.getByRole('region', { name: 'Collection', exact: true });
-  // Unsaved edits leave only through Save or Discard.
-  await collection.getByRole('button', { name: 'Add schedule' }).click();
-  await page.getByLabel('Schedule name').fill('Draft only');
-  await page.getByRole('button', { name: 'Back' }).click();
+  await expect(page).toHaveURL(/\/settings\?tab=collectors&collection=dvic$/);
+  const dvic = page.getByRole('region', { name: 'DVIC', exact: true });
   const ask = page.getByRole('dialog', { name: 'Save changes?' });
+  const collections = page.getByRole('navigation', { name: 'Collections' });
+  await dvic.getByRole('button', { name: 'Add rule' }).click();
+  await dvic.getByRole('radio', { name: 'Repeat during hours' }).click();
+  await dvic.getByLabel('Every', { exact: true }).selectOption({ label: '3 hr' });
+  await dvic.getByLabel('From', { exact: true }).fill('18:30');
+  await dvic.getByLabel('To', { exact: true }).fill('23:30');
+  await expect(dvic.getByRole('listitem')).toHaveCount(5);
+  await dvic.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dvic).toContainText('Every day, every 3 hr, 6:30 PM to 11:30 PM');
+  let saved = await stored();
+  expect(saved.enabled).toBe(true);
+  expect([saved.rules[0].every, saved.rules[0].from, saved.rules[0].to]).toEqual([
+    180,
+    '18:30',
+    '23:30',
+  ]);
+  // Off, nothing of it runs.
+  await dvic.getByRole('switch', { name: 'On schedule' }).click();
+  await expect(dvic.getByRole('switch', { name: 'On schedule' })).not.toBeChecked();
+  expect((await stored()).enabled).toBe(false);
+  // Another collection opened with unsaved edits asks first, and Save saves them.
+  await dvic.getByRole('button', { name: 'Edit', exact: true }).click();
+  await dvic.getByLabel('From', { exact: true }).fill('19:00');
+  await collections.getByRole('button', { name: /^Routes/ }).click();
   await expect(ask).toBeVisible();
-  await ask.getByRole('button', { name: 'Discard changes' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(collection.getByText('No schedules yet', { exact: true })).toBeVisible();
-  await collection.getByRole('button', { name: 'Add schedule' }).click();
-  await page.getByLabel('Schedule name').fill('Evening DVIC');
-  await page.getByLabel('Frequency').selectOption('interval');
-  await page.getByLabel('Every (hours)').fill('3');
-  await page.getByLabel('Starting at').fill('18:30');
-  await expect(page.locator('output')).not.toHaveText('—');
-  await page.getByRole('button', { name: 'Save schedule' }).click();
-  await expect(collection).toContainText('Every 3 hours');
-  let saved = (await owner.get('/api/dsp/dvic/schedules')).value.schedules[0];
-  expect(saved.intervalMinutes).toBe(180);
-  await page.getByRole('button', { name: 'Pause Evening DVIC' }).click();
-  await expect(page.getByRole('button', { name: 'Resume Evening DVIC' })).toBeVisible();
-  await page.getByRole('button', { name: 'Edit Evening DVIC' }).click();
-  await page.getByLabel('Starting at').fill('19:00');
-  await page.getByRole('button', { name: 'Back' }).click();
   await ask.getByRole('button', { name: 'Save changes' }).click();
-  await expect(collection).toContainText('19:00');
-  await page.getByRole('button', { name: 'Edit Evening DVIC' }).click();
-  saved = (await owner.get('/api/dsp/dvic/schedules')).value.schedules[0];
-  await owner.post('/api/dsp/dvic/schedules/' + saved.id + '/enabled', {
-    enabled: true,
-    revision: saved.revision,
-  });
-  await page.getByRole('button', { name: 'Save schedule' }).click();
+  await expect(page.getByRole('region', { name: 'Routes', exact: true })).toBeVisible();
+  expect((await stored()).rules[0].from).toBe('19:00');
+  await collections.getByRole('button', { name: /^DVIC/ }).click();
+  // A save another session passed is refused until the schedule is read again.
+  await dvic.getByRole('button', { name: 'Add rule' }).click();
+  await dvic.getByLabel('Time 1').fill('06:00');
+  saved = await stored();
+  expect(
+    (
+      await owner.post('/api/dsp/collectors/dvic/enabled', {
+        enabled: true,
+        revision: saved.revision,
+      })
+    ).status,
+  ).toBe(200);
+  await dvic.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(
     page.getByText('This schedule changed in another session. Reload it before saving.'),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save schedule' })).toBeDisabled();
-  await page.getByRole('button', { name: 'Reload schedule' }).click();
-  await expect(page.getByRole('switch')).toBeChecked();
-  await page.getByRole('button', { name: 'Delete schedule', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete schedule', exact: true }).click();
-  await expect(page.getByText('No schedules yet', { exact: true })).toBeVisible();
-  expect((await owner.get('/api/dsp/dvic/schedules')).value.schedules).toHaveLength(0);
+  await expect(dvic.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await dvic.getByRole('button', { name: 'Reload schedule' }).click();
+  await expect(dvic.getByRole('switch', { name: 'On schedule' })).toBeChecked();
+  await dvic.getByRole('button', { name: 'Delete rule' }).click();
+  await dvic.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dvic.getByText('Not scheduled', { exact: true })).toBeVisible();
+  expect((await stored()).rules).toHaveLength(0);
   // Leaving the page with unsaved edits asks first, the address staying put meanwhile: Back,
   // which then returns to the DVIC page its Collection settings opened from, and the browser's
   // Back alike.
-  const draft = async () => {
-    await collection.getByRole('button', { name: 'Add schedule' }).click();
-    await page.getByLabel('Schedule name').fill('Draft only');
-  };
+  const draft = () => dvic.getByRole('button', { name: 'Add rule' }).click();
+  const settings = /\/settings\?tab=collectors&collection=dvic$/;
   await draft();
   await page.getByRole('link', { name: 'Back', exact: true }).click();
   await expect(ask).toBeVisible();
-  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
+  await expect(page).toHaveURL(settings);
   await ask.getByRole('button', { name: 'Discard changes' }).click();
   await expect(page).toHaveURL(/\/dvic$/);
   await page.goBack();
   await draft();
   await page.goBack();
   await expect(ask).toBeVisible();
-  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
+  await expect(page).toHaveURL(settings);
   // Staying keeps the page, and the browser's history as it was: Forward still leads on, asking.
   await page.keyboard.press('Escape');
   await expect(ask).toHaveCount(0);
@@ -257,10 +276,10 @@ test('schedules persist, pause, reject stale edits and delete; manual sync reach
   await expect(ask).toBeVisible();
   await ask.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(ask).toHaveCount(0);
-  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
+  await expect(page).toHaveURL(settings);
   await page.goForward();
   await expect(ask).toBeVisible();
-  await expect(page).toHaveURL(/\/settings\?tab=dvic$/);
+  await expect(page).toHaveURL(settings);
   await ask.getByRole('button', { name: 'Discard changes' }).click();
   await expect(page).toHaveURL(/\/dvic$/);
   const collected = page.waitForResponse(
@@ -323,7 +342,7 @@ test('DVIC viewers can read without collection controls; a disabled feature has 
   await expect(page.locator('.dvic-footer')).toContainText('3 records');
   await expect(page.getByRole('button', { name: 'Sync now', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Collection settings' })).toHaveCount(0);
-  expect(requests.some((url) => url.includes('/dvic/schedules'))).toBe(false);
+  expect(requests.some((url) => url.includes('/api/dsp/collectors'))).toBe(false);
   await owner.post('/api/platform/dsps/' + dsp.id + '/features', {
     feature: 'dvic',
     enabled: false,

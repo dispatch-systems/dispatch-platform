@@ -121,13 +121,7 @@
         "GET /api/dsp/daily-performance",
         "POST /api/dsp/daily-performance/collect",
         "GET /api/dsp/daily-performance/jobs",
-        "POST /api/dsp/daily-performance/jobs/{id}/cancel",
-        "GET /api/dsp/daily-performance/schedules",
-        "POST /api/dsp/daily-performance/schedules",
-        "POST /api/dsp/daily-performance/schedules/preview",
-        "POST /api/dsp/daily-performance/schedules/{key}",
-        "POST /api/dsp/daily-performance/schedules/{key}/enabled",
-        "POST /api/dsp/daily-performance/schedules/{key}/remove"
+        "POST /api/dsp/daily-performance/jobs/{id}/cancel"
       ],
       "exposes": [
         {
@@ -388,13 +382,7 @@
       "routes": [
         "GET /api/dsp/driver-profiles/status",
         "POST /api/dsp/driver-profiles/collect",
-        "POST /api/dsp/driver-profiles/jobs/{id}/cancel",
-        "GET /api/dsp/driver-profiles/schedules",
-        "POST /api/dsp/driver-profiles/schedules",
-        "POST /api/dsp/driver-profiles/schedules/preview",
-        "POST /api/dsp/driver-profiles/schedules/{key}",
-        "POST /api/dsp/driver-profiles/schedules/{key}/enabled",
-        "POST /api/dsp/driver-profiles/schedules/{key}/remove"
+        "POST /api/dsp/driver-profiles/jobs/{id}/cancel"
       ],
       "exposes": [
         {
@@ -405,8 +393,7 @@
       ],
       "env": [],
       "settings": [
-        "driver_profiles.roster",
-        "driver_profiles.collection"
+        "driver_profiles.roster"
       ]
     },
     "switch": "driver_profiles",
@@ -485,13 +472,7 @@
         "GET /api/dsp/dvic/day",
         "GET /api/dsp/dvic/inspection",
         "POST /api/dsp/dvic/collect",
-        "POST /api/dsp/dvic/jobs/{id}/cancel",
-        "GET /api/dsp/dvic/schedules",
-        "POST /api/dsp/dvic/schedules",
-        "POST /api/dsp/dvic/schedules/preview",
-        "POST /api/dsp/dvic/schedules/{key}",
-        "POST /api/dsp/dvic/schedules/{key}/enabled",
-        "POST /api/dsp/dvic/schedules/{key}/remove"
+        "POST /api/dsp/dvic/jobs/{id}/cancel"
       ],
       "exposes": [
         {
@@ -501,9 +482,7 @@
         }
       ],
       "env": [],
-      "settings": [
-        "dvic.collection"
-      ]
+      "settings": []
     },
     "switch": "dvic",
     "mandatory": false,
@@ -618,13 +597,7 @@
         "POST /api/dsp/routes/collect",
         "GET /api/dsp/routes/jobs",
         "POST /api/dsp/routes/jobs/{id}/cancel",
-        "POST /api/platform/dsps/{id}/routes/reprocess",
-        "GET /api/dsp/routes/schedules",
-        "POST /api/dsp/routes/schedules",
-        "POST /api/dsp/routes/schedules/preview",
-        "POST /api/dsp/routes/schedules/{key}",
-        "POST /api/dsp/routes/schedules/{key}/enabled",
-        "POST /api/dsp/routes/schedules/{key}/remove"
+        "POST /api/platform/dsps/{id}/routes/reprocess"
       ],
       "exposes": [
         {
@@ -635,7 +608,6 @@
       ],
       "env": [],
       "settings": [
-        "routes.collection",
         "routes.retention"
       ]
     },
@@ -958,13 +930,7 @@
         "POST /api/dsp/jobs/meal-breaks",
         "GET /api/dsp/jobs/employees",
         "POST /api/dsp/jobs/employees",
-        "POST /api/dsp/cortex/meal-breaks/collect",
-        "GET /api/dsp/schedules",
-        "POST /api/dsp/schedules",
-        "POST /api/dsp/schedules/preview",
-        "POST /api/dsp/schedules/{key}",
-        "POST /api/dsp/schedules/{key}/enabled",
-        "POST /api/dsp/schedules/{key}/remove"
+        "POST /api/dsp/cortex/meal-breaks/collect"
       ],
       "exposes": [
         {
@@ -975,7 +941,6 @@
       ],
       "env": [],
       "settings": [
-        "timecard.schedules",
         "timecard.roster",
         "timecard.drivers",
         "timecard.late_das"
@@ -1122,13 +1087,7 @@
       "routes": [
         "GET /api/dsp/vans/status",
         "POST /api/dsp/vans/collect",
-        "POST /api/dsp/vans/jobs/{id}/cancel",
-        "GET /api/dsp/vans/schedules",
-        "POST /api/dsp/vans/schedules",
-        "POST /api/dsp/vans/schedules/preview",
-        "POST /api/dsp/vans/schedules/{key}",
-        "POST /api/dsp/vans/schedules/{key}/enabled",
-        "POST /api/dsp/vans/schedules/{key}/remove"
+        "POST /api/dsp/vans/jobs/{id}/cancel"
       ],
       "exposes": [
         {
@@ -1139,8 +1098,7 @@
       ],
       "env": [],
       "settings": [
-        "vans.fleet",
-        "vans.collection"
+        "vans.fleet"
       ]
     },
     "switch": "vans",
@@ -1207,13 +1165,7 @@
         "GET /api/dsp/weekly-scorecard/weeks",
         "GET /api/dsp/weekly-scorecard/jobs",
         "POST /api/dsp/weekly-scorecard/collect",
-        "POST /api/dsp/weekly-scorecard/jobs/{id}/cancel",
-        "GET /api/dsp/weekly-scorecard/schedules",
-        "POST /api/dsp/weekly-scorecard/schedules",
-        "POST /api/dsp/weekly-scorecard/schedules/preview",
-        "POST /api/dsp/weekly-scorecard/schedules/{key}",
-        "POST /api/dsp/weekly-scorecard/schedules/{key}/enabled",
-        "POST /api/dsp/weekly-scorecard/schedules/{key}/remove"
+        "POST /api/dsp/weekly-scorecard/jobs/{id}/cancel"
       ],
       "exposes": [
         {

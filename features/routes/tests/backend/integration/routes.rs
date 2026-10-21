@@ -528,9 +528,10 @@ fn a_schedule_of_today_reads_it_so_far_and_leaves_its_final_read_to_the_next_day
     // A DSP's daily schedule of `collection`, run once as it falls due: the requests it
     // queued, newest day first.
     let run = |collection: &str| -> Vec<Value> {
-        let schedule = json!({"name":"Routes","collection":collection,"cadence":"daily",
-            "intervalMinutes":null,"localTime":"09:00","enabled":true});
-        let key = db.save_schedule(&id, None, &schedule).unwrap().id;
+        let rule = json!({"collects":collection,"kind":"times","days":[0,1,2,3,4,5,6],
+            "times":["09:00"]});
+        let saved = common::schedule(&db, &id, "routes", json!([rule])).unwrap();
+        let key = saved.rules[0].id.clone().unwrap();
         common::schedule_due_at(&db, &id, &key, "2026-01-01T00:00:00.000Z").unwrap();
         db.schedule_due(&id).unwrap();
         let mut queued: Vec<Value> = db

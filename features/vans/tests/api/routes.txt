@@ -3,10 +3,4 @@
 # Each changes with this file, so a reviewer sees who can reach what.
 POST /api/dsp/vans/collect Dsp("vans.collect") Bookkeeping
 POST /api/dsp/vans/jobs/{id}/cancel Dsp("vans.collect") Async
-GET /api/dsp/vans/schedules Dsp("vans.collect") Read
-POST /api/dsp/vans/schedules Dsp("vans.collect") Write wakes-scheduler
-POST /api/dsp/vans/schedules/preview Dsp("vans.collect") Write
-POST /api/dsp/vans/schedules/{key} Dsp("vans.collect") Write wakes-scheduler
-POST /api/dsp/vans/schedules/{key}/enabled Dsp("vans.collect") Write wakes-scheduler
-POST /api/dsp/vans/schedules/{key}/remove Dsp("vans.collect") Write wakes-scheduler
 GET /api/dsp/vans/status Dsp("vans.collect") Read

@@ -13,7 +13,7 @@ use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
 /// What a section holds now, for the DSP or one member: its revision, none saved yet being 0,
-/// and every field's value but a schedules field's, by id, defaults filled.
+/// and every field's value by id, defaults filled.
 pub(crate) struct Current {
     pub revision: i64,
     pub values: Map<String, Value>,
@@ -71,13 +71,13 @@ pub(crate) fn current(db: &Store, dsp: &str, section: &Section, record: &Value) 
     let values = section
         .fields
         .iter()
-        .filter_map(|field| {
+        .map(|field| {
             let value = kept
                 .get(field.id)
                 .filter(|value| kinds::fits(field, value))
                 .cloned()
-                .or_else(|| kinds::default(field))?;
-            Some((field.id.to_owned(), value))
+                .unwrap_or_else(|| kinds::default(field));
+            (field.id.to_owned(), value)
         })
         .collect();
     Ok(Current {

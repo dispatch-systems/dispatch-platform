@@ -336,7 +336,9 @@ test('account settings name the account and refuse mismatched new passwords', as
   await expect(page.getByRole('alert')).toHaveText('The new passwords must match.');
 });
 
-test('Timecard schedules can be created, edited, paused and deleted', async ({ page }) => {
+test('Timecard opens while its view loads, and its collections are scheduled on Collectors', async ({
+  page,
+}) => {
   await login(page);
   await page.getByRole('button', { name: /Northline Logistics/ }).click();
   let releaseView!: () => void;
@@ -368,51 +370,49 @@ test('Timecard schedules can be created, edited, paused and deleted', async ({ p
   }
   await expect(page.getByRole('tab', { name: 'Collections', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  // Its own page of Settings, where its sync schedules are.
   await expect(page).toHaveURL(/\/settings\?tab=timecard$/);
-  await expect(page.getByRole('region', { name: 'Sync schedules', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'New schedule', exact: true }).click();
-  let dialog = page.getByRole('dialog', { name: 'New schedule', exact: true });
-  await dialog.getByLabel('Schedule name').fill('Paycom refresh');
-  await dialog.getByLabel('Every', { exact: true }).fill('2');
-  await dialog.getByRole('button', { name: 'Create schedule', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  let row = page.getByRole('row').filter({ hasText: 'Paycom refresh' });
-  await expect(row).toContainText('Every 2 hours');
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Collectors', exact: true })
+    .click();
+  const collections = page.getByRole('navigation', { name: 'Collections' });
+  const timecards = page.getByRole('region', { name: 'Timecards', exact: true });
+  const save = (region: typeof timecards) =>
+    region.getByRole('button', { name: 'Save', exact: true }).click();
+  await collections.getByRole('button', { name: /^Timecards/ }).click();
+  await timecards.getByRole('button', { name: 'Add rule' }).click();
+  await timecards.getByRole('radio', { name: 'Repeat during hours' }).click();
+  await timecards.getByLabel('Every', { exact: true }).selectOption({ label: '2 hr' });
+  await timecards.getByLabel('From', { exact: true }).fill('06:00');
+  await timecards.getByLabel('To', { exact: true }).fill('18:00');
+  await save(timecards);
+  const listed = collections.getByRole('button', { name: /^Timecards/ });
+  await expect(listed).toContainText('Every day, every 2 hr, 6:00 AM to 6:00 PM');
   await page.reload();
-  await expect(row).toBeVisible();
-  await row.getByRole('button', { name: 'Edit Paycom refresh' }).click();
-  dialog = page.getByRole('dialog', { name: 'Edit schedule', exact: true });
-  await dialog.getByRole('radio', { name: 'Daily', exact: true }).check();
-  await dialog.getByLabel('Time', { exact: true }).fill('21:00');
-  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await expect(row).toContainText('Daily at 9:00 PM');
-  await row.getByRole('switch', { name: 'Enable Paycom refresh' }).uncheck();
-  await expect(row.getByRole('switch')).not.toBeChecked();
+  await expect(listed).toContainText('Every day, every 2 hr, 6:00 AM to 6:00 PM');
+  await timecards.getByRole('button', { name: 'Edit', exact: true }).click();
+  await timecards.getByRole('radio', { name: 'Once a day' }).click();
+  await timecards.getByLabel('Time 1').fill('21:00');
+  await save(timecards);
+  await expect(listed).toContainText('Every day at 9:00 PM');
+  const on = timecards.getByRole('switch', { name: 'On schedule' });
+  await on.uncheck();
+  await expect(on).not.toBeChecked();
   await page.reload();
-  await expect(row.getByRole('switch')).not.toBeChecked();
-  await row.getByRole('button', { name: 'Edit Paycom refresh' }).click();
-  await dialog.getByRole('button', { name: 'Delete schedule', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Delete schedule', exact: true }).click();
-  await expect(row).toHaveCount(0);
-  // Both collectors can be selected and saved while paused before connecting Cortex.
-  await page.getByRole('button', { name: 'New schedule', exact: true }).click();
-  dialog = page.getByRole('dialog', { name: 'New schedule', exact: true });
-  await dialog.getByLabel('Schedule name').fill('Morning collection');
-  await dialog.getByRole('checkbox', { name: 'Meal Break', exact: true }).check();
-  await dialog.getByRole('switch', { name: 'Enabled', exact: true }).uncheck();
-  await dialog.getByRole('button', { name: 'Create schedule', exact: true }).click();
-  row = page.getByRole('row').filter({ hasText: 'Morning collection' });
-  await expect(row).toContainText('Paycom');
-  await expect(row).toContainText('Meal Break');
+  await expect(on).not.toBeChecked();
+  await timecards.getByRole('button', { name: 'Delete rule' }).click();
+  await save(timecards);
+  await expect(listed).toContainText('Not scheduled');
+  // Meal breaks come from Cortex, not connected yet: their rule saves, off till it is.
+  const meals = page.getByRole('region', { name: 'Meal breaks', exact: true });
+  await collections.getByRole('button', { name: /^Meal breaks/ }).click();
+  await meals.getByRole('button', { name: 'Add rule' }).click();
+  await meals.getByLabel('Time 1').fill('16:00');
+  await save(meals);
+  await expect(meals.getByRole('switch', { name: 'On schedule' })).not.toBeChecked();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(row).toBeVisible();
+  await expect(meals).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await row.getByRole('button', { name: 'Edit Morning collection' }).click();
-  dialog = page.getByRole('dialog', { name: 'Edit schedule', exact: true });
-  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
 });
 
 test('archived Diagnostics creates a synthetic DSP and excludes Plugins and Backups navigation', async ({

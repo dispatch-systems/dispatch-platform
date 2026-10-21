@@ -3,7 +3,7 @@
 use crate::VansStore;
 use dispatch_core::{
     Result,
-    collection::api::routes::{jobs::job_cancel, schedules::schedule_routes},
+    collection::api::routes::jobs::job_cancel,
     db::Store,
     foundation::validate as v,
     server::http::{
@@ -16,15 +16,13 @@ use dispatch_cortex::vans::JOB_KIND;
 const COLLECT: Dsp = Dsp("vans.collect");
 
 pub fn routes() -> Vec<Route> {
-    let mut routes = vec![
+    vec![
         read("/api/dsp/vans/status", COLLECT, status),
         // Queuing a collection writes only its job and its log entry, which no cached read
         // uses: the caches stay as they are.
         write("/api/dsp/vans/collect", COLLECT, collect).bookkeeping(),
         job_cancel("/api/dsp/vans/jobs/{id}/cancel", COLLECT, &[JOB_KIND]),
-    ];
-    routes.extend(schedule_routes("/api/dsp/vans/schedules", COLLECT, "vans"));
-    routes
+    ]
 }
 
 fn status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

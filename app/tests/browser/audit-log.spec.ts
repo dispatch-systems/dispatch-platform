@@ -28,7 +28,7 @@ test('the audit log reads as sentences, shows what changed and folds repeated vi
   await expect(page.getByPlaceholder('Search people, roles, schedules…')).toBeVisible();
   await expect(page.getByLabel('DSP', { exact: true })).toBeVisible();
 
-  const completed = item(page, 'Paycom collection for Sep 15 completed');
+  const completed = item(page, 'Timecards collection for Sep 15 completed');
   await expect(completed).toContainText('Requested by Maria Lopez·1m 48s');
   await expect(item(page, 'started a Paycom collection')).toContainText('for Sep 15');
   await expect(item(page, 'Scheduled collection Morning Paycom pull failed')).toContainText(

@@ -21,7 +21,7 @@ pub const FEATURE: Feature = Feature {
     permissions: &[perm("vans.collect", "Collect Vans", 131)],
     routes: api::routes::routes,
     // Its fleet bar and its schedules, on its own Settings page.
-    settings: &[backend::settings::FLEET, backend::settings::COLLECTION],
+    settings: &[backend::settings::FLEET],
     live: &["vans.collect"],
     keeps: &[&backend::keeper::Fleet],
     tables: &[("vans", &["vans", "fleet_runs"])],

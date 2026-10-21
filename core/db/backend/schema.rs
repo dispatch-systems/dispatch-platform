@@ -273,6 +273,13 @@ const DSP: &[Migration] = &[
             "../../accounts/migrations/dsp/0012_accounts.sql"
         )),
     },
+    Migration {
+        id: 13,
+        name: "schedule_rules",
+        apply: Sql(include_str!(
+            "../../collection/migrations/dsp/0013_schedule_rules.sql"
+        )),
+    },
 ];
 fn role_columns(db: &Db) -> Result<()> {
     add_column(db, "memberships", "role_id", "TEXT REFERENCES roles(id)")?;

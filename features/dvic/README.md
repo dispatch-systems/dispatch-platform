@@ -6,7 +6,7 @@ Day tab (headline numbers, repeat drivers, and the day's records by vehicle type
 a Week tab (drivers by day, showing the shortest inspection or the count), with week
 navigation, driver name/ID search, vehicle filters, and inspection details. Bands state the
 share of the minimum reached (75%+, 35–75%, under 35%) without a verdict. Viewing,
-manual sync, and schedule management use the separate permissions below. Sync now
+manual sync, and setting its schedule use the separate permissions below. Sync now
 checks recent publication weeks and those holding the week shown; historical backfills
 remain available through the API. A day no checked report covers reads Not collected, not
 zero: its short inspections are unknown.
@@ -34,11 +34,10 @@ All endpoints use the existing authenticated DSP context and CSRF rules.
 | `GET /api/dsp/dvic/inspection?from=2026-09-20&to=2026-09-26&id=...` | `dvic.view`    | One inspection and its 50 most recent related records, with the complete related count                    |
 | `POST /api/dsp/dvic/collect`                                        | `dvic.collect` | Manual sync with `requestId`; optional ending `week`, number of `weeks` (1–26), `viewing` day             |
 | `POST /api/dsp/dvic/jobs/{id}/cancel`                               | `dvic.collect` | Cancel this DSP's DVIC job                                                                                |
-| `GET/POST /api/dsp/dvic/schedules`                                  | `dvic.manage`  | List/create DVIC schedules                                                                                |
-| `POST /api/dsp/dvic/schedules/{key}`                                | `dvic.manage`  | Edit a schedule with its current `revision`                                                               |
-| `POST /api/dsp/dvic/schedules/{key}/enabled`                        | `dvic.manage`  | Pause/resume with `enabled` and `revision`                                                                |
-| `POST /api/dsp/dvic/schedules/{key}/remove`                         | `dvic.manage`  | Delete with `revision`                                                                                    |
-| `POST /api/dsp/dvic/schedules/preview`                              | `dvic.manage`  | Preview cadence in the DSP's timezone                                                                     |
+| `POST /api/dsp/collectors/dvic/schedule`                            | `dvic.manage`  | Replace its schedule's rules, with the `revision` they were read at (core's Collectors routes)            |
+| `POST /api/dsp/collectors/dvic/enabled`                             | `dvic.manage`  | Turn its schedule on or off with `enabled` and `revision`                                                 |
+| `POST /api/dsp/collectors/dvic/preview`                             | `dvic.manage`  | The next five runs of unsaved rules, in the DSP's timezone                                                |
+| `POST /api/dsp/collectors/dvic/collect`                             | `dvic.collect` | Collect now, as one scheduled run does, once for its `requestId`                                          |
 
 Other owners read DVIC through `DvicStore`: `dvic_inspections` as above, `dvic_drivers` (each
 driver with short inspections, by the name their latest one gave, with how many and when), and
@@ -49,19 +48,23 @@ Manual sync defaults to the current and previous publication week; an explicit w
 alone selects that week. A `viewing` day adds the two publication weeks whose reports
 hold its Sunday–Saturday week, those already published: Sync now sends the first day of
 the week shown. A request returns one queued job, and replaying its requestId is
-idempotent. Schedules use the existing daily/interval scheduler, timezone handling,
+idempotent. Its schedule's rules run through core's scheduler, with its timezone handling,
 revision checks, overlap prevention, cancellation, and retry/backoff policy.
 
-Example daily schedule body:
+Example schedule body, every day at 6:00 PM, its first rule:
 
 ```json
 {
-  "name": "Daily DVIC",
-  "collection": "dvic",
-  "cadence": "daily",
-  "intervalMinutes": null,
-  "localTime": "18:00",
-  "enabled": true
+  "rules": [
+    {
+      "id": null,
+      "collects": "dvic",
+      "kind": "times",
+      "days": [0, 1, 2, 3, 4, 5, 6],
+      "times": ["18:00"]
+    }
+  ],
+  "revision": ""
 }
 ```
 
@@ -69,12 +72,10 @@ No schedule is created automatically. A scheduled run checks current/previous
 publication weeks and at most two older weeks in a rolling 26-week lookback. It
 prioritizes never-checked weeks, then least recently checked weeks older than seven
 days. Missing/empty reports stay eligible for later checks. Manual sync can target
-older publication weeks explicitly. DVIC's schedules are its own, under its own routes and
-behind `dvic.manage`, and run only while DVIC is on. Its Settings page (`?tab=dvic`) holds
-them: one section, `dvic.collection` "Collection" (`backend/settings.rs`), whose schedules
-field draws core's schedule editor for these routes, a new one starting as Daily DVIC at
-18:00; the DVIC page's Collection settings button links there. It stores no values of its
-own there. Its errors are worded in its API client, but for a missing station
+older publication weeks explicitly. DVIC's schedule is set on Settings' Collectors page,
+behind `dvic.manage` (its keeper's `schedules`), and runs only while DVIC is on; the DVIC
+page's Collection settings button opens Collectors on DVIC. It has no Settings page of its
+own. Its errors are worded in its API client, but for a missing station
 (`dvic_station_required`), which a schedule meets too, worded in its manifest.
 
 ## Dates, storage, and efficiency

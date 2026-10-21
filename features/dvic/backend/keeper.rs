@@ -4,7 +4,7 @@ use dispatch_core::{
     collection::{browser::Collected, registry::AddedStorage},
     db::{Store, s},
     ensure,
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_cortex::{discovery::Scope, dvic::JOB_KIND};
@@ -19,6 +19,9 @@ impl Keeper for Dvic {
     }
     fn permission(&self) -> &'static str {
         "dvic.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("dvic.manage")
     }
     fn domain(&self) -> DataDomain {
         super::DOMAIN

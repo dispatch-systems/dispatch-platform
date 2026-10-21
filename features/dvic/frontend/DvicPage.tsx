@@ -176,7 +176,9 @@ export function DvicPage({ view }: { view: DspView }) {
   const shown = tab === 'day' ? (daySummary?.count ?? 0) : (summary?.totalInspections ?? 0);
   const newest = jobs[0];
   const canCollect = can(view, 'dvic.collect');
-  const settings = can(view, 'dvic.manage') ? settingsHash(view.dsp.id, 'dvic', view) : undefined;
+  const settings = can(view, 'dvic.manage')
+    ? settingsHash(view.dsp.id, 'collectors', view, { collection: 'dvic' })
+    : undefined;
   const active = Boolean(running);
   useEffect(() => setCollecting(active), [active]);
   const sync = useAction(

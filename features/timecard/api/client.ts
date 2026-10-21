@@ -16,7 +16,6 @@ import type {
   MealPeriodGaps,
   PaycomSettings,
 } from './index.js';
-import type { ScheduleInput } from '../../../core/collection/api/index.js';
 import {
   dailyTimecardsUrl,
   dailyPageUrl,
@@ -26,7 +25,6 @@ import {
   mealPeriodGapsUrl,
   mealPeriodUrl,
   paycomSettingsPath,
-  schedules,
 } from './urls.js';
 
 export {
@@ -35,7 +33,6 @@ export {
   dailyTimecardsUrl,
   employeeTimecardUrl,
   mealComparisonUrl,
-  schedules,
 };
 
 // Timecard's endpoints, as its pages call them. Only its own screens raise these, so their
@@ -52,13 +49,6 @@ const api = wordedApi({
 /** Syncs a day's meal breaks from both their sources, once for `requestId`. */
 export const syncMealBreaks = (date: string, requestId: string) =>
   api('/api/dsp/jobs/meal-breaks', { requestId, date });
-/** When a schedule with this timing would run next. */
-export const previewSchedule = (
-  timing: Pick<ScheduleInput, 'cadence' | 'intervalMinutes' | 'localTime'> & {
-    scheduleId?: string;
-  },
-  signal: AbortSignal,
-) => api<{ nextRun: string }>(`${schedules}/preview`, timing, signal);
 export const syncEmployeePeriod = (period: EmployeeTimecardPeriod, requestId: string) =>
   api<EmployeeSyncStatus>('/api/dsp/jobs/employees', { requestId, ...period });
 export const useEmployeeTimecard = (

@@ -8,17 +8,18 @@ name `routedata` on disk.
 - **Switch:** `routes`, off for every DSP until the platform owner switches it on. It needs a
   route source (Cortex), which switches on with it.
 - **Permissions:** `routes.view`, to read the collected days; `routes.collect`, which includes
-  it, to start or cancel a collection; and `routes.manage`, which includes it too, for the
-  schedules and the retention window.
+  it, to start or cancel a collection; and `routes.manage`, which includes it too, for its
+  schedule and the retention window.
 - **Collecting:** a final read of a completed day (yesterday by default, or up to a run of
   days), or a snapshot of today so far. A day older than the retention window is refused
   (`routes_day_outside_retention`), since the next hour would delete it again.
-- **Schedules:** the DSP's own, none made for it, run through core's schedule routes under
-  `/api/dsp/routes/schedules`, behind `routes.manage`. Each reads one day of its choosing:
+- **Schedule:** the DSP's own rules, none made for it, set on Settings' Collectors page behind
+  `routes.manage` (its keeper's `schedules`, which offers the choice), through core's
+  `/api/dsp/collectors/routes` routes. Each rule reads one day of its choosing, its Day:
   **Yesterday** (collection `routes`, every schedule made before the choice), a final read of
   yesterday and of the days in the week before it without one, newest first, at most four a run;
   or **Today so far** (`routes_today`, a schedule alias of the routes collection), a snapshot of
-  the day it is where the DSP is. A snapshot is never a day's final read, so the first Yesterday
+  the day it is where the DSP is. Collect now there offers the same two. A snapshot is never a day's final read, so the first Yesterday
   run after the day ends still reads it whole, and catches it up if missed.
 - **API:** behind `routes.view`, `GET /api/dsp/routes/days`, `…/days/{day}`,
   `…/days/{day}/itineraries/{id}`, `…/packages/{tracking}` and `…/jobs`. Behind
@@ -28,9 +29,7 @@ name `routedata` on disk.
   reads fields the earlier one didn't.
 - **Retention:** from 30 to 3,650 days, or every day. Hourly, data past the window is retired,
   and then deleted in small steps, so the lock is never held long.
-- **Settings:** `routes.collection`, "Collection", on its own page (`?tab=routes`), behind
-  `routes.manage`: its one field, `schedules`, core's schedule editor, with each schedule's Day,
-  "Yesterday" or "Today so far". `routes.retention`, "Route data", on the shared Data page
+- **Settings:** `routes.retention`, "Route data", on the shared Data page
   (`?tab=data`), behind `routes.manage` (`backend/settings.rs`). Its one field, `days`, is a
   number from 30 to 3,650 with presets, or none for every day, the default. A window that passes
   a day the route data holds asks to confirm first, naming the first day it keeps as the expiry
@@ -41,9 +40,10 @@ name `routedata` on disk.
   `settings::carry_over`), unless the section was saved already; the table stays, read only by
   that move.
 - **Log:** `routes.collection_requested` and `routes.data_expired`, under Collections; a change
-  of the window is core's `settings.changed`, and of a schedule core's `schedule.*`, a schedule
-  of today so far collecting "Routes, today so far". `routes.retention_changed`, from before
-  Settings kept it, still reads.
+  of the window is core's `settings.changed`, and of its schedule core's `schedule.updated` and
+  `schedule.toggled`, each rule in words with its Day; one from before reads a schedule of today
+  so far as collecting "Routes, today so far". `routes.retention_changed`, from before Settings
+  kept it, still reads.
 - **People:** its drivers and their days are Driver Match's `routes` kind of data.
 - **Exposed:** `driver_routes`, through its contract in `contract/`
   (`dispatch-routes-contract`), for any feature or agent tool, while it's on for the DSP: the

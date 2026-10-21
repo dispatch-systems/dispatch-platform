@@ -7,6 +7,7 @@ pub mod jobs;
 pub mod live;
 pub mod metrics;
 pub mod registry;
+pub mod rules;
 pub mod schedules;
 pub mod settings;
 pub mod verification;

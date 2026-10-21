@@ -105,26 +105,53 @@ fn listing(owner: &str) -> std::path::PathBuf {
         .join(owner)
         .join("tests/api/routes.txt")
 }
-/// The permissions the features' `live` fields name, which a listing writes as `<live>`: the
+/// What a listing writes as `<live>`, `<scheduling>` and `<collecting>`: the permissions the
+/// features' `live` fields name, those their keepers set schedules and collect under. The
 /// build's features decide them, so core's listing names none of theirs. None without any.
-static LIVE: LazyLock<Option<String>> = LazyLock::new(|| {
+static STANDS_FOR: LazyLock<[(&str, Option<String>); 3]> = LazyLock::new(|| {
+    use dispatch_core::collection::schedules::Scheduled;
     dispatch_backend::install();
     let features = dispatch_core::manifest::registry().features.iter();
-    let permissions: Vec<_> = features.flat_map(|feature| feature.live).copied().collect();
-    (!permissions.is_empty()).then(|| format!("{:?}", permissions.join("|")))
+    let joined = |permissions: Vec<&str>| {
+        (!permissions.is_empty()).then(|| format!("{:?}", permissions.join("|")))
+    };
+    let kept = |of: fn(Scheduled) -> &'static str| {
+        let mut permissions: Vec<&str> = Scheduled::all().map(of).collect();
+        permissions.sort();
+        permissions.dedup();
+        joined(permissions)
+    };
+    [
+        (
+            "<live>",
+            joined(features.flat_map(|feature| feature.live).copied().collect()),
+        ),
+        (
+            "<scheduling>",
+            kept(|scheduled| scheduled.keeper.schedules().permission),
+        ),
+        (
+            "<collecting>",
+            kept(|scheduled| scheduled.keeper.permission()),
+        ),
+    ]
 });
-/// The routes an owner lists, without its comments, and with what `<live>` stands for: a line
-/// naming it is left out when it stands for nothing, as its route is.
+/// The routes an owner lists, without its comments, and with what each placeholder stands for:
+/// a line naming one is left out when it stands for nothing, as its route is.
 fn listed(owner: &str) -> BTreeSet<String> {
     std::fs::read_to_string(listing(owner))
         .unwrap_or_default()
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter_map(|line| match &*LIVE {
-            _ if !line.contains("<live>") => Some(line.to_owned()),
-            Some(live) => Some(line.replace("<live>", live)),
-            None => None,
+        .filter_map(|line| {
+            STANDS_FOR
+                .iter()
+                .try_fold(line.to_owned(), |line, (name, stands)| match stands {
+                    _ if !line.contains(name) => Some(line),
+                    Some(permissions) => Some(line.replace(name, permissions)),
+                    None => None,
+                })
         })
         .collect()
 }

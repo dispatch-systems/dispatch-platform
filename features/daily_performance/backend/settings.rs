@@ -1,10 +1,10 @@
-//! Daily Performance's settings, on its own page: which dates a scheduled run rechecks, and its
-//! schedules; and the policy a DSP chose before Settings kept it, moved in once.
+//! Daily Performance's settings, on its own page: which dates a scheduled run rechecks; and the
+//! policy a DSP chose before Settings kept it, moved in once.
 use super::storage::{DailyPerformanceStore, STORAGE};
 use dispatch_core::{
     Result,
     db::Store,
-    manifest::{Section, number, schedules, section},
+    manifest::{Section, number, section},
     settings,
 };
 use serde::Deserialize;
@@ -19,13 +19,6 @@ pub const COLLECTION: Section = section(
     &[
         number("lookback_days", "Look back", 1, 30, Some(7)).unit("days"),
         number("refresh_hours", "Refresh after", 1, 168, Some(20)).unit("hours"),
-        schedules(
-            "schedules",
-            "Schedules",
-            "/api/dsp/daily-performance/schedules",
-            "daily_performance",
-            ("Daily performance", "07:00"),
-        ),
     ],
 );
 

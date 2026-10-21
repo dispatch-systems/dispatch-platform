@@ -10,7 +10,7 @@ use dispatch_core::{
         registry::AddedStorage,
     },
     db::{Store, s},
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_cortex::associates::{Capture, JOB_KIND};
@@ -24,6 +24,9 @@ impl Keeper for Roster {
     }
     fn permission(&self) -> &'static str {
         "driver_profiles.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("driver_profiles.collect")
     }
     fn domain(&self) -> DataDomain {
         DOMAIN

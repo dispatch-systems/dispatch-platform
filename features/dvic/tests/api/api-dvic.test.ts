@@ -4,13 +4,19 @@ import { fixture, until } from '../../../../core/shell/tests/support/support.js'
 import { seedDvic } from '../support/dvic.js';
 import { execFileSync } from 'node:child_process';
 
-const schedule = {
-  name: 'Daily DVIC',
-  collection: 'dvic',
-  cadence: 'daily',
-  intervalMinutes: null,
-  localTime: '18:00',
-  enabled: true,
+const daily = {
+  id: null,
+  collects: 'dvic',
+  kind: 'times',
+  days: [0, 1, 2, 3, 4, 5, 6],
+  times: ['18:00'],
+};
+type Collection = {
+  collection: string;
+  enabled: boolean;
+  revision: string;
+  nextRun: string | null;
+  rules: any[];
 };
 
 test('DVIC summaries and pages keep complete filtered counts, stable cells and fresh operator exclusions', async (t) => {
@@ -181,15 +187,29 @@ test('DVIC collects into its own database and schedules run independently of tim
   const dsp = owner.session.dsps.find((d: any) => d.name === 'Northline Logistics');
   await owner.select(dsp.id);
   const base = '/api/dsp/dvic';
+  // Its schedule, on the Collectors page: as a member reads it, and saved over what they read.
+  const collectors = '/api/dsp/collectors';
+  const dvic = async (client: typeof owner): Promise<Collection> =>
+    (await client.read(collectors)).collections.find(
+      (each: Collection) => each.collection === 'dvic',
+    );
+  const schedule = async (client: typeof owner, rules: unknown[]) =>
+    client.post(`${collectors}/dvic/schedule`, { rules, revision: (await dvic(client)).revision });
   assert.equal((await owner.post(`${base}/collect`, { requestId: 'unconfigured' })).status, 409);
   await owner.post('/api/dsp/connections/cortex', {
     username: 'fixture@example.test',
     password: 'fixture-password',
   });
-  assert.equal(
-    (await owner.post(`${base}/schedules`, schedule)).value.error,
-    'dvic_station_required',
-  );
+  // Saved before the DSP has a station, it waits, off, until it has one.
+  const waiting = await schedule(owner, [daily]);
+  assert.equal(waiting.status, 200, waiting.body);
+  assert.equal(waiting.value.enabled, false);
+  const on = async (client: typeof owner) =>
+    client.post(`${collectors}/dvic/enabled`, {
+      enabled: true,
+      revision: (await dvic(client)).revision,
+    });
+  assert.equal((await on(owner)).value.error, 'dvic_station_required');
   assert.equal(
     (
       await owner.post('/api/dsp/profile', {
@@ -252,48 +272,47 @@ test('DVIC collects into its own database and schedules run independently of tim
   assert.equal(rows.inspections[0].minimumSeconds, 90);
   assert.ok(rows.nextCursor);
   assert.equal((await member.get(`${base}/inspections?from=2026-09-30&to=2026-09-01`)).status, 400);
-  const created = await member.post(`${base}/schedules`, schedule);
-  assert.equal(created.status, 201, created.body);
-  const key = created.value.id;
-  assert.equal((await member.get(`${base}/schedules`)).value.schedules.length, 1);
-  // The generic routes are the timecard's: even the owner neither creates nor lists one there.
+  // DVIC's own permission sets its schedule, and no other collection's.
+  assert.deepEqual(
+    (await member.read(collectors)).collections.map((each: Collection) => each.collection),
+    ['dvic'],
+  );
+  const created = await schedule(member, [daily]);
+  assert.equal(created.status, 200, created.body);
+  const key = created.value.rules[0].id;
+  const resumed = await on(member);
+  assert.equal(resumed.status, 200, resumed.body);
+  assert.equal(resumed.value.enabled, true);
   await owner.select(dsp.id);
-  assert.equal((await owner.post('/api/dsp/schedules', schedule)).status, 403);
-  assert.equal((await owner.get('/api/dsp/schedules')).value.schedules.length, 0);
-  assert.equal(
-    (await member.post(`${base}/schedules`, { ...schedule, collection: 'paycom' })).status,
-    403,
+  const paycom = (await owner.read(collectors)).collections.find(
+    (each: Collection) => each.collection === 'paycom',
   );
   assert.equal(
     (
-      await member.post(`${base}/schedules/${key}`, {
-        ...schedule,
-        revision: 1,
-        collection: 'routes',
+      await member.post(`${collectors}/paycom/schedule`, {
+        rules: [{ ...daily, collects: 'paycom' }],
+        revision: paycom.revision,
       })
     ).status,
     403,
   );
-  const preview = await member.post(`${base}/schedules/preview`, {
-    cadence: 'daily',
-    intervalMinutes: null,
-    localTime: '06:00',
-  });
+  assert.equal(
+    (await schedule(member, [{ ...daily, id: key, collects: 'routes' }])).value.error,
+    'invalid_input',
+  );
+  const repeat = { ...daily, id: key, kind: 'repeat', every: 120, from: '00:00', to: '00:00' };
+  const preview = await member.post(`${collectors}/dvic/preview`, { rules: [repeat] });
   assert.equal(preview.status, 200, preview.body);
-  const changed = await member.post(`${base}/schedules/${key}`, {
-    ...schedule,
-    cadence: 'interval',
-    intervalMinutes: 120,
-    revision: 1,
-  });
+  const changed = await schedule(member, [repeat]);
   assert.equal(changed.status, 200, changed.body);
+  assert.deepEqual(changed.value.rules[0].id, key);
   // Timecard switches leave DVIC enabled and its due time intact.
   await owner.post(`/api/platform/dsps/${dsp.id}/features`, {
     feature: 'timecard',
     enabled: false,
   });
   await member.select(dsp.id);
-  const independent = (await member.get(`${base}/schedules`)).value.schedules[0];
+  const independent = await dvic(member);
   assert.equal(independent.enabled, true);
   assert.equal(independent.nextRun, changed.value.nextRun);
   await f.stop();
@@ -308,7 +327,7 @@ test('DVIC collects into its own database and schedules run independently of tim
       (j: any) => j.actorId === null && j.status === 'succeeded',
     ),
   );
-  const last = (await member.get(`${base}/schedules`)).value.schedules[0];
+  const last = (await dvic(member)).rules[0];
   assert.ok(Date.parse(last.nextRun) > Date.now());
   const stored = f.database(`dsps/${dsp.id}/data/dvic/dvic.sqlite`, (db) => ({
     source: db.prepare('SELECT source FROM storage_identity').get() as { source: string },
@@ -323,13 +342,11 @@ test('DVIC collects into its own database and schedules run independently of tim
   assert.equal((await owner.post(`${base}/jobs/${queued.value.id}/cancel`, {})).status, 404);
   await owner.select(dsp.id);
   await owner.post('/api/dsp/connections/cortex/disable', { removeCredentials: false });
-  assert.equal((await member.get(`${base}/schedules`)).value.schedules[0].enabled, false);
+  assert.equal((await dvic(member)).enabled, false);
   assert.equal((await member.post(`${base}/collect`, { requestId: 'disconnected' })).status, 409);
-  const current = (await member.get(`${base}/schedules`)).value.schedules[0];
-  assert.equal(
-    (await member.post(`${base}/schedules/${key}/remove`, { revision: current.revision })).status,
-    200,
-  );
+  const removed = await schedule(member, []);
+  assert.equal(removed.status, 200, removed.body);
+  assert.deepEqual(removed.value.rules, []);
 });
 
 test("the generic cancel route never cancels a DVIC job, only DVIC's own route does; switching DVIC off drops what its jobs kept", async (t) => {

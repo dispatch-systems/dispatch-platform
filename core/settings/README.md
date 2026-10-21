@@ -13,7 +13,6 @@ from a DSP, has no sections there; switched on, they're back as they were.
 pub const POLICY: Section = section("x.policy", "Collection", "x.manage", &[
     toggle("enabled", "Collects", true),
     number("days", "Keep", 30, 3650, Some(90)).unit("days").none("Every day"),
-    schedules("schedules", "Schedules", "/api/dsp/x/schedules", "x", ("Daily X", "18:00")),
 ]);
 #[derive(serde::Deserialize)]
 pub struct Policy { pub enabled: bool, pub days: Option<i64> }
@@ -26,16 +25,14 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
 - **Fields** are `toggle`, `choice` (fixed options), `pick` (options the feature lists as it's
   read: one indexed query), `many` (several, `.ordered()` when their order is the member's),
   `number` (`.unit`, `.presets`, `.none` for a labelled none), `text` (`.code` for uppercase
-  letters and digits, `.locked` once set; empty only until set, when its default is), `time`,
-  `timezone`, and `schedules`, which holds no value: Settings draws core's schedule editor for
-  the feature's `schedule_routes` there, each schedule collecting the field's collection, or
-  with `.collects(label, options)` the one it chooses of its feature's collections and schedule
-  aliases, as Routes' "Yesterday" and "Today so far". Each field's id is the serde name its
-  feature reads it by; every field reads as its default until saved, and as its default again if
-  what was kept no longer fits it.
+  letters and digits, `.locked` once set; empty only until set, when its default is), `time`
+  and `timezone`. Each field's id is the serde name its feature reads it by; every field reads
+  as its default until saved, and as its default again if what was kept no longer fits it. When
+  a collection runs isn't a field: its keeper says who sets it (`Keeper::schedules`), on the
+  Collectors page.
 - **Pages:** a section is on its feature's own page (its switch's id, `-` for `_`, ordered by
   its `place`) unless `.on(..)` puts it on a shared page: `general`, `security` and `theme`, the
-  member's own; `dsp`, `connections` and `data`, the DSP's.
+  member's own; `dsp`, `connections`, `collectors` and `data`, the DSP's.
 - **Who:** `permission`, one its feature declares, or `roles::ACCESS` for every member; a write
   under a `.recently_verified()` permission asks for a recent verification. `.part(..)` makes it
   go with a part of its feature. `.member()` gives each member their own values, which the log
@@ -51,7 +48,8 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
 
 Core's own sections are custom ones its screens draw: accounts' `accounts.profile`,
 `accounts.security` and `accounts.theme`, each member's own, and collection's
-`collection.connections`, which every member is sent, its component saying what it shows them.
+`collection.connections` and `collection.collectors`, which every member is sent, each
+component saying what it shows them.
 
 ## Storage and saving
 

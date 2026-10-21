@@ -7,7 +7,6 @@ use dispatch_core::{
     collection::api::routes::{
         connections,
         jobs::{job_cancel, job_list},
-        schedules::schedule_routes,
     },
     db::Store,
     foundation::validate as v,
@@ -22,7 +21,6 @@ use dispatch_paycom::{self as paycom, timecards::EmployeeTimecardPeriod};
 use serde_json::json;
 
 const VIEW: Dsp = Dsp("timecard.view");
-const MANAGE: Dsp = Dsp("timecard.manage");
 const RUN: Dsp = Dsp("collections.run");
 /// What the page keeps: the only jobs its job routes list or cancel. Every other feature's
 /// jobs have routes of its own.
@@ -43,7 +41,7 @@ const SORTS: &[&str] = &[
 ];
 
 pub fn routes() -> Vec<Route> {
-    let mut routes = vec![
+    vec![
         coalesced_read_by(
             "/api/dsp/employees",
             VIEW,
@@ -104,9 +102,7 @@ pub fn routes() -> Vec<Route> {
             collect_cortex_meal_breaks,
         )
         .bookkeeping(),
-    ];
-    routes.extend(schedule_routes("/api/dsp/schedules", MANAGE, "timecard"));
-    routes
+    ]
 }
 
 fn day_key(_: &Store, c: &Member, input: &Input) -> Result<String> {

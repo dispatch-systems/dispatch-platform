@@ -111,23 +111,21 @@ fn restricted_permissions_migrate_without_granting_collection_or_daily_access() 
 #[test]
 fn schedules_and_pending_jobs_keep_ids_timing_status_and_idempotency() {
     let (_root, db, dsp) = ready();
-    let input = json!({"name":"Check weekly publication","collection":"weekly_scorecard","cadence":"daily",
-        "intervalMinutes":null,"localTime":"07:00","enabled":true});
-    let schedule = db.save_schedule(&dsp, None, &input).unwrap();
+    let rule = json!({"collects":"weekly_scorecard","kind":"times","days":[0,1,2,3,4,5,6],
+        "times":["07:00"]});
+    let saved = dispatch_core::testing::schedule(&db, &dsp, "weekly_scorecard", json!([rule]));
+    let key = saved.unwrap().rules[0].id.clone().unwrap();
     let before = db
         .dsp(&dsp)
         .unwrap()
-        .one(
-            "SELECT * FROM collection_schedules WHERE id=?",
-            [&schedule.id],
-        )
+        .one("SELECT * FROM collection_schedules WHERE id=?", [&key])
         .unwrap()
         .unwrap();
     db.dsp(&dsp)
         .unwrap()
         .exec(
             "UPDATE collection_schedules SET collection='scorecard' WHERE id=?",
-            [&schedule.id],
+            [&key],
         )
         .unwrap();
     let queued = db
@@ -139,10 +137,7 @@ fn schedules_and_pending_jobs_keep_ids_timing_status_and_idempotency() {
     assert_eq!(
         db.dsp(&dsp)
             .unwrap()
-            .one(
-                "SELECT * FROM collection_schedules WHERE id=?",
-                [&schedule.id]
-            )
+            .one("SELECT * FROM collection_schedules WHERE id=?", [&key])
             .unwrap()
             .unwrap(),
         before
@@ -161,9 +156,7 @@ fn schedules_and_pending_jobs_keep_ids_timing_status_and_idempotency() {
         ),
         job
     );
-    let mut retired = input.clone();
-    retired["collection"] = json!("scorecard");
-    assert!(db.save_schedule(&dsp, None, &retired).is_err());
+    assert!(dispatch_core::collection::schedules::Scheduled::named("scorecard").is_err());
 }
 fn prior_storage_config(db: Store, dsp: &str) -> dispatch_core::foundation::config::Config {
     let directory = db.area(dsp, "data").unwrap();

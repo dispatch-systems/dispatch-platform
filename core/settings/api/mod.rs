@@ -17,11 +17,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         types::SettingsPreset,
         types::SettingsSave,
         types::SettingsSaved,
-        types::SettingsScheduleChoice,
-        types::SettingsScheduleOption,
         types::SettingsScope,
         types::SettingsSection,
-        types::SettingsStart,
     )
 }
 

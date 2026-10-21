@@ -4,7 +4,8 @@ import { begins } from '../../../core/shell/frontend/runtime/data-policy.js';
 import type { FrontendFeature } from '../../../core/shell/frontend/runtime/slots.js';
 
 // Vans' frontend manifest, loaded up front. It has no page of its own: its fleet bar is its
-// custom section of Settings, on its Settings page beside its schedules.
+// custom section of Settings, on its Settings page; when the fleet is collected is set on
+// Settings' Collectors page.
 
 const load = () => import('./index.js');
 const FleetBar = lazy(() => load().then((module) => ({ default: module.FleetBar })));

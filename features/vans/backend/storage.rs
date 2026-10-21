@@ -140,13 +140,7 @@ impl VansStore for Store {
         let running = count("SELECT count(*) FROM vans WHERE listed=1 AND status<>'INACTIVE'")?;
         let inactive = count("SELECT count(*) FROM vans WHERE listed=1 AND status='INACTIVE'")?;
         drop(db);
-        let next_run = self
-            .collection_schedules(dsp)?
-            .schedules
-            .into_iter()
-            .filter(|s| s.enabled && s.collection.as_str() == "vans")
-            .filter_map(|s| s.next_run)
-            .min();
+        let next_run = self.next_scheduled(dsp, "vans")?;
         Ok(FleetStatus {
             collected_at,
             running,

@@ -1,22 +1,18 @@
 //! What each kind of field holds, every concern of a kind in one place: the options it
 //! offers, how Settings draws it, a value sent checked and made the one way it's kept, what a
 //! kept value still fits, and how the log shows one. A new kind is one arm in each.
-use super::api::types::{
-    SettingsKind, SettingsOption, SettingsPreset, SettingsScheduleChoice, SettingsScheduleOption,
-    SettingsStart,
-};
+use super::api::types::{SettingsKind, SettingsOption, SettingsPreset};
 use crate::{
-    Error, Result,
-    collection::api::types::ScheduleCollection,
+    Result,
     db::Store,
     ensure,
-    manifest::settings::{Field, Kind, Listed, Options, ScheduleChoice},
+    manifest::settings::{Field, Kind, Listed, Options},
 };
 use serde_json::Value;
 
-/// Its value until one is saved: none for `schedules`, which holds none.
-pub(crate) fn default(field: &Field) -> Option<Value> {
-    Some(match field.kind {
+/// Its value until one is saved.
+pub(crate) fn default(field: &Field) -> Value {
+    match field.kind {
         Kind::Toggle { default } => Value::from(default),
         Kind::Choice { default, .. } | Kind::Time { default } | Kind::Timezone { default } => {
             Value::from(default)
@@ -25,8 +21,7 @@ pub(crate) fn default(field: &Field) -> Option<Value> {
         Kind::Pick { default, .. } => default.map_or(Value::Null, Value::from),
         Kind::Many { default, .. } => Value::from(default.to_vec()),
         Kind::Number { default, .. } => default.map_or(Value::Null, Value::from),
-        Kind::Schedules { .. } => return None,
-    })
+    }
 }
 
 /// The options fields offer as they're read for one answer, `dsp`'s alone: each list a
@@ -132,44 +127,7 @@ pub(crate) fn described(
         },
         Kind::Time { .. } => SettingsKind::Time,
         Kind::Timezone { .. } => SettingsKind::Timezone,
-        Kind::Schedules {
-            path,
-            collection,
-            starts: (name, at),
-            collects,
-        } => SettingsKind::Schedules {
-            path: path.to_owned(),
-            collection: schedule_collection(collection)?,
-            starts: SettingsStart {
-                name: name.to_owned(),
-                local_time: at.to_owned(),
-            },
-            collects: collects.map(schedule_choice).transpose()?,
-        },
     })
-}
-/// What each schedule of a schedules field chooses to collect, as Settings draws it.
-fn schedule_choice(choice: ScheduleChoice) -> Result<SettingsScheduleChoice> {
-    let options = choice
-        .options
-        .iter()
-        .map(|(collection, label)| {
-            Ok(SettingsScheduleOption {
-                collection: schedule_collection(collection)?,
-                label: (*label).to_owned(),
-            })
-        })
-        .collect::<Result<_>>()?;
-    Ok(SettingsScheduleChoice {
-        label: choice.label.to_owned(),
-        options,
-    })
-}
-/// A collection a schedules field names, which the registry's check proved one a schedule
-/// may name.
-fn schedule_collection(collection: &str) -> Result<ScheduleCollection> {
-    ScheduleCollection::parse(collection)
-        .ok_or_else(|| Error::new("schedule_collection_unknown", 500))
 }
 
 /// `given` as `field` keeps it, given what it holds now and the options it offers: made the
@@ -193,7 +151,6 @@ pub(crate) fn checked(
             .any(|(option, _)| Some(option.as_str()) == value)
     };
     let value = match (field.kind, given) {
-        (Kind::Schedules { .. }, _) => return Err(Error::new("invalid_input", 400)),
         (Kind::Text { code, .. }, Value::String(text)) => {
             let text = text.trim();
             Value::from(if code {
@@ -279,7 +236,6 @@ pub(crate) fn fits(field: &Field, value: &Value) -> bool {
         Kind::Timezone { .. } => value
             .as_str()
             .is_some_and(|zone| zone.parse::<chrono_tz::Tz>().is_ok()),
-        Kind::Schedules { .. } => false,
     }
 }
 
@@ -339,7 +295,6 @@ pub(crate) fn shown(
             let half = if hours < 12 { "AM" } else { "PM" };
             Some(format!("{}:{minutes} {half}", (hours + 11) % 12 + 1))
         }
-        Kind::Schedules { .. } => None,
     }
 }
 

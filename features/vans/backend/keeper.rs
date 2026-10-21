@@ -6,7 +6,7 @@ use dispatch_core::{
     Result,
     collection::{browser::Collected, registry::AddedStorage},
     db::Store,
-    manifest::Keeper,
+    manifest::{Keeper, Schedules, schedules},
     server::cache::DataDomain,
 };
 use dispatch_cortex::vans::JOB_KIND;
@@ -19,6 +19,9 @@ impl Keeper for Fleet {
     }
     fn permission(&self) -> &'static str {
         "vans.collect"
+    }
+    fn schedules(&self) -> Schedules {
+        schedules("vans.collect")
     }
     fn domain(&self) -> DataDomain {
         DOMAIN

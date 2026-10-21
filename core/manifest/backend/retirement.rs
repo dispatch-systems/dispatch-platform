@@ -97,6 +97,13 @@ pub(crate) fn dsp(store: &Store, id: &str) -> Result<()> {
                 [new, old],
             )?;
         }
+        for (old, into) in registry()
+            .features
+            .iter()
+            .flat_map(|feature| feature.retired_schedule_aliases)
+        {
+            split(&data, old, into)?;
+        }
         Ok(())
     })?;
     for feature in registry().features {
@@ -107,7 +114,41 @@ pub(crate) fn dsp(store: &Store, id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Panics unless every retired identifier is retired once, into one its feature owns.
+/// Makes each schedule of the retired name `old` one of the first collection of `into`, and a
+/// copy of it, timed as it is, one of each of the others. The previous release runs each as
+/// it ran the one.
+fn split(data: &Db, old: &str, into: &[&str]) -> Result<()> {
+    let Some((first, others)) = into.split_first() else {
+        return Ok(());
+    };
+    for row in data.all(
+        "SELECT id FROM collection_schedules WHERE collection=?",
+        [old],
+    )? {
+        for other in others {
+            data.exec(
+                "INSERT INTO collection_schedules(id,name,collection,cadence,interval_minutes,\
+                local_time,anchor,enabled,next_run,revision,last_error,created_at,days,times,\
+                until_time) SELECT ?,name,?,cadence,interval_minutes,local_time,anchor,enabled,\
+                next_run,revision,last_error,created_at,days,times,until_time \
+                FROM collection_schedules WHERE id=?",
+                [
+                    crate::foundation::crypto::id("schedule")?.as_str(),
+                    other,
+                    s(&row, "id"),
+                ],
+            )?;
+        }
+        data.exec(
+            "UPDATE collection_schedules SET collection=? WHERE id=?",
+            [*first, s(&row, "id")],
+        )?;
+    }
+    Ok(())
+}
+/// Panics unless every retired identifier is retired once, into one its feature owns, and
+/// every retired schedule name is no schedule's now and split into collections its feature
+/// keeps.
 pub(crate) fn check(registry: &Registry) {
     let mut spellings = std::collections::BTreeSet::new();
     for feature in registry.features {
@@ -130,6 +171,28 @@ pub(crate) fn check(registry: &Registry) {
                 "{} retires an identifier into one it does not own: {current}",
                 feature.name
             );
+        }
+        let names = registry.schedule_collections();
+        for (old, into) in feature.retired_schedule_aliases {
+            assert!(
+                !names.contains(old) && !into.is_empty(),
+                "{} retires {old}, which a schedule still names, into nothing",
+                feature.name
+            );
+            for name in *into {
+                let kept = feature.keeps.iter().any(|keeper| {
+                    registry
+                        .collectors
+                        .iter()
+                        .flat_map(|collector| collector.collections())
+                        .any(|kept| kept.job_kind == keeper.keeps() && kept.schedule == *name)
+                });
+                assert!(
+                    kept,
+                    "{} retires {old} into {name}, which it doesn't keep",
+                    feature.name
+                );
+            }
         }
     }
 }

@@ -3,7 +3,7 @@
 use crate::DriverProfilesStore;
 use dispatch_core::{
     Result,
-    collection::api::routes::{jobs::job_cancel, schedules::schedule_routes},
+    collection::api::routes::jobs::job_cancel,
     db::Store,
     foundation::validate as v,
     server::http::{
@@ -16,7 +16,7 @@ use dispatch_cortex::associates::JOB_KIND;
 const COLLECT: Dsp = Dsp("driver_profiles.collect");
 
 pub fn routes() -> Vec<Route> {
-    let mut routes = vec![
+    vec![
         read("/api/dsp/driver-profiles/status", COLLECT, status),
         // Queuing a collection writes only its job and its log entry, which no cached read
         // uses: the caches stay as they are.
@@ -26,13 +26,7 @@ pub fn routes() -> Vec<Route> {
             COLLECT,
             &[JOB_KIND],
         ),
-    ];
-    routes.extend(schedule_routes(
-        "/api/dsp/driver-profiles/schedules",
-        COLLECT,
-        "associates",
-    ));
-    routes
+    ]
 }
 
 fn status(db: &Store, c: &Member, _: &Input) -> Result<Reply> {

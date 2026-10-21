@@ -1,5 +1,6 @@
 import {
   Building2,
+  CalendarSync,
   Database,
   Palette,
   Plug,
@@ -27,6 +28,7 @@ const shared: Record<string, LucideIcon> = {
   theme: Palette,
   dsp: Building2,
   connections: Plug,
+  collectors: CalendarSync,
   data: Database,
 };
 

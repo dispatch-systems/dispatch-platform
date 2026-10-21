@@ -10,7 +10,6 @@
     ["cortex.vans.collect", "vans"],
     ["paycom", "timecard"],
     ["meal_break", "timecard"],
-    ["both", "timecard"],
     ["weekly_scorecard", "weekly_scorecard"],
     ["daily_performance", "daily_performance"],
     ["routes", "routes"],

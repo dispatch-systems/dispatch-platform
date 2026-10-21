@@ -1,7 +1,6 @@
-//! Timecard's settings, on its page of Settings: the schedules that collect it, which
-//! employees it lists and how Meal Breaks names them, the departments that drive, and when a
-//! DA is late; and the preferences a DSP kept in Paycom's database before Settings kept them,
-//! moved in once.
+//! Timecard's settings, on its page of Settings: which employees it lists and how Meal Breaks
+//! names them, the departments that drive, and when a DA is late; and the preferences a DSP
+//! kept in Paycom's database before Settings kept them, moved in once.
 use crate::api::{
     assessment::LateRule,
     settings::{NameOrder, PaycomSettings},
@@ -17,13 +16,6 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 const MANAGE: &str = "timecard.manage";
-
-/// Its sync schedules, drawn by its own component: each runs Paycom's timecards, Cortex's meal
-/// breaks, or both at once, a box ticked for each source.
-pub const SCHEDULES: Section = section("timecard.schedules", "Sync schedules", MANAGE, &[])
-    .custom()
-    .keywords(&["collection", "schedule"])
-    .order(10);
 
 /// Which of the newest roster's employees Timecard lists, and how Meal Breaks writes their
 /// names.

@@ -164,34 +164,41 @@ test('a member without management permissions never sees the Data page or Driver
   await expect(pages.getByRole('link', { name: 'Data', exact: true })).toHaveCount(0);
 });
 
-test('a Routes schedule reads yesterday unless it is set to read today so far', async ({
+test('a Routes rule reads yesterday unless it is set to read today so far', async ({
   page,
   dispatch,
 }) => {
   const { owner } = await seedRoutes(dispatch);
-  const stored = async () => (await owner.read('/api/dsp/routes/schedules')).schedules;
+  const stored = async () =>
+    (await owner.read('/api/dsp/collectors')).collections.find(
+      (collection: { collection: string }) => collection.collection === 'routes',
+    ).rules;
 
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
-    .getByRole('link', { name: 'Routes', exact: true })
+    .getByRole('link', { name: 'Collectors', exact: true })
     .click();
-  const collection = page.getByRole('region', { name: 'Collection', exact: true });
-  await collection.getByRole('button', { name: 'Add schedule' }).click();
-  const day = page.getByRole('combobox', { name: 'Day', exact: true });
-  await expect(day).toHaveValue('routes');
-  await page.getByLabel('Schedule name').fill('Morning routes');
-  await day.selectOption({ label: 'Today so far' });
-  await page.getByRole('button', { name: 'Save schedule' }).click();
-  await expect(collection).toContainText('Today so far · Daily');
-  expect((await stored())[0].collection).toBe('routes_today');
+  await page
+    .getByRole('navigation', { name: 'Collections' })
+    .getByRole('button', { name: /^Routes/ })
+    .click();
+  const routes = page.getByRole('region', { name: 'Routes', exact: true });
+  const rule = routes.locator('.collectors-rule-head');
+  await routes.getByRole('button', { name: 'Add rule' }).click();
+  const day = routes.getByRole('radiogroup', { name: 'Day' });
+  await expect(day.getByRole('radio', { name: 'Yesterday' })).toBeChecked();
+  await routes.getByLabel('Time 1').fill('09:00');
+  await day.getByRole('radio', { name: 'Today so far' }).check();
+  await routes.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(rule).toContainText('Every day at 9:00 AMToday so far');
+  expect((await stored())[0].collects).toBe('routes_today');
   // Set back, it reads yesterday.
-  await page.getByRole('button', { name: 'Edit Morning routes' }).click();
-  await expect(day).toHaveValue('routes_today');
-  await day.selectOption({ label: 'Yesterday' });
-  await page.getByRole('button', { name: 'Save schedule' }).click();
-  await expect(collection).toContainText('Yesterday · Daily');
-  expect((await stored())[0].collection).toBe('routes');
+  await routes.getByRole('button', { name: 'Edit', exact: true }).click();
+  await day.getByRole('radio', { name: 'Yesterday' }).check();
+  await routes.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(rule).toContainText('Every day at 9:00 AMYesterday');
+  expect((await stored())[0].collects).toBe('routes');
 });

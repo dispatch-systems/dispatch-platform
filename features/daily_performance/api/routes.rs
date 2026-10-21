@@ -3,10 +3,7 @@
 use crate::DailyPerformanceStore;
 use dispatch_core::{
     Result,
-    collection::api::routes::{
-        jobs::{job_cancel, job_list},
-        schedules::schedule_routes,
-    },
+    collection::api::routes::jobs::{job_cancel, job_list},
     db::Store,
     foundation::validate as v,
     server::http::{
@@ -17,9 +14,8 @@ use dispatch_core::{
 use dispatch_cortex::daily_performance::JOB_KIND;
 const VIEW: Dsp = Dsp("daily_performance.view");
 const COLLECT: Dsp = Dsp("daily_performance.collect");
-const MANAGE: Dsp = Dsp("daily_performance.manage");
 pub fn routes() -> Vec<Route> {
-    let mut routes = vec![
+    vec![
         read("/api/dsp/daily-performance", VIEW, summary),
         // Queuing a collection writes only its job and its log entry, which no cached read
         // uses: the caches stay as they are.
@@ -30,13 +26,7 @@ pub fn routes() -> Vec<Route> {
             COLLECT,
             &[JOB_KIND],
         ),
-    ];
-    routes.extend(schedule_routes(
-        "/api/dsp/daily-performance/schedules",
-        MANAGE,
-        "daily_performance",
-    ));
-    routes
+    ]
 }
 fn summary(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
     Reply::of(&db.daily_performance_days(c.dsp_id())?)

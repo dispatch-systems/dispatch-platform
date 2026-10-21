@@ -29,15 +29,14 @@
   font-size: 14px;
   font-weight: 500;
 }
-.settings-fields > * + *,
-.settings-section > .settings-schedules {
+.settings-fields > * + * {
   border-top: 1px solid var(--border);
 }
 .settings-field.settings-wide {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
-/* Each field's own control, not those of an editor drawn in a field, as a schedule's. */
+/* Each field's own control. */
 .settings-field > select,
 .settings-number-choice > select {
   min-width: 180px;
@@ -199,12 +198,6 @@
 .settings-number > span {
   color: var(--muted-foreground);
   font-weight: 400;
-}
-
-.settings-schedules > h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
 }
 
 .settings-section-actions {

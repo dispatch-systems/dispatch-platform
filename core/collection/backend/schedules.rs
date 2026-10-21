@@ -1,33 +1,41 @@
-//! DSP-owned recurring collections.
+//! A DSP's collection schedules: each collection's rules (`rules`), which its members set on
+//! Settings' Collectors page, and the scheduler's turn at them. A rule is one row; a collection
+//! is on or off as a whole, and its rules are saved together.
 use crate::{
     Error, Result,
+    accounts::Context,
     collection::{
         api::{
-            jobs::JobKind,
+            jobs::{JobKind, JobStatus, PublicJob},
             types::{
-                Cadence, CollectionSchedule, CollectionSchedules, ScheduleCollection,
-                SchedulePreview,
+                Collectors, LastRun, RuleKind, ScheduleChoice, ScheduleCollection, ScheduleOption,
+                ScheduleRule, ScheduleRuns, ScheduledCollection,
             },
         },
         registry::Provider,
+        rules::{self, Rule, Timing},
     },
-    db::{FromRow, Row, Store, at, iso, now},
+    db::{AuditChange, FromRow, Row, Store, at, iso, now},
     ensure,
     foundation::{crypto, validate as v},
     job_statuses,
-    manifest::{Collection, registry},
+    manifest::{Collection, Collector, Keeper, registry},
 };
 use chrono::{NaiveTime, TimeZone};
+use chrono_tz::Tz;
 use rusqlite::params;
-use serde_json::{Value, json};
+use serde_json::Value;
 
-const SAVE: &str = "INSERT INTO collection_schedules\
-    (id,name,collection,cadence,interval_minutes,local_time,anchor,enabled,next_run,created_at) \
-    VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,\
+const SAVE: &str = "INSERT INTO collection_schedules(id,name,collection,cadence,interval_minutes,\
+    local_time,anchor,enabled,next_run,created_at,days,times,until_time) \
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,\
     collection=excluded.collection,cadence=excluded.cadence,\
     interval_minutes=excluded.interval_minutes,local_time=excluded.local_time,\
     anchor=excluded.anchor,enabled=excluded.enabled,next_run=excluded.next_run,last_error=NULL,\
+    days=excluded.days,times=excluded.times,until_time=excluded.until_time,\
     revision=collection_schedules.revision+1";
+const SWITCH: &str = "UPDATE collection_schedules SET enabled=?,next_run=?,last_error=NULL,\
+    revision=revision+1 WHERE id=?";
 const PAUSE: &str = "UPDATE collection_schedules SET enabled=0,next_run=NULL,last_error=NULL,\
     revision=revision+1 WHERE enabled=1 AND collection=?";
 const RETIME: &str = "UPDATE collection_schedules SET anchor=?,next_run=?,last_error=NULL,\
@@ -43,208 +51,308 @@ const ACTIVE_JOB: &str = concat!(
     job_statuses!(active),
     " LIMIT 1"
 );
+const LAST_RUN: &str = "SELECT status,completed_at,error FROM jobs WHERE dsp_id=? AND kind=? \
+    AND status IN ('succeeded','failed') ORDER BY created_at DESC LIMIT 1";
+/// How many runs a preview lists.
+const UPCOMING: usize = 5;
+/// The most rules a DSP's collections have between them.
+const MOST_RULES: i64 = 50;
 
-/// When a schedule runs: all that `next` needs, from a stored row or from a request.
-struct Timing<'a> {
-    cadence: Cadence,
-    interval_minutes: Option<i64>,
-    local_time: &'a str,
-    anchor: i64,
-}
-/// A row of `collection_schedules`.
+/// A row of `collection_schedules`: one rule of a collection's schedule.
 #[derive(Clone)]
 pub struct ScheduleRow {
-    pub schedule: CollectionSchedule,
-    pub anchor: i64,
+    pub id: String,
+    pub name: String,
+    /// What it collects by: its collection's own schedule name, or an alias that reads it.
+    pub collection: ScheduleCollection,
+    pub rule: Rule,
+    pub enabled: bool,
+    pub next_run: Option<String>,
+    pub revision: i64,
+    pub last_error: Option<String>,
+    /// The first run of its single time or repeat, which only the previous release reads.
+    anchor: i64,
 }
 impl FromRow for ScheduleRow {
     fn from_row(row: &Row<'_>) -> Result<Self> {
+        let first = rules::time(&row.get::<String>("local_time")?)?;
+        let days: i64 = row.get("days")?;
+        // The previous release reads a rule as its first time, or a repeat all day from its
+        // start, and saves only those: a rule whose first time it changed is what it ran.
+        let (days, timing) = match row.get::<String>("cadence")?.as_str() {
+            "daily" => {
+                let times: Option<String> = row.get("times")?;
+                let times = match times {
+                    Some(times) => serde_json::from_str::<Vec<String>>(&times)?
+                        .iter()
+                        .map(|time| rules::time(time))
+                        .collect::<Result<Vec<_>>>()?,
+                    None => vec![],
+                };
+                match times.first() {
+                    Some(at) if *at == first => (days, Timing::At(times)),
+                    _ => (rules::EVERY_DAY, Timing::At(vec![first])),
+                }
+            }
+            _ => {
+                let to: Option<String> = row.get("until_time")?;
+                let to = to.as_deref().map(rules::time).transpose()?;
+                let timing = Timing::Repeat {
+                    every: row.get("interval_minutes")?,
+                    from: first,
+                    to: to.unwrap_or(first),
+                };
+                (days, timing)
+            }
+        };
         Ok(Self {
-            schedule: CollectionSchedule {
-                id: row.get("id")?,
-                name: row.get("name")?,
-                collection: row.get("collection")?,
-                cadence: row.get("cadence")?,
-                interval_minutes: row.get("interval_minutes")?,
-                local_time: row.get("local_time")?,
-                enabled: row.get("enabled")?,
-                next_run: row.get("next_run")?,
-                revision: row.get("revision")?,
-                last_error: row.get("last_error")?,
-            },
+            id: row.get("id")?,
+            name: row.get("name")?,
+            collection: row.get("collection")?,
+            rule: Rule { days, timing },
+            enabled: row.get("enabled")?,
+            next_run: row.get("next_run")?,
+            revision: row.get("revision")?,
+            last_error: row.get("last_error")?,
             anchor: row.get("anchor")?,
         })
     }
 }
-impl ScheduleRow {
-    fn timing(&self) -> Timing<'_> {
-        Timing {
-            cadence: self.schedule.cadence,
-            interval_minutes: self.schedule.interval_minutes,
-            local_time: &self.schedule.local_time,
-            anchor: self.anchor,
-        }
+
+fn timezone(tz: &str) -> Result<Tz> {
+    tz.parse().map_err(|_| Error::new("invalid_timezone", 400))
+}
+/// When a rule first runs, as the previous release times a schedule: its first time today,
+/// or the next day that has it.
+pub fn anchor(time: NaiveTime, tz: Tz, after: i64) -> Result<i64> {
+    let date = chrono::DateTime::from_timestamp_millis(after)
+        .ok_or_else(|| Error::new("invalid_schedule", 400))?
+        .with_timezone(&tz)
+        .date_naive();
+    (0..4)
+        .find_map(|days| {
+            tz.from_local_datetime(&(date + chrono::Duration::days(days)).and_time(time))
+                .earliest()
+        })
+        .map(|first| first.timestamp_millis())
+        .ok_or_else(|| Error::new("schedule_unresolvable", 400))
+}
+fn next_run(rule: &Rule, tz: Tz, after: i64) -> Result<String> {
+    rule.next(tz, after)
+        .map(at)
+        .ok_or_else(|| Error::new("schedule_unresolvable", 400))
+}
+/// The single time and interval the previous release runs a rule by: its first time, or the
+/// start of its repeat.
+fn legacy(rule: &Rule) -> (&'static str, Option<i64>, NaiveTime) {
+    match &rule.timing {
+        Timing::At(times) => ("daily", None, times[0]),
+        Timing::Repeat { every, from, .. } => ("interval", Some(*every), *from),
     }
 }
 
-fn timezone(tz: &str) -> Result<chrono_tz::Tz> {
-    tz.parse().map_err(|_| Error::new("invalid_timezone", 400))
+/// A collection a schedule may run on the Collectors page: one a collector reads, its
+/// collector, and its feature's keeper of it.
+#[derive(Clone, Copy)]
+pub struct Scheduled {
+    pub collector: &'static dyn Collector,
+    pub collection: &'static Collection,
+    pub keeper: &'static dyn Keeper,
 }
-fn local_time(time: &str) -> Result<NaiveTime> {
-    let parsed = NaiveTime::parse_from_str(time, "%H:%M")
-        .map_err(|_| Error::new("invalid_schedule_time", 400))?;
-    ensure(
-        parsed.format("%H:%M").to_string() == time,
-        "invalid_schedule_time",
-        400,
-    )?;
-    Ok(parsed)
-}
-fn local_instant(date: chrono::NaiveDate, time: NaiveTime, tz: chrono_tz::Tz) -> Option<i64> {
-    // A repeated local time runs once, at its first occurrence. A missing time
-    // on the spring transition is skipped, rather than inventing another time.
-    tz.from_local_datetime(&date.and_time(time))
-        .earliest()
-        .map(|d| d.timestamp_millis())
-}
-pub fn next_daily(time: &str, tz: &str, after: i64) -> Result<String> {
-    let time = local_time(time)?;
-    let tz = timezone(tz)?;
-    let date = chrono::DateTime::from_timestamp_millis(after)
-        .ok_or_else(|| Error::new("invalid_schedule", 400))?
-        .with_timezone(&tz)
-        .date_naive();
-    for days in 0..4 {
-        let day = date + chrono::Duration::days(days);
-        if let Some(instant) = local_instant(day, time, tz)
-            && instant > after
-        {
-            return Ok(at(instant));
-        }
+impl Scheduled {
+    /// Every collection, in the registry's order.
+    pub fn all() -> impl Iterator<Item = Self> {
+        registry().collectors.iter().flat_map(|collector| {
+            collector.collections().iter().map(move |collection| Self {
+                collector: *collector,
+                collection,
+                keeper: registry().keeper(collection.job_kind),
+            })
+        })
     }
-    Err(Error::new("schedule_unresolvable", 400))
-}
-pub fn anchor(time: &str, tz: &str, after: i64) -> Result<i64> {
-    let tz = timezone(tz)?;
-    let date = chrono::DateTime::from_timestamp_millis(after)
-        .ok_or_else(|| Error::new("invalid_schedule", 400))?
-        .with_timezone(&tz)
-        .date_naive();
-    let time = local_time(time)?;
-    // If today's anchor falls into a DST gap, start at the next valid day.
-    for days in 0..4 {
-        if let Some(value) = local_instant(date + chrono::Duration::days(days), time, tz) {
-            return Ok(value);
-        }
+    /// The collection whose own schedule name is `name`.
+    pub fn named(name: &str) -> Result<Self> {
+        Self::all()
+            .find(|scheduled| scheduled.collection.schedule == name)
+            .ok_or_else(|| Error::new("not_found", 404))
     }
-    Err(Error::new("schedule_unresolvable", 400))
-}
-fn next(row: &Timing<'_>, tz: &str, after: i64) -> Result<String> {
-    if row.cadence == Cadence::Daily {
-        return next_daily(row.local_time, tz, after);
+    /// What each of its rules may collect by, with its label: its own name, then its feature's
+    /// aliases that read it another way.
+    fn options(self) -> Vec<(ScheduleCollection, &'static str)> {
+        let declared: &[(&str, &str)] = match self.keeper.schedules().choice {
+            Some((_, options)) => options,
+            None => &[],
+        };
+        let own = [(self.collection.schedule, self.collection.label)];
+        let options = if declared.is_empty() {
+            &own[..]
+        } else {
+            declared
+        };
+        options
+            .iter()
+            .filter_map(|(name, label)| ScheduleCollection::parse(name).map(|c| (c, *label)))
+            .collect()
     }
-    let period = row.interval_minutes.unwrap_or(0) * 60000;
-    ensure(period > 0, "invalid_schedule", 500)?;
-    let start = row.anchor;
-    Ok(at(if start > after {
-        start
-    } else {
-        start + ((after - start) / period + 1) * period
-    }))
+    fn names(self) -> Result<String> {
+        let names: Vec<&str> = self.options().iter().map(|(c, _)| c.as_str()).collect();
+        Ok(serde_json::to_string(&names)?)
+    }
+    fn offers(self, collection: &str) -> Result<ScheduleCollection> {
+        self.options()
+            .into_iter()
+            .map(|(offered, _)| offered)
+            .find(|offered| offered.as_str() == collection)
+            .ok_or_else(|| Error::new("invalid_input", 400))
+    }
+    fn provider(self) -> Provider {
+        Provider::new(self.collector.id())
+    }
 }
-/// The requested cadence, interval and local time, validated.
-fn timing(value: &Value) -> Result<(Cadence, Option<i64>, &str)> {
-    let cadence = v::choice(value, "cadence", &["interval", "daily"])?;
-    let cadence = Cadence::parse(cadence).ok_or_else(|| Error::new("invalid_input", 400))?;
-    let time = v::text(value, "localTime", 5, 5)?;
-    local_time(time)?;
-    let minutes = if cadence == Cadence::Interval {
-        let minutes = v::integer(value, "intervalMinutes", 30, 1440)?;
-        ensure(minutes % 30 == 0, "invalid_schedule_interval", 400)?;
-        Some(minutes)
-    } else {
-        ensure(value["intervalMinutes"].is_null(), "invalid_input", 400)?;
-        None
-    };
-    Ok((cadence, minutes, time))
-}
-fn same_timing(row: &ScheduleRow, (cadence, minutes, time): (Cadence, Option<i64>, &str)) -> bool {
-    let row = &row.schedule;
-    row.cadence == cadence && row.interval_minutes == minutes && row.local_time == time
-}
-// The fields a member can edit, compared for the audit log.
-pub fn schedule_changes(
-    before: &CollectionSchedule,
-    after: &CollectionSchedule,
-) -> Vec<crate::db::AuditChange> {
-    let fields = |s: &CollectionSchedule| {
-        [
-            ("name", Some(s.name.clone())),
-            ("collection", Some(s.collection.as_str().to_owned())),
-            ("cadence", Some(s.cadence.as_str().to_owned())),
-            (
-                "interval",
-                s.interval_minutes.map(|minutes| minutes.to_string()),
-            ),
-            ("time", Some(s.local_time.clone())),
-            ("enabled", Some(s.enabled.to_string())),
-        ]
-    };
-    fields(before)
-        .into_iter()
-        .zip(fields(after))
-        .filter(|(before, after)| before.1 != after.1)
-        .map(|(before, after)| (before.0, before.1, after.1))
+
+/// The rules of a request: what each collects by, and when.
+fn requested(
+    scheduled: Scheduled,
+    value: &Value,
+) -> Result<Vec<(Option<String>, ScheduleCollection, Rule)>> {
+    let rules = value["rules"]
+        .as_array()
+        .filter(|rules| rules.len() as i64 <= MOST_RULES)
+        .ok_or_else(|| Error::new("invalid_input", 400))?;
+    rules
+        .iter()
+        .map(|rule| {
+            v::fields(
+                rule,
+                &[
+                    "id", "collects", "kind", "days", "times", "every", "from", "to",
+                ],
+            )?;
+            let id = match &rule["id"] {
+                Value::Null => None,
+                _ => Some(v::text(rule, "id", 1, 128)?.to_owned()),
+            };
+            let collects = scheduled.offers(v::text(rule, "collects", 1, 64)?)?;
+            Ok((id, collects, Rule::parse(rule)?))
+        })
         .collect()
+}
+/// A collection's rules, each as words, for the activity log.
+fn described(rows: &[(ScheduleCollection, Rule)], scheduled: Scheduled) -> Option<String> {
+    let labels = scheduled.options();
+    let chooses = labels.len() > 1;
+    let words: Vec<String> = rows
+        .iter()
+        .map(|(collection, rule)| {
+            let label = labels
+                .iter()
+                .find(|(c, _)| c == collection)
+                .map(|(_, l)| *l);
+            match label.filter(|_| chooses) {
+                Some(label) => format!("{} ({label})", rule.describe()),
+                None => rule.describe(),
+            }
+        })
+        .collect();
+    (!words.is_empty()).then(|| words.join("; "))
+}
+/// What a collection's schedule was at: each of its rules and the revision it was saved at.
+fn revision(rows: &[ScheduleRow]) -> String {
+    let mut kept: Vec<String> = rows
+        .iter()
+        .map(|row| format!("{}.{}", row.id, row.revision))
+        .collect();
+    kept.sort();
+    kept.join(",")
+}
+fn rule_of(row: &ScheduleRow) -> ScheduleRule {
+    let days = (0..7)
+        .filter(|day| row.rule.days & (1 << day) != 0)
+        .collect();
+    let (kind, times, every, from, to) = match &row.rule.timing {
+        Timing::At(times) => (
+            RuleKind::Times,
+            times.iter().map(|at| rules::text(*at)).collect(),
+            None,
+            None,
+            None,
+        ),
+        Timing::Repeat { every, from, to } => (
+            RuleKind::Repeat,
+            vec![],
+            Some(*every),
+            Some(rules::text(*from)),
+            Some(rules::text(*to)),
+        ),
+    };
+    ScheduleRule {
+        id: Some(row.id.clone()),
+        collects: row.collection,
+        kind,
+        days,
+        times,
+        every,
+        from,
+        to,
+        next_run: row.next_run.clone().filter(|_| row.enabled),
+        last_error: row.last_error.clone(),
+    }
 }
 
 impl Store {
     pub(crate) fn initialize_schedules(&self, id: &str) -> Result<()> {
         let db = self.dsp(id)?;
         // v0.0.9 imports the DSP's old single schedule unless this is set.
-        if db.setting("collectionSchedules.initialized", json!(false))? != json!(true) {
-            db.set("collectionSchedules.initialized", &json!(true))?;
+        if db.setting("collectionSchedules.initialized", serde_json::json!(false))?
+            != serde_json::json!(true)
+        {
+            db.set("collectionSchedules.initialized", &serde_json::json!(true))?;
         }
         Ok(())
     }
-    pub fn collection_schedules(&self, id: &str) -> Result<CollectionSchedules> {
-        let dsp = self.find_dsp(id)?;
-        let rows: Vec<ScheduleRow> = self.dsp(id)?.query_as(
+    fn rows_of(&self, id: &str, scheduled: Scheduled) -> Result<Vec<ScheduleRow>> {
+        self.dsp(id)?.query_as(
             "SELECT * FROM collection_schedules \
             WHERE collection IN (SELECT value FROM json_each(?)) ORDER BY created_at,id",
-            [ScheduleCollection::known()?],
+            [scheduled.names()?],
+        )
+    }
+    /// The soonest run of `collection`'s schedule, while it's on.
+    pub fn next_scheduled(&self, id: &str, collection: &str) -> Result<Option<String>> {
+        let rows = self.rows_of(id, Scheduled::named(collection)?)?;
+        Ok(rows
+            .into_iter()
+            .filter(|row| row.enabled)
+            .filter_map(|row| row.next_run)
+            .min())
+    }
+    /// How the activity log names the run of the rule `schedule`, while there is one: by the
+    /// collection it runs, as "Routes".
+    pub fn schedule_label(&self, id: &str, schedule: &str) -> Result<Option<&'static str>> {
+        let row: Option<ScheduleRow> = self.dsp(id)?.one_as(
+            "SELECT * FROM collection_schedules WHERE id=? \
+            AND collection IN (SELECT value FROM json_each(?))",
+            [schedule, &ScheduleCollection::known()?],
         )?;
-        Ok(CollectionSchedules {
-            timezone: dsp.timezone,
-            dsp_name: dsp.name,
-            schedules: rows.into_iter().map(|row| row.schedule).collect(),
-        })
+        Ok(row.and_then(|row| {
+            Scheduled::all()
+                .find(|scheduled| scheduled.offers(row.collection.as_str()).is_ok())
+                .map(|scheduled| scheduled.collection.label)
+        }))
     }
-    pub fn collection_schedule(&self, id: &str, schedule: &str) -> Result<CollectionSchedule> {
-        Ok(self.schedule_row(id, schedule)?.schedule)
+    /// Today, where the DSP is.
+    pub fn local_date(&self, id: &str) -> Result<String> {
+        let tz = timezone(&self.find_dsp(id)?.timezone)?;
+        Ok(crate::foundation::clock::today(tz).to_string())
     }
-    fn schedule_row(&self, id: &str, schedule: &str) -> Result<ScheduleRow> {
-        self.dsp(id)?
-            .one_as(
-                "SELECT * FROM collection_schedules WHERE id=? \
-                AND collection IN (SELECT value FROM json_each(?))",
-                [schedule, &ScheduleCollection::known()?],
-            )?
-            .ok_or_else(|| Error::new("schedule_not_found", 404))
-    }
-    // An alias, such as Timecard's `both`, selects the collections its feature declares it
-    // runs; any other value selects the collection it names. Each comes with its provider.
+    // An alias, such as Routes' `routes_today`, selects the collections its feature declares
+    // it runs; any other value selects the collection it names. Each comes with its provider.
     fn scheduled_collections(
         collection: ScheduleCollection,
     ) -> impl Iterator<Item = (Provider, &'static Collection)> {
         registry()
             .scheduled(collection.as_str())
             .map(|(collector, scheduled)| (Provider::new(collector.id()), scheduled))
-    }
-    /// Today, where the DSP is.
-    pub fn local_date(&self, id: &str) -> Result<String> {
-        let tz = timezone(&self.find_dsp(id)?.timezone)?;
-        Ok(crate::foundation::clock::today(tz).to_string())
     }
     fn check_schedule_sources(&self, id: &str, collection: ScheduleCollection) -> Result<()> {
         for (provider, scheduled) in Self::scheduled_collections(collection) {
@@ -259,158 +367,297 @@ impl Store {
         }
         Ok(())
     }
-    pub fn preview_schedule(&self, id: &str, value: &Value) -> Result<SchedulePreview> {
-        v::fields(
-            value,
-            &["scheduleId", "cadence", "intervalMinutes", "localTime"],
-        )?;
-        let requested = timing(value)?;
-        let dsp = self.find_dsp(id)?;
-        let tz = dsp.timezone.as_str();
-        let before = if value.get("scheduleId").is_some() {
-            Some(self.schedule_row(id, v::text(value, "scheduleId", 1, 128)?)?)
-        } else {
-            None
-        };
-        let start = match before.as_ref().filter(|row| same_timing(row, requested)) {
-            Some(row) => row.anchor,
-            None => anchor(requested.2, tz, now())?,
-        };
-        let (cadence, interval_minutes, local_time) = requested;
-        let row = Timing {
-            cadence,
-            interval_minutes,
-            local_time,
-            anchor: start,
-        };
-        Ok(SchedulePreview {
-            next_run: next(&row, tz, now())?,
+
+    /// The collections whose schedules `c` sets, as the Collectors page shows them.
+    pub fn collectors(&self, c: &Context) -> Result<Collectors> {
+        let collections = Scheduled::all()
+            .filter(|scheduled| c.can(scheduled.keeper.schedules().permission))
+            .map(|scheduled| {
+                let collects = c.can(scheduled.keeper.permission());
+                self.scheduled_collection(&c.dsp.id, scheduled, collects)
+            })
+            .collect::<Result<_>>()?;
+        Ok(Collectors {
+            timezone: c.dsp.timezone.clone(),
+            collections,
         })
     }
-    pub fn save_schedule(
+    /// One collection of the DSP `id`'s as the Collectors page shows it, to a member who
+    /// `can_collect` it or not.
+    pub fn scheduled_collection(
         &self,
         id: &str,
-        schedule: Option<&str>,
+        scheduled: Scheduled,
+        can_collect: bool,
+    ) -> Result<ScheduledCollection> {
+        let rows = self.rows_of(id, scheduled)?;
+        let kind = scheduled.collection.job_kind;
+        let last: Option<(JobStatus, Option<String>, Option<String>)> =
+            self.jobs.one_as(LAST_RUN, [id, kind])?;
+        let kinds = serde_json::to_string(&[kind])?;
+        let running = self.jobs.one(ACTIVE_JOB, [id, kinds.as_str()])?.is_some();
+        let choice = scheduled
+            .keeper
+            .schedules()
+            .choice
+            .map(|(label, _)| ScheduleChoice {
+                label: label.to_owned(),
+                options: scheduled
+                    .options()
+                    .into_iter()
+                    .map(|(collection, label)| ScheduleOption {
+                        collection,
+                        label: label.to_owned(),
+                    })
+                    .collect(),
+            });
+        Ok(ScheduledCollection {
+            collection: ScheduleCollection::parse(scheduled.collection.schedule)
+                .ok_or_else(|| Error::new("not_found", 404))?,
+            label: scheduled.collection.label.to_owned(),
+            feature: crate::tenancy::catalog::automation(scheduled.collection.job_kind)
+                .unwrap_or_default()
+                .to_owned(),
+            collector: scheduled.collector.id().to_owned(),
+            collector_label: scheduled.collector.label().to_owned(),
+            connected: self
+                .connection_for(id, scheduled.provider())
+                .is_ok_and(|connection| connection.enabled),
+            choice,
+            enabled: rows.iter().any(|row| row.enabled),
+            revision: revision(&rows),
+            next_run: rows
+                .iter()
+                .filter(|row| row.enabled)
+                .filter_map(|row| row.next_run.clone())
+                .min(),
+            rules: rows.iter().map(rule_of).collect(),
+            last_run: last.and_then(|(status, at, error)| {
+                Some(LastRun {
+                    status,
+                    at: at?,
+                    error,
+                })
+            }),
+            running,
+            can_collect,
+        })
+    }
+    /// Replaces a collection's rules with those of `value`, as at its `revision`: a rule
+    /// with an id keeps its row, one without is new, and one left out is removed. It stays
+    /// on or off as it was; one with no rules yet starts on, unless what it reads isn't ready,
+    /// as its collector not connected. Answers what the activity log keeps of the change: its
+    /// rules as they were and are, as words.
+    pub fn save_rules(
+        &self,
+        id: &str,
+        scheduled: Scheduled,
         value: &Value,
-    ) -> Result<CollectionSchedule> {
-        v::fields(
-            value,
-            &[
-                "name",
-                "collection",
-                "cadence",
-                "intervalMinutes",
-                "localTime",
-                "enabled",
-                "revision",
-            ],
-        )?;
-        let name = v::name(value, "name", 60)?;
-        let choices: Vec<_> = ScheduleCollection::all()
-            .map(ScheduleCollection::as_str)
-            .collect();
-        let collection = v::choice(value, "collection", &choices)?;
-        let collection = ScheduleCollection::parse(collection)
-            .ok_or_else(|| Error::new("invalid_input", 400))?;
-        let requested = timing(value)?;
-        let enabled = v::boolean(value, "enabled")?;
-        let before = schedule.map(|key| self.schedule_row(id, key)).transpose()?;
-        if let Some(before) = &before {
+    ) -> Result<Option<AuditChange>> {
+        v::fields(value, &["rules", "revision"])?;
+        let requested = requested(scheduled, value)?;
+        let tz = timezone(&self.find_dsp(id)?.timezone)?;
+        let db = self.dsp(id)?;
+        db.transaction(|| {
+            let before = self.rows_of(id, scheduled)?;
             ensure(
-                before.schedule.revision == v::integer(value, "revision", 1, i64::MAX)?,
+                revision(&before) == v::text(value, "revision", 0, 8192)?,
                 "schedule_changed",
                 409,
             )?;
-        } else {
-            let count = self
-                .dsp(id)?
-                .count("SELECT count(*) FROM collection_schedules", [])?;
-            ensure(count < 50, "schedule_limit", 409)?;
-        }
-        if enabled {
-            self.check_schedule_sources(id, collection)?;
-        }
-        let dsp = self.find_dsp(id)?;
-        let tz = dsp.timezone.as_str();
-        let key = schedule
-            .map(str::to_owned)
-            .unwrap_or(crypto::id("schedule")?);
-        let (cadence, interval_minutes, local_time) = requested;
-        let same_timing = before.as_ref().is_some_and(|r| same_timing(r, requested));
-        let start = if same_timing {
-            before.as_ref().unwrap().anchor
-        } else {
-            anchor(local_time, tz, now())?
-        };
-        let row = Timing {
-            cadence,
-            interval_minutes,
-            local_time,
-            anchor: start,
-        };
-        let next_run = if !enabled {
-            None
-        } else if same_timing && before.as_ref().is_some_and(|r| r.schedule.enabled) {
-            before
-                .as_ref()
-                .and_then(|r| r.schedule.next_run.clone())
-                .or(Some(next(&row, tz, now())?))
-        } else {
-            Some(next(&row, tz, now())?)
-        };
-        self.dsp(id)?.exec(
-            SAVE,
-            params![
-                key,
-                name,
-                collection,
-                cadence,
-                interval_minutes,
-                local_time,
-                start,
-                enabled,
-                next_run,
-                iso()
-            ],
-        )?;
-        self.collection_schedule(id, &key)
+            let others =
+                db.count("SELECT count(*) FROM collection_schedules", [])? - before.len() as i64;
+            ensure(
+                others + requested.len() as i64 <= MOST_RULES,
+                "schedule_limit",
+                409,
+            )?;
+            let mut collects: Vec<ScheduleCollection> = Vec::new();
+            for (_, collection, _) in &requested {
+                if !collects.contains(collection) {
+                    collects.push(*collection);
+                }
+            }
+            let ready = || -> Result<()> {
+                for collection in &collects {
+                    self.check_schedule_sources(id, *collection)?;
+                }
+                Ok(())
+            };
+            // A collection's first rules start it on once what it reads is ready, and off till
+            // then; one on stays on, and needs it ready.
+            let enabled = if before.is_empty() {
+                ready().is_ok()
+            } else {
+                before.iter().any(|row| row.enabled)
+            };
+            if enabled {
+                ready()?;
+            }
+            let mut kept = Vec::new();
+            for (key, collects, rule) in &requested {
+                let row = match key {
+                    Some(key) => Some(
+                        before
+                            .iter()
+                            .find(|row| &row.id == key && !kept.contains(&row.id))
+                            .ok_or_else(|| Error::new("schedule_changed", 409))?,
+                    ),
+                    None => None,
+                };
+                let same = row.filter(|row| row.collection == *collects && row.rule == *rule);
+                let (cadence, interval, first) = legacy(rule);
+                let anchor = match same {
+                    Some(row) => row.anchor,
+                    None => anchor(first, tz, now())?,
+                };
+                let next = if !enabled {
+                    None
+                } else {
+                    match same
+                        .filter(|row| row.enabled)
+                        .and_then(|row| row.next_run.clone())
+                    {
+                        Some(pending) => Some(pending),
+                        None => Some(next_run(rule, tz, now())?),
+                    }
+                };
+                let (times, until) = match &rule.timing {
+                    Timing::At(times) => {
+                        let times: Vec<String> = times.iter().map(|at| rules::text(*at)).collect();
+                        (Some(serde_json::to_string(&times)?), None)
+                    }
+                    Timing::Repeat { to, .. } => (None, Some(rules::text(*to))),
+                };
+                let key = match row {
+                    Some(row) => row.id.clone(),
+                    None => crypto::id("schedule")?,
+                };
+                db.exec(
+                    SAVE,
+                    params![
+                        key,
+                        rule.describe(),
+                        collects,
+                        cadence,
+                        interval,
+                        rules::text(first),
+                        anchor,
+                        enabled,
+                        next,
+                        iso(),
+                        rule.days,
+                        times,
+                        until
+                    ],
+                )?;
+                kept.push(key);
+            }
+            for row in &before {
+                if !kept.contains(&row.id) {
+                    db.exec("DELETE FROM collection_schedules WHERE id=?", [&row.id])?;
+                }
+            }
+            let words = |rows: Vec<(ScheduleCollection, Rule)>| described(&rows, scheduled);
+            let was = words(
+                before
+                    .iter()
+                    .map(|r| (r.collection, r.rule.clone()))
+                    .collect(),
+            );
+            let is = words(requested.iter().map(|(_, c, r)| (*c, r.clone())).collect());
+            Ok((was != is).then_some(("rules", was, is)))
+        })
     }
-    pub fn enable_schedule(
+    /// Turns a collection's schedule on or off, as at its `revision`: every rule at once.
+    /// Answers whether that changed it.
+    pub fn switch_rules(&self, id: &str, scheduled: Scheduled, value: &Value) -> Result<bool> {
+        v::fields(value, &["enabled", "revision"])?;
+        let enabled = v::boolean(value, "enabled")?;
+        let tz = timezone(&self.find_dsp(id)?.timezone)?;
+        let db = self.dsp(id)?;
+        db.transaction(|| {
+            let rows = self.rows_of(id, scheduled)?;
+            ensure(
+                revision(&rows) == v::text(value, "revision", 0, 8192)?,
+                "schedule_changed",
+                409,
+            )?;
+            ensure(!rows.is_empty(), "schedule_not_found", 404)?;
+            let was = rows.iter().any(|row| row.enabled);
+            if was == enabled && rows.iter().all(|row| row.enabled == enabled) {
+                return Ok(false);
+            }
+            for row in &rows {
+                if enabled {
+                    self.check_schedule_sources(id, row.collection)?;
+                }
+                let next = if enabled {
+                    Some(next_run(&row.rule, tz, now())?)
+                } else {
+                    None
+                };
+                db.exec(SWITCH, params![enabled, next, row.id])?;
+            }
+            Ok(was != enabled)
+        })
+    }
+    /// The next runs of the rules of `value`, unsaved, as though the collection were on.
+    pub fn preview_rules(
         &self,
         id: &str,
-        schedule: &str,
+        scheduled: Scheduled,
         value: &Value,
-    ) -> Result<CollectionSchedule> {
-        v::fields(value, &["revision", "enabled"])?;
-        let row = self.collection_schedule(id, schedule)?;
-        let input = json!({
-            "name":row.name,
-            "collection":row.collection,
-            "cadence":row.cadence,
-            "intervalMinutes":row.interval_minutes,
-            "localTime":row.local_time,
-            "revision":value["revision"],
-            "enabled":v::boolean(value, "enabled")?,
-        });
-        self.save_schedule(id, Some(schedule), &input)
+    ) -> Result<ScheduleRuns> {
+        v::fields(value, &["rules"])?;
+        let requested = requested(scheduled, value)?;
+        let tz = timezone(&self.find_dsp(id)?.timezone)?;
+        let rules: Vec<Rule> = requested.into_iter().map(|(_, _, rule)| rule).collect();
+        Ok(ScheduleRuns {
+            runs: rules::upcoming(&rules, tz, now(), UPCOMING)
+                .into_iter()
+                .map(at)
+                .collect(),
+        })
     }
-    pub fn delete_collection_schedule(
+    /// Queues now what one run of a schedule collecting by `value`'s `collects` queues, for
+    /// `actor`, once for its `requestId`.
+    pub fn collect_now(
         &self,
         id: &str,
-        schedule: &str,
+        actor: &str,
+        scheduled: Scheduled,
         value: &Value,
-    ) -> Result<()> {
-        v::fields(value, &["revision"])?;
-        let row = self.schedule_row(id, schedule)?;
-        ensure(
-            row.schedule.revision == v::integer(value, "revision", 1, i64::MAX)?,
-            "schedule_changed",
-            409,
-        )?;
-        self.dsp(id)?
-            .exec("DELETE FROM collection_schedules WHERE id=?", [schedule])?;
-        Ok(())
+    ) -> Result<Vec<PublicJob>> {
+        v::fields(value, &["collects", "requestId"])?;
+        let collects = scheduled.offers(v::text(value, "collects", 1, 64)?)?;
+        let request = v::text(value, "requestId", 1, 128)?;
+        self.check_schedule_sources(id, collects)?;
+        let key = format!("collect:{request}:");
+        self.enqueue_batch(
+            id,
+            Some(actor),
+            &self.scheduled_requests(id, collects, &key)?,
+        )
     }
+    /// What one run of a schedule collecting by `collection` queues, each request keyed
+    /// under `key`.
+    fn scheduled_requests(
+        &self,
+        id: &str,
+        collection: ScheduleCollection,
+        key: &str,
+    ) -> Result<Vec<(String, Provider, Value)>> {
+        let mut requests = Vec::new();
+        for (provider, scheduled) in Self::scheduled_collections(collection) {
+            let keeper = registry().keeper(scheduled.job_kind);
+            for (suffix, request) in keeper.scheduled(self, id, collection.as_str())? {
+                requests.push((format!("{key}{suffix}"), provider, request));
+            }
+        }
+        Ok(requests)
+    }
+
     /// Pauses the schedules that need `provider`: those of its collections, and of each
     /// alias that runs one of them.
     pub fn pause_provider_schedules(&self, id: &str, provider: Provider) -> Result<()> {
@@ -431,6 +678,7 @@ impl Store {
     /// Runs the DSP's schedules, or a feature's, in `tz` from now on, and wakes the scheduler
     /// once the work is done, whichever route or job it's part of.
     fn retime_schedules_for(&self, id: &str, tz: &str, feature: Option<&str>) -> Result<()> {
+        let tz = timezone(tz)?;
         let db = self.dsp(id)?;
         db.transaction(|| {
             let rows: Vec<ScheduleRow> = db.query_as(
@@ -438,19 +686,19 @@ impl Store {
                 WHERE collection IN (SELECT value FROM json_each(?))",
                 [ScheduleCollection::known()?],
             )?;
-            for mut row in rows {
+            for row in rows {
                 if feature.is_some_and(|f| {
-                    crate::tenancy::catalog::automation(row.schedule.collection.as_str()) != Some(f)
+                    crate::tenancy::catalog::automation(row.collection.as_str()) != Some(f)
                 }) {
                     continue;
                 }
-                row.anchor = anchor(&row.schedule.local_time, tz, now())?;
-                let deadline = if row.schedule.enabled {
-                    Some(next(&row.timing(), tz, now())?)
+                let anchor = anchor(legacy(&row.rule).2, tz, now())?;
+                let deadline = if row.enabled {
+                    Some(next_run(&row.rule, tz, now())?)
                 } else {
                     None
                 };
-                db.exec(RETIME, params![row.anchor, deadline, row.schedule.id])?;
+                db.exec(RETIME, params![anchor, deadline, row.id])?;
             }
             Ok(())
         })?;
@@ -488,11 +736,11 @@ impl Store {
         }
         Ok(deadlines)
     }
-    fn enqueue_schedule(&self, id: &str, row: &CollectionSchedule) -> Result<()> {
+    /// What the rule `row`'s pending run queues, unless that run was queued already, as when
+    /// the server stopped after queueing it and before moving the rule on.
+    fn due_requests(&self, id: &str, row: &ScheduleRow) -> Result<Vec<(String, Provider, Value)>> {
         let pending = row.next_run.as_deref().unwrap_or("");
         let key = format!("schedule:{}:{}:", row.id, pending);
-        // enqueue_batch commits all requests together. If any exists, this exact
-        // occurrence already committed; do not rebuild date/scopes after a restart.
         if self
             .jobs
             .one(
@@ -501,74 +749,109 @@ impl Store {
             )?
             .is_some()
         {
-            return Ok(());
+            return Ok(vec![]);
         }
         self.check_schedule_sources(id, row.collection)?;
-        let mut requests = Vec::new();
-        for (provider, scheduled) in Self::scheduled_collections(row.collection) {
-            let keeper = registry().keeper(scheduled.job_kind);
-            for (suffix, request) in keeper.scheduled(self, id, row.collection.as_str())? {
-                requests.push((format!("{key}{suffix}"), provider, request));
-            }
-        }
-        // Other collections finish before another recurring batch enters the queue.
-        ensure(
-            self.jobs
-                .one(ACTIVE_JOB, [id, &JobKind::known()?])?
-                .is_none(),
-            "sync_in_progress",
-            409,
-        )?;
-        self.enqueue_batch(id, None, &requests)?;
-        Ok(())
+        self.scheduled_requests(id, row.collection, &key)
     }
+    /// Queues the runs of the DSP's rules that are due, all in one batch, so the collections
+    /// due together run together, and moves each rule on to its next run. A rule that can't
+    /// run yet keeps its run and says why, and is tried again in a minute. Answers when the
+    /// next is due.
     pub fn schedule_due(&self, id: &str) -> Result<Option<i64>> {
         let dsp = self.find_dsp(id)?;
         let enabled = self.features(id)?;
         if !self.serves(&dsp) || !crate::tenancy::catalog::automates(&enabled) {
             return Ok(None);
         }
+        let tz = timezone(&dsp.timezone)?;
         let db = self.dsp(id)?;
-        let mut earliest = None;
         let rows: Vec<ScheduleRow> = db.query_as(
             "SELECT * FROM collection_schedules WHERE enabled=1 \
             AND collection IN (SELECT value FROM json_each(?)) ORDER BY next_run,id",
             [ScheduleCollection::known()?],
         )?;
-        for mut row in rows {
-            // A schedule whose page is off waits, as one no feature keeps does.
-            let page = crate::tenancy::catalog::automation(row.schedule.collection.as_str());
-            if !page.is_some_and(|page| enabled.iter().any(|f| f == page)) {
+        // A schedule whose page is off waits, as one no feature keeps does.
+        let rows: Vec<ScheduleRow> = rows
+            .into_iter()
+            .filter(|row| {
+                let page = crate::tenancy::catalog::automation(row.collection.as_str());
+                page.is_some_and(|page| enabled.iter().any(|f| f == page))
+            })
+            .collect();
+        let now_iso = iso();
+        let due = rows
+            .iter()
+            .filter(|row| row.next_run.as_ref().is_some_and(|value| value <= &now_iso));
+        // The first of a collection's rules due together queues its run, for them all. The
+        // others move on before it's queued: stopped once it is, only the first is still due,
+        // and that run is queued already.
+        let mut queueing: Vec<(&str, ScheduleCollection)> = Vec::new();
+        let mut moved: Vec<&str> = Vec::new();
+        let mut waiting: Vec<(&str, String)> = Vec::new();
+        let mut requests = Vec::new();
+        for row in due {
+            if queueing
+                .iter()
+                .any(|(_, collection)| *collection == row.collection)
+            {
+                db.exec(
+                    "UPDATE collection_schedules SET next_run=?,last_error=NULL WHERE id=?",
+                    [&next_run(&row.rule, tz, now())?, &row.id],
+                )?;
+                moved.push(&row.id);
                 continue;
             }
-            let pending = row.schedule.next_run.clone();
-            if pending.as_ref().is_some_and(|value| value <= &iso()) {
-                if let Err(error) = self.enqueue_schedule(id, &row.schedule) {
-                    db.exec(
-                        "UPDATE collection_schedules SET last_error=? WHERE id=?",
-                        [&error.code, &row.schedule.id],
-                    )?;
-                    let retry = now() + 60000;
-                    earliest = Some(earliest.map_or(retry, |v: i64| v.min(retry)));
-                    continue;
+            match self.due_requests(id, row) {
+                Ok(due) if due.is_empty() => moved.push(&row.id),
+                Ok(due) => {
+                    requests.extend(due);
+                    queueing.push((&row.id, row.collection));
                 }
-                row.schedule.next_run = None;
+                Err(error) => waiting.push((&row.id, error.code)),
             }
-            let computed = next(&row.timing(), &dsp.timezone, now())?;
-            let deadline = row.schedule.next_run.clone().unwrap_or(computed);
+        }
+        if !requests.is_empty() {
+            // Other collections finish before another recurring batch enters the queue.
+            let started = ensure(
+                self.jobs
+                    .one(ACTIVE_JOB, [id, JobKind::known()?.as_str()])?
+                    .is_none(),
+                "sync_in_progress",
+                409,
+            )
+            .and_then(|()| self.enqueue_batch(id, None, &requests));
+            let queued = queueing.into_iter().map(|(row, _)| row);
+            match started {
+                Ok(_) => moved.extend(queued),
+                // None of the batch is queued: each rule that queued it waits.
+                Err(error) => waiting.extend(queued.map(|row| (row, error.code.clone()))),
+            }
+        }
+        let mut earliest = None;
+        let mut soonest = |ms: i64| earliest = Some(earliest.map_or(ms, |v: i64| v.min(ms)));
+        for row in &rows {
+            if let Some((_, code)) = waiting.iter().find(|(key, _)| *key == row.id) {
+                db.exec(
+                    "UPDATE collection_schedules SET last_error=? WHERE id=?",
+                    [code, &row.id],
+                )?;
+                soonest(now() + 60000);
+                continue;
+            }
+            let deadline = match &row.next_run {
+                Some(pending) if !moved.contains(&row.id.as_str()) => pending.clone(),
+                _ => next_run(&row.rule, tz, now())?,
+            };
             db.exec(
                 "UPDATE collection_schedules SET next_run=?,last_error=NULL WHERE id=?",
-                [&deadline, &row.schedule.id],
+                [&deadline, &row.id],
             )?;
             let ms = chrono::DateTime::parse_from_rfc3339(&deadline)
                 .map_err(|_| Error::new("invalid_schedule", 500))?
                 .timestamp_millis();
-            earliest = Some(earliest.map_or(ms, |v: i64| v.min(ms)));
+            soonest(ms);
         }
         Ok(earliest)
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/schedules.rs"]
-mod tests;
