@@ -1,4 +1,4 @@
-//! Slack's storage: in each DSP's own database, its workspaces, their members, the
+//! Slack's storage: in each DSP's own database, its workspaces, their logos and members, the
 //! integrations on in each, the installs started for them and its install link; each
 //! workspace's tokens, encrypted in the DSP's secrets; and in the platform's database, which DSP
 //! each workspace belongs to. Only this crate writes SQL against its tables.
@@ -11,6 +11,7 @@ use dispatch_core::{
 };
 use rusqlite::params;
 use serde_json::json;
+use std::collections::BTreeMap;
 
 /// How long an install started at Slack may take to come back.
 const INSTALL_MS: i64 = 10 * 60 * 1000;
@@ -221,6 +222,14 @@ impl FromRow for Link {
     }
 }
 
+/// A workspace's logo, as Dispatch keeps a copy of it: the address Slack gave it at, and the
+/// picture downloaded from there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Logo {
+    pub source: String,
+    pub picture: Vec<u8>,
+}
+
 /// What Slack reads and writes.
 pub trait SlackStore {
     /// The DSP's workspaces, by name.
@@ -299,6 +308,14 @@ pub trait SlackStore {
     fn end_slack_link(&self, dsp: &str, team: Option<&str>) -> Result<bool>;
     /// Ends the link with this hash, used: whether there was one.
     fn use_slack_link(&self, dsp: &str, hash: &str) -> Result<bool>;
+    /// The version of each of the DSP's workspaces' logos, by team ID: of each it keeps one of.
+    fn slack_logos(&self, dsp: &str) -> Result<BTreeMap<String, String>>;
+    fn slack_logo(&self, dsp: &str, team: &str) -> Result<Option<Logo>>;
+    /// Keeps the workspace's logo in place of the one it had, while the DSP has the workspace:
+    /// its version is its picture's digest.
+    fn keep_slack_logo(&self, dsp: &str, team: &str, logo: &Logo) -> Result<()>;
+    /// Forgets the workspace's logo, as Slack says it has none of its own.
+    fn drop_slack_logo(&self, dsp: &str, team: &str) -> Result<()>;
 }
 /// Whether the integration `id` starts on in every workspace, as its feature declares it.
 fn starts_on(id: &str) -> bool {
@@ -729,6 +746,38 @@ impl SlackStore for Store {
             .dsp(dsp)?
             .exec("DELETE FROM slack_install_links WHERE link_hash=?", [hash])?;
         Ok(ended > 0)
+    }
+    fn slack_logos(&self, dsp: &str) -> Result<BTreeMap<String, String>> {
+        let rows: Vec<(String, String)> = self
+            .dsp(dsp)?
+            .query_as("SELECT team_id,version FROM slack_logos", [])?;
+        Ok(rows.into_iter().collect())
+    }
+    fn slack_logo(&self, dsp: &str, team: &str) -> Result<Option<Logo>> {
+        let found: Option<(String, Vec<u8>)> = self.dsp(dsp)?.one_as(
+            "SELECT source,picture FROM slack_logos WHERE team_id=?",
+            [team],
+        )?;
+        Ok(found.map(|(source, picture)| Logo { source, picture }))
+    }
+    fn keep_slack_logo(&self, dsp: &str, team: &str, logo: &Logo) -> Result<()> {
+        let db = self.dsp(dsp)?;
+        let version = &crypto::sha(&logo.picture)[..16];
+        db.transaction(|| {
+            if kept_workspace(&db, team)? {
+                db.exec(
+                    "INSERT OR REPLACE INTO slack_logos (team_id,source,version,picture) \
+                     VALUES (?,?,?,?)",
+                    params![team, logo.source, version, logo.picture],
+                )?;
+            }
+            Ok(())
+        })
+    }
+    fn drop_slack_logo(&self, dsp: &str, team: &str) -> Result<()> {
+        self.dsp(dsp)?
+            .exec("DELETE FROM slack_logos WHERE team_id=?", [team])?;
+        Ok(())
     }
 }
 

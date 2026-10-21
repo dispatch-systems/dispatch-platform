@@ -60,6 +60,20 @@ test('an owner adds Dispatch to several workspaces, reconnects one and disconnec
   assert.equal(operations.status, 'connected');
   assert.equal(operations.needsUpdate, false);
   assert.equal(operations.byLink, false);
+  // Its logo, which Dispatch keeps a copy of, at an address of its own.
+  let logo = '';
+  await until(async () => {
+    const { workspaces } = await owner.read('/api/dsp/slack/account');
+    logo = workspaces[0].logo ?? '';
+    return Boolean(logo);
+  });
+  const picture = await f.raw(
+    `/api/dsp/slack/workspaces/${operations.teamId}/logo?v=${logo}`,
+    undefined,
+    owner.headers,
+  );
+  assert.equal(picture.status, 200);
+  assert.equal(picture.headers.get('content-type'), 'image/png');
   // Each install is used once.
   const again = await owner.post('/api/dsp/slack/connect/finish', { state, code });
   assert.equal(again.value.error, 'slack_connect_expired');

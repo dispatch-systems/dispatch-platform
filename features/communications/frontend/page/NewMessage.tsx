@@ -1,12 +1,12 @@
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { ChevronRight, Search } from 'lucide-react';
 import type { CommunicationsWorkspace, Contact } from '../../api/index.js';
 import { getContacts } from '../../api/client.js';
 import { Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Face } from './Face.js';
 import { Name, roles } from './parts.js';
+import { useFound } from './useFound.js';
 
 // New message: whom to write to, found by their name however it's spelt, the closest first,
 // with the letters that matched marked. The arrow keys move through them and Enter picks one.
@@ -22,31 +22,14 @@ export function NewMessage({
   close: () => void;
 }) {
   const [typed, setTyped] = useState('');
-  const [found, setFound] = useState<Contact[]>();
-  const [failed, setFailed] = useState('');
   const [active, setActive] = useState(0);
   const list = useId();
-  useEffect(() => {
-    let live = true;
-    const timer = setTimeout(
-      () => {
-        getContacts(typed.trim()).then(
-          (read) => {
-            if (!live) return;
-            setFound(read.contacts);
-            setFailed('');
-            setActive(0);
-          },
-          (cause) => live && setFailed(messageOf(cause)),
-        );
-      },
-      typed ? 150 : 0,
-    );
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [typed]);
+  const name = typed.trim();
+  const read = useCallback(() => getContacts(name).then((answer) => answer.contacts), [name]);
+  // Those found by a name are another list from everyone.
+  const { found, failed } = useFound(read, name ? 'found' : 'all', 0, typed ? 150 : 0);
+  // Each answer is gone through from its first.
+  useEffect(() => setActive(0), [found]);
   // The one the arrow keys reach stays in view.
   useEffect(() => {
     document.getElementById(`${list}-${active}`)?.scrollIntoView({ block: 'nearest' });
@@ -85,7 +68,7 @@ export function NewMessage({
           />
         </label>
         {failed && <p className="list-empty">{failed}</p>}
-        {found && !found.length && typed.trim() && <p className="list-empty">No matches</p>}
+        {found && !found.length && name && <p className="list-empty">No matches</p>}
         <ul id={list} role="listbox" aria-label="People" className="results">
           {found?.map((contact, at) => (
             <li
@@ -97,7 +80,7 @@ export function NewMessage({
               onMouseEnter={() => setActive(at)}
               onClick={() => choose(contact)}
             >
-              <Face {...contact.person} size={40} />
+              <Face {...contact.person} size="list" />
               <span className="result-body">
                 <strong>
                   <Name name={contact.person.name} matched={contact.matched} />

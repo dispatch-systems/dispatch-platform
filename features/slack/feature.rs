@@ -23,7 +23,8 @@ use dispatch_core::{
 
 /// What another feature's integration through Slack uses of Slack, beside core's
 /// `Integration`: the bot that acts in a DSP's workspace, calling Slack and downloading and
-/// uploading files there; what Slack keeps of the DSP's workspaces and their members, to read;
+/// uploading files there; what Slack keeps of the DSP's workspaces, their logos and their
+/// members, to read;
 /// linking a workspace's channels to folders where the DSP keeps its files, as Import Files and
 /// Sync Canvases do; and the queue their work that mustn't be lost is kept in. Its folder takes
 /// their shape, `integrations/<name>/` in its feature, as `dispatchdev new integration <name>
@@ -35,7 +36,7 @@ pub mod kit {
         storage::{Link, LinkStore},
     };
     pub use crate::backend::kit::{
-        SOURCE, integration_on_since, member_id, members, workspaces, workspaces_on,
+        SOURCE, integration_on_since, logo, logos, member_id, members, workspaces, workspaces_on,
     };
     pub use crate::backend::members::member;
     pub use crate::backend::slack::Bytestream;
@@ -79,6 +80,7 @@ pub const FEATURE: Feature = Feature {
                 "slack_canvases",
                 "slack_connect_requests",
                 "slack_install_links",
+                "slack_logos",
             ],
         ),
     ],
@@ -152,6 +154,11 @@ pub const FEATURE: Feature = Feature {
                     id: 10,
                     name: "slack_install_pages",
                     apply: Code(backend::storage::add_install_pages),
+                },
+                Migration {
+                    id: 11,
+                    name: "slack_logos",
+                    apply: Sql(include_str!("migrations/dsp/0011_slack_logos.sql")),
                 },
             ],
         },

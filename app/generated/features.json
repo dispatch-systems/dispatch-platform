@@ -49,6 +49,7 @@
         "GET /api/dsp/communications/contacts",
         "POST /api/dsp/communications/uploads",
         "GET /api/dsp/communications/files/{id}",
+        "GET /api/dsp/communications/workspaces/{team}/logo",
         "GET /communications/initials/1/{name}"
       ],
       "exposes": [],
@@ -714,6 +715,7 @@
       ],
       "routes": [
         "GET /api/dsp/slack/account",
+        "GET /api/dsp/slack/workspaces/{team}/logo",
         "GET /api/dsp/slack/workspaces/{team}/channels",
         "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/join",
         "POST /api/dsp/slack/workspaces/{team}/channels/{channel}/leave",
@@ -774,6 +776,7 @@
         "slack_install_links",
         "slack_integrations",
         "slack_integrations_off",
+        "slack_logos",
         "slack_members",
         "slack_workspaces"
       ],

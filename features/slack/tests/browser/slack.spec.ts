@@ -5,6 +5,7 @@ import { test, expect, login, openDsp } from '../../../../core/shell/tests/suppo
 
 test('an owner adds Slack workspaces from New, each on a card under its name, using what Slack sent back once', async ({
   page,
+  dispatch,
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
@@ -28,6 +29,18 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   const named = workspaces.filter({ has: page.getByRole('heading', { name: 'Dispatch Ops' }) });
   await expect(named).toContainText('Operations');
   await expect(named).toContainText('Connected');
+  // Its logo, which Dispatch keeps a copy of once it's connected, shows as its settings open.
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  await expect
+    .poll(async () => {
+      const { workspaces } = await owner.read('/api/dsp/slack/account');
+      return (workspaces as { logo: string | null }[]).some((workspace) => workspace.logo);
+    })
+    .toBe(true);
   await expect(page).toHaveURL(/tab=connections/);
   expect(page.url()).not.toContain('slackCode');
 
@@ -35,7 +48,9 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   // its name renames it.
   await named.getByRole('link', { name: 'Settings' }).click();
   await expect(page).toHaveURL(/tab=slack&workspace=/);
-  await expect(page.getByRole('heading', { level: 2, name: 'Dispatch Ops' })).toBeVisible();
+  const hero = page.getByRole('heading', { level: 2, name: 'Dispatch Ops' });
+  await expect(hero).toBeVisible();
+  await expect(page.locator('header', { has: hero }).locator('img')).toBeVisible();
   await page.getByRole('button', { name: 'Join photos' }).click();
   await expect(page.getByRole('list', { name: 'Joined', exact: true })).toContainText('photos');
   await page.getByRole('button', { name: 'Rename' }).click();
@@ -49,9 +64,8 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
   await add();
   await expect(workspaces.getByRole('heading', { name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Slack', exact: true }).click();
-  await page
-    .getByRole('combobox', { name: 'Workspace', exact: true })
-    .selectOption({ label: 'Drivers' });
+  await page.getByLabel(/^Workspace: /).click();
+  await page.getByRole('button', { name: 'Drivers', exact: true }).click();
   await expect(page.getByRole('heading', { level: 2, name: 'Drivers' })).toBeVisible();
   await settings.getByRole('link', { name: 'Connections', exact: true }).click();
   const renamed = workspaces.filter({ has: page.getByRole('heading', { name: 'Dispatch Crew' }) });

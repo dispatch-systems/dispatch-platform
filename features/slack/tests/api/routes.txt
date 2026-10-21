@@ -8,6 +8,7 @@ GET /api/dsp/slack/workspaces/{team}/canvases/folders Dsp("slack.manage") Async
 GET /api/dsp/slack/workspaces/{team}/channels Dsp("slack.manage") Async
 GET /api/dsp/slack/workspaces/{team}/imports Dsp("slack.manage") Async
 GET /api/dsp/slack/workspaces/{team}/imports/folders Dsp("slack.manage") Async
+GET /api/dsp/slack/workspaces/{team}/logo Dsp("connections.manage|slack.manage") Read
 GET /api/slack/install Public Async
 GET /api/slack/return Public Async
 POST /api/dsp/slack/connect Dsp("connections.manage") Write

@@ -1,29 +1,37 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { Clock, Hash, Mail, MapPin, Phone, Route, Truck, X, type LucideIcon } from 'lucide-react';
-import type { Correspondent } from '../../api/index.js';
+import type { CommunicationsWorkspace, Correspondent } from '../../api/index.js';
 import { useProfile } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { clock } from '../format.js';
 import { Face } from './Face.js';
 import { roles } from './parts.js';
+import { WorkspaceMark } from './WorkspaceMark.js';
 
 // The profile beside a conversation: the member it's with, their route today and how to reach
-// them, over the conversation until its X, Escape, or a press anywhere else closes it.
-// What nobody knows of them is left out, as is a section left with nothing.
+// them, over the conversation until its X, Escape, or a press anywhere else closes it; or, on a
+// wide page (`docked`), a column of its own beside it, covering nothing, until its X or Escape
+// does. What nobody knows of them is left out, as is a section left with nothing.
 
 export function Profile({
   id,
   conversation,
   person,
+  workspace,
   timeZone,
+  docked,
   close,
 }: {
   /** The panel's own ID, which its openers control. */
   id: string;
   conversation: string;
   person: Correspondent;
+  /** The workspace the conversation is in, for its mark. */
+  workspace?: CommunicationsWorkspace;
   timeZone: string;
+  /** Whether it's a column of its own beside the conversation. */
+  docked: boolean;
   /** Closes it: `refocus`, focus goes back to what opened it. */
   close: (refocus: boolean) => void;
 }) {
@@ -34,6 +42,7 @@ export function Profile({
   // Focus moves into it as it opens.
   useEffect(() => closer.current?.focus(), []);
   useEffect(() => {
+    if (docked) return;
     // A press on what opens it is that control's own: it closes it.
     const pressed = ({ target }: PointerEvent) => {
       const opener = target instanceof Element && target.closest('[data-opens-profile]');
@@ -41,7 +50,7 @@ export function Profile({
     };
     document.addEventListener('pointerdown', pressed);
     return () => document.removeEventListener('pointerdown', pressed);
-  }, [close]);
+  }, [docked, close]);
   const today = profile?.today;
   return (
     <aside
@@ -63,7 +72,7 @@ export function Profile({
         <X size={16} />
       </button>
       <div className="me">
-        <Face {...person} size={72} />
+        <Face {...person} size="profile" />
         <div>
           <h2 id={title}>{person.name}</h2>
           {person.role && <small>{roles[person.role]}</small>}
@@ -96,7 +105,18 @@ export function Profile({
           facts={[
             [Phone, 'Phone', profile.phone === null ? null : phoneText(profile.phone)],
             [Mail, 'Email', profile.email],
-            [Hash, 'Slack', profile.slack],
+            [
+              Hash,
+              'Slack',
+              profile.slack === null ? null : (
+                <span className="profile-workspace">
+                  {workspace && (
+                    <WorkspaceMark workspace={workspace} className="workspace-mark small" />
+                  )}
+                  {profile.slack}
+                </span>
+              ),
+            ],
           ]}
         />
       )}

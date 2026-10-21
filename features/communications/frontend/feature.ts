@@ -34,7 +34,8 @@ export const feature: FrontendFeature = {
       feature: 'communications',
       permission: ({ view }) => can(view, 'communications.use'),
       preload: load,
-      render: ({ view }) => createElement(CommunicationsPage, { view }),
+      render: ({ session, view }) =>
+        createElement(CommunicationsPage, { view, user: session.user.id }),
     },
   ],
   // Its switch's icon on the DSPs page.

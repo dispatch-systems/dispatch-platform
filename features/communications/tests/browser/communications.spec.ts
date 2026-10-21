@@ -1,5 +1,5 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
-import { event, fromSlack, install } from '../../../slack/tests/support/slack.js';
+import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
 
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
 // mode's Slack sends the browser straight back from installing, to the first of its workspaces
@@ -161,4 +161,87 @@ test('Slack needing an update covers Communications alone, with no way to close 
   await expect(page.getByText('Slack connected')).toBeVisible();
   await expect(page).toHaveURL(/\/communications$/);
   await expect(update).toHaveCount(0);
+});
+
+test('with two workspaces, each by its logo or initials, the lists show the one chosen, still chosen later, and Contacts opens a conversation', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE1')).status).toBe(200);
+  expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+  // Jordan Ellis writes in Operations, Cameron Hayes in Drivers.
+  const write = (team: string, user: string, text: string) =>
+    fromSlack(
+      dispatch,
+      '/slack/events',
+      event(team, {
+        type: 'message',
+        channel_type: 'im',
+        channel: `D${user.slice(1)}`,
+        user,
+        text,
+        ts: (Date.now() / 1000).toFixed(6),
+      }),
+    );
+  expect((await write('T0FIXTURE1', 'U0FIXJORDAN', 'Running late')).status).toBe(200);
+  expect((await write('T0FIXTURE2', 'U0FIXCAM', 'Can I swap Saturday?')).status).toBe(200);
+  // Operations' logo, which Dispatch keeps a copy of once it's connected.
+  await expect
+    .poll(async () => {
+      const { workspaces } = await owner.read('/api/dsp/communications');
+      return (workspaces as { teamId: string; logo: string | null }[]).some(
+        (workspace) => workspace.teamId === 'T0FIXTURE1' && workspace.logo,
+      );
+    })
+    .toBe(true);
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Communications' }).click();
+  const list = page.getByRole('region', { name: 'Conversations' });
+  const jordan = list.getByRole('listitem').filter({ hasText: 'Jordan Ellis' });
+  const cameron = list.getByRole('listitem').filter({ hasText: 'Cameron Hayes' });
+  await expect(jordan).toBeVisible();
+  await expect(cameron).toBeVisible();
+  // Each workspace by its logo, or the first letters of its name without one.
+  await list.getByLabel('Workspace: All workspaces').click();
+  await expect(list.getByRole('button', { name: /^Operations/ }).locator('img')).toBeVisible();
+  await expect(list.getByRole('button', { name: /^Drivers/ })).toContainText('DR');
+  await expect(list.getByRole('button', { name: /^Drivers/ }).locator('img')).toHaveCount(0);
+  // Drivers alone, which stays chosen when the page opens again.
+  await list.getByRole('button', { name: /^Drivers/ }).click();
+  await expect(jordan).toHaveCount(0);
+  await expect(cameron).toBeVisible();
+  await page.reload();
+  await expect(list.getByLabel('Workspace: Drivers')).toBeVisible();
+  await expect(jordan).toHaveCount(0);
+
+  // Contacts: Drivers' members, A to Z; one with no conversation yet starts one.
+  await list.getByRole('tab', { name: 'Contacts' }).click();
+  const contacts = page.getByRole('region', { name: 'Contacts' });
+  await expect(contacts.getByRole('listitem')).toHaveText([
+    /Cameron Hayes/,
+    /Casey Rivera/,
+    /Drew Sullivan/,
+    /Jordan Ellis/,
+  ]);
+  await contacts.getByRole('button', { name: /^Casey Rivera/ }).click();
+  const casey = page.getByRole('region', { name: 'Casey Rivera' });
+  await expect(casey.getByLabel('Message')).toBeEnabled();
+
+  // On a wide page, the profile is beside the conversation, and a press elsewhere leaves it.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await casey
+    .getByRole('button', { name: /^Casey Rivera/ })
+    .first()
+    .click();
+  const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
+  await expect(profile).toBeVisible();
+  await page.getByRole('heading', { name: 'Communications', level: 1 }).click();
+  await expect(profile).toBeVisible();
 });

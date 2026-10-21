@@ -35,7 +35,7 @@ async fn started(state: &Arc<State>, bot: &Bot, dm: &str) -> String {
 async fn listed(state: &Arc<State>, dsp: &str) -> usize {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     let listed = state
-        .read(move |db| conversations::overview(db, &shared, &dsp, "nobody"))
+        .read(move |db| conversations::overview(db, &shared, &dsp, "nobody", None))
         .await
         .unwrap();
     listed.conversations.len()

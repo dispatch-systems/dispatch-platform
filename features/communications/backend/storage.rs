@@ -207,11 +207,12 @@ pub trait CommunicationsStore {
     fn mark_communications_done(&self, dsp: &str, conversation: &str, by: &str) -> Result<bool>;
     /// The conversations waiting, the longest waiting first.
     fn waiting_communications(&self, dsp: &str) -> Result<Vec<Conversation>>;
-    /// The conversations answered or done, the latest first: those before `before`, its
-    /// latest message's time and its ID, `most` at most.
+    /// The conversations answered or done, of the workspace `team` or every one, the latest
+    /// first: those before `before`, its latest message's time and its ID, `most` at most.
     fn answered_communications(
         &self,
         dsp: &str,
+        team: Option<&str>,
         before: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<Conversation>>;
@@ -444,6 +445,7 @@ impl CommunicationsStore for Store {
     fn answered_communications(
         &self,
         dsp: &str,
+        team: Option<&str>,
         before: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<Conversation>> {
@@ -451,8 +453,9 @@ impl CommunicationsStore for Store {
         self.dsp(dsp)?.query_as(
             "SELECT * FROM communications_conversations WHERE state<>'waiting' \
              AND last_at IS NOT NULL AND (last_at<?1 OR (last_at=?1 AND id<?2)) \
+             AND (?4 IS NULL OR team_id=?4) \
              ORDER BY last_at DESC,id DESC LIMIT ?3",
-            params![at, id, most as i64],
+            params![at, id, most as i64, team],
         )
     }
     fn communications_with_messages(&self, dsp: &str) -> Result<Vec<Conversation>> {

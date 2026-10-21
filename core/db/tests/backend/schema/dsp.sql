@@ -34,6 +34,7 @@ CREATE TABLE slack_imports ( team_id TEXT NOT NULL, file_id TEXT NOT NULL, chann
 CREATE TABLE "slack_install_links" ( link_hash TEXT PRIMARY KEY, team_id TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL, label TEXT );
 CREATE TABLE slack_integrations ( team_id TEXT NOT NULL, integration TEXT NOT NULL, turned_on_by TEXT NOT NULL, turned_on_at TEXT NOT NULL, PRIMARY KEY (team_id, integration) );
 CREATE TABLE slack_integrations_off ( team_id TEXT NOT NULL, integration TEXT NOT NULL, turned_off_by TEXT NOT NULL, turned_off_at TEXT NOT NULL, PRIMARY KEY (team_id, integration) );
+CREATE TABLE slack_logos ( team_id TEXT PRIMARY KEY, source TEXT NOT NULL, version TEXT NOT NULL, picture BLOB NOT NULL );
 CREATE TABLE slack_members ( team_id TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, display_name TEXT, email TEXT, phone TEXT, active INTEGER NOT NULL CHECK (active IN (0, 1)), guest INTEGER NOT NULL CHECK (guest IN (0, 1)), PRIMARY KEY (team_id, user_id) );
 CREATE TABLE slack_workspaces ( team_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), scopes TEXT NOT NULL, bot_user_id TEXT NOT NULL, app_id TEXT NOT NULL, connected_by TEXT, connected_at TEXT NOT NULL, broken_at TEXT , label TEXT, added_at TEXT);
 CREATE TABLE storage_identity ( dsp_id TEXT PRIMARY KEY, provider TEXT NOT NULL, source TEXT NOT NULL );

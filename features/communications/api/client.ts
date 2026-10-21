@@ -34,9 +34,17 @@ const api = wordedApi({
 });
 
 export const communicationsUrl = '/api/dsp/communications';
-/** The DSP's conversations, those waiting first, and its workspaces. */
-export const getCommunications = (signal: AbortSignal) =>
-  api<Communications>(communicationsUrl, undefined, signal);
+/** `path` asking `asked`, what's left empty left out: as `team`, for one workspace's alone. */
+function address(path: string, asked: Record<string, string | undefined>) {
+  const query = new URLSearchParams(
+    Object.entries(asked).filter((each): each is [string, string] => Boolean(each[1])),
+  ).toString();
+  return query ? `${path}?${query}` : path;
+}
+/** The DSP's conversations, those waiting first, then the answered of every workspace or
+ * `team`'s, and its workspaces. */
+export const getCommunications = (signal: AbortSignal, team?: string) =>
+  api<Communications>(address(communicationsUrl, { team }), undefined, signal);
 /** How many conversations wait on an answer, read again every `poll` milliseconds. */
 export const waitingUrl = `${communicationsUrl}/waiting`;
 export const useCommunicationsWaiting = (poll: number) =>
@@ -48,13 +56,16 @@ export const getCommunicationsUpdates = (after: number, typing: number, signal: 
     undefined,
     signal,
   );
-/** Conversations found by a name typed, misspelt or not. */
-export const searchConversations = (typed: string) =>
-  api<Conversations>(`${communicationsUrl}/conversations?q=${encodeURIComponent(typed)}`);
-/** The answered conversations before the last one shown. */
-export const olderConversations = (last: Conversation) =>
+/** Conversations found by a name typed, misspelt or not, in every workspace or `team`'s. */
+export const searchConversations = (typed: string, team?: string) =>
+  api<Conversations>(address(`${communicationsUrl}/conversations`, { q: typed, team }));
+/** The answered conversations, of every workspace or `team`'s, before the last one shown. */
+export const olderConversations = (last: Conversation, team?: string) =>
   api<Conversations>(
-    `${communicationsUrl}/conversations?before=${last.lastAt ?? 0}:${encodeURIComponent(last.id)}`,
+    address(`${communicationsUrl}/conversations`, {
+      before: `${last.lastAt ?? 0}:${last.id}`,
+      team,
+    }),
   );
 /** A conversation and its latest messages, or those before `first`. */
 export const getConversation = (id: string, first?: Message) =>
@@ -67,9 +78,9 @@ export function useProfile(id: string) {
   const read = useCallback((signal: AbortSignal) => api<Profile>(url, undefined, signal), [url]);
   return useData<Profile>(url, 0, undefined, undefined, false, read);
 }
-/** The members of the DSP's workspaces, or those found by a name typed. */
-export const getContacts = (typed = '') =>
-  api<Contacts>(`${communicationsUrl}/contacts${typed ? `?q=${encodeURIComponent(typed)}` : ''}`);
+/** The members of the DSP's workspaces, or of `team`, or those found by a name typed. */
+export const getContacts = (typed = '', team?: string) =>
+  api<Contacts>(address(`${communicationsUrl}/contacts`, { q: typed, team }));
 /** Opens a direct message with a member, to message them first. */
 export const openConversation = (teamId: string, userId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations`, { teamId, userId });
@@ -92,3 +103,6 @@ export const addPhoto = (photo: File, progress?: (sent: number) => void, signal?
   );
 /** Where a photo or file attached to a message is read from. */
 export const fileUrl = (id: string) => `${communicationsUrl}/files/${id}`;
+/** The address of the workspace `team`'s logo, at its `version`, which it carries. */
+export const workspaceLogoUrl = (team: string, version: string) =>
+  `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;

@@ -6,7 +6,7 @@ use crate::backend::{
     app::{EVENTS_PATH, INSTALL_PATH, INTERACTIONS_PATH, RETURN_PATH},
     channels,
     connection::{self, Started},
-    inbound, integrations, link, pages,
+    inbound, integrations, link, logo, pages,
     storage::{self, SlackStore},
 };
 use crate::integrations as own;
@@ -16,7 +16,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dispatch_core::{
-    Result, State,
+    Error, Result, State,
     db::Store,
     ensure,
     foundation::validate as v,
@@ -39,6 +39,7 @@ const WORKSPACES: Dsp = Dsp("connections.manage|slack.manage");
 pub fn routes() -> Vec<Route> {
     let mut routes = vec![
         read("/api/dsp/slack/account", WORKSPACES, account),
+        read("/api/dsp/slack/workspaces/{team}/logo", WORKSPACES, logo),
         async_get(
             "/api/dsp/slack/workspaces/{team}/channels",
             SETTINGS,
@@ -155,6 +156,15 @@ fn label(body: &Value) -> Result<Option<String>> {
 fn account(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     Reply::of(&connection::account(db, c.dsp_id())?)
+}
+/// A workspace's logo, the copy Dispatch keeps of it. Its address carries its version, `v`, so
+/// the browser keeps it until the logo changes.
+fn logo(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &["v"])?;
+    let team = team(input.param("team"))?;
+    let (kind, picture) =
+        logo::picture(db, c.dsp_id(), &team)?.ok_or_else(|| Error::new("not_found", 404))?;
+    Ok(Reply::picture(kind, picture.into()))
 }
 /// Starts installing Dispatch in a workspace: a new one, with the name `label` in Dispatch, or
 /// with `team`, one of the DSP's to reconnect or update. Slack sends the browser back to the

@@ -84,8 +84,14 @@ export function preview(message: Message) {
     : first.name;
 }
 
-/** The identity tone a name's initials are drawn in. */
+/** The identity tone someone's initials are drawn in. */
 export const tone = (name: string) =>
   ['violet', 'sage', 'slate', 'steel'][
     [...name].reduce((hash, ch) => (hash * 31 + ch.codePointAt(0)!) >>> 0, 0) % 4
   ]!;
+
+/** The letter a name is listed under, A to Z: its first, without its accent; "#" for none. */
+export function letter(name: string) {
+  const first = [...name.trim().normalize('NFD')][0]?.toLocaleUpperCase('en-US') ?? '';
+  return /\p{L}/u.test(first) ? first : '#';
+}

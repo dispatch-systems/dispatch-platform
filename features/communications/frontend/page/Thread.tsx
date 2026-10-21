@@ -92,7 +92,12 @@ export function Thread({
               return (
                 <div key={key} className={`msg-group ${first.direction}`}>
                   {sender ? (
-                    <Face name={sender.name} code={sender.code} photo={sender.photo} size={30} />
+                    <Face
+                      name={sender.name}
+                      code={sender.code}
+                      photo={sender.photo}
+                      size="message"
+                    />
                   ) : (
                     // Left out of Tab's order: who it's with, above, opens it from the keyboard.
                     <button
@@ -101,7 +106,7 @@ export function Thread({
                       aria-label={person.name}
                       {...profile}
                     >
-                      <Face {...person} size={30} />
+                      <Face {...person} size="message" />
                     </button>
                   )}
                   <div className="stack">
@@ -118,7 +123,7 @@ export function Thread({
         ))}
         {writing.map((writer) => (
           <div key={writer.userId} className="msg-group out">
-            <Face name={writer.name} code={writer.code} photo={writer.photo} size={30} />
+            <Face name={writer.name} code={writer.code} photo={writer.photo} size="message" />
             <div className="stack">
               <div className="sender">{writer.name}</div>
               <div className="typing" role="status" aria-label={`${writer.firstName} is typing`}>

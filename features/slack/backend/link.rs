@@ -7,7 +7,7 @@
 use super::{
     app::INSTALL_PATH,
     connection::{self, Started},
-    members,
+    logo, members,
     slack::Slack,
     storage::{Install, Link, SlackStore, Starter},
 };
@@ -131,5 +131,7 @@ pub async fn finish(state: &Arc<State>, sign_in: String, code: String) -> Result
         return kept.map(|()| opened);
     }
     members::read_soon(state, &at, &opened.0);
+    // Its logo comes in its own time: no page shows the account here.
+    logo::read_soon(state, &at, &opened.0);
     kept.map(|()| opened)
 }

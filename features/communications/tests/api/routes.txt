@@ -9,6 +9,7 @@ GET /api/dsp/communications/conversations/{id}/profile Dsp("communications.use")
 GET /api/dsp/communications/files/{id} Dsp("communications.use") Async
 GET /api/dsp/communications/updates Dsp("communications.use") Async
 GET /api/dsp/communications/waiting Dsp("communications.use") Read
+GET /api/dsp/communications/workspaces/{team}/logo Dsp("communications.use") Read
 GET /communications/initials/1/{name} Public Async
 POST /api/dsp/communications/conversations Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/done Dsp("communications.use") Write
