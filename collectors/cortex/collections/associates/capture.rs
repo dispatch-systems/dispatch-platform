@@ -1,6 +1,6 @@
 //! What an associates collection brings: the roster of the DSP's company as Amazon lists
-//! it, each row kept as Amazon sent it beside the fields read from it, and the photos the
-//! DSP lacked. Every field is untrusted input, bounded here.
+//! it, those it offboarded among them, each row kept as Amazon sent it beside the fields read
+//! from it, and the photos the DSP lacked. Every field is untrusted input, bounded here.
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, ensure, foundation::crypto::sha, foundation::validate::token};
@@ -9,8 +9,9 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 pub const JOB_KIND: &str = "cortex.associates.collect";
-/// Far more than one company employs: a longer roster is not one DSP's.
-pub const MAX_ASSOCIATES: usize = 5_000;
+/// Far more than one company has ever employed, those it offboarded among them: a longer
+/// roster is not one DSP's.
+pub const MAX_ASSOCIATES: usize = 10_000;
 /// The largest photo kept. Amazon's run to 3.5 MB.
 pub const MAX_PHOTO_BYTES: usize = 12 * 1024 * 1024;
 /// The largest row kept as Amazon sent it.
@@ -61,7 +62,7 @@ pub struct Associate {
     pub email: Option<String>,
     pub personal_phone: Option<String>,
     pub work_phone: Option<String>,
-    /// `ACTIVE` or `INACTIVE`, as Amazon writes it.
+    /// `ACTIVE`, `INACTIVE` or `OFFBOARDED`, as Amazon writes it.
     pub status: String,
     /// `Driver`, `Helper`: what they may do.
     pub roles: Vec<String>,

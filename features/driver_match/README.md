@@ -53,8 +53,11 @@ what was decided.
   short for others, is `backend/names.rs`: no other owner matches names.
 - **Names:** a person is shown by the name their first source writes, in the sources' order,
   so a payroll's legal name comes before Amazon's.
-- **Roles:** Amazon's roster says who drives or only helps. Someone no roster lists and
-  nothing has seen for 21 days before the newest data has left. A list of people the DSP can
+- **Roles:** Amazon's roster says who drives or only helps. Someone Amazon offboarded is
+  Offboarded at once, however lately anything saw them and whatever a payroll slow to let them
+  go says, until another of their Amazon IDs is on its roster again, as a rehire's; the page
+  shows them only under Offboarded. Someone no roster lists and nothing has seen for 21 days
+  before the newest data has left: Former. A list of people the DSP can
   reach, as Slack's members, says nothing of who still works for it: someone only such lists
   know works in the office while one lists them, and has left once none does. People no
   source shows driving, outside the departments a source's settings count as drivers, work in
@@ -62,9 +65,9 @@ what was decided.
 - **Titles:** Owner, OPs Manager, Fleet Manager, Dispatch, HR Manager or Manager (core's
   `PersonTitle`), given on a person's sheet, for what no source says: Amazon's roster lists
   office staff with a DA account as drivers, and a dispatcher covers a route now and then.
-  Someone with a title works in the office whatever their sources show, and is shown by it,
-  until it's taken away. Someone who has left is still former, their title kept for when they
-  come back. A merge carries the title of the one merged to whoever keeps the IDs, unless they
+  Someone with a title works in the office whatever their sources show, offboarded by Amazon
+  too, as a dispatcher whose DA account went, and is shown by it, until it's taken away.
+  Someone who has left is still former, their title kept for when they come back. A merge carries the title of the one merged to whoever keeps the IDs, unless they
   have one; an ID split off starts without one.
 - **Questions:** two people no source knows both of, whose names tie them, or any two sharing
   a contact only they have, with how many days they worked together; each reason says whether
@@ -72,7 +75,7 @@ what was decided.
   A list of people the DSP can reach may list one person twice, as an account in each of two
   workspaces under different addresses, so its knowing both keeps no pair apart. The one
   holding fewer IDs joins the other, whose code both keep. Then the IDs a name written another
-  way joined to someone. Nobody who has left is asked about.
+  way joined to someone. Nobody who has left, offboarded or not, is asked about.
 - **Photos:** a person's photo is the first a kind of data holds under one of their IDs, their
   IDs in the sources' order and each ID's kinds in the order their data is read
   (`backend/photos.rs`). The page, a person's photo and the directory answer by that one rule,

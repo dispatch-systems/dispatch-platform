@@ -24,7 +24,11 @@ export const roles: Record<PersonRole, { label: string; filter: string; tone: st
   helper: { label: 'Helper', filter: 'Helpers', tone: 'steel' },
   office: { label: 'Management', filter: 'Management', tone: 'violet' },
   former: { label: 'Former', filter: 'Former', tone: 'neutral' },
+  offboarded: { label: 'Offboarded', filter: 'Offboarded', tone: 'warning' },
 };
+/** Whether someone has left, offboarded or not: only their own filter shows them. */
+export const left = (person: Pick<Person, 'role'>) =>
+  person.role === 'former' || person.role === 'offboarded';
 /** How a title is named: "OPs Manager". */
 export const titleLabel = (title: PersonTitle) =>
   personTitles.find((t) => t.id === title)?.label ?? title;
@@ -46,11 +50,11 @@ export const knows = (person: Person, source: PeopleSource) =>
   person.ids.some((id) => id.source === source);
 /** Drivers and helpers belong in every source; anyone else only where they are. */
 export const working = (person: Person) => person.role === 'driver' || person.role === 'helper';
-/** Whether a filter shows someone: someone who has left shows only under Former. */
+/** Whether a filter shows someone: someone who has left shows only under Former or Offboarded. */
 export function shows(filter: PeopleFilter, person: Person, sources: readonly PeopleSource[]) {
   switch (filter) {
     case 'all':
-      return person.role !== 'former';
+      return !left(person);
     case 'missing':
       return working(person) && sources.some((source) => !knows(person, source));
     default:

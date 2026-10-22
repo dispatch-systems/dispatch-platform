@@ -49,6 +49,7 @@ const roles: Record<PersonRole, string> = {
   helper: 'Helper',
   office: 'Management',
   former: 'Former',
+  offboarded: 'Offboarded',
 };
 /** What someone does, as it reads: their title, else their role; nothing when unknown. */
 export const roleText = ({ role, title }: Pick<Correspondent, 'role' | 'title'>) =>

@@ -25,6 +25,7 @@ const roles: Record<PersonRole, string> = {
   helper: 'Helpers',
   office: 'Office',
   former: 'Former',
+  offboarded: 'Offboarded',
 };
 
 /** The group's name, as its card and its chip say it: a wave by when it starts, in `timeZone`. */

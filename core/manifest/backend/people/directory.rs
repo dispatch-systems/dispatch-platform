@@ -22,19 +22,20 @@ text_enum! {
     #[cfg_attr(feature = "ts", ts(export_to = "core/manifest/api/generated/"))]
     /// What a person does for the DSP: a driver or a helper, as their sources' roles say or
     /// their records show; management, outside the departments the DSP counts as drivers or
-    /// given a title; or someone who has left, whom no source lists and nothing has seen
-    /// lately.
+    /// given a title; someone who has left, whom no source lists and nothing has seen lately;
+    /// or someone a source says the DSP offboarded.
     pub enum PersonRole {
         Driver => "driver",
         Helper => "helper",
         Office => "office",
         Former => "former",
+        Offboarded => "offboarded",
     }
 }
 impl PersonRole {
-    /// Whether they have left.
+    /// Whether they have left, offboarded or not.
     pub fn left(self) -> bool {
-        self == Self::Former
+        matches!(self, Self::Former | Self::Offboarded)
     }
 }
 

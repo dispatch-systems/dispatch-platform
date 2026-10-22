@@ -516,7 +516,7 @@ fn the_first_source_and_kind_in_order_name_a_person() {
 #[test]
 fn the_roster_says_who_drives_who_helps_and_who_has_left() {
     dispatch_backend::install();
-    let (_root, db, id, _) = ready();
+    let (_root, db, id, context) = ready();
     roster(
         &db,
         &id,
@@ -524,6 +524,10 @@ fn the_roster_says_who_drives_who_helps_and_who_has_left() {
             ("TCASEY", "Casey Rivera", "ACTIVE", "Helper"),
             ("TDANA", "Dana Whitfield", "ACTIVE", "Driver, Helper"),
             ("TPAT", "Pat Quinn", "INACTIVE", "Driver"),
+            ("TDREW", "Drew Sullivan", "OFFBOARDED", "Driver"),
+            ("TDMITRI", "Dmitri Volkov", "OFFBOARDED", "Driver"),
+            ("TROBIN", "Robin Chen", "ACTIVE", "Driver"),
+            ("TROBIN0", "Robin Chen", "OFFBOARDED", "Driver"),
         ],
     );
     pass(&db, &id).unwrap();
@@ -538,11 +542,30 @@ fn the_roster_says_who_drives_who_helps_and_who_has_left() {
     // Inactive, unseen and on no other roster, Pat has left.
     let pat = code(&result, AMAZON, "TPAT");
     assert_eq!(person(&result, &pat).role, PersonRole::Former);
+    // Offboarded, Drew has left though payroll lists them still, and Dmitri though a meal break
+    // saw them lately; neither is asked about.
+    let drew = code(&result, PAYCOM, "E010");
+    assert_eq!(drew, code(&result, AMAZON, "TDREW"));
+    let dmitri = code(&result, AMAZON, "TDMITRI");
+    for gone in [&drew, &dmitri] {
+        assert_eq!(person(&result, gone).role, PersonRole::Offboarded);
+        assert!(!asked(&result, gone));
+    }
+    // Robin, offboarded and hired again under a new ID, is back once someone says they're one.
+    let (robin, before) = (
+        code(&result, AMAZON, "TROBIN"),
+        code(&result, AMAZON, "TROBIN0"),
+    );
+    assert_eq!(person(&result, &before).role, PersonRole::Offboarded);
+    db.merge_people(&context, &before, &robin).unwrap();
+    let merged = db.driver_match(&id).unwrap();
+    let robin = code(&merged, AMAZON, "TROBIN0");
+    assert_eq!(person(&merged, &robin).role, PersonRole::Driver);
 }
 
 /// A title says what no source can: someone the roster lists as a driver is management once
-/// given one, to every feature, until it's taken away; someone who has left is still former;
-/// and a merge carries it to whoever keeps the IDs.
+/// given one, to every feature, until it's taken away, offboarded too; someone who has left is
+/// still former; and a merge carries it to whoever keeps the IDs.
 #[test]
 fn a_title_makes_someone_management_whatever_their_sources_show() {
     dispatch_backend::install();
@@ -553,13 +576,15 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
         &[
             ("TDANA", "Dana Whitfield", "ACTIVE", "Driver, Helper"),
             ("TPAT", "Pat Quinn", "INACTIVE", "Driver"),
+            ("TDMITRI", "Dmitri Volkov", "OFFBOARDED", "Driver"),
         ],
     );
     pass(&db, &id).unwrap();
     let before = db.driver_match(&id).unwrap();
-    let (dana, pat) = (
+    let (dana, pat, dmitri) = (
         code(&before, AMAZON, "TDANA"),
         code(&before, AMAZON, "TPAT"),
+        code(&before, AMAZON, "TDMITRI"),
     );
     let (antonio, tony) = (
         code(&before, PAYCOM, "E002"),
@@ -568,6 +593,9 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
     db.set_title(&context, &dana, Some(PersonTitle::Dispatch))
         .unwrap();
     db.set_title(&context, &pat, Some(PersonTitle::Owner))
+        .unwrap();
+    // A dispatcher whose DA account Amazon offboarded still works in the office.
+    db.set_title(&context, &dmitri, Some(PersonTitle::Dispatch))
         .unwrap();
     let titled = db.driver_match(&id).unwrap();
     let role = |result: &DriverMatch, code: &str| {
@@ -579,6 +607,10 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
         (PersonRole::Office, Some(PersonTitle::Dispatch))
     );
     assert_eq!(role(&titled, &pat), (PersonRole::Former, None));
+    assert_eq!(
+        role(&titled, &dmitri),
+        (PersonRole::Office, Some(PersonTitle::Dispatch))
+    );
     let everyone = people::read(&db, &id).unwrap();
     let theirs = everyone.person(&dana).unwrap();
     assert_eq!(

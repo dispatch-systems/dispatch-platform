@@ -65,7 +65,7 @@
               "items": {"type": "string"}
             },
             "role": {
-              "description": "driver, helper, office for management, or former for someone who has left.",
+              "description": "driver, helper, office for management, former for someone who has left, or offboarded for someone Amazon offboarded.",
               "type": "string"
             },
             "title": {
@@ -673,10 +673,13 @@
           "properties": {
             "id": {"type": "string"},
             "listed": {
-              "description": "Whether the newest roster lists them; one it stopped listing keeps what the last to list them said.",
+              "description": "Whether the newest roster lists them, offboarded ones included; one it stopped listing keeps what the last to list them said.",
               "type": "boolean"
             },
-            "status": {"description": "ACTIVE or INACTIVE, as Amazon writes it.", "type": "string"},
+            "status": {
+              "description": "ACTIVE, INACTIVE or OFFBOARDED, as Amazon writes it.",
+              "type": "string"
+            },
             "roles": {
               "description": "What they may do, such as Driver or Helper.",
               "type": "array",

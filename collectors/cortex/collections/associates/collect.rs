@@ -1,7 +1,7 @@
 //! Reads the roster over plain HTTP with the browser's session: the company the DSP's code
-//! names, then every associate in one request, then the photos the DSP lacks, each from where
-//! the application redirects its address. Nothing after the roster needs a page, so the
-//! browser closes as soon as it is in.
+//! names, then every associate in one request and everyone offboarded in another, then the
+//! photos the DSP lacks, each from where the application redirects its address. Nothing after
+//! the roster needs a page, so the browser closes as soon as it is in.
 use super::capture::{
     Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, Request,
 };
@@ -70,9 +70,42 @@ pub(crate) fn company(reply: &Value, code: &str) -> Result<(String, String)> {
     }
 }
 
-/// Every associate the roster lists, from its table's rows, each a JSON object or a JSON
-/// string holding one. The same associate twice keeps the first.
+/// Every associate the roster lists, from its table's rows: never no one.
 pub(crate) fn roster(reply: &Value) -> Result<Vec<Associate>> {
+    let associates = rows(reply)?;
+    // A roster naming no one would say everyone left: it is a page that failed instead.
+    ensure(
+        !associates.is_empty(),
+        cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
+        502,
+    )?;
+    Ok(associates)
+}
+/// Everyone the roster lists, then whoever else Amazon offboarded: someone on both lists, as a
+/// rehire, is as the roster lists them.
+pub(crate) fn everyone(
+    roster: Vec<Associate>,
+    offboarded: Vec<Associate>,
+) -> Result<Vec<Associate>> {
+    let listed: BTreeSet<String> = roster.iter().map(|a| a.transporter_id.clone()).collect();
+    let everyone: Vec<Associate> = roster
+        .into_iter()
+        .chain(
+            offboarded
+                .into_iter()
+                .filter(|a| !listed.contains(&a.transporter_id)),
+        )
+        .collect();
+    ensure(
+        everyone.len() <= MAX_ASSOCIATES,
+        "associates_source_too_large",
+        502,
+    )?;
+    Ok(everyone)
+}
+/// The associates a reply's table lists, each row a JSON object or a JSON string holding one.
+/// The same associate twice keeps the first.
+pub(crate) fn rows(reply: &Value) -> Result<Vec<Associate>> {
     let changed = || Error::new(cortex::codes::CORTEX_SOURCE_CHANGED.as_str(), 502);
     let rows = reply["tableData"]["dsp-associates-table-data"]["rows"]
         .as_array()
@@ -95,33 +128,28 @@ pub(crate) fn roster(reply: &Value) -> Result<Vec<Associate>> {
             associates.push(associate);
         }
     }
-    // A roster naming no one would say everyone left: it is a page that failed instead.
-    ensure(
-        !associates.is_empty(),
-        cortex::codes::CORTEX_SOURCE_CHANGED.as_str(),
-        502,
-    )?;
     Ok(associates)
 }
 
-/// The associates page for `company`, which the application's own requests come from.
-fn page(origin: &str, company: &str) -> String {
+/// A page of the DA Console for `company`, by its page and tab, which the application's own
+/// requests come from.
+fn page(origin: &str, company: &str, page: &str, tab: &str) -> String {
     let mut query = url::form_urlencoded::Serializer::new(String::new());
     query
-        .append_pair("pageId", "da_console_associates")
+        .append_pair("pageId", page)
         .append_pair("station", "ALL")
         .append_pair("companyId", company)
-        .append_pair("tabId", "da-console-associates-tab");
+        .append_pair("tabId", tab);
     format!("{origin}/workforce?{}", query.finish())
 }
-/// The roster of `company` at every station, active and inactive alike: without the
-/// statuses, Amazon answers with the active alone.
-fn roster_address(origin: &str, company: &str) -> String {
+/// The associates of `company` at every station with any of `statuses`: without them, Amazon
+/// answers with the active alone.
+fn roster_address(origin: &str, company: &str, statuses: &str) -> String {
     let mut query = url::form_urlencoded::Serializer::new(String::new());
     query
         .append_pair("companyId", company)
         .append_pair("station", "ALL")
-        .append_pair("operationalStatuses", "ACTIVE,INACTIVE");
+        .append_pair("operationalStatuses", statuses);
     format!("{origin}{ROSTER}?{}", query.finish())
 }
 
@@ -197,13 +225,36 @@ impl Driver {
             .map_err(refusal)?;
         let (company_id, company_code) = company(&companies, &request.dsp_abbreviation)?;
         run.progress(30, "Reading the roster".into()).await?;
-        let referer = page(&self.origin, &company_id);
-        let reply = http
-            .json(&roster_address(&self.origin, &company_id), &referer, LIMIT)
+        let referer = page(
+            &self.origin,
+            &company_id,
+            "da_console_associates",
+            "da-console-associates-tab",
+        );
+        let listed = http
+            .json(
+                &roster_address(&self.origin, &company_id, "ACTIVE,INACTIVE"),
+                &referer,
+                LIMIT,
+            )
+            .await
+            .map_err(refusal)?;
+        run.progress(40, "Reading who was offboarded".into()).await?;
+        let offboarded = http
+            .json(
+                &roster_address(&self.origin, &company_id, "OFFBOARDED"),
+                &page(
+                    &self.origin,
+                    &company_id,
+                    "da_console_offboarded",
+                    "da-console-offboarded-tab",
+                ),
+                LIMIT,
+            )
             .await
             .map_err(refusal)?;
         self.browser.close().await;
-        let associates = roster(&reply)?;
+        let associates = everyone(roster(&listed)?, rows(&offboarded)?)?;
         let kept = kept_photos(run, &company_id).await?;
         // Active associates' photos first, then the rest; each address once.
         let mut wanted: Vec<&str> = Vec::new();

@@ -3,7 +3,7 @@
 /**
  * What a person does for the DSP: a driver or a helper, as their sources' roles say or
  * their records show; management, outside the departments the DSP counts as drivers or
- * given a title; or someone who has left, whom no source lists and nothing has seen
- * lately.
+ * given a title; someone who has left, whom no source lists and nothing has seen lately;
+ * or someone a source says the DSP offboarded.
  */
-export type PersonRole = "driver" | "helper" | "office" | "former";
+export type PersonRole = "driver" | "helper" | "office" | "former" | "offboarded";

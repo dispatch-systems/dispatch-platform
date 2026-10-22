@@ -128,7 +128,13 @@ impl Section {
             }
             Section::Roster => {
                 let r = found.roster.as_ref()?;
-                let words = match r.associates.iter().find(|associate| associate.listed) {
+                // A rehire's new ID says more than the one Amazon offboarded.
+                let listed = |status: Option<&str>| {
+                    r.associates.iter().find(|associate| {
+                        associate.listed && status.is_none_or(|status| associate.status == status)
+                    })
+                };
+                let words = match listed(Some("ACTIVE")).or_else(|| listed(None)) {
                     Some(associate) => format!("on Amazon's roster as {}", associate.status),
                     None if r.collected.is_none() => "Amazon's roster not collected yet".into(),
                     None if r.associates.is_empty() => "not on Amazon's roster".into(),
@@ -206,7 +212,7 @@ pub struct Identity {
     pub name: String,
     /// Every way their sources write their name, the one shown first.
     pub names: Vec<String>,
-    /// driver, helper, office for management, or former for someone who has left.
+    /// driver, helper, office for management, former for someone who has left, or offboarded for someone Amazon offboarded.
     pub role: String,
     /// What they do in management, when someone gave them a title: owner, ops_manager, fleet_manager, dispatch, hr_manager or manager.
     pub title: Option<String>,
@@ -555,9 +561,9 @@ pub struct Roster {
 #[derive(Serialize, JsonSchema)]
 pub struct Associate {
     pub id: String,
-    /// Whether the newest roster lists them; one it stopped listing keeps what the last to list them said.
+    /// Whether the newest roster lists them, offboarded ones included; one it stopped listing keeps what the last to list them said.
     pub listed: bool,
-    /// ACTIVE or INACTIVE, as Amazon writes it.
+    /// ACTIVE, INACTIVE or OFFBOARDED, as Amazon writes it.
     pub status: String,
     /// What they may do, such as Driver or Helper.
     pub roles: Vec<String>,
@@ -1443,6 +1449,7 @@ fn summary(found: &Found, wanted: &[Section]) -> String {
     let title = person.title.as_deref().and_then(PersonTitle::parse);
     let at = match (person.role.as_str(), title) {
         ("former", _) => format!("who has left {}", found.dsp),
+        ("offboarded", _) => format!("offboarded from {}", found.dsp),
         (_, Some(title)) => format!("{} at {}", title.label(), found.dsp),
         ("office", None) => format!("in management at {}", found.dsp),
         (role, None) => format!("a {role} at {}", found.dsp),

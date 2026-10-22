@@ -22,10 +22,10 @@ pub trait AmazonRoster: Send + Sync {
 pub struct Associate {
     /// Their ID in `source`.
     pub id: String,
-    /// Whether the newest roster lists them. One it stopped listing keeps what the last roster
-    /// to list them said, so their status may be out of date.
+    /// Whether the newest roster lists them, offboarded ones included. One it stopped listing
+    /// keeps what the last roster to list them said, so their status may be out of date.
     pub listed: bool,
-    /// Their status, as Amazon writes it: `ACTIVE` or `INACTIVE`.
+    /// Their status, as Amazon writes it: `ACTIVE`, `INACTIVE` or `OFFBOARDED`.
     pub status: String,
     /// What they may do, as Amazon writes it: `Driver`, `Helper`.
     pub roles: Vec<String>,

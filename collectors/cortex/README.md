@@ -1,8 +1,8 @@
 # Cortex
 
 Amazon Logistics, read for one DSP through the sandboxed browser and plain HTTP: meal breaks,
-routes, posted weekly scorecards, Daily Quality and Day Safety, DVIC workbooks, the roster and
-the fleet's vans. A job's browser starts from the session its profile kept, checked by asking
+routes, posted weekly scorecards, Daily Quality and Day Safety, DVIC workbooks, the roster with
+everyone Amazon offboarded, and the fleet's vans. A job's browser starts from the session its profile kept, checked by asking
 for the console page and the account's companies over HTTP, and opens no page until a collection
 needs one; a session Amazon no longer accepts, or sends to a sign-in or a verification, or none
 at all, signs in on the page as the owner's own sign-ins always do. Discovery finds the
