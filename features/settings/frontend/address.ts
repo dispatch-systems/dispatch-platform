@@ -1,6 +1,11 @@
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { leaving, type Guards } from '../../../core/shell/frontend/runtime/leave.js';
-import { hashQuery, replaceHashQuery } from '../../../core/shell/frontend/runtime/navigation.js';
+import {
+  hashQuery,
+  parseHash,
+  replaceHashQuery,
+} from '../../../core/shell/frontend/runtime/navigation.js';
+import { settingsPage } from '../../../core/shell/frontend/runtime/slots.js';
 import { forgetDrafts } from './drafts.js';
 
 // Settings' address: the page open (`?tab=<page>`, its id, which never changes) and a section of
@@ -21,8 +26,19 @@ export function followAddress(follow: () => void) {
 export const pageIn = (hash: string) => new URLSearchParams(hash.split('?')[1]).get('tab');
 /** The page the address names, if it names one. */
 export const addressedPage = () => pageIn(location.hash);
-/** The page the address names, as it moves. */
-export const useAddressedPage = () => useSyncExternalStore(followAddress, addressedPage);
+/**
+ * The page the address names, as it moves within Settings. Once it moves to another page, the
+ * one it named last: the address moves first, and Settings' sidebar keeps its page open while
+ * the next page opens and the sidebar slides away.
+ */
+export function useAddressedPage() {
+  const named = useSyncExternalStore(followAddress, () =>
+    parseHash(location.hash).page === settingsPage() ? addressedPage() : undefined,
+  );
+  const [kept, keep] = useState(named ?? null);
+  if (named !== undefined && named !== kept) keep(named);
+  return named === undefined ? kept : named;
+}
 /** The section the address asks to point out, if it asks. */
 export const addressedSection = () => hashQuery().get('find') ?? undefined;
 /** Drops the section to point out from the address, so opening it again doesn't. */

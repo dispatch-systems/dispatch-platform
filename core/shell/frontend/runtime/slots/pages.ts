@@ -40,7 +40,10 @@ type Page<Context> = {
   badge?: { load: () => Promise<ComponentType<{ active: boolean }>> };
   /**
    * Its own sidebar, drawn in place of the app's name and pages while it, or a page under it
-   * (`parent`), is open, as Settings lists its pages there. Its code loads as the page's does.
+   * (`parent`), is open, as Settings lists its pages there; the shell slides each in as the
+   * other gives way. Sliding out, it keeps the props it had, and what it reads elsewhere should
+   * hold too, as Settings keeps the page the address named. It fills the sidebar above the
+   * account, scrolling its own parts, and its code loads as the page's does.
    */
   sidebar?: { load: () => Promise<ComponentType<SidebarProps>> };
   /** Whether the sidebar lists the page. */

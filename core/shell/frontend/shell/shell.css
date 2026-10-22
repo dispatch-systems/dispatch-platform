@@ -24,6 +24,20 @@
   position: fixed;
   inset: 0 auto 0 0;
 }
+/* What fills the sidebar above the account, the app's or a page's own: the two share its place
+   while one slides in for the other, and what slides beside it is clipped. */
+.sidebar-panels {
+  display: grid;
+  flex: 1;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  min-height: 0;
+  overflow-x: clip;
+}
+.sidebar-panel {
+  grid-area: 1 / 1;
+  flex-direction: column;
+  display: flex;
+}
 .sidebar-brand {
   padding: 27px 24px 26px;
 }
@@ -37,8 +51,10 @@
   flex-direction: column;
   flex: 1;
   gap: 7px;
+  min-height: 0;
   padding: 14px 12px;
   display: flex;
+  overflow-y: auto;
 }
 .nav-item {
   border-radius: var(--radius);
