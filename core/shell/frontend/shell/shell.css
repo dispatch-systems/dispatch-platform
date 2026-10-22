@@ -24,8 +24,8 @@
   position: fixed;
   inset: 0 auto 0 0;
 }
-/* What fills the sidebar above the account, the app's or a page's own: the two share its place
-   while one slides in for the other, and what slides beside it is clipped. */
+/* What fills the sidebar above the account, the app's or a sidebar of pages: the two share its
+   place while one slides in for the other, and what slides beside it is clipped. */
 .sidebar-panels {
   display: grid;
   flex: 1;

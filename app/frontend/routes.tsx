@@ -93,8 +93,10 @@ export function navigation(scope: Route['scope'], access: Access): NavItem[] {
           id: each.sidebar.id,
           label: each.sidebar.label,
           icon: each.sidebar.icon,
-          // The first of its pages, with what the sidebar draws of its own.
-          preload: () => prepareRoute(scope, each.pages[0]!.id, access),
+          // What it draws of its own, with the reads of its first page it draws from, as
+          // Settings'; the shell's list of its pages needs nothing.
+          preload: () =>
+            each.sidebar.draw ? prepareRoute(scope, each.pages[0]!.id, access) : Promise.resolve(),
           sidebar: each.sidebar,
           pages: each.pages.map(item),
         }

@@ -133,14 +133,15 @@ function NavList({
 
 type Drawing = NonNullable<Sidebar['draw']>;
 /**
- * What a sidebar of pages draws of its own, once its code is in, as it is when it opens; nothing
- * while it loads, and the app's sidebar if it fails to.
+ * What a sidebar of pages draws of its own, once its code is in, as it is when it opens: its
+ * head while it loads (`loading`), and the shell's list of its pages if it fails to (`fallback`).
  */
 function DrawnSidebar({
   drawing,
+  loading,
   fallback,
   ...props
-}: SidebarProps & { drawing: Drawing; fallback: ReactNode }) {
+}: SidebarProps & { drawing: Drawing; loading: ReactNode; fallback: ReactNode }) {
   const [loaded, setLoaded] = useState(() => ({
     of: drawing,
     Drawn: loadedSidebar(drawing),
@@ -160,7 +161,7 @@ function DrawnSidebar({
   }, [drawing, ours, loaded.Drawn]);
   const { Drawn } = loaded;
   if (ours && Drawn) return <Drawn {...props} />;
-  return ours && loaded.failed ? fallback : null;
+  return ours && loaded.failed ? fallback : loading;
 }
 
 export function Shell({
@@ -229,11 +230,11 @@ export function Shell({
   if (list.opened !== opened || list.under !== sidebar)
     setList({ opened, under: sidebar, shown: sidebar });
   // The latest the person asked to open, which one opened before it may no longer show, nor one
-  // asked for on a page another has opened in place of since.
+  // asked for on a page another has opened in place of since, nor the one shown already.
   const opening = useRef(0);
-  const drawnFor = useRef(opened);
+  const drawn = useRef({ opened, shown: list.shown });
   useLayoutEffect(() => {
-    drawnFor.current = opened;
+    drawn.current = { opened, shown: list.shown };
   });
   // Where the focus goes as the person opens a list or goes back: into the one shown, or to the
   // item of the app's that opened the one left.
@@ -241,11 +242,13 @@ export function Shell({
   const open = (to: Sidebar) => {
     const asked = ++opening.current;
     const show = () => {
-      if (asked !== opening.current || drawnFor.current !== opened) return;
+      const now = drawn.current;
+      if (asked !== opening.current || now.opened !== opened || now.shown === to) return;
       focusing.current = {};
-      setList((now) => ({ ...now, shown: to }));
+      setList((then) => ({ ...then, shown: to }));
     };
-    // What it draws of its own is in before it slides in, so it never slides in empty.
+    // What it draws of its own is in before it slides in, so it slides in whole; failing to
+    // load, the shell's list of its pages slides in instead.
     if (to.draw && !loadedSidebar(to.draw)) loadSidebar(to.draw).then(show, show);
     else show();
   };
@@ -259,10 +262,12 @@ export function Shell({
     focusing.current = undefined;
     const shown = drawer.current?.querySelector('.sidebar-panel:not([inert])');
     if (!to || !shown) return;
-    const target = to.from
-      ? shown.querySelector<HTMLElement>(`[data-opens="${CSS.escape(to.from.id)}"]`)
-      : shown.querySelector<HTMLElement>('a[href], button, input');
-    target?.focus({ preventScroll: true });
+    // The item that opened it may not be listed, as for a sidebar a link opened: the first then.
+    const opener =
+      to.from && shown.querySelector<HTMLElement>(`[data-opens="${CSS.escape(to.from.id)}"]`);
+    (opener || shown.querySelector<HTMLElement>('a[href], button, input'))?.focus({
+      preventScroll: true,
+    });
   }, [list.shown]);
   // The app's name and its sidebar.
   const pages = (
@@ -316,23 +321,13 @@ export function Shell({
         </button>
         <SidebarPanels
           shown={list.shown}
-          draw={(panel) =>
-            !panel ? (
-              pages
-            ) : panel.draw ? (
-              <DrawnSidebar
-                drawing={panel.draw}
-                fallback={pages}
-                session={session}
-                view={view}
-                dspId={dspId}
-                page={page}
-                back={back}
-                close={close}
-              />
-            ) : (
+          draw={(panel) => {
+            if (!panel) return pages;
+            const head = <SidebarHead title={panel.label} back={back} />;
+            // The shell's list of its pages, under its way back and its name.
+            const listed = (
               <>
-                <SidebarHead title={panel.label} back={back} />
+                {head}
                 <NavList
                   label={panel.label}
                   items={navigation.find((item) => item.sidebar === panel)?.pages ?? []}
@@ -341,8 +336,23 @@ export function Shell({
                   close={close}
                 />
               </>
-            )
-          }
+            );
+            return panel.draw ? (
+              <DrawnSidebar
+                drawing={panel.draw}
+                loading={head}
+                fallback={listed}
+                session={session}
+                view={view}
+                dspId={dspId}
+                page={page}
+                back={back}
+                close={close}
+              />
+            ) : (
+              listed
+            );
+          }}
         />
         <div className="sidebar-account">
           <Popover

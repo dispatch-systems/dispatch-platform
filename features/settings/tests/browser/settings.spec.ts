@@ -48,7 +48,7 @@ test("Settings and Back change the sidebar alone, and a page opened otherwise sh
   const back = page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true });
   const heading = page.getByRole('heading', { level: 1 });
   // Opened over another page, Settings' pages slide in and that page stays open, as it does
-  // once Back has the app's in again.
+  // once Back has the app's in again: a page other than the one the DSP opened on.
   const other = app.getByRole('link').nth(1);
   await other.click();
   await expect(other).toHaveAttribute('aria-current', 'page');

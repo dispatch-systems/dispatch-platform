@@ -367,7 +367,11 @@ function mergeImports(text: string, piece: string) {
         `import ${named.type ? 'type ' : ''}{ ${[...named.names, ...missing].join(', ')} } from '${wanted.from}';`,
       );
     } else if (!from.length || !wanted.names.length) {
-      const last = imports(text).at(-1);
+      // A value's import among the module's, before its types'.
+      const last =
+        imports(text)
+          .filter((each) => wanted.type || !each.type)
+          .at(-1) ?? imports(text).at(-1);
       const at = last ? text.indexOf(last.whole) + last.whole.length : 0;
       text = `${text.slice(0, at)}\n${wanted.whole}${text.slice(at)}`;
     }
@@ -405,14 +409,14 @@ export function mergeTypeScript(target: string, piece: string, pascal: string) {
       text = `${text.slice(0, at)}\n${block}${text.slice(at)}`;
     }
   }
-  // Its constants, before the manifest.
-  for (const [statement, name] of piece.matchAll(
-    /^const (\w+) =[\s\S]*?;\n(?=\n|const |export )/gm,
-  ))
-    if (!new RegExp(`^const ${name} =`, 'm').test(text)) {
-      const at = text.indexOf('\nexport const feature');
-      text = `${text.slice(0, at)}\n${statement.trimEnd()}\n${text.slice(at)}`;
-    }
+  // Its constants, together before the manifest.
+  const constants = [...piece.matchAll(/^const (\w+) =[\s\S]*?;\n(?=\n|const |export )/gm)]
+    .filter(([, name]) => !new RegExp(`^const ${name} =`, 'm').test(text))
+    .map(([statement]) => statement.trimEnd());
+  if (constants.length) {
+    const at = text.indexOf('\nexport const feature');
+    text = `${text.slice(0, at)}\n${constants.join('\n')}\n${text.slice(at)}`;
+  }
   // Its slots: entries join a list the feature fills already, and a new key goes where the piece
   // has it, before the first key after it there that the manifest has, or else last.
   const keys = entries(piece, manifest(piece)).entries;
@@ -607,6 +611,11 @@ export async function planAdd(root: string, argv: string[]) {
     );
   const label = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
   const { pascal, slug } = names(name);
+  // Its sidebar takes the feature's id, which a page of that id under another can't share.
+  if (had && !joins && had.id === slug)
+    throw new UsageError(
+      `${name}'s page ${slug} is under another sidebar of pages, and its own would take that id: add it by hand, with an id of its own`,
+    );
   // The piece as the feature's templates write it, for the feature as it is.
   const { plan: rendered } = await renderFeature(
     root,

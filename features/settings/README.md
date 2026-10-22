@@ -25,8 +25,9 @@ part. Mandatory: every DSP has it.
   field and option labels, a section's `keywords`, its `sources` (the collectors its data comes
   from) and values held as text. Every word typed begins a word there, in any case; it finds a
   page once, by the best of what matched (a page's name, a section's, a field's, an option's or
-  a keyword, a source, a value), and says what matched. "/" moves to it, the arrow keys through
-  what it found, Enter opens one and Escape clears it. Opening one names its section in the
+  a keyword, a source, a value), and says what matched. While Settings' sidebar shows, "/" moves
+  to it from anywhere but a field, the arrow keys through what it found, Enter opens one and
+  Escape clears it. Opening one names its section in the
   address (`&find=<section>`): the page scrolls to it and outlines it for a few seconds, and the
   address forgets it. A search starts afresh for another DSP or role.
 - **A declared section** is a card: its label, a control for each field by its kind, and Save,
