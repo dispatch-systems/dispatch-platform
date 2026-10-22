@@ -177,28 +177,6 @@ button.driver-more {
   margin: 16px auto 0;
 }
 
-/* List or Cards, across from the page's name, as Documents draws its own. */
-.driver-view {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.driver-view button {
-  width: 34px;
-  min-height: 32px;
-  padding: 0;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--muted-foreground);
-}
-.driver-view button[aria-pressed='true'] {
-  background: var(--selection);
-  color: var(--primary);
-}
-
 /* Everyone as a list, a row each. */
 .driver-list th[scope='row'] {
   height: auto;
@@ -234,13 +212,6 @@ button.driver-list-person:hover strong {
 }
 .driver-list-role {
   color: var(--muted-foreground);
-}
-.driver-list-ids .driver-source-id {
-  display: block;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .driver-list-missing {
   display: inline-flex;

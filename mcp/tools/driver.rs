@@ -135,6 +135,9 @@ impl Section {
                     })
                 };
                 let words = match listed(Some("ACTIVE")).or_else(|| listed(None)) {
+                    Some(associate) if associate.status == "OFFBOARDED" => {
+                        "offboarded from Amazon's roster".into()
+                    }
                     Some(associate) => format!("on Amazon's roster as {}", associate.status),
                     None if r.collected.is_none() => "Amazon's roster not collected yet".into(),
                     None if r.associates.is_empty() => "not on Amazon's roster".into(),

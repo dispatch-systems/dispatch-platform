@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useCollectionUpdates } from '../../../../core/collection/frontend/live-collection.js';
 import { localDate } from '../../../../core/shell/frontend/lib/day.js';
-import { DataState, Header } from '../../../../core/shell/frontend/ui/index.js';
+import { DataState, Header, ViewSwitch } from '../../../../core/shell/frontend/ui/index.js';
 import type { DriverMatch } from '../../api/index.js';
 import { useDriverMatch } from '../../api/client.js';
 import { PersonSheet } from '../person/PersonSheet.js';
@@ -9,7 +9,7 @@ import { CheckBanner } from './CheckBanner.js';
 import { CheckDialog } from './CheckDialog.js';
 import { checkList } from './checks.js';
 import { Everyone } from './Everyone.js';
-import { useView, ViewSwitch, type View } from './ViewSwitch.js';
+import { useView, VIEWS, type View } from './view.js';
 
 /** Driver Match's page: who to check, then everyone, as a list or by face. */
 export function DriverMatchPage({ timezone }: { timezone: string }) {
@@ -20,7 +20,7 @@ export function DriverMatchPage({ timezone }: { timezone: string }) {
   return (
     <div className="driver-match">
       <Header title="Driver Match">
-        <ViewSwitch view={view} onChange={setView} />
+        <ViewSwitch value={view} options={VIEWS} onChange={setView} />
       </Header>
       <DataState data={request.data} error={request.error}>
         {(data) => <People data={data} timezone={timezone} view={view} />}

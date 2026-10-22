@@ -58,13 +58,13 @@ what was decided.
   so a payroll's legal name comes before Amazon's.
 - **Roles:** Amazon's roster says who drives or only helps. Someone Amazon offboarded is
   Offboarded at once, however lately anything saw them and whatever a payroll slow to let them
-  go says, until another of their Amazon IDs is on its roster again, as a rehire's; the page
-  shows them only under Offboarded. Someone no roster lists and nothing has seen for 21 days
-  before the newest data has left: Former. A list of people the DSP can
-  reach, as Slack's members, says nothing of who still works for it: someone only such lists
-  know works in the office while one lists them, and has left once none does. People no
-  source shows driving, outside the departments a source's settings count as drivers, work in
-  the office. The page calls everyone in the office Management.
+  go says, until another of their Amazon IDs is on its roster as active, as a rehire's; the
+  page shows them only under Offboarded. Someone no roster lists and nothing has seen for 21
+  days before the newest data has left: Former. A list of people the DSP can reach, as Slack's
+  members, says nothing of who still works for it: someone only such lists know works in the
+  office while one lists them, and has left once none does. People no source shows driving,
+  outside the departments a source's settings count as drivers, work in the office. The page
+  calls everyone in the office Management.
 - **Titles:** Owner, OPs Manager, Fleet Manager, Dispatch, HR Manager or Manager (core's
   `PersonTitle`), given on a person's sheet, for what no source says: Amazon's roster lists
   office staff with a DA account as drivers, and a dispatcher covers a route now and then.

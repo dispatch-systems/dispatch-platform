@@ -2,8 +2,9 @@
 
 Everyone Amazon lists for the DSP's company, active, inactive or offboarded, with their
 contacts, roles, qualifications, license expiry and photo, collected from Cortex's associates
-and offboarded pages (Amazon's DA Console). Driver Match reads them as it reads every feature's people. It has no page of its own:
-the roster is collected, on demand and by its rules, from Settings' Collectors page.
+and offboarded pages (Amazon's DA Console). Driver Match reads them as it reads every feature's
+people. It has no page of its own: the roster is collected, on demand and by its rules, from
+Settings' Collectors page.
 
 - **Switch:** `driver_profiles`, off for every DSP until the platform owner switches it on. It
   needs the `associates` connection (Cortex), which switches on with it. It began as Driver

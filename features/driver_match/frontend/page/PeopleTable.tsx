@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { Fragment } from 'react';
 import type { PeopleSource, Person } from '../../api/index.js';
 import {
   DataTable,
@@ -7,7 +8,7 @@ import {
   type TableColumn,
   type TableStateStore,
 } from '../../../../core/shell/frontend/ui/index.js';
-import { day, knows, lastSeen, roleLabel, sourceLabel, working } from '../driver-match.js';
+import { day, knows, lastSeen, roleLabel, shortId, sourceLabel, working } from '../driver-match.js';
 import { Face } from '../parts/Face.js';
 
 /** Rows a page. */
@@ -114,12 +115,13 @@ export function PeopleTable({
 
 /** Their IDs in one system; for a driver or helper it lacks, that it does. */
 function Ids({ person, source }: { person: Person; source: PeopleSource }) {
-  const ids = person.ids.filter((id) => id.source === source).map((id) => id.id);
-  if (ids.length > 0)
+  const ids = person.ids.filter((id) => id.source === source);
+  const [first, ...more] = ids;
+  if (first)
     return (
-      <span className="driver-source-id" title={ids.join(', ')}>
-        {ids[0]}
-        {ids.length > 1 && ` +${ids.length - 1}`}
+      <span className="driver-source-id" title={ids.map((id) => id.id).join(', ')}>
+        {shortId(first)}
+        {more.length > 0 && ` +${more.length}`}
       </span>
     );
   if (!working(person)) return null;
@@ -138,9 +140,10 @@ function Under({ person, sources }: { person: Person; sources: readonly PeopleSo
     <small className="driver-list-under">
       {roleLabel(person)}
       {lacking.map((source) => (
-        <span key={source} className="driver-list-missing">
-          {' · '}Not in {sourceLabel(source)}
-        </span>
+        <Fragment key={source}>
+          {' · '}
+          <span className="driver-list-missing">Not in {sourceLabel(source)}</span>
+        </Fragment>
       ))}
     </small>
   );

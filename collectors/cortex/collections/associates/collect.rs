@@ -34,6 +34,10 @@ const LANES: usize = 16;
 /// What one collection downloads of the photos the DSP lacks, about sixty of Amazon's; the
 /// next brings the rest.
 const PHOTOS_BUDGET: usize = 96 * 1024 * 1024;
+/// The most photos one collection tries: twice what the budget pays for at Amazon's usual
+/// size, so photos that fail every time, as an account Amazon serves no photo for, can't make
+/// each collection try every one of them.
+const PHOTO_ATTEMPTS: usize = 120;
 
 pub(crate) fn refusal(error: Refusal) -> Error {
     match error {
@@ -270,8 +274,9 @@ impl Driver {
                 }
             }
         }
-        if !wanted.is_empty() {
-            run.progress(50, format!("Downloading {} photos", wanted.len()))
+        let tried = &wanted[..wanted.len().min(PHOTO_ATTEMPTS)];
+        if !tried.is_empty() {
+            run.progress(50, format!("Downloading {} photos", tried.len()))
                 .await?;
         }
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
@@ -281,7 +286,7 @@ impl Driver {
             let mut got = Vec::new();
             while spent.load(Ordering::SeqCst) < PHOTOS_BUDGET {
                 let index = next.fetch_add(1, Ordering::SeqCst);
-                let Some(address) = wanted.get(index) else {
+                let Some(address) = tried.get(index) else {
                     break;
                 };
                 match photo(&http, &downloads, &self.origin, &referer, address).await {

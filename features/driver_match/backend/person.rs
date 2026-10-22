@@ -56,12 +56,12 @@ pub(super) struct Context<'a> {
 }
 
 /// What a person does for the DSP: a source says the DSP offboarded them and none of their
-/// IDs there is on its roster still, they are offboarded, unless someone gave them a title; no
-/// roster lists them and nothing has seen them lately, they have left, unless only lists of
-/// people the DSP can reach know them, and one still does, so they work in the office; someone
-/// gave them a title, they are management; none of their sources shows them driving and the
-/// departments the DSP counts as drivers leave them out, they work in the office; else the
-/// roles their sources give say whether they drive or only help.
+/// IDs there is on its roster as active, they are offboarded, unless someone gave them a
+/// title; no roster lists them and nothing has seen them lately, they have left, unless only
+/// lists of people the DSP can reach know them, and one still does, so they work in the
+/// office; someone gave them a title, they are management; none of their sources shows them
+/// driving and the departments the DSP counts as drivers leave them out, they work in the
+/// office; else the roles their sources give say whether they drive or only help.
 fn role(
     keys: &[Key],
     described: &[&Identity],
@@ -70,8 +70,8 @@ fn role(
     context: &Context,
 ) -> PersonRole {
     // Offboarded, they have left however lately anything saw them, and whatever another source,
-    // as a payroll slow to let them go, says; another ID of that source on its roster, as a
-    // rehire's, says they are back.
+    // as a payroll slow to let them go, says; another ID of that source on its roster as active,
+    // as a rehire's, says they are back. One there as inactive, as for Former, says nothing.
     let offboarded: BTreeSet<Source> = described
         .iter()
         .filter(|x| x.offboarded)

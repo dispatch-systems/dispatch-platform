@@ -24,5 +24,6 @@ export {
   type TableStateStore,
 } from './useDataTable.js';
 export { useFocusTrap } from './useFocusTrap.js';
+export { ViewSwitch, type ViewOption } from './ViewSwitch.js';
 
 export { PageBoundary } from './PageBoundary.js';

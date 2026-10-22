@@ -6,7 +6,7 @@ import { Empty, SearchInput } from '../../../../core/shell/frontend/ui/index.js'
 import { found, peopleFilters, searchTerms, shows, type PeopleFilter } from '../driver-match.js';
 import { PeopleTable } from './PeopleTable.js';
 import { PersonCard } from './PersonCard.js';
-import type { View } from './ViewSwitch.js';
+import type { View } from './view.js';
 
 /** How many cards show before more are asked for: whole rows, two to eight across. */
 const PAGE = 48;
