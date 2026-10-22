@@ -8,24 +8,28 @@ import { PersonSheet } from '../person/PersonSheet.js';
 import { CheckBanner } from './CheckBanner.js';
 import { CheckDialog } from './CheckDialog.js';
 import { checkList } from './checks.js';
-import { PeopleGrid } from './PeopleGrid.js';
+import { Everyone } from './Everyone.js';
+import { useView, ViewSwitch, type View } from './ViewSwitch.js';
 
-/** Driver Match's page: who to check, then everyone by face. */
+/** Driver Match's page: who to check, then everyone, as a list or by face. */
 export function DriverMatchPage({ timezone }: { timezone: string }) {
   // A finished collection can bring new people in.
   useCollectionUpdates();
   const request = useDriverMatch();
+  const [view, setView] = useView();
   return (
     <div className="driver-match">
-      <Header title="Driver Match" />
+      <Header title="Driver Match">
+        <ViewSwitch view={view} onChange={setView} />
+      </Header>
       <DataState data={request.data} error={request.error}>
-        {(data) => <People data={data} timezone={timezone} />}
+        {(data) => <People data={data} timezone={timezone} view={view} />}
       </DataState>
     </div>
   );
 }
 
-function People({ data, timezone }: { data: DriverMatch; timezone: string }) {
+function People({ data, timezone, view }: { data: DriverMatch; timezone: string; view: View }) {
   const checks = useMemo(() => checkList(data.questions, data.people), [data]);
   const queued = useMemo(() => new Set(checks.flatMap((check) => check.codes)), [checks]);
   const [open, setOpen] = useState<string | null>(null);
@@ -41,10 +45,12 @@ function People({ data, timezone }: { data: DriverMatch; timezone: string }) {
   return (
     <>
       <CheckBanner checks={checks} onStart={() => setChecking(0)} />
-      <PeopleGrid
+      <Everyone
         people={data.people}
         sources={data.sources}
         queued={queued}
+        view={view}
+        today={today}
         onOpen={setOpen}
         onCheck={onCheck}
       />

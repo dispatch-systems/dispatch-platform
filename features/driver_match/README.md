@@ -20,9 +20,12 @@ what was decided.
   people titles.
 - **Its page**, `driver-match` in a DSP's sidebar, is listed while the DSP has a feature on
   whose data names people, for those who hold `driver_match.manage`: the questions the backend
-  sends, asked one at a time, then everyone as a card with their photo, from core's
-  `/api/dsp/people/{code}/photo`, their title or role, and the sources that have them, by role
-  or a source lacking them; a person's sheet gives them a title. Beside its name in the
+  sends, asked one at a time, then everyone, by role or a source lacking them, with their
+  photo, from core's `/api/dsp/people/{code}/photo`, and their title or role: as a list, a row
+  each with their ID in each source or the source lacking them, sortable and a hundred a page,
+  or as cards, a card each with the sources that have them. A switch across from the page's
+  name chooses, a list until someone picks cards, kept in their browser as Documents keeps its
+  layout. A person's sheet gives them a title. Beside its name in the
   sidebar, how many of those questions wait: the server keeps one count for all of the DSP's
   managers until a decision or a collection changes it, and the sidebar reads it again after
   each decision, after a collection a page following collections hears, and every five

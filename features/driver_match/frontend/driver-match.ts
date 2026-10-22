@@ -24,7 +24,7 @@ export const roles: Record<PersonRole, { label: string; filter: string; tone: st
   helper: { label: 'Helper', filter: 'Helpers', tone: 'steel' },
   office: { label: 'Management', filter: 'Management', tone: 'violet' },
   former: { label: 'Former', filter: 'Former', tone: 'neutral' },
-  offboarded: { label: 'Offboarded', filter: 'Offboarded', tone: 'warning' },
+  offboarded: { label: 'Offboarded', filter: 'Offboarded', tone: 'slate' },
 };
 /** Whether someone has left, offboarded or not: only their own filter shows them. */
 export const left = (person: Pick<Person, 'role'>) =>
@@ -119,8 +119,15 @@ export const seenRange = (first: string | null, last: string | null, today: stri
       ? `Seen ${day(first, today)}`
       : `Seen ${day(first, today)} – ${day(last, today)}`;
 
+/** The last day any of someone's sources saw them, if one did. */
+export const lastSeen = (person: Person) =>
+  person.ids.reduce<string | null>(
+    (last, id) => (id.lastSeen && (!last || id.lastSeen > last) ? id.lastSeen : last),
+    null,
+  );
+
 /** "Today", "Yesterday" or the date, for a calendar day in the DSP's time zone. */
-function day(date: string, today: string) {
+export function day(date: string, today: string) {
   if (date === today) return 'Today';
   const yesterday = new Date(`${today}T00:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
