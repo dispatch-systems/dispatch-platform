@@ -2,10 +2,19 @@ use super::*;
 
 /// EXIF with one entry, the orientation, as a TIFF block in either byte order.
 fn exif(orientation: u16, little: bool) -> Vec<u8> {
-    let (u16b, u32b): (fn(u16) -> [u8; 2], fn(u32) -> [u8; 4]) = if little {
-        (u16::to_le_bytes, u32::to_le_bytes)
-    } else {
-        (u16::to_be_bytes, u32::to_be_bytes)
+    let u16b = |v: u16| {
+        if little {
+            v.to_le_bytes()
+        } else {
+            v.to_be_bytes()
+        }
+    };
+    let u32b = |v: u32| {
+        if little {
+            v.to_le_bytes()
+        } else {
+            v.to_be_bytes()
+        }
     };
     let mut tiff = if little {
         b"II".to_vec()
