@@ -46,13 +46,19 @@ fn a_photo_stays_while_amazon_lists_whoever_it_shows() {
     // Whoever the roster no longer lists keeps their name, for what still names them.
     assert_eq!(count("SELECT count(*) FROM associates WHERE listed=0"), 2);
     // A month on, a listed associate's photo is downloaded again in case they changed it; an
-    // offboarded associate's stands for good.
+    // offboarded associate's stands for good, unless it was kept before photos were shrunk and
+    // weighs more than any shrunk one.
     db.exec("UPDATE photos SET stored_at='2026-01-01T00:00:00.000Z'", [])
         .unwrap();
+    db.exec(
+        "UPDATE photos SET bytes=? WHERE address LIKE '%driver-9'",
+        [MAX_KEPT_PHOTO_BYTES as i64 + 1],
+    )
+    .unwrap();
     drop(db);
     assert_eq!(
         store.kept_photos(&dsp, "company-fixture").unwrap(),
-        ["driver-10", "driver-11", "driver-9"]
+        ["driver-10", "driver-11"]
             .map(|id| format!("/workforce/api/v1/fetchDAPhoto?associate={id}"))
     );
 }

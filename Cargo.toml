@@ -48,6 +48,13 @@ rmcp = { version = "3.5", default-features = false, features = ["server", "trans
 # The JSON Schema of what each agent tool takes and answers, which the MCP server publishes.
 schemars = "1"
 tempfile = "3"
+# Roster photos, shrunk where they're collected: JPEG decoded straight at a fraction of its size,
+# PNG, a resize and a JPEG encoder. The JPEG decoder's own thread pool stays off: a collection
+# shrinks a few photos at a time on threads of its choosing.
+jpeg-decoder = { version = "0.3", default-features = false }
+png = "0.18"
+fast_image_resize = "6"
+jpeg-encoder = "0.7"
 # Writes the TypeScript the API types are exported to; never part of the binary.
 ts-rs = { version = "12", default-features = false, features = ["serde-compat"] }
 
