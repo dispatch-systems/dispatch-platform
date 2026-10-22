@@ -4,12 +4,14 @@ import type { Route } from '../runtime/slots.js';
 type Sidebar = NonNullable<Route['sidebar']>;
 /** What fills the sidebar above the account: a page's own sidebar, or the app's name and pages. */
 type Panel = Sidebar | undefined;
+/** A panel leaving, drawn as it was when it left: a page's sidebar never draws for another page. */
+type Leaving = { panel: Panel; drawn: ReactNode };
 
 /** How long a panel takes to slide, quick to start and soft to stop. */
 const slide = { duration: 260, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
 
-// Each panel keeps its place in the page while one slides for another, the app's first: a panel
-// moved in the page would lose its scroll.
+// Each panel's key and place in the page, the app's first, kept while one slides for another: a
+// panel moved in the page would lose its scroll.
 let placed = 0;
 const places = new WeakMap<Sidebar, number>();
 function place(panel: Panel) {
@@ -19,11 +21,11 @@ function place(panel: Panel) {
 }
 
 /**
- * The sidebar's panel `shown`, as `draw` draws it. When another is shown, the one leaving slides
- * out as it slides in: to the left toward a page's own sidebar, to the right back to the app's.
- * The leaving panel is out of reach, and gone once it's out. Only the panels' `translate`
- * moves, which the browser runs off the main thread, so a page opening beside them can't stall
- * it; nothing reads the layout.
+ * The sidebar's panel `shown`, as `draw` draws it. When another is shown, the panels slide
+ * together, the one shown pushing the others out: in from the right for a page's own sidebar,
+ * and from the left back to the app's, as the app reads left to right. Those leaving are out of
+ * reach, and gone once they're out. Only the panels' `translate` moves, which the browser runs
+ * off the main thread, so a page opening beside them can't stall it; nothing reads the layout.
  */
 export function SidebarPanels({
   shown,
@@ -32,34 +34,77 @@ export function SidebarPanels({
   shown: Panel;
   draw: (panel: Panel) => ReactNode;
 }) {
-  const [panels, setPanels] = useState({ shown, leaving: [] as Panel[], midway: false });
-  if (shown !== panels.shown)
-    // A slide begun before the last one ended starts each panel from where it is.
-    setPanels({ shown, leaving: [panels.shown], midway: panels.leaving.length > 0 });
-  const elements = useRef(new Map<Panel, HTMLElement>());
-  useLayoutEffect(() => {
-    if (!panels.leaving.length) return;
-    const into = elements.current.get(panels.shown)!;
-    const out = elements.current.get(panels.leaving[0])!;
-    const [arrives, leaves] = panels.shown ? ['100%', '-100%'] : ['-100%', '100%'];
-    const from = (panel: HTMLElement, otherwise: string) => {
-      if (!panels.midway) return otherwise;
-      const at = getComputedStyle(panel).translate;
-      for (const moving of panel.getAnimations()) moving.cancel();
-      return at === 'none' ? otherwise : at;
+  const [panels, setPanels] = useState<{
+    shown: Panel;
+    slide?: {
+      leaving: Leaving[];
+      /** Whether a slide was under way, so the panels on screen start from where it left them. */
+      midway: boolean;
+      /** Whether the panel shown is one that was leaving, turned back. */
+      returns: boolean;
     };
-    // With reduced motion, the panel shown takes the other's place at once.
+  }>({ shown });
+  // What the panel shown drew when last on screen, for when it leaves.
+  const last = useRef<ReactNode>(null);
+  if (shown !== panels.shown) {
+    const leaving = panels.slide?.leaving ?? [];
+    setPanels({
+      shown,
+      slide: {
+        leaving: [
+          { panel: panels.shown, drawn: last.current },
+          ...leaving.filter(({ panel }) => panel !== shown),
+        ],
+        midway: Boolean(panels.slide),
+        returns: leaving.some(({ panel }) => panel === shown),
+      },
+    });
+  }
+  const drawing = draw(panels.shown);
+  useLayoutEffect(() => {
+    last.current = drawing;
+  });
+  const elements = useRef(new Map<number, HTMLElement>());
+  useLayoutEffect(() => {
+    if (!panels.slide) return;
+    const { leaving, midway, returns } = panels.slide;
+    // Where a panel on screen is, in sidebar widths: the one shown before at rest, unless a
+    // slide was under way, which stops where it is.
+    const at = (panel: HTMLElement) => {
+      if (!midway) return 0;
+      const now = parseFloat(getComputedStyle(panel).translate) || 0;
+      for (const moving of panel.getAnimations()) moving.cancel();
+      return now;
+    };
+    const out = leaving.map(({ panel }) => {
+      const element = elements.current.get(place(panel))!;
+      return { element, from: at(element) };
+    });
+    const into = elements.current.get(place(panels.shown))!;
+    const leavingAt = out.map(({ from }) => from);
+    // The panel shown turns back from where it is, or comes in beside the outermost on its side.
+    const start = returns
+      ? at(into)
+      : panels.shown
+        ? Math.max(...leavingAt) + 100
+        : Math.min(...leavingAt) - 100;
+    // With reduced motion, the panel shown takes the others' place at once.
     const timing = matchMedia('(prefers-reduced-motion: reduce)').matches
       ? { ...slide, duration: 0 }
       : slide;
     const moves = [
-      // Held out once there, until it's gone.
-      out.animate({ translate: [from(out, '0'), leaves] }, { ...timing, fill: 'forwards' }),
-      into.animate({ translate: [from(into, arrives), '0'] }, timing),
+      into.animate({ translate: [`${start}%`, '0'] }, timing),
+      // Held out once there, until they're gone.
+      ...out.map(({ element, from }) =>
+        element.animate(
+          { translate: [`${from}%`, `${from - start}%`] },
+          { ...timing, fill: 'forwards' },
+        ),
+      ),
     ];
     let live = true;
     Promise.all(moves.map((move) => move.finished)).then(
-      () => live && setPanels({ shown: panels.shown, leaving: [], midway: false }),
+      () => live && setPanels({ shown: panels.shown }),
       () => undefined,
     );
     return () => {
@@ -68,22 +113,24 @@ export function SidebarPanels({
   }, [panels]);
   return (
     <div className="sidebar-panels">
-      {[panels.shown, ...panels.leaving]
-        .sort((one, other) => place(one) - place(other))
-        .map((panel) => {
+      {[{ panel: panels.shown, drawn: drawing }, ...(panels.slide?.leaving ?? [])]
+        .sort((one, other) => place(one.panel) - place(other.panel))
+        .map(({ panel, drawn }) => {
           const leaving = panel !== panels.shown;
           return (
             <div
               key={place(panel)}
               ref={(element) => {
-                elements.current.set(panel, element!);
-                return () => void elements.current.delete(panel);
+                elements.current.set(place(panel), element!);
+                return () => void elements.current.delete(place(panel));
               }}
               className="sidebar-panel"
+              // Hidden as well as inert: tools finding controls by role, as the browser tests
+              // do, pass over only what's hidden.
               inert={leaving}
               aria-hidden={leaving || undefined}
             >
-              {draw(panel)}
+              {drawn}
             </div>
           );
         })}
