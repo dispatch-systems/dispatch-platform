@@ -583,8 +583,8 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
   assert.doesNotMatch(manifest, /mod backend|mod tests/);
   assert.match(manifest, /switch: optional\(/);
   assert.match(file(plan, 'app/backend/features.rs'), /&dispatch_front::FEATURE,/);
-  await refused(/add --page or --tab-of/, 'front', '--no-backend');
-  await refused(/add --page or --tab-of/, 'front', '--settings', '--no-backend');
+  await refused(/add --page, --sidebar or --tab-of/, 'front', '--no-backend');
+  await refused(/add --page, --sidebar or --tab-of/, 'front', '--settings', '--no-backend');
   for (const piece of [['--api'], ['--settings'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
     await refused(
       new RegExp(`Rust logic that ${piece[0]} needs`),

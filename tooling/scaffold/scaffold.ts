@@ -310,21 +310,14 @@ export function pageOf(root: string, feature: string) {
   const file = `features/${feature}/frontend/feature.ts`;
   if (!exists(root, file)) return undefined;
   const source = read(root, file);
-  // Its page in the app's sidebar: one of its routes, and none under a sidebar of pages.
+  // The first of its routes: a sidebar of pages it declares is none.
   const routes = source.indexOf('routes: [');
-  for (const match of source.matchAll(
-    /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)',/g,
-  )) {
-    if (routes < 0 || match.index < routes) continue;
-    const rest = source.slice(match.index + match[0].length);
-    if (/^\s*(?:icon: \w+,\s*)?parent:/.test(rest)) continue;
-    return {
-      id: match[1]!,
-      label: match[2]!,
-      hostsSettings: /\bhostsSettings: true\b/.test(source),
-    };
-  }
-  return undefined;
+  const match = /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)'/.exec(
+    routes < 0 ? '' : source.slice(routes),
+  );
+  return match
+    ? { id: match[1]!, label: match[2]!, hostsSettings: /\bhostsSettings: true\b/.test(source) }
+    : undefined;
 }
 /** Every page's id in a DSP, and every sidebar of pages', as the owners' manifests declare them. */
 export function dspPages(root: string) {

@@ -539,8 +539,14 @@ export async function planAdd(root: string, argv: string[]) {
     throw new UsageError(
       `${name} has a sidebar of pages already: add a page to it, a route naming it its parent`,
     );
-  // The page a feature had joins the sidebar it gains, listed there with the pages it adds.
-  const joins = piece === 'sidebar' ? pageOf(root, name) : undefined;
+  // The page a feature had joins the sidebar it gains, listed there with the pages it adds,
+  // unless it is under one already, as another feature's.
+  const route = (id: string) => `\\bid: '${id}',\\s*scope: 'dsp',\\s*label: '[^']+',`;
+  const had = piece === 'sidebar' ? pageOf(root, name) : undefined;
+  const joins =
+    had && !new RegExp(`${route(had.id)}\\s*(?:icon: \\w+,\\s*)?parent:`).test(read(root, frontend))
+      ? had
+      : undefined;
   if (piece === 'people' && !args.options.has('table'))
     throw new UsageError('people reads who a table names: add --table <table>');
   if (piece === 'contract' && exists(root, `${dir}/contract`))
@@ -637,10 +643,7 @@ export async function planAdd(root: string, argv: string[]) {
     else if (file === `${dir}/frontend/feature.ts`) {
       merged = mergeTypeScript(current, content, pascal);
       if (joins)
-        merged = merged.replace(
-          new RegExp(`(\\bid: '${joins.id}',\\s*scope: 'dsp',\\s*label: '[^']+',)`),
-          `$1\nparent: '${slug}',`,
-        );
+        merged = merged.replace(new RegExp(`(${route(joins.id)})`), `$1\nparent: '${slug}',`);
     } else if (file.endsWith('/Cargo.toml')) merged = mergeToml(current, content);
     else if (/\/mod\.rs$/.test(file))
       // Its modules whose files are there or written now.
