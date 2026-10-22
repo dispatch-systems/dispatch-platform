@@ -11,7 +11,7 @@ use dispatch_core::{
 };
 use dispatch_cortex::{
     self as cortex,
-    associates::{Capture, Collection, Request},
+    associates::{Capture, Collection, MAX_KEPT_PHOTO_BYTES, PhotoFormat, Request},
 };
 use dispatch_driver_profiles_contract::Associate;
 use rusqlite::params;
@@ -64,7 +64,8 @@ pub trait DriverProfilesStore {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>>;
     /// The addresses of the photos kept for `company`'s associates that still stand, whose
     /// files are there: a collection downloads only the rest. An offboarded associate's always
-    /// stands.
+    /// stands; a JPEG or PNG heavier than any shrunk photo, kept before photos were shrunk,
+    /// never does, so the next collection shrinks it.
     fn kept_photos(&self, dsp: &str, company: &str) -> Result<Vec<String>>;
     /// Stores a roster as the current one. The photos' files are written already.
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
@@ -84,9 +85,16 @@ impl DriverProfilesStore for Store {
             .driver_profiles_db(dsp)?
             .query_as::<(String, String, String)>(
                 "SELECT p.address,p.sha256,p.format FROM photos p WHERE EXISTS \
-             (SELECT 1 FROM associates a WHERE a.photo_address=p.address AND a.company_id=? \
-             AND (p.stored_at>=? OR a.status='OFFBOARDED')) ORDER BY p.address",
-                params![company, at(now() - PHOTO_REFRESH_MS)],
+             (SELECT 1 FROM associates a WHERE a.photo_address=p.address AND a.company_id=?1 \
+             AND (p.stored_at>=?2 OR a.status='OFFBOARDED')) \
+             AND (p.bytes<=?3 OR p.format NOT IN (?4,?5)) ORDER BY p.address",
+                params![
+                    company,
+                    at(now() - PHOTO_REFRESH_MS),
+                    MAX_KEPT_PHOTO_BYTES as i64,
+                    PhotoFormat::Jpeg.extension(),
+                    PhotoFormat::Png.extension()
+                ],
             )?;
         let dir = photos::dir(self, dsp)?;
         Ok(rows

@@ -24,4 +24,6 @@ rule is kept without meals, named for the rule, and the rest of the day is read.
 `dispatch-collectors` skill has the routes' and the performance sources' full reads. Weekly and
 daily share the performance HTTP reader, every dataset of a week or a day at once, while keeping
 their requests, datasets and job kinds separate; DVIC lists its weeks together and downloads
-fourteen reports at a time.
+fourteen reports at a time. The roster's photos are shrunk as they download, to at most 400
+pixels on the long side as a JPEG, a JPEG read straight at a fraction of its size, four at a time
+away from the threads that serve requests, each a little more than a core.

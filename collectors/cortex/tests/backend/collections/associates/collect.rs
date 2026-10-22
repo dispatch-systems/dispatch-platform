@@ -1,5 +1,4 @@
 use super::*;
-use crate::associates::PhotoFormat;
 use axum::{
     Router,
     body::Body,
@@ -124,10 +123,10 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies(
     let http = Http::detached(&origin, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
     let fetch = |address: &'static str| photo(&http, &downloads, &origin, "/workforce", address);
-    let got = fetch("/workforce/photo").await.unwrap();
-    assert_eq!(got.address, "/workforce/photo");
-    assert_eq!(got.format, PhotoFormat::Jpeg);
-    assert_eq!(got.bytes().unwrap(), b"\xFF\xD8\xFF a jpeg");
+    assert_eq!(
+        fetch("/workforce/photo").await.unwrap(),
+        b"\xFF\xD8\xFF a jpeg"
+    );
     // Only where Amazon serves photos; an answer that isn't a redirect is no photo.
     assert_eq!(
         fetch("/workforce/away").await.unwrap_err(),

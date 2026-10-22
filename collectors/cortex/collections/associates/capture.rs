@@ -12,7 +12,7 @@ pub const JOB_KIND: &str = "cortex.associates.collect";
 /// Far more than one company has ever employed, those it offboarded among them: a longer
 /// roster is not one DSP's.
 pub const MAX_ASSOCIATES: usize = 10_000;
-/// The largest photo kept. Amazon's run to 3.5 MB.
+/// The largest photo downloaded. Amazon's run to 6.4 MB.
 pub const MAX_PHOTO_BYTES: usize = 12 * 1024 * 1024;
 /// The largest row kept as Amazon sent it.
 const MAX_ROW_BYTES: usize = 16 * 1024;

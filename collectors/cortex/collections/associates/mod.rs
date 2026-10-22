@@ -4,9 +4,11 @@
 mod capture;
 pub(crate) mod collect;
 mod fixture;
+mod shrink;
 
 pub use capture::{
     Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, PhotoFormat,
     Request,
 };
 pub use fixture::fixture;
+pub use shrink::MAX_KEPT_PHOTO_BYTES;

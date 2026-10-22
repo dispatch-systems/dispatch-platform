@@ -1,10 +1,11 @@
 //! Reads the roster over plain HTTP with the browser's session: the company the DSP's code
 //! names, then every associate in one request and everyone offboarded in another, then the
-//! photos the DSP lacks, each from where the application redirects its address. Nothing after
-//! the roster needs a page, so the browser closes as soon as it is in.
+//! photos the DSP lacks, each from where the application redirects its address, shrunk as it
+//! comes. Nothing after the roster needs a page, so the browser closes as soon as it is in.
 use super::capture::{
     Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, Request,
 };
+use super::shrink::shrink;
 use crate as cortex;
 use crate::connection::Driver;
 use dispatch_core::{
@@ -21,6 +22,7 @@ use dispatch_core::{
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Semaphore;
 
 /// Where S3 serves the photos the application redirects to.
 pub const PHOTO_HOST: &str = "amazon-flex-da-photo-prod-usamazon.s3.amazonaws.com";
@@ -31,13 +33,17 @@ const LIMIT: usize = 16 * 1024 * 1024;
 /// Photo downloads at once: forty took 4.4 s sixteen at a time, against 5.4 s eight at a
 /// time and 4.2 s all forty together.
 const LANES: usize = 16;
-/// What one collection downloads of the photos the DSP lacks, about sixty of Amazon's; the
-/// next brings the rest.
+/// What one collection downloads of the photos the DSP lacks, as Amazon serves them, about
+/// sixty; the next brings the rest.
 const PHOTOS_BUDGET: usize = 96 * 1024 * 1024;
 /// The most photos one collection tries: twice what the budget pays for at Amazon's usual
-/// size, so photos that fail every time, as an account Amazon serves no photo for, can't make
-/// each collection try every one of them.
+/// size, so photos that fail every time, as an account Amazon serves no photo for or one too
+/// large or strange to shrink, can't make each collection try every one of them. Each such
+/// photo is still tried, and downloaded, every collection.
 const PHOTO_ATTEMPTS: usize = 120;
+/// Photos shrunk at once: each holds a CPU for a moment, and a collection shares the server
+/// with everyone using it.
+const SHRINKING: usize = 4;
 
 pub(crate) fn refusal(error: Refusal) -> Error {
     match error {
@@ -182,15 +188,15 @@ fn skipped(refusal: Refusal) -> &'static str {
         Refusal::Unreadable(label) => label,
     }
 }
-/// One photo: where the application redirects its address, then the bytes from there, which
-/// carry none of Amazon's cookies.
+/// One photo's bytes: where the application redirects its address, then the bytes from there,
+/// which carry none of Amazon's cookies.
 async fn photo(
     http: &Http,
     downloads: &Http,
     origin: &str,
     referer: &str,
     address: &str,
-) -> std::result::Result<Photo, &'static str> {
+) -> std::result::Result<Vec<u8>, &'static str> {
     let source = http
         .location(&format!("{origin}{address}"), referer)
         .await
@@ -200,12 +206,24 @@ async fn photo(
     if !fixture && (source.scheme() != "https" || source.host_str() != Some(PHOTO_HOST)) {
         return Err("photo_redirect_unexpected");
     }
-    let bytes = downloads
+    downloads
         .download(source.as_str(), None, MAX_PHOTO_BYTES)
         .await
         .map_err(skipped)?
         .body
-        .ok_or("photo_not_modified")?;
+        .ok_or("photo_not_modified")
+}
+/// A photo downloaded, as it is kept: shrunk away from the threads that serve requests, a few at
+/// a time.
+async fn keep(
+    shrinking: &Semaphore,
+    address: &str,
+    bytes: Vec<u8>,
+) -> std::result::Result<Photo, &'static str> {
+    let _turn = shrinking.acquire().await.map_err(|_| "photo_unreadable")?;
+    let bytes = tokio::task::spawn_blocking(move || shrink(bytes))
+        .await
+        .map_err(|_| "photo_unreadable")??;
     Photo::new(address, &bytes).ok_or("photo_not_an_image")
 }
 
@@ -280,6 +298,7 @@ impl Driver {
                 .await?;
         }
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
+        let shrinking = Semaphore::new(SHRINKING);
         let next = AtomicUsize::new(0);
         let spent = AtomicUsize::new(0);
         let lanes = futures_util::future::join_all((0..LANES).map(|_| async {
@@ -289,11 +308,13 @@ impl Driver {
                 let Some(address) = tried.get(index) else {
                     break;
                 };
-                match photo(&http, &downloads, &self.origin, &referer, address).await {
-                    Ok(photo) => {
-                        spent.fetch_add(photo.data.len() / 4 * 3, Ordering::SeqCst);
-                        got.push((index, photo));
-                    }
+                let kept = async {
+                    let bytes = photo(&http, &downloads, &self.origin, &referer, address).await?;
+                    spent.fetch_add(bytes.len(), Ordering::SeqCst);
+                    keep(&shrinking, address, bytes).await
+                };
+                match kept.await {
+                    Ok(photo) => got.push((index, photo)),
                     Err(label) => run.metrics.detail(label),
                 }
             }
