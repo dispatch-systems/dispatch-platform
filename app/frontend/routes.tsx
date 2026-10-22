@@ -28,15 +28,15 @@ import { features } from './features.js';
 // owner's, but a platform page that names another to follow comes right after it.
 const table: readonly Route[] = placed(features.flatMap((feature) => feature.routes ?? []));
 function placed(routes: readonly Route[]) {
-  const listed = routes.filter((route) => route.scope !== 'platform' || !route.after);
+  const ordered = routes.filter((route) => route.scope !== 'platform' || !route.after);
   for (const route of routes)
     if (route.scope === 'platform' && route.after) {
-      const at = listed.findIndex(
+      const at = ordered.findIndex(
         (other) => other.scope === 'platform' && other.id === route.after,
       );
-      listed.splice(at < 0 ? listed.length : at + 1, 0, route);
+      ordered.splice(at < 0 ? ordered.length : at + 1, 0, route);
     }
-  return listed;
+  return ordered;
 }
 const allowed = (route: Route, access: Access) => !route.permission || route.permission(access);
 /** Whether the DSP open has the page's feature, as far as its view says yet. */
@@ -68,14 +68,15 @@ export function prepareRoute(
   return route.preload(access);
 }
 /**
- * The sidebar of pages `page` is under, while the person may open the page: the one the sidebar
- * shows as the page opens.
+ * The sidebar of pages `page` is under, while the person may open the page as far as the DSP's
+ * view says yet: the one the sidebar shows as the page opens, before the view is in rather than
+ * sliding in once it is.
  */
 export function sidebarOf(scope: Route['scope'], page: string, access: Access) {
   const route = findRoute(scope, page);
-  return route && allowed(route, access) && available(route, access)
-    ? pageSidebar(scope, page)
-    : undefined;
+  if (!route || !available(route, access)) return undefined;
+  const known = route.scope !== 'dsp' || Boolean(access.view);
+  return !known || allowed(route, access) ? pageSidebar(scope, page) : undefined;
 }
 /** The app's sidebar for `access`: the pages it lists, and its sidebars of pages with theirs. */
 export function navigation(scope: Route['scope'], access: Access): NavItem[] {

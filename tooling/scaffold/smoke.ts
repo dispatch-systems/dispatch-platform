@@ -80,7 +80,8 @@ const ADDED: string[][] = [
   ['people', 'paycom', '--to', 'smoke_rows', '--table', 'smoke_rows_items'],
   ['tab-of', 'team', '--to', 'smoke_rows'],
   ['page', '--to', 'smoke_people'],
-  ['sidebar', 'drafts,archive', '--to', 'smoke_rows'],
+  // A sidebar its page moves under.
+  ['sidebar', 'drafts,archive', '--to', 'smoke_front'],
   ['api', '--to', 'smoke_front'],
   ['api', '--to', 'smoke_bare'],
   ['contract', 'smoke_rows_counts', '--to', 'smoke_rows'],

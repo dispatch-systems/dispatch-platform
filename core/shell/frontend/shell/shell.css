@@ -311,10 +311,11 @@
     border-color var(--motion-duration),
     color var(--motion-duration);
 }
-.nav-item:last-child {
+/* The app's last item, Settings, set apart; a sidebar of pages lists its own without it. */
+.app-pages .nav-item:last-child {
   margin-top: 40px;
 }
-.nav-item:last-child:after {
+.app-pages .nav-item:last-child:after {
   content: '';
   background: var(--border);
   height: 1px;

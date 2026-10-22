@@ -143,6 +143,13 @@ function entries(text: string, open: number) {
   }
   return { entries: found, end };
 }
+/** The keys of the DSP route with the id in a frontend manifest's routes, if it declares it. */
+function routeKeys(text: string, id: string) {
+  const routes = text.indexOf('routes: [');
+  const at =
+    routes < 0 ? -1 : text.slice(routes).search(new RegExp(`\\bid: '${id}',\\s*scope: 'dsp'`));
+  return at < 0 ? undefined : entries(text, text.lastIndexOf('{', routes + at)).entries;
+}
 /** The items of a list's `[...]` text, at its top level. */
 function items(list: string) {
   const open = list.indexOf('[');
@@ -406,12 +413,20 @@ export function mergeTypeScript(target: string, piece: string, pascal: string) {
       const at = text.indexOf('\nexport const feature');
       text = `${text.slice(0, at)}\n${statement.trimEnd()}\n${text.slice(at)}`;
     }
-  // Its slots: entries join a list the feature fills already, and a new key goes last.
-  for (const key of entries(piece, manifest(piece)).entries) {
+  // Its slots: entries join a list the feature fills already, and a new key goes where the piece
+  // has it, before the first key after it there that the manifest has, or else last.
+  const keys = entries(piece, manifest(piece)).entries;
+  for (const [index, key] of keys.entries()) {
     if (key.name === 'name') continue;
     const { entries: own, end } = entries(text, manifest(text));
     const have = own.find((each) => each.name === key.name);
-    if (!have)
+    const next = keys
+      .slice(index + 1)
+      .map((later) => own.find((each) => each.name === later.name))
+      .find(Boolean);
+    if (!have && next)
+      text = `${text.slice(0, next.start)}\n${key.text.trim()}${text.slice(next.start)}`;
+    else if (!have)
       text = `${text.slice(0, end).trimEnd()}\n${key.text.replace(/^\n+/, '').trim()}\n${text.slice(end)}`;
     else if (key.text.includes('[') && text.slice(have.start, have.end).includes('[')) {
       // An entry's id is its own among the feature's: one there already is the feature's.
@@ -541,12 +556,10 @@ export async function planAdd(root: string, argv: string[]) {
     );
   // The page a feature had joins the sidebar it gains, listed there with the pages it adds,
   // unless it is under one already, as another feature's.
-  const route = (id: string) => `\\bid: '${id}',\\s*scope: 'dsp',\\s*label: '[^']+',`;
   const had = piece === 'sidebar' ? pageOf(root, name) : undefined;
-  const joins =
-    had && !new RegExp(`${route(had.id)}\\s*(?:icon: \\w+,\\s*)?parent:`).test(read(root, frontend))
-      ? had
-      : undefined;
+  const under = (text: string, id: string) =>
+    routeKeys(text, id)?.some((key) => key.name === 'parent');
+  const joins = had && !under(read(root, frontend), had.id) ? had : undefined;
   if (piece === 'people' && !args.options.has('table'))
     throw new UsageError('people reads who a table names: add --table <table>');
   if (piece === 'contract' && exists(root, `${dir}/contract`))
@@ -642,8 +655,13 @@ export async function planAdd(root: string, argv: string[]) {
       );
     else if (file === `${dir}/frontend/feature.ts`) {
       merged = mergeTypeScript(current, content, pascal);
-      if (joins)
-        merged = merged.replace(new RegExp(`(${route(joins.id)})`), `$1\nparent: '${slug}',`);
+      // After its name and icon, as a page under a sidebar declares it.
+      const keys = joins && routeKeys(merged, joins.id);
+      const after =
+        keys &&
+        (keys.find((key) => key.name === 'icon') ?? keys.find((key) => key.name === 'label'));
+      if (after)
+        merged = `${merged.slice(0, after.end)}\nparent: '${slug}',${merged.slice(after.end)}`;
     } else if (file.endsWith('/Cargo.toml')) merged = mergeToml(current, content);
     else if (/\/mod\.rs$/.test(file))
       // Its modules whose files are there or written now.

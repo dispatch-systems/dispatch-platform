@@ -85,7 +85,8 @@ export type DspRoute = Page<DspPageContext> & {
  * would be listed, that slides in a list of the pages under it (each naming it its `parent`) in
  * place of the app's, the page open staying open. Opening one of them opens it; its way back
  * slides the app's sidebar in again. The shell draws the list, the way back and its name atop
- * it, unless it draws its own (`draw`), as Settings draws its search and its groups.
+ * it, unless it draws its own (`draw`), as Settings draws its search and its groups. A page
+ * under it that it doesn't list (`nav`), as one a link opens, still shows it as it opens.
  */
 export type Sidebar = {
   /** Its id, which the pages under it name as their `parent`. */
@@ -105,7 +106,10 @@ export type Sidebar = {
 };
 /** What a sidebar of pages that draws its own is drawn with. */
 export type SidebarProps = Access & {
-  /** The DSP open, whether or not its view is admitted yet; none outside one. */
+  /**
+   * The DSP open, whether or not its view is admitted yet, for links drawn before it is; none
+   * outside one.
+   */
   dspId?: string;
   /** The page open, under the sidebar or not: opening the sidebar keeps it open. */
   page: string;

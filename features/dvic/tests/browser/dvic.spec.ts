@@ -257,7 +257,7 @@ test('its schedule is set on Collectors: saved together, switched off, stale edi
   const draft = () => dvic.getByRole('button', { name: 'Add rule' }).click();
   const settings = /\/settings\?tab=collectors&collection=dvic$/;
   await draft();
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('link', { name: 'DVIC', exact: true })

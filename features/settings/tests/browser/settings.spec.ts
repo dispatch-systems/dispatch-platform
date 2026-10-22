@@ -45,7 +45,7 @@ test("Settings and Back change the sidebar alone, and a page opened otherwise sh
   const app = page.getByRole('navigation', { name: 'Primary navigation' });
   const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
   const settings = app.getByRole('button', { name: 'Settings', exact: true });
-  const back = page.getByRole('button', { name: 'Back', exact: true });
+  const back = page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true });
   const heading = page.getByRole('heading', { level: 1 });
   // Opened over another page, Settings' pages slide in and that page stays open, as it does
   // once Back has the app's in again.

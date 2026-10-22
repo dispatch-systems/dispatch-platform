@@ -75,8 +75,8 @@ function NavBadge({ badge, active }: { badge: Badge; active: boolean }) {
 }
 
 /**
- * A sidebar's list, `current` highlighted: a link to each page, and in the app's a button for
- * each sidebar of pages, which opens it (`open`). Following a link closes the sidebar where it
+ * A sidebar's list, `current` highlighted: a link to each page, and in the app's (`open`) a
+ * button for each sidebar of pages, which opens it. Following a link closes the sidebar where it
  * opens over the page (`close`).
  */
 function NavList({
@@ -91,11 +91,11 @@ function NavList({
   items: readonly NavItem[];
   current: string;
   dspId?: string;
-  open: (sidebar: Sidebar) => void;
+  open?: (sidebar: Sidebar) => void;
   close: () => void;
 }) {
   return (
-    <nav className="nav-list" aria-label={label}>
+    <nav className={open ? 'nav-list app-pages' : 'nav-list'} aria-label={label}>
       {items.map(({ id, label: itemLabel, icon: Icon, badge, preload, sidebar }) => {
         const warm = () => void preload().catch(() => undefined);
         const item = {
@@ -112,7 +112,7 @@ function NavList({
             {badge && <NavBadge badge={badge} active={current === id} />}
           </>
         );
-        return sidebar ? (
+        return sidebar && open ? (
           <button key={id} type="button" data-opens={id} onClick={() => open(sidebar)} {...item}>
             {named}
           </button>
@@ -228,17 +228,22 @@ export function Shell({
   const [list, setList] = useState({ opened, under: sidebar, shown: sidebar });
   if (list.opened !== opened || list.under !== sidebar)
     setList({ opened, under: sidebar, shown: sidebar });
-  // The latest the person asked to open, which one opened before it may no longer show.
+  // The latest the person asked to open, which one opened before it may no longer show, nor one
+  // asked for on a page another has opened in place of since.
   const opening = useRef(0);
+  const drawnFor = useRef(opened);
+  useLayoutEffect(() => {
+    drawnFor.current = opened;
+  });
   // Where the focus goes as the person opens a list or goes back: into the one shown, or to the
   // item of the app's that opened the one left.
   const focusing = useRef<{ from?: Sidebar }>(undefined);
   const open = (to: Sidebar) => {
     const asked = ++opening.current;
     const show = () => {
-      if (asked !== opening.current) return;
+      if (asked !== opening.current || drawnFor.current !== opened) return;
       focusing.current = {};
-      setList((now) => (now.opened === opened ? { ...now, shown: to } : now));
+      setList((now) => ({ ...now, shown: to }));
     };
     // What it draws of its own is in before it slides in, so it never slides in empty.
     if (to.draw && !loadedSidebar(to.draw)) loadSidebar(to.draw).then(show, show);
@@ -333,7 +338,6 @@ export function Shell({
                   items={navigation.find((item) => item.sidebar === panel)?.pages ?? []}
                   current={page}
                   dspId={dspId}
-                  open={open}
                   close={close}
                 />
               </>

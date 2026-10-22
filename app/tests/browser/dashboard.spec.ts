@@ -83,7 +83,7 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   await page.getByRole('button', { name: 'Verify', exact: true }).click();
   await expect(page.getByText('Paycom needs your verification')).toHaveCount(0);
   // Back slides the app's sidebar in again.
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('link', { name: 'Timecard', exact: true })

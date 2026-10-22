@@ -65,7 +65,7 @@ test('Settings draws route data from its declaration, and a window that deletes 
     ),
   ).toBe(true);
   // Back keeps the page open; opening another, from the app's sidebar, asks.
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('link', { name: 'Home Page', exact: true })

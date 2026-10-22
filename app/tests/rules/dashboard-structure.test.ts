@@ -278,7 +278,7 @@ test('no frontend modules import each other in a cycle', () => {
   for (const file of graph.keys()) visit(file);
 });
 
-test('every route is declared once and every parent is a route or a sidebar of pages', () => {
+test('every route is declared once, its parent a route or a sidebar of pages, and every sidebar lists one', () => {
   const entries: readonly RouteMeta[] = routeMeta;
   const sidebars = features.flatMap((feature) => feature.sidebars ?? []);
   assert(entries.length > 0, 'the route table must declare its screens');
@@ -296,6 +296,18 @@ test('every route is declared once and every parent is a route or a sidebar of p
         ),
         `${entry.id} names ${entry.parent} as its parent, which is no ${entry.scope} route or sidebar of pages`,
       );
+  }
+  // A sidebar's id is its pages', and a page's only if it is under it, as Settings' is: the
+  // app's sidebar would list the two as one.
+  for (const sidebar of sidebars) {
+    const under = (entry: RouteMeta) =>
+      entry.scope === sidebar.scope && entry.parent === sidebar.id;
+    assert(entries.some(under), `the sidebar of pages ${sidebar.id} has no page under it`);
+    const named = entries.find((entry) => entry.scope === sidebar.scope && entry.id === sidebar.id);
+    assert(
+      !named || under(named),
+      `the page ${sidebar.id} has its sidebar of pages' id without being under it`,
+    );
   }
 });
 

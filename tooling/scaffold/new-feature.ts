@@ -208,11 +208,10 @@ export function featureValues(root: string, argv: string[], adding = false) {
       throw new UsageError(
         '--sidebar names each page as lowercase letters, digits and hyphens: entries,history',
       );
-    const taken = dspPages(root);
-    const twice = sidebarPages.find(
-      (id, index) => taken.includes(id) || sidebarPages.indexOf(id) !== index,
-    );
-    if (twice) throw new UsageError(`${twice} is a page's id already: each page has its own`);
+    const repeated = sidebarPages.find((id, index) => sidebarPages.indexOf(id) !== index);
+    if (repeated) throw new UsageError(`--sidebar names ${repeated} twice: name each page once`);
+    const taken = dspPages(root).find((id) => sidebarPages.includes(id));
+    if (taken) throw new UsageError(`${taken} is another page's id already: each page has its own`);
   }
   const sidebarNames = (sidebarPages ?? []).map((id) => ({
     id,
@@ -502,8 +501,10 @@ export function featureValues(root: string, argv: string[], adding = false) {
     tab: Boolean(host),
     settings,
     prefetch: page && api,
-    summaryUrl: api && (page || connection),
+    summaryUrl: api && (page || connection || sidebar),
     pageKey: key(slug),
+    pagePascal: pascal,
+    pageLabel: names.label,
     sidebar,
     sidebarFirst: sidebarPages?.[0] ?? '',
     sidebarLabels: sidebarNames.map((each) => each.label).join(', '),
@@ -511,11 +512,12 @@ export function featureValues(root: string, argv: string[], adding = false) {
     sidebarLazies: sidebarNames
       .map(
         ({ pascal: each }) =>
-          `const ${each}Page = lazy(() => loadPages().then((module) => ({ default: module.${each}Page })));`,
+          `const ${each}Page = lazy(() => loadPage().then((module) => ({ default: module.${each}Page })));`,
       )
       .join('\n'),
+    // The first shows its summary, warmed as it opens, as a page of its own does.
     sidebarRoutes: sidebarNames
-      .map(({ id, label: pageLabel, pascal: each }) =>
+      .map(({ id, label: pageLabel, pascal: each }, index) =>
         [
           '    {',
           `      id: '${id}',`,
@@ -525,8 +527,15 @@ export function featureValues(root: string, argv: string[], adding = false) {
           '      nav: true,',
           ...(switched ? [`      feature: '${name}',`] : []),
           ...(permission ? [`      permission: ({ view }) => can(view, '${name}.view'),`] : []),
-          '      preload: loadPages,',
+          '      preload: loadPage,',
           `      render: ({ view }) => createElement(${each}Page, { key: view.token, view }),`,
+          ...(api && !index
+            ? [
+                '      prefetch: ({ view, warm }) => {',
+                `        if (can(view, '${name}.view')) warm([${names.camel}SummaryUrl]);`,
+                '      },',
+              ]
+            : []),
           '    },',
         ].join('\n'),
       )
@@ -610,13 +619,13 @@ export async function renderFeature(root: string, argv: string[], adding = false
   };
   for (const [wanted, source, target] of pieces(values))
     if (wanted) await write(source, target, values);
-  // Each page of its sidebar, as a page of its own is written, showing nothing yet.
-  for (const { label, pascal } of sidebarNames)
+  // Each page of its sidebar, as a page of its own is written: the first with its summary.
+  for (const [index, { label, pascal }] of sidebarNames.entries())
     await write('frontend/Page.tsx', `frontend/${pascal}Page.tsx`, {
       ...values,
-      label,
-      pascal,
-      api: false,
+      pagePascal: pascal,
+      pageLabel: label,
+      api: Boolean(values.api) && !index,
       ownTabs: false,
     });
   formatRust(plan);
