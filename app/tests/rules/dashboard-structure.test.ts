@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { features } from '../../frontend/features.js';
 import { routeMeta, type RouteMeta } from '../../frontend/route-meta.js';
 import {
   dependencies,
@@ -277,8 +278,9 @@ test('no frontend modules import each other in a cycle', () => {
   for (const file of graph.keys()) visit(file);
 });
 
-test('every route is declared once and every parent is a route', () => {
+test('every route is declared once and every parent is a route or a sidebar of pages', () => {
   const entries: readonly RouteMeta[] = routeMeta;
+  const sidebars = features.flatMap((feature) => feature.sidebars ?? []);
   assert(entries.length > 0, 'the route table must declare its screens');
   for (const entry of entries) {
     assert(entry.id && entry.scope, `unreadable route entry: ${JSON.stringify(entry)}`);
@@ -289,8 +291,10 @@ test('every route is declared once and every parent is a route', () => {
     );
     if (entry.parent)
       assert(
-        entries.some((other) => other.scope === entry.scope && other.id === entry.parent),
-        `${entry.id} names ${entry.parent} as its parent, which is not a ${entry.scope} route`,
+        [...entries, ...sidebars].some(
+          (other) => other.scope === entry.scope && other.id === entry.parent,
+        ),
+        `${entry.id} names ${entry.parent} as its parent, which is no ${entry.scope} route or sidebar of pages`,
       );
   }
 });

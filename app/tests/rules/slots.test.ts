@@ -187,18 +187,12 @@ test('every HTTP route has a method and path of its own', () => {
   holds('slots', 'routes', collisions('route', routes));
 });
 
-// The frontend's manifests, as they load: each page's address and what it is under, each sidebar
-// of pages, each custom section of Settings it draws, and the owner's name. Every owner's
-// frontend/feature.ts counts, listed in the app or not.
+// The frontend's manifests, as they load: each page's address, each sidebar of pages, each custom
+// section of Settings it draws, and the owner's name. Every owner's frontend/feature.ts counts,
+// listed in the app or not.
 type FrontendManifest = {
   name: string;
-  routes?: readonly {
-    id: string;
-    scope: string;
-    parent?: string;
-    tabs?: boolean;
-    hostsSettings?: boolean;
-  }[];
+  routes?: readonly { id: string; scope: string; tabs?: boolean; hostsSettings?: boolean }[];
   sidebars?: readonly { id: string; scope: string }[];
   settingsSections?: readonly { id: string }[];
   pageTabs?: readonly { page: string; id: string }[];
@@ -207,7 +201,6 @@ type DspPage = { id: string; file: string; tabs: boolean; hostsSettings: boolean
 async function frontendContributions() {
   const addresses: Contribution[] = [];
   const sidebars: Contribution[] = [];
-  const parents: (Contribution & { page: string })[] = [];
   const settingsSections: Contribution[] = [];
   const names: { file: string; name: string }[] = [];
   const pages: DspPage[] = [];
@@ -221,8 +214,6 @@ async function frontendContributions() {
     };
     for (const route of feature.routes ?? []) {
       addresses.push({ id: `${route.scope}/${route.id}`, at: ownerName(file) });
-      if (route.parent)
-        parents.push({ id: `${route.scope}/${route.parent}`, at: ownerName(file), page: route.id });
       if (route.scope === 'dsp')
         pages.push({
           id: route.id,
@@ -239,7 +230,7 @@ async function frontendContributions() {
       settingsSections.push({ id: section.id, at: ownerName(file) });
     names.push({ file, name: feature.name });
   }
-  return { addresses, sidebars, parents, settingsSections, names, pages, pageTabs };
+  return { addresses, sidebars, settingsSections, names, pages, pageTabs };
 }
 
 // A tab one feature adds to another's page shows where that page draws it: the app draws them
@@ -287,24 +278,6 @@ test("every page's address, sidebar of pages and Settings section has an id of i
   ]);
 });
 
-// A page is under an item of the app's sidebar it names as its parent: a page, which its own
-// highlights, or a sidebar of pages, which lists it. Naming neither, it is listed in the app's.
-test("every page's parent is a page or a sidebar of pages", async () => {
-  const { addresses, sidebars, parents } = await frontendContributions();
-  holds(
-    'slots',
-    'parents',
-    parents
-      .filter(({ id }) => ![...addresses, ...sidebars].some((item) => item.id === id))
-      .map(
-        ({ id, at, page }) => `${at}'s page ${page} is under ${id}, no page or sidebar of pages`,
-      ),
-  );
-});
-
-// A section of Settings its owner's backend declares custom is drawn by the component its
-// owner's frontend registers under the section's id: declared without one, it never shows, and
-// a component no custom section names never draws.
 test('every custom section of Settings has its component, and every component its section', async () => {
   const declared = calls('section').flatMap((span) => {
     const source = lexFile(span.file);
