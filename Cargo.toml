@@ -49,8 +49,9 @@ rmcp = { version = "3.5", default-features = false, features = ["server", "trans
 schemars = "1"
 tempfile = "3"
 # Roster photos, shrunk where they're collected: JPEG decoded straight at a fraction of its size,
-# PNG, a resize and a JPEG encoder. The JPEG decoder's own thread pool stays off: a collection
-# shrinks a few photos at a time on threads of its choosing.
+# PNG, a resize and a JPEG encoder. The JPEG decoder's rayon pool stays off: without it, each
+# decode hands its colour components to short-lived threads of its own, mostly waiting on the
+# one reading the file, so a shrink costs little more than a core.
 jpeg-decoder = { version = "0.3", default-features = false }
 png = "0.18"
 fast_image_resize = "6"

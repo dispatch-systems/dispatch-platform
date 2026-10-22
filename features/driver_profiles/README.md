@@ -19,10 +19,10 @@ Settings' Collectors page.
   abbreviation, then its whole roster in one request over HTTP and everyone it offboarded in
   another, then downloads the photos the DSP lacks or holds for over 30 days, active
   associates' first, about sixty at most a run, counted as Amazon serves them; the next brings
-  the rest. An offboarded associate's photo, once kept, is never downloaded again. A roster
-  naming no one is refused rather than taken to mean everyone left; no one offboarded is a DSP
-  that never offboarded anyone. Someone on both lists, as a rehire, is as the roster lists
-  them.
+  the rest. An offboarded associate's photo, once kept shrunk, is never downloaded again. A
+  roster naming no one is refused rather than taken to mean everyone left; no one offboarded is
+  a DSP that never offboarded anyone. Someone on both lists, as a rehire, is as the roster
+  lists them.
 - **Schedules:** only the DSP's own, set on the Collectors page; Driver Profiles makes none.
 - **Data:** `associates`, `photos` and `roster_runs`, in a database of its own beside
   Cortex's. An offboarded associate is listed with status `OFFBOARDED`. Someone neither list
@@ -31,10 +31,12 @@ Settings' Collectors page.
 - **Photos** are files in the DSP's cache, `cache/driver_profiles/photos/<sha256>.<ext>`,
   shrunk as Cortex collects them: at most 400 pixels on the long side, as a JPEG of about
   20 KB, turned upright as their EXIF says and with none of their metadata. A JPEG or PNG over
-  200 KB was kept before photos were shrunk, and the next collection shrinks it. Backups leave
-  the cache out, as a restore collects them again, and they go with the DSP's folder. A photo
-  is deleted once Amazon no longer lists whoever it shows; an inactive or offboarded associate
-  Amazon still lists keeps theirs.
+  200 KB was kept before photos were shrunk, and the next collection shrinks it. A photo that
+  can't be shrunk, too large or in a JPEG form the reader doesn't know, isn't kept, and every
+  collection downloads and tries it again, within the photos it tries. Backups leave the cache
+  out, as a restore collects them again, and they go with the DSP's folder. A photo is deleted
+  once Amazon no longer lists whoever it shows; an inactive or offboarded associate Amazon still
+  lists keeps theirs.
 - **People:** its `Roster` names everyone Amazon has listed by the name Amazon has on file,
   read first among Amazon's spellings; someone counts as listed while the roster lists them
   as active, and as offboarded once Amazon lists them so, which Driver Match shows under

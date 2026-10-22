@@ -37,8 +37,9 @@ const LANES: usize = 16;
 /// sixty; the next brings the rest.
 const PHOTOS_BUDGET: usize = 96 * 1024 * 1024;
 /// The most photos one collection tries: twice what the budget pays for at Amazon's usual
-/// size, so photos that fail every time, as an account Amazon serves no photo for, can't make
-/// each collection try every one of them.
+/// size, so photos that fail every time, as an account Amazon serves no photo for or one too
+/// large or strange to shrink, can't make each collection try every one of them. Each such
+/// photo is still tried, and downloaded, every collection.
 const PHOTO_ATTEMPTS: usize = 120;
 /// Photos shrunk at once: each holds a CPU for a moment, and a collection shares the server
 /// with everyone using it.
@@ -307,14 +308,12 @@ impl Driver {
                 let Some(address) = tried.get(index) else {
                     break;
                 };
-                let photo = match photo(&http, &downloads, &self.origin, &referer, address).await {
-                    Ok(bytes) => {
-                        spent.fetch_add(bytes.len(), Ordering::SeqCst);
-                        keep(&shrinking, address, bytes).await
-                    }
-                    Err(label) => Err(label),
+                let photo = async {
+                    let bytes = photo(&http, &downloads, &self.origin, &referer, address).await?;
+                    spent.fetch_add(bytes.len(), Ordering::SeqCst);
+                    keep(&shrinking, address, bytes).await
                 };
-                match photo {
+                match photo.await {
                     Ok(photo) => got.push((index, photo)),
                     Err(label) => run.metrics.detail(label),
                 }

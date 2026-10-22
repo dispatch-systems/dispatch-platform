@@ -90,6 +90,51 @@ fn a_camera_photo_comes_out_upright_at_most_400_pixels_as_a_small_jpeg_without_i
 }
 
 #[test]
+fn a_grey_or_cmyk_photo_keeps_its_colours() {
+    let encoded = |pixels: Vec<u8>, width, height, color| {
+        let mut out = Vec::new();
+        jpeg_encoder::Encoder::new(&mut out, 92)
+            .encode(&pixels, width, height, color)
+            .unwrap();
+        out
+    };
+    // Grey stays grey, at the size any photo is shrunk to.
+    let grey = shrink(encoded(
+        vec![128; 1600 * 1200],
+        1600,
+        1200,
+        jpeg_encoder::ColorType::Luma,
+    ))
+    .unwrap();
+    let mut decoder = jpeg_decoder::Decoder::new(grey.as_slice());
+    decoder.decode().unwrap();
+    let info = decoder.info().unwrap();
+    assert_eq!(
+        (info.width, info.height, info.pixel_format),
+        (400, 300, jpeg_decoder::PixelFormat::L8)
+    );
+    // CMYK as printers write it: no ink is white, cyan alone has no red in it.
+    let cmyk = |ink: [u8; 4]| {
+        shrink(encoded(
+            ink.repeat(800 * 600),
+            800,
+            600,
+            jpeg_encoder::ColorType::Cmyk,
+        ))
+        .unwrap()
+    };
+    let (width, _, paper, _) = read(&cmyk([0, 0, 0, 0]));
+    assert!(
+        at(&paper, width, 200, 150)
+            .iter()
+            .all(|channel| *channel > 240)
+    );
+    let (width, _, cyan, _) = read(&cmyk([255, 0, 0, 0]));
+    let [r, g, b] = at(&cyan, width, 200, 150);
+    assert!(r < 60 && g > 200 && b > 200, "{r} {g} {b}");
+}
+
+#[test]
 fn a_png_is_shrunk_on_white_where_it_is_see_through() {
     // Opaque blue on the left half, nothing on the right.
     let (width, height) = (800u32, 600u32);
@@ -153,6 +198,24 @@ fn what_is_no_image_cannot_be_read_or_claims_too_many_pixels_is_refused() {
         writer.write_chunk(png::chunk::IDAT, &[0; 16]).unwrap();
     }
     assert_eq!(shrink(png).unwrap_err(), "photo_too_large");
+    // A JPEG claiming 20 megapixels: past what is read whole, as a progressive one is, though
+    // not what is read in rows at an eighth of its size, which is read and shrunk.
+    let claiming = |progressive: bool| {
+        let mut out = Vec::new();
+        let mut encoder = jpeg_encoder::Encoder::new(&mut out, 80);
+        encoder.set_progressive(progressive);
+        encoder
+            .encode(&[0; 16 * 16 * 3], 16, 16, jpeg_encoder::ColorType::Rgb)
+            .unwrap();
+        let frame = out
+            .windows(2)
+            .position(|marker| marker == [0xFF, 0xC0] || marker == [0xFF, 0xC2])
+            .unwrap();
+        out[frame + 5..frame + 9].copy_from_slice(&[0x0F, 0xA0, 0x13, 0x88]);
+        out
+    };
+    assert_eq!(shrink(claiming(true)).unwrap_err(), "photo_too_large");
+    assert!(shrink(claiming(false)).is_ok());
 }
 
 #[test]

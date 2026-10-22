@@ -4,8 +4,9 @@
 //! allows, so a 3,392 by 2,544 photo is read as 424 by 318 rather than whole; a PNG is read whole.
 //! The JPEG written carries none of the original's metadata, so it is turned upright as the
 //! original's EXIF says first, and the rest, a camera's GPS among it, goes.
+use super::PhotoFormat;
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::Image};
-use jpeg_decoder::PixelFormat;
+use jpeg_decoder::{CodingProcess, PixelFormat};
 use std::io::Cursor;
 
 /// The long side of a photo kept, in pixels: four times the largest face a page draws.
@@ -15,19 +16,25 @@ pub const SIDE: u32 = 400;
 pub const MAX_KEPT_PHOTO_BYTES: usize = 200 * 1024;
 /// How much of the picture the JPEG written keeps, out of 100.
 const QUALITY: u8 = 80;
-/// The most pixels a photo may say it has before it is read, past any camera's: a file claiming
-/// more can't make reading it take gigabytes.
+/// The most pixels a JPEG read in rows at a fraction of its size may say it has before it is
+/// read, past any camera's.
 const MAX_PIXELS: u64 = 50_000_000;
+/// The most pixels a photo read whole may say it has: a progressive or lossless JPEG, whose
+/// coefficients are kept at full size, six bytes a pixel, or a PNG, up to four. With four
+/// photos shrunk at once, a file claiming more can't make reading them take gigabytes.
+const MAX_WHOLE_PIXELS: u64 = 16_000_000;
+/// Why a photo was not kept when it could not be read, as the collection records it.
+const UNREADABLE: &str = "photo_unreadable";
 
 /// The photo as it is kept: `bytes` themselves when already small, else shrunk to a JPEG. A GIF,
 /// WebP or AVIF is kept as it is: nothing here reads them. Refused, by a fixed label, when it is
 /// no image, one that can't be read, or one claiming too many pixels.
 pub fn shrink(bytes: Vec<u8>) -> Result<Vec<u8>, &'static str> {
-    let picture = match bytes.as_slice() {
-        [0xFF, 0xD8, 0xFF, ..] => jpeg(&bytes)?,
-        [0x89, b'P', b'N', b'G', ..] => png(&bytes)?,
-        _ if super::PhotoFormat::of(&bytes).is_some() => return Ok(bytes),
-        _ => return Err("photo_not_an_image"),
+    let picture = match PhotoFormat::of(&bytes) {
+        Some(PhotoFormat::Jpeg) => jpeg(&bytes)?,
+        Some(PhotoFormat::Png) => png(&bytes)?,
+        Some(_) => return Ok(bytes),
+        None => return Err("photo_not_an_image"),
     };
     let Some(picture) = picture else {
         return Ok(bytes);
@@ -49,9 +56,9 @@ struct Picture {
 fn small(width: u32, height: u32, weight: usize) -> bool {
     width.max(height) <= SIDE && weight <= MAX_KEPT_PHOTO_BYTES
 }
-/// Whether a photo claims no more pixels than may be read.
-fn readable(width: u32, height: u32) -> Result<(), &'static str> {
-    if u64::from(width) * u64::from(height) > MAX_PIXELS {
+/// Whether a photo claims no more than `most` pixels.
+fn readable(width: u32, height: u32, most: u64) -> Result<(), &'static str> {
+    if u64::from(width) * u64::from(height) > most {
         return Err("photo_too_large");
     }
     Ok(())
@@ -60,12 +67,16 @@ fn readable(width: u32, height: u32) -> Result<(), &'static str> {
 /// A JPEG's pixels, read at the smallest fraction of its size that still covers `SIDE`; none
 /// when it is small already.
 fn jpeg(bytes: &[u8]) -> Result<Option<Picture>, &'static str> {
-    const UNREADABLE: &str = "photo_unreadable";
     let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(bytes));
     decoder.read_info().map_err(|_| UNREADABLE)?;
     let info = decoder.info().ok_or(UNREADABLE)?;
     let (width, height) = (u32::from(info.width), u32::from(info.height));
-    readable(width, height)?;
+    let most = if info.coding_process == CodingProcess::DctSequential {
+        MAX_PIXELS
+    } else {
+        MAX_WHOLE_PIXELS
+    };
+    readable(width, height, most)?;
     if small(width, height, bytes.len()) {
         return Ok(None);
     }
@@ -102,38 +113,22 @@ fn jpeg(bytes: &[u8]) -> Result<Option<Picture>, &'static str> {
 
 /// A PNG's pixels, read whole, on white where it is see-through; none when it is small already.
 fn png(bytes: &[u8]) -> Result<Option<Picture>, &'static str> {
-    const UNREADABLE: &str = "photo_unreadable";
     let mut decoder = png::Decoder::new(Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().map_err(|_| UNREADABLE)?;
     let (width, height) = (reader.info().width, reader.info().height);
-    readable(width, height)?;
+    readable(width, height, MAX_WHOLE_PIXELS)?;
     if small(width, height, bytes.len()) {
         return Ok(None);
     }
     let mut pixels = vec![0; reader.output_buffer_size().ok_or(UNREADABLE)?];
     let frame = reader.next_frame(&mut pixels).map_err(|_| UNREADABLE)?;
     pixels.truncate(frame.buffer_size());
-    let on_white = |value: u8, alpha: u8| {
-        ((u32::from(value) * u32::from(alpha) + 255 * (255 - u32::from(alpha))) / 255) as u8
-    };
-    let (channels, pixels) = match frame.color_type {
-        png::ColorType::Grayscale => (1, pixels),
-        png::ColorType::GrayscaleAlpha => (
-            1,
-            pixels
-                .chunks_exact(2)
-                .map(|ga| on_white(ga[0], ga[1]))
-                .collect(),
-        ),
-        png::ColorType::Rgb => (3, pixels),
-        png::ColorType::Rgba => (
-            3,
-            pixels
-                .chunks_exact(4)
-                .flat_map(|rgba| [0, 1, 2].map(|c| on_white(rgba[c], rgba[3])))
-                .collect(),
-        ),
+    let channels = match frame.color_type {
+        png::ColorType::Grayscale => 1,
+        png::ColorType::Rgb => 3,
+        png::ColorType::GrayscaleAlpha => on_white(&mut pixels, 1),
+        png::ColorType::Rgba => on_white(&mut pixels, 3),
         // Expanded to colour above.
         png::ColorType::Indexed => return Err(UNREADABLE),
     };
@@ -144,6 +139,22 @@ fn png(bytes: &[u8]) -> Result<Option<Picture>, &'static str> {
         pixels,
         orientation: 1,
     }))
+}
+
+/// Pixels of `colours` channels and an alpha, laid on white where they are see-through, in place:
+/// each pixel is written no later than it was read, and the alphas go. Gives `colours`.
+fn on_white(pixels: &mut Vec<u8>, colours: usize) -> usize {
+    let mut to = 0;
+    for from in (0..pixels.len()).step_by(colours + 1) {
+        let alpha = u32::from(pixels[from + colours]);
+        for channel in 0..colours {
+            let value = u32::from(pixels[from + channel]);
+            pixels[to + channel] = ((value * alpha + 255 * (255 - alpha)) / 255) as u8;
+        }
+        to += colours;
+    }
+    pixels.truncate(to);
+    colours
 }
 
 /// The orientation an EXIF block, from its TIFF header, gives: the first directory's tag 0x0112.
@@ -200,7 +211,7 @@ impl Picture {
             PixelType::U8x3
         };
         let source = Image::from_vec_u8(self.width, self.height, self.pixels, pixel)
-            .map_err(|_| "photo_unreadable")?;
+            .map_err(|_| UNREADABLE)?;
         let mut resized = Image::new(width, height, pixel);
         Resizer::new()
             .resize(
@@ -208,7 +219,7 @@ impl Picture {
                 &mut resized,
                 &ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3)),
             )
-            .map_err(|_| "photo_unreadable")?;
+            .map_err(|_| UNREADABLE)?;
         Ok(Self {
             width,
             height,
@@ -268,7 +279,7 @@ impl Picture {
         let mut out = Vec::new();
         jpeg_encoder::Encoder::new(&mut out, QUALITY)
             .encode(&self.pixels, self.width as u16, self.height as u16, color)
-            .map_err(|_| "photo_unreadable")?;
+            .map_err(|_| UNREADABLE)?;
         Ok(out)
     }
 }
