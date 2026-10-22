@@ -47,12 +47,12 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await expect(check('Quinn Foster')).toHaveCount(0);
 
   // Someone Amazon saw only long ago, whom Paycom doesn't list, has left and shows only under
-  // Former; one Paycom has never heard of is missing from it.
+  // Inactive; one Paycom has never heard of is missing from it.
   await expect(row('Taylor Brooks')).toBeVisible();
   await expect(row('Riley Quinn')).toHaveCount(0);
   const show = page.getByRole('group', { name: 'Show' });
-  await show.getByRole('button', { name: /^Former/ }).click();
-  await expect(row('Riley Quinn')).toContainText('Former');
+  await show.getByRole('button', { name: /^Inactive/ }).click();
+  await expect(row('Riley Quinn')).toContainText('Inactive');
   await show.getByRole('button', { name: /^Not in every system/ }).click();
   await expect(row('Dmitri Volkov')).toContainText('Not in Paycom');
   await show.getByRole('button', { name: /^All/ }).click();

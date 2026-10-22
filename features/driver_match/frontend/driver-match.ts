@@ -23,7 +23,7 @@ export const roles: Record<PersonRole, { label: string; filter: string; tone: st
   driver: { label: 'Driver', filter: 'Drivers', tone: 'sage' },
   helper: { label: 'Helper', filter: 'Helpers', tone: 'steel' },
   office: { label: 'Management', filter: 'Management', tone: 'violet' },
-  former: { label: 'Former', filter: 'Former', tone: 'neutral' },
+  former: { label: 'Inactive', filter: 'Inactive', tone: 'neutral' },
   offboarded: { label: 'Offboarded', filter: 'Offboarded', tone: 'slate' },
 };
 /** Whether someone has left, offboarded or not: only their own filter shows them. */
@@ -50,7 +50,7 @@ export const knows = (person: Person, source: PeopleSource) =>
   person.ids.some((id) => id.source === source);
 /** Drivers and helpers belong in every source; anyone else only where they are. */
 export const working = (person: Person) => person.role === 'driver' || person.role === 'helper';
-/** Whether a filter shows someone: someone who has left shows only under Former or Offboarded. */
+/** Whether a filter shows someone: someone who has left shows only under Inactive or Offboarded. */
 export function shows(filter: PeopleFilter, person: Person, sources: readonly PeopleSource[]) {
   switch (filter) {
     case 'all':
