@@ -22,7 +22,10 @@ fn a_photo_stays_while_amazon_lists_whoever_it_shows() {
     let files = || std::fs::read_dir(&dir).unwrap().count();
     assert_eq!(files(), 11);
     // Every photo stands, so the next collection downloads none of them.
-    assert_eq!(store.kept_photos(&dsp, "company-fixture").unwrap().len(), 11);
+    assert_eq!(
+        store.kept_photos(&dsp, "company-fixture").unwrap().len(),
+        11
+    );
     // Amazon stops listing two; the inactive and the offboarded it still lists keep theirs.
     let mut next = roster(&store, &dsp);
     next.associates

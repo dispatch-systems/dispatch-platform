@@ -239,7 +239,8 @@ impl Driver {
             )
             .await
             .map_err(refusal)?;
-        run.progress(40, "Reading who was offboarded".into()).await?;
+        run.progress(40, "Reading who was offboarded".into())
+            .await?;
         let offboarded = http
             .json(
                 &roster_address(&self.origin, &company_id, "OFFBOARDED"),
