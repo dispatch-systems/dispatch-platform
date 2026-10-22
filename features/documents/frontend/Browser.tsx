@@ -12,7 +12,14 @@ import {
 } from 'lucide-react';
 import type { DspView } from '../../../core/accounts/api/index.js';
 import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
-import { DataState, Empty, Popover, SearchInput } from '../../../core/shell/frontend/ui/index.js';
+import {
+  DataState,
+  Empty,
+  Popover,
+  SearchInput,
+  ViewSwitch,
+  type ViewOption,
+} from '../../../core/shell/frontend/ui/index.js';
 import {
   createItem,
   foldersChanged,
@@ -48,6 +55,12 @@ import { useDragging } from './browser/useDragging.js';
 import { usePending } from './browser/usePending.js';
 import { useSelection } from './browser/useSelection.js';
 import { Listing, Path, type Moves } from './browser/views.js';
+
+/** The ways a folder shows, beside its search. */
+const LAYOUTS: readonly ViewOption<Layout>[] = [
+  { value: 'list', label: 'List', icon: List },
+  { value: 'grid', label: 'Grid', icon: LayoutGrid },
+];
 
 // The DSP's Documents, once Google is connected: a folder at a time, as a list or a grid,
 // with what Documents makes, what anyone uploads, by picking files or dropping them on the
@@ -382,22 +395,7 @@ export function Browser({
             value={search}
             onChange={setSearch}
           />
-          <div className="documents-layout" role="group" aria-label="View">
-            <button
-              aria-pressed={layout === 'list'}
-              aria-label="List"
-              onClick={() => choose('list')}
-            >
-              <List size={16} />
-            </button>
-            <button
-              aria-pressed={layout === 'grid'}
-              aria-label="Grid"
-              onClick={() => choose('grid')}
-            >
-              <LayoutGrid size={16} />
-            </button>
-          </div>
+          <ViewSwitch value={layout} options={LAYOUTS} onChange={choose} />
         </div>
       </div>
       <div

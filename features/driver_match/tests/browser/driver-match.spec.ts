@@ -16,9 +16,10 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await expect(page).toHaveURL(new RegExp(`#dsp/${dsp.id}/driver-match$`));
   await expect(link).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('4 to check', { exact: true })).toBeVisible();
+  // Everyone shows as a list until someone picks cards.
   const people = page.getByRole('region', { name: 'People' });
-  const card = (name: string) => people.getByRole('listitem').filter({ hasText: name });
-  const check = (name: string) => card(name).getByRole('button', { name: 'Check', exact: true });
+  const row = (name: string) => people.getByRole('row').filter({ hasText: name });
+  const check = (name: string) => row(name).getByRole('button', { name: 'Check', exact: true });
   const dialog = page.getByRole('dialog', { name: /Same person\?/ });
 
   await check('Ben Collins').click();
@@ -47,17 +48,17 @@ test('Driver Match asks who might be listed twice and makes them one person', as
 
   // Someone Amazon saw only long ago, whom Paycom doesn't list, has left and shows only under
   // Former; one Paycom has never heard of is missing from it.
-  await expect(card('Taylor Brooks')).toBeVisible();
-  await expect(card('Riley Quinn')).toHaveCount(0);
+  await expect(row('Taylor Brooks')).toBeVisible();
+  await expect(row('Riley Quinn')).toHaveCount(0);
   const show = page.getByRole('group', { name: 'Show' });
   await show.getByRole('button', { name: /^Former/ }).click();
-  await expect(card('Riley Quinn')).toContainText('Former');
+  await expect(row('Riley Quinn')).toContainText('Former');
   await show.getByRole('button', { name: /^Not in every system/ }).click();
-  await expect(card('Dmitri Volkov')).toContainText('Not in Paycom');
+  await expect(row('Dmitri Volkov')).toContainText('Not in Paycom');
   await show.getByRole('button', { name: /^All/ }).click();
 
   await page.getByLabel('Search people').fill('collins');
-  await card('Benjamin Collins')
+  await row('Benjamin Collins')
     .getByRole('button', { name: /^Benjamin Collins/ })
     .click();
   const sheet = page.getByRole('dialog');
@@ -78,7 +79,19 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   await sheet.getByRole('combobox', { name: 'Title' }).selectOption('Dispatch');
   await expect(page.getByText('Benjamin Collins is now Dispatch', { exact: true })).toBeVisible();
   await sheet.getByRole('button', { name: 'Close dialog' }).click();
-  await expect(card('Ben Collins')).toHaveCount(1);
+  await expect(row('Ben Collins')).toHaveCount(1);
   await show.getByRole('button', { name: /^Management/ }).click();
+  await expect(row('Benjamin Collins')).toContainText('Dispatch');
+
+  // Cards, once picked, are what this browser shows from then on.
+  const card = (name: string) => people.getByRole('listitem').filter({ hasText: name });
+  const views = page.getByRole('group', { name: 'View' });
+  await views.getByRole('button', { name: 'Cards', exact: true }).click();
   await expect(card('Benjamin Collins')).toContainText('Dispatch');
+  await page.reload();
+  await expect(views.getByRole('button', { name: 'Cards', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(people.getByRole('table')).toHaveCount(0);
 });

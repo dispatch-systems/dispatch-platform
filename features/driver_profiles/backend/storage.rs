@@ -35,7 +35,8 @@ fn verify(db: &Db) -> Result<()> {
     Ok(())
 }
 /// How long a photo kept stands for its address before a collection downloads it again, in
-/// case the associate changed it.
+/// case the associate changed it. An offboarded associate's stands for good: they change it no
+/// more.
 const PHOTO_REFRESH_MS: i64 = 30 * 24 * 3_600_000;
 
 /// What a roster job carries while queued; the DSP's code is bound just before it runs.
@@ -62,7 +63,8 @@ pub(crate) fn bind_roster_request(store: &Store, dsp: &str) -> Result<Value> {
 pub trait DriverProfilesStore {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>>;
     /// The addresses of the photos kept for `company`'s associates that still stand, whose
-    /// files are there: a collection downloads only the rest.
+    /// files are there: a collection downloads only the rest. An offboarded associate's always
+    /// stands.
     fn kept_photos(&self, dsp: &str, company: &str) -> Result<Vec<String>>;
     /// Stores a roster as the current one. The photos' files are written already.
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
@@ -81,10 +83,10 @@ impl DriverProfilesStore for Store {
         let rows = self
             .driver_profiles_db(dsp)?
             .query_as::<(String, String, String)>(
-                "SELECT p.address,p.sha256,p.format FROM photos p WHERE p.stored_at>=? AND EXISTS \
-             (SELECT 1 FROM associates a WHERE a.photo_address=p.address AND a.company_id=?) \
-             ORDER BY p.address",
-                params![at(now() - PHOTO_REFRESH_MS), company],
+                "SELECT p.address,p.sha256,p.format FROM photos p WHERE EXISTS \
+             (SELECT 1 FROM associates a WHERE a.photo_address=p.address AND a.company_id=? \
+             AND (p.stored_at>=? OR a.status='OFFBOARDED')) ORDER BY p.address",
+                params![company, at(now() - PHOTO_REFRESH_MS)],
             )?;
         let dir = photos::dir(self, dsp)?;
         Ok(rows

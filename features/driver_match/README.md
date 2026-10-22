@@ -20,9 +20,12 @@ what was decided.
   people titles.
 - **Its page**, `driver-match` in a DSP's sidebar, is listed while the DSP has a feature on
   whose data names people, for those who hold `driver_match.manage`: the questions the backend
-  sends, asked one at a time, then everyone as a card with their photo, from core's
-  `/api/dsp/people/{code}/photo`, their title or role, and the sources that have them, by role
-  or a source lacking them; a person's sheet gives them a title. Beside its name in the
+  sends, asked one at a time, then everyone, by role or a source lacking them, with their
+  photo, from core's `/api/dsp/people/{code}/photo`, and their title or role: as a list, a row
+  each with their ID in each source or the source lacking them, sortable and a hundred a page,
+  or as cards, a card each with the sources that have them. A switch across from the page's
+  name chooses, a list until someone picks cards, kept in their browser as Documents keeps its
+  layout. A person's sheet gives them a title. Beside its name in the
   sidebar, how many of those questions wait: the server keeps one count for all of the DSP's
   managers until a decision or a collection changes it, and the sidebar reads it again after
   each decision, after a collection a page following collections hears, and every five
@@ -53,18 +56,21 @@ what was decided.
   short for others, is `backend/names.rs`: no other owner matches names.
 - **Names:** a person is shown by the name their first source writes, in the sources' order,
   so a payroll's legal name comes before Amazon's.
-- **Roles:** Amazon's roster says who drives or only helps. Someone no roster lists and
-  nothing has seen for 21 days before the newest data has left. A list of people the DSP can
-  reach, as Slack's members, says nothing of who still works for it: someone only such lists
-  know works in the office while one lists them, and has left once none does. People no
-  source shows driving, outside the departments a source's settings count as drivers, work in
-  the office. The page calls everyone in the office Management.
+- **Roles:** Amazon's roster says who drives or only helps. Someone Amazon offboarded is
+  Offboarded at once, however lately anything saw them and whatever a payroll slow to let them
+  go says, until another of their Amazon IDs is on its roster as active, as a rehire's; the
+  page shows them only under Offboarded. Someone no roster lists and nothing has seen for 21
+  days before the newest data has left: Former. A list of people the DSP can reach, as Slack's
+  members, says nothing of who still works for it: someone only such lists know works in the
+  office while one lists them, and has left once none does. People no source shows driving,
+  outside the departments a source's settings count as drivers, work in the office. The page
+  calls everyone in the office Management.
 - **Titles:** Owner, OPs Manager, Fleet Manager, Dispatch, HR Manager or Manager (core's
   `PersonTitle`), given on a person's sheet, for what no source says: Amazon's roster lists
   office staff with a DA account as drivers, and a dispatcher covers a route now and then.
-  Someone with a title works in the office whatever their sources show, and is shown by it,
-  until it's taken away. Someone who has left is still former, their title kept for when they
-  come back. A merge carries the title of the one merged to whoever keeps the IDs, unless they
+  Someone with a title works in the office whatever their sources show, offboarded by Amazon
+  too, as a dispatcher whose DA account went, and is shown by it, until it's taken away.
+  Someone who has left is still former, their title kept for when they come back. A merge carries the title of the one merged to whoever keeps the IDs, unless they
   have one; an ID split off starts without one.
 - **Questions:** two people no source knows both of, whose names tie them, or any two sharing
   a contact only they have, with how many days they worked together; each reason says whether
@@ -72,7 +78,7 @@ what was decided.
   A list of people the DSP can reach may list one person twice, as an account in each of two
   workspaces under different addresses, so its knowing both keeps no pair apart. The one
   holding fewer IDs joins the other, whose code both keep. Then the IDs a name written another
-  way joined to someone. Nobody who has left is asked about.
+  way joined to someone. Nobody who has left, offboarded or not, is asked about.
 - **Photos:** a person's photo is the first a kind of data holds under one of their IDs, their
   IDs in the sources' order and each ID's kinds in the order their data is read
   (`backend/photos.rs`). The page, a person's photo and the directory answer by that one rule,

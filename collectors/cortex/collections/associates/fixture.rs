@@ -1,11 +1,12 @@
 //! What fixture mode collects: a small made-up roster, named as the demo's Paycom employees
-//! are, some by another spelling, with portraits drawn here.
+//! are, some by another spelling, and a few offboarded, one of whom payroll still lists, with
+//! portraits drawn here.
 use super::capture::{Associate, Capture, Collection, Photo, Request};
 use dispatch_core::{Error, Result, db::now};
 use serde_json::json;
 
 /// Transporter ID, name as Amazon writes it, status and roles.
-const ROSTER: [(&str, &str, &str, &str); 8] = [
+const ROSTER: [(&str, &str, &str, &str); 11] = [
     ("driver-1", "Jordan Ellis", "ACTIVE", "Driver, Helper"),
     ("driver-2", "Morgan Reed", "ACTIVE", "Driver, Helper"),
     ("driver-3", "Taylor Brooks", "ACTIVE", "Driver"),
@@ -14,6 +15,9 @@ const ROSTER: [(&str, &str, &str, &str); 8] = [
     ("driver-6", "Riley Bennett", "INACTIVE", "Driver"),
     ("driver-7", "Dana Whitfield", "ACTIVE", "Driver"),
     ("driver-8", "Alex Parker", "ACTIVE", "Driver, Helper"),
+    ("driver-9", "Drew Sullivan", "OFFBOARDED", "Driver"),
+    ("driver-10", "Jesse Morales", "OFFBOARDED", "Driver, Helper"),
+    ("driver-11", "Robin Chen", "OFFBOARDED", "Driver"),
 ];
 
 pub fn fixture(request: &Request) -> Result<Capture> {

@@ -13,6 +13,7 @@ const id = (source: string, external: string, name: string): PersonId => ({
   phones: [],
   roles: [],
   listed: true,
+  offboarded: false,
   photo: external === 'T1',
   firstSeen: null,
   lastSeen: null,
@@ -29,22 +30,27 @@ const person = (code: string, role: Person['role'], ids: PersonId[]): Person => 
 });
 const sources = ['paycom', 'amazon'] as PeopleSource[];
 
-test('someone who has left shows only under Former, and a driver a source lacks is missing from it', () => {
+test('someone who has left shows only under Former or Offboarded, and a driver a source lacks is missing from it', () => {
   const gone = person('K7M2QX', 'former', [id('amazon', 'T9', 'Riley Quinn')]);
+  const offboarded = person('P4TN8R', 'offboarded', [id('amazon', 'T8', 'Jesse Morales')]);
   const driver = person('W5HC2K', 'driver', [id('amazon', 'T2', 'Dmitri Volkov')]);
   const office = person('R39CFT', 'office', [id('paycom', 'E7', 'Avery Morgan')]);
+  const everyone = [gone, offboarded, driver, office];
   assert.deepEqual(
-    [gone, driver, office].map((p) => [shows('all', p, sources), shows('former', p, sources)]),
+    everyone.map((p) =>
+      (['all', 'former', 'offboarded'] as const).map((filter) => shows(filter, p, sources)),
+    ),
     [
-      [false, true],
-      [true, false],
-      [true, false],
+      [false, true, false],
+      [false, false, true],
+      [true, false, false],
+      [true, false, false],
     ],
   );
   // Only drivers and helpers belong in every source.
   assert.deepEqual(
-    [gone, driver, office].map((p) => shows('missing', p, sources)),
-    [false, true, false],
+    everyone.map((p) => shows('missing', p, sources)),
+    [false, false, true, false],
   );
 });
 

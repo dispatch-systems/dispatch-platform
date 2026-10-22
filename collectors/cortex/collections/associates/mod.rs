@@ -1,5 +1,6 @@
-//! Associates: everyone Amazon lists for the DSP's company, active or not, with their
-//! contacts, roles and photos, as the DA Console's associates page reads them.
+//! Associates: everyone Amazon lists for the DSP's company, active, inactive or offboarded,
+//! with their contacts, roles and photos, as the DA Console's associates and offboarded pages
+//! read them.
 mod capture;
 pub(crate) mod collect;
 mod fixture;

@@ -81,6 +81,8 @@ pub(crate) struct Identity {
     pub last_seen: Option<String>,
     /// On a source's current roster.
     pub listed: bool,
+    /// Its source says the DSP offboarded them.
+    pub offboarded: bool,
     /// Its contacts, to match by and to show.
     pub contacts: Contacts,
     /// What its source says they do.
@@ -104,6 +106,7 @@ impl Identity {
             first_seen: None,
             last_seen: None,
             listed: false,
+            offboarded: false,
             contacts: Contacts::default(),
             roles: vec![],
             contacts_only: false,
@@ -178,6 +181,7 @@ pub(crate) fn found(kinds: &[&'static People], store: &Store, dsp: &str) -> Resu
             entry.position = entry.position.take().or(named.position);
             entry.seen(named.first_seen, named.last_seen);
             entry.listed |= named.listed;
+            entry.offboarded |= named.offboarded;
             // A photo counts from a kind that serves its photos.
             if kind.photos.is_some() {
                 entry.photo = entry.photo.take().or(named.photo);

@@ -87,6 +87,8 @@ pub struct PersonId {
     pub roles: Vec<String>,
     /// On its source's current roster.
     pub listed: bool,
+    /// Its source says the DSP offboarded them.
+    pub offboarded: bool,
     /// Whether a photo of them is held under this ID.
     pub photo: bool,
     pub first_seen: Option<String>,

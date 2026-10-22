@@ -36,6 +36,7 @@ export function SheetIds({
               <strong className="driver-source-id" title={id.id}>
                 {shortId(id)}
               </strong>
+              {id.offboarded && <span className="driver-tag slate">Offboarded</span>}
             </div>
             <small>{[id.name, id.department].filter(Boolean).join(' · ')}</small>
             {id.emails.length + id.phones.length > 0 && (

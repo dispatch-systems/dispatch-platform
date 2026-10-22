@@ -177,6 +177,69 @@ button.driver-more {
   margin: 16px auto 0;
 }
 
+/* Everyone as a list, a row each. */
+.driver-list th[scope='row'] {
+  height: auto;
+  padding: 9px 8px;
+  font-size: 14px;
+}
+.driver-list td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  font-variant-numeric: tabular-nums;
+}
+button.driver-list-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 14px;
+  text-align: left;
+}
+button.driver-list-person:hover strong {
+  text-decoration: underline;
+}
+.driver-list-person > span {
+  display: flex;
+  flex-direction: column;
+}
+.driver-list-person strong {
+  font-weight: 500;
+}
+.driver-list-role {
+  color: var(--muted-foreground);
+}
+.driver-list-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 600;
+}
+.driver-list tr.queued > * {
+  background: var(--warning-surface);
+}
+.driver-list-check {
+  width: 92px;
+  text-align: right;
+}
+.driver-list-check button {
+  min-height: 30px;
+  padding: 0 12px;
+}
+/* What the hidden columns say, under the name, on a phone alone. */
+.driver-list-under {
+  display: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 400;
+}
+
 /* The questions, one at a time. */
 .modal:has(.driver-check) {
   width: 680px;
@@ -427,6 +490,10 @@ button.driver-more {
 .driver-tag.violet {
   background: var(--violet-surface);
   color: var(--violet);
+}
+.driver-tag.slate {
+  background: var(--slate-surface);
+  color: var(--slate);
 }
 /* A source by its name, in its tone. */
 .driver-source {
@@ -722,6 +789,18 @@ button.driver-more {
   }
 }
 @media (max-width: 560px) {
+  .driver-list thead,
+  .driver-list-role,
+  .driver-list-ids,
+  .driver-list-seen {
+    display: none;
+  }
+  .driver-list-under {
+    display: block;
+  }
+  .driver-list-under .driver-list-missing {
+    display: inline;
+  }
   .driver-cards {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 10px;

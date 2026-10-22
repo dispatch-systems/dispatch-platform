@@ -60,6 +60,7 @@ export function PersonSheet({
       <DataState data={details.data} error={details.error} retry={details.refresh}>
         {(data) => (
           <>
+            {/* A title keeps someone offboarded in the office: only the former keep theirs unseen. */}
             {data.person.role !== 'former' && (
               <TitlePicker key={data.person.title ?? ''} person={data.person} />
             )}

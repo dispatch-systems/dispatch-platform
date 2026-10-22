@@ -32,6 +32,7 @@ impl IdRow {
             phones: x.map_or(vec![], |x| x.contacts.written(Contact::Phone).to_vec()),
             roles: x.map(|x| x.roles.clone()).unwrap_or_default(),
             listed: x.is_some_and(|x| x.listed),
+            offboarded: x.is_some_and(|x| x.offboarded),
             photo: x.is_some_and(|x| x.photo.is_some()),
             first_seen: x.and_then(|x| x.first_seen.clone()),
             last_seen: x.and_then(|x| x.last_seen.clone()),
@@ -54,12 +55,13 @@ pub(super) struct Context<'a> {
     pub recent: &'a str,
 }
 
-/// What a person does for the DSP: no roster lists them and nothing has seen them lately,
-/// they have left, unless only lists of people the DSP can reach know them, and one still
-/// does, so they work in the office; someone gave them a title, they are management; none of
-/// their sources shows them driving and the departments the DSP counts as drivers leave them
-/// out, they work in the office; else the roles their sources give say whether they drive or
-/// only help.
+/// What a person does for the DSP: a source says the DSP offboarded them and none of their
+/// IDs there is on its roster as active, they are offboarded, unless someone gave them a
+/// title; no roster lists them and nothing has seen them lately, they have left, unless only
+/// lists of people the DSP can reach know them, and one still does, so they work in the
+/// office; someone gave them a title, they are management; none of their sources shows them
+/// driving and the departments the DSP counts as drivers leave them out, they work in the
+/// office; else the roles their sources give say whether they drive or only help.
 fn role(
     keys: &[Key],
     described: &[&Identity],
@@ -67,6 +69,22 @@ fn role(
     titled: bool,
     context: &Context,
 ) -> PersonRole {
+    // Offboarded, they have left however lately anything saw them, and whatever another source,
+    // as a payroll slow to let them go, says; another ID of that source on its roster as active,
+    // as a rehire's, says they are back. One there as inactive, as for Former, says nothing.
+    let offboarded: BTreeSet<Source> = described
+        .iter()
+        .filter(|x| x.offboarded)
+        .map(|x| x.source)
+        .collect();
+    if !titled
+        && !offboarded.is_empty()
+        && !described
+            .iter()
+            .any(|x| x.listed && offboarded.contains(&x.source))
+    {
+        return PersonRole::Offboarded;
+    }
     // A list of people the DSP can reach says nothing of who still works for it.
     let employed = described.iter().any(|x| x.listed && !x.contacts_only);
     if !employed && last_seen.is_none_or(|last| last < context.recent) {

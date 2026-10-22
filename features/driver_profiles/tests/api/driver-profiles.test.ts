@@ -10,7 +10,8 @@ test('the roster collects with its photos, for those who may collect it', async 
   t.after(f.close);
   const owner = await f.client();
   const north = await collectRoster(owner);
-  // Those it lists, active and not, their photos, and none left for the next collection.
+  // Those it lists, active, inactive and offboarded, their photos, and none left for the next
+  // collection.
   const counted = f.database(`dsps/${north.id}/data/driver_profiles/driver_profiles.sqlite`, (db) =>
     [
       "SELECT count(*) AS n FROM associates WHERE listed=1 AND status='ACTIVE'",
@@ -19,10 +20,10 @@ test('the roster collects with its photos, for those who may collect it', async 
       'SELECT photos_waiting AS n FROM roster_runs ORDER BY collected_at DESC LIMIT 1',
     ].map((sql) => Number((db.prepare(sql).get() as { n: number }).n)),
   );
-  assert.deepEqual(counted, [7, 1, 8, 0]);
+  assert.deepEqual(counted, [7, 4, 11, 0]);
   // The photos are files in the DSP's cache, which backups leave out.
   const photos = path.join(f.root, 'dsps', north.id, 'cache', 'driver_profiles', 'photos');
-  assert.equal(readdirSync(photos).length, 8);
+  assert.equal(readdirSync(photos).length, 11);
   // No default role holds driver_profiles.collect, so a member is refused until a role grants it.
   const member = await f.client(demo.member);
   await member.select(north.id);

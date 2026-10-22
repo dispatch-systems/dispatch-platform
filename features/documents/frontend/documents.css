@@ -357,26 +357,6 @@
 .documents-path strong {
   font-weight: 600;
 }
-.documents-layout {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.documents-layout button {
-  width: 34px;
-  min-height: 32px;
-  padding: 0;
-  border: 0;
-  border-radius: 5px;
-  color: var(--muted-foreground);
-}
-.documents-layout button[aria-pressed='true'] {
-  background: var(--selection);
-  color: var(--primary);
-}
-
 /* The list. */
 .documents-table th {
   color: var(--muted-foreground);

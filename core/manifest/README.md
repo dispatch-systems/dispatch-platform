@@ -108,7 +108,9 @@ people: &[&backend::people::PEOPLE],
   newest first, from everything the data holds, since who someone is doesn't expire; what
   counts (`.records`, `.workdays`) reads only what the feature shows now. `people::named` reads them from a query by its columns' names: `id` and
   `name`, and any of `first` and `last` (the days it saw them), `listed` (1 while its source's
-  roster lists them), `email`, `phone`, `roles` (a JSON list of `Driver` and `Helper`),
+  roster lists them), `offboarded` (1 once its source says the DSP offboarded them: they have
+  left, whatever else shows them, until another of their IDs there is listed), `email`,
+  `phone`, `roles` (a JSON list of `Driver` and `Helper`),
   `department`, `position` and `photo` (the photo's version, read only from a kind with
   `.photos`). A query naming any other column is refused (`people_columns`), so a misspelt
   one fails the app's people test. Someone a source knows by several IDs, as an account in
@@ -144,10 +146,10 @@ The other way round, any feature that shows people or uses what is known of them
 directory (`people/directory.rs`), a contract the feature that tells people apart exposes. Each
 `Person` has their code, theirs for good and the same in every feature, so it is what a feature
 keeps to name them; the name they are shown by and every other way their sources write it; their
-role (driver, helper, office for management, or former) and the title someone gave them, as
-Dispatch (`PersonTitle`, which `people-data.ts` lists with its label); every ID they hold, by
-source; their email addresses and phone numbers; whether someone confirmed who they are; and the
-version of their photo.
+role (driver, helper, office for management, former, or offboarded) and the title someone gave
+them, as Dispatch (`PersonTitle`, which `people-data.ts` lists with its label); every ID they
+hold, by source; their email addresses and phone numbers; whether someone confirmed who they
+are; and the version of their photo.
 
 ```rust
 let people = people::everyone(db, c.state, c.dsp_id())?; // everyone, by name

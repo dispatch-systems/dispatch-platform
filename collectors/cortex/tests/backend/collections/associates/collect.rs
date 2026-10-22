@@ -60,6 +60,27 @@ fn the_roster_reads_its_table_and_never_comes_back_empty() {
             cortex::codes::CORTEX_SOURCE_CHANGED.as_str()
         );
     }
+    // No one offboarded is a DSP that never offboarded anyone.
+    assert!(rows(&reply(json!([]))).unwrap().is_empty());
+    assert!(rows(&json!({"tableData":{}})).is_err());
+}
+
+#[test]
+fn someone_offboarded_and_back_on_the_roster_is_as_the_roster_lists_them() {
+    let read = |id: &str, status: &str| {
+        Associate::read(json!({"transporter_id":id,"full_name":id,"operational_status":status}))
+            .unwrap()
+            .unwrap()
+    };
+    let listed = vec![read("A1", "ACTIVE"), read("A2", "INACTIVE")];
+    let offboarded = vec![read("A1", "OFFBOARDED"), read("A3", "OFFBOARDED")];
+    let all = everyone(listed, offboarded).unwrap();
+    assert_eq!(
+        all.iter()
+            .map(|a| (a.transporter_id.as_str(), a.status.as_str()))
+            .collect::<Vec<_>>(),
+        [("A1", "ACTIVE"), ("A2", "INACTIVE"), ("A3", "OFFBOARDED")]
+    );
 }
 
 #[tokio::test]

@@ -19,6 +19,10 @@ roles: Array<string>,
  */
 listed: boolean,
 /**
+ * Its source says the DSP offboarded them.
+ */
+offboarded: boolean,
+/**
  * Whether a photo of them is held under this ID.
  */
 photo: boolean, firstSeen: string | null, lastSeen: string | null, linkedBy: IdLink,

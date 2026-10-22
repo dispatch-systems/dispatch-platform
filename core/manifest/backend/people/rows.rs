@@ -7,8 +7,9 @@ use serde_json::Value;
 
 /// An ID as one kind of data names it. `named` reads one from each row of a query by its
 /// columns' names: `id` and `name`, and any of `first` and `last` (the days it saw them),
-/// `listed` (on its source's current roster, 1), `email`, `phone`, `roles` (a JSON list),
-/// `department`, `position` and `photo` (its version).
+/// `listed` (on its source's current roster, 1), `offboarded` (its source says the DSP
+/// offboarded them, 1), `email`, `phone`, `roles` (a JSON list), `department`, `position` and
+/// `photo` (its version).
 #[derive(Clone, Debug, Default)]
 pub struct Named {
     pub id: String,
@@ -21,6 +22,8 @@ pub struct Named {
     pub last_seen: Option<String>,
     /// On its source's current roster.
     pub listed: bool,
+    /// Its source says the DSP offboarded them: they have left, whatever else shows them.
+    pub offboarded: bool,
     /// The email addresses and phone numbers it has for them, as written.
     pub emails: Vec<String>,
     pub phones: Vec<String>,
@@ -56,6 +59,7 @@ impl Named {
             first_seen: text("first"),
             last_seen: text("last"),
             listed: row["listed"].as_i64() == Some(1) || row["listed"] == true,
+            offboarded: row["offboarded"].as_i64() == Some(1) || row["offboarded"] == true,
             emails: text("email").into_iter().collect(),
             phones: text("phone").into_iter().collect(),
             roles: text("roles")
@@ -82,6 +86,7 @@ const NAMED: &[&str] = &[
     "first",
     "last",
     "listed",
+    "offboarded",
     "email",
     "phone",
     "roles",
