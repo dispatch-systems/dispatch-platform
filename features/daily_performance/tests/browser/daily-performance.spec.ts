@@ -24,7 +24,10 @@ test('its settings are set with its collection on Collectors, where searching Se
   await owner.select(north.id);
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
   // It has no page of its own.
   const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
   await expect(pages.getByRole('link', { name: 'Collectors', exact: true })).toBeVisible();

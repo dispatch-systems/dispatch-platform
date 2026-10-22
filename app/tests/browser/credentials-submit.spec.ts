@@ -51,7 +51,10 @@ test('credentials close before login finishes, errors stay on the card, and CAPT
     await openDsp(page, 'Northline Logistics');
     // The platform's Settings is a page, and the DSP's a sidebar of them: the button is the
     // DSP's, there once the selected DSP's navigation is.
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
     await page
       .getByRole('navigation', { name: 'Settings', exact: true })
       .getByRole('link', { name: 'Connections', exact: true })

@@ -856,7 +856,10 @@ test.describe('DSP calendar dates', () => {
       }),
     );
     await open(page, false, null);
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
     await page
       .getByRole('navigation', { name: 'Settings', exact: true })
       .getByRole('link', { name: 'Profile', exact: true })

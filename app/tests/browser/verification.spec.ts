@@ -81,7 +81,10 @@ test('Paycom window scales input, supports drag/scroll/keyboard, and only contin
     await expect(page).toHaveTitle(/Dispatch/);
     await signIn(page);
     await openDsp(page, 'Northline Logistics');
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Settings', exact: true })
+      .click();
     await page
       .getByRole('navigation', { name: 'Settings', exact: true })
       .getByRole('link', { name: 'Connections', exact: true })

@@ -7,7 +7,10 @@ test('Cortex credentials, verification, retest and disconnect stay scoped to its
   page.on('pageerror', (error) => errors.push(error.message));
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Connections', exact: true })

@@ -56,7 +56,10 @@ test('owner dashboard, search, workforce, timecards, connection verification and
     .click();
   await expect(page.getByRole('dialog')).toContainText('08:00');
   await page.getByLabel('Close dialog').click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Connections', exact: true })
@@ -192,7 +195,9 @@ test('the mobile drawer stays open while the DSP behind it finishes loading', as
   });
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  const settings = page.getByRole('button', { name: 'Settings', exact: true });
+  const settings = page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true });
   await expect(settings).toBeVisible();
   const opened = page.waitForResponse((response) => response.url().endsWith('/api/session/dsp'));
   release();
@@ -361,7 +366,11 @@ test('Timecard opens while its view loads, and its collections are scheduled on 
     const dspId = new URL(page.url()).hash.split('/')[1]!;
     const paycom = page.getByRole('link', { name: 'Timecard', exact: true });
     await expect(paycom).toHaveAttribute('href', `#dsp/${dspId}/paycom`);
-    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Settings', exact: true }),
+    ).toBeVisible();
     await paycom.click();
     expect(new URL(page.url()).hash).toBe(`#dsp/${dspId}/paycom`);
   } finally {

@@ -4,7 +4,10 @@ test('Settings slides a member’s pages in for the app’s, and its address kee
   page,
 }) => {
   await login(page, 'member@dispatch.test');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
   const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
   const link = (name: string) => pages.getByRole('link', { name, exact: true });
   const heading = page.getByRole('heading', { level: 1 });
@@ -77,7 +80,10 @@ test('searching Settings finds a page by what it holds, and opening it points ou
   page,
 }) => {
   await login(page, 'member@dispatch.test');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
   const search = page.getByRole('combobox', { name: 'Search settings', exact: true });
   await expect(search).toBeVisible();
   // "/" moves to the search from anywhere on the page but a field.
