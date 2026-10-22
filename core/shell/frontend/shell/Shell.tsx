@@ -24,6 +24,7 @@ import {
   type Route,
   type SidebarProps,
 } from '../runtime/slots.js';
+import { SidebarPanels } from './SidebarPanels.js';
 // Only a platform owner viewing a DSP sees it, so it loads then.
 const DspViewBanner = lazy(() =>
   import('./DspViewBanner.js').then((module) => ({ default: module.DspViewBanner })),
@@ -210,19 +211,24 @@ export function Shell({
         >
           <X size={18} />
         </button>
-        {sidebar ? (
-          <PageSidebar
-            sidebar={sidebar}
-            fallback={pages}
-            session={session}
-            view={view}
-            dspId={dspId}
-            page={page}
-            close={() => setMobile(false)}
-          />
-        ) : (
-          pages
-        )}
+        <SidebarPanels
+          shown={sidebar}
+          draw={(panel) =>
+            panel ? (
+              <PageSidebar
+                sidebar={panel}
+                fallback={pages}
+                session={session}
+                view={view}
+                dspId={dspId}
+                page={page}
+                close={() => setMobile(false)}
+              />
+            ) : (
+              pages
+            )
+          }
+        />
         <div className="sidebar-account">
           <Popover
             className="account-menu"
