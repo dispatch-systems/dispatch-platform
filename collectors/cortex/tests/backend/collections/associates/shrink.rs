@@ -171,9 +171,9 @@ fn a_photo_already_small_is_kept_byte_for_byte() {
     // As small as one shrunk, or within the size kept and as light as one.
     let small = camera(320, 240, Some(6));
     assert_eq!(shrink(small.clone()).unwrap(), small);
-    let heavy = camera(400, 300, None);
-    assert!(heavy.len() <= MAX_KEPT_PHOTO_BYTES);
-    assert_eq!(shrink(heavy.clone()).unwrap(), heavy);
+    let largest = camera(400, 300, None);
+    assert!(largest.len() <= MAX_KEPT_PHOTO_BYTES);
+    assert_eq!(shrink(largest.clone()).unwrap(), largest);
     // Nothing here reads a WebP; it is kept as it came.
     let webp = b"RIFF\0\0\0\0WEBPVP8 rest".to_vec();
     assert_eq!(shrink(webp.clone()).unwrap(), webp);

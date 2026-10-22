@@ -10,7 +10,7 @@ use jpeg_decoder::{CodingProcess, PixelFormat};
 use std::io::Cursor;
 
 /// The long side of a photo kept, in pixels: four times the largest face a page draws.
-pub const SIDE: u32 = 400;
+const SIDE: u32 = 400;
 /// The most a JPEG or PNG kept weighs, in bytes. A shrunk one weighs about 20 KB; one that
 /// weighs more was kept before photos were shrunk.
 pub const MAX_KEPT_PHOTO_BYTES: usize = 200 * 1024;

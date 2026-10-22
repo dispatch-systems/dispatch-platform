@@ -30,13 +30,13 @@ Settings' Collectors page.
   name.
 - **Photos** are files in the DSP's cache, `cache/driver_profiles/photos/<sha256>.<ext>`,
   shrunk as Cortex collects them: at most 400 pixels on the long side, as a JPEG of about
-  20 KB, turned upright as their EXIF says and with none of their metadata. A JPEG or PNG over
-  200 KB was kept before photos were shrunk, and the next collection shrinks it. A photo that
-  can't be shrunk, too large or in a JPEG form the reader doesn't know, isn't kept, and every
-  collection downloads and tries it again, within the photos it tries. Backups leave the cache
-  out, as a restore collects them again, and they go with the DSP's folder. A photo is deleted
-  once Amazon no longer lists whoever it shows; an inactive or offboarded associate Amazon still
-  lists keeps theirs.
+  20 KB, turned upright as its EXIF said and carrying none of it; one already that small, or a
+  GIF, WebP or AVIF, is kept as it came. A JPEG or PNG over 200 KB was kept before photos were
+  shrunk, and the next collection shrinks it. A photo that can't be shrunk, too large or in a
+  JPEG form the reader doesn't know, isn't kept, and every collection downloads and tries it
+  again, within the photos it tries. Backups leave the cache out, as a restore collects them
+  again, and they go with the DSP's folder. A photo is deleted once Amazon no longer lists
+  whoever it shows; an inactive or offboarded associate Amazon still lists keeps theirs.
 - **People:** its `Roster` names everyone Amazon has listed by the name Amazon has on file,
   read first among Amazon's spellings; someone counts as listed while the roster lists them
   as active, and as offboarded once Amazon lists them so, which Driver Match shows under
