@@ -46,13 +46,30 @@ fn a_photo_stays_while_amazon_lists_whoever_it_shows() {
     // Whoever the roster no longer lists keeps their name, for what still names them.
     assert_eq!(count("SELECT count(*) FROM associates WHERE listed=0"), 2);
     // A month on, a listed associate's photo is downloaded again in case they changed it; an
-    // offboarded associate's stands for good, unless it was kept before photos were shrunk and
-    // weighs more than any shrunk one.
+    // offboarded associate's stands for good, unless it is a JPEG or PNG kept before photos were
+    // shrunk and weighs more than any shrunk one. A WebP, never shrunk, stands at any weight.
     db.exec("UPDATE photos SET stored_at='2026-01-01T00:00:00.000Z'", [])
         .unwrap();
     db.exec(
         "UPDATE photos SET bytes=? WHERE address LIKE '%driver-9'",
         [MAX_KEPT_PHOTO_BYTES as i64 + 1],
+    )
+    .unwrap();
+    db.exec(
+        "UPDATE photos SET bytes=?, format='webp' WHERE address LIKE '%driver-10'",
+        [MAX_KEPT_PHOTO_BYTES as i64 + 1],
+    )
+    .unwrap();
+    let (webp,): (String,) = db
+        .one_as(
+            "SELECT sha256 FROM photos WHERE address LIKE '%driver-10'",
+            [],
+        )
+        .unwrap()
+        .unwrap();
+    std::fs::rename(
+        dir.join(format!("{webp}.png")),
+        dir.join(format!("{webp}.webp")),
     )
     .unwrap();
     drop(db);

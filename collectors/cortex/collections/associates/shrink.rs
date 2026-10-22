@@ -11,17 +11,17 @@ use std::io::Cursor;
 
 /// The long side of a photo kept, in pixels: four times the largest face a page draws.
 pub const SIDE: u32 = 400;
-/// The most a JPEG or PNG kept weighs, in bytes. A shrunk one is a fifth of it; one that weighs
-/// more was kept before photos were shrunk.
+/// The most a JPEG or PNG kept weighs, in bytes. A shrunk one weighs about 20 KB; one that
+/// weighs more was kept before photos were shrunk.
 pub const MAX_KEPT_PHOTO_BYTES: usize = 200 * 1024;
 /// How much of the picture the JPEG written keeps, out of 100.
 const QUALITY: u8 = 80;
 /// The most pixels a JPEG read in rows at a fraction of its size may say it has before it is
 /// read, past any camera's.
 const MAX_PIXELS: u64 = 50_000_000;
-/// The most pixels a photo read whole may say it has: a progressive or lossless JPEG, whose
-/// coefficients are kept at full size, six bytes a pixel, or a PNG, up to four. With four
-/// photos shrunk at once, a file claiming more can't make reading them take gigabytes.
+/// The most pixels a photo read whole may say it has: a progressive JPEG, whose coefficients
+/// are kept at full size, six bytes a pixel, or a PNG, up to four. With four photos shrunk at
+/// once, a file claiming more can't make reading them take gigabytes.
 const MAX_WHOLE_PIXELS: u64 = 16_000_000;
 /// Why a photo was not kept when it could not be read, as the collection records it.
 const UNREADABLE: &str = "photo_unreadable";
@@ -71,10 +71,11 @@ fn jpeg(bytes: &[u8]) -> Result<Option<Picture>, &'static str> {
     decoder.read_info().map_err(|_| UNREADABLE)?;
     let info = decoder.info().ok_or(UNREADABLE)?;
     let (width, height) = (u32::from(info.width), u32::from(info.height));
-    let most = if info.coding_process == CodingProcess::DctSequential {
-        MAX_PIXELS
-    } else {
-        MAX_WHOLE_PIXELS
+    let most = match info.coding_process {
+        CodingProcess::DctSequential => MAX_PIXELS,
+        CodingProcess::DctProgressive => MAX_WHOLE_PIXELS,
+        // No camera writes one, and it can't be read at a fraction of its size.
+        CodingProcess::Lossless => return Err(UNREADABLE),
     };
     readable(width, height, most)?;
     if small(width, height, bytes.len()) {
@@ -85,7 +86,7 @@ fn jpeg(bytes: &[u8]) -> Result<Option<Picture>, &'static str> {
     let pixels = decoder.decode().map_err(|_| UNREADABLE)?;
     let (channels, pixels) = match info.pixel_format {
         PixelFormat::L8 => (1, pixels),
-        // Sixteen-bit grey comes from lossless JPEGs, as scans, never a camera's.
+        // Only a lossless JPEG has it, refused above; a twelve-bit one fails to read before.
         PixelFormat::L16 => return Err(UNREADABLE),
         PixelFormat::RGB24 => (3, pixels),
         PixelFormat::CMYK32 => (

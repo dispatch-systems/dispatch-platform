@@ -308,12 +308,12 @@ impl Driver {
                 let Some(address) = tried.get(index) else {
                     break;
                 };
-                let photo = async {
+                let kept = async {
                     let bytes = photo(&http, &downloads, &self.origin, &referer, address).await?;
                     spent.fetch_add(bytes.len(), Ordering::SeqCst);
                     keep(&shrinking, address, bytes).await
                 };
-                match photo.await {
+                match kept.await {
                     Ok(photo) => got.push((index, photo)),
                     Err(label) => run.metrics.detail(label),
                 }
