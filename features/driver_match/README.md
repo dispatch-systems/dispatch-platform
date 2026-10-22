@@ -60,18 +60,19 @@ what was decided.
   Offboarded at once, however lately anything saw them and whatever a payroll slow to let them
   go says, until another of their Amazon IDs is on its roster as active, as a rehire's; the
   page shows them only under Offboarded. Someone no roster lists and nothing has seen for 21
-  days before the newest data has left: Former. A list of people the DSP can reach, as Slack's
-  members, says nothing of who still works for it: someone only such lists know works in the
-  office while one lists them, and has left once none does. People no source shows driving,
-  outside the departments a source's settings count as drivers, work in the office. The page
-  calls everyone in the office Management.
+  days before the newest data has left (`former`), which the page calls Inactive. A list of
+  people the DSP can reach, as Slack's members, says nothing of who still works for it:
+  someone only such lists know works in the office while one lists them, and has left once
+  none does. People no source shows driving, outside the departments a source's settings
+  count as drivers, work in the office. The page calls everyone in the office Management.
 - **Titles:** Owner, OPs Manager, Fleet Manager, Dispatch, HR Manager or Manager (core's
   `PersonTitle`), given on a person's sheet, for what no source says: Amazon's roster lists
   office staff with a DA account as drivers, and a dispatcher covers a route now and then.
   Someone with a title works in the office whatever their sources show, offboarded by Amazon
   too, as a dispatcher whose DA account went, and is shown by it, until it's taken away.
-  Someone who has left is still former, their title kept for when they come back. A merge carries the title of the one merged to whoever keeps the IDs, unless they
-  have one; an ID split off starts without one.
+  Someone who has left is still Inactive, their title kept for when they come back. A merge
+  carries the title of the one merged to whoever keeps the IDs, unless they have one; an ID
+  split off starts without one.
 - **Questions:** two people no source knows both of, whose names tie them, or any two sharing
   a contact only they have, with how many days they worked together; each reason says whether
   it argues for them being one (working fewer than half their days together argues against).

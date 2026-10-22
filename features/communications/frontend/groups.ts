@@ -24,7 +24,7 @@ const roles: Record<PersonRole, string> = {
   driver: 'Drivers',
   helper: 'Helpers',
   office: 'Office',
-  former: 'Former',
+  former: 'Inactive',
   offboarded: 'Offboarded',
 };
 

@@ -48,7 +48,7 @@ const roles: Record<PersonRole, string> = {
   driver: 'Driver',
   helper: 'Helper',
   office: 'Management',
-  former: 'Former',
+  former: 'Inactive',
   offboarded: 'Offboarded',
 };
 /** What someone does, as it reads: their title, else their role; nothing when unknown. */

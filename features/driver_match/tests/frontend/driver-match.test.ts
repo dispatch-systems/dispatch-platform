@@ -30,7 +30,7 @@ const person = (code: string, role: Person['role'], ids: PersonId[]): Person => 
 });
 const sources = ['paycom', 'amazon'] as PeopleSource[];
 
-test('someone who has left shows only under Former or Offboarded, and a driver a source lacks is missing from it', () => {
+test('someone who has left shows only under Inactive or Offboarded, and a driver a source lacks is missing from it', () => {
   const gone = person('K7M2QX', 'former', [id('amazon', 'T9', 'Riley Quinn')]);
   const offboarded = person('P4TN8R', 'offboarded', [id('amazon', 'T8', 'Jesse Morales')]);
   const driver = person('W5HC2K', 'driver', [id('amazon', 'T2', 'Dmitri Volkov')]);
