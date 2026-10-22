@@ -19,7 +19,7 @@ test('Collectors shows the end of a roster collection that ran elsewhere, as a r
   expect(connected.status, connected.body).toBe(200);
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Collectors', exact: true })

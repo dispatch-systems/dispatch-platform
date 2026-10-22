@@ -310,10 +310,36 @@ export function pageOf(root: string, feature: string) {
   const file = `features/${feature}/frontend/feature.ts`;
   if (!exists(root, file)) return undefined;
   const source = read(root, file);
-  const match = /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)'/.exec(source);
-  return match
-    ? { id: match[1]!, label: match[2]!, hostsSettings: /\bhostsSettings: true\b/.test(source) }
-    : undefined;
+  // Its page in the app's sidebar: one of its routes, and none under a sidebar of pages.
+  const routes = source.indexOf('routes: [');
+  for (const match of source.matchAll(
+    /id:\s*'([^']+)',\s*scope:\s*'dsp',\s*label:\s*'([^']+)',/g,
+  )) {
+    if (routes < 0 || match.index < routes) continue;
+    const rest = source.slice(match.index + match[0].length);
+    if (/^\s*(?:icon: \w+,\s*)?parent:/.test(rest)) continue;
+    return {
+      id: match[1]!,
+      label: match[2]!,
+      hostsSettings: /\bhostsSettings: true\b/.test(source),
+    };
+  }
+  return undefined;
+}
+/** Every page's id in a DSP, and every sidebar of pages', as the owners' manifests declare them. */
+export function dspPages(root: string) {
+  return [
+    ...features(root).map((owner) => `features/${owner}`),
+    ...collectors(root).map((owner) => `collectors/${owner}`),
+    ...coreParts(root).map((owner) => `core/${owner}`),
+  ]
+    .map((dir) => `${dir}/frontend/feature.ts`)
+    .filter((file) => exists(root, file))
+    .flatMap((file) =>
+      [...read(root, file).matchAll(/\bid:\s*'([^']+)',\s*scope:\s*'dsp'/g)].map(
+        (found) => found[1]!,
+      ),
+    );
 }
 
 // ---- Edits that list a new owner in app/

@@ -39,6 +39,8 @@ const MADE: [string, ...string[]][] = [
   ['feature', 'smoke_tab', '--tab-of', 'uniforms'],
   ['feature', 'smoke_team_tab', '--tab-of', 'team', '--mandatory'],
   ['feature', 'smoke_front', '--no-backend', '--page'],
+  // A sidebar of its own pages, behind its view permission.
+  ['feature', 'smoke_sidebar', '--sidebar', 'entries,history', '--api'],
   // What one exposes, which a page shows, and a tool reading it.
   ['feature', 'smoke_offer', '--contract', 'smoke_counts', '--api', '--shown'],
   ['feature', 'smoke_always', '--mandatory', '--contract', 'smoke_always_counts'],
@@ -78,6 +80,7 @@ const ADDED: string[][] = [
   ['people', 'paycom', '--to', 'smoke_rows', '--table', 'smoke_rows_items'],
   ['tab-of', 'team', '--to', 'smoke_rows'],
   ['page', '--to', 'smoke_people'],
+  ['sidebar', 'drafts,archive', '--to', 'smoke_rows'],
   ['api', '--to', 'smoke_front'],
   ['api', '--to', 'smoke_bare'],
   ['contract', 'smoke_rows_counts', '--to', 'smoke_rows'],

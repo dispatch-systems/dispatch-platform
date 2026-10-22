@@ -34,6 +34,16 @@ test('{{label}} opens from the sidebar of a DSP that has it', async ({ page }) =
   await expect(page.getByRole('heading', { name: '{{label}}', level: 1 })).toBeVisible();
 });
 {{/page}}
+{{#sidebar}}
+
+test('{{label}} opens the sidebar of its pages, and each of them from it', async ({ page }) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('button', { name: '{{label}}', exact: true }).click();
+  const pages = page.getByRole('navigation', { name: '{{label}}', exact: true });
+{{sidebarChecks}}
+});
+{{/sidebar}}
 {{#tab}}
 
 test('{{label}} opens as a tab of {{hostLabel}}', async ({ page }) => {
@@ -49,7 +59,7 @@ test('{{label}} opens as a tab of {{hostLabel}}', async ({ page }) => {
 test('{{label}} has its card on the Connections page', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Connections', exact: true })

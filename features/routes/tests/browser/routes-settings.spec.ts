@@ -39,7 +39,7 @@ test('Settings draws route data from its declaration, and a window that deletes 
 
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Data', exact: true })
@@ -61,7 +61,12 @@ test('Settings draws route data from its declaration, and a window that deletes 
       () => !window.dispatchEvent(new Event('beforeunload', { cancelable: true })),
     ),
   ).toBe(true);
-  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  // Back keeps the page open; opening another, from the app's sidebar, asks.
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'Home Page', exact: true })
+    .click();
   const ask = page.getByRole('dialog', { name: 'Save changes?' });
   await expect(ask.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   await ask.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -155,7 +160,7 @@ test('a member without management permissions never sees the Data page or Driver
 }) => {
   await login(page, 'member@dispatch.test');
   // Settings takes the app's sidebar over once open, so Driver Match is looked for before.
-  const settings = page.getByRole('link', { name: 'Settings', exact: true });
+  const settings = page.getByRole('button', { name: 'Settings', exact: true });
   await expect(settings).toBeVisible();
   await expect(page.getByRole('link', { name: /^Driver Match/ })).toHaveCount(0);
   await settings.click();
@@ -176,7 +181,7 @@ test('a Routes rule reads yesterday unless it is set to read today so far', asyn
 
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Collectors', exact: true })

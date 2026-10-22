@@ -9,7 +9,7 @@ test('an owner adds Slack workspaces from New, each on a card under its name, us
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = page.getByRole('navigation', { name: 'Settings', exact: true });
   await settings.getByRole('link', { name: 'Connections', exact: true }).click();
   const workspaces = page

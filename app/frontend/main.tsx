@@ -33,7 +33,6 @@ import {
   followMoved,
   forgetDestination,
   navigate,
-  noteWayBack,
   parseHash,
   platformHash,
   rememberDestination,
@@ -53,6 +52,7 @@ import {
   dspSetup,
   installFeatures,
   landingPage,
+  listed,
   loadReplyChecks,
   type DspRouteId,
 } from '../../core/shell/frontend/runtime/slots.js';
@@ -181,9 +181,8 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
     };
   }, [load]);
   useEffect(() => {
-    const changed = (event: HashChangeEvent) => {
+    const changed = () => {
       followMoved();
-      noteWayBack(new URL(event.oldURL).hash, window.location.hash);
       const next = parseHash(window.location.hash);
       const current = navigationState.current;
       const auth = /^(?:signin$|invite\?|reset\?)/.test(next.route);
@@ -275,8 +274,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       if (first) location.replace(dspHash(dspId, first));
       return;
     }
-    if (navigation('dsp', access).some((route) => route.id === page))
-      rememberDestination(dspId, page as DspRouteId);
+    if (route && listed(route, access)) rememberDestination(dspId, page as DspRouteId);
   }, [view, dspId, page, session]);
   useBrowserUpdate(Boolean(session) && (!dspId || Boolean(view)) && !switching);
   // A platform owner looking into a DSP is never shown to its team.

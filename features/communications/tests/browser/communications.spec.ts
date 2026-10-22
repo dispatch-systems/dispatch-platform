@@ -8,7 +8,7 @@ import { connect, event, fromSlack, install } from '../../../slack/tests/support
 test('Communications is on from the start in a workspace just connected', async ({ page }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = page.getByRole('navigation', { name: 'Settings', exact: true });
   await settings.getByRole('link', { name: 'Connections', exact: true }).click();
   await page.getByLabel('New', { exact: true }).click();

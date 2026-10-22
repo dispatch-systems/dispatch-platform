@@ -56,15 +56,21 @@
   display: flex;
   overflow-y: auto;
 }
+/* A page's link, or a button opening a sidebar of pages, alike. */
 .nav-item {
+  border: 0;
   border-radius: var(--radius);
+  background: transparent;
   min-height: 42px;
   color: var(--foreground);
+  justify-content: flex-start;
   align-items: center;
   gap: 12px;
   padding: 10px 15px;
+  font: inherit;
   font-size: 14px;
   font-weight: 450;
+  text-align: left;
   display: flex;
   position: relative;
 }

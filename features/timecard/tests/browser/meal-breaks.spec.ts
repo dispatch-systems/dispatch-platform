@@ -856,7 +856,11 @@ test.describe('DSP calendar dates', () => {
       }),
     );
     await open(page, false, null);
-    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page
+      .getByRole('navigation', { name: 'Settings', exact: true })
+      .getByRole('link', { name: 'Profile', exact: true })
+      .click();
     await expect(page.getByText('Business timezone', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Display timezone')).toHaveCount(0);
     await page.getByRole('button', { name: 'Exit view', exact: true }).click();

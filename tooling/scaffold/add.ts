@@ -28,6 +28,8 @@ import {
 export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
 
   page                a page in a DSP's sidebar
+  sidebar <pages>     a sidebar of its own pages, as entries,history: its item in a DSP's
+                      sidebar opens their list in place of the app's
   tab-of <feature>    a tab of another feature's page
   settings            a section of a DSP's Settings, on a page of its own, that its backend
                       declares and reads: for those who manage it
@@ -50,6 +52,7 @@ export const usage = `Usage: dispatchdev add <piece> --to <feature> [options]
  */
 const PIECES: Record<string, { valued: boolean; readme: string; uses: string[] }> = {
   page: { valued: false, readme: 'Page', uses: ['view'] },
+  sidebar: { valued: true, readme: 'Sidebar', uses: ['view'] },
   'tab-of': { valued: true, readme: 'Tab', uses: [] },
   settings: { valued: false, readme: 'Settings', uses: ['manage'] },
   api: { valued: false, readme: 'API', uses: ['view'] },
@@ -531,6 +534,13 @@ export async function planAdd(root: string, argv: string[]) {
     throw new UsageError(`${name} has api/ already: add its endpoints there`);
   if (piece === 'page' && pageOf(root, name))
     throw new UsageError(`${name} has a page already: add a tab of it with add tab-of ${name}`);
+  const frontend = `${dir}/frontend/feature.ts`;
+  if (piece === 'sidebar' && exists(root, frontend) && /\bsidebars:/.test(read(root, frontend)))
+    throw new UsageError(
+      `${name} has a sidebar of pages already: add a page to it, a route naming it its parent`,
+    );
+  // The page a feature had joins the sidebar it gains, listed there with the pages it adds.
+  const joins = piece === 'sidebar' ? pageOf(root, name) : undefined;
   if (piece === 'people' && !args.options.has('table'))
     throw new UsageError('people reads who a table names: add --table <table>');
   if (piece === 'contract' && exists(root, `${dir}/contract`))
@@ -598,7 +608,7 @@ export async function planAdd(root: string, argv: string[]) {
   // A new feature's own storage and first migration, which a piece added to one never needs.
   const own = /\/(backend\/storage\.rs|tests\/backend\/(storage|feature)\.rs|migrations\/.*)$/;
   // A browser test only for a piece with a screen of its own.
-  const screen = ['page', 'tab-of'].includes(piece!);
+  const screen = ['page', 'sidebar', 'tab-of'].includes(piece!);
   const wanted = [...rendered.files].filter(
     ([file]) => !own.test(file) && (screen || !file.includes('/tests/browser/')),
   );
@@ -624,9 +634,14 @@ export async function planAdd(root: string, argv: string[]) {
       merged = mergeRust(current, content, left, known.uses, (module) =>
         fresh.has(`${dir}/${module}.rs`),
       );
-    else if (file === `${dir}/frontend/feature.ts`)
+    else if (file === `${dir}/frontend/feature.ts`) {
       merged = mergeTypeScript(current, content, pascal);
-    else if (file.endsWith('/Cargo.toml')) merged = mergeToml(current, content);
+      if (joins)
+        merged = merged.replace(
+          new RegExp(`(\\bid: '${joins.id}',\\s*scope: 'dsp',\\s*label: '[^']+',)`),
+          `$1\nparent: '${slug}',`,
+        );
+    } else if (file.endsWith('/Cargo.toml')) merged = mergeToml(current, content);
     else if (/\/mod\.rs$/.test(file))
       // Its modules whose files are there or written now.
       merged = content
@@ -722,6 +737,11 @@ export async function planAdd(root: string, argv: string[]) {
       installing(root, plan, dir, { [kind]: each }, `${dir}/tests/backend/${tested}.rs`);
   }
   if (piece === 'settings') plan.notes.push(settingsNote(name, slug));
+  if (joins)
+    plan.notes.push(
+      `Its page ${joins.label} is under its sidebar now, with the pages added: a test opening it ` +
+        "from the app's sidebar opens the sidebar first.",
+    );
   // A test a generator stamped that only restates a manifest alone, with no permission, goes
   // once the piece gives it one, with its module; and so does the empty backend/ a manifest
   // alone keeps, which a piece with an API or a screen doesn't need. A test or a module the

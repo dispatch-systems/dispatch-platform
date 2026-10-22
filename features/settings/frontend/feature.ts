@@ -19,16 +19,25 @@ export const feature: FrontendFeature = {
   name: 'settings',
   // Its route saves the profile a DSP's onboarding asks for.
   dspSetup: { permission: 'settings.manage', save: '/api/dsp/profile' },
+  // Its pages and their search, in a sidebar of their own, which its item opens.
+  sidebars: [
+    {
+      id: 'settings',
+      scope: 'dsp',
+      label: 'Settings',
+      icon: Settings,
+      draw: { load: () => import('./index.js').then((module) => module.SettingsSidebar) },
+    },
+  ],
   routes: [
     {
       id: 'settings',
       scope: 'dsp',
       label: 'Settings',
       icon: Settings,
+      parent: 'settings',
       nav: true,
       hostsSettings: true,
-      // Its pages and their search, in place of the app's while it is open.
-      sidebar: { load: () => import('./index.js').then((module) => module.SettingsSidebar) },
       preload: load,
       render: ({ session, view }) => createElement(SettingsPage, { session, view }),
       prefetch: ({ view, immediate }) => prefetchSettings(view, immediate),

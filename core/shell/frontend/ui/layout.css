@@ -17,6 +17,29 @@
   font-size: 14px;
 }
 
+/* The top of a sidebar standing in for another: the way back, and its name. */
+.sidebar-head {
+  align-items: center;
+  gap: 10px;
+  padding: 24px 18px 16px;
+  display: flex;
+}
+.sidebar-head .icon-button {
+  flex-shrink: 0;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+.sidebar-head svg {
+  width: 18px;
+  height: 18px;
+}
+.sidebar-head h2 {
+  letter-spacing: -0.3px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
 .detail-list {
   font-size: 13px;
 }

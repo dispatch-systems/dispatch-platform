@@ -1,17 +1,19 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 
-test('Settings takes the sidebar over with a member’s pages, and its address keeps and moves the one open', async ({
+test('Settings slides a member’s pages in for the app’s, and its address keeps and moves the one open', async ({
   page,
 }) => {
   await login(page, 'member@dispatch.test');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
   const link = (name: string) => pages.getByRole('link', { name, exact: true });
   const heading = page.getByRole('heading', { level: 1 });
-  // Its pages, under their group's name, in place of the app's.
+  // Its pages, under their group's name, in place of the app's, none open until one is opened.
   await expect(pages.getByRole('group', { name: 'Personal', exact: true })).toBeVisible();
   await expect(pages.getByRole('link')).toHaveText(['Profile', 'Security', 'Theme']);
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toHaveCount(0);
+  await expect(pages.locator('[aria-current="page"]')).toHaveCount(0);
+  await link('Profile').click();
   await expect(link('Profile')).toHaveAttribute('aria-current', 'page');
   await expect(heading).toHaveText('Profile');
   await link('Theme').click();
@@ -32,43 +34,54 @@ test('Settings takes the sidebar over with a member’s pages, and its address k
   await expect(link('Profile')).toHaveAttribute('aria-current', 'page');
 });
 
-test('Back leaves Settings for the page it was opened from, however many of its pages were open since', async ({
+test("Settings and Back change the sidebar alone, and a page opened otherwise shows the sidebar it's under", async ({
   page,
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   const app = page.getByRole('navigation', { name: 'Primary navigation' });
-  // A page other than the one the DSP opened on, which Back would lead to anyway.
+  const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
+  const settings = app.getByRole('button', { name: 'Settings', exact: true });
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  const heading = page.getByRole('heading', { level: 1 });
+  // Opened over another page, Settings' pages slide in and that page stays open, as it does
+  // once Back has the app's in again.
   const other = app.getByRole('link').nth(1);
   await other.click();
   await expect(other).toHaveAttribute('aria-current', 'page');
   const from = page.url();
-  await app.getByRole('link', { name: 'Settings', exact: true }).click();
-  const heading = page.getByRole('heading', { level: 1 });
-  await page
-    .getByRole('navigation', { name: 'Settings', exact: true })
-    .getByRole('link', { name: 'Security', exact: true })
-    .click();
-  await expect(heading).toHaveText('Security');
-  // A link to another of its pages, as a feature's page has, moves the address as well.
-  await page.evaluate(() => {
-    location.hash = location.hash.replace(/tab=security$/, 'tab=theme');
-  });
-  await expect(heading).toHaveText('Theme');
-  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await settings.click();
+  await expect(pages).toBeVisible();
   await expect(page).toHaveURL(from);
+  await back.click();
   await expect(other).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveURL(from);
+  // Back from a page of Settings keeps that page open, Settings the app's item highlighted.
+  await settings.click();
+  await pages.getByRole('link', { name: 'Security', exact: true }).click();
+  await expect(heading).toHaveText('Security');
+  await back.click();
+  await expect(settings).toHaveAttribute('aria-current', 'page');
+  await expect(heading).toHaveText('Security');
+  // The browser's Back and Forward open pages, each with the sidebar it's under.
+  await page.goBack();
+  await expect(other).toHaveAttribute('aria-current', 'page');
+  await page.goForward();
+  await expect(pages.getByRole('link', { name: 'Security', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 });
 
 test('searching Settings finds a page by what it holds, and opening it points out the section', async ({
   page,
 }) => {
   await login(page, 'member@dispatch.test');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Profile');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const search = page.getByRole('combobox', { name: 'Search settings', exact: true });
+  await expect(search).toBeVisible();
   // "/" moves to the search from anywhere on the page but a field.
   await page.keyboard.press('/');
-  const search = page.getByRole('combobox', { name: 'Search settings', exact: true });
   await expect(search).toBeFocused();
   // Security is known by its password too.
   await page.keyboard.type('passw');

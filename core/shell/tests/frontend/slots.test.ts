@@ -29,6 +29,8 @@ import {
   auditWording,
   loadPlatformSlots,
   movedTo,
+  pageSidebar,
+  sidebarItems,
   switchIcon,
   type ConnectionCard,
   type ConnectionIntegration,
@@ -231,6 +233,38 @@ test('a DSP opens on the page a feature declares it lands on, and names none wit
   assert.equal(dspHash('dsp_landing'), '#dsp/dsp_landing/');
   assert.equal(parseHash('#dsp/dsp_landing').page, '');
   assert.equal(parseHash('#dsp/dsp_landing/board').page, 'board');
+});
+
+test("the app's sidebar lists a sidebar of pages once, where its first page is, while it lists one of them", () => {
+  // Pages under the sidebar, and one under a page, which its sidebar only highlights.
+  const opened: DspRoute['permission'] = ({ view }) => Boolean(view);
+  const under = (id: string): DspRoute => ({ ...page(id), parent: 'timecard', permission: opened });
+  const pages = [
+    page('overview'),
+    under('punches'),
+    page('team'),
+    under('schedules'),
+    { ...under('exports'), nav: false },
+    { ...page('notes'), parent: 'overview' },
+  ];
+  installFeatures([
+    { name: 'alpha', routes: pages, sidebars: [{ id: 'timecard', scope: 'dsp', label: 'Time' }] },
+  ]);
+  const listed = (view?: DspView) =>
+    sidebarItems('dsp', { session: {} as never, view }, pages).map((item) =>
+      'sidebar' in item
+        ? `${item.sidebar.id}: ${item.pages.map(({ id }) => id).join(', ')}`
+        : item.id,
+    );
+  assert.deepEqual(listed({} as DspView), [
+    'overview',
+    'timecard: punches, schedules',
+    'team',
+    'notes',
+  ]);
+  assert.deepEqual(listed(), ['overview', 'team', 'notes']);
+  assert.equal(pageSidebar('dsp', 'schedules')?.label, 'Time');
+  assert.equal(pageSidebar('dsp', 'notes'), undefined);
 });
 
 test('a link to Settings opens the page that draws the settings, on the page it names, unless the person is known not to have it', () => {

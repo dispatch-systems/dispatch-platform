@@ -24,6 +24,16 @@ declare module '{{toRoot}}core/shell/frontend/runtime/slots.js' {
 const loadPage = () => import('./index.js');
 const {{pascal}}Page = lazy(() => loadPage().then((module) => ({ default: module.{{pascal}}Page })));
 {{/page}}
+{{#sidebar}}
+declare module '{{toRoot}}core/shell/frontend/runtime/slots.js' {
+  interface DspPages {
+{{sidebarKeys}}
+  }
+}
+
+const loadPages = () => import('./index.js');
+{{sidebarLazies}}
+{{/sidebar}}
 {{#tab}}
 const loadTab = () => import('./{{pascal}}Tab.js');
 const {{pascal}}Tab = lazy(() => loadTab().then((module) => ({ default: module.{{pascal}}Tab })));
@@ -66,6 +76,13 @@ export const feature: FrontendFeature = {
     },
   ],
 {{/page}}
+{{#sidebar}}
+  // Its item in a DSP's sidebar, which slides in the list of its pages in place of the app's.
+  sidebars: [{ id: '{{slug}}', scope: 'dsp', label: '{{label}}', icon: {{icon}} }],
+  routes: [
+{{sidebarRoutes}}
+  ],
+{{/sidebar}}
 {{#tab}}
   pageTabs: [
     {

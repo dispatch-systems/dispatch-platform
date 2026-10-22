@@ -4,7 +4,6 @@ import {
   routeOf,
   settingsPage,
   settingsRead,
-  sidebarOwner,
   type Access,
   type DspRouteId,
   type PlatformRouteId,
@@ -79,34 +78,6 @@ export function pageHash(
   )
     return undefined;
   return dspHash(access.view.dsp.id, route.id, query);
-}
-
-// A page that draws a sidebar of its own, as Settings, has a way back at its top: to the
-// address the member opened it from, within the same DSP. Moving among the pages under it,
-// or its view opening again as it was, keeps it; leaving the DSP, viewing it as another role or
-// another session forgets it.
-const waysBack = new Map<string, string>();
-/** Notes the way back as the address moves `from` one hash `to` another. */
-export function noteWayBack(from: string, to: string) {
-  const before = parseHash(from);
-  const after = parseHash(to);
-  if (before.dspId !== after.dspId) waysBack.clear();
-  else if (after.dspId) {
-    const owner = sidebarOwner('dsp', after.page);
-    if (owner && sidebarOwner('dsp', before.page) !== owner) waysBack.set(after.dspId, from);
-  }
-}
-export const forgetWaysBack = () => waysBack.clear();
-/**
- * Where a page's own sidebar leads back to in a DSP: the address it was opened from, or else,
- * opened at its own address, the DSP's last page outside it, or its landing page.
- */
-export function wayBack(dspId: string) {
-  const way = waysBack.get(dspId);
-  if (way) return way;
-  const last = destinations.get(dspId);
-  const page = last && !sidebarOwner('dsp', last) ? last : landingPage();
-  return page ? dspHash(dspId, page) : dspAddress(dspId);
 }
 
 export const platformHash = (page: PlatformRouteId = 'dsps', query?: Record<string, string>) =>

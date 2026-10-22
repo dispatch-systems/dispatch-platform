@@ -7,9 +7,7 @@ test('Cortex credentials, verification, retest and disconnect stay scoped to its
   page.on('pageerror', (error) => errors.push(error.message));
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  const settings = page.getByRole('link', { name: 'Settings', exact: true });
-  await expect(settings).toHaveAttribute('href', /^#dsp\/dsp_[a-f0-9]{32}\/settings$/);
-  await settings.click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Connections', exact: true })

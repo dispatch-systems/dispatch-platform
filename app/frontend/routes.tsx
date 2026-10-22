@@ -10,14 +10,18 @@ import { NavigationStateContext } from '../../core/shell/frontend/runtime/browse
 import { prefetchRouteData } from '../../core/shell/frontend/runtime/route-prefetch.js';
 import {
   landingPage,
+  listed,
   loadSidebar,
-  sidebarOwner,
+  pageSidebar,
+  sidebarItems,
   type Access,
+  type DspRoute,
   type DspRouteId,
   type PageContext,
   type Route,
 } from '../../core/shell/frontend/runtime/slots.js';
 import { dspHash } from '../../core/shell/frontend/runtime/navigation.js';
+import type { NavItem } from '../../core/shell/frontend/shell/Shell.js';
 import { features } from './features.js';
 
 // Every owner's pages, each with its navigation, access and component, in sidebar order: its
@@ -48,7 +52,7 @@ export function canNavigateImmediately(scope: Route['scope'], page: string, acce
 }
 /**
  * Code and authorized primary data start together, before the destination mounts, and the code
- * of the sidebar it draws, so that is in as it opens.
+ * of what the sidebar of pages it is under draws, so that is in as it opens.
  */
 export function prepareRoute(
   scope: Route['scope'],
@@ -59,34 +63,51 @@ export function prepareRoute(
   const route = findRoute(scope, page);
   if (!route || (access && !allowed(route, access))) return Promise.resolve();
   if (access) prefetchRouteData(page, access.view, access.session, immediate);
-  const sidebar = sidebarOwner(scope, page)?.sidebar;
-  if (sidebar) void loadSidebar(sidebar).catch(() => undefined);
+  const drawing = pageSidebar(scope, page)?.draw;
+  if (drawing) void loadSidebar(drawing).catch(() => undefined);
   return route.preload(access);
 }
 /**
- * The sidebar drawn in place of the app's while `page` is open: its own, or that of the page it
- * is under, while the person may open that page.
+ * The sidebar of pages `page` is under, while the person may open the page: the one the sidebar
+ * shows as the page opens.
  */
 export function sidebarOf(scope: Route['scope'], page: string, access: Access) {
-  const owner = sidebarOwner(scope, page);
-  return owner && allowed(owner, access) && available(owner, access) ? owner.sidebar : undefined;
+  const route = findRoute(scope, page);
+  return route && allowed(route, access) && available(route, access)
+    ? pageSidebar(scope, page)
+    : undefined;
 }
-export const navigation = (scope: Route['scope'], access: Access) =>
-  table
-    .filter(
-      (route) =>
-        route.scope === scope &&
-        (typeof route.nav === 'function' ? route.nav(access) : route.nav) &&
-        allowed(route, access),
-    )
-    .map((route) => ({ ...route, preload: () => prepareRoute(scope, route.id, access) }));
+/** The app's sidebar for `access`: the pages it lists, and its sidebars of pages with theirs. */
+export function navigation(scope: Route['scope'], access: Access): NavItem[] {
+  const item = (route: Route): NavItem => ({
+    id: route.id,
+    label: route.label,
+    icon: route.icon,
+    badge: route.badge,
+    preload: () => prepareRoute(scope, route.id, access),
+  });
+  return sidebarItems(scope, access, table).map((each) =>
+    'sidebar' in each
+      ? {
+          id: each.sidebar.id,
+          label: each.sidebar.label,
+          icon: each.sidebar.icon,
+          // The first of its pages, with what the sidebar draws of its own.
+          preload: () => prepareRoute(scope, each.pages[0]!.id, access),
+          sidebar: each.sidebar,
+          pages: each.pages.map(item),
+        }
+      : item(each),
+  );
+}
 
 /**
  * The page a DSP opens on: the landing page a feature declares, or else the first one this
  * person may open.
  */
 export const landing = (access: Access) =>
-  landingPage() ?? navigation('dsp', access).find((route) => route.scope === 'dsp')?.id;
+  landingPage() ??
+  table.find((route): route is DspRoute => route.scope === 'dsp' && listed(route, access))?.id;
 
 /** The page for an address, or the app's wording for one this person cannot open. */
 function PageContent({

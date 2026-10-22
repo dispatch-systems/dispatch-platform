@@ -3,6 +3,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentType,
@@ -12,6 +13,7 @@ import { Menu, X, ChevronDown, LogOut, ArrowUpRight, type LucideIcon } from 'luc
 import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
 import { Popover } from '../ui/Popover.js';
+import { SidebarHead } from '../ui/SidebarHead.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
 import { dspHash, platformHash } from '../runtime/navigation.js';
 import { sourceLink } from '../lib/source.js';
@@ -22,6 +24,7 @@ import {
   type DspRouteId,
   type PlatformRouteId,
   type Route,
+  type Sidebar,
   type SidebarProps,
 } from '../runtime/slots.js';
 import { SidebarPanels } from './SidebarPanels.js';
@@ -31,6 +34,21 @@ const DspViewBanner = lazy(() =>
 );
 
 type Badge = NonNullable<Route['badge']>;
+/**
+ * An item of a sidebar's list: a page, or in the app's, a sidebar of pages, which opens in place
+ * of the app's with the pages it lists.
+ */
+export type NavItem = {
+  id: string;
+  label: string;
+  icon?: LucideIcon;
+  badge?: Badge;
+  /** Warms what opening it needs, as it is pointed at. */
+  preload: () => Promise<unknown>;
+  sidebar?: Sidebar;
+  pages?: readonly NavItem[];
+};
+
 const badges = new WeakMap<Badge, ComponentType<{ active: boolean }>>();
 /** A page's badge beside its name, once its code has loaded; one that fails to load is left out. */
 function NavBadge({ badge, active }: { badge: Badge; active: boolean }) {
@@ -56,33 +74,90 @@ function NavBadge({ badge, active }: { badge: Badge; active: boolean }) {
   ) : null;
 }
 
-type Sidebar = NonNullable<Route['sidebar']>;
 /**
- * A page's own sidebar, once its code is in, as it is when the page opens; nothing while it
- * loads, and the app's own if it fails to.
+ * A sidebar's list, `current` highlighted: a link to each page, and in the app's a button for
+ * each sidebar of pages, which opens it (`open`). Following a link closes the sidebar where it
+ * opens over the page (`close`).
  */
-function PageSidebar({
-  sidebar,
+function NavList({
+  label,
+  items,
+  current,
+  dspId,
+  open,
+  close,
+}: {
+  label: string;
+  items: readonly NavItem[];
+  current: string;
+  dspId?: string;
+  open: (sidebar: Sidebar) => void;
+  close: () => void;
+}) {
+  return (
+    <nav className="nav-list" aria-label={label}>
+      {items.map(({ id, label: itemLabel, icon: Icon, badge, preload, sidebar }) => {
+        const warm = () => void preload().catch(() => undefined);
+        const item = {
+          className: 'nav-item',
+          'aria-current': current === id ? ('page' as const) : undefined,
+          onPointerEnter: warm,
+          onPointerDown: warm,
+          onFocus: warm,
+        };
+        const named = (
+          <>
+            {Icon && <Icon aria-hidden="true" />}
+            <span>{itemLabel}</span>
+            {badge && <NavBadge badge={badge} active={current === id} />}
+          </>
+        );
+        return sidebar ? (
+          <button key={id} type="button" data-opens={id} onClick={() => open(sidebar)} {...item}>
+            {named}
+          </button>
+        ) : (
+          <a
+            key={id}
+            href={dspId ? dspHash(dspId, id as DspRouteId) : platformHash(id as PlatformRouteId)}
+            onClick={close}
+            {...item}
+          >
+            {named}
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
+
+type Drawing = NonNullable<Sidebar['draw']>;
+/**
+ * What a sidebar of pages draws of its own, once its code is in, as it is when it opens; nothing
+ * while it loads, and the app's sidebar if it fails to.
+ */
+function DrawnSidebar({
+  drawing,
   fallback,
   ...props
-}: SidebarProps & { sidebar: Sidebar; fallback: ReactNode }) {
+}: SidebarProps & { drawing: Drawing; fallback: ReactNode }) {
   const [loaded, setLoaded] = useState(() => ({
-    of: sidebar,
-    Drawn: loadedSidebar(sidebar),
+    of: drawing,
+    Drawn: loadedSidebar(drawing),
     failed: false,
   }));
-  const ours = loaded.of === sidebar;
+  const ours = loaded.of === drawing;
   useEffect(() => {
     if (ours && loaded.Drawn) return;
     let live = true;
-    loadSidebar(sidebar).then(
-      (Drawn) => live && setLoaded({ of: sidebar, Drawn, failed: false }),
-      () => live && setLoaded({ of: sidebar, Drawn: undefined, failed: true }),
+    loadSidebar(drawing).then(
+      (Drawn) => live && setLoaded({ of: drawing, Drawn, failed: false }),
+      () => live && setLoaded({ of: drawing, Drawn: undefined, failed: true }),
     );
     return () => {
       live = false;
     };
-  }, [sidebar, ours, loaded.Drawn]);
+  }, [drawing, ours, loaded.Drawn]);
   const { Drawn } = loaded;
   if (ours && Drawn) return <Drawn {...props} />;
   return ours && loaded.failed ? fallback : null;
@@ -108,23 +183,18 @@ export function Shell({
   view?: DspView;
   dspId?: string;
   page: string;
-  /** The navigation item the open page belongs to. */
+  /** The item of the app's sidebar the open page belongs to. */
   current: string;
   label: string;
   pending?: boolean;
   /** Whether the open page fills the window, its parts scrolling within it. */
   fills?: boolean;
-  navigation: readonly {
-    id: string;
-    label: string;
-    icon?: LucideIcon;
-    badge?: Badge;
-    preload: () => Promise<unknown>;
-  }[];
+  /** The app's sidebar: its pages, and its sidebars of pages with theirs. */
+  navigation: readonly NavItem[];
   logout: () => void;
   exitView: () => void;
   viewAs: (roleId?: string) => void;
-  /** The open page's own sidebar, drawn in place of the app's name and pages. */
+  /** The sidebar of pages the open page is under, which the sidebar shows as the page opens. */
   sidebar?: Sidebar;
   children: ReactNode;
 }) {
@@ -151,31 +221,59 @@ export function Shell({
     return () => narrow.removeEventListener('change', widened);
   }, [mobile]);
   useFocusTrap(drawer, { active: mobile, onEscape: () => setMobile(false) });
-  // The app's name and pages, unless the page open draws a sidebar of its own.
+  const close = () => setMobile(false);
+  // The list the sidebar shows: as a page opens, the sidebar of pages it is under, or else the
+  // app's; then whichever the person opens, or goes back to, the page staying open.
+  const opened = `${dspId ?? ''}/${page}`;
+  const [list, setList] = useState({ opened, under: sidebar, shown: sidebar });
+  if (list.opened !== opened || list.under !== sidebar)
+    setList({ opened, under: sidebar, shown: sidebar });
+  // The latest the person asked to open, which one opened before it may no longer show.
+  const opening = useRef(0);
+  // Where the focus goes as the person opens a list or goes back: into the one shown, or to the
+  // item of the app's that opened the one left.
+  const focusing = useRef<{ from?: Sidebar }>(undefined);
+  const open = (to: Sidebar) => {
+    const asked = ++opening.current;
+    const show = () => {
+      if (asked !== opening.current) return;
+      focusing.current = {};
+      setList((now) => (now.opened === opened ? { ...now, shown: to } : now));
+    };
+    // What it draws of its own is in before it slides in, so it never slides in empty.
+    if (to.draw && !loadedSidebar(to.draw)) loadSidebar(to.draw).then(show, show);
+    else show();
+  };
+  const back = () => {
+    opening.current++;
+    focusing.current = { from: list.shown };
+    setList((now) => ({ ...now, shown: undefined }));
+  };
+  useLayoutEffect(() => {
+    const to = focusing.current;
+    focusing.current = undefined;
+    const shown = drawer.current?.querySelector('.sidebar-panel:not([inert])');
+    if (!to || !shown) return;
+    const target = to.from
+      ? shown.querySelector<HTMLElement>(`[data-opens="${CSS.escape(to.from.id)}"]`)
+      : shown.querySelector<HTMLElement>('a[href], button, input');
+    target?.focus({ preventScroll: true });
+  }, [list.shown]);
+  // The app's name and its sidebar.
   const pages = (
     <>
       <div className="sidebar-brand">
         <Brand />
         <p>{workspace}</p>
       </div>
-      <nav className="nav-list" aria-label="Primary navigation">
-        {navigation.map(({ id, label: itemLabel, icon: Icon, badge, preload }) => (
-          <a
-            key={id}
-            href={dspId ? dspHash(dspId, id as DspRouteId) : platformHash(id as PlatformRouteId)}
-            className="nav-item"
-            aria-current={current === id ? 'page' : undefined}
-            onPointerEnter={() => void preload().catch(() => undefined)}
-            onPointerDown={() => void preload().catch(() => undefined)}
-            onFocus={() => void preload().catch(() => undefined)}
-            onClick={() => setMobile(false)}
-          >
-            {Icon && <Icon aria-hidden="true" />}
-            <span>{itemLabel}</span>
-            {badge && <NavBadge badge={badge} active={current === id} />}
-          </a>
-        ))}
-      </nav>
+      <NavList
+        label="Primary navigation"
+        items={navigation}
+        current={current}
+        dspId={dspId}
+        open={open}
+        close={close}
+      />
     </>
   );
   return (
@@ -212,20 +310,33 @@ export function Shell({
           <X size={18} />
         </button>
         <SidebarPanels
-          shown={sidebar}
+          shown={list.shown}
           draw={(panel) =>
-            panel ? (
-              <PageSidebar
-                sidebar={panel}
+            !panel ? (
+              pages
+            ) : panel.draw ? (
+              <DrawnSidebar
+                drawing={panel.draw}
                 fallback={pages}
                 session={session}
                 view={view}
                 dspId={dspId}
                 page={page}
-                close={() => setMobile(false)}
+                back={back}
+                close={close}
               />
             ) : (
-              pages
+              <>
+                <SidebarHead title={panel.label} back={back} />
+                <NavList
+                  label={panel.label}
+                  items={navigation.find((item) => item.sidebar === panel)?.pages ?? []}
+                  current={page}
+                  dspId={dspId}
+                  open={open}
+                  close={close}
+                />
+              </>
             )
           }
         />
