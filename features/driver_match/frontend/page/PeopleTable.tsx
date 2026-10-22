@@ -63,15 +63,13 @@ export function PeopleTable({
       value: roleLabel,
       cell: roleLabel,
     },
-    ...sources.map(
-      (source): TableColumn<Person> => ({
-        id: source,
-        header: sourceLabel(source),
-        scope: 'col',
-        className: 'driver-list-ids',
-        cell: (person) => <Ids person={person} source={source} />,
-      }),
-    ),
+    ...sources.map((source): TableColumn<Person> => ({
+      id: source,
+      header: sourceLabel(source),
+      scope: 'col',
+      className: 'driver-list-ids',
+      cell: (person) => <Ids person={person} source={source} />,
+    })),
     {
       id: 'seen',
       header: 'Last seen',
