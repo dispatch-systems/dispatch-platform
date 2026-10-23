@@ -170,9 +170,7 @@ pub(super) fn person(code: &str, ids: &[(&IdRow, Source)], context: &Context) ->
             .unwrap_or_default(),
         role,
         // Someone who has left keeps their title for when they come back.
-        title: given
-            .and_then(GivenRole::title)
-            .filter(|_| !role.left()),
+        title: given.and_then(GivenRole::title).filter(|_| !role.left()),
         given,
         ids: ids
             .iter()
