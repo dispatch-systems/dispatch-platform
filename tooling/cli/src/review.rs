@@ -141,6 +141,25 @@ impl Passes {
     }
 }
 
+/// Where a change's review stands, once a pass started.
+#[derive(Debug, serde::Serialize)]
+pub struct Progress {
+    /// The latest pass started, and how many are planned.
+    pub pass: u32,
+    pub of: u32,
+    /// Whether its reviewer wrote its findings.
+    pub answered: bool,
+}
+pub fn progress(change: &Change) -> Option<Progress> {
+    let reviews = Passes::of(change);
+    let pass = reviews.started();
+    (pass > 0).then(|| Progress {
+        pass,
+        of: reviews.planned(),
+        answered: reviews.pass(pass).join("findings.md").is_file(),
+    })
+}
+
 /// `dispatchdev review <name> [--passes <n>]`: the brief of the change's next pass. `passes`
 /// sets how many there are to be, one unless told.
 pub fn start(ws: &Workspace, name: &str, passes: Option<u32>, runner: &dyn Runner) -> Result<()> {
