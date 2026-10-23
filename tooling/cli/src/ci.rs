@@ -1,5 +1,6 @@
 //! `dispatchdev ci <name>`: the full checks on a change's branch while its preview is tried,
-//! so what they find is fixed before the PR is queued. It pushes the committed branch, starts
+//! so what they find is fixed before the PR is queued. After `dispatchdev check` passes on it,
+//! which a tree it passed on before does at once, it pushes the committed branch, starts
 //! `checks.yml` on it without the gate, and follows the run, stopping at its first failed job.
 //! A head that has a run going or passed already is followed or reported, not run again. A newer
 //! run of the branch replaces an older one; `ship` stops on a head whose run failed and cancels
