@@ -94,10 +94,12 @@ const ABOUT: usize = 60;
 const COMMANDS: &[Spec] = &[
     spec(
         "start",
-        &["start <name> [--from <ref>]"],
+        &["start <name> [--from <ref>]", "      [--preview]"],
         "A worktree and branch for the change from origin/main, its packages installed and its \
-         scratch folder made, once the changes whose PRs merged are removed as finish would.",
+         scratch folder made, once the changes whose PRs merged are removed as finish would; \
+         --preview also starts its preview's build without waiting for it.",
     )
+    .flags(&["--preview"])
     .options(&["--from"])
     .arguments(1),
     spec(
@@ -226,9 +228,11 @@ const COMMANDS: &[Spec] = &[
     .arguments(1),
     spec(
         "status",
-        &["status"],
-        "Worktrees, previews, open PRs, what Dev runs, free disk.",
-    ),
+        &["status [--json]"],
+        "Worktrees with their previews, PRs and reviews, open PRs, what Dev runs, free disk; \
+         --json writes the same as JSON, to pick a change up after a break.",
+    )
+    .flags(&["--json"]),
     spec(
         "browser",
         &[
@@ -494,6 +498,7 @@ fn run() -> Result<()> {
             &line.workspace()?,
             line.name()?,
             line.option("--from").unwrap_or("origin/main"),
+            line.flag("--preview"),
             &Native,
         ),
         "preview" => {
@@ -654,7 +659,15 @@ fn run() -> Result<()> {
             line.flag("--abandon"),
             &Native,
         ),
-        "status" => status::run(&line.workspace()?, &Native),
+        "status" => {
+            let status = status::read(&line.workspace()?, &Native)?;
+            if line.flag("--json") {
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            } else {
+                status::print(&status);
+            }
+            Ok(())
+        }
         "browser" => {
             let target = line.name()?;
             let output = line.option("--out").ok_or_else(|| line.usage())?;
