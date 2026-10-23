@@ -5,14 +5,15 @@ test('long after signing in, disabling a DSP asks the owner to confirm it’s th
   dispatch,
 }) => {
   await login(page);
-  dispatch.database('data/platform/accounts.sqlite', (db) => {
-    db.prepare('UPDATE sessions SET created_at=0').run();
-    db.prepare('UPDATE session_security SET verified_at=0, password_verified_at=0').run();
-  });
   await page
     .getByRole('region', { name: 'DSPs', exact: true })
     .getByRole('button', { name: /Summit Delivery/ })
     .click();
+  // Signed in by now: the list shows only to a session.
+  dispatch.database('data/platform/accounts.sqlite', (db) => {
+    db.prepare('UPDATE sessions SET created_at=0').run();
+    db.prepare('UPDATE session_security SET verified_at=0, password_verified_at=0').run();
+  });
   const detail = page.getByRole('region', { name: 'Summit Delivery' });
   await detail.getByLabel('Actions for Summit Delivery').click();
   await page.getByRole('button', { name: 'Disable DSP', exact: true }).click();
