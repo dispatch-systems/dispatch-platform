@@ -43,7 +43,11 @@ pub fn fixture(request: &Request) -> Result<Capture> {
         });
         let associate =
             Associate::read(row)?.ok_or_else(|| Error::new("associates_row_invalid", 502))?;
-        photos.extend(Photo::new(&address, &portrait(index)));
+        photos.extend(Photo::new(
+            &address,
+            &portrait(index),
+            Some(format!("\"fixture-{id}\"")),
+        ));
         associates.push(associate);
     }
     let capture = Capture {
@@ -55,6 +59,7 @@ pub fn fixture(request: &Request) -> Result<Capture> {
         finished_at: now().max(started_at),
         associates,
         photos,
+        photos_unchanged: Vec::new(),
         photos_waiting: 0,
     };
     capture.validate(request)?;

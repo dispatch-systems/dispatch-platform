@@ -4,14 +4,14 @@ use super::photos;
 use dispatch_core::{
     Result,
     collection::registry::AddedStorage,
-    db::{Db, DspLease, FromRow, Kind, Row, Store, at, now},
+    db::{Db, DspLease, FromRow, Kind, Row, Store, at, migrations::add_column, now},
     ensure,
     foundation::validate,
     manifest::people::Photo,
 };
 use dispatch_cortex::{
     self as cortex,
-    associates::{Capture, Collection, MAX_KEPT_PHOTO_BYTES, PhotoFormat, Request},
+    associates::{Capture, Collection, KeptPhotos, MAX_KEPT_PHOTO_BYTES, PhotoFormat, Request},
 };
 use dispatch_driver_profiles_contract::Associate;
 use rusqlite::params;
@@ -34,10 +34,16 @@ fn verify(db: &Db) -> Result<()> {
     }
     Ok(())
 }
-/// How long a photo kept stands for its address before a collection downloads it again, in
-/// case the associate changed it. An offboarded associate's stands for good: they change it no
-/// more.
+/// How long a photo kept stands for its address before a collection asks whether the
+/// associate changed it, downloading it again only if so, or if it was kept with no ETag to ask
+/// by. An offboarded associate's stands for good: they change it no more.
 const PHOTO_REFRESH_MS: i64 = 30 * 24 * 3_600_000;
+
+/// Migration 3: the ETag each photo was served under, so a refresh downloads it again only if
+/// Amazon changed it. A photo kept before has none, and its next refresh downloads it.
+pub(crate) fn add_photo_etags(db: &Db) -> Result<()> {
+    add_column(db, "photos", "etag", "TEXT")
+}
 
 /// What a roster job carries while queued; the DSP's code is bound just before it runs.
 pub(crate) fn roster_request() -> Value {
@@ -62,11 +68,12 @@ pub(crate) fn bind_roster_request(store: &Store, dsp: &str) -> Result<Value> {
 /// What Driver Profiles reads and writes for one DSP.
 pub trait DriverProfilesStore {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>>;
-    /// The addresses of the photos kept for `company`'s associates that still stand, whose
-    /// files are there: a collection downloads only the rest. An offboarded associate's always
-    /// stands; a JPEG or PNG heavier than any shrunk photo, kept before photos were shrunk,
-    /// never does, so the next collection shrinks it.
-    fn kept_photos(&self, dsp: &str, company: &str) -> Result<Vec<String>>;
+    /// The photos kept for `company`'s associates whose files are there: those that still stand,
+    /// which a collection doesn't download, and those due a refresh with the ETag each was
+    /// served under. An offboarded associate's always stands; a JPEG or PNG heavier than any
+    /// shrunk photo, kept before photos were shrunk, is neither, so the next collection
+    /// shrinks it.
+    fn kept_photos(&self, dsp: &str, company: &str) -> Result<KeptPhotos>;
     /// Stores a roster as the current one. The photos' files are written already.
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
     /// The photo of the first of `transporters` the roster lists with one: its kind and its
@@ -80,30 +87,35 @@ impl DriverProfilesStore for Store {
     fn driver_profiles_db(&self, dsp: &str) -> Result<DspLease<'_>> {
         self.added_storage(dsp, cortex::PROVIDER, &STORAGE)
     }
-    fn kept_photos(&self, dsp: &str, company: &str) -> Result<Vec<String>> {
-        let rows = self
-            .driver_profiles_db(dsp)?
-            .query_as::<(String, String, String)>(
-                "SELECT p.address,p.sha256,p.format FROM photos p WHERE EXISTS \
-             (SELECT 1 FROM associates a WHERE a.photo_address=p.address AND a.company_id=?1 \
-             AND (p.stored_at>=?2 OR a.status='OFFBOARDED')) \
+    fn kept_photos(&self, dsp: &str, company: &str) -> Result<KeptPhotos> {
+        let rows = self.driver_profiles_db(dsp)?.query_as::<KeptPhoto>(
+            "SELECT p.address,p.sha256,p.format,p.etag,EXISTS (SELECT 1 FROM associates a \
+             WHERE a.photo_address=p.address AND a.company_id=?1 \
+             AND (p.stored_at>=?2 OR a.status='OFFBOARDED')) stands FROM photos p WHERE EXISTS \
+             (SELECT 1 FROM associates a WHERE a.photo_address=p.address AND a.company_id=?1) \
              AND (p.bytes<=?3 OR p.format NOT IN (?4,?5)) ORDER BY p.address",
-                params![
-                    company,
-                    at(now() - PHOTO_REFRESH_MS),
-                    MAX_KEPT_PHOTO_BYTES as i64,
-                    PhotoFormat::Jpeg.extension(),
-                    PhotoFormat::Png.extension()
-                ],
-            )?;
+            params![
+                company,
+                at(now() - PHOTO_REFRESH_MS),
+                MAX_KEPT_PHOTO_BYTES as i64,
+                PhotoFormat::Jpeg.extension(),
+                PhotoFormat::Png.extension()
+            ],
+        )?;
         let dir = photos::dir(self, dsp)?;
-        Ok(rows
-            .into_iter()
-            .filter(|(_, sha256, format)| {
-                photos::file_name(sha256, format).is_some_and(|name| dir.join(name).is_file())
-            })
-            .map(|(address, _, _)| address)
-            .collect())
+        let mut kept = KeptPhotos::default();
+        for photo in rows {
+            let file = photos::file_name(&photo.sha256, &photo.format);
+            if !file.is_some_and(|name| dir.join(name).is_file()) {
+                continue;
+            }
+            if photo.stands {
+                kept.standing.insert(photo.address);
+            } else if let Some(etag) = photo.etag {
+                kept.versions.insert(photo.address, etag);
+            }
+        }
+        Ok(kept)
     }
     fn publish_roster(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()> {
         let request = Request::parse(&bind_roster_request(self, dsp)?)?
@@ -159,18 +171,28 @@ impl DriverProfilesStore for Store {
                     .map_err(|_| dispatch_core::Error::new("driver_profiles_photo_missing", 500))?
                     .len();
                 db.exec(
-                    "INSERT INTO photos(address,sha256,format,bytes,stored_at) VALUES (?,?,?,?,?) \
-                     ON CONFLICT(address) DO UPDATE SET sha256=excluded.sha256,\
-                     format=excluded.format,bytes=excluded.bytes,stored_at=excluded.stored_at",
+                    "INSERT INTO photos(address,sha256,format,bytes,stored_at,etag) \
+                     VALUES (?,?,?,?,?,?) ON CONFLICT(address) DO UPDATE SET \
+                     sha256=excluded.sha256,format=excluded.format,bytes=excluded.bytes,\
+                     stored_at=excluded.stored_at,etag=excluded.etag",
                     params![
                         photo.address,
                         photo.sha256,
                         photo.format.extension(),
                         bytes as i64,
-                        collected_at
+                        collected_at,
+                        photo.etag
                     ],
                 )?;
             }
+            // A photo Amazon hasn't changed stands as if stored anew.
+            db.exec(
+                "UPDATE photos SET stored_at=? WHERE address IN (SELECT value FROM json_each(?))",
+                params![
+                    collected_at,
+                    serde_json::to_string(&capture.photos_unchanged)?
+                ],
+            )?;
             // A photo goes once the roster no longer lists whoever it shows.
             db.exec(
                 "DELETE FROM photos WHERE address NOT IN (SELECT photo_address FROM associates \
@@ -237,6 +259,25 @@ impl DriverProfilesStore for Store {
             .iter()
             .filter_map(|id| kept.remove(id))
             .collect())
+    }
+}
+/// A photo kept, and whether it still stands for its address.
+struct KeptPhoto {
+    address: String,
+    sha256: String,
+    format: String,
+    etag: Option<String>,
+    stands: bool,
+}
+impl FromRow for KeptPhoto {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            address: row.get("address")?,
+            sha256: row.get("sha256")?,
+            format: row.get("format")?,
+            etag: row.get("etag")?,
+            stands: row.get("stands")?,
+        })
     }
 }
 /// An associate as the roster's row has them.

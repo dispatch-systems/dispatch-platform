@@ -1,9 +1,11 @@
 //! Reads the roster over plain HTTP with the browser's session: the company the DSP's code
 //! names, then every associate in one request and everyone offboarded in another, then the
 //! photos the DSP lacks, each from where the application redirects its address, shrunk as it
-//! comes. Nothing after the roster needs a page, so the browser closes as soon as it is in.
+//! comes; one due a refresh only if Amazon changed it. Nothing after the roster needs a page,
+//! so the browser closes as soon as it is in.
 use super::capture::{
-    Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, Request,
+    Associate, Capture, Collection, JOB_KIND, KeptPhotos, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo,
+    Request,
 };
 use super::shrink::shrink;
 use crate as cortex;
@@ -19,9 +21,9 @@ use dispatch_core::{
     foundation::validate::token,
     manifest::registry,
 };
+use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Semaphore;
 
 /// Where S3 serves the photos the application redirects to.
@@ -33,14 +35,9 @@ const LIMIT: usize = 16 * 1024 * 1024;
 /// Photo downloads at once: forty took 4.4 s sixteen at a time, against 5.4 s eight at a
 /// time and 4.2 s all forty together.
 const LANES: usize = 16;
-/// What one collection downloads of the photos the DSP lacks, as Amazon serves them, about
-/// sixty; the next brings the rest.
+/// What one collection keeps of the photos the DSP lacks, as the capture holds them: about
+/// 3,600 shrunk ones. A roster lacking more brings the rest next time.
 const PHOTOS_BUDGET: usize = 96 * 1024 * 1024;
-/// The most photos one collection tries: twice what the budget pays for at Amazon's usual
-/// size, so photos that fail every time, as an account Amazon serves no photo for or one too
-/// large or strange to shrink, can't make each collection try every one of them. Each such
-/// photo is still tried, and downloaded, every collection.
-const PHOTO_ATTEMPTS: usize = 120;
 /// Photos shrunk at once: each holds a CPU for a moment, and a collection shares the server
 /// with everyone using it.
 const SHRINKING: usize = 4;
@@ -163,9 +160,9 @@ fn roster_address(origin: &str, company: &str, statuses: &str) -> String {
     format!("{origin}{ROSTER}?{}", query.finish())
 }
 
-/// The photos Driver Profiles holds for the company, by address: only the rest are
-/// downloaded.
-async fn kept_photos(run: &Run<'_>, company: &str) -> Result<BTreeSet<String>> {
+/// The photos Driver Profiles holds for the company: only the rest are downloaded, and those
+/// due a refresh only if Amazon changed them.
+async fn kept_photos(run: &Run<'_>, company: &str) -> Result<KeptPhotos> {
     let job = run.job.to_owned();
     let question = json!({"company": company});
     let kept = run
@@ -176,7 +173,7 @@ async fn kept_photos(run: &Run<'_>, company: &str) -> Result<BTreeSet<String>> {
         })
         .await?;
     if kept.is_null() {
-        return Ok(BTreeSet::new());
+        return Ok(KeptPhotos::default());
     }
     Ok(serde_json::from_value(kept)?)
 }
@@ -188,30 +185,48 @@ fn skipped(refusal: Refusal) -> &'static str {
         Refusal::Unreadable(label) => label,
     }
 }
-/// One photo's bytes: where the application redirects its address, then the bytes from there,
-/// which carry none of Amazon's cookies.
+/// Why one photo wasn't kept, by a fixed label.
+#[derive(Debug, PartialEq, Eq)]
+enum Missed {
+    /// The application refused the session or stopped answering, as it would for every photo
+    /// after: no more are asked for.
+    Refused(&'static str),
+    /// This photo alone.
+    Skipped(&'static str),
+}
+/// One photo's bytes and the ETag they were served under, or None when the photo host still
+/// serves the version `etag` names: where the application redirects its address, then the
+/// photo from there, which carries none of Amazon's cookies.
 async fn photo(
     http: &Http,
     downloads: &Http,
     origin: &str,
     referer: &str,
     address: &str,
-) -> std::result::Result<Vec<u8>, &'static str> {
+    etag: Option<&str>,
+) -> std::result::Result<Option<(Vec<u8>, Option<String>)>, Missed> {
     let source = http
         .location(&format!("{origin}{address}"), referer)
         .await
-        .map_err(skipped)?;
+        .map_err(|refusal| match refusal {
+            Refusal::Unavailable => Missed::Refused("photo_unavailable"),
+            Refusal::Unreadable(label @ "http_signed_out") => Missed::Refused(label),
+            Refusal::Unreadable(label) => Missed::Skipped(label),
+        })?;
     let fixture = url::Url::parse(origin)
         .is_ok_and(|base| base.host_str() == Some(FIXTURE) && base.origin() == source.origin());
     if !fixture && (source.scheme() != "https" || source.host_str() != Some(PHOTO_HOST)) {
-        return Err("photo_redirect_unexpected");
+        return Err(Missed::Skipped("photo_redirect_unexpected"));
     }
-    downloads
-        .download(source.as_str(), None, MAX_PHOTO_BYTES)
+    let download = downloads
+        .download(source.as_str(), etag, MAX_PHOTO_BYTES)
         .await
-        .map_err(skipped)?
-        .body
-        .ok_or("photo_not_modified")
+        .map_err(|refusal| Missed::Skipped(skipped(refusal)))?;
+    match download.body {
+        Some(bytes) => Ok(Some((bytes, download.etag))),
+        None if etag.is_some() => Ok(None),
+        None => Err(Missed::Skipped("photo_not_modified")),
+    }
 }
 /// A photo downloaded, as it is kept: shrunk away from the threads that serve requests, a few at
 /// a time.
@@ -219,12 +234,13 @@ async fn keep(
     shrinking: &Semaphore,
     address: &str,
     bytes: Vec<u8>,
+    etag: Option<String>,
 ) -> std::result::Result<Photo, &'static str> {
     let _turn = shrinking.acquire().await.map_err(|_| "photo_unreadable")?;
     let bytes = tokio::task::spawn_blocking(move || shrink(bytes))
         .await
         .map_err(|_| "photo_unreadable")??;
-    Photo::new(address, &bytes).ok_or("photo_not_an_image")
+    Photo::new(address, &bytes, etag).ok_or("photo_not_an_image")
 }
 
 impl Driver {
@@ -279,49 +295,72 @@ impl Driver {
         self.browser.close().await;
         let associates = everyone(roster(&listed)?, rows(&offboarded)?)?;
         let kept = kept_photos(run, &company_id).await?;
-        // Active associates' photos first, then the rest; each address once.
-        let mut wanted: Vec<&str> = Vec::new();
+        // Active associates' photos first, then the rest; each address once, with the ETag of
+        // the version kept when it is due a refresh.
+        let mut wanted: Vec<(&str, Option<&str>)> = Vec::new();
         for active in [true, false] {
             for associate in &associates {
                 if let Some(address) = &associate.photo
                     && (associate.status == "ACTIVE") == active
-                    && !kept.contains(address)
-                    && !wanted.contains(&address.as_str())
+                    && !kept.standing.contains(address)
+                    && !wanted.iter().any(|(wanted, _)| wanted == address)
                 {
-                    wanted.push(address);
+                    wanted.push((address, kept.versions.get(address).map(String::as_str)));
                 }
             }
         }
-        let tried = &wanted[..wanted.len().min(PHOTO_ATTEMPTS)];
-        if !tried.is_empty() {
-            run.progress(50, format!("Downloading {} photos", tried.len()))
+        let total = wanted.len();
+        if total > 0 {
+            run.progress(50, format!("Downloading photos (0/{total})"))
                 .await?;
         }
         let downloads = Http::detached(&self.origin, &cortex::PHOTO_HOSTS)?;
         let shrinking = Semaphore::new(SHRINKING);
-        let next = AtomicUsize::new(0);
-        let spent = AtomicUsize::new(0);
-        let lanes = futures_util::future::join_all((0..LANES).map(|_| async {
-            let mut got = Vec::new();
-            while spent.load(Ordering::SeqCst) < PHOTOS_BUDGET {
-                let index = next.fetch_add(1, Ordering::SeqCst);
-                let Some(address) = tried.get(index) else {
+        let (http, downloads, shrinking) = (&http, &downloads, &shrinking);
+        let (origin, referer) = (self.origin.as_str(), referer.as_str());
+        let mut fetching = stream::iter(0..total)
+            .map(|index| {
+                let (address, etag) = wanted[index];
+                async move {
+                    let fetched = async {
+                        let Some((bytes, etag)) =
+                            photo(http, downloads, origin, referer, address, etag).await?
+                        else {
+                            return Ok(None);
+                        };
+                        let photo = keep(shrinking, address, bytes, etag).await;
+                        photo.map(Some).map_err(Missed::Skipped)
+                    };
+                    (index, fetched.await)
+                }
+            })
+            .buffer_unordered(LANES);
+        let (mut photos, mut unchanged, mut held, mut done) = (Vec::new(), Vec::new(), 0, 0);
+        while held < PHOTOS_BUDGET
+            && let Some((index, fetched)) = fetching.next().await
+        {
+            done += 1;
+            match fetched {
+                Ok(Some(photo)) => {
+                    held += photo.data.len();
+                    photos.push((index, photo));
+                }
+                Ok(None) => unchanged.push(wanted[index].0.to_owned()),
+                Err(Missed::Skipped(label)) => run.metrics.detail(label),
+                Err(Missed::Refused(label)) => {
+                    run.metrics.detail(label);
                     break;
-                };
-                let kept = async {
-                    let bytes = photo(&http, &downloads, &self.origin, &referer, address).await?;
-                    spent.fetch_add(bytes.len(), Ordering::SeqCst);
-                    keep(&shrinking, address, bytes).await
-                };
-                match kept.await {
-                    Ok(photo) => got.push((index, photo)),
-                    Err(label) => run.metrics.detail(label),
                 }
             }
-            got
-        }))
-        .await;
-        let mut photos: Vec<(usize, Photo)> = lanes.into_iter().flatten().collect();
+            if done % LANES == 0 && done < total {
+                run.progress(
+                    50 + (45 * done / total) as i64,
+                    format!("Downloading photos ({done}/{total})"),
+                )
+                .await?;
+            }
+        }
+        drop(fetching);
         photos.sort_by_key(|(index, _)| *index);
         run.progress(95, "Validating the roster".into()).await?;
         let capture = Capture {
@@ -331,8 +370,9 @@ impl Driver {
             company_code,
             started_at,
             finished_at: now().max(started_at),
-            photos_waiting: wanted.len() - photos.len(),
+            photos_waiting: total - photos.len() - unchanged.len(),
             photos: photos.into_iter().map(|(_, photo)| photo).collect(),
+            photos_unchanged: unchanged,
             associates,
         };
         capture.validate(request)?;

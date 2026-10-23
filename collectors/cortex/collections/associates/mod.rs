@@ -7,8 +7,8 @@ mod fixture;
 mod shrink;
 
 pub use capture::{
-    Associate, Capture, Collection, JOB_KIND, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo, PhotoFormat,
-    Request,
+    Associate, Capture, Collection, JOB_KIND, KeptPhotos, MAX_ASSOCIATES, MAX_PHOTO_BYTES, Photo,
+    PhotoFormat, Request,
 };
 pub use fixture::fixture;
 pub use shrink::MAX_KEPT_PHOTO_BYTES;

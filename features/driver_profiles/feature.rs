@@ -8,7 +8,10 @@ mod backend;
 pub use backend::{DOMAIN, storage::DriverProfilesStore};
 
 use dispatch_core::{
-    db::{Migration, Migrations, migrations::Apply::Sql},
+    db::{
+        Migration, Migrations,
+        migrations::Apply::{Code, Sql},
+    },
     manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Collections,
 };
@@ -41,6 +44,11 @@ pub const FEATURE: Feature = Feature {
                 apply: Sql(include_str!(
                     "migrations/driver_profiles/0002_drop_settings.sql"
                 )),
+            },
+            Migration {
+                id: 3,
+                name: "photo_etags",
+                apply: Code(backend::storage::add_photo_etags),
             },
         ],
     }],
