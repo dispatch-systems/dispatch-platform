@@ -17,6 +17,10 @@ const load = () => import('./index.js');
 const CommunicationsPage = lazy(() =>
   load().then((module) => ({ default: module.CommunicationsPage })),
 );
+const loadDisplay = () => import('./display/DisplaySettings.js');
+const DisplaySettings = lazy(() =>
+  loadDisplay().then((module) => ({ default: module.DisplaySettings })),
+);
 
 export const feature: FrontendFeature = {
   name: 'communications',
@@ -36,6 +40,15 @@ export const feature: FrontendFeature = {
       preload: load,
       render: ({ session, view }) =>
         createElement(CommunicationsPage, { view, user: session.user.id }),
+    },
+  ],
+  // How the page looks to each member, their own, on Settings' Display page.
+  settingsSections: [
+    {
+      id: 'communications.display',
+      load: loadDisplay,
+      render: ({ view }) => view && createElement(DisplaySettings, { view }),
+      prefetch: () => ['/api/dsp/settings'],
     },
   ],
   // Its switch's icon on the DSPs page.

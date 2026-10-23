@@ -29,6 +29,7 @@ export function GroupPeople({
   now,
   docked,
   leaving,
+  still,
   close,
   gone,
   open,
@@ -43,6 +44,8 @@ export function GroupPeople({
   docked: boolean;
   /** Whether it's closed, sliding away. */
   leaving: boolean;
+  /** Whether it's open as kept from the last conversation, there without sliding in. */
+  still: boolean;
   close: (refocus: boolean) => void;
   /** Says it has slid away. */
   gone: () => void;
@@ -58,6 +61,7 @@ export function GroupPeople({
       className="profile people"
       docked={docked}
       leaving={leaving}
+      still={still}
       close={close}
       gone={gone}
     >

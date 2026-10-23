@@ -5,7 +5,8 @@ import { X } from 'lucide-react';
 // Escape, or a press anywhere else closes it; or, on a wide page (`docked`), a column of its own
 // beside it, covering nothing, until its X or Escape does. Focus moves to its X as it opens, as
 // it does opened again while still sliding away. It slides in, and closed (`leaving`), slides
-// back out, out of reach, before it's `gone`.
+// back out, out of reach, before it's `gone`; kept open from the last conversation (`still`), it's
+// there at once, and focus stays where it was.
 
 export function Panel({
   id,
@@ -13,6 +14,7 @@ export function Panel({
   className,
   docked,
   leaving,
+  still,
   close,
   gone,
   children,
@@ -25,6 +27,8 @@ export function Panel({
   docked: boolean;
   /** Whether it's closed, sliding away. */
   leaving: boolean;
+  /** Whether it was open as it was first drawn, kept open, and hasn't been opened or closed since. */
+  still: boolean;
   /** Closes it: `refocus`, focus goes back to what opened it. */
   close: (refocus: boolean) => void;
   /** Says it has slid away. */
@@ -34,8 +38,8 @@ export function Panel({
   const panel = useRef<HTMLElement>(null);
   const closer = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!leaving) closer.current?.focus();
-  }, [leaving]);
+    if (!leaving && !still) closer.current?.focus();
+  }, [leaving, still]);
   // Closed before its slide in has moved, it's still at the edge, with no slide back to wait
   // for: it's gone at once.
   useEffect(() => {
@@ -55,7 +59,7 @@ export function Panel({
     <aside
       ref={panel}
       id={id}
-      className={leaving ? `${className} leaving` : className}
+      className={[className, leaving && 'leaving', still && 'still'].filter(Boolean).join(' ')}
       role="dialog"
       aria-labelledby={labelledBy}
       inert={leaving}

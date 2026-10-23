@@ -1,16 +1,15 @@
 import { useEffect } from 'react';
-import { ArrowLeft, Check } from 'lucide-react';
 import type { CommunicationsWorkspace, Conversation, Message, Writing } from '../../api/index.js';
 import { markDone, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Composer } from './Composer.js';
-import { Face } from './Face.js';
-import { roleText, Wait } from './parts.js';
+import { ConversationHead } from './ConversationHead.js';
+import { roleText } from './parts.js';
 import { Profile } from './Profile.js';
 import { Thread } from './Thread.js';
 import { useConversation } from './useConversation.js';
-import { usePanel } from './usePanel.js';
+import { usePanel, type Kept } from './usePanel.js';
 import type { Changed } from './useInbox.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, and,
@@ -23,6 +22,7 @@ export function ConversationPane({
   listed,
   workspaces,
   docked,
+  kept,
   seen,
   changed,
   typing,
@@ -40,6 +40,8 @@ export function ConversationPane({
   workspaces: readonly CommunicationsWorkspace[];
   /** Whether the profile, open, is a column of its own beside the conversation. */
   docked: boolean;
+  /** Whether the profile is open, kept from one conversation to the next, as the member chose. */
+  kept?: Kept;
   /** Tells the page of the conversation as read, which pins one the list doesn't hold. */
   seen: (conversation: Conversation) => void;
   changed: Changed;
@@ -93,45 +95,23 @@ export function ConversationPane({
   const about = [person && roleText(person), where].filter(Boolean).join(' · ');
   // The profile, and what opened it, which focus goes back to as it closes: the photo by the
   // messages, or who it's with when that photo is gone.
-  const profile = usePanel();
+  const profile = usePanel(kept);
   const opens = profile.opens;
   return (
     <section
       className={profile.open ? 'pane-thread profiled' : 'pane-thread'}
       aria-label={person?.name ?? 'Conversation'}
     >
-      <header className="thread-head">
-        <button className="icon-button back" aria-label="Back" onClick={back}>
-          <ArrowLeft size={18} />
-        </button>
-        {person && conversation && (
-          <>
-            <button ref={profile.who} className={profile.open ? 'who open' : 'who'} {...opens}>
-              <Face {...person} size="head" />
-              <span>
-                <strong>{person.name}</strong>
-                {(about || conversation.waitingSince !== null) && (
-                  <small>
-                    {about}
-                    {about && conversation.waitingSince !== null && ' · '}
-                    {conversation.waitingSince !== null && (
-                      <Wait since={conversation.waitingSince} now={now} />
-                    )}
-                  </small>
-                )}
-              </span>
-            </button>
-            {conversation.state === 'waiting' && (
-              <div className="actions">
-                <button disabled={done.busy} onClick={() => void done.run()}>
-                  <Check size={15} />
-                  Done
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </header>
+      <ConversationHead
+        conversation={conversation}
+        about={about}
+        now={now}
+        who={profile.who}
+        open={profile.open}
+        opens={opens}
+        back={back}
+        done={{ busy: done.busy, run: () => void done.run() }}
+      />
       {profile.drawn && person && (
         <Profile
           id={profile.id}
@@ -141,6 +121,7 @@ export function ConversationPane({
           timeZone={timeZone}
           docked={docked}
           leaving={!profile.open}
+          still={profile.still}
           close={profile.close}
           gone={profile.gone}
         />

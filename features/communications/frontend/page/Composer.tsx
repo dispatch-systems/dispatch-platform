@@ -1,16 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, X } from 'lucide-react';
 import type { CommunicationsUpload } from '../../api/index.js';
 import { addPhoto } from '../../api/client.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
+import { Shown } from '../display/display.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 
 // Writing a message, in a conversation or to a group: up to 3,000 characters, and up to ten
 // photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added. Enter sends, Shift+Enter
-// starts a new line. While someone writes in a conversation, their teammates see they are, said
-// again every few seconds.
+// starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with it sends.
+// While someone writes in a conversation, their teammates see they are, said again every few
+// seconds.
 
 const TEXT_MOST = 3000;
 const PHOTOS_MOST = 10;
@@ -50,6 +52,7 @@ export function Composer({
 }) {
   const { fail } = useFeedback();
   const [text, setText] = useState('');
+  const { enter_sends: enterSends } = useContext(Shown);
   const [photos, setPhotos] = useState<Added[]>([]);
   const picker = useRef<HTMLInputElement>(null);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -187,6 +190,7 @@ export function Composer({
           onChange={(event) => writing(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+            if (!enterSends && !event.ctrlKey && !event.metaKey) return;
             event.preventDefault();
             if (ready) void send.run();
           }}
