@@ -13,6 +13,11 @@ pub use api::types::{
     GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGroup, Profile,
     ProfileToday, Reachable, Sender, Typing, Writing,
 };
+/// How each member has the page look, as Settings keeps it for them.
+pub use api::display::{
+    BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageDisplay,
+    MessageLayout, MessageStyle, ProfileOpens, Spacing, TeamColor, TeamSide, Times,
+};
 
 use dispatch_core::db::{
     Kind, Migration, OwnMigrations,
@@ -27,6 +32,8 @@ pub const FEATURE: Feature = Feature {
     depends_on: &["slack"],
     // Reading the DSP's conversations and answering them, one permission for both.
     permissions: &[perm("communications.use", "Use Communications", 95)],
+    // How the page looks to each member, their own, on Settings' Display page.
+    settings: &[backend::display::DISPLAY],
     routes: api::routes::routes,
     domains: &[backend::storage::DOMAIN],
     tables: &[(
@@ -117,5 +124,19 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         GroupMember,
         GroupChoice,
         GroupChoiceKind,
+        MessageDisplay,
+        LineSpacing,
+        Spacing,
+        MessageLayout,
+        MessageStyle,
+        TeamSide,
+        BubbleShape,
+        Times,
+        TeamColor,
+        EmployeeColor,
+        ListWidth,
+        ListRows,
+        ListPreview,
+        ProfileOpens,
     )
 }

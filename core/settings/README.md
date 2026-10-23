@@ -31,8 +31,8 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
   a collection runs isn't a field: its keeper says who sets it (`Keeper::schedules`), on the
   Collectors page.
 - **Pages:** a section is on its feature's own page (its switch's id, `-` for `_`, ordered by
-  its `place`) unless `.on(..)` puts it on a shared page: `general`, `security` and `theme`, the
-  member's own; `dsp`, `connections`, `collectors` and `data`, the DSP's. `.collection(..)` puts
+  its `place`) unless `.on(..)` puts it on a shared page: `general`, `security`, `theme` and `display`,
+  the member's own; `dsp`, `connections`, `collectors` and `data`, the DSP's. `.collection(..)` puts
   it with a collection its feature keeps, on `collectors`, under the permission that sets when
   that collection runs: the Collectors page draws it below the collection's schedule, as Daily
   Performance's `daily_performance.collection` is.

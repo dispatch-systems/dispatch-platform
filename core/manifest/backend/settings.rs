@@ -19,6 +19,7 @@ pub const SHARED_PAGES: &[SharedPage] = &[
     shared("general", "Profile", Group::Personal, 10),
     shared("security", "Security", Group::Personal, 20),
     shared("theme", "Theme", Group::Personal, 90),
+    shared("display", "Display", Group::Personal, 95),
     shared("dsp", "DSP profile", Group::Dsp, 10),
     shared("connections", "Connections", Group::Dsp, 30),
     shared("collectors", "Collectors", Group::Dsp, 40),

@@ -6,6 +6,7 @@ import {
   Plug,
   Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   User,
   type LucideIcon,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ const shared: Record<string, LucideIcon> = {
   general: User,
   security: ShieldCheck,
   theme: Palette,
+  display: SlidersHorizontal,
   dsp: Building2,
   connections: Plug,
   collectors: CalendarSync,
