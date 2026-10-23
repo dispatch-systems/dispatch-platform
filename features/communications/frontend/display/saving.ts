@@ -6,7 +6,7 @@ import type { MessageDisplay } from '../../api/index.js';
 
 /** What became of one version of the choices: saved; or not, as `error` says, or dropped, made in a
  * view no longer open. */
-export type Settled = { version: number; error?: unknown; dropped?: true };
+export type Settled = { version: number; error?: Error; dropped?: true };
 
 export function choicesSaver({
   save,
@@ -50,7 +50,10 @@ export function choicesSaver({
           at = await save(job.values, at);
           return { version: job.version };
         } catch (error) {
-          return { version: job.version, error };
+          return {
+            version: job.version,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
         }
       });
       turn = done;
