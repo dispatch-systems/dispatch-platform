@@ -121,6 +121,32 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim()
         .to_owned())
 }
+/// `runner`, with a `gh` call GitHub answered with a passing server error, HTTP 502, 503 or 504,
+/// made again up to twice, `pause` five seconds before each.
+pub struct Retried<'a> {
+    pub runner: &'a dyn Runner,
+    pub pause: &'a dyn Fn(u64),
+}
+impl Runner for Retried<'_> {
+    fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
+        let mut tries = 0;
+        loop {
+            match self.runner.command(args, cwd, timeout) {
+                Err(error)
+                    if args.first() == Some(&"gh")
+                        && tries < 2
+                        && ["HTTP 502", "HTTP 503", "HTTP 504"]
+                            .iter()
+                            .any(|code| error.to_string().contains(code)) =>
+                {
+                    tries += 1;
+                    (self.pause)(5);
+                }
+                answer => return answer,
+            }
+        }
+    }
+}
 /// Whether this user can run a command in a systemd scope of its own, as on this machine; CI's
 /// runners can't.
 fn scopes() -> bool {
@@ -251,6 +277,50 @@ pub fn quote(arg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_passing_server_error_from_github_is_tried_again_twice() {
+        /// Fails each command with `error` its first `fails` times.
+        struct Flaky {
+            error: &'static str,
+            fails: u32,
+            calls: std::cell::Cell<u32>,
+        }
+        impl Runner for Flaky {
+            fn command(&self, _: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                self.calls.set(self.calls.get() + 1);
+                if self.calls.get() <= self.fails {
+                    return Err(self.error.into());
+                }
+                Ok(b"done".to_vec())
+            }
+        }
+        let flaky = |error, fails| Flaky {
+            error,
+            fails,
+            calls: std::cell::Cell::new(0),
+        };
+        let paused = std::cell::Cell::new(0);
+        let pause = |seconds| paused.set(paused.get() + seconds);
+        let call = |runner: &Flaky, args: &[&str]| {
+            Retried {
+                runner,
+                pause: &pause,
+            }
+            .command(args, None, 60)
+        };
+        let gateway = "gh workflow run failed: HTTP 504: Gateway Timeout";
+        let runner = flaky(gateway, 2);
+        assert_eq!(call(&runner, &["gh", "workflow", "run"]).unwrap(), b"done");
+        assert_eq!((runner.calls.get(), paused.get()), (3, 10));
+        // A third in a row is the answer, and so is any other error, or one from git.
+        assert!(call(&flaky(gateway, 3), &["gh", "workflow", "run"]).is_err());
+        let missing = flaky("gh api failed: HTTP 404: Not Found", 1);
+        assert!(call(&missing, &["gh", "api", "x"]).is_err());
+        assert_eq!(missing.calls.get(), 1);
+        let git = flaky("git push failed: HTTP 503", 1);
+        assert!(call(&git, &["git", "push"]).is_err());
+        assert_eq!(git.calls.get(), 1);
+    }
     #[test]
     fn names_are_folders_branches_and_units_at_once() {
         for good in ["audit-driver-match", "fix2", "a"] {

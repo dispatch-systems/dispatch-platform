@@ -205,6 +205,8 @@ fn remap_config(root: &Path, file: &Path) -> bool {
     toml::from_str::<toml::Value>(&text).is_ok_and(|config| config == expected)
 }
 pub fn eligible(root: &Path, env: &Environment, allow_ci: bool) -> Result<bool> {
+    // Its real path: the path dependencies are resolved to theirs, even through a link.
+    let root = &root.canonicalize()?;
     let nonempty = |key: &str| env.get(key).is_some_and(|value| !value.is_empty());
     if (nonempty("CI") && !allow_ci)
         || nonempty("DISPATCH_DISABLE_RUST_CACHE")

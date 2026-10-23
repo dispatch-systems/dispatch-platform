@@ -100,9 +100,13 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   assert.match(manifest, /use dispatch_core::manifest::\{Feature, feature, optional, perm\};/);
   assert.match(manifest, /switch: optional\("parking", "Parking", &\[\]\),/);
   const order = Number(/perm\("parking.view", "View Parking", (\d+)\)/.exec(manifest)?.[1]);
-  const used = fs
-    .readdirSync('.', { recursive: true, encoding: 'utf8' })
-    .filter((name) => /^(core|collectors|features)\/.*\.rs$/.test(name))
+  // Only the source roots: a build writing to target/ meanwhile would pull names from under a
+  // walk of the whole checkout.
+  const used = ['core', 'collectors', 'features']
+    .flatMap((dir) =>
+      fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }).map((name) => `${dir}/${name}`),
+    )
+    .filter((name) => name.endsWith('.rs'))
     .flatMap((name) => [
       ...fs.readFileSync(name, 'utf8').matchAll(/\bperm\(\s*"[^"]*",\s*"[^"]*",\s*(\d+)/g),
     ])

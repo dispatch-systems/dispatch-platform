@@ -1,13 +1,17 @@
 use crate::{
     REPOSITORY, Result, Runner,
     build::{self, Environment, frontend},
-    require, workspace,
+    require,
+    slot::{self, Slot},
+    workspace,
 };
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
+    sync::Mutex,
 };
 /// Problems that stop a push. With a merge queue on `main`, the queue validates the actual
 /// merged state, so a moved `main` and other ready PRs no longer block.
@@ -387,7 +391,7 @@ pub fn next_step(plan: &Plan) -> &'static str {
     if plan.running {
         "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
     } else {
-        "Next, dispatchdev ci <name> runs the full checks on GitHub while the change is tried. Open the PR and ship it only once told to: dispatchdev ship <name> takes it to Dev."
+        "Next, once told to merge it, dispatchdev ship <name> takes it to Dev. To show it first, dispatchdev ci <name> runs the full checks on GitHub while it's tried."
     }
 }
 /// `dispatchdev check --plan`: what to run, without running it.
@@ -407,18 +411,23 @@ pub fn print(plan: &Plan) {
     }
     println!("{}", next_step(plan));
 }
-/// `dispatchdev check`: the rule checks, then the lints the plan names, a line each, built in a
-/// folder of the run's own and deleted when it ends (`crate::test`). Every command's whole output
-/// is in the change's scratch folder. A committed tree they all passed on passes again without
-/// running, and so does clippy on identical Rust inputs.
-pub fn execute(
-    root: &Path,
-    plan: &Plan,
-    keep: bool,
-    env: &Environment,
-    runner: &dyn Runner,
-) -> Result<bool> {
-    let planned: Vec<String> = ["npm run check:rules".to_owned(), "npm run lint".to_owned()]
+/// The rule checks: everything a push can fail on without a build, side by side, in about a
+/// minute. What `dispatchdev check` adds, the TypeScript linter and clippy, the queue runs too.
+pub const RULES: &str = "npm run check:rules";
+/// The check `ci` and `ship` run before a push: the rule checks alone.
+pub fn rules(root: &Path) -> Result<()> {
+    let env = std::env::vars().collect();
+    require(
+        side_by_side(root, &[RULES.to_owned()], &env)?,
+        "The rule checks failed.",
+    )
+}
+/// `dispatchdev check`: the rule checks and the lints the plan names, side by side, a line for
+/// each as it ends; clippy builds in the checkout's own `target`, where its last run left it.
+/// A committed tree they all passed on passes again without running, and so does clippy on
+/// identical Rust inputs.
+pub fn execute(root: &Path, plan: &Plan, env: &Environment, runner: &dyn Runner) -> Result<bool> {
+    let planned: Vec<String> = [RULES.to_owned(), "npm run lint".to_owned()]
         .into_iter()
         .chain(plan.commands.iter().cloned())
         .collect();
@@ -445,7 +454,7 @@ pub fn execute(
         .filter(|command| !reused || Some(*command) != clippy)
         .cloned()
         .collect();
-    let passed = crate::test::run_commands(root, &commands, keep)?;
+    let passed = side_by_side(root, &commands, env)?;
     if passed {
         if let (false, Some(lints)) = (reused, &lints) {
             lints.keep(root, env, runner)?;
@@ -458,15 +467,60 @@ pub fn execute(
     Ok(passed)
 }
 
-/// The check before a push, as `ci` runs it: what stops the branch, then the checks, which a
-/// committed tree they passed on passes at once.
-pub fn before_push(root: &Path, runner: &dyn Runner) -> Result<()> {
-    let plan = plan(root, false, runner)?;
-    let env = std::env::vars().collect();
-    require(
-        execute(root, &plan, false, &env, runner)?,
-        "A check failed.",
-    )
+/// Runs `commands` in `root` side by side, each with its output in the change's scratch folder:
+/// a line for each as it ends, with the lines saying why under one that failed. A command that
+/// builds waits for a build slot, and passes it on to what it starts. Whether all passed.
+fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<bool> {
+    let name = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("A checkout without a folder name")?;
+    let scratch = workspace::scratch_dir(name)?;
+    // Each run's logs apart, so runs side by side never write over each other's.
+    let logs = scratch.join("check").join(std::process::id().to_string());
+    fs::create_dir_all(&logs)?;
+    let said = Mutex::new(());
+    let passed = std::thread::scope(|scope| {
+        let runs: Vec<_> = commands
+            .iter()
+            .enumerate()
+            .map(|(index, command)| {
+                let log = logs.join(format!("{}.log", index + 1));
+                let (scratch, said) = (&scratch, &said);
+                scope.spawn(move || -> Result<bool> {
+                    let slot = match command.starts_with("cargo ") {
+                        true => Slot::take(root, command, env, &crate::Native)?,
+                        false => None,
+                    };
+                    let mut own: Vec<(&str, &OsStr)> = vec![("TMPDIR", scratch.as_os_str())];
+                    if let Some(slot) = &slot {
+                        own.push((slot::HELD, slot.path.as_os_str()));
+                    }
+                    let (ok, took) = workspace::logged(command, root, &log, &own)?;
+                    // A failure's lines stay together under its own.
+                    let _said = said.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let took = workspace::duration(took);
+                    println!("{}  {took:>7}  {command}", if ok { "ok  " } else { "FAIL" });
+                    if !ok {
+                        crate::test::explain(&log);
+                    }
+                    Ok(ok)
+                })
+            })
+            .collect();
+        runs.into_iter()
+            .map(|run| {
+                run.join()
+                    .unwrap_or_else(|_| Err("A check stopped unexpectedly.".into()))
+            })
+            .collect::<Result<Vec<bool>>>()
+    })?
+    .into_iter()
+    .all(|ok| ok);
+    if passed {
+        fs::remove_dir_all(&logs)?;
+    }
+    Ok(passed)
 }
 
 /// Where the check's whole passes are kept: a file for each committed tree it passed on, named

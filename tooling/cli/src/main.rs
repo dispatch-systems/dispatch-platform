@@ -1,6 +1,9 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, change::Change, check, ci, finish, logs, observation, pr,
-    preview, review, scaffold, ship, start, status, test, verify, workspace::Workspace,
+    Native, Result, Runner, api, build,
+    change::Change,
+    check, ci, finish, logs, observation, pr, preview, require, review, scaffold, ship, start,
+    status, test, verify,
+    workspace::{Retried, Workspace},
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -169,21 +172,24 @@ const COMMANDS: &[Spec] = &[
     .arguments(1),
     spec(
         "check",
-        &["check [--plan] [--keep]", "      [--allow-concurrent]"],
-        "Before a push: what stops the branch, the rule checks, the TypeScript linter and \
-         clippy, which pass again without running on a committed tree they passed on, as \
-         clippy does on Rust inputs it passed on; ci and the merge queue run the tests. --plan \
-         only names them.",
+        &["check [--plan]", "      [--allow-concurrent]"],
+        "What stops the branch, then the rule checks, the TypeScript linter and clippy side by \
+         side, clippy in the checkout's own build. They pass again without running on a \
+         committed tree they passed on, as clippy does on Rust inputs it passed on; ci and the \
+         merge queue run the tests. --plan only names them.",
     )
-    .flags(&["--plan", "--keep", "--allow-concurrent"]),
+    .flags(&["--plan", "--allow-concurrent"]),
     spec(
         "ci",
-        &["ci <name>", "   [--removability <feature>]"],
-        "The full checks on GitHub on its committed branch, while its preview is tried: check \
-         it, push it, run them without the gate, and follow them to the first failure. ship \
-         stops on a head they failed and cancels them if still running. --removability runs \
+        &["ci <name> [--rerun-failed]", "   [--removability <feature>]"],
+        "The full checks on GitHub on its committed branch, while its preview is tried: push \
+         it, run them without the gate with the rule checks here beside them, and follow them \
+         to the end, listing every failed job. Jobs GitHub stopped itself run again once. ship \
+         stops on a head they failed and cancels them if still running. --rerun-failed runs \
+         the failed jobs again, for a failure that isn't the change's own. --removability runs \
          the weekly removability check instead, for that feature alone.",
     )
+    .flags(&["--rerun-failed"])
     .options(&["--removability"])
     .arguments(1),
     spec(
@@ -212,10 +218,12 @@ const COMMANDS: &[Spec] = &[
     spec(
         "ship",
         &["ship <name>"],
-        "Once told to merge it: check it, push it, open or update its PR from pr-body.md, queue \
-         it as soon as GitHub admits it, wait until it merges, remove what the change made as \
-         finish does, and wait for Dev. Run again after a stop, it picks up where it stopped. \
-         It exits with 1 to fix and ship again, 2 for the owner to decide, and 3 once merged.",
+        "Once told to merge it, by its name or its PR's number: check its PR body and that it merges cleanly, push it, run the \
+         rule checks unless the checks on GitHub passed on this commit, open or update its PR \
+         from pr-body.md, queue it as soon as GitHub admits it, wait until it merges, remove \
+         what the change made as finish does, and wait for Dev. Run again after a stop, it \
+         picks up where it stopped. It exits with 1 to fix and ship again, 2 for the owner to \
+         decide, and 3 once merged.",
     )
     .arguments(1),
     spec(
@@ -582,7 +590,7 @@ fn run() -> Result<()> {
                 return Ok(());
             }
             let env = std::env::vars().collect();
-            match check::execute(&root, &plan, line.flag("--keep"), &env, &Native)? {
+            match check::execute(&root, &plan, &env, &Native)? {
                 true => {
                     println!("{}", check::next_step(&plan));
                     Ok(())
@@ -627,28 +635,39 @@ fn run() -> Result<()> {
             }
         }
         "ship" => {
-            let name = line.name()?;
-            ship::change(
-                &line.workspace()?,
-                name,
-                &Native,
-                &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
-                &mut |text| println!("{text}"),
-            )
+            let named = line.name()?;
+            let pause = |seconds| std::thread::sleep(std::time::Duration::from_secs(seconds));
+            let github = Retried {
+                runner: &Native,
+                pause: &pause,
+            };
+            let name = match named.parse::<u64>() {
+                Ok(number) => pr::branch(number, &github)?,
+                Err(_) => named.to_owned(),
+            };
+            ship::change(&line.workspace()?, &name, &github, &pause, &mut |text| {
+                println!("{text}")
+            })
         }
         "ci" => {
             let (ws, name) = (line.workspace()?, line.name()?);
-            let removability = line.option("--removability");
-            // What a check finds costs less here than on GitHub.
-            if removability.is_none() {
-                check::before_push(&Change::existing(&ws, name)?.path, &Native)?;
-            }
+            let (removability, again) =
+                (line.option("--removability"), line.flag("--rerun-failed"));
+            require(
+                removability.is_none() || !again,
+                "Choose --removability or --rerun-failed.",
+            )?;
+            let pause = |seconds| std::thread::sleep(std::time::Duration::from_secs(seconds));
             let verdict = ci::run(
                 &ws,
                 name,
                 removability,
-                &Native,
-                &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
+                again,
+                &Retried {
+                    runner: &Native,
+                    pause: &pause,
+                },
+                &pause,
                 &mut |text| println!("{text}"),
             )?;
             println!("{verdict}");
