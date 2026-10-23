@@ -56,7 +56,9 @@ test('owner creates a role and the member’s interface follows its permissions'
     await expect(page.getByRole('row', { name: /Jordan Ellis/ })).toContainText('Active');
     await member.getByRole('link', { name: 'Timecard', exact: true }).click();
     await expect(member.getByRole('button', { name: 'Sync now', exact: true })).toBeVisible();
-    await expect(member.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+    await expect(
+      member.getByRole('main').getByRole('button', { name: 'Settings', exact: true }),
+    ).toBeVisible();
     await member.getByRole('link', { name: 'Team & Roles', exact: true }).click();
     await expect(member.getByRole('button', { name: 'Invite member', exact: true })).toBeVisible();
     // Without Manage Members or Manage Roles the lists are read-only.
@@ -77,7 +79,9 @@ test('owner creates a role and the member’s interface follows its permissions'
     await expect(member.getByRole('link', { name: 'Team & Roles', exact: true })).toHaveCount(0);
     await member.getByRole('link', { name: 'Timecard', exact: true }).click();
     await expect(member.getByRole('tab', { name: 'Employees', exact: true })).toBeVisible();
-    await expect(member.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
+    await expect(
+      member.getByRole('main').getByRole('button', { name: 'Settings', exact: true }),
+    ).toHaveCount(0);
   } finally {
     await context.close();
   }

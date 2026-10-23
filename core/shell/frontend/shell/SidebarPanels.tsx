@@ -1,10 +1,9 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { Route } from '../runtime/slots.js';
+import type { Sidebar } from '../runtime/slots.js';
 
-type Sidebar = NonNullable<Route['sidebar']>;
-/** What fills the sidebar above the account: a page's own sidebar, or the app's name and pages. */
+/** What fills the sidebar above the account: a sidebar of pages, or the app's name and pages. */
 type Panel = Sidebar | undefined;
-/** A panel leaving, drawn as it was when it left: a page's sidebar never draws for another page. */
+/** A panel leaving, drawn as it was when it left: a sidebar never draws for a page it left. */
 type Leaving = { panel: Panel; drawn: ReactNode };
 
 /** How long a panel takes to slide, quick to start and soft to stop. */
@@ -22,8 +21,8 @@ function place(panel: Panel) {
 
 /**
  * The sidebar's panel `shown`, as `draw` draws it. When another is shown, the panels slide
- * together, the one shown pushing the others out: in from the right for a page's own sidebar,
- * and from the left back to the app's, as the app reads left to right. Those leaving are out of
+ * together, the one shown pushing the others out: in from the right for a sidebar of pages, and
+ * from the left back to the app's, as the app reads left to right. Those leaving are out of
  * reach, and gone once they're out. Only the panels' `translate` moves, which the browser runs
  * off the main thread, so a page opening beside them can't stall it; nothing reads the layout.
  */

@@ -583,8 +583,8 @@ test('--no-backend writes a frontend-only feature, and refuses the pieces that n
   assert.doesNotMatch(manifest, /mod backend|mod tests/);
   assert.match(manifest, /switch: optional\(/);
   assert.match(file(plan, 'app/backend/features.rs'), /&dispatch_front::FEATURE,/);
-  await refused(/add --page or --tab-of/, 'front', '--no-backend');
-  await refused(/add --page or --tab-of/, 'front', '--settings', '--no-backend');
+  await refused(/add --page, --sidebar or --tab-of/, 'front', '--no-backend');
+  await refused(/add --page, --sidebar or --tab-of/, 'front', '--settings', '--no-backend');
   for (const piece of [['--api'], ['--settings'], ['--tables', 'dsp'], ['--keeps', 'cortex.dvic']])
     await refused(
       new RegExp(`Rust logic that ${piece[0]} needs`),
@@ -1112,12 +1112,65 @@ test('generate --check writes nothing, and fails naming what generate would chan
   }
 });
 
+test('--sidebar writes a sidebar of pages, each a page under it, and refuses ids taken', async () => {
+  const rota = await feature('rota', '--sidebar', 'shifts,swaps', '--api');
+  assert.deepEqual(
+    writes(rota, 'features/rota').filter((name) => /frontend|browser/.test(name)),
+    [
+      'frontend/ShiftsPage.tsx',
+      'frontend/SwapsPage.tsx',
+      'frontend/feature.ts',
+      'frontend/index.ts',
+      'frontend/platform-slots.ts',
+      'tests/browser/rota.spec.ts',
+    ],
+  );
+  const manifest = file(rota, 'features/rota/frontend/feature.ts');
+  assert.match(
+    manifest,
+    /sidebars: \[\{ id: 'rota', scope: 'dsp', label: 'Rota', [^\n]*\n\s*routes: \[/,
+  );
+  assert.equal(manifest.match(/parent: 'rota',/g)?.length, 2);
+  // The first page shows the summary, warmed as it opens, as a page of its own does.
+  assert.equal(manifest.match(/warm\(\[rotaSummaryUrl\]\)/g)?.length, 1);
+  assert.match(file(rota, 'features/rota/frontend/ShiftsPage.tsx'), /useRotaSummary\(\)/);
+  assert.doesNotMatch(file(rota, 'features/rota/frontend/SwapsPage.tsx'), /Summary/);
+  assert.match(
+    file(rota, 'features/rota/tests/browser/rota.spec.ts'),
+    /getByRole\('navigation', \{ name: 'Rota', exact: true \}\)/,
+  );
+  assert.match(rota.notes.join('\n'), /--page shifts --restart` rebuilds its preview/);
+
+  await refused(/--sidebar and --page/, 'rota', '--sidebar', 'shifts', '--page');
+  await refused(/--sidebar and --tab-of/, 'rota', '--sidebar', 'shifts', '--tab-of', 'timecard');
+  await refused(/lowercase letters, digits and hyphens/, 'rota', '--sidebar', 'Shifts');
+  await refused(/names shifts twice/, 'rota', '--sidebar', 'shifts,shifts');
+  await refused(/dvic is another page's id/, 'rota', '--sidebar', 'dvic');
+  // Its sidebar takes the feature's id, which Home's page has.
+  await refused(/overview is a page's id already/, 'overview', '--sidebar', 'shifts');
+});
+
 const add = async (...argv: string[]) => (await planAdd(root, argv)).plan;
 const changed = (plan: Plan, name: string) => {
   const content = plan.changes.get(name);
   assert(content !== undefined, `the plan changes no ${name}`);
   return content;
 };
+
+test('add sidebar gives a feature a sidebar its page moves under, and refuses one it has', async () => {
+  const dvic = await add('sidebar', 'drafts,archive', '--to', 'dvic');
+  const manifest = changed(dvic, 'features/dvic/frontend/feature.ts');
+  // The sidebar where the piece has it, before the pages, and the page DVIC had under it, after
+  // its name and icon.
+  assert.match(manifest, /sidebars: \[[^\]]*\],\n\s*routes: \[/);
+  assert.match(manifest, /label: 'DVIC',\n\s*icon: ClipboardCheck,\n\s*parent: 'dvic',/);
+  assert.equal(manifest.match(/parent: 'dvic',/g)?.length, 3);
+  assert.match(dvic.notes.join('\n'), /Its page DVIC is under its sidebar now/);
+  await assert.rejects(
+    planAdd(root, ['sidebar', 'drafts', '--to', 'settings']),
+    /has a sidebar of pages already/,
+  );
+});
 
 test('add merges a piece into a feature that exists: its slot entries, fields and permissions', async () => {
   // Settings on Uniforms, which holds uniforms.manage already: its section joins the backend

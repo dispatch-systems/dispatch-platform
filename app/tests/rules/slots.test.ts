@@ -187,18 +187,20 @@ test('every HTTP route has a method and path of its own', () => {
   holds('slots', 'routes', collisions('route', routes));
 });
 
-// The frontend's manifests, as they load: each page's address, each custom section of Settings
-// it draws, and the owner's name. Every owner's frontend/feature.ts counts, listed in the app or
-// not.
+// The frontend's manifests, as they load: each page's address, each sidebar of pages, each custom
+// section of Settings it draws, and the owner's name. Every owner's frontend/feature.ts counts,
+// listed in the app or not.
 type FrontendManifest = {
   name: string;
   routes?: readonly { id: string; scope: string; tabs?: boolean; hostsSettings?: boolean }[];
+  sidebars?: readonly { id: string; scope: string }[];
   settingsSections?: readonly { id: string }[];
   pageTabs?: readonly { page: string; id: string }[];
 };
 type DspPage = { id: string; file: string; tabs: boolean; hostsSettings: boolean };
 async function frontendContributions() {
   const addresses: Contribution[] = [];
+  const sidebars: Contribution[] = [];
   const settingsSections: Contribution[] = [];
   const names: { file: string; name: string }[] = [];
   const pages: DspPage[] = [];
@@ -220,13 +222,15 @@ async function frontendContributions() {
           hostsSettings: Boolean(route.hostsSettings),
         });
     }
+    for (const sidebar of feature.sidebars ?? [])
+      sidebars.push({ id: `${sidebar.scope}/${sidebar.id}`, at: ownerName(file) });
     for (const tab of feature.pageTabs ?? [])
       pageTabs.push({ id: tab.id, page: tab.page, at: ownerName(file) });
     for (const section of feature.settingsSections ?? [])
       settingsSections.push({ id: section.id, at: ownerName(file) });
     names.push({ file, name: feature.name });
   }
-  return { addresses, settingsSections, names, pages, pageTabs };
+  return { addresses, sidebars, settingsSections, names, pages, pageTabs };
 }
 
 // A tab one feature adds to another's page shows where that page draws it: the app draws them
@@ -255,8 +259,8 @@ test("every tab a feature adds to another's page has a page that draws it", asyn
   ]);
 });
 
-test("every page's address and Settings section has an id of its own", async () => {
-  const { addresses, settingsSections } = await frontendContributions();
+test("every page's address, sidebar of pages and Settings section has an id of its own", async () => {
+  const { addresses, sidebars, settingsSections } = await frontendContributions();
   assert(
     addresses.length > 10 && settingsSections.length > 3,
     'the frontend manifests declare pages and Settings sections',
@@ -269,13 +273,11 @@ test("every page's address and Settings section has an id of its own", async () 
     ).map((violation) => violation.replace(/#\d+/g, ''));
   holds('slots', 'addresses', [
     ...twice('address', addresses),
+    ...twice('sidebar', sidebars),
     ...twice('settings section', settingsSections),
   ]);
 });
 
-// A section of Settings its owner's backend declares custom is drawn by the component its
-// owner's frontend registers under the section's id: declared without one, it never shows, and
-// a component no custom section names never draws.
 test('every custom section of Settings has its component, and every component its section', async () => {
   const declared = calls('section').flatMap((span) => {
     const source = lexFile(span.file);

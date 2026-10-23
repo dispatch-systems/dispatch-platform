@@ -25,18 +25,21 @@ export type {
   PlatformRouteId,
   Route,
   RoutePrefetch,
+  Sidebar,
   SidebarProps,
 } from './slots/pages.js';
 export {
   dspSetup,
   featureIcon,
   landingPage,
+  listed,
   loadedSidebar,
   loadSidebar,
   movedTo,
+  pageSidebar,
   routeOf,
   settingsPage,
-  sidebarOwner,
+  sidebarItems,
 } from './slots/pages.js';
 export type { CustomSection, CustomSectionContext, SettingsContext } from './slots/settings.js';
 export { settingsRead, settingsSection } from './slots/settings.js';

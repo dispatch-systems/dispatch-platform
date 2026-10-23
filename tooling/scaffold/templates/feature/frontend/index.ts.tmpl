@@ -1,2 +1,8 @@
+{{#page}}
 // The page, loaded only when it opens.
 export { {{pascal}}Page } from './{{pascal}}Page.js';
+{{/page}}
+{{#sidebar}}
+// Its sidebar's pages, loaded together when one opens.
+{{sidebarExports}}
+{{/sidebar}}

@@ -8,7 +8,7 @@ import { HostedTab, usePageTabs } from '{{toRoot}}core/shell/frontend/runtime/Pa
 import { use{{pascal}}Summary } from '../api/client.js';
 {{/api}}
 
-export function {{pascal}}Page(_: { view: DspView }) {
+export function {{pagePascal}}Page(_: { view: DspView }) {
 {{#api}}
   const { data, error, refresh } = use{{pascal}}Summary();
 {{/api}}
@@ -20,7 +20,7 @@ export function {{pascal}}Page(_: { view: DspView }) {
 {{/ownTabs}}
   return (
     <>
-      <Header title="{{label}}" />
+      <Header title="{{pageLabel}}" />
 {{#ownTabs}}
       <Tabs
         label="{{label}}"

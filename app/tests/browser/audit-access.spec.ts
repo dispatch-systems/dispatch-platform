@@ -51,7 +51,14 @@ test('audit access is only in the Platform Owner Dashboard, including old DSP li
 
 test('DSP members cannot open the platform audit page', async ({ page }) => {
   await login(page, 'member@dispatch.test');
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Profile', exact: true })
+    .click();
   await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
   // At their DSP's address, every page is the DSP's: its activity, which their role can't open.

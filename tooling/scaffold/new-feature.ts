@@ -8,6 +8,7 @@ import {
   collectionsOf,
   collectors,
   coreParts,
+  dspPages,
   emptyPlan,
   exists,
   features,
@@ -62,6 +63,8 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --tabs <ids>                      a page with tabs of its own, as overview,history, among
                                     which it draws those other features add to it
   --tab-of <feature>                a tab of another feature's page
+  --sidebar <pages>                 a sidebar of its own pages, as entries,history: its item
+                                    in a DSP's sidebar opens their list in place of the app's
   --settings                        a section of a DSP's Settings, on a page of its own,
                                     that its backend declares and reads: for those who
                                     manage it
@@ -73,8 +76,8 @@ export const usage = `Usage: dispatchdev new feature <name> [options]
   --shown                           with --contract, one a page shows: its name and the
                                     permission that shows what it keeps, which offered(<name>)
                                     reads
-  --no-backend                      no backend/: a frontend-only feature, with --page or
-                                    --tab-of
+  --no-backend                      no backend/: a frontend-only feature, with --page,
+                                    --sidebar or --tab-of
   --label <label>                   its name as people read it (default: from <name>)
   --icon <name>                     its icon on its page, its switch and its people: a
                                     lucide-react icon, as Truck (default: LayoutGrid)
@@ -131,6 +134,7 @@ const OPTIONS = [
   'people',
   'tab-of',
   'tabs',
+  'sidebar',
   'contract',
   'label',
   'icon',
@@ -192,9 +196,39 @@ export function featureValues(root: string, argv: string[], adding = false) {
     throw new UsageError(
       `${args.flags.has('page') ? '--page' : '--tabs'} and --tab-of each give it its own screen: choose one`,
     );
+  // A sidebar of its own pages, each an address of its own among every owner's pages.
+  const sidebarPages = args.options.get('sidebar')?.split(',');
+  const sidebar = Boolean(sidebarPages);
+  if (sidebarPages) {
+    if (page || host)
+      throw new UsageError(
+        `--sidebar and ${host ? '--tab-of' : args.flags.has('page') ? '--page' : '--tabs'} each give it its own screens: choose one`,
+      );
+    if (!sidebarPages.every((id) => /^[a-z][a-z0-9-]*$/.test(id)))
+      throw new UsageError(
+        '--sidebar names each page as lowercase letters, digits and hyphens: entries,history',
+      );
+    const repeated = sidebarPages.find((id, index) => sidebarPages.indexOf(id) !== index);
+    if (repeated) throw new UsageError(`--sidebar names ${repeated} twice: name each page once`);
+    const pages = dspPages(root);
+    const taken = pages.find((id) => sidebarPages.includes(id));
+    if (taken) throw new UsageError(`${taken} is another page's id already: each page has its own`);
+    // Its sidebar takes its id, which a page outside it can't share; added to a feature, its page
+    // of that id moves under it.
+    if (!adding && pages.includes(slug))
+      throw new UsageError(
+        `${slug} is a page's id already, which its sidebar would take: name the feature for another`,
+      );
+  }
+  const sidebarNames = (sidebarPages ?? []).map((id) => ({
+    id,
+    ...namesOf(id.replace(/-/g, '_')),
+  }));
   if (args.flags.has('no-backend')) {
-    if (!page && !host)
-      throw new UsageError('--no-backend leaves only a frontend: add --page or --tab-of');
+    if (!page && !host && !sidebar)
+      throw new UsageError(
+        '--no-backend leaves only a frontend: add --page, --sidebar or --tab-of',
+      );
     const logic = ['api', 'settings', 'tables', 'keeps', 'people', 'contract'].filter(
       (piece) => args.flags.has(piece) || args.options.has(piece),
     );
@@ -377,7 +411,7 @@ export function featureValues(root: string, argv: string[], adding = false) {
     list.map(([parameter, type]) => `${read ? parameter : `_${parameter}`}: ${type}`).join(', ');
 
   // Settings draws its sections itself, from what its backend declares: no screen of its own.
-  const screens = page || Boolean(host) || connection;
+  const screens = page || Boolean(host) || connection || sidebar;
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
   const frontend = screens || switched;
   // Its page of Settings shows the icon of the page its switch gates, or else its manifest's,
@@ -391,6 +425,8 @@ export function featureValues(root: string, argv: string[], adding = false) {
   // no frontend, as --mandatory alone, keeps an empty one and its manifest's test: the anatomy
   // rule wants a backend, an API or a frontend.
   const manifestOnly = !api && !frontend && !database && !keeps && !contract && !settings;
+  // A page's id as a key of DspPages.
+  const key = (id: string) => (/^[A-Za-z_$][\w$]*$/.test(id) ? id : `'${id}'`);
   const values: Values = {
     ...names,
     backend: Boolean(database) || keeps || settings || manifestOnly || Boolean(contract),
@@ -465,15 +501,63 @@ export function featureValues(root: string, argv: string[], adding = false) {
     screens,
     platformSlots: switched,
     settingsIcon,
-    iconImport: page || settingsIcon,
-    canImport: permission && page,
+    iconImport: page || settingsIcon || sidebar,
+    canImport: permission && (page || sidebar),
     labelPattern: names.label.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
     page,
     tab: Boolean(host),
     settings,
     prefetch: page && api,
-    summaryUrl: api && (page || connection),
-    pageKey: /^[A-Za-z_$][\w$]*$/.test(slug) ? slug : `'${slug}'`,
+    summaryUrl: api && (page || connection || sidebar),
+    pageKey: key(slug),
+    pagePascal: pascal,
+    pageLabel: names.label,
+    sidebar,
+    sidebarFirst: sidebarPages?.[0] ?? '',
+    sidebarLabels: sidebarNames.map((each) => each.label).join(', '),
+    sidebarKeys: sidebarNames.map(({ id }) => `    ${key(id)}: true;`).join('\n'),
+    sidebarLazies: sidebarNames
+      .map(
+        ({ pascal: each }) =>
+          `const ${each}Page = lazy(() => loadPage().then((module) => ({ default: module.${each}Page })));`,
+      )
+      .join('\n'),
+    // The first shows its summary, warmed as it opens, as a page of its own does.
+    sidebarRoutes: sidebarNames
+      .map(({ id, label: pageLabel, pascal: each }, index) =>
+        [
+          '    {',
+          `      id: '${id}',`,
+          "      scope: 'dsp',",
+          `      label: '${pageLabel}',`,
+          `      parent: '${slug}',`,
+          '      nav: true,',
+          ...(switched ? [`      feature: '${name}',`] : []),
+          ...(permission ? [`      permission: ({ view }) => can(view, '${name}.view'),`] : []),
+          '      preload: loadPage,',
+          `      render: ({ view }) => createElement(${each}Page, { key: view.token, view }),`,
+          ...(api && !index
+            ? [
+                '      prefetch: ({ view, warm }) => {',
+                `        if (can(view, '${name}.view')) warm([${names.camel}SummaryUrl]);`,
+                '      },',
+              ]
+            : []),
+          '    },',
+        ].join('\n'),
+      )
+      .join('\n'),
+    sidebarExports: sidebarNames
+      .map(({ pascal: each }) => `export { ${each}Page } from './${each}Page.js';`)
+      .join('\n'),
+    sidebarChecks: sidebarNames
+      .map(({ label: pageLabel }) =>
+        [
+          `  await pages.getByRole('link', { name: '${pageLabel}', exact: true }).click();`,
+          `  await expect(page.getByRole('heading', { name: '${pageLabel}', level: 1 })).toBeVisible();`,
+        ].join('\n'),
+      )
+      .join('\n'),
     host: host ?? '',
     hostPage: hostPage.id,
     hostLabel: hostPage.label,
@@ -485,7 +569,7 @@ export function featureValues(root: string, argv: string[], adding = false) {
     contractIdent: contractCrate.replace(/-/g, '_'),
     shown,
   };
-  return { args, names, values };
+  return { args, names, values, sidebarNames };
 }
 
 /** What is written where, given the feature's pieces: [piece, template, path in the feature]. */
@@ -519,7 +603,7 @@ function pieces(values: Values): [boolean, string, string][] {
       'frontend/feature.ts',
       'frontend/feature.ts',
     ],
-    [values.page as boolean, 'frontend/index.ts', 'frontend/index.ts'],
+    [(values.page || values.sidebar) as boolean, 'frontend/index.ts', 'frontend/index.ts'],
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],
     // frontend/tabs/ holds the tabs of its own page, which its manifest declares.
     [values.tab as boolean, 'frontend/Tab.tsx', `frontend/${pascal}Tab.tsx`],
@@ -531,17 +615,26 @@ function pieces(values: Values): [boolean, string, string][] {
 
 /** The feature's own files, as its templates fill them. */
 export async function renderFeature(root: string, argv: string[], adding = false) {
-  const { args, names, values } = featureValues(root, argv, adding);
+  const { args, names, values, sidebarNames } = featureValues(root, argv, adding);
   const { name } = names;
   const dir = `features/${name}`;
   const plan: Plan = emptyPlan();
-  for (const [wanted, source, target] of pieces(values)) {
-    if (!wanted) continue;
+  const write = async (source: string, target: string, filled: Values) => {
     const file = `${dir}/${target}`;
     const toRoot = '../'.repeat(path.posix.dirname(file).split('/').length);
-    const content = template(`feature/${source}`, { ...values, toRoot });
-    plan.files.set(file, await format(file, content));
-  }
+    plan.files.set(file, await format(file, template(`feature/${source}`, { ...filled, toRoot })));
+  };
+  for (const [wanted, source, target] of pieces(values))
+    if (wanted) await write(source, target, values);
+  // Each page of its sidebar, as a page of its own is written: the first with its summary.
+  for (const [index, { label, pascal }] of sidebarNames.entries())
+    await write('frontend/Page.tsx', `frontend/${pascal}Page.tsx`, {
+      ...values,
+      pagePascal: pascal,
+      pageLabel: label,
+      api: Boolean(values.api) && !index,
+      ownTabs: false,
+    });
   formatRust(plan);
   // Its routes, and who may call each, in its own list, which the app's route test holds it to.
   const routes = [...(values.api ? [`GET ${values.apiPath} Dsp("${name}.view") Read`] : [])];
@@ -571,6 +664,7 @@ export function previewNote(root: string, values: Values) {
   const opens = (
     [
       [values.page, `--page ${slug}`, 'its page'],
+      [values.sidebar, `--page ${values.sidebarFirst}`, 'the first page of its sidebar'],
       [values.tab, `--page ${hostPage} --tab ${slug}`, `its tab of ${hostLabel}`],
       [values.settings, `--page settings --tab ${slug}`, 'its page of Settings'],
       [values.connection, '--page settings --tab connections', 'its card on Connections'],

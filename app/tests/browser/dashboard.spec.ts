@@ -56,7 +56,10 @@ test('owner dashboard, search, workforce, timecards, connection verification and
     .click();
   await expect(page.getByRole('dialog')).toContainText('08:00');
   await page.getByLabel('Close dialog').click();
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Connections', exact: true })
@@ -79,8 +82,8 @@ test('owner dashboard, search, workforce, timecards, connection verification and
   await page.getByLabel('Verification code').fill('123456');
   await page.getByRole('button', { name: 'Verify', exact: true }).click();
   await expect(page.getByText('Paycom needs your verification')).toHaveCount(0);
-  // Settings holds the sidebar until Back leaves it.
-  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  // Back slides the app's sidebar in again.
+  await page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('link', { name: 'Timecard', exact: true })
@@ -192,7 +195,9 @@ test('the mobile drawer stays open while the DSP behind it finishes loading', as
   });
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  const settings = page.getByRole('link', { name: 'Settings', exact: true });
+  const settings = page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true });
   await expect(settings).toBeVisible();
   const opened = page.waitForResponse((response) => response.url().endsWith('/api/session/dsp'));
   release();
@@ -200,10 +205,12 @@ test('the mobile drawer stays open while the DSP behind it finishes loading', as
   await expect(page.getByRole('link', { name: 'Timecard', exact: true })).toBeVisible();
   await expect(settings).toBeVisible();
   await settings.click();
-  // Settings opens on its first page, and the drawer, now Settings' own, closes over it.
+  // Settings' pages take the drawer's place, the drawer staying open; opening one closes it.
+  const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
+  await pages.getByRole('link', { name: 'Profile', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Audit log', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: 'Settings', exact: true })).toBeHidden();
+  await expect(pages).toBeHidden();
 });
 
 test('platform owner looks through a DSP role until they leave the DSP', async ({
@@ -359,17 +366,18 @@ test('Timecard opens while its view loads, and its collections are scheduled on 
     const dspId = new URL(page.url()).hash.split('/')[1]!;
     const paycom = page.getByRole('link', { name: 'Timecard', exact: true });
     await expect(paycom).toHaveAttribute('href', `#dsp/${dspId}/paycom`);
-    await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute(
-      'href',
-      `#dsp/${dspId}/settings`,
-    );
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Settings', exact: true }),
+    ).toBeVisible();
     await paycom.click();
     expect(new URL(page.url()).hash).toBe(`#dsp/${dspId}/paycom`);
   } finally {
     releaseView();
   }
   await expect(page.getByRole('tab', { name: 'Collections', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?tab=timecard$/);
   await page
     .getByRole('navigation', { name: 'Settings', exact: true })

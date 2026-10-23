@@ -9,6 +9,7 @@ import {
   useEffect,
   useLayoutEffect,
   useCallback,
+  useMemo,
   useRef,
   useTransition,
 } from 'react';
@@ -33,7 +34,6 @@ import {
   followMoved,
   forgetDestination,
   navigate,
-  noteWayBack,
   parseHash,
   platformHash,
   rememberDestination,
@@ -53,6 +53,7 @@ import {
   dspSetup,
   installFeatures,
   landingPage,
+  listed,
   loadReplyChecks,
   type DspRouteId,
 } from '../../core/shell/frontend/runtime/slots.js';
@@ -181,9 +182,8 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
     };
   }, [load]);
   useEffect(() => {
-    const changed = (event: HashChangeEvent) => {
+    const changed = () => {
       followMoved();
-      noteWayBack(new URL(event.oldURL).hash, window.location.hash);
       const next = parseHash(window.location.hash);
       const current = navigationState.current;
       const auth = /^(?:signin$|invite\?|reset\?)/.test(next.route);
@@ -275,8 +275,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       if (first) location.replace(dspHash(dspId, first));
       return;
     }
-    if (navigation('dsp', access).some((route) => route.id === page))
-      rememberDestination(dspId, page as DspRouteId);
+    if (route && listed(route, access)) rememberDestination(dspId, page as DspRouteId);
   }, [view, dspId, page, session]);
   useBrowserUpdate(Boolean(session) && (!dspId || Boolean(view)) && !switching);
   // A platform owner looking into a DSP is never shown to its team.
@@ -365,6 +364,11 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       admission.current++;
     };
   }, [session, dspId, fail, securityRequired, showAuth, reopen]);
+  // The app's sidebar, read anew only as the session, the DSP or its view change.
+  const items = useMemo(
+    () => (session ? navigation(dspId ? 'dsp' : 'platform', { session, view }) : []),
+    [session, dspId, view],
+  );
   if (session === undefined)
     return (
       <>
@@ -410,7 +414,7 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
       pending={pending}
       // Only once the DSP's view is admitted: what shows before it, as Retry connection, doesn't fill.
       fills={Boolean(view) && opened?.scope === 'dsp' && opened.fills}
-      navigation={navigation(scope, { session, view })}
+      navigation={items}
       sidebar={sidebarOf(scope, page, { session, view })}
       // Signing out asks about unsaved edits first, as leaving the page does.
       logout={() => askToLeave(() => void perform(logout))}

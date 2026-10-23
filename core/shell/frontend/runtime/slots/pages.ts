@@ -5,7 +5,7 @@ import type { Feature } from '../../../../tenancy/api/index.js';
 import { manifests } from './installed.js';
 
 // The pages slot: an owner's pages, inside a DSP or outside, and which of them a DSP opens on,
-// draws Settings, or saves a DSP's profile, and the sidebar a page draws of its own.
+// draws Settings, or saves a DSP's profile, and the sidebars of pages that list some of them.
 
 /** Every page inside a DSP, by id. Each owner's feature.ts adds its own by declaration merging. */
 export interface DspPages {}
@@ -30,7 +30,11 @@ export type RoutePrefetch = {
 type Page<Context> = {
   /** The page's name in the sidebar and the document title. */
   label: string;
-  /** The navigation item to highlight for a page that has none of its own. */
+  /**
+   * The item it is under: a page, highlighted while this one is open, or a sidebar of pages
+   * (`sidebars`), which lists it in place of the app's. A page under a page of a sidebar's, as
+   * a page of detail is, shows that sidebar too.
+   */
   parent?: string;
   icon?: LucideIcon;
   /**
@@ -38,15 +42,7 @@ type Page<Context> = {
    * page is open. It loads on its own once the sidebar is drawn, which never waits for it.
    */
   badge?: { load: () => Promise<ComponentType<{ active: boolean }>> };
-  /**
-   * Its own sidebar, drawn in place of the app's name and pages while it, or a page under it
-   * (`parent`), is open, as Settings lists its pages there; the shell slides each in as the
-   * other gives way. Sliding out, it keeps the props it had, and what it reads elsewhere should
-   * hold too, as Settings keeps the page the address named. It fills the sidebar above the
-   * account, scrolling its own parts, and its code loads as the page's does.
-   */
-  sidebar?: { load: () => Promise<ComponentType<SidebarProps>> };
-  /** Whether the sidebar lists the page. */
+  /** Whether a sidebar lists the page: the app's, or the sidebar of pages it is under. */
   nav: boolean | ((access: Access) => boolean);
   /** Who may open the page; omitted means everyone in the scope. */
   permission?: (access: Access) => boolean;
@@ -85,12 +81,41 @@ export type DspRoute = Page<DspPageContext> & {
   /** Called only for the admitted view. */
   prefetch?: (prefetch: RoutePrefetch & { view: DspView }) => void;
 };
-/** What a page's own sidebar is drawn with. */
+/**
+ * A sidebar of pages, an owner's own: an item of the app's sidebar, where the first of its pages
+ * would be listed, that slides in a list of the pages under it (each naming it its `parent`) in
+ * place of the app's, the page open staying open. Opening one of them opens it; its way back
+ * slides the app's sidebar in again. The shell draws the list, the way back and its name atop
+ * it, unless it draws its own (`draw`), as Settings draws its search and its groups. A page
+ * under it that it doesn't list (`nav`), as one a link opens, still shows it as it opens.
+ */
+export type Sidebar = {
+  /** Its id, which the pages under it name as their `parent`. */
+  id: string;
+  scope: Route['scope'];
+  /** Its name, on its item and atop its list. */
+  label: string;
+  icon?: LucideIcon;
+  /**
+   * What it draws in place of the shell's list: `SidebarHead` atop it, with its name and
+   * `back`, and what it lists. It fills the sidebar above the account, scrolling its own parts.
+   * Sliding out, it keeps the props it had, and what it reads elsewhere should hold too, as
+   * Settings keeps the page the address named. Its code loads as its item is pointed at, or as
+   * a page under it opens.
+   */
+  draw?: { load: () => Promise<ComponentType<SidebarProps>> };
+};
+/** What a sidebar of pages that draws its own is drawn with. */
 export type SidebarProps = Access & {
-  /** The DSP open, whether or not its view is admitted yet; none outside one. */
+  /**
+   * The DSP open, whether or not its view is admitted yet, for links drawn before it is; none
+   * outside one.
+   */
   dspId?: string;
-  /** The page open: the one the sidebar is, or one under it (`parent`). */
+  /** The page open, under the sidebar or not: opening the sidebar keeps it open. */
   page: string;
+  /** Slides the app's sidebar in again, keeping the page open: what its way back does. */
+  back: () => void;
   /** Closes the sidebar where it opens over the page, on a narrow screen, as a link in it does. */
   close: () => void;
 };
@@ -113,6 +138,8 @@ declare module './installed.js' {
   interface FrontendFeature {
     /** Its pages, in sidebar order. */
     routes?: readonly Route[];
+    /** Its sidebars of pages, each an item of the app's sidebar listing the pages under it. */
+    sidebars?: readonly Sidebar[];
     /**
      * Its icon where none of its pages shows one, as for its page of Settings when it has no
      * page in the sidebar.
@@ -181,21 +208,63 @@ export function movedTo(
   return { page: host, query: Object.fromEntries([['tab', tab], ...rest]) };
 }
 
-/** The page whose own sidebar is drawn while `page` is open: the page itself, or the one it is under. */
-export function sidebarOwner(scope: Route['scope'], page: string) {
-  const route = routeOf(scope, page);
-  const owner = route?.parent ? routeOf(scope, route.parent) : route;
-  return owner?.sidebar ? owner : undefined;
+/** The installed sidebar of pages with the id. */
+function sidebarNamed(scope: Route['scope'], id: string) {
+  for (const feature of manifests())
+    for (const sidebar of feature.sidebars ?? [])
+      if (sidebar.scope === scope && sidebar.id === id) return sidebar;
+  return undefined;
 }
-type Sidebar = NonNullable<Route['sidebar']>;
-const sidebars = new WeakMap<Sidebar, ComponentType<SidebarProps>>();
-/** Loads a page's own sidebar; once in, `loadedSidebar` answers it, so it draws as the page opens. */
-export const loadSidebar = (sidebar: Sidebar) =>
-  sidebar.load().then((drawn) => {
-    sidebars.set(sidebar, drawn);
+/**
+ * The sidebar of pages `page` is under, if it is under one: its `parent`, or its parent's, as a
+ * page of detail is under a page of the sidebar's.
+ */
+export function pageSidebar(scope: Route['scope'], page: string) {
+  const parent = routeOf(scope, page)?.parent;
+  if (!parent) return undefined;
+  const above = routeOf(scope, parent)?.parent;
+  return sidebarNamed(scope, parent) ?? (above ? sidebarNamed(scope, above) : undefined);
+}
+/** Whether a sidebar lists the page for `access`: the app's, or the one it is under. */
+export const listed = (route: Route, access: Access) =>
+  (typeof route.nav === 'function' ? route.nav(access) : route.nav) &&
+  (!route.permission || route.permission(access));
+/**
+ * The items of the app's sidebar for `access`, from `pages` in their order: each page it lists,
+ * but those under a sidebar of pages, which is listed in their place, once, where the first is,
+ * with them. A sidebar none of whose pages it lists is left out.
+ */
+export function sidebarItems<P extends Route>(
+  scope: Route['scope'],
+  access: Access,
+  pages: readonly P[],
+) {
+  type Listing = { sidebar: Sidebar; pages: P[] };
+  const items: (P | Listing)[] = [];
+  for (const page of pages) {
+    if (page.scope !== scope || !listed(page, access)) continue;
+    const sidebar = pageSidebar(scope, page.id);
+    const there =
+      sidebar &&
+      items.find((item): item is Listing => 'sidebar' in item && item.sidebar === sidebar);
+    if (!sidebar) items.push(page);
+    else if (there) there.pages.push(page);
+    else items.push({ sidebar, pages: [page] });
+  }
+  return items;
+}
+type Drawing = NonNullable<Sidebar['draw']>;
+const drawings = new WeakMap<Drawing, ComponentType<SidebarProps>>();
+/**
+ * Loads what a sidebar of pages draws of its own; once in, `loadedSidebar` answers it, so the
+ * sidebar draws as it slides in.
+ */
+export const loadSidebar = (drawing: Drawing) =>
+  drawing.load().then((drawn) => {
+    drawings.set(drawing, drawn);
     return drawn;
   });
-export const loadedSidebar = (sidebar: Sidebar) => sidebars.get(sidebar);
+export const loadedSidebar = (drawing: Drawing) => drawings.get(drawing);
 
 /**
  * A feature's icon: that of the first of its DSP pages with one in the sidebar, else the one its

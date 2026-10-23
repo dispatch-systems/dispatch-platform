@@ -24,8 +24,8 @@
   position: fixed;
   inset: 0 auto 0 0;
 }
-/* What fills the sidebar above the account, the app's or a page's own: the two share its place
-   while one slides in for the other, and what slides beside it is clipped. */
+/* What fills the sidebar above the account, the app's or a sidebar of pages: the two share its
+   place while one slides in for the other, and what slides beside it is clipped. */
 .sidebar-panels {
   display: grid;
   flex: 1;
@@ -56,15 +56,21 @@
   display: flex;
   overflow-y: auto;
 }
+/* A page's link, or a button opening a sidebar of pages, alike. */
 .nav-item {
+  border: 0;
   border-radius: var(--radius);
+  background: transparent;
   min-height: 42px;
   color: var(--foreground);
+  justify-content: flex-start;
   align-items: center;
   gap: 12px;
   padding: 10px 15px;
+  font: inherit;
   font-size: 14px;
   font-weight: 450;
+  text-align: left;
   display: flex;
   position: relative;
 }
@@ -305,10 +311,11 @@
     border-color var(--motion-duration),
     color var(--motion-duration);
 }
-.nav-item:last-child {
+/* The app's last item, Settings, set apart; a sidebar of pages lists its own without it. */
+.app-pages .nav-item:last-child {
   margin-top: 40px;
 }
-.nav-item:last-child:after {
+.app-pages .nav-item:last-child:after {
   content: '';
   background: var(--border);
   height: 1px;

@@ -251,13 +251,17 @@ test('its schedule is set on Collectors: saved together, switched off, stale edi
   await dvic.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(dvic.getByRole('heading', { name: 'Not scheduled' })).toBeVisible();
   expect((await stored()).rules).toHaveLength(0);
-  // Leaving the page with unsaved edits asks first, the address staying put meanwhile: Back,
-  // which then returns to the DVIC page its Collection settings opened from, and the browser's
-  // Back alike.
+  // Leaving the page with unsaved edits asks first, the address staying put meanwhile: opening
+  // another from the sidebar, as the DVIC page its Collection settings opened from, once Back
+  // has the app's sidebar in again, and the browser's Back alike.
   const draft = () => dvic.getByRole('button', { name: 'Add rule' }).click();
   const settings = /\/settings\?tab=collectors&collection=dvic$/;
   await draft();
-  await page.getByRole('link', { name: 'Back', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true }).click();
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('link', { name: 'DVIC', exact: true })
+    .click();
   await expect(ask).toBeVisible();
   await expect(page).toHaveURL(settings);
   await ask.getByRole('button', { name: 'Discard changes' }).click();

@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from '
 import { parseApiResponse } from './replies.js';
 import { backoff } from '../lib/backoff.js';
 import { dataCache } from './data-cache.js';
-import { clearDestinations, forgetWaysBack } from './navigation.js';
+import { clearDestinations } from './navigation.js';
 import { mutationAffects } from './data-policy.js';
 import { useReadAvailability } from '../lib/read-availability.js';
 import { errorLabelOf, isLongPoll } from './slots.js';
@@ -13,21 +13,12 @@ export let csrf = '',
   view = '';
 /** Whose view a view token is: its DSP, and the role viewed as, without its signature. */
 export const viewing = (token: string) => token.slice(0, token.lastIndexOf('.') + 1);
-/** Whose the last view opened was. */
-let viewed = '';
 export function credentials(nextCsrf: string, nextView = '') {
   if (csrf && csrf !== nextCsrf) {
     clearNavigationState();
     clearDestinations();
   }
-  if (csrf !== nextCsrf || view !== nextView) {
-    dataCache.clear();
-    // A view of the same DSP and role opened again, as once the DSP's name changes, keeps the
-    // way back, through the moment between the two when none is open.
-    const whose = nextView ? viewing(nextView) : viewed;
-    if (csrf !== nextCsrf || whose !== viewed) forgetWaysBack();
-    viewed = whose;
-  }
+  if (csrf !== nextCsrf || view !== nextView) dataCache.clear();
   csrf = nextCsrf;
   view = nextView;
 }

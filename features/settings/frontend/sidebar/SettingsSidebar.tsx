@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import { useSettings } from '../../../../core/settings/api/client.js';
-import { dspHash, navigate, wayBack } from '../../../../core/shell/frontend/runtime/navigation.js';
+import { dspHash, navigate } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { settingsPage, type SidebarProps } from '../../../../core/shell/frontend/runtime/slots.js';
+import { SidebarHead } from '../../../../core/shell/frontend/ui/index.js';
 import { moveTo, useAddressedPage } from '../address.js';
 import { whoseSettings } from '../drafts.js';
 import { search, type Found } from '../search/search.js';
@@ -14,25 +14,17 @@ import { SearchField } from './SearchField.js';
 import '../settings.css';
 
 /**
- * Settings' sidebar, in place of the app's while Settings is open: the way back to where the
- * member opened it from, a search of their pages, and the pages themselves, under their groups,
- * or, while they search, the pages it found.
+ * Settings' sidebar, in place of the app's: the way back to the app's, a search of the member's
+ * pages, and the pages themselves, under their groups, or, while they search, the pages it found.
  */
-export function SettingsSidebar({ session, view, dspId, page, close }: SidebarProps) {
+export function SettingsSidebar({ session, view, page, back, close }: SidebarProps) {
   // The search outlives the view opening again for the same member, DSP and role viewed as, as
   // Settings' edits do, the sidebar being drawn throughout; for another, it starts afresh.
   const whose = view && whoseSettings(session, view);
   const [search, setSearch] = useState({ whose, query: '' });
   return (
     <div className="settings-sidebar">
-      <div className="settings-sidebar-head">
-        {dspId && (
-          <a className="icon-button" href={wayBack(dspId)} aria-label="Back">
-            <ArrowLeft aria-hidden="true" />
-          </a>
-        )}
-        <h2>Settings</h2>
-      </div>
+      <SidebarHead title="Settings" back={back} />
       {view && whose && (
         <Pages
           key={whose}

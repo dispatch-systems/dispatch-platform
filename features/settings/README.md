@@ -12,19 +12,22 @@ part. Mandatory: every DSP has it.
   named in the address (`?tab=<id>`), which links and the browser's Back move; the page opens on
   its first page when the address names one the member lacks, with the code and reads of the
   page it opens on already loading.
-- **Its sidebar** takes the app's place while Settings is open (the route's `sidebar`), the
-  account menu kept: Back, to the page the member opened Settings from (core keeps it per DSP,
-  through moves among Settings' pages), a search, and each page the server lists that has a
-  section to draw, under its group (Personal, DSP, Features) with its icon: a shared page's own,
-  a feature's page that of its feature's pages. It is the navigation drawer on a narrow screen.
+- **Its sidebar** is a sidebar of pages (its manifest's `sidebars`, which it draws itself): its
+  item in the app's sidebar slides it in, the page open staying open, and its page opens as one
+  of its pages is chosen. It draws Back, which slides the app's sidebar in again and keeps the
+  page, a search, and each page the server lists that has a section to draw, under its group
+  (Personal, DSP, Features) with its icon: a shared page's own, a feature's page that of its
+  feature's pages. Opened otherwise, as by a link or the browser's Back, Settings' page shows it
+  in the app's place. It is the navigation drawer on a narrow screen.
   Shared pages are core's, and few: a new one's icon goes in `frontend/sidebar/icons.ts`, by its
   id, or it shows a plain one.
 - **Its search** runs over what the server answered for the open DSP: page and section names,
   field and option labels, a section's `keywords`, its `sources` (the collectors its data comes
   from) and values held as text. Every word typed begins a word there, in any case; it finds a
   page once, by the best of what matched (a page's name, a section's, a field's, an option's or
-  a keyword, a source, a value), and says what matched. "/" moves to it, the arrow keys through
-  what it found, Enter opens one and Escape clears it. Opening one names its section in the
+  a keyword, a source, a value), and says what matched. While Settings' sidebar shows, "/" moves
+  to it from anywhere but a field, the arrow keys through what it found, Enter opens one and
+  Escape clears it. Opening one names its section in the
   address (`&find=<section>`): the page scrolls to it and outlines it for a few seconds, and the
   address forgets it. A search starts afresh for another DSP or role.
 - **A declared section** is a card: its label, a control for each field by its kind, and Save,
