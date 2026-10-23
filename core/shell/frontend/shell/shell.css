@@ -39,15 +39,9 @@
   flex-direction: column;
   display: flex;
 }
-/* The app's name and the DSP's, atop every sidebar: it stays as one slides in for another. */
+/* The app's name, atop every sidebar: it stays as one slides in for another. */
 .sidebar-brand {
-  padding: 27px 24px 26px;
-}
-.sidebar-brand p {
-  color: var(--muted-foreground);
-  overflow-wrap: anywhere;
-  margin-top: 13px;
-  font-size: 13px;
+  padding: 27px 24px 12px;
 }
 .nav-list {
   flex-direction: column;
