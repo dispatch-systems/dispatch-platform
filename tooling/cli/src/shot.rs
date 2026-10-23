@@ -158,12 +158,12 @@ mod tests {
     #[test]
     fn the_browser_takes_the_session_curl_keeps() {
         let jar = "# Netscape HTTP Cookie File\n\n\
-            #HttpOnly_100.64.0.5\tFALSE\t/\tFALSE\t0\tdispatch_preview_4101\towner-session\n\
+            #HttpOnly_preview.test\tFALSE\t/\tFALSE\t0\tdispatch_preview_4101\towner-session\n\
             nll.localhost\tFALSE\t/\tFALSE\t1798761600\tdispatch_preview_4101\tmember-session\n";
         assert_eq!(
             cookies(jar),
             [
-                json!({"name":"dispatch_preview_4101","value":"owner-session","domain":"100.64.0.5",
+                json!({"name":"dispatch_preview_4101","value":"owner-session","domain":"preview.test",
                     "path":"/","expires":-1,"httpOnly":true,"secure":false,"sameSite":"Strict"}),
                 json!({"name":"dispatch_preview_4101","value":"member-session",
                     "domain":"nll.localhost","path":"/","expires":1798761600,"httpOnly":false,

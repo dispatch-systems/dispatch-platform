@@ -2,7 +2,7 @@
 // hands this the session: the browser tests' Chromium opens the page at the size and in the
 // theme it is told, and saves what it shows once the page is ready.
 import { parseArgs } from 'node:util';
-import { chromium } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
 
 const { values } = parseArgs({
   options: {
@@ -18,6 +18,26 @@ const { values } = parseArgs({
 });
 const [width, height] = values.size!.split('x').map(Number) as [number, number];
 
+/**
+ * Resolves once no request has started or ended for half a second. A DSP's pages keep one open
+ * for live updates, so the page is never without one.
+ */
+function settled(page: Page) {
+  const events = ['request', 'requestfinished', 'requestfailed'] as const;
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      for (const event of events) page.off(event, wait);
+      resolve();
+    };
+    let timer = setTimeout(done, 500);
+    const wait = () => {
+      clearTimeout(timer);
+      timer = setTimeout(done, 500);
+    };
+    for (const event of events) page.on(event, wait);
+  });
+}
+
 const browser = await chromium.launch({
   args: [`--host-resolver-rules=MAP *.localhost ${values.host}`],
 });
@@ -28,8 +48,9 @@ try {
     colorScheme: values.theme as 'light' | 'dark',
   });
   const page = await context.newPage();
-  // Ready once its requests have answered, its fonts are in and nothing on it is still loading.
-  await page.goto(values.url!, { waitUntil: 'networkidle' });
+  await page.goto(values.url!);
+  await settled(page);
+  // Then ready once its fonts are in and nothing on it is still loading.
   await page.waitForFunction(
     () =>
       document.fonts.status === 'loaded' && !document.querySelector('.loading, [aria-busy="true"]'),
