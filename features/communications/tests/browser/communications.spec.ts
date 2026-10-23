@@ -92,7 +92,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   await expect(profile).toHaveCount(0);
   await expect(opensProfile.first()).toBeFocused();
   // Opened again while it slides away, held there mid-slide, its X takes focus again, and
-  // Escape closes it.
+  // let go, Escape closes it.
   await page.keyboard.press('Enter');
   await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
   await page.keyboard.press('Escape');
@@ -101,6 +101,9 @@ test('an owner connects Slack from Communications, answers a member as they writ
   });
   await page.keyboard.press('Enter');
   await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
+  await page.evaluate(() => {
+    for (const sliding of document.getAnimations()) sliding.play();
+  });
   await page.keyboard.press('Escape');
   await expect(profile).toHaveCount(0);
   await expect(opensProfile.first()).toBeFocused();
