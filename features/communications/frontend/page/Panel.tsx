@@ -3,8 +3,9 @@ import { X } from 'lucide-react';
 
 // A panel beside what's open, a conversation's profile or a group's people: over it until its X,
 // Escape, or a press anywhere else closes it; or, on a wide page (`docked`), a column of its own
-// beside it, covering nothing, until its X or Escape does. Focus moves to its X as it opens. It
-// slides in, and closed (`leaving`), slides back out, out of reach, before it's `gone`.
+// beside it, covering nothing, until its X or Escape does. Focus moves to its X as it opens, as
+// it does opened again while still sliding away. It slides in, and closed (`leaving`), slides
+// back out, out of reach, before it's `gone`.
 
 export function Panel({
   id,
@@ -32,7 +33,9 @@ export function Panel({
 }) {
   const panel = useRef<HTMLElement>(null);
   const closer = useRef<HTMLButtonElement>(null);
-  useEffect(() => closer.current?.focus(), []);
+  useEffect(() => {
+    if (!leaving) closer.current?.focus();
+  }, [leaving]);
   useEffect(() => {
     if (docked || leaving) return;
     // A press on what opens it is that control's own: it closes it.
@@ -54,8 +57,9 @@ export function Panel({
       onKeyDown={(event) => {
         if (event.key === 'Escape') close(true);
       }}
-      onAnimationEnd={(event) => {
-        if (leaving && event.target === event.currentTarget) gone();
+      onTransitionEnd={(event) => {
+        if (leaving && event.target === event.currentTarget && event.propertyName === 'transform')
+          gone();
       }}
     >
       <button

@@ -174,14 +174,15 @@
 }
 
 /* The list beside the conversation, on the page itself: under the heading's line, out through
-   the page's padding to the window's edges at the sides and below. */
+   the page's padding to the window's edges at the sides and below. It clips what lies past them,
+   as the profile does sliding in, without scrolling to it. */
 .chat-frame {
   display: grid;
   grid-template-columns: var(--list-width) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   margin: 0 calc(-1 * var(--page-gutter)) calc(-1 * var(--page-bottom));
-  overflow: hidden;
+  overflow: clip;
   border-top: 1px solid var(--border);
 }
 .pane-list {
@@ -841,7 +842,8 @@ button.sender {
 }
 
 /* The profile of who it's with, over the conversation; on a wide page beside it (below). It
-   slides in from the window's edge, and closed, slides back out before it goes (`leaving`). */
+   slides in from the window's edge, and closed, slides back out before it goes (`leaving`),
+   turning back from wherever it is when opened or closed mid-slide, as the conversation does. */
 .profile {
   --profile-pad: calc(var(--pad) + 4px);
   position: absolute;
@@ -858,20 +860,15 @@ button.sender {
   border-left: 1px solid var(--border);
   background: var(--background);
   box-shadow: -18px 0 44px var(--shadow-color);
-  animation: profile-in var(--profile-slide);
+  transition: transform var(--profile-slide);
+}
+@starting-style {
+  .profile {
+    transform: translateX(100%);
+  }
 }
 .profile.leaving {
-  animation: profile-out var(--profile-slide) forwards;
-}
-@keyframes profile-in {
-  from {
-    transform: translateX(100%);
-  }
-}
-@keyframes profile-out {
-  to {
-    transform: translateX(100%);
-  }
+  transform: translateX(100%);
 }
 /* Its X stays in reach while it scrolls, 12px from its corner (sticking within its padding),
    taking no room from what's below. */
