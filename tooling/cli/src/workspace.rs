@@ -147,23 +147,45 @@ impl Runner for Retried<'_> {
         }
     }
 }
-/// Whether this user can run a command in a systemd scope of its own, as on this machine; CI's
-/// runners can't.
+/// The slice every command `logged` runs goes in, from every worktree at once. Between them they
+/// have a low CPU weight and one memory ceiling: past `MemoryHigh` they slow down, and past
+/// `MemoryMax` and what they may swap, the kernel ends one of them, never anything outside.
+const SLICE: &str = "app-dispatchdev.slice";
+const CEILINGS: [&str; 4] = [
+    "CPUWeight=20",
+    "MemoryHigh=3584M",
+    "MemoryMax=4G",
+    "MemorySwapMax=2G",
+];
+/// Whether this user's service manager runs commands in scopes of their own, as on this
+/// machine, answered by setting `SLICE`'s ceilings until the next boot; CI's runners have none.
 fn scopes() -> bool {
     static SCOPES: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *SCOPES.get_or_init(|| {
-        Command::new("systemd-run")
-            .args(["--user", "--scope", "--quiet", "--collect", "true"])
+        Command::new("systemctl")
+            .args(["--user", "set-property", "--runtime", SLICE])
+            .args(CEILINGS)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success())
     })
 }
+/// The unit of this user's service manager running the process whose `/proc/<pid>/cgroup` reads
+/// `cgroup`, such as an agent's session; none for a login's, which the system's manager runs.
+fn unit_of(cgroup: &str) -> Option<&str> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    let mut parts = path.split('/');
+    parts.find(|part| part.starts_with("user@") && part.ends_with(".service"))?;
+    parts
+        .next_back()
+        .filter(|unit| unit.ends_with(".scope") || unit.ends_with(".service"))
+}
 /// Runs `command` through the shell in `cwd` with `env` added, its output going to `log`, and
-/// answers whether it passed and how long it took. It runs below Dev: in a scope with a low CPU
-/// weight and a soft memory ceiling, and first in line for the out-of-memory killer after the
-/// previews, so tests running side by side never starve Dev.
+/// answers whether it passed and how long it took. It runs below Dev, in a scope of `SLICE`, and
+/// first in line for the out-of-memory killer, ahead of the agents' sessions and the previews:
+/// a command that fails can run again. The scope is bound to the unit running this, so an agent's
+/// session that ends, even one killed for memory, ends the commands it started.
 pub fn logged(
     command: &str,
     cwd: &Path,
@@ -183,16 +205,19 @@ pub fn logged(
             "--scope",
             "--quiet",
             "--collect",
-            "-p",
-            "CPUWeight=20",
-            "-p",
-            "MemoryHigh=3G",
-            "--",
-            "choom",
-            "-n",
-            "300",
-            "--",
+            "--slice",
+            SLICE,
         ]);
+        let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+        if let Some(unit) = unit_of(&cgroup) {
+            process.args([
+                "-p",
+                &format!("BindsTo={unit}"),
+                "-p",
+                &format!("After={unit}"),
+            ]);
+        }
+        process.args(["--", "choom", "-n", "900", "--"]);
         process
     } else {
         let mut process = Command::new("nice");
@@ -369,6 +394,16 @@ mod tests {
         assert_eq!(
             Workspace { root: root.clone() }.worktrees().unwrap(),
             ["one"]
+        );
+    }
+    #[test]
+    fn a_command_is_bound_to_the_unit_of_this_users_manager_running_it() {
+        let agent = "0::/user.slice/user-1001.slice/user@1001.service/app.slice/app-t3code.slice/app-t3code-agents.slice/t3code-claude-d0fa7f0d.scope\n";
+        assert_eq!(unit_of(agent), Some("t3code-claude-d0fa7f0d.scope"));
+        // A login's session belongs to the system's manager, which this user's can't bind to.
+        assert_eq!(
+            unit_of("0::/user.slice/user-1001.slice/session-3.scope\n"),
+            None
         );
     }
     #[test]
