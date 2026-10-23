@@ -240,6 +240,8 @@ export function Shell({
   // item of the app's that opened the one left.
   const focusing = useRef<{ from?: Sidebar }>(undefined);
   const open = (to: Sidebar) => {
+    // While a page opens, the sidebar is that page's to show once it is open.
+    if (pending) return;
     const asked = ++opening.current;
     const show = () => {
       const now = drawn.current;
@@ -279,7 +281,7 @@ export function Shell({
       <NavList
         label="Primary navigation"
         items={navigation}
-        current={current}
+        current={sidebar?.id ?? current}
         dspId={dspId}
         open={open}
         close={close}
@@ -324,14 +326,16 @@ export function Shell({
           draw={(panel) => {
             if (!panel) return pages;
             const head = <SidebarHead title={panel.label} back={back} />;
-            // The shell's list of its pages, under its way back and its name.
-            const listed = (
+            // The shell's list of its pages, under its way back and its name: the page open
+            // highlighted, or the one it is under, as a page of detail is.
+            const items = navigation.find((item) => item.sidebar === panel)?.pages ?? [];
+            const plainList = (
               <>
                 {head}
                 <NavList
                   label={panel.label}
-                  items={navigation.find((item) => item.sidebar === panel)?.pages ?? []}
-                  current={page}
+                  items={items}
+                  current={items.some((item) => item.id === page) ? page : current}
                   dspId={dspId}
                   close={close}
                 />
@@ -341,7 +345,7 @@ export function Shell({
               <DrawnSidebar
                 drawing={panel.draw}
                 loading={head}
-                fallback={listed}
+                fallback={plainList}
                 session={session}
                 view={view}
                 dspId={dspId}
@@ -350,7 +354,7 @@ export function Shell({
                 close={close}
               />
             ) : (
-              listed
+              plainList
             );
           }}
         />

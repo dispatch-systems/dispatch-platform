@@ -31,8 +31,9 @@ type Page<Context> = {
   /** The page's name in the sidebar and the document title. */
   label: string;
   /**
-   * The item of the app's sidebar it is under: a page, highlighted while this one is open, or a
-   * sidebar of pages (`sidebars`), which lists it in place of the app's.
+   * The item it is under: a page, highlighted while this one is open, or a sidebar of pages
+   * (`sidebars`), which lists it in place of the app's. A page under a page of a sidebar's, as
+   * a page of detail is, shows that sidebar too.
    */
   parent?: string;
   icon?: LucideIcon;
@@ -214,10 +215,15 @@ function sidebarNamed(scope: Route['scope'], id: string) {
       if (sidebar.scope === scope && sidebar.id === id) return sidebar;
   return undefined;
 }
-/** The sidebar of pages `page` is under, if it is under one. */
+/**
+ * The sidebar of pages `page` is under, if it is under one: its `parent`, or its parent's, as a
+ * page of detail is under a page of the sidebar's.
+ */
 export function pageSidebar(scope: Route['scope'], page: string) {
   const parent = routeOf(scope, page)?.parent;
-  return parent ? sidebarNamed(scope, parent) : undefined;
+  if (!parent) return undefined;
+  const above = routeOf(scope, parent)?.parent;
+  return sidebarNamed(scope, parent) ?? (above ? sidebarNamed(scope, above) : undefined);
 }
 /** Whether a sidebar lists the page for `access`: the app's, or the one it is under. */
 export const listed = (route: Route, access: Access) =>

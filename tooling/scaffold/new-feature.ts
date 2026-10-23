@@ -210,8 +210,15 @@ export function featureValues(root: string, argv: string[], adding = false) {
       );
     const repeated = sidebarPages.find((id, index) => sidebarPages.indexOf(id) !== index);
     if (repeated) throw new UsageError(`--sidebar names ${repeated} twice: name each page once`);
-    const taken = dspPages(root).find((id) => sidebarPages.includes(id));
+    const pages = dspPages(root);
+    const taken = pages.find((id) => sidebarPages.includes(id));
     if (taken) throw new UsageError(`${taken} is another page's id already: each page has its own`);
+    // Its sidebar takes its id, which a page outside it can't share; added to a feature, its page
+    // of that id moves under it.
+    if (!adding && pages.includes(slug))
+      throw new UsageError(
+        `${slug} is a page's id already, which its sidebar would take: name the feature for another`,
+      );
   }
   const sidebarNames = (sidebarPages ?? []).map((id) => ({
     id,

@@ -367,13 +367,17 @@ function mergeImports(text: string, piece: string) {
         `import ${named.type ? 'type ' : ''}{ ${[...named.names, ...missing].join(', ')} } from '${wanted.from}';`,
       );
     } else if (!from.length || !wanted.names.length) {
-      // A value's import among the module's, before its types'.
-      const last =
-        imports(text)
-          .filter((each) => wanted.type || !each.type)
-          .at(-1) ?? imports(text).at(-1);
-      const at = last ? text.indexOf(last.whole) + last.whole.length : 0;
-      text = `${text.slice(0, at)}\n${wanted.whole}${text.slice(at)}`;
+      // A value's import among the module's, before its types', and React's first of all, as
+      // the manifests have it.
+      const present = imports(text);
+      if (wanted.from === 'react' && present[0]) {
+        const at = text.indexOf(present[0].whole);
+        text = `${text.slice(0, at)}${wanted.whole}\n${text.slice(at)}`;
+      } else {
+        const last = present.filter((each) => wanted.type || !each.type).at(-1) ?? present.at(-1);
+        const at = last ? text.indexOf(last.whole) + last.whole.length : 0;
+        text = `${text.slice(0, at)}\n${wanted.whole}${text.slice(at)}`;
+      }
     }
   }
   return text;
@@ -559,7 +563,7 @@ export async function planAdd(root: string, argv: string[]) {
       `${name} has a sidebar of pages already: add a page to it, a route naming it its parent`,
     );
   // The page a feature had joins the sidebar it gains, listed there with the pages it adds,
-  // unless it is under one already, as another feature's.
+  // unless it names a parent already, as a page of another feature's sidebar.
   const had = piece === 'sidebar' ? pageOf(root, name) : undefined;
   const under = (text: string, id: string) =>
     routeKeys(text, id)?.some((key) => key.name === 'parent');
@@ -611,10 +615,10 @@ export async function planAdd(root: string, argv: string[]) {
     );
   const label = /\b(?:optional|mandatory)\(\s*"[^"]+",\s*"([^"]+)"/.exec(manifest)?.[1];
   const { pascal, slug } = names(name);
-  // Its sidebar takes the feature's id, which a page of that id under another can't share.
+  // Its sidebar takes the feature's id, which its page of that id, with a parent, can't share.
   if (had && !joins && had.id === slug)
     throw new UsageError(
-      `${name}'s page ${slug} is under another sidebar of pages, and its own would take that id: add it by hand, with an id of its own`,
+      `${name}'s page ${slug} has a parent already, and its sidebar would take its id: add it by hand, with an id of its own`,
     );
   // The piece as the feature's templates write it, for the feature as it is.
   const { plan: rendered } = await renderFeature(

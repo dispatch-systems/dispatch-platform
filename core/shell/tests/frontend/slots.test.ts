@@ -236,7 +236,8 @@ test('a DSP opens on the page a feature declares it lands on, and names none wit
 });
 
 test("the app's sidebar lists a sidebar of pages once, where its first page is, while it lists one of them", () => {
-  // Pages under the sidebar, and one under a page, which its sidebar only highlights.
+  // Pages under the sidebar, one of detail under one of them, and one under a page, which its
+  // sidebar only highlights.
   const opened: DspRoute['permission'] = ({ view }) => Boolean(view);
   const under = (id: string): DspRoute => ({ ...page(id), parent: 'timecard', permission: opened });
   const pages = [
@@ -245,6 +246,7 @@ test("the app's sidebar lists a sidebar of pages once, where its first page is, 
     page('team'),
     under('schedules'),
     { ...under('exports'), nav: false },
+    { ...page('punch'), parent: 'punches', nav: false },
     { ...page('notes'), parent: 'overview' },
   ];
   installFeatures([
@@ -264,6 +266,7 @@ test("the app's sidebar lists a sidebar of pages once, where its first page is, 
   ]);
   assert.deepEqual(listed(), ['overview', 'team', 'notes']);
   assert.equal(pageSidebar('dsp', 'schedules')?.label, 'Time');
+  assert.equal(pageSidebar('dsp', 'punch')?.label, 'Time');
   assert.equal(pageSidebar('dsp', 'notes'), undefined);
 });
 
