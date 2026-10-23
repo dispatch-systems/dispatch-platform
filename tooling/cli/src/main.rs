@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, check, ci, finish, logs, observation, pr, preview,
-    scaffold, ship, start, status, test, verify, workspace::Workspace,
+    Native, Result, Runner, api, build, change::Change, check, ci, finish, logs, observation, pr,
+    preview, scaffold, ship, start, status, test, verify, workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -169,17 +169,18 @@ const COMMANDS: &[Spec] = &[
         "check",
         &["check [--plan] [--keep]", "      [--allow-concurrent]"],
         "Before a push: what stops the branch, the rule checks, the TypeScript linter and \
-         clippy, which passes again without running on Rust inputs it passed on; ci and the \
-         merge queue run the tests. --plan only names them.",
+         clippy, which pass again without running on a committed tree they passed on, as \
+         clippy does on Rust inputs it passed on; ci and the merge queue run the tests. --plan \
+         only names them.",
     )
     .flags(&["--plan", "--keep", "--allow-concurrent"]),
     spec(
         "ci",
         &["ci <name>", "   [--removability <feature>]"],
-        "The full checks on GitHub on its committed branch, while its preview is tried: push \
-         it, run them without the gate, and follow them to the first failure. ship stops on a \
-         head they failed and cancels them if still running. --removability runs the weekly \
-         removability check instead, for that feature alone.",
+        "The full checks on GitHub on its committed branch, while its preview is tried: check \
+         it, push it, run them without the gate, and follow them to the first failure. ship \
+         stops on a head they failed and cancels them if still running. --removability runs \
+         the weekly removability check instead, for that feature alone.",
     )
     .options(&["--removability"])
     .arguments(1),
@@ -560,7 +561,10 @@ fn run() -> Result<()> {
             }
             let env = std::env::vars().collect();
             match check::execute(&root, &plan, line.flag("--keep"), &env, &Native)? {
-                true => Ok(()),
+                true => {
+                    println!("{}", check::next_step(&plan));
+                    Ok(())
+                }
                 false => Err("A check failed.".into()),
             }
         }
@@ -596,10 +600,16 @@ fn run() -> Result<()> {
             Ok(())
         }
         "ci" => {
+            let (ws, name) = (line.workspace()?, line.name()?);
+            let removability = line.option("--removability");
+            // What a check finds costs less here than on GitHub.
+            if removability.is_none() {
+                check::before_push(&Change::existing(&ws, name)?.path, &Native)?;
+            }
             let verdict = ci::run(
-                &line.workspace()?,
-                line.name()?,
-                line.option("--removability"),
+                &ws,
+                name,
+                removability,
                 &Native,
                 &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
                 &mut |text| println!("{text}"),

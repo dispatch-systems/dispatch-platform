@@ -1,7 +1,7 @@
 use crate::{
     REPOSITORY, Result, Runner,
     build::{self, Environment, frontend},
-    workspace,
+    require, workspace,
 };
 use serde_json::Value;
 use std::{
@@ -382,7 +382,8 @@ pub fn plan(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<Plan> 
         running,
     })
 }
-fn next_step(plan: &Plan) -> &'static str {
+/// What follows a passing check.
+pub fn next_step(plan: &Plan) -> &'static str {
     if plan.running {
         "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
     } else {
@@ -408,8 +409,8 @@ pub fn print(plan: &Plan) {
 }
 /// `dispatchdev check`: the rule checks, then the lints the plan names, a line each, built in a
 /// folder of the run's own and deleted when it ends (`crate::test`). Every command's whole output
-/// is in the change's scratch folder. Clippy that passed on identical Rust inputs passes again
-/// without running.
+/// is in the change's scratch folder. A committed tree they all passed on passes again without
+/// running, and so does clippy on identical Rust inputs.
 pub fn execute(
     root: &Path,
     plan: &Plan,
@@ -417,6 +418,16 @@ pub fn execute(
     env: &Environment,
     runner: &dyn Runner,
 ) -> Result<bool> {
+    let planned: Vec<String> = ["npm run check:rules".to_owned(), "npm run lint".to_owned()]
+        .into_iter()
+        .chain(plan.commands.iter().cloned())
+        .collect();
+    let pass = Pass::of(root, &planned, env, runner)?;
+    if pass.as_ref().is_some_and(Pass::passed) {
+        println!("ok     reused  all of them (passed on this commit's tree before)");
+        println!("All {} passed against {}.", planned.len(), plan.base);
+        return Ok(true);
+    }
     let clippy = plan
         .commands
         .iter()
@@ -429,35 +440,128 @@ pub fn execute(
     if let (true, Some(command)) = (reused, clippy) {
         println!("ok     reused  {command} (passed on these Rust inputs before)");
     }
-    let commands: Vec<String> = ["npm run check:rules".to_owned(), "npm run lint".to_owned()]
-        .into_iter()
-        .chain(
-            plan.commands
-                .iter()
-                .filter(|command| !reused || Some(*command) != clippy)
-                .cloned(),
-        )
+    let commands: Vec<String> = planned
+        .iter()
+        .filter(|command| !reused || Some(*command) != clippy)
+        .cloned()
         .collect();
     let passed = crate::test::run_commands(root, &commands, keep)?;
     if passed {
         if let (false, Some(lints)) = (reused, &lints) {
             lints.keep(root, env, runner)?;
         }
-        println!(
-            "All {} passed against {}. {}",
-            commands.len() + usize::from(reused),
-            plan.base,
-            next_step(plan)
-        );
+        if let Some(pass) = &pass {
+            pass.keep(root, runner)?;
+        }
+        println!("All {} passed against {}.", planned.len(), plan.base);
     }
     Ok(passed)
+}
+
+/// The check before a push, as `ci` runs it: what stops the branch, then the checks, which a
+/// committed tree they passed on passes at once.
+pub fn before_push(root: &Path, runner: &dyn Runner) -> Result<()> {
+    let plan = plan(root, false, runner)?;
+    let env = std::env::vars().collect();
+    require(
+        execute(root, &plan, false, &env, runner)?,
+        "A check failed.",
+    )
+}
+
+/// Where the check's whole passes are kept: a file for each committed tree it passed on, named
+/// by the tree's hash, in the repository's shared Git folder beside clippy's.
+const PASSES: &str = "dispatch-checks";
+/// A whole check's pass on the committed tree as it is. A check runs only on a committed tree,
+/// and its commands judge only what the tree holds, so the same tree passes again without
+/// running. What else decides their verdict, the commands themselves and the settings clippy
+/// reads, is what the pass's file holds.
+pub struct Pass {
+    file: PathBuf,
+    tree: String,
+    says: String,
+}
+impl Pass {
+    /// None when clippy's inputs can't be fingerprinted reliably (`Lints::of`): a target
+    /// folder of one's own or `RUSTFLAGS` judge by more than the tree.
+    pub fn of(
+        root: &Path,
+        commands: &[String],
+        env: &Environment,
+        runner: &dyn Runner,
+    ) -> Result<Option<Self>> {
+        if !build::eligible(root, env, false)? {
+            return Ok(None);
+        }
+        let tree = tree(root, runner)?;
+        Ok(Some(Self {
+            file: shared(root, runner)?.join(PASSES).join(&tree),
+            tree,
+            says: format!(
+                "{}\n{}",
+                commands.join("\n"),
+                clippy_settings(env).join("\n")
+            ),
+        }))
+    }
+    /// Whether the check passed on this tree before.
+    pub fn passed(&self) -> bool {
+        fs::read_to_string(&self.file).is_ok_and(|text| text == self.says)
+    }
+    /// Keeps the pass, unless a commit moved the tree while the check ran.
+    pub fn keep(&self, root: &Path, runner: &dyn Runner) -> Result<()> {
+        if tree(root, runner)? != self.tree {
+            return Ok(());
+        }
+        workspace::write_private(&self.file, &self.says)?;
+        keep_newest(&self.file)
+    }
+}
+/// The hash of the tree `root`'s checkout has committed.
+fn tree(root: &Path, runner: &dyn Runner) -> Result<String> {
+    workspace::text(runner, &["git", "rev-parse", "HEAD^{tree}"], Some(root))
+}
+/// The repository's Git folder that every worktree shares.
+fn shared(root: &Path, runner: &dyn Runner) -> Result<PathBuf> {
+    Ok(PathBuf::from(workspace::text(
+        runner,
+        &[
+            "git",
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ],
+        Some(root),
+    )?))
+}
+/// The `CLIPPY` settings in `env`, which change what clippy says.
+fn clippy_settings(env: &Environment) -> Vec<String> {
+    env.iter()
+        .filter(|(name, _)| name.starts_with("CLIPPY"))
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect()
+}
+/// Lets go of all but the most recent passes in `file`'s folder.
+fn keep_newest(file: &Path) -> Result<()> {
+    let folder = file.parent().ok_or("No folder for the passes")?;
+    let mut kept: Vec<_> = fs::read_dir(folder)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            Some((entry.metadata().ok()?.modified().ok()?, entry.path()))
+        })
+        .collect();
+    kept.sort_by(|a, b| b.cmp(a));
+    for (_, old) in kept.into_iter().skip(KEPT) {
+        let _ = fs::remove_file(old);
+    }
+    Ok(())
 }
 
 /// Where clippy's passes are kept: a file for each set of Rust inputs one passed on, named by
 /// their fingerprint, in the repository's shared Git folder, so every worktree reuses them.
 const LINTS: &str = "dispatch-clippy";
-/// How many passes are kept, the most recent.
-const LINTS_KEPT: usize = 20;
+/// How many passes of clippy, and of the whole check, are kept: the most recent.
+const KEPT: usize = 20;
 /// A clippy pass over the Rust inputs as they are, by their whole fingerprint: test code and
 /// this tool's own source too, which the release binary's key leaves out. What else decides
 /// clippy's verdict, its command, a configuration at the top and `CLIPPY` settings, is what
@@ -480,29 +584,14 @@ impl Lints {
             return Ok(None);
         }
         let key = build::key(root, LINTS, env, runner)?;
-        let common = workspace::text(
-            runner,
-            &[
-                "git",
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-            ],
-            Some(root),
-        )?;
         let config: String = ["clippy.toml", ".clippy.toml"]
             .iter()
             .filter_map(|name| fs::read_to_string(root.join(name)).ok())
             .collect();
-        let settings: Vec<String> = env
-            .iter()
-            .filter(|(name, _)| name.starts_with("CLIPPY"))
-            .map(|(name, value)| format!("{name}={value}"))
-            .collect();
         Ok(Some(Self {
-            file: Path::new(&common).join(LINTS).join(&key),
+            file: shared(root, runner)?.join(LINTS).join(&key),
             key,
-            says: format!("{command}\n{}\n{config}", settings.join("\n")),
+            says: format!("{command}\n{}\n{config}", clippy_settings(env).join("\n")),
         }))
     }
     /// Whether this clippy passed on these inputs before.
@@ -515,18 +604,7 @@ impl Lints {
             return Ok(());
         }
         workspace::write_private(&self.file, &self.says)?;
-        let folder = self.file.parent().ok_or("No folder for clippy's passes")?;
-        let mut kept: Vec<_> = fs::read_dir(folder)?
-            .filter_map(|entry| {
-                let entry = entry.ok()?;
-                Some((entry.metadata().ok()?.modified().ok()?, entry.path()))
-            })
-            .collect();
-        kept.sort_by(|a, b| b.cmp(a));
-        for (_, old) in kept.into_iter().skip(LINTS_KEPT) {
-            let _ = fs::remove_file(old);
-        }
-        Ok(())
+        keep_newest(&self.file)
     }
 }
 /// The lines of a failed command's output that say what failed: failing tests, panics,
@@ -707,6 +785,55 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+    #[test]
+    fn a_check_passes_again_only_on_the_tree_and_commands_it_passed_on() {
+        /// The repository with its committed tree's hash stood in for.
+        struct Tree(Repo, std::cell::RefCell<&'static str>);
+        impl Runner for Tree {
+            fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
+                if args.contains(&"HEAD^{tree}") {
+                    return Ok(self.1.borrow().as_bytes().to_vec());
+                }
+                self.0.command(args, cwd, timeout)
+            }
+        }
+        let tree = Tree(Repo::new(), "aaa".into());
+        let root = tree.0.root().to_owned();
+        let env = Environment::from([(
+            "CARGO_HOME".into(),
+            root.join("cargo-home").to_str().unwrap().into(),
+        )]);
+        let pass = |commands: &[String], env: &Environment| {
+            Pass::of(&root, commands, env, &tree).unwrap().unwrap()
+        };
+        let commands = vec!["npm run check:rules".to_owned(), "npm run lint".to_owned()];
+        assert!(!pass(&commands, &env).passed());
+        pass(&commands, &env).keep(&root, &tree).unwrap();
+        assert!(pass(&commands, &env).passed());
+        // Another commit's tree, other commands, or clippy settings judge again.
+        *tree.1.borrow_mut() = "bbb";
+        assert!(!pass(&commands, &env).passed());
+        *tree.1.borrow_mut() = "aaa";
+        let linted = [
+            commands.clone(),
+            vec!["cargo clippy --locked --all-targets -- -D warnings".to_owned()],
+        ]
+        .concat();
+        assert!(!pass(&linted, &env).passed());
+        let mut configured = env.clone();
+        configured.insert("CLIPPY_CONF_DIR".into(), "/elsewhere".into());
+        assert!(!pass(&commands, &configured).passed());
+        // A commit while it ran leaves no pass behind.
+        let running = pass(&linted, &env);
+        *tree.1.borrow_mut() = "ccc";
+        running.keep(&root, &tree).unwrap();
+        *tree.1.borrow_mut() = "aaa";
+        assert!(!pass(&linted, &env).passed());
+        // Nor is one kept where clippy's inputs can't be fingerprinted.
+        let mut own = env.clone();
+        own.insert("CARGO_TARGET_DIR".into(), "/tmp/elsewhere".into());
+        assert!(Pass::of(&root, &commands, &own, &tree).unwrap().is_none());
     }
     #[test]
     fn a_check_coordinates_ready_branches_without_blocking_drafts() {

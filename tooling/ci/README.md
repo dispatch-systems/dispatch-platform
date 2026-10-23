@@ -64,10 +64,12 @@ in progress, committed or not: `generate --check`, what a generator left to writ
 TypeScript, the changed files' format and lint, then its own tests as `test --owner` runs them.
 `dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks and
 clippy the same way. A clippy pass is kept, in the repository's shared Git folder, for the
-Rust inputs it ran on, so clippy passes again without running until one of them changes;
+Rust inputs it ran on, so clippy passes again without running until one of them changes, and
+a whole pass is kept for the committed tree it ran on, so the same tree passes again at once;
 `--plan` only names them.
 `dispatchdev ci <name>` runs the same checks earlier, on a change's committed branch while its
-preview is tried, so the queue run is rarely the first to fail. It pushes the branch and starts
+preview is tried, so the queue run is rarely the first to fail. It runs `dispatchdev check`
+first, then pushes the branch and starts
 `checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed so it
 reports no `platform` check on the PR's head, is skipped. It follows the run every 10 seconds
 and stops at the first failed job; a newer run of the branch replaces it.
