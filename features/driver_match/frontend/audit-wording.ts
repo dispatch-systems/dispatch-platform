@@ -23,6 +23,11 @@ const phrases: AuditPhrases = {
     strong(e.target ?? 'a person'),
     "'s match",
   ],
+  'driver_match.role_given': (e, { strong }) => [
+    'changed the role of ',
+    strong(e.target ?? 'a person'),
+  ],
+  // Before a role could be given, only a title could.
   'driver_match.titled': (e, { strong }) => [
     'changed the title of ',
     strong(e.target ?? 'a person'),

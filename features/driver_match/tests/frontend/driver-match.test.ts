@@ -25,6 +25,7 @@ const person = (code: string, role: Person['role'], ids: PersonId[]): Person => 
   name: ids[0]!.name,
   role,
   title: null,
+  given: null,
   ids,
   photo: 'v1',
 });

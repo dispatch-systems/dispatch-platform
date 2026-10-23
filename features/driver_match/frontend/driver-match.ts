@@ -3,6 +3,7 @@ import type {
   PeopleKind,
   PeopleSource,
   Evidence,
+  GivenRole,
   IdLink,
   Person,
   PersonEvent,
@@ -32,6 +33,14 @@ export const left = (person: Pick<Person, 'role'>) =>
 /** How a title is named: "OPs Manager". */
 export const titleLabel = (title: PersonTitle) =>
   personTitles.find((t) => t.id === title)?.label ?? title;
+/** Every role someone may give a person, in the order offered: the roles, then the titles. */
+export const givenRoles: { id: GivenRole; label: string }[] = [
+  ...(['driver', 'helper', 'offboarded'] as const).map((id) => ({ id, label: roles[id].label })),
+  ...personTitles,
+];
+/** How a given role is named: "Driver", "OPs Manager". */
+export const givenLabel = (given: GivenRole) =>
+  givenRoles.find((g) => g.id === given)?.label ?? given;
 /** What a person does, as it reads: their title, else their role. */
 export const roleLabel = (person: Pick<Person, 'role' | 'title'>) =>
   person.title ? titleLabel(person.title) : roles[person.role].label;

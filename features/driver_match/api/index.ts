@@ -2,6 +2,7 @@ export type { Appearance } from './generated/Appearance.js';
 export type { DriverMatch } from './generated/DriverMatch.js';
 export type { Evidence } from './generated/Evidence.js';
 export type { EvidenceKind } from './generated/EvidenceKind.js';
+export type { GivenRole } from './generated/GivenRole.js';
 export type { IdLink } from './generated/IdLink.js';
 export type { MatchCounts } from './generated/MatchCounts.js';
 export type { PeopleKind } from '../../../core/manifest/api/generated/PeopleKind.js';

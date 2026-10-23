@@ -17,7 +17,7 @@ what was decided.
   while a workspace waits for its admin to let Dispatch read its members, or once the last
   one is disconnected.
 - **Permission:** `driver_match.manage`, to see everyone's codes, decide who is whom and give
-  people titles.
+  people roles.
 - **Its page**, `driver-match`, is a page of Settings, under Features (its `parent` is
   Settings' sidebar), not of the app's sidebar. It is listed while the DSP has a feature on
   whose data names people, for those who hold `driver_match.manage`: the questions the backend
@@ -26,7 +26,7 @@ what was decided.
   each with their ID in each source or the source lacking them, sortable and a hundred a page,
   or as cards, a card each with the sources that have them. A switch across from the page's
   name chooses, a list until someone picks cards, kept in their browser as Documents keeps its
-  layout. A person's sheet gives them a title. Beside its name in Settings'
+  layout. A person's sheet gives them a role. Beside its name in Settings'
   sidebar, how many of those questions wait: the server keeps one count for all of the DSP's
   managers until a decision or a collection changes it, and the sidebar reads it again after
   each decision, after a collection a page following collections hears, and every five
@@ -36,7 +36,8 @@ what was decided.
   codes, and everyone), `…/counts` (how many questions wait), `…/people/{code}` (one person's
   IDs, what they appear in, their days and history), and the decisions `POST …/merge` (two codes become one), `…/split` (one ID moves to a new
   person), `…/apart` (two people are kept apart), `…/confirm` (a match by a name or a
-  contact was right) and `…/title` (a person is given a title, or with `null` loses theirs),
+  contact was right) and `…/role` (a person is given a role, or with `null` has theirs from
+  their sources again),
   which answer with nothing. A decision made on stale data is refused
   (`person_changed`), as is splitting a person's only ID (`person_single_id`).
 - **Codes:** six letters and digits that can't be mistaken for one another, unique across the
@@ -66,14 +67,16 @@ what was decided.
   someone only such lists know works in the office while one lists them, and has left once
   none does. People no source shows driving, outside the departments a source's settings
   count as drivers, work in the office. The page calls everyone in the office Management.
-- **Titles:** Owner, OPs Manager, Fleet Manager, Dispatch, HR Manager or Manager (core's
-  `PersonTitle`), given on a person's sheet, for what no source says: Amazon's roster lists
-  office staff with a DA account as drivers, and a dispatcher covers a route now and then.
-  Someone with a title works in the office whatever their sources show, offboarded by Amazon
-  too, as a dispatcher whose DA account went, and is shown by it, until it's taken away.
-  Someone who has left is still Inactive, their title kept for when they come back. A merge
-  carries the title of the one merged to whoever keeps the IDs, unless they have one; an ID
-  split off starts without one.
+- **Given roles:** Driver, Helper, Offboarded, or a title: Owner, OPs Manager, Fleet Manager,
+  Dispatch, HR Manager or Manager (core's `PersonTitle`). Given on a person's sheet, for what
+  no source says: Amazon's roster lists office staff with a DA account as drivers, a
+  dispatcher covers a route now and then, and a payroll may file a driver under the office or
+  be slow to let someone go. Someone given Driver or Helper is one, and someone with a title
+  works in the office and is shown by it, whatever their sources show, offboarded by Amazon
+  too, until it's taken away; someone who has left is still Inactive, their role kept for when
+  they come back. Someone given Offboarded is, however lately anything saw them and whatever
+  roster lists them. A merge carries the role of the one merged to whoever keeps the IDs,
+  unless they have one; an ID split off starts without one.
 - **Questions:** two people no source knows both of, whose names tie them, or any two sharing
   a contact only they have, with how many days they worked together; each reason says whether
   it argues for them being one (working fewer than half their days together argues against).
@@ -86,12 +89,15 @@ what was decided.
   (`backend/photos.rs`). The page, a person's photo and the directory answer by that one rule,
   so every feature showing people shows the same photo.
 - **Log:** its decisions are audited as `driver_match.merged`, `driver_match.split`,
-  `driver_match.kept_apart`, `driver_match.confirmed` and `driver_match.titled` (with the title
-  before and after), naming people by their codes; the log puts today's names to them.
+  `driver_match.kept_apart`, `driver_match.confirmed` and `driver_match.role_given` (with the
+  role before and after; `driver_match.titled`, with the title, before roles could be given),
+  naming people by their codes; the log puts today's names to them.
 - **Storage:** `driver_codes` in the platform's database (platform migration 10) and
-  `people`, `person_ids`, `people_apart` and `person_titles` in each DSP's (DSP migration 7, and
+  `people`, `person_ids`, `people_apart` and `person_roles` in each DSP's (DSP migration 7, and
   its own migration 1, which lets `person_ids` hold any source, 2, which made the links the
-  meal-break page saved before Driver Match its own decisions, and 3, its titles).
+  meal-break page saved before Driver Match its own decisions, 3, its titles, and 4, the roles
+  given, which took over the titles: `person_titles` stays for the previous release, unwritten,
+  until a later one drops it).
 
 ## How it's built
 
@@ -108,7 +114,7 @@ of rule already is:
 - `codes.rs` writes and checks codes.
 - `gather.rs` reads what the page, a person's sheet and the count need, once for each answer;
   `overview.rs` makes the page and its questions, `details.rs` one person's sheet, `photos.rs`
-  photos, and `decisions.rs` the decisions a person makes, titles among them.
+  photos, and `decisions.rs` the decisions a person makes, roles given among them.
 
 ## Connecting a feature
 

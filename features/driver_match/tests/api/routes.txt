@@ -7,5 +7,5 @@ POST /api/dsp/driver-match/confirm Dsp("driver_match.manage") Write
 GET /api/dsp/driver-match/counts Dsp("driver_match.manage") Read
 POST /api/dsp/driver-match/merge Dsp("driver_match.manage") Write
 GET /api/dsp/driver-match/people/{code} Dsp("driver_match.manage") Read
+POST /api/dsp/driver-match/role Dsp("driver_match.manage") Write
 POST /api/dsp/driver-match/split Dsp("driver_match.manage") Write
-POST /api/dsp/driver-match/title Dsp("driver_match.manage") Write

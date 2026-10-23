@@ -67,6 +67,7 @@
       ["driver_match", 1, "open_sources", "02b0e6057d57f3fb"],
       ["driver_match", 2, "meal_break_links", "8a9f0be8cc6c33c1"],
       ["driver_match", 3, "person_titles", "dc7311596fa81c2b"],
+      ["driver_match", 4, "person_roles", "e29261537d167e63"],
       ["documents", 1, "documents_shared_files", "2f535ad4e09b9f2d"],
       ["documents", 2, "documents_full_access", "code"],
       ["documents", 3, "documents_outside_names", "code"],

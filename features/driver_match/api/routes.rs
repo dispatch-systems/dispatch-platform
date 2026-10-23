@@ -1,7 +1,7 @@
 //! Driver Match's endpoints: every person the DSP's features name, and the decisions that
-//! join or part them or give them a title, which answer with nothing: the page reads itself
+//! join or part them or give them a role, which answer with nothing: the page reads itself
 //! again. Its one permission gates them all.
-use crate::{api::types::PersonTitle, backend::DriverMatchStore};
+use crate::{api::types::GivenRole, backend::DriverMatchStore};
 use dispatch_core::{
     Error, Result,
     db::Store,
@@ -27,7 +27,7 @@ pub fn routes() -> Vec<Route> {
         write("/api/dsp/driver-match/split", MANAGE, split),
         write("/api/dsp/driver-match/apart", MANAGE, apart),
         write("/api/dsp/driver-match/confirm", MANAGE, confirm),
-        write("/api/dsp/driver-match/title", MANAGE, title),
+        write("/api/dsp/driver-match/role", MANAGE, give_role),
     ]
 }
 fn overview(db: &Store, c: &Member, _: &Input) -> Result<Reply> {
@@ -78,21 +78,21 @@ fn confirm(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     db.confirm_link(c, v::text(b, "code", 6, 6)?, source, id)?;
     Ok(Reply::ok())
 }
-/// `code` is given `title`, or with `null` loses theirs.
-fn title(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+/// `code` is given `role`, or with `null` has theirs from their sources again.
+fn give_role(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let b = &input.body;
-    v::fields(b, &["code", "title"])?;
-    let given = b
-        .get("title")
+    v::fields(b, &["code", "role"])?;
+    let role = b
+        .get("role")
         .ok_or_else(|| Error::new("invalid_input", 400))?;
-    let title = match given {
+    let given = match role {
         serde_json::Value::Null => None,
         _ => Some(
-            PersonTitle::parse(v::text(b, "title", 1, 32)?)
+            GivenRole::parse(v::text(b, "role", 1, 32)?)
                 .ok_or_else(|| Error::new("invalid_input", 400))?,
         ),
     };
-    db.set_title(c, v::text(b, "code", 6, 6)?, title)?;
+    db.give_role(c, v::text(b, "code", 6, 6)?, given)?;
     Ok(Reply::ok())
 }
 fn apart(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
