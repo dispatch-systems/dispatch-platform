@@ -29,7 +29,9 @@ import {
   auditWording,
   loadPlatformSlots,
   movedTo,
+  ownerPlace,
   pageSidebar,
+  pagesUnder,
   sidebarItems,
   switchIcon,
   type ConnectionCard,
@@ -268,6 +270,43 @@ test("the app's sidebar lists a sidebar of pages once, where its first page is, 
   assert.equal(pageSidebar('dsp', 'schedules')?.label, 'Time');
   assert.equal(pageSidebar('dsp', 'punch')?.label, 'Time');
   assert.equal(pageSidebar('dsp', 'notes'), undefined);
+});
+
+test('a page another owner puts under a sidebar of pages leaves its item where its own page is, and the sidebar lists it while the DSP has its feature', () => {
+  const opened: DspRoute['permission'] = ({ view }) => Boolean(view);
+  const match: DspRoute = {
+    ...page('match'),
+    parent: 'options',
+    feature: switchId('beta'),
+    permission: opened,
+  };
+  const owners = [
+    { name: 'alpha', routes: [page('board')] },
+    { name: 'beta', routes: [match, page('people')] },
+    {
+      name: 'gamma',
+      routes: [{ ...page('options'), parent: 'options' }, page('team')],
+      sidebars: [{ id: 'options', scope: 'dsp' as const, label: 'Options' }],
+    },
+  ];
+  installFeatures(owners);
+  const view = (...features: string[]) => ({ features }) as unknown as DspView;
+  const items = sidebarItems(
+    'dsp',
+    { session: {} as never, view: view('beta') },
+    owners.flatMap((owner) => owner.routes),
+  ).map((item) =>
+    'sidebar' in item
+      ? `${item.sidebar.id}: ${item.pages.map(({ id }) => id).join(', ')}`
+      : item.id,
+  );
+  assert.deepEqual(items, ['board', 'people', 'options: options, match', 'team']);
+  const under = (access: Parameters<typeof pagesUnder>[1]) =>
+    pagesUnder('options', access).map(({ id }) => id);
+  assert.deepEqual(under({ session: {} as never, view: view('beta') }), ['match']);
+  assert.deepEqual(under({ session: {} as never, view: view() }), []);
+  assert.equal(ownerPlace('beta'), 1);
+  assert.equal(ownerPlace('delta'), undefined);
 });
 
 test('a link to Settings opens the page that draws the settings, on the page it names, unless the person is known not to have it', () => {

@@ -6,12 +6,12 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type ComponentType,
   type ReactNode,
 } from 'react';
 import { Menu, X, ChevronDown, LogOut, ArrowUpRight, type LucideIcon } from 'lucide-react';
 import type { DspView, SessionView } from '../../../accounts/api/index.js';
 import { Brand } from '../runtime/Brand.js';
+import { PageBadge } from '../ui/PageBadge.js';
 import { Popover } from '../ui/Popover.js';
 import { SidebarHead } from '../ui/SidebarHead.js';
 import { useFocusTrap } from '../ui/useFocusTrap.js';
@@ -49,31 +49,6 @@ export type NavItem = {
   pages?: readonly NavItem[];
 };
 
-const badges = new WeakMap<Badge, ComponentType<{ active: boolean }>>();
-/** A page's badge beside its name, once its code has loaded; one that fails to load is left out. */
-function NavBadge({ badge, active }: { badge: Badge; active: boolean }) {
-  const [Drawn, setDrawn] = useState(() => badges.get(badge));
-  useEffect(() => {
-    if (Drawn) return;
-    let live = true;
-    badge.load().then(
-      (loaded) => {
-        badges.set(badge, loaded);
-        if (live) setDrawn(() => loaded);
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [badge, Drawn]);
-  return Drawn ? (
-    <span className="nav-badge">
-      <Drawn active={active} />
-    </span>
-  ) : null;
-}
-
 /**
  * A sidebar's list, `current` highlighted: a link to each page, and in the app's (`open`) a
  * button for each sidebar of pages, which opens it. Following a link closes the sidebar where it
@@ -109,7 +84,7 @@ function NavList({
           <>
             {Icon && <Icon aria-hidden="true" />}
             <span>{itemLabel}</span>
-            {badge && <NavBadge badge={badge} active={current === id} />}
+            {badge && <PageBadge badge={badge} active={current === id} />}
           </>
         );
         return sidebar && open ? (
