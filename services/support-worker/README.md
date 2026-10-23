@@ -84,8 +84,8 @@ the server cannot reach host or production services. Browser tooling is loaded f
 installed Dev dependency tree, never from agent-modifiable dependencies.
 
 The trusted publisher rechecks approval, uses the existing `dispatchdev` PR workflow, stores
-the accepted PR/head in the platform, then registers correlation with the Dispatch bot. No
-`ai-review` label is added. GitHub admission and the existing merge queue remain mandatory.
+the accepted PR/head in the platform, then registers correlation with the Dispatch bot.
+GitHub admission and the existing merge queue remain mandatory.
 Failures and conflicts return to implementation and independent verification until GitHub
 confirms the merge. The ticket then waits for a separately authorized production release;
 production source ancestry and read-only browser evidence determine resolution.

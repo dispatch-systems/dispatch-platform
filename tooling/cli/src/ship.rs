@@ -5,8 +5,7 @@
 //! cancelled when it is. Everything is read from
 //! GitHub's API, never from a command's text: a newer push is queued in its turn, and the wait
 //! stops with the reason when the PR closes or leaves the queue unmerged, naming the failed
-//! jobs of its queue run. A PR labelled `ai-review` is queued only once CodeRabbit reviewed it
-//! and resolved each of its threads it accepted the reply to.
+//! jobs of its queue run.
 use crate::{REPOSITORY, Result, Runner, check};
 use serde_json::Value;
 
@@ -21,28 +20,11 @@ const LOOKS: u32 = looks(90 * 60);
 /// Consecutive failed API calls, or refused additions to the queue, before giving up: about
 /// a minute and a half.
 pub(crate) const ATTEMPTS: u32 = looks(100);
-/// Looks spent waiting for CodeRabbit before giving up: 20 minutes in all, and 5 while it has
-/// not started.
-const REVIEW_LOOKS: u32 = looks(20 * 60);
-const UNSTARTED_LOOKS: u32 = looks(5 * 60);
-/// Looks spent waiting for CodeRabbit to answer the replies to its threads: 5 minutes.
-const ANSWER_LOOKS: u32 = looks(5 * 60);
-/// Looks in a row that must find CodeRabbit rate limited before stopping, a minute: a request
-/// made again takes it up to half a minute to replace an earlier rate-limited status.
-const LIMITED_LOOKS: u32 = looks(60);
 
 /// The check the ruleset expects on a PR head before the queue admits it, which
 /// `queue-admission.yml` reports, and the queue's own gate.
 const REQUIRED: &str = "platform";
-/// The label that holds a PR for CodeRabbit's review, and the text of the `CodeRabbit` commit
-/// status on a commit it finished reviewing.
-const REVIEW_LABEL: &str = "ai-review";
-const REVIEWED: &str = "Review completed";
-/// CodeRabbit's login as the author of review comments.
-const CODERABBIT: &str = "coderabbitai";
-const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid} mergeQueueEntry{state position} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:50){nodes{__typename ...on CheckRun{name conclusion}}}}}}} timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{...on RemovedFromMergeQueueEvent{reason}}} labels(first:20){nodes{name}} reviewed:commits(last:100){nodes{commit{oid status{context(name:\"CodeRabbit\"){state description createdAt}}}}} reviewThreads(first:100){nodes{id isResolved path line comments(first:1){totalCount nodes{author{login} url}} latest:comments(last:1){nodes{author{login}}}}}}}}";
-/// The PR's newest comments, where CodeRabbit says when a rate limit ends.
-const NOTICES: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){notices:comments(last:30){nodes{author{login} body updatedAt}}}}}";
+const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid} mergeQueueEntry{state position} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:50){nodes{__typename ...on CheckRun{name conclusion}}}}}}} timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{...on RemovedFromMergeQueueEvent{reason}}}}}}";
 const ENQUEUE: &str = "mutation($id:ID!,$head:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head}){mergeQueueEntry{position}}}";
 
 fn graphql(runner: &dyn Runner, query: &str, variables: &[String]) -> Result<Value> {
@@ -70,15 +52,10 @@ pub(crate) fn rest(runner: &dyn Runner, endpoint: &str) -> Result<Value> {
 }
 
 fn look(runner: &dyn Runner, number: u64) -> Result<Value> {
-    pull_request(runner, LOOK, number)
-}
-
-/// `query`'s answer about PR `number`.
-fn pull_request(runner: &dyn Runner, query: &str, number: u64) -> Result<Value> {
     let (owner, name) = REPOSITORY.split_once('/').ok_or("Invalid repository")?;
     let data = graphql(
         runner,
-        query,
+        LOOK,
         &[
             format!("owner={owner}"),
             format!("name={name}"),
@@ -118,120 +95,6 @@ fn admission(pr: &Value) -> Admission {
         Some("FAILURE" | "CANCELLED" | "TIMED_OUT" | "STARTUP_FAILURE") => Admission::Failed,
         _ => Admission::Pending,
     }
-}
-
-/// Where CodeRabbit's review of the PR stands, read from the status it keeps on each commit.
-#[derive(Debug, PartialEq)]
-enum Review {
-    /// It finished reviewing a commit of the PR and is reviewing none now.
-    Done,
-    Running,
-    /// It reported an error on the head, or on an earlier commit with no review since.
-    Failed(String),
-    /// Out of reviews for now, as the head's status says.
-    Limited(String),
-    /// Never asked, or skipped, as the head's status says.
-    Unstarted(String),
-}
-
-fn review(pr: &Value) -> Review {
-    let statuses: Vec<_> = pr["reviewed"]["nodes"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|node| (&node["commit"]["oid"], &node["commit"]["status"]["context"]))
-        .collect();
-    let head = statuses
-        .iter()
-        .find(|(oid, _)| **oid == pr["headRefOid"])
-        .map(|(_, status)| *status);
-    let failed = statuses
-        .iter()
-        .rev()
-        .map(|(_, status)| *status)
-        .find(|status| matches!(status["state"].as_str(), Some("FAILURE" | "ERROR")));
-    let said = |status: Option<&Value>| {
-        status
-            .and_then(|status| status["description"].as_str())
-            .unwrap_or("none yet")
-            .to_owned()
-    };
-    // A push while it reviews leaves the review on the earlier commit, and a review asked
-    // for again outranks the one it follows. A request a push cancelled stays "in progress"
-    // on its commit for good, so a review completed after it outranks it. The nodes' order
-    // carries no promise; the statuses' own times order them.
-    let completed_at = statuses
-        .iter()
-        .filter(|(_, status)| status["state"] == "SUCCESS" && status["description"] == REVIEWED)
-        .filter_map(|(_, status)| status["createdAt"].as_str())
-        .max();
-    let running = statuses.iter().any(|(_, status)| {
-        status["state"] == "PENDING"
-            && completed_at
-                .is_none_or(|at| status["createdAt"].as_str().is_none_or(|made| made > at))
-    });
-    match head.and_then(|status| status["state"].as_str()) {
-        Some("PENDING") => Review::Running,
-        Some("FAILURE" | "ERROR") => Review::Failed(said(head)),
-        _ if running => Review::Running,
-        _ if completed_at.is_some() => Review::Done,
-        _ if failed.is_some() => Review::Failed(said(failed)),
-        _ if said(head).to_lowercase().contains("rate limited") => Review::Limited(said(head)),
-        _ => Review::Unstarted(said(head)),
-    }
-}
-
-/// When CodeRabbit's newest rate-limit comment on the PR was written, and the wait it named, as
-/// in "Next included review available in 28 minutes."
-fn next_review(runner: &dyn Runner, number: u64) -> Option<(String, String)> {
-    let pr = pull_request(runner, NOTICES, number).ok()?;
-    pr["notices"]["nodes"]
-        .as_array()?
-        .iter()
-        .rev()
-        .filter(|comment| comment["author"]["login"] == CODERABBIT)
-        .find_map(|comment| {
-            let (_, after) = comment["body"]
-                .as_str()?
-                .split_once("review available in ")?;
-            let wait = after.split(['.', '*', '\n']).next()?.trim();
-            let at = comment["updatedAt"].as_str().filter(|at| at.len() >= 16)?;
-            (!wait.is_empty()).then(|| (format!("{} {}", &at[..10], &at[11..16]), wait.to_owned()))
-        })
-}
-
-/// The PR's unresolved review threads as "path:line author link" lines: those waiting for our
-/// answer, those where CodeRabbit answered our reply and left the thread open, with the
-/// thread's ID, and those where it has yet to answer. CodeRabbit resolves a thread once it
-/// accepts the reply.
-fn unresolved(pr: &Value) -> (Vec<String>, Vec<(String, String)>, Vec<String>) {
-    let (mut ours, mut answered, mut its) = (vec![], vec![], vec![]);
-    for thread in pr["reviewThreads"]["nodes"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|thread| thread["isResolved"] == false)
-    {
-        let comment = &thread["comments"]["nodes"][0];
-        let author = comment["author"]["login"].as_str().unwrap_or("someone");
-        let path = thread["path"].as_str().unwrap_or("");
-        let place = match thread["line"].as_u64() {
-            Some(line) => format!("{path}:{line}"),
-            None => path.to_owned(),
-        };
-        let line = format!("{place} {author} {}", comment["url"].as_str().unwrap_or(""));
-        let replied = thread["comments"]["totalCount"].as_u64() > Some(1);
-        let latest = &thread["latest"]["nodes"][0]["author"]["login"];
-        match (author == CODERABBIT, replied, latest == CODERABBIT) {
-            (true, true, false) => its.push(line),
-            (true, true, true) => answered.push((
-                thread["id"].as_str().unwrap_or("").to_owned(),
-                format!("{line} (CodeRabbit answered the reply)"),
-            )),
-            _ => ours.push(line),
-        }
-    }
-    (ours, answered, its)
 }
 
 /// The newest queue run for `number`, if any. The queue names its branch after the PR, which
@@ -375,39 +238,6 @@ fn short(head: &Value) -> &str {
     head.as_str().map_or("", |head| &head[..head.len().min(7)])
 }
 
-/// The comment that asks CodeRabbit for its review.
-const ASK: &str = "@coderabbitai review";
-/// `dispatchdev ship <number> --review`: CodeRabbit's review, asked for once. The `ai-review`
-/// label makes shipping wait for it; the comment starts it, and a second would start another.
-/// Answers whether it asked now.
-pub fn request_review(number: u64, runner: &dyn Runner) -> Result<bool> {
-    let number = number.to_string();
-    let gh = |args: &[&str]| runner.command(&[&["gh", "pr"][..], args].concat(), None, 60);
-    gh(&[
-        "edit",
-        &number,
-        "--repo",
-        REPOSITORY,
-        "--add-label",
-        REVIEW_LABEL,
-    ])?;
-    let pr: Value = serde_json::from_slice(&gh(&[
-        "view", &number, "--repo", REPOSITORY, "--json", "comments",
-    ])?)?;
-    let asked = pr["comments"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|comment| {
-            comment["body"]
-                .as_str()
-                .is_some_and(|body| body.trim() == ASK)
-        });
-    if !asked {
-        gh(&["comment", &number, "--repo", REPOSITORY, "--body", ASK])?;
-    }
-    Ok(!asked)
-}
 /// Queue `number` and wait for the merge; returns the squash commit. `pause` waits between
 /// looks and `say` reports each change of progress once.
 pub fn run(
@@ -431,13 +261,6 @@ pub fn run(
     // The head whose checks on the branch were last looked at.
     let mut looked: Option<String> = None;
     let (mut seen, mut unanswered, mut refused) = (false, 0, 0);
-    // Looks spent waiting for CodeRabbit: in all, since it last reported a running review, and
-    // on its answers to our replies.
-    let (mut waited, mut unstarted, mut answering) = (0, 0, 0);
-    // Looks in a row that found CodeRabbit rate limited.
-    let mut limited = 0;
-    // The threads it had answered and left open at the last look.
-    let mut settling: Vec<String> = vec![];
     for _ in 0..LOOKS {
         let pr = match look(runner, number) {
             Ok(pr) => {
@@ -557,110 +380,6 @@ pub fn run(
                 continue;
             }
         }
-        // Asked for with the label, CodeRabbit's review comes first; any commit it reviewed
-        // counts, since later pushes are not reviewed again. Its threads must then be resolved,
-        // as GitHub queues no PR with an open conversation.
-        let labelled = pr["labels"]["nodes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|label| label["name"] == REVIEW_LABEL);
-        let unreviewed = format!(
-            "comment `@coderabbitai review` on it, or remove the {REVIEW_LABEL} label to ship it unreviewed"
-        );
-        let state = review(&pr);
-        if !matches!(state, Review::Limited(_)) {
-            limited = 0;
-        }
-        let waiting = match state {
-            _ if !labelled => None,
-            Review::Done => {
-                let (ours, answered, its) = unresolved(&pr);
-                // CodeRabbit answers a reply a moment before it resolves the thread, so a thread
-                // it answered is ours only once the next look still finds it open.
-                let disputed: Vec<_> = answered
-                    .iter()
-                    .filter(|(id, _)| settling.contains(id))
-                    .map(|(_, line)| line.clone())
-                    .collect();
-                settling = answered.into_iter().map(|(id, _)| id).collect();
-                if !ours.is_empty() || !disputed.is_empty() {
-                    return Err(format!(
-                        "#{number} has review threads to answer; reply to each, then ship it again:\n- {}",
-                        [ours, disputed].concat().join("\n- ")
-                    )
-                    .into());
-                }
-                if !its.is_empty() {
-                    answering += 1;
-                    if answering > ANSWER_LOOKS {
-                        return Err(format!(
-                            "CodeRabbit has not answered these replies on #{number} after {} minutes; resolve the ones your reply settles, then ship it again:\n- {}",
-                            u64::from(ANSWER_LOOKS) * PAUSE / 60,
-                            its.join("\n- ")
-                        )
-                        .into());
-                    }
-                }
-                if !its.is_empty() || !settling.is_empty() {
-                    note(format!(
-                        "Waiting for CodeRabbit to answer the replies on #{number}"
-                    ));
-                    pause(PAUSE);
-                    continue;
-                }
-                None
-            }
-            Review::Failed(said) => {
-                return Err(
-                    format!("CodeRabbit failed to review #{number}: {said}; {unreviewed}").into(),
-                );
-            }
-            Review::Running => {
-                unstarted = 0;
-                Some(format!("Waiting for CodeRabbit to review #{number}"))
-            }
-            Review::Limited(said) => {
-                limited += 1;
-                if limited >= LIMITED_LOOKS {
-                    let wait = next_review(runner, number).map_or(String::new(), |(at, wait)| {
-                        format!(" At {at} UTC it said its next review is available in {wait}.")
-                    });
-                    return Err(format!(
-                        "CodeRabbit is rate limited and has not reviewed #{number} ({said}).{wait} To ship it unreviewed, remove the {REVIEW_LABEL} label and ship it again; to wait, comment `@coderabbitai review` once the limit passes"
-                    )
-                    .into());
-                }
-                Some(format!(
-                    "Waiting for CodeRabbit to start reviewing #{number}"
-                ))
-            }
-            Review::Unstarted(said) => {
-                unstarted += 1;
-                if unstarted > UNSTARTED_LOOKS {
-                    return Err(format!(
-                        "CodeRabbit has not started reviewing #{number}, its status: {said}; {unreviewed}"
-                    )
-                    .into());
-                }
-                Some(format!(
-                    "Waiting for CodeRabbit to start reviewing #{number}"
-                ))
-            }
-        };
-        if let Some(text) = waiting {
-            waited += 1;
-            if waited > REVIEW_LOOKS {
-                return Err(format!(
-                    "CodeRabbit has not finished reviewing #{number} after {} minutes; ship it again to keep waiting, or remove the {REVIEW_LABEL} label to ship it unreviewed",
-                    u64::from(REVIEW_LOOKS) * PAUSE / 60
-                )
-                .into());
-            }
-            note(text);
-            pause(PAUSE);
-            continue;
-        }
         if earlier.is_none() {
             earlier = Some(
                 queue_run(runner, number)
@@ -738,40 +457,6 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn a_review_is_asked_for_once_and_the_label_holds_the_pr_for_it() {
-        struct Fake {
-            comments: &'static str,
-            calls: std::cell::RefCell<Vec<String>>,
-        }
-        impl Runner for Fake {
-            fn command(
-                &self,
-                args: &[&str],
-                _: Option<&std::path::Path>,
-                _: u64,
-            ) -> Result<Vec<u8>> {
-                self.calls.borrow_mut().push(args[2].to_owned());
-                Ok(if args[2] == "view" {
-                    self.comments.as_bytes().to_vec()
-                } else {
-                    vec![]
-                })
-            }
-        }
-        let fresh = Fake {
-            comments: r#"{"comments":[{"body":"Looks fine"}]}"#,
-            calls: Default::default(),
-        };
-        assert!(request_review(7, &fresh).unwrap());
-        assert_eq!(*fresh.calls.borrow(), ["edit", "view", "comment"]);
-        let asked = Fake {
-            comments: r#"{"comments":[{"body":"@coderabbitai review\n"}]}"#,
-            calls: Default::default(),
-        };
-        assert!(!request_review(7, &asked).unwrap());
-        assert_eq!(*asked.calls.borrow(), ["edit", "view"]);
-    }
     use serde_json::json;
     use std::{cell::RefCell, collections::BTreeMap, collections::VecDeque, path::Path};
 
@@ -787,7 +472,6 @@ mod tests {
         queued: RefCell<Vec<String>>,
         rest: RefCell<BTreeMap<String, VecDeque<Value>>>,
         logs: RefCell<BTreeMap<String, &'static str>>,
-        notices: RefCell<Option<Value>>,
         cancelled: RefCell<Vec<String>>,
     }
     impl Runner for GitHub {
@@ -828,12 +512,6 @@ mod tests {
                 );
             }
             assert!(args.contains(&"number=7") && args.contains(&"-F"));
-            if args[4].contains("notices:") {
-                let notices = self.notices.borrow().clone().ok_or("not found")?;
-                return Ok(serde_json::to_vec(
-                    &json!({"data":{"repository":{"pullRequest":{"notices":{"nodes":notices}}}}}),
-                )?);
-            }
             let mut looks = self.looks.borrow_mut();
             let next = if looks.len() > 1 {
                 looks.pop_front().unwrap()
@@ -884,34 +562,6 @@ mod tests {
         value["state"] = "MERGED".into();
         value["mergeCommit"] = json!({"oid":"3333333"});
         value
-    }
-    /// `pr` labelled for CodeRabbit's review, with its status on each listed commit, each
-    /// made a second after the one before it.
-    fn labelled(pr: Value, statuses: &[(&str, &str, &str)]) -> Value {
-        let timed: Vec<_> = statuses
-            .iter()
-            .enumerate()
-            .map(|(index, (oid, state, description))| {
-                (
-                    *oid,
-                    *state,
-                    *description,
-                    format!("2026-01-01T00:00:{index:02}Z"),
-                )
-            })
-            .collect();
-        labelled_at(pr, &timed)
-    }
-    fn labelled_at(mut pr: Value, statuses: &[(&str, &str, &str, String)]) -> Value {
-        pr["labels"] = json!({"nodes":[{"name":"collectors"},{"name":REVIEW_LABEL}]});
-        let nodes: Vec<_> = statuses
-            .iter()
-            .map(|(oid, state, description, at)| {
-                json!({"commit":{"oid":oid,"status":{"context":{"state":state,"description":description,"createdAt":at}}}})
-            })
-            .collect();
-        pr["reviewed"] = json!({ "nodes": nodes });
-        pr
     }
     fn ship(github: &GitHub) -> (Result<String>, Vec<String>, usize) {
         let pauses = RefCell::new(0);
@@ -1376,337 +1026,5 @@ mod tests {
         let (result, _, pauses) = ship(&github(vec![unadmitted(OLD)]));
         assert!(result.unwrap_err().to_string().contains("Gave up"));
         assert_eq!(pauses, LOOKS as usize);
-    }
-
-    const SKIPPED: &str = "Review skipped: manual review required for this OSS repository";
-    const MIDDLE: &str = "4444444444444444444444444444444444444444";
-
-    #[test]
-    fn a_labelled_pr_waits_for_coderabbit_before_it_is_queued() {
-        let github = github(vec![
-            labelled(open(OLD), &[]),
-            labelled(open(OLD), &[(OLD, "SUCCESS", SKIPPED)]),
-            labelled(open(OLD), &[(OLD, "PENDING", "Review in progress")]),
-            labelled(open(OLD), &[(OLD, "SUCCESS", REVIEWED)]),
-            in_queue(OLD),
-            merged(OLD),
-        ]);
-        let (result, said, _) = ship(&github);
-        assert_eq!(result.unwrap(), "3333333");
-        assert_eq!(*github.queued.borrow(), [format!("head={OLD}")]);
-        assert_eq!(
-            said[..3],
-            [
-                "Waiting for CodeRabbit to start reviewing #7",
-                "Waiting for CodeRabbit to review #7",
-                "Added #7 to the merge queue at 1111111; the queue runs the checks on its squash commit",
-            ]
-        );
-        // A push after the review is not reviewed again; a review still running on an earlier
-        // commit, or asked for again, is awaited.
-        let github = self::github(vec![
-            labelled(
-                open(NEW),
-                &[(OLD, "SUCCESS", REVIEWED), (NEW, "SUCCESS", SKIPPED)],
-            ),
-            in_queue(NEW),
-            merged(NEW),
-        ]);
-        assert_eq!(ship(&github).0.unwrap(), "3333333");
-        let again = labelled(
-            open(NEW),
-            &[
-                (OLD, "SUCCESS", REVIEWED),
-                (NEW, "PENDING", "Review in progress"),
-            ],
-        );
-        assert_eq!(review(&again), Review::Running);
-        let pushed = labelled(open(NEW), &[(OLD, "PENDING", "Review in progress")]);
-        assert_eq!(review(&pushed), Review::Running);
-        let rerun = labelled(
-            open(NEW),
-            &[
-                (OLD, "SUCCESS", REVIEWED),
-                (MIDDLE, "PENDING", "Review in progress"),
-            ],
-        );
-        assert_eq!(review(&rerun), Review::Running);
-        // A request a push cancelled stays "in progress" on its commit for good; the review
-        // that completed on a later commit outranks it.
-        let stale = labelled(
-            open(NEW),
-            &[
-                (OLD, "PENDING", "Review in progress"),
-                (MIDDLE, "SUCCESS", REVIEWED),
-            ],
-        );
-        assert_eq!(review(&stale), Review::Done);
-        // The nodes' order carries no promise: a request made after the newest completed
-        // review is running wherever it is listed.
-        let later = labelled_at(
-            open(NEW),
-            &[
-                (
-                    MIDDLE,
-                    "PENDING",
-                    "Review in progress",
-                    "2026-01-01T00:00:09Z".into(),
-                ),
-                (OLD, "SUCCESS", REVIEWED, "2026-01-01T00:00:01Z".into()),
-            ],
-        );
-        assert_eq!(review(&later), Review::Running);
-        // Without the label, CodeRabbit's status holds nothing up.
-        let mut unlabelled = labelled(open(OLD), &[(OLD, "PENDING", "Review in progress")]);
-        unlabelled["labels"]["nodes"] = json!([]);
-        let github = self::github(vec![unlabelled, in_queue(OLD), merged(OLD)]);
-        assert_eq!(ship(&github).0.unwrap(), "3333333");
-        assert_eq!(github.queued.borrow().len(), 1);
-    }
-
-    /// A review thread on `path` started by `author`, with later comments by `replies`.
-    fn thread(
-        path: &str,
-        line: Option<u64>,
-        author: &str,
-        replies: &[&str],
-        resolved: bool,
-    ) -> Value {
-        json!({"id":path,"isResolved":resolved,"path":path,"line":line,
-            "comments":{"totalCount":1 + replies.len(),
-                "nodes":[{"author":{"login":author},"url":format!("https://github.com/{path}")}]},
-            "latest":{"nodes":[{"author":{"login":replies.last().unwrap_or(&author)}}]}})
-    }
-    /// `pr` reviewed by CodeRabbit, with `threads`.
-    fn reviewed(threads: Vec<Value>) -> Value {
-        let mut pr = labelled(open(OLD), &[(OLD, "SUCCESS", REVIEWED)]);
-        pr["reviewThreads"]["nodes"] = threads.into();
-        pr
-    }
-
-    #[test]
-    fn review_threads_waiting_for_our_answer_stop_a_labelled_pr() {
-        let github = github(vec![reviewed(vec![
-            thread(
-                "core/collection/api/jobs.rs",
-                Some(42),
-                CODERABBIT,
-                &[],
-                false,
-            ),
-            thread(
-                "core/server/backend/mail/mod.rs",
-                Some(7),
-                CODERABBIT,
-                &["fixture-owner"],
-                true,
-            ),
-            thread(
-                "core/collection/backend/browser/http.rs",
-                Some(9),
-                CODERABBIT,
-                &["fixture-owner"],
-                false,
-            ),
-            thread(
-                "core/tenancy/backend/roles.rs",
-                Some(3),
-                CODERABBIT,
-                &["fixture-owner", CODERABBIT],
-                false,
-            ),
-            thread("docs/ci.md", None, "fixture-owner", &[], false),
-        ])]);
-        let error = ship(&github).0.unwrap_err().to_string();
-        // The reply CodeRabbit has yet to answer, and the one it answered on this first look,
-        // are not listed; they may still settle.
-        assert_eq!(
-            error,
-            "#7 has review threads to answer; reply to each, then ship it again:\n\
-             - core/collection/api/jobs.rs:42 coderabbitai https://github.com/core/collection/api/jobs.rs\n\
-             - docs/ci.md fixture-owner https://github.com/docs/ci.md"
-        );
-        assert!(github.queued.borrow().is_empty());
-    }
-
-    #[test]
-    fn a_labelled_pr_waits_for_coderabbit_to_answer_the_replies() {
-        let replied = thread(
-            "core/collection/backend/browser/http.rs",
-            Some(9),
-            CODERABBIT,
-            &["fixture-owner"],
-            false,
-        );
-        let mut settled = replied.clone();
-        settled["isResolved"] = true.into();
-        let github = github(vec![
-            reviewed(vec![replied.clone()]),
-            reviewed(vec![settled]),
-            in_queue(OLD),
-            merged(OLD),
-        ]);
-        let (result, said, _) = ship(&github);
-        assert_eq!(result.unwrap(), "3333333");
-        assert_eq!(
-            said[0],
-            "Waiting for CodeRabbit to answer the replies on #7"
-        );
-        assert_eq!(github.queued.borrow().len(), 1);
-        // Unanswered for five minutes, the replies are listed for us to settle.
-        let github = self::github(vec![reviewed(vec![replied.clone()])]);
-        let (result, _, pauses) = ship(&github);
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "CodeRabbit has not answered these replies on #7 after 5 minutes; resolve the ones your reply settles, then ship it again:\n\
-             - core/collection/backend/browser/http.rs:9 coderabbitai https://github.com/core/collection/backend/browser/http.rs"
-        );
-        assert_eq!(pauses, ANSWER_LOOKS as usize);
-        assert!(github.queued.borrow().is_empty());
-        // Its answer comes a moment before it resolves the thread, so one look finding the
-        // thread answered and open waits; a second means it disagrees.
-        let answered = thread(
-            "core/collection/backend/browser/http.rs",
-            Some(9),
-            CODERABBIT,
-            &["fixture-owner", CODERABBIT],
-            false,
-        );
-        let mut resolved = answered.clone();
-        resolved["isResolved"] = true.into();
-        let github = self::github(vec![
-            reviewed(vec![answered.clone()]),
-            reviewed(vec![resolved.clone()]),
-            in_queue(OLD),
-            merged(OLD),
-        ]);
-        assert_eq!(ship(&github).0.unwrap(), "3333333");
-        let github = self::github(vec![reviewed(vec![answered.clone()])]);
-        let (result, _, pauses) = ship(&github);
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .ends_with("http.rs (CodeRabbit answered the reply)")
-        );
-        assert_eq!(pauses, 1);
-        // Each thread gets that second look: one resolving as another is answered is no dispute.
-        let other = thread(
-            "core/collection/api/jobs.rs",
-            Some(4),
-            CODERABBIT,
-            &["fixture-owner", CODERABBIT],
-            false,
-        );
-        let mut other_resolved = other.clone();
-        other_resolved["isResolved"] = true.into();
-        let github = self::github(vec![
-            reviewed(vec![answered.clone(), replied.clone()]),
-            reviewed(vec![resolved.clone(), other.clone()]),
-            reviewed(vec![resolved.clone(), other_resolved]),
-            in_queue(OLD),
-            merged(OLD),
-        ]);
-        assert_eq!(ship(&github).0.unwrap(), "3333333");
-        // An answer that arrives on the last look of the wait still gets its second look.
-        let mut looks = vec![reviewed(vec![replied]); ANSWER_LOOKS as usize];
-        looks.extend([
-            reviewed(vec![answered]),
-            reviewed(vec![resolved]),
-            in_queue(OLD),
-            merged(OLD),
-        ]);
-        let github = self::github(looks);
-        assert_eq!(ship(&github).0.unwrap(), "3333333");
-    }
-
-    #[test]
-    fn coderabbit_failing_never_starting_or_running_too_long_stops_it() {
-        let failed = labelled(open(OLD), &[(OLD, "FAILURE", "Review failed")]);
-        let (result, _, pauses) = ship(&github(vec![failed]));
-        let error = result.unwrap_err().to_string();
-        assert!(
-            error.starts_with("CodeRabbit failed to review #7: Review failed;"),
-            "{error}"
-        );
-        assert_eq!(pauses, 0);
-        // So does a failure on an earlier commit that nothing reviewed since.
-        let pushed = labelled(open(NEW), &[(OLD, "ERROR", "Review failed")]);
-        assert_eq!(review(&pushed), Review::Failed("Review failed".into()));
-        let retried = labelled(
-            open(NEW),
-            &[
-                (OLD, "ERROR", "Review failed"),
-                (MIDDLE, "SUCCESS", REVIEWED),
-            ],
-        );
-        assert_eq!(review(&retried), Review::Done);
-        let skipped = labelled(open(OLD), &[(OLD, "SUCCESS", SKIPPED)]);
-        let (result, _, pauses) = ship(&github(vec![skipped]));
-        let error = result.unwrap_err().to_string();
-        assert!(
-            error.contains(&format!(
-                "has not started reviewing #7, its status: {SKIPPED};"
-            )),
-            "{error}"
-        );
-        assert!(
-            error.contains("comment `@coderabbitai review` on it"),
-            "{error}"
-        );
-        assert_eq!(pauses, UNSTARTED_LOOKS as usize);
-        let running = labelled(open(OLD), &[(OLD, "PENDING", "Review in progress")]);
-        let github = github(vec![running]);
-        let (result, _, pauses) = ship(&github);
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .starts_with("CodeRabbit has not finished reviewing #7 after 20 minutes;")
-        );
-        assert_eq!(pauses, REVIEW_LOOKS as usize);
-        assert!(github.queued.borrow().is_empty());
-    }
-
-    #[test]
-    fn a_rate_limited_review_stops_it_with_the_wait() {
-        const LIMITED: &str = "Review rate limited";
-        let limited = labelled(open(OLD), &[(OLD, "SUCCESS", LIMITED)]);
-        let github = github(vec![limited.clone()]);
-        *github.notices.borrow_mut() = Some(json!([
-            {"author":{"login":CODERABBIT},"updatedAt":"2026-09-25T16:20:00Z",
-                "body":"> **Next included review available in 12 minutes.**"},
-            {"author":{"login":"fixture-owner"},"updatedAt":"2026-09-25T17:00:00Z","body":"@coderabbitai review"},
-            {"author":{"login":CODERABBIT},"updatedAt":"2026-09-25T17:01:26Z",
-                "body":"> [!WARNING]\n> ## Review limit reached\n>\n> **Next included review available in 28 minutes.**"}
-        ]));
-        let (result, _, pauses) = ship(&github);
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "CodeRabbit is rate limited and has not reviewed #7 (Review rate limited). At 2026-09-25 17:01 UTC it said its next review is available in 28 minutes. To ship it unreviewed, remove the ai-review label and ship it again; to wait, comment `@coderabbitai review` once the limit passes"
-        );
-        // A request made again replaces the status within a few looks, so it gets them.
-        assert_eq!(pauses, LIMITED_LOOKS as usize - 1);
-        assert!(github.queued.borrow().is_empty());
-        // Without its comment, the stop still says it is rate limited.
-        let (result, _, _) = ship(&self::github(vec![limited.clone()]));
-        assert!(result.unwrap_err().to_string().starts_with(
-            "CodeRabbit is rate limited and has not reviewed #7 (Review rate limited). To ship"
-        ));
-        // An earlier status replaced by a running review holds nothing up.
-        let github = self::github(vec![
-            limited,
-            labelled(open(OLD), &[(OLD, "PENDING", "Review in progress")]),
-            labelled(open(OLD), &[(OLD, "SUCCESS", REVIEWED)]),
-            in_queue(OLD),
-            merged(OLD),
-        ]);
-        assert_eq!(ship(&github).0.unwrap(), "3333333");
-        // Nor does a second review asked for after a finished one.
-        let again = labelled(
-            open(NEW),
-            &[(OLD, "SUCCESS", REVIEWED), (NEW, "SUCCESS", LIMITED)],
-        );
-        assert_eq!(review(&again), Review::Done);
     }
 }

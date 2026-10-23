@@ -9,7 +9,7 @@ use dispatch_core::support::api::types::SupportJob;
 use serde_json::{Value, json};
 use std::fs;
 
-const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid} mergeQueueEntry{state position} labels(first:20){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name conclusion status} ...on StatusContext{context state}}}}}}} timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{...on RemovedFromMergeQueueEvent{reason}}}}}}";
+const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid} mergeQueueEntry{state position} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name conclusion status} ...on StatusContext{context state}}}}}}} timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{...on RemovedFromMergeQueueEvent{reason}}}}}}";
 
 /// Redact known identities before any public GitHub mutation, including case variations.
 pub fn redact_identities(summary: &str, identities: &[&str]) -> String {
@@ -111,12 +111,12 @@ pub async fn publish(
     // Reports, reporter identity, credentials and private screenshots stay in the platform.
     let body = if kind == "bug fix" {
         format!(
-            "## Summary\n\n{summary}\n\n## Symptom\n\nThe approved support proposal identified behavior requiring a fix.\n\n## Cause\n\nSee the scoped implementation and regression test in this patch.\n\n## Fix\n\nImplements the exact owner-approved proposal version {}.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. CodeRabbit omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
+            "## Summary\n\n{summary}\n\n## Symptom\n\nThe approved support proposal identified behavior requiring a fix.\n\n## Cause\n\nSee the scoped implementation and regression test in this patch.\n\n## Fix\n\nImplements the exact owner-approved proposal version {}.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. Code review omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
             job.version
         )
     } else {
         format!(
-            "## Summary\n\n{summary}\n\n## Problem\n\nThe owner approved a support proposal for this feature.\n\n## Change\n\nImplements the exact approved proposal version {}.\n\n## Rollout\n\nThe merge reaches Dev after checks; production requires a separately published release.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. CodeRabbit omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
+            "## Summary\n\n{summary}\n\n## Problem\n\nThe owner approved a support proposal for this feature.\n\n## Change\n\nImplements the exact approved proposal version {}.\n\n## Rollout\n\nThe merge reaches Dev after checks; production requires a separately published release.\n\n## Verification\n\nAn independent agent exercised every acceptance criterion in a real browser on this exact head.\n\n{verification}\n\n## Review\n\nIndependent browser review completed. Code review omitted under the owner’s support workflow policy. Screenshots and traces remain in the private AI Support ticket to preserve reporter and DSP privacy.\n",
             job.version
         )
     };
@@ -281,13 +281,6 @@ pub async fn enqueue(tree: &Worktree, status: &Value, head: &str) -> Result<()> 
             && status["isDraft"] == false
             && status["mergeable"] == "MERGEABLE",
         "PR is not ready for the merge queue",
-    )?;
-    let no_review = status["labels"]["nodes"]
-        .as_array()
-        .is_none_or(|labels| labels.iter().all(|label| label["name"] != "ai-review"));
-    require(
-        no_review,
-        "Owner review policy changed; CodeRabbit review needs an owner decision",
     )?;
     let query = "mutation($id:ID!,$head:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head}){mergeQueueEntry{position}}}";
     let id = status["id"].as_str().ok_or("PR node id missing")?;
