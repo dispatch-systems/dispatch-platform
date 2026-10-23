@@ -1,10 +1,9 @@
 import { GitMerge } from 'lucide-react';
 import { useState } from 'react';
-import type { Person, PersonDetails, PersonId, PersonTitle } from '../../api/index.js';
-import { giveTitle, splitOff, usePersonDetails } from '../../api/client.js';
+import type { GivenRole, Person, PersonDetails, PersonId } from '../../api/index.js';
+import { giveRole, splitOff, usePersonDetails } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { time } from '../../../../core/shell/frontend/lib/format.js';
-import { personTitles } from '../../../../core/manifest/api/generated/people-data.js';
 import {
   ConfirmDialog,
   DataState,
@@ -15,10 +14,11 @@ import {
   dataAmount,
   dataLabel,
   eventText,
+  givenLabel,
+  givenRoles,
   goesBy,
   shortId,
   sourceLabel,
-  titleLabel,
 } from '../driver-match.js';
 import { DataIcon } from '../parts/DataIcon.js';
 import { Face } from '../parts/Face.js';
@@ -28,7 +28,7 @@ import { MergeDialog } from './MergeDialog.js';
 import { SheetIds } from './SheetIds.js';
 
 /**
- * One person in full: their title, their IDs, what they appear in, their last fourteen days and
+ * One person in full: their role, their IDs, what they appear in, their last fourteen days and
  * history.
  */
 export function PersonSheet({
@@ -60,9 +60,9 @@ export function PersonSheet({
       <DataState data={details.data} error={details.error} retry={details.refresh}>
         {(data) => (
           <>
-            {/* A title keeps someone offboarded in the office: only the former keep theirs unseen. */}
+            {/* The former keep the role someone gave them, unseen, for when they come back. */}
             {data.person.role !== 'former' && (
-              <TitlePicker key={data.person.title ?? ''} person={data.person} />
+              <RolePicker key={data.person.given ?? ''} person={data.person} />
             )}
             <SheetIds person={data.person} today={today} onSplit={setSplitting} />
             <Appears data={data} />
@@ -124,32 +124,35 @@ function SheetTitle({ person }: { person: Person }) {
   );
 }
 
-/** Their title, saved as it's chosen; one that fails goes back to what it was. */
-function TitlePicker({ person }: { person: Person }) {
-  const [chosen, setChosen] = useState(person.title ?? '');
-  const save = useAction((title: PersonTitle | null) => giveTitle(person.code, title), {
+/**
+ * The role someone gave them, else Automatic, from their sources: saved as it's chosen; one
+ * that fails goes back to what it was.
+ */
+function RolePicker({ person }: { person: Person }) {
+  const [chosen, setChosen] = useState(person.given ?? '');
+  const save = useAction((role: GivenRole | null) => giveRole(person.code, role), {
     inline: true,
-    success: (title) =>
-      title ? `${person.name} is now ${titleLabel(title)}` : `${person.name} has no title`,
+    success: (role) =>
+      role ? `${person.name} is now ${givenLabel(role)}` : `${person.name}'s role is automatic`,
   });
   return (
-    <section className="driver-sheet-section" aria-labelledby="driver-title">
-      <h3 id="driver-title">Title</h3>
+    <section className="driver-sheet-section" aria-labelledby="driver-role">
+      <h3 id="driver-role">Role</h3>
       <ErrorBox message={save.error} />
       <select
-        aria-labelledby="driver-title"
+        aria-labelledby="driver-role"
         value={chosen}
         disabled={save.busy}
         onChange={async (event) => {
-          const title = event.target.value as PersonTitle | '';
-          setChosen(title);
-          if (!(await save.run(title || null))) setChosen(person.title ?? '');
+          const role = event.target.value as GivenRole | '';
+          setChosen(role);
+          if (!(await save.run(role || null))) setChosen(person.given ?? '');
         }}
       >
-        <option value="">None</option>
-        {personTitles.map((title) => (
-          <option key={title.id} value={title.id}>
-            {title.label}
+        <option value="">Automatic</option>
+        {givenRoles.map((role) => (
+          <option key={role.id} value={role.id}>
+            {role.label}
           </option>
         ))}
       </select>

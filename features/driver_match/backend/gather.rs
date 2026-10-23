@@ -3,7 +3,7 @@
 use super::person::{self, Context};
 use super::sources::{self, Days, DriverDepartments, Found, Key, Seen};
 use super::{FORMER_AFTER_DAYS, IdRow, current_ids};
-use crate::api::types::{Person, PersonTitle};
+use crate::api::types::{GivenRole, Person};
 use dispatch_core::{
     Result,
     db::Store,
@@ -18,8 +18,8 @@ pub(super) struct Gathered {
     pub days: Days,
     departments: DriverDepartments,
     driving: BTreeSet<Kind>,
-    /// The titles someone gave people, by their codes.
-    titles: BTreeMap<String, PersonTitle>,
+    /// The roles someone gave people, by their codes.
+    given: BTreeMap<String, GivenRole>,
     /// The first day that still counts as recent.
     recent: String,
     /// The DSP's systems, in their order.
@@ -54,8 +54,8 @@ pub(super) fn gather(store: &Store, dsp: &str) -> Result<Gathered> {
         .unwrap_or_default();
     let contacts_only = sources::contacts_only(&kinds);
     let db = store.dsp(dsp)?;
-    let titles = db
-        .query_as("SELECT code,title FROM person_titles", [])?
+    let given = db
+        .query_as("SELECT code,role FROM person_roles", [])?
         .into_iter()
         .collect();
     let every: Vec<IdRow> = current_ids(&db)?
@@ -76,7 +76,7 @@ pub(super) fn gather(store: &Store, dsp: &str) -> Result<Gathered> {
         days,
         departments,
         driving,
-        titles,
+        given,
         recent,
         sources,
         rows,
@@ -104,7 +104,7 @@ impl Gathered {
             activity: &self.activity,
             departments: &self.departments,
             driving: &self.driving,
-            titles: &self.titles,
+            given: &self.given,
             recent: &self.recent,
         };
         person::person(code, ids, &context)

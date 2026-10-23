@@ -5,9 +5,9 @@ mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
-    Appearance, DriverMatch, Evidence, EvidenceKind, IdLink, MatchCounts, Person, PersonDetails,
-    PersonEvent, PersonEventKind, PersonId, PersonRole, PersonTitle, Question, SourceDays,
-    Strength,
+    Appearance, DriverMatch, Evidence, EvidenceKind, GivenRole, IdLink, MatchCounts, Person,
+    PersonDetails, PersonEvent, PersonEventKind, PersonId, PersonRole, PersonTitle, Question,
+    SourceDays, Strength,
 };
 /// Its storage and what one pass reads, for the app's tests. Other features ask core's
 /// directory who an ID is.
@@ -35,7 +35,13 @@ pub const FEATURE: Feature = Feature {
         ("platform", &["driver_codes"]),
         (
             "dsp",
-            &["people", "person_ids", "people_apart", "person_titles"],
+            &[
+                "people",
+                "person_ids",
+                "people_apart",
+                "person_titles",
+                "person_roles",
+            ],
         ),
     ],
     migrations: &[
@@ -74,6 +80,11 @@ pub const FEATURE: Feature = Feature {
                 name: "person_titles",
                 apply: Sql(include_str!("migrations/dsp/0003_person_titles.sql")),
             },
+            Migration {
+                id: 4,
+                name: "person_roles",
+                apply: Sql(include_str!("migrations/dsp/0004_person_roles.sql")),
+            },
         ],
     }],
     maintenance: &[backend::maintenance::MAINTENANCE],
@@ -104,6 +115,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     dispatch_core::typescript!(
         cfg,
         IdLink,
+        GivenRole,
         Strength,
         EvidenceKind,
         PersonEventKind,

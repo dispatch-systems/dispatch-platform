@@ -12,8 +12,8 @@ use dispatch_core::{
 };
 use dispatch_cortex::{associates, discovery::Scope, meals};
 use dispatch_driver_match::{
-    DriverMatch, DriverMatchStore, EvidenceKind, IdLink, Person, PersonEventKind, PersonRole,
-    PersonTitle, Question, Strength,
+    DriverMatch, DriverMatchStore, EvidenceKind, GivenRole, IdLink, Person, PersonEventKind,
+    PersonRole, PersonTitle, Question, Strength,
 };
 use dispatch_driver_profiles::DriverProfilesStore;
 use dispatch_paycom::fixtures;
@@ -563,11 +563,13 @@ fn the_roster_says_who_drives_who_helps_and_who_has_left() {
     assert_eq!(person(&merged, &robin).role, PersonRole::Driver);
 }
 
-/// A title says what no source can: someone the roster lists as a driver is management once
-/// given one, to every feature, until it's taken away, offboarded too; someone who has left is
-/// still former; and a merge carries it to whoever keeps the IDs.
+/// A role someone gives says what no source can: someone the roster lists as a driver is
+/// management once given a title, to every feature, until it's taken away, offboarded too; a
+/// helper given Driver drives, and a driver given Helper only helps; someone given Offboarded is,
+/// however lately anything saw them; someone who has left is still former; and a merge carries
+/// it to whoever keeps the IDs.
 #[test]
-fn a_title_makes_someone_management_whatever_their_sources_show() {
+fn a_role_given_holds_whatever_their_sources_show() {
     dispatch_backend::install();
     let (_root, db, id, context) = ready();
     roster(
@@ -577,25 +579,35 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
             ("TDANA", "Dana Whitfield", "ACTIVE", "Driver, Helper"),
             ("TPAT", "Pat Quinn", "INACTIVE", "Driver"),
             ("TDMITRI", "Dmitri Volkov", "OFFBOARDED", "Driver"),
+            ("TCASEY", "Casey Lindqvist", "ACTIVE", "Helper"),
+            ("TSHAY", "Shay Okafor", "ACTIVE", "Driver"),
         ],
     );
     pass(&db, &id).unwrap();
     let before = db.driver_match(&id).unwrap();
-    let (dana, pat, dmitri) = (
+    let (dana, pat, dmitri, casey, shay) = (
         code(&before, AMAZON, "TDANA"),
         code(&before, AMAZON, "TPAT"),
         code(&before, AMAZON, "TDMITRI"),
+        code(&before, AMAZON, "TCASEY"),
+        code(&before, AMAZON, "TSHAY"),
     );
     let (antonio, tony) = (
         code(&before, PAYCOM, "E002"),
         code(&before, AMAZON, "TREYES"),
     );
-    db.set_title(&context, &dana, Some(PersonTitle::Dispatch))
+    let title = |title| Some(GivenRole::Title(title));
+    db.give_role(&context, &dana, title(PersonTitle::Dispatch))
         .unwrap();
-    db.set_title(&context, &pat, Some(PersonTitle::Owner))
+    db.give_role(&context, &pat, title(PersonTitle::Owner))
         .unwrap();
     // A dispatcher whose DA account Amazon offboarded still works in the office.
-    db.set_title(&context, &dmitri, Some(PersonTitle::Dispatch))
+    db.give_role(&context, &dmitri, title(PersonTitle::Dispatch))
+        .unwrap();
+    db.give_role(&context, &casey, Some(GivenRole::Driver))
+        .unwrap();
+    // On the roster as active, with a meal break lately, Shay is gone all the same.
+    db.give_role(&context, &shay, Some(GivenRole::Offboarded))
         .unwrap();
     let titled = db.driver_match(&id).unwrap();
     let role = |result: &DriverMatch, code: &str| {
@@ -611,6 +623,9 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
         role(&titled, &dmitri),
         (PersonRole::Office, Some(PersonTitle::Dispatch))
     );
+    assert_eq!(role(&titled, &casey), (PersonRole::Driver, None));
+    assert_eq!(role(&titled, &shay), (PersonRole::Offboarded, None));
+    assert_eq!(person(&titled, &shay).given, Some(GivenRole::Offboarded));
     let everyone = people::read(&db, &id).unwrap();
     let theirs = everyone.person(&dana).unwrap();
     assert_eq!(
@@ -620,7 +635,7 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
     let entry = db
         .platform
         .one(
-            "SELECT * FROM audit WHERE action='driver_match.titled' AND detail=?",
+            "SELECT * FROM audit WHERE action='driver_match.role_given' AND detail=?",
             [&dana],
         )
         .unwrap()
@@ -628,13 +643,17 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
     let data: Value = serde_json::from_str(s(&entry, "data")).unwrap();
     assert_eq!(
         data["changes"],
-        json!([{"field":"title","from":null,"to":"Dispatch"}])
+        json!([{"field":"role","from":null,"to":"Dispatch"}])
     );
-    db.set_title(&context, &dana, None).unwrap();
+    db.give_role(&context, &dana, Some(GivenRole::Helper))
+        .unwrap();
+    let helping = db.driver_match(&id).unwrap();
+    assert_eq!(role(&helping, &dana), (PersonRole::Helper, None));
+    db.give_role(&context, &dana, None).unwrap();
     let cleared = db.driver_match(&id).unwrap();
     assert_eq!(role(&cleared, &dana), (PersonRole::Driver, None));
-    // The person kept takes the title of the one merged into them, unless they have their own.
-    db.set_title(&context, &tony, Some(PersonTitle::FleetManager))
+    // The person kept takes the role of the one merged into them, unless they have their own.
+    db.give_role(&context, &tony, title(PersonTitle::FleetManager))
         .unwrap();
     db.merge_people(&context, &tony, &antonio).unwrap();
     let merged = db.driver_match(&id).unwrap();
@@ -653,9 +672,9 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
     let data: Value = serde_json::from_str(s(&entry, "data")).unwrap();
     assert_eq!(
         data["changes"][1],
-        json!({"field":"title","from":null,"to":"Fleet Manager"})
+        json!({"field":"role","from":null,"to":"Fleet Manager"})
     );
-    db.set_title(&context, &dana, Some(PersonTitle::Dispatch))
+    db.give_role(&context, &dana, title(PersonTitle::Dispatch))
         .unwrap();
     db.merge_people(&context, &dana, &antonio).unwrap();
     let kept = db.driver_match(&id).unwrap();
@@ -663,9 +682,9 @@ fn a_title_makes_someone_management_whatever_their_sources_show() {
         role(&kept, &antonio),
         (PersonRole::Office, Some(PersonTitle::FleetManager))
     );
-    // A title for a code merged into another was chosen on a page since out of date.
+    // A role for a code merged into another was chosen on a page since out of date.
     let stale = db
-        .set_title(&context, &tony, Some(PersonTitle::Manager))
+        .give_role(&context, &tony, title(PersonTitle::Manager))
         .unwrap_err();
     assert_eq!(stale.code, "person_changed");
 }

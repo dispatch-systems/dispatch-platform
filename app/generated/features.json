@@ -317,7 +317,7 @@
         "POST /api/dsp/driver-match/split",
         "POST /api/dsp/driver-match/apart",
         "POST /api/dsp/driver-match/confirm",
-        "POST /api/dsp/driver-match/title"
+        "POST /api/dsp/driver-match/role"
       ],
       "exposes": [
         {
@@ -336,6 +336,7 @@
         "people",
         "people_apart",
         "person_ids",
+        "person_roles",
         "person_titles"
       ],
       "platform": [

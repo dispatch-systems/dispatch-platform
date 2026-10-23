@@ -51,21 +51,27 @@ test('Driver Match answers only to its own permission, and its decisions to thei
       .status,
     400,
   );
-  // A title is one of the list, and every feature asking the directory sees it at once.
+  // A role given is a title or one the sources may get wrong, and every feature asking the
+  // directory sees it at once.
   const here = result.people.find((person) => person.role !== 'former')!;
   const directory = `/api/dsp/people/${here.code}`;
-  assert.equal((await owner.read(directory)).title, null);
-  const title = (body: object) => owner.post('/api/dsp/driver-match/title', body);
+  const before = await owner.read(directory);
+  assert.equal(before.title, null);
+  const give = (body: object) => owner.post('/api/dsp/driver-match/role', body);
   for (const body of [
-    { code: here.code, title: 'boss' },
+    { code: here.code, role: 'boss' },
+    { code: here.code, role: 'office' },
     { code: here.code },
-    { code: 'short', title: 'owner' },
-    { code: here.code, title: 'owner', extra: true },
+    { code: 'short', role: 'owner' },
+    { code: here.code, role: 'owner', extra: true },
   ])
-    assert.equal((await title(body)).status, 400);
-  assert.deepEqual((await title({ code: here.code, title: 'dispatch' })).value, { ok: true });
+    assert.equal((await give(body)).status, 400);
+  assert.deepEqual((await give({ code: here.code, role: 'dispatch' })).value, { ok: true });
   const titled = await owner.read(directory);
   assert.deepEqual([titled.role, titled.title], ['office', 'dispatch']);
-  await title({ code: here.code, title: null });
-  assert.equal((await owner.read(directory)).title, null);
+  await give({ code: here.code, role: 'offboarded' });
+  const offboarded = await owner.read(directory);
+  assert.deepEqual([offboarded.role, offboarded.title], ['offboarded', null]);
+  await give({ code: here.code, role: null });
+  assert.equal((await owner.read(directory)).role, before.role);
 });

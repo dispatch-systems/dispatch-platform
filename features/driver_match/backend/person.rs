@@ -4,7 +4,7 @@ use super::IdRow;
 use super::contacts::Contact;
 use super::photos;
 use super::sources::{DriverDepartments, Found, Identity, Key, Seen};
-use crate::api::types::{Person, PersonId, PersonRole, PersonTitle};
+use crate::api::types::{GivenRole, Person, PersonId, PersonRole};
 use dispatch_core::{
     foundation::names,
     manifest::people::{Kind, Source},
@@ -49,26 +49,30 @@ pub(super) struct Context<'a> {
     pub departments: &'a DriverDepartments,
     /// The kinds whose records show someone driving.
     pub driving: &'a BTreeSet<Kind>,
-    /// The titles someone gave people, by their codes.
-    pub titles: &'a BTreeMap<String, PersonTitle>,
+    /// The roles someone gave people, by their codes.
+    pub given: &'a BTreeMap<String, GivenRole>,
     /// The first day that still counts as recent.
     pub recent: &'a str,
 }
 
-/// What a person does for the DSP: a source says the DSP offboarded them and none of their
-/// IDs there is on its roster as active, they are offboarded, unless someone gave them a
-/// title; no roster lists them and nothing has seen them lately, they have left, unless only
-/// lists of people the DSP can reach know them, and one still does, so they work in the
-/// office; someone gave them a title, they are management; none of their sources shows them
-/// driving and the departments the DSP counts as drivers leave them out, they work in the
-/// office; else the roles their sources give say whether they drive or only help.
+/// What a person does for the DSP: someone said they were offboarded, they are; a source says
+/// the DSP offboarded them and none of their IDs there is on its roster as active, they are
+/// offboarded, unless someone gave them a role; no roster lists them and nothing has seen them
+/// lately, they have left, unless only lists of people the DSP can reach know them, and one
+/// still does, so they work in the office; someone gave them a role, they have it, management
+/// for a title; none of their sources shows them driving and the departments the DSP counts as
+/// drivers leave them out, they work in the office; else the roles their sources give say
+/// whether they drive or only help.
 fn role(
     keys: &[Key],
     described: &[&Identity],
     last_seen: Option<&str>,
-    titled: bool,
+    given: Option<GivenRole>,
     context: &Context,
 ) -> PersonRole {
+    if given == Some(GivenRole::Offboarded) {
+        return PersonRole::Offboarded;
+    }
     // Offboarded, they have left however lately anything saw them, and whatever another source,
     // as a payroll slow to let them go, says; another ID of that source on its roster as active,
     // as a rehire's, says they are back. One there as inactive, as for Former, says nothing.
@@ -77,7 +81,7 @@ fn role(
         .filter(|x| x.offboarded)
         .map(|x| x.source)
         .collect();
-    if !titled
+    if given.is_none()
         && !offboarded.is_empty()
         && !described
             .iter()
@@ -97,9 +101,10 @@ fn role(
             PersonRole::Former
         };
     }
-    // A title says what no source can: a dispatcher who covers a route is still dispatch.
-    if titled {
-        return PersonRole::Office;
+    // A role someone gave says what no source can: a dispatcher who covers a route is still
+    // dispatch, and a driver payroll files under the office still drives.
+    if let Some(given) = given {
+        return given.role();
     }
     // Driving shows in a source that says what they do, or in records of a kind that says each
     // shows them driving (`.driving()`).
@@ -155,14 +160,8 @@ pub(super) fn person(code: &str, ids: &[(&IdRow, Source)], context: &Context) ->
         .flat_map(|data| data.values().filter_map(|s| s.last.clone()))
         .chain(described.iter().filter_map(|x| x.last_seen.clone()))
         .max();
-    let title = context.titles.get(code).copied();
-    let role = role(
-        &keys,
-        &described,
-        last_seen.as_deref(),
-        title.is_some(),
-        context,
-    );
+    let given = context.given.get(code).copied();
+    let role = role(&keys, &described, last_seen.as_deref(), given, context);
     Person {
         code: code.to_owned(),
         // An ID no source holds any more names a person no source describes.
@@ -171,7 +170,10 @@ pub(super) fn person(code: &str, ids: &[(&IdRow, Source)], context: &Context) ->
             .unwrap_or_default(),
         role,
         // Someone who has left keeps their title for when they come back.
-        title: title.filter(|_| !role.left()),
+        title: given
+            .and_then(GivenRole::title)
+            .filter(|_| !role.left()),
+        given,
         ids: ids
             .iter()
             .map(|(row, source)| row.public(*source, context.found))

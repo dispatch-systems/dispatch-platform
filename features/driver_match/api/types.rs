@@ -35,6 +35,101 @@ impl IdLink {
         self == Self::Person
     }
 }
+/// A role someone gave a person, whatever their sources say: a driver, a helper, offboarded,
+/// or management under a title. Stored and sent as the role's id, or the title's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GivenRole {
+    Driver,
+    Helper,
+    Offboarded,
+    Title(PersonTitle),
+}
+impl GivenRole {
+    /// Every one, in the order they are offered: the roles, then the titles.
+    pub fn all() -> impl Iterator<Item = Self> {
+        [Self::Driver, Self::Helper, Self::Offboarded]
+            .into_iter()
+            .chain(PersonTitle::ALL.map(Self::Title))
+    }
+    /// What they do for the DSP once given it: management, for a title.
+    pub const fn role(self) -> PersonRole {
+        match self {
+            Self::Driver => PersonRole::Driver,
+            Self::Helper => PersonRole::Helper,
+            Self::Offboarded => PersonRole::Offboarded,
+            Self::Title(_) => PersonRole::Office,
+        }
+    }
+    pub const fn title(self) -> Option<PersonTitle> {
+        match self {
+            Self::Title(title) => Some(title),
+            _ => None,
+        }
+    }
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Title(title) => title.as_str(),
+            role => role.role().as_str(),
+        }
+    }
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::all().find(|given| given.as_str() == text)
+    }
+    /// The role as people read it: "Driver", "OPs Manager".
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Driver => "Driver",
+            Self::Helper => "Helper",
+            Self::Offboarded => "Offboarded",
+            Self::Title(title) => title.label(),
+        }
+    }
+}
+impl Serialize for GivenRole {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+impl rusqlite::types::ToSql for GivenRole {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+impl rusqlite::types::FromSql for GivenRole {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        value
+            .as_str()
+            .and_then(|text| Self::parse(text).ok_or(rusqlite::types::FromSqlError::InvalidType))
+    }
+}
+// Its TypeScript is the union of every one's id, in their order.
+#[cfg(feature = "ts")]
+impl ts_rs::TS for GivenRole {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    const IS_ENUM: bool = true;
+    fn docs() -> Option<String> {
+        Some("/**\n * A role someone gave a person, by its id or its title's.\n */\n".to_owned())
+    }
+    fn name(_: &ts_rs::Config) -> String {
+        "GivenRole".to_owned()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        let ids: Vec<_> = Self::all()
+            .map(|given| format!("{:?}", given.as_str()))
+            .collect();
+        ids.join(" | ")
+    }
+    fn decl(cfg: &ts_rs::Config) -> String {
+        format!("type GivenRole = {};", Self::inline(cfg))
+    }
+    fn decl_concrete(cfg: &ts_rs::Config) -> String {
+        Self::decl(cfg)
+    }
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some("features/driver_match/api/generated/GivenRole.ts".into())
+    }
+}
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/driver_match/api/generated/"))]
@@ -108,6 +203,8 @@ pub struct Person {
     pub role: PersonRole,
     /// Their title, while they are still there.
     pub title: Option<PersonTitle>,
+    /// The role someone gave them, which `role` follows unless they have left.
+    pub given: Option<GivenRole>,
     pub ids: Vec<PersonId>,
     /// Their photo's version, when a feature holds one: its address carries it.
     pub photo: Option<String>,
