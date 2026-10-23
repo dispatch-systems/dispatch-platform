@@ -205,7 +205,6 @@ export function Shell({
   const openedAction = actions.find((action) => action.id === accountAction);
   const drawer = useRef<HTMLElement>(null);
   const name = `${session.user.firstName} ${session.user.lastName}`;
-  const workspace = view?.dsp.name ?? (session.user.platformOwner ? 'Platform' : 'Workspace');
   const source = sourceLink(session.source);
   useEffect(() => {
     document.title = `${label} · Dispatch`;
@@ -317,7 +316,6 @@ export function Shell({
         </button>
         <div className="sidebar-brand">
           <Brand />
-          <p>{workspace}</p>
         </div>
         <SidebarPanels
           shown={list.shown}
