@@ -36,6 +36,11 @@ export function Panel({
   useEffect(() => {
     if (!leaving) closer.current?.focus();
   }, [leaving]);
+  // Closed before its slide in has moved, it's still at the edge, with no slide back to wait
+  // for: it's gone at once.
+  useEffect(() => {
+    if (leaving && panel.current?.getAnimations().length === 0) gone();
+  }, [leaving, gone]);
   useEffect(() => {
     if (docked || leaving) return;
     // A press on what opens it is that control's own: it closes it.

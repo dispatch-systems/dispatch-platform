@@ -80,10 +80,11 @@ test('an owner connects Slack from Communications, answers a member as they writ
 
   // Who it's with, above, opens their profile over the conversation, and Escape closes it, back
   // to where it opened; their photo by their messages opens it too, its X closes it, back to that
-  // photo, and a press elsewhere closes it.
+  // photo, and a press elsewhere closes it. Closed, it slides away and is gone: looked for hidden
+  // too, as it is while it slides.
   const opensProfile = conversation.getByRole('button', { name: /^Jordan Ellis/ });
   await opensProfile.first().click();
-  const profile = page.getByRole('dialog', { name: 'Jordan Ellis' });
+  const profile = page.getByRole('dialog', { name: 'Jordan Ellis', includeHidden: true });
   await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
   await expect(profile).toContainText('jordan.ellis@example.com');
   await expect(profile).toContainText('Operations');
@@ -100,6 +101,17 @@ test('an owner connects Slack from Communications, answers a member as they writ
   });
   await page.keyboard.press('Enter');
   await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(profile).toHaveCount(0);
+  await expect(opensProfile.first()).toBeFocused();
+  // Closed before its slide in has moved, held there at the edge, it's gone all the same.
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    for (const sliding of document.getAnimations()) {
+      sliding.pause();
+      sliding.currentTime = 0;
+    }
+  });
   await page.keyboard.press('Escape');
   await expect(profile).toHaveCount(0);
   await expect(opensProfile.first()).toBeFocused();
