@@ -58,8 +58,10 @@ through a cache keyed by their exact inputs and the compiler's fingerprint.
 API tests, one at a time, a line each. Each run builds in a folder of its own under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
 and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
-builds and several can test at once. Its commands run in a systemd scope with a low CPU
-weight, a soft memory ceiling and a high out-of-memory score, so Dev keeps priority.
+builds and several can test at once. Its commands, like `check`'s and `verify`'s, run in
+systemd scopes of one slice, `app-dispatchdev.slice`, which shares a low CPU weight and a
+memory ceiling between them, so Dev keeps priority. They are the first the out-of-memory killer
+ends, before the agents' sessions, and stop when the session that started them ends.
 `dispatchdev test --owner <owner>` runs one owner's tests of every kind the same way, as
 `tooling/testing/owner-tests.ts` lists them, with the debug package for its browser tests;
 `--only` keeps one kind and `--file` one file. `dispatchdev verify <feature>` looks at a feature
