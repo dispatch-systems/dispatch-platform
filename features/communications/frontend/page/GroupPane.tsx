@@ -111,7 +111,7 @@ export function GroupPane({
           </>
         )}
       </header>
-      {people.open && group && (
+      {people.drawn && group && (
         <GroupPeople
           id={people.id}
           group={group}
@@ -119,7 +119,9 @@ export function GroupPane({
           timeZone={timeZone}
           now={now}
           docked={docked}
+          leaving={!people.open}
           close={people.close}
+          gone={people.gone}
           open={open}
         />
       )}
