@@ -21,6 +21,12 @@ part. Mandatory: every DSP has it.
   in the app's place. It is the navigation drawer on a narrow screen.
   Shared pages are core's, and few: a new one's icon goes in `frontend/sidebar/icons.ts`, by its
   id, or it shows a plain one.
+- **A page in Settings:** a feature puts a page of its own there, rather than in the app's
+  sidebar, by naming Settings' sidebar its `parent` (`parent: 'settings'`). The sidebar lists it
+  under Features, in its feature's place, while the person may open it, with its icon and its
+  badge, and its search finds it by its name. It opens at its own address, which no page of
+  Settings shares, with the sidebar beside it, and the feature's page draws all of it, its
+  header too. The app's sidebar keeps Settings' item where Settings' own page is.
 - **Its search** runs over what the server answered for the open DSP: page and section names,
   field and option labels, a section's `keywords`, its `sources` (the collectors its data comes
   from) and values held as text. Every word typed begins a word there, in any case; it finds a

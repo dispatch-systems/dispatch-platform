@@ -1,20 +1,17 @@
-import type {
-  SettingsField,
-  SettingsPage,
-  SettingsSection,
-} from '../../../../core/settings/api/index.js';
+import type { SettingsField, SettingsSection } from '../../../../core/settings/api/index.js';
+import type { ListedPage } from '../pages.js';
 
 // Settings' search: what a member types, matched against what each page of theirs holds: its
 // name, its sections' names, their fields' and options' labels, the words they are also known
 // by, the collectors their data comes from, and the values held as text. Every word typed must
 // begin a word of one of those, in any case, as "sched" begins "schedules". A page is found
-// once, by the best of what matched on it.
+// once, by the best of what matched on it; a page a feature puts under Settings, by its name.
 
 /** Text, with what a search matched in it marked. */
 export type Marked = readonly { text: string; mark?: true }[];
 /** A page the search found, and what on it matched. */
 export type Found = {
-  page: SettingsPage;
+  page: ListedPage;
   /** The page's name, marked where it matched. */
   name: Marked;
   /** What on it matched, or, when its name did, the sections it holds. */
@@ -32,7 +29,7 @@ type Match = { rank: number; what?: Marked; section?: string };
 
 /** The pages `query` finds among those given, best first, else in their order. */
 export function search(
-  pages: readonly SettingsPage[],
+  pages: readonly ListedPage[],
   sections: readonly SettingsSection[],
   query: string,
 ): Found[] {
@@ -94,7 +91,7 @@ const best = (found: readonly Match[]) =>
   );
 
 /** A page's sections, but one named as the page is, as the line under a page whose name matched. */
-function listed(page: SettingsPage, on: readonly SettingsSection[]) {
+function listed(page: ListedPage, on: readonly SettingsSection[]) {
   const labels = on.map((section) => section.label).filter((label) => label !== page.label);
   return labels.length ? plain(labels.join(', ')) : undefined;
 }

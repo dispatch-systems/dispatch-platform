@@ -1,6 +1,7 @@
 //! `dispatchdev start <name>`: a worktree for one change, on a branch of the same name from
-//! `origin/main` (or `--from`), with its packages installed and its scratch folder made. First,
-//! the changes that merged go, as `finish` would remove them.
+//! `origin/main` (or `--from`), with its packages installed and its scratch folder made, and with
+//! `--preview` its preview building. First, the changes that merged go, as `finish` would remove
+//! them.
 use crate::{
     REPOSITORY, Result, Runner,
     change::Change,
@@ -13,8 +14,18 @@ use serde_json::Value;
 /// 7 GB once tested.
 pub const LOW_DISK: u64 = 20_000_000_000;
 
-pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Result<()> {
+pub fn run(
+    ws: &Workspace,
+    name: &str,
+    from: &str,
+    preview: bool,
+    runner: &dyn Runner,
+) -> Result<()> {
     let change = Change::named(ws, name)?;
+    if preview {
+        // Missing, the preview's address stops it before anything is made.
+        crate::preview::host()?;
+    }
     let path = &change.path;
     require(!path.exists(), &format!("worktrees/{name} exists already."))?;
     sweep(ws, runner);
@@ -59,6 +70,13 @@ pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Resul
         workspace::duration(took)
     );
     println!("Scratch: {}", scratch.display());
+    if preview {
+        let port = crate::preview::begin(name, false, runner)?;
+        println!(
+            "Its preview is building on port {port}; dispatchdev preview {name} --page <page> \
+             prints its link once it's up."
+        );
+    }
     disk(ws, runner)?;
     // A change's name with hyphens is a feature's with underscores.
     let feature = name.replace('-', "_");

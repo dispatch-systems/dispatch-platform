@@ -21,6 +21,8 @@ pub struct Pull {
     pub url: String,
     /// `OPEN`, `CLOSED` or `MERGED`.
     pub state: String,
+    /// The commit its branch was at, last.
+    pub head: String,
     /// Its squash commit on `main`, once it merged.
     pub merge: Option<String>,
 }
@@ -86,7 +88,7 @@ impl Change {
                 "--state",
                 "all",
                 "--json",
-                "number,url,state,mergeCommit",
+                "number,url,state,headRefOid,mergeCommit",
                 "--limit",
                 "1",
             ],
@@ -96,6 +98,7 @@ impl Change {
             number: pr["number"].as_u64().unwrap_or(0),
             url: pr["url"].as_str().unwrap_or("").to_owned(),
             state: pr["state"].as_str().unwrap_or("").to_owned(),
+            head: pr["headRefOid"].as_str().unwrap_or("").to_owned(),
             merge: pr["mergeCommit"]["oid"].as_str().map(str::to_owned),
         }))
     }
@@ -195,13 +198,14 @@ mod tests {
         );
 
         let merged = GitHub(
-            r#"[{"number":7,"url":"https://github.com/pull/7","state":"MERGED","mergeCommit":{"oid":"3333333"}}]"#,
+            r#"[{"number":7,"url":"https://github.com/pull/7","state":"MERGED","headRefOid":"1111111","mergeCommit":{"oid":"3333333"}}]"#,
         );
         let pull = change.pull(&merged).unwrap().unwrap();
         assert!(pull.merged() && !pull.open());
         assert_eq!(pull.merge.as_deref(), Some("3333333"));
+        assert_eq!(pull.head, "1111111");
         let open = GitHub(
-            r#"[{"number":8,"url":"https://github.com/pull/8","state":"OPEN","mergeCommit":null}]"#,
+            r#"[{"number":8,"url":"https://github.com/pull/8","state":"OPEN","headRefOid":"2222222","mergeCommit":null}]"#,
         );
         let pull = change.pull(&open).unwrap().unwrap();
         assert!(pull.open() && pull.merge.is_none());

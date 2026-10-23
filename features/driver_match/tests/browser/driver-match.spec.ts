@@ -8,10 +8,17 @@ test('Driver Match asks who might be listed twice and makes them one person', as
   const dsp = await seedDriverMatch(dispatch);
   await login(page);
   await openDsp(page, 'Northline Logistics');
-  // Its page in the sidebar counts three pairs and a second surname to confirm.
-  const link = page.getByRole('link', { name: /^Driver Match/ });
+  // Its page is in Settings, under Features, not in the app's sidebar, and counts three pairs
+  // and a second surname to confirm.
+  const app = page.getByRole('navigation', { name: 'Primary navigation' });
+  await expect(app.getByRole('link', { name: /^Driver Match/ })).toHaveCount(0);
+  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  const link = page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('group', { name: 'Features' })
+    .getByRole('link', { name: /^Driver Match/ });
   await expect(link).toContainText('4');
-  // A link to where it was, a tab of Settings, opens it.
+  // A link to where it was, a tab of Settings, opens it, Settings' sidebar beside it.
   await page.goto(`/#dsp/${dsp.id}/settings?tab=driver-match`);
   await expect(page).toHaveURL(new RegExp(`#dsp/${dsp.id}/driver-match$`));
   await expect(link).toHaveAttribute('aria-current', 'page');

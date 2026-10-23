@@ -18,18 +18,19 @@ what was decided.
   one is disconnected.
 - **Permission:** `driver_match.manage`, to see everyone's codes, decide who is whom and give
   people roles.
-- **Its page**, `driver-match` in a DSP's sidebar, is listed while the DSP has a feature on
+- **Its page**, `driver-match`, is a page of Settings, under Features (its `parent` is
+  Settings' sidebar), not of the app's sidebar. It is listed while the DSP has a feature on
   whose data names people, for those who hold `driver_match.manage`: the questions the backend
   sends, asked one at a time, then everyone, by role or a source lacking them, with their
   photo, from core's `/api/dsp/people/{code}/photo`, and their title or role: as a list, a row
   each with their ID in each source or the source lacking them, sortable and a hundred a page,
   or as cards, a card each with the sources that have them. A switch across from the page's
   name chooses, a list until someone picks cards, kept in their browser as Documents keeps its
-  layout. A person's sheet gives them a role. Beside its name in the
+  layout. A person's sheet gives them a role. Beside its name in Settings'
   sidebar, how many of those questions wait: the server keeps one count for all of the DSP's
   managers until a decision or a collection changes it, and the sidebar reads it again after
   each decision, after a collection a page following collections hears, and every five
-  minutes. It was a tab of Settings: a link to `settings?tab=driver-match` opens it.
+  minutes. It was a tab of Settings once: a link to `settings?tab=driver-match` opens it.
 - **API**, all behind `driver_match.manage`: `GET /api/dsp/driver-match` (the sources on, the
   questions waiting, as pairs that may be one person or name variants to confirm, by people's
   codes, and everyone), `…/counts` (how many questions wait), `…/people/{code}` (one person's

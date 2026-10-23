@@ -1,7 +1,8 @@
-//! `dispatchdev pr <name> --title <title> --body <file>`: the change's PR, opened or updated
-//! once its title and body follow the rules: they become the squash commit on `main`, and
-//! the release notes take its summary. `--skeleton` in place of `--body` starts the body with
-//! the sections the title's type needs.
+//! `dispatchdev pr <name>`: the change's PR, opened or updated once its title and body follow
+//! the rules: they become the squash commit on `main`, and the release notes take its summary.
+//! Both come from the change's scratch folder's `pr-body.md`, whose first line is `# <title>`,
+//! unless `--body` names another file or `--title` gives the title. `--skeleton --title`
+//! starts that file with its title and the sections the title's type needs.
 use crate::{
     REPOSITORY, Result, Runner,
     change::Change,
@@ -122,7 +123,9 @@ pub fn check_body(title: &str, body: &str) -> Result<()> {
 /// answers them. It never writes over a body begun already.
 pub fn skeleton(title: &str, path: &Path) -> Result<&'static [&'static str]> {
     let wanted = sections(title)?;
-    let text: Vec<String> = wanted.iter().map(|name| format!("## {name}\n")).collect();
+    let text: Vec<String> = std::iter::once(format!("# {title}\n"))
+        .chain(wanted.iter().map(|name| format!("## {name}\n")))
+        .collect();
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -138,36 +141,57 @@ pub fn skeleton(title: &str, path: &Path) -> Result<&'static [&'static str]> {
     file.write_all(text.join("\n").as_bytes())?;
     Ok(wanted)
 }
-/// `dispatchdev pr <name> --skeleton --title <title>`: the body's sections, in the change's
-/// scratch folder, where `pr` reads it from.
+/// Where a change's PR body is written, its title on the first line.
+pub fn body_file(change: &Change) -> std::path::PathBuf {
+    change.scratch().join("pr-body.md")
+}
+/// A body's title, when its first line is `# <title>`, and the body after that line.
+pub fn titled(text: &str) -> (Option<&str>, &str) {
+    let (first, rest) = text.split_once('\n').unwrap_or((text, ""));
+    match first.strip_prefix("# ") {
+        Some(title) => (Some(title.trim()), rest.trim_start_matches('\n')),
+        None => (None, text),
+    }
+}
+
+/// `dispatchdev pr <name> --skeleton --title <title>`: the body's title and sections, in the
+/// change's scratch folder, where `pr` and `ship` read it from.
 pub fn start_body(ws: &Workspace, name: &str, title: &str) -> Result<()> {
-    let body = Change::existing(ws, name)?
-        .scratch_dir()?
-        .join("pr-body.md");
+    let change = Change::existing(ws, name)?;
+    change.scratch_dir()?;
+    let body = body_file(&change);
     let wanted = skeleton(title, &body)?;
     println!("Wrote {}: {}.", body.display(), wanted.join(", "));
     println!(
         "{}",
         workspace::next(&[format!(
-            "Write each section, then `dispatchdev pr {name} --title {} --body {}`.",
-            workspace::quote(title),
-            body.display()
+            "Write each section; then `dispatchdev pr {name}` opens the PR, or `dispatchdev ship \
+             {name}` opens and merges it."
         )])
     );
     Ok(())
 }
 
+/// Opens the change's PR, or updates the one open, from the body in `body` and `title` or the
+/// body's own; returns its number.
 pub fn run(
     ws: &Workspace,
     name: &str,
-    title: &str,
+    title: Option<&str>,
     body: &std::path::Path,
     runner: &dyn Runner,
-) -> Result<()> {
+) -> Result<u64> {
     let change = Change::existing(ws, name)?;
     let text =
         std::fs::read_to_string(body).map_err(|_| format!("Couldn't read {}.", body.display()))?;
-    check_body(title, &text)?;
+    let (own, text) = titled(&text);
+    let title = title.or(own).ok_or_else(|| {
+        format!(
+            "{} has no title: start it with a line # <title>, or give --title.",
+            body.display()
+        )
+    })?;
+    check_body(title, text)?;
     require(
         !change.dirty(runner)?,
         "Commit the change before opening its PR.",
@@ -177,49 +201,32 @@ pub fn run(
         &format!("worktrees/{name} isn't on its branch."),
     )?;
     change.git(runner, &["push", "-q", "-u", "origin", name])?;
-    let body = body.to_str().ok_or("Non-UTF8 path")?;
     if let Some(pr) = change.pull(runner)?.filter(|pr| pr.open()) {
         let number = pr.number.to_string();
         workspace::text(
             runner,
             &[
-                "gh",
-                "pr",
-                "edit",
-                &number,
-                "--repo",
-                REPOSITORY,
-                "--title",
-                title,
-                "--body-file",
-                body,
+                "gh", "pr", "edit", &number, "--repo", REPOSITORY, "--title", title, "--body", text,
             ],
             None,
         )?;
         println!("Updated #{number}: {}", pr.url);
+        Ok(pr.number)
     } else {
         let url = workspace::text(
             runner,
             &[
-                "gh",
-                "pr",
-                "create",
-                "--repo",
-                REPOSITORY,
-                "--base",
-                "main",
-                "--head",
-                name,
-                "--title",
-                title,
-                "--body-file",
-                body,
+                "gh", "pr", "create", "--repo", REPOSITORY, "--base", "main", "--head", name,
+                "--title", title, "--body", text,
             ],
             None,
         )?;
         println!("Opened {url}");
+        url.rsplit('/')
+            .next()
+            .and_then(|number| number.parse().ok())
+            .ok_or_else(|| format!("GitHub opened the PR at {url}, without its number.").into())
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -265,6 +272,16 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let body = temp.path().join("pr-body.md");
         skeleton("fix(dvic): keep the week when paging", &body).unwrap();
+        let begun = std::fs::read_to_string(&body).unwrap();
+        assert!(begun.starts_with("# fix(dvic): keep the week when paging\n\n## Summary\n"));
+        assert_eq!(
+            titled(&begun),
+            (
+                Some("fix(dvic): keep the week when paging"),
+                begun.split_once("\n\n").unwrap().1
+            )
+        );
+        assert_eq!(titled("## Summary\n"), (None, "## Summary\n"));
         std::fs::write(&body, "## Summary\n\nKept the week.\n").unwrap();
         let refused = skeleton("fix(dvic): keep the week when paging", &body).unwrap_err();
         assert!(refused.to_string().contains("exists already"), "{refused}");

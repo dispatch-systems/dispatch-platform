@@ -1,13 +1,113 @@
-//! `dispatchdev ship <number>`: add a PR to the merge queue as soon as GitHub admits it and
-//! wait until GitHub merges it. The queue runs the checks on the exact squash commit it will
-//! push, so nothing but the admission check runs on the PR itself. A head that failed the
-//! checks `dispatchdev ci` ran on its branch is not queued, and those still running are
-//! cancelled when it is. Everything is read from
-//! GitHub's API, never from a command's text: a newer push is queued in its turn, and the wait
-//! stops with the reason when the PR closes or leaves the queue unmerged, naming the failed
-//! jobs of its queue run.
-use crate::{REPOSITORY, Result, Runner, check};
+//! `dispatchdev ship <name>`: a change from its committed worktree to Dev. It runs the check
+//! before a push, opens or updates the PR from the body in the change's scratch folder, adds it
+//! to the merge queue as soon as GitHub admits it, waits until GitHub merges it, removes all
+//! the change made, and waits until Dev runs the merge. Run again after a stop, it picks up
+//! where it stopped: a change whose PR merged with what its worktree holds goes straight to
+//! the clean-up.
+//!
+//! The queue runs the checks on the exact squash commit it will push, so nothing but the
+//! admission check runs on the PR itself. A head that failed the checks `dispatchdev ci` ran on
+//! its branch is not queued, and those still running are cancelled when it is. Everything is
+//! read from GitHub's API, never from a command's text: a newer push is queued in its turn, and
+//! the wait stops with the reason when the PR closes or leaves the queue unmerged, naming the
+//! failed jobs of its queue run.
+use crate::{
+    REPOSITORY, Result, Runner,
+    change::Change,
+    check, finish, pr, require,
+    workspace::{self, Workspace},
+};
 use serde_json::Value;
+use std::time::Instant;
+
+/// A stop with an exit code of its own: `OWNER` when the owner has to decide, `MERGED` once the
+/// PR merged, so it's never shipped again. Any other stop exits with 1: fix it and ship again.
+#[derive(Debug)]
+pub struct Exit {
+    pub code: i32,
+    pub message: String,
+}
+pub const OWNER: i32 = 2;
+pub const MERGED: i32 = 3;
+impl std::fmt::Display for Exit {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+impl std::error::Error for Exit {}
+fn stop(code: i32, message: String) -> Box<dyn std::error::Error + Send + Sync> {
+    Box::new(Exit { code, message })
+}
+
+/// `dispatchdev ship <name>`, saying each step's outcome once.
+pub fn change(
+    ws: &Workspace,
+    name: &str,
+    runner: &dyn Runner,
+    pause: &dyn Fn(u64),
+    say: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let change = Change::existing(ws, name)?;
+    require(
+        !change.dirty(runner)?,
+        "Commit the change before shipping it.",
+    )?;
+    let head = change.git(runner, &["rev-parse", "HEAD"])?;
+    let body = pr::body_file(&change);
+    let text = std::fs::read_to_string(&body).map_err(|_| {
+        format!(
+            "Write the PR's body to {} first: dispatchdev pr {name} --skeleton --title <title> \
+             starts it.",
+            body.display()
+        )
+    })?;
+    let title = pr::titled(&text).0.unwrap_or("").to_owned();
+    let landed = change
+        .pull(runner)?
+        .filter(|pr| pr.merged() && pr.head == head);
+    let (number, merge) = match landed {
+        Some(pr) => {
+            say(&format!("#{} merged already.", pr.number));
+            (pr.number, pr.merge.unwrap_or_default())
+        }
+        None => {
+            check::before_push(&change.path, runner)?;
+            let number = pr::run(ws, name, None, &body, runner)?;
+            let queued = Instant::now();
+            let merge = run(number, runner, pause, say)?;
+            say(&format!(
+                "Merged #{number} {title} as {} after {} in the queue.",
+                merge.get(..8).unwrap_or(&merge),
+                workspace::duration(queued.elapsed())
+            ));
+            (number, merge)
+        }
+    };
+    let merged = |what: String| {
+        stop(
+            MERGED,
+            format!(
+                "#{number} merged as {}, but {what}. Don't ship it again: dispatchdev finish \
+                 {name} completes it.",
+                merge.get(..8).unwrap_or(&merge)
+            ),
+        )
+    };
+    let removed = change
+        .clean(ws, runner)
+        .map_err(|error| merged(format!("removing what it made stopped: {error}")))?;
+    if !removed.is_empty() {
+        say(&format!("Removed: {}.", removed.join(", ")));
+    }
+    let waited = Instant::now();
+    let live = finish::live(ws, &merge, runner)
+        .map_err(|error| merged(format!("Dev didn't install it: {error}")))?;
+    say(&format!(
+        "Live on Dev at {live} after {}.",
+        workspace::duration(waited.elapsed())
+    ));
+    Ok(())
+}
 
 /// Seconds between looks at the PR.
 pub(crate) const PAUSE: u64 = 10;
@@ -282,13 +382,16 @@ pub fn run(
             Some("MERGED") => {
                 return Ok(pr["mergeCommit"]["oid"].as_str().unwrap_or("").into());
             }
-            Some("CLOSED") => return Err(format!("#{number} was closed without merging").into()),
+            Some("CLOSED") => {
+                return Err(stop(OWNER, format!("#{number} was closed without merging")));
+            }
             _ => {}
         }
         if pr["isDraft"] == true {
-            return Err(
-                format!("#{number} is a draft; mark it ready for review, then ship it").into(),
-            );
+            return Err(stop(
+                OWNER,
+                format!("#{number} is a draft; mark it ready for review, then ship it"),
+            ));
         }
         let entry = &pr["mergeQueueEntry"];
         if entry.is_object() {
@@ -949,18 +1052,16 @@ mod tests {
     fn closed_and_draft_prs_stop_at_once() {
         let mut closed = open(OLD);
         closed["state"] = "CLOSED".into();
-        let error = ship(&github(vec![closed])).0.unwrap_err().to_string();
-        assert_eq!(error, "#7 was closed without merging");
+        let error = ship(&github(vec![closed])).0.unwrap_err();
+        assert_eq!(error.to_string(), "#7 was closed without merging");
+        // The owner decides what becomes of a closed or draft PR.
+        assert_eq!(error.downcast_ref::<Exit>().unwrap().code, OWNER);
         let mut draft = open(OLD);
         draft["isDraft"] = true.into();
         let github = github(vec![draft]);
-        assert!(
-            ship(&github)
-                .0
-                .unwrap_err()
-                .to_string()
-                .contains("is a draft")
-        );
+        let error = ship(&github).0.unwrap_err();
+        assert!(error.to_string().contains("is a draft"));
+        assert_eq!(error.downcast_ref::<Exit>().unwrap().code, OWNER);
         assert!(github.queued.borrow().is_empty());
     }
 

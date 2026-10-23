@@ -94,10 +94,12 @@ const ABOUT: usize = 60;
 const COMMANDS: &[Spec] = &[
     spec(
         "start",
-        &["start <name> [--from <ref>]"],
+        &["start <name> [--from <ref>]", "      [--preview]"],
         "A worktree and branch for the change from origin/main, its packages installed and its \
-         scratch folder made, once the changes whose PRs merged are removed as finish would.",
+         scratch folder made, once the changes whose PRs merged are removed as finish would; \
+         --preview also starts its preview's build without waiting for it.",
     )
+    .flags(&["--preview"])
     .options(&["--from"])
     .arguments(1),
     spec(
@@ -186,10 +188,11 @@ const COMMANDS: &[Spec] = &[
     .arguments(1),
     spec(
         "pr",
-        &["pr <name> --title <title>", "   --body <file> | --skeleton"],
-        "Check the title and body, push the branch, and open the PR or update it. --skeleton \
-         instead writes the sections the title's type needs to the scratch folder's \
-         pr-body.md, unless it's there already.",
+        &["pr <name> [--title <title>]", "   [--body <file> | --skeleton]"],
+        "Check the title and body, push the branch, and open the PR or update it. The body is \
+         the scratch folder's pr-body.md, or --body's file, and its first line, # <title>, \
+         gives the title unless --title does. --skeleton --title instead starts pr-body.md with \
+         the title and the sections its type needs, unless it's there already.",
     )
     .flags(&["--skeleton"])
     .options(&["--title", "--body"])
@@ -207,23 +210,29 @@ const COMMANDS: &[Spec] = &[
     .arguments(1),
     spec(
         "ship",
-        &["ship <PR number>"],
-        "Queue the PR as soon as GitHub admits it and wait until it merges.",
+        &["ship <name>"],
+        "Once told to merge it: check it, push it, open or update its PR from pr-body.md, queue \
+         it as soon as GitHub admits it, wait until it merges, remove what the change made as \
+         finish does, and wait for Dev. Run again after a stop, it picks up where it stopped. \
+         It exits with 1 to fix and ship again, 2 for the owner to decide, and 3 once merged.",
     )
     .arguments(1),
     spec(
         "finish",
         &["finish <name> [--abandon]"],
-        "After the merge: its preview, port, worktree, build, branches and scratch folder go; \
-         then wait for Dev.",
+        "What ship does after the merge, for a change it didn't see through, or with --abandon \
+         for one that never merged: its preview, port, worktree, build, branches and scratch \
+         folder go; then wait for Dev.",
     )
     .flags(&["--abandon"])
     .arguments(1),
     spec(
         "status",
-        &["status"],
-        "Worktrees, previews, open PRs, what Dev runs, free disk.",
-    ),
+        &["status [--json]"],
+        "Worktrees with their previews, PRs and reviews, open PRs, what Dev runs, free disk; \
+         --json writes the same as JSON, to pick a change up after a break.",
+    )
+    .flags(&["--json"]),
     spec(
         "browser",
         &[
@@ -489,6 +498,7 @@ fn run() -> Result<()> {
             &line.workspace()?,
             line.name()?,
             line.option("--from").unwrap_or("origin/main"),
+            line.flag("--preview"),
             &Native,
         ),
         "preview" => {
@@ -581,18 +591,19 @@ fn run() -> Result<()> {
         }
         "pr" => {
             let name = line.name()?;
-            let title = line.option("--title").ok_or_else(|| line.usage())?;
-            match (line.option("--body"), line.flag("--skeleton")) {
-                (Some(_), true) => Err("Choose --body or --skeleton.".into()),
-                (None, true) => pr::start_body(&line.workspace()?, name, title),
-                (Some(body), false) => pr::run(
-                    &line.workspace()?,
-                    name,
-                    title,
-                    std::path::Path::new(body),
-                    &Native,
-                ),
-                (None, false) => Err(line.usage()),
+            let ws = line.workspace()?;
+            let title = line.option("--title");
+            match (line.option("--body"), line.flag("--skeleton"), title) {
+                (Some(_), true, _) => Err("Choose --body or --skeleton.".into()),
+                (None, true, Some(title)) => pr::start_body(&ws, name, title),
+                (None, true, None) => Err("--skeleton needs the --title it starts with.".into()),
+                (body, false, title) => {
+                    let body = match body {
+                        Some(body) => PathBuf::from(body),
+                        None => pr::body_file(&Change::existing(&ws, name)?),
+                    };
+                    pr::run(&ws, name, title, &body, &Native).map(|_| ())
+                }
             }
         }
         "review" => {
@@ -615,19 +626,14 @@ fn run() -> Result<()> {
             }
         }
         "ship" => {
-            let number = match line.arguments.as_slice() {
-                [number] => number.parse::<u64>().ok(),
-                _ => None,
-            }
-            .ok_or_else(|| line.usage())?;
-            let merge = ship::run(
-                number,
+            let name = line.name()?;
+            ship::change(
+                &line.workspace()?,
+                name,
                 &Native,
                 &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
                 &mut |text| println!("{text}"),
-            )?;
-            println!("#{number} merged as {merge}");
-            Ok(())
+            )
         }
         "ci" => {
             let (ws, name) = (line.workspace()?, line.name()?);
@@ -653,7 +659,15 @@ fn run() -> Result<()> {
             line.flag("--abandon"),
             &Native,
         ),
-        "status" => status::run(&line.workspace()?, &Native),
+        "status" => {
+            let status = status::read(&line.workspace()?, &Native)?;
+            if line.flag("--json") {
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            } else {
+                status::print(&status);
+            }
+            Ok(())
+        }
         "browser" => {
             let target = line.name()?;
             let output = line.option("--out").ok_or_else(|| line.usage())?;
@@ -698,7 +712,11 @@ fn main() {
         if !message.is_empty() {
             eprintln!("{message}");
         }
-        std::process::exit(1);
+        std::process::exit(
+            error
+                .downcast_ref::<ship::Exit>()
+                .map_or(1, |exit| exit.code),
+        );
     }
 }
 

@@ -1,11 +1,13 @@
 //! `dispatchdev status`: the workspace at a glance: each worktree with its branch, state,
-//! build, preview and newest `dispatchdev ci` run, the open PRs, what Dev runs, and the free
-//! disk space.
+//! build, preview, newest `dispatchdev ci` run, PR and review, the open PRs, what Dev runs, and
+//! the free disk space; `--json` writes the same as JSON.
 use crate::{
     REPOSITORY, Result, Runner,
     change::Change,
+    review,
     workspace::{self, Workspace},
 };
+use serde::Serialize;
 use serde_json::Value;
 
 /// The recent runs of the checks outside the queue, newest first; none when GitHub doesn't
@@ -40,51 +42,57 @@ fn ci_note(runs: &[Value], branch: &str, head: &str) -> Option<String> {
     })
 }
 
-pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
+/// The workspace as `status` shows it, and as `--json` writes it.
+#[derive(Serialize)]
+pub struct Status {
+    worktrees: Vec<Tree>,
+    /// The open PRs; none when GitHub didn't answer.
+    pulls: Option<Vec<Open>>,
+    dev: Dev,
+    /// Bytes free on the worktrees' disk.
+    free: u64,
+}
+#[derive(Serialize)]
+struct Tree {
+    name: String,
+    branch: String,
+    uncommitted: bool,
+    /// Commits ahead of `origin/main`.
+    ahead: u64,
+    /// Where its newest `dispatchdev ci` run stands, as `ci_note` says it.
+    ci: Option<String>,
+    /// The bytes its build and its test builds take.
+    build: Option<u64>,
+    test_build: Option<u64>,
+    /// The port its running preview serves on.
+    preview: Option<u16>,
+    /// Its open PR's number.
+    pr: Option<u64>,
+    review: Option<review::Progress>,
+}
+#[derive(Serialize)]
+struct Open {
+    number: u64,
+    title: String,
+    branch: String,
+    draft: bool,
+}
+#[derive(Serialize)]
+struct Dev {
+    /// The commit Dev runs, and its updater's state.
+    runs: String,
+    update: String,
+    /// `origin/main`'s commit.
+    main: String,
+    /// What Dev's updater wrote while its updates fail.
+    failure: Option<Value>,
+}
+
+/// Everything `status` shows, read once.
+pub fn read(ws: &Workspace, runner: &dyn Runner) -> Result<Status> {
     let previews = crate::preview::running(runner).unwrap_or_default();
     let runs = branch_runs(runner);
-    println!("Worktrees:");
-    let names = ws.worktrees()?;
-    if names.is_empty() {
-        println!("  none");
-    }
-    for name in &names {
-        let change = Change::named(ws, name)?;
-        let path = &change.path;
-        let git = |args: &[&str]| change.git(runner, args);
-        let branch = change.branch(runner).unwrap_or_else(|_| "?".into());
-        let mut notes = vec![];
-        if branch != *name {
-            notes.push(format!("on {branch}"));
-        }
-        if change.dirty(runner).unwrap_or(false) {
-            notes.push("uncommitted changes".into());
-        }
-        if let Ok(ahead) = git(&["rev-list", "--count", "origin/main..HEAD"])
-            && ahead != "0"
-        {
-            let commits = if ahead == "1" { "commit" } else { "commits" };
-            notes.push(format!("{ahead} {commits} ahead of main"));
-        }
-        if let Ok(head) = git(&["rev-parse", "HEAD"])
-            && let Some(note) = ci_note(&runs, &branch, &head)
-        {
-            notes.push(note);
-        }
-        if let Some(bytes) = workspace::size(runner, &path.join("target")) {
-            notes.push(format!("build {}", workspace::human(bytes)));
-        }
-        if let Some(bytes) = workspace::size(runner, &path.join(".test-build")) {
-            notes.push(format!("test build {}", workspace::human(bytes)));
-        }
-        if previews.contains(name) {
-            let port = crate::preview::port(name).ok().flatten().unwrap_or(0);
-            notes.push(format!("preview running on {port}"));
-        }
-        println!("  {name}  {}", notes.join(" · "));
-    }
-    println!("Open PRs:");
-    match workspace::text(
+    let pulls: Option<Vec<Open>> = workspace::text(
         runner,
         &[
             "gh",
@@ -101,47 +109,145 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
     )
     .ok()
     .and_then(|text| serde_json::from_str::<Vec<Value>>(&text).ok())
-    {
+    .map(|pulls| {
+        pulls
+            .iter()
+            .map(|pr| Open {
+                number: pr["number"].as_u64().unwrap_or(0),
+                title: pr["title"].as_str().unwrap_or("").to_owned(),
+                branch: pr["headRefName"].as_str().unwrap_or("").to_owned(),
+                draft: pr["isDraft"] == true,
+            })
+            .collect()
+    });
+    let mut worktrees = vec![];
+    for name in ws.worktrees()? {
+        let change = Change::named(ws, &name)?;
+        let git = |args: &[&str]| change.git(runner, args);
+        let branch = change.branch(runner).unwrap_or_else(|_| "?".into());
+        let ci = git(&["rev-parse", "HEAD"])
+            .ok()
+            .and_then(|head| ci_note(&runs, &branch, &head));
+        let pr = pulls.iter().flatten().find(|pr| pr.branch == branch);
+        worktrees.push(Tree {
+            uncommitted: change.dirty(runner).unwrap_or(false),
+            ahead: git(&["rev-list", "--count", "origin/main..HEAD"])
+                .ok()
+                .and_then(|ahead| ahead.parse().ok())
+                .unwrap_or(0),
+            ci,
+            build: workspace::size(runner, &change.path.join("target")),
+            test_build: workspace::size(runner, &change.path.join(".test-build")),
+            preview: previews
+                .contains(&name)
+                .then(|| crate::preview::port(&name).ok().flatten().unwrap_or(0)),
+            pr: pr.map(|pr| pr.number),
+            review: review::progress(&change),
+            branch,
+            name,
+        });
+    }
+    let dev = ws.dev();
+    let file = |path: &str| -> Option<Value> {
+        serde_json::from_str(&std::fs::read_to_string(dev.join(path)).ok()?).ok()
+    };
+    let dev = Dev {
+        runs: file(".build/tooling/build-info.json")
+            .and_then(|info| Some(info["commit"].as_str()?.get(..8)?.to_owned()))
+            .unwrap_or_else(|| "unknown".into()),
+        update: file("data/platform/dev-update.json")
+            .and_then(|status| Some(status["status"].as_str()?.to_owned()))
+            .unwrap_or_else(|| "unknown".into()),
+        main: workspace::text(
+            runner,
+            &["git", "rev-parse", "--short=8", "origin/main"],
+            Some(&dev),
+        )
+        .unwrap_or_default(),
+        // Written by Dev's updater while its updates fail, and removed once one gets through.
+        failure: file("data/platform/dev-update-failure.json"),
+    };
+    Ok(Status {
+        worktrees,
+        pulls,
+        dev,
+        free: workspace::worktrees_free(&ws.root)?,
+    })
+}
+
+/// `status` as lines to read.
+pub fn print(status: &Status) {
+    println!("Worktrees:");
+    if status.worktrees.is_empty() {
+        println!("  none");
+    }
+    for tree in &status.worktrees {
+        let mut notes = vec![];
+        if tree.branch != tree.name {
+            notes.push(format!("on {}", tree.branch));
+        }
+        if tree.uncommitted {
+            notes.push("uncommitted changes".into());
+        }
+        if tree.ahead > 0 {
+            let commits = if tree.ahead == 1 { "commit" } else { "commits" };
+            notes.push(format!("{} {commits} ahead of main", tree.ahead));
+        }
+        notes.extend(tree.ci.clone());
+        if let Some(bytes) = tree.build {
+            notes.push(format!("build {}", workspace::human(bytes)));
+        }
+        if let Some(bytes) = tree.test_build {
+            notes.push(format!("test build {}", workspace::human(bytes)));
+        }
+        if let Some(port) = tree.preview {
+            notes.push(format!("preview running on {port}"));
+        }
+        if let Some(pr) = tree.pr {
+            notes.push(format!("PR #{pr}"));
+        }
+        if let Some(review) = &tree.review {
+            notes.push(format!(
+                "review pass {} of {} {}",
+                review.pass,
+                review.of,
+                if review.answered {
+                    "answered"
+                } else {
+                    "with its reviewer"
+                }
+            ));
+        }
+        println!("  {}  {}", tree.name, notes.join(" · "));
+    }
+    println!("Open PRs:");
+    match &status.pulls {
         None => println!("  GitHub didn't answer"),
         Some(pulls) if pulls.is_empty() => println!("  none"),
         Some(pulls) => {
             for pr in pulls {
                 println!(
                     "  #{} {} ({}{})",
-                    pr["number"],
-                    pr["title"].as_str().unwrap_or(""),
-                    pr["headRefName"].as_str().unwrap_or(""),
-                    if pr["isDraft"] == true { ", draft" } else { "" }
+                    pr.number,
+                    pr.title,
+                    pr.branch,
+                    if pr.draft { ", draft" } else { "" }
                 );
             }
         }
     }
-    let dev = ws.dev();
-    let read = |path: &str| -> Option<Value> {
-        serde_json::from_str(&std::fs::read_to_string(dev.join(path)).ok()?).ok()
-    };
-    let commit = read(".build/tooling/build-info.json")
-        .and_then(|info| Some(info["commit"].as_str()?.get(..8)?.to_owned()))
-        .unwrap_or_else(|| "unknown".into());
-    let update = read("data/platform/dev-update.json")
-        .and_then(|status| Some(status["status"].as_str()?.to_owned()))
-        .unwrap_or_else(|| "unknown".into());
-    let main = workspace::text(
-        runner,
-        &["git", "rev-parse", "--short=8", "origin/main"],
-        Some(&dev),
-    )
-    .unwrap_or_default();
+    let dev = &status.dev;
     println!(
-        "Dev: runs {commit} ({update}){}",
-        if !main.is_empty() && main != commit {
-            format!("; main is at {main}")
+        "Dev: runs {} ({}){}",
+        dev.runs,
+        dev.update,
+        if !dev.main.is_empty() && dev.main != dev.runs {
+            format!("; main is at {}", dev.main)
         } else {
             String::new()
         }
     );
-    // Written by Dev's updater while its updates fail, and removed once one gets through.
-    if let Some(failure) = read("data/platform/dev-update-failure.json") {
+    if let Some(failure) = &dev.failure {
         println!(
             "  Dev's updates have failed since {} ({} attempts): {}",
             failure["since"].as_str().unwrap_or("unknown"),
@@ -149,11 +255,7 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
             failure["error"].as_str().unwrap_or("no error recorded")
         );
     }
-    println!(
-        "Disk: {} free.",
-        workspace::human(workspace::worktrees_free(&ws.root)?)
-    );
-    Ok(())
+    println!("Disk: {} free.", workspace::human(status.free));
 }
 
 #[cfg(test)]

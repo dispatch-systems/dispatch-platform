@@ -200,6 +200,38 @@ fn encoded(value: &str) -> String {
         .collect()
 }
 
+/// Starts the change's preview, or with `restart` starts it afresh, on the port it keeps or the
+/// first free one, without waiting for its build; returns the port.
+pub fn begin(name: &str, restart: bool, runner: &dyn Runner) -> Result<u16> {
+    let active = state(name, runner)? == "active";
+    let port = match port(name)? {
+        Some(port) => port,
+        None => {
+            let others = running(runner)?;
+            require(
+                others.len() < MOST,
+                &format!(
+                    "{MOST} previews are running already ({}); stop one with dispatchdev preview <name> --stop.",
+                    others.join(", ")
+                ),
+            )?;
+            let port = pick(&kept_ports()?, |port| {
+                std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
+            })
+            .ok_or("No free port in 4100–4199.")?;
+            workspace::write_private(&env_file(name)?, &format!("DISPATCH_DEV_PORT={port}\n"))?;
+            port
+        }
+    };
+    let verb = match (restart, active) {
+        (true, _) => "restart",
+        (false, false) => "start",
+        (false, true) => return Ok(port),
+    };
+    runner.command(&["systemctl", "--user", verb, &unit(name)], None, 120)?;
+    Ok(port)
+}
+
 pub fn run(
     ws: &Workspace,
     name: &str,
@@ -226,31 +258,7 @@ pub fn run(
         return Ok(());
     }
     let host = host()?;
-    let active = state(name, runner)? == "active";
-    let port = match port(name)? {
-        Some(port) => port,
-        None => {
-            let others = running(runner)?;
-            require(
-                others.len() < MOST,
-                &format!(
-                    "{MOST} previews are running already ({}); stop one with dispatchdev preview <name> --stop.",
-                    others.join(", ")
-                ),
-            )?;
-            let port = pick(&kept_ports()?, |port| {
-                std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
-            })
-            .ok_or("No free port in 4100–4199.")?;
-            workspace::write_private(&env_file(name)?, &format!("DISPATCH_DEV_PORT={port}\n"))?;
-            port
-        }
-    };
-    match (action, active) {
-        (Action::Restart, _) => systemctl("restart")?,
-        (Action::Start, false) => systemctl("start")?,
-        _ => {}
-    }
+    let port = begin(name, matches!(action, Action::Restart), runner)?;
     let started = Instant::now();
     let mut waiting = false;
     let link = loop {

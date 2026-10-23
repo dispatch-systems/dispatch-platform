@@ -245,10 +245,13 @@ test('refreshing unmatched drivers offers the Driver Match review and returns to
   ).toBeVisible();
   await page.getByRole('button', { name: 'Review in Driver Match', exact: true }).click();
   await expect(page).toHaveURL(/\/driver-match$/);
-  await expect(page.getByRole('link', { name: /^Driver Match/ })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
+  // Driver Match is a page of Settings, whose sidebar shows beside it.
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Settings', exact: true })
+      .getByRole('link', { name: /^Driver Match/ }),
+  ).toHaveAttribute('aria-current', 'page');
+  await page.getByRole('complementary').getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('link', { name: 'Timecard', exact: true }).click();
   await page.getByRole('tab', { name: 'Meal Breaks', exact: true }).click();
   await setDate(page, date);

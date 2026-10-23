@@ -24,10 +24,7 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     assert!(error.contains("Unknown command deploy"), "{error}");
     let (ok, _, error) = run(&["ship"]);
     assert!(!ok);
-    assert!(
-        error.contains("Usage: dispatchdev ship <PR number>"),
-        "{error}"
-    );
+    assert!(error.contains("Usage: dispatchdev ship <name>"), "{error}");
     let (ok, _, error) = run(&["build", "--scope", "full"]);
     assert!(!ok);
     assert!(error.contains("build takes no --scope"), "{error}");
@@ -39,10 +36,7 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     assert!(error.contains("build takes no --scope=full"), "{error}");
     let (ok, help, _) = run(&["ship", "--help"]);
     assert!(ok);
-    assert!(
-        help.starts_with("Usage: dispatchdev ship <PR number>"),
-        "{help}"
-    );
+    assert!(help.starts_with("Usage: dispatchdev ship <name>"), "{help}");
     let (ok, help, _) = run(&["help", "generate"]);
     assert!(ok);
     assert!(help.starts_with("Usage: dispatchdev generate"), "{help}");

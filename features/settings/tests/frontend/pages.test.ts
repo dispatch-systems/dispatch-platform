@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import type { SettingsAnswer, SettingsSection } from '../../../../core/settings/api/index.js';
-import { installFeatures } from '../../../../core/shell/frontend/runtime/slots.js';
-import { drawnPages, openPage, sectionsOn } from '../../frontend/pages.js';
+import {
+  installFeatures,
+  type DspRoute,
+  type DspRouteId,
+} from '../../../../core/shell/frontend/runtime/slots.js';
+import { drawnPages, listedPages, openPage, sectionsOn } from '../../frontend/pages.js';
 
 // Settings draws the pages the server says the member has, each with a section on it to draw:
 // a custom section only with the component its owner registers, while that has something to
@@ -89,4 +93,62 @@ test('a section that goes with a collection is left to the Collectors page to dr
     sectionsOn(settings, view, 'collectors').map(({ id }) => id),
     ['collection.collectors'],
   );
+});
+
+// A feature puts a page of its own in Settings by naming Settings' sidebar its parent: the
+// sidebar lists it under Features, in its feature's place among the features' pages.
+test("Settings' sidebar lists a page a feature puts under it among Features, in its feature's place", () => {
+  const page = (id: string, more: Partial<DspRoute> = {}): DspRoute => ({
+    id: id as DspRouteId,
+    scope: 'dsp',
+    label: id,
+    parent: 'settings',
+    nav: true,
+    preload: () => Promise.resolve(),
+    render: () => null,
+    ...more,
+  });
+  installFeatures([
+    { name: 'routes' },
+    { name: 'driver_match', routes: [page('driver-match', { feature: 'driver_match' })] },
+    { name: 'slack' },
+    {
+      name: 'settings',
+      routes: [page('settings', { hostsSettings: true })],
+      sidebars: [{ id: 'settings', scope: 'dsp', label: 'Settings' }],
+    },
+  ]);
+  const declared = (id: string, on: string): SettingsSection => ({
+    id,
+    page: on,
+    label: id,
+    order: 10,
+    scope: 'dsp',
+    custom: false,
+    collection: null,
+    fields: [],
+    values: {},
+    revision: 0,
+    sources: [],
+    keywords: [],
+  });
+  const settings: SettingsAnswer = {
+    pages: [
+      { id: 'general', label: 'Profile', group: 'personal', order: 10 },
+      { id: 'routes', label: 'Routes', group: 'features', order: 40 },
+      { id: 'slack', label: 'Slack', group: 'features', order: 90 },
+    ],
+    sections: [
+      declared('accounts.profile', 'general'),
+      declared('routes.retention', 'routes'),
+      declared('slack.workspaces', 'slack'),
+    ],
+  };
+  const view = { features: ['driver_match'] } as unknown as DspView;
+  const listed = listedPages(settings, { session: {} as never, view });
+  assert.deepEqual(
+    listed.map(({ id, group }) => `${group}: ${id}`),
+    ['personal: general', 'features: routes', 'features: driver-match', 'features: slack'],
+  );
+  assert.equal(listed[2]?.route?.id, 'driver-match');
 });
