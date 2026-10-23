@@ -148,15 +148,10 @@ impl Runner for Retried<'_> {
     }
 }
 /// The slice every command `logged` runs goes in, from every worktree at once. Between them they
-/// have a low CPU weight and one memory ceiling: past `MemoryHigh` they slow down, and past
-/// `MemoryMax` and what they may swap, the kernel ends one of them, never anything outside.
+/// have a low CPU weight and one memory ceiling: at `MemoryMax` they swap, and past the swap
+/// they may use, the kernel ends one of them, never anything outside.
 const SLICE: &str = "app-dispatchdev.slice";
-const CEILINGS: [&str; 4] = [
-    "CPUWeight=20",
-    "MemoryHigh=3584M",
-    "MemoryMax=4G",
-    "MemorySwapMax=2G",
-];
+const CEILINGS: [&str; 3] = ["CPUWeight=20", "MemoryMax=4G", "MemorySwapMax=2G"];
 /// Whether this user's service manager runs commands in scopes of their own, as on this
 /// machine, answered by setting `SLICE`'s ceilings until the next boot; CI's runners have none.
 fn scopes() -> bool {
@@ -398,13 +393,14 @@ mod tests {
     }
     #[test]
     fn a_command_is_bound_to_the_unit_of_this_users_manager_running_it() {
-        let agent = "0::/user.slice/user-1001.slice/user@1001.service/app.slice/app-t3code.slice/app-t3code-agents.slice/t3code-claude-d0fa7f0d.scope\n";
-        assert_eq!(unit_of(agent), Some("t3code-claude-d0fa7f0d.scope"));
-        // A login's session belongs to the system's manager, which this user's can't bind to.
-        assert_eq!(
-            unit_of("0::/user.slice/user-1001.slice/session-3.scope\n"),
-            None
+        let uid = 1001;
+        let agent = format!(
+            "0::/user.slice/user-{uid}.slice/user@{uid}.service/app.slice/app-t3code.slice/t3code-claude-d0fa7f0d.scope\n"
         );
+        assert_eq!(unit_of(&agent), Some("t3code-claude-d0fa7f0d.scope"));
+        // A login's session belongs to the system's manager, which this user's can't bind to.
+        let login = format!("0::/user.slice/user-{uid}.slice/session-3.scope\n");
+        assert_eq!(unit_of(&login), None);
     }
     #[test]
     fn sizes_and_times_read_plainly() {
