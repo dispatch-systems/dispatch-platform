@@ -67,13 +67,9 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const page = useRef<HTMLDivElement>(null);
   const layout = useLayout(page);
   const display = useDisplay();
-  // The profile, kept open or shut from one conversation to the next, beside them, as the member
-  // may choose: on a phone it would cover each one opened.
-  const [profileOpen, keepProfile] = useState(true);
-  const kept =
-    display.keep_profile_open && layout !== 'phone'
-      ? { open: profileOpen, keep: keepProfile }
-      : undefined;
+  // The profile open as each conversation opens, as the member may keep it: not on a phone, where
+  // it would cover the conversation.
+  const kept = display.keep_profile_open && layout !== 'phone';
   // Beside the conversation with room for it, unless the member has it over the conversation.
   const docked = layout === 'docked' && display.profile_opens === 'beside';
   const displaySettings = settingsHash(view.dsp.id, 'display', view);

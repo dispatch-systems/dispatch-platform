@@ -38,7 +38,7 @@ export function Profile({
   docked: boolean;
   /** Whether it's closed, sliding away. */
   leaving: boolean;
-  /** Whether it's open as kept from the last conversation, there without sliding in. */
+  /** Whether it's kept open as the conversation opened, there without sliding in. */
   still: boolean;
   /** Closes it: `refocus`, focus goes back to what opened it. */
   close: (refocus: boolean) => void;

@@ -9,7 +9,7 @@ import { roleText } from './parts.js';
 import { Profile } from './Profile.js';
 import { Thread } from './Thread.js';
 import { useConversation } from './useConversation.js';
-import { usePanel, type Kept } from './usePanel.js';
+import { usePanel } from './usePanel.js';
 import type { Changed } from './useInbox.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, and,
@@ -40,8 +40,8 @@ export function ConversationPane({
   workspaces: readonly CommunicationsWorkspace[];
   /** Whether the profile, open, is a column of its own beside the conversation. */
   docked: boolean;
-  /** Whether the profile is open, kept from one conversation to the next, as the member chose. */
-  kept?: Kept;
+  /** Whether the profile is open as the conversation opens, as the member may keep it. */
+  kept: boolean;
   /** Tells the page of the conversation as read, which pins one the list doesn't hold. */
   seen: (conversation: Conversation) => void;
   changed: Changed;

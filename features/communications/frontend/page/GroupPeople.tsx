@@ -44,7 +44,7 @@ export function GroupPeople({
   docked: boolean;
   /** Whether it's closed, sliding away. */
   leaving: boolean;
-  /** Whether it's open as kept from the last conversation, there without sliding in. */
+  /** Whether it's kept open as the conversation opened, there without sliding in. */
   still: boolean;
   close: (refocus: boolean) => void;
   /** Says it has slid away. */
