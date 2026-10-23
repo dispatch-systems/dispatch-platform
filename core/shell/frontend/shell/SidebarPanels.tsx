@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { Sidebar } from '../runtime/slots.js';
 
-/** What fills the sidebar above the account: a sidebar of pages, or the app's name and pages. */
+/** What fills the sidebar under the app's name: a sidebar of pages, or the app's pages. */
 type Panel = Sidebar | undefined;
 /** A panel leaving, drawn as it was when it left: a sidebar never draws for a page it left. */
 type Leaving = { panel: Panel; drawn: ReactNode };

@@ -98,10 +98,10 @@ export type Sidebar = {
   icon?: LucideIcon;
   /**
    * What it draws in place of the shell's list: `SidebarHead` atop it, with its name and
-   * `back`, and what it lists. It fills the sidebar above the account, scrolling its own parts.
-   * Sliding out, it keeps the props it had, and what it reads elsewhere should hold too, as
-   * Settings keeps the page the address named. Its code loads as its item is pointed at, or as
-   * a page under it opens.
+   * `back`, and what it lists. It fills the sidebar under the app's name, above the account,
+   * scrolling its own parts. Sliding out, it keeps the props it had, and what it reads
+   * elsewhere should hold too, as Settings keeps the page the address named. Its code loads as
+   * its item is pointed at, or as a page under it opens.
    */
   draw?: { load: () => Promise<ComponentType<SidebarProps>> };
 };

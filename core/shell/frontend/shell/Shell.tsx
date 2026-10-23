@@ -271,22 +271,16 @@ export function Shell({
       preventScroll: true,
     });
   }, [list.shown]);
-  // The app's name and its sidebar.
+  // The app's sidebar.
   const pages = (
-    <>
-      <div className="sidebar-brand">
-        <Brand />
-        <p>{workspace}</p>
-      </div>
-      <NavList
-        label="Primary navigation"
-        items={navigation}
-        current={sidebar?.id ?? current}
-        dspId={dspId}
-        open={open}
-        close={close}
-      />
-    </>
+    <NavList
+      label="Primary navigation"
+      items={navigation}
+      current={sidebar?.id ?? current}
+      dspId={dspId}
+      open={open}
+      close={close}
+    />
   );
   return (
     <div className="application">
@@ -321,6 +315,10 @@ export function Shell({
         >
           <X size={18} />
         </button>
+        <div className="sidebar-brand">
+          <Brand />
+          <p>{workspace}</p>
+        </div>
         <SidebarPanels
           shown={list.shown}
           draw={(panel) => {
