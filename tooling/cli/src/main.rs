@@ -201,8 +201,9 @@ const COMMANDS: &[Spec] = &[
         "review",
         &["review <name> [--passes <n>]", "       [--done]"],
         "Only when a review is asked for: the brief of its next pass, on its committed head, \
-         for the reviewer started through T3 (GPT-6 Astra, xhigh, Fast); --passes sets how \
-         many, one unless told. --done, once the reviewer answered, checks it left the worktree \
+         for the reviewer started through T3 (GPT-6 Astra, xhigh, Fast). Another pass follows \
+         only one that found something to fix, and reviews only the fixes; --passes sets the \
+         most, two unless told. --done, once the reviewer answered, checks it left the worktree \
          as it found it and counts its findings.",
     )
     .flags(&["--done"])
