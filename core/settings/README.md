@@ -36,10 +36,9 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
   it with a collection its feature keeps, on `collectors`, under the permission that sets when
   that collection runs: the Collectors page draws it below the collection's schedule, as Daily
   Performance's `daily_performance.collection` is.
-- **Who:** `permission`, one its feature declares, or `roles::ACCESS` for every member; a write
-  under a `.recently_verified()` permission asks for a recent verification. `.part(..)` makes it
-  go with a part of its feature. `.member()` gives each member their own values, which the log
-  doesn't record.
+- **Who:** `permission`, one its feature declares, or `roles::ACCESS` for every member.
+  `.part(..)` makes it go with a part of its feature. `.member()` gives each member their own
+  values, which the log doesn't record.
 - **What else:** `.custom()` for one its owner's own component draws (the frontend's
   `settingsSections`), `.warn(..)` for words to confirm before a save that loses something,
   `.saved(..)` for what else a save does in the same write, `.kept(..)` for values kept in the

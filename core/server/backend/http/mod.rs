@@ -12,7 +12,7 @@ pub mod upload;
 
 pub use assets::{Asset, assets, browser_update_ready};
 pub use input::Input;
-pub use route::{Access, Answered, Route, Work, needs_recent_verification};
+pub use route::{Access, Answered, Route, Work};
 pub use unmatched::unmatched_areas;
 
 use crate::{State, foundation::observability, manifest::registry};

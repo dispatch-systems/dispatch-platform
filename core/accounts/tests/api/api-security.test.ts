@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { demo, fixture } from '../../../shell/tests/support/support.js';
+import { fixture } from '../../../shell/tests/support/support.js';
 
 test('session revocation is account-scoped and cannot revoke another account', async (t) => {
   const f = await fixture();
@@ -13,13 +13,9 @@ test('session revocation is account-scoped and cannot revoke another account', a
   assert.equal(sessions.length, 2);
   const other = sessions.find((s: { current: boolean }) => !s.current);
   assert.equal((await member.post(`/api/auth/security/sessions/${other.id}/revoke`)).status, 404);
+  // Long after signing in, a session is still signed out without a password.
   f.database('data/platform/accounts.sqlite', (db) =>
     db.prepare('UPDATE sessions SET created_at=0 WHERE user_id=?').run(first.session.user.id),
-  );
-  assert.equal((await first.post(`/api/auth/security/sessions/${other.id}/revoke`)).status, 403);
-  assert.equal(
-    (await first.post('/api/auth/security/reauthenticate', { password: demo.password })).status,
-    200,
   );
   assert.equal((await first.post(`/api/auth/security/sessions/${other.id}/revoke`)).status, 200);
   assert.equal((await second.get('/api/session')).status, 401);

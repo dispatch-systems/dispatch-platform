@@ -1,6 +1,7 @@
 //! What only a platform owner sees: every DSP, the platform's health and diagnostics.
 use crate::{
     Error, Result, State,
+    accounts::Auth,
     collection::{api::jobs::JobStatus, registry::Provider},
     db::{Store, iso},
     ensure,
@@ -13,7 +14,7 @@ use crate::{
     server::{
         http::{
             input::{Input, Reply, optional},
-            route::{Grant, PlatformOwner, PlatformRoutine, Route, User, async_post, read, write},
+            route::{Grant, PlatformOwner, Route, User, async_post, read, write},
         },
         mail, operations,
     },
@@ -45,17 +46,17 @@ pub fn routes() -> Vec<Route> {
         ),
         async_post(
             "/api/platform/dsps/{id}/features",
-            PlatformRoutine,
+            PlatformOwner,
             set_feature,
         ),
         write(
             "/api/platform/dsps/{id}/features/shown",
-            PlatformRoutine,
+            PlatformOwner,
             show_feature,
         ),
         write(
             "/api/platform/dsps/{id}/ai-support",
-            PlatformRoutine,
+            PlatformOwner,
             show_ai_support,
         ),
         async_post("/api/platform/dsps/{id}/remove", PlatformOwner, remove_dsp),
@@ -121,21 +122,23 @@ fn retry_dsp(db: &Store, _: &User, input: &Input) -> Result<Reply> {
     Reply::of(&db.find_dsp(id)?)
 }
 
-// The four changes below close the DSP's browsers once the database step has
+// The changes below close the DSP's browsers once the database step has
 // succeeded, which is why they are async. None of them wakes the scheduler.
+// Disabling, removing and restoring a DSP ask the owner to have verified who they
+// are recently, in that same step.
 async fn change_dsp(
     state: Arc<State>,
     input: Input,
     access: PlatformOwner,
     closes_browsers: bool,
-    change: fn(&Store, &str, &str, &Value) -> Result<Value>,
+    change: fn(&Store, &str, &Auth, &Value) -> Result<Value>,
 ) -> Result<Reply> {
     let id = input.param("id").to_owned();
     let dsp = id.clone();
     let result = state
         .run(move |db| {
             let owner = access.authorize(db, &input)?;
-            change(db, &dsp, owner.user.id.as_str(), &input.body)
+            change(db, &dsp, &owner, &input.body)
         })
         .await?;
     if closes_browsers || result["status"] == DspStatus::Suspended.as_str() {
@@ -145,11 +148,14 @@ async fn change_dsp(
 }
 
 async fn set_status(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
-    change_dsp(state, input, access, false, |db, dsp, actor, b| {
+    change_dsp(state, input, access, false, |db, dsp, owner, b| {
         v::fields(b, &["status"])?;
         let status = v::choice(b, "status", &["active", "suspended"])?;
         let status = DspStatus::parse(status).ok_or_else(|| Error::new("invalid_input", 400))?;
-        let row = db.set_status(dsp, status, actor)?;
+        if status == DspStatus::Suspended {
+            db.ensure_recent(owner)?;
+        }
+        let row = db.set_status(dsp, status, owner.user.id.as_str())?;
         if status == DspStatus::Suspended {
             db.cancel_dsp(dsp)?;
         }
@@ -163,14 +169,14 @@ async fn set_support_visibility(
     input: Input,
     access: PlatformOwner,
 ) -> Result<Reply> {
-    change_dsp(state, input, access, false, |db, dsp, actor, b| {
+    change_dsp(state, input, access, false, |db, dsp, owner, b| {
         v::fields(b, &["visible"])?;
         let visible = v::boolean(b, "visible")?;
         db.find_dsp(dsp)?;
         db.set_profile(dsp, json!({"supportVisible":visible}))?;
         let detail = if visible { "shown" } else { "hidden" };
         db.audit(
-            Some(actor),
+            Some(owner.user.id.as_str()),
             Some(dsp),
             "dsp.support_visibility_changed",
             detail,
@@ -183,14 +189,14 @@ async fn set_support_visibility(
 // Gives a DSP a short code, or another one, which moves it to that address: its members
 // sign in there from then on.
 async fn set_code(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
-    change_dsp(state, input, access, false, |db, dsp, actor, b| {
+    change_dsp(state, input, access, false, |db, dsp, owner, b| {
         v::fields(b, &["code"])?;
         let code = v::text(b, "code", 1, 16)?.trim().to_ascii_lowercase();
         let before = db.find_dsp(dsp)?.code;
         // Recorded with the change, and kept only if the code is taken: its profile last.
         db.platform.transaction(|| {
             db.audit_with(
-                Some(actor),
+                Some(owner.user.id.as_str()),
                 Some(dsp),
                 "dsp.code_changed",
                 &code,
@@ -227,7 +233,7 @@ fn show_ai_support(db: &Store, owner: &User, input: &Input) -> Result<Reply> {
 // Switching a feature off stops what it ran for the DSP: its jobs and live
 // collection in the database, then its browsers outside it. Switching a page that
 // runs collections back on retimes its schedules from now and wakes the scheduler.
-async fn set_feature(state: Arc<State>, input: Input, access: PlatformRoutine) -> Result<Reply> {
+async fn set_feature(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
     let id = input.param("id").to_owned();
     let dsp = id.clone();
     let (result, cancelled) = state
@@ -325,20 +331,22 @@ fn stopped(result: &DspFeatures) -> Vec<Provider> {
 }
 
 async fn remove_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
-    change_dsp(state, input, access, true, |db, dsp, actor, b| {
+    change_dsp(state, input, access, true, |db, dsp, owner, b| {
         v::fields(b, &[])?;
-        db.set_status(dsp, DspStatus::Suspended, actor)?;
+        db.ensure_recent(owner)?;
+        db.set_status(dsp, DspStatus::Suspended, owner.user.id.as_str())?;
         db.set_profile(dsp, json!({"removed":true}))?;
         db.cancel_dsp(dsp)?;
-        db.audit(Some(actor), Some(dsp), "dsp.removed", "")?;
+        db.audit(Some(owner.user.id.as_str()), Some(dsp), "dsp.removed", "")?;
         Ok(json!({"ok":true}))
     })
     .await
 }
 
 async fn restore_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> Result<Reply> {
-    change_dsp(state, input, access, false, |db, dsp, actor, b| {
+    change_dsp(state, input, access, false, |db, dsp, owner, b| {
         v::fields(b, &[])?;
+        db.ensure_recent(owner)?;
         let row = db.find_dsp(dsp)?;
         ensure(
             !row.permanent && db.profile(dsp)?.removed,
@@ -346,8 +354,8 @@ async fn restore_dsp(state: Arc<State>, input: Input, access: PlatformOwner) -> 
             409,
         )?;
         db.set_profile(dsp, json!({"removed":false}))?;
-        let row = db.set_status(dsp, DspStatus::Active, actor)?;
-        db.audit(Some(actor), Some(dsp), "dsp.restored", "")?;
+        let row = db.set_status(dsp, DspStatus::Active, owner.user.id.as_str())?;
+        db.audit(Some(owner.user.id.as_str()), Some(dsp), "dsp.restored", "")?;
         Ok(json!(row))
     })
     .await

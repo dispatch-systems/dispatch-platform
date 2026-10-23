@@ -26,9 +26,7 @@ use dispatch_core::{
     server::http::{
         input::{Input, Reply, optional_text},
         middleware,
-        route::{
-            PlatformOwner, PlatformRoutine, Route, Served, User, probe, protocol, read, write,
-        },
+        route::{PlatformOwner, Route, Served, User, probe, protocol, read, write},
     },
 };
 use serde_json::{Value, json};
@@ -63,8 +61,6 @@ pub fn routes() -> Vec<Route> {
             Box::pin(revoke(state, request)) as Served
         }),
         read("/api/platform/oauth/requests/{id}", PlatformOwner, request),
-        // Approving makes a connected app that outlives the session, as making a key does, so
-        // it asks for recent verification; refusing asks for nothing.
         write(
             "/api/platform/oauth/requests/{id}/approve",
             PlatformOwner,
@@ -72,15 +68,13 @@ pub fn routes() -> Vec<Route> {
         ),
         write(
             "/api/platform/oauth/requests/{id}/deny",
-            PlatformRoutine,
+            PlatformOwner,
             deny,
         ),
-        read("/api/platform/oauth/pairing", PlatformRoutine, pairing),
-        // Opening the window lets apps only ask; the owner still approves each.
-        write("/api/platform/oauth/pairing", PlatformRoutine, open_pairing),
-        read("/api/platform/oauth/apps", PlatformRoutine, apps),
-        // Letting a kind of app connect changes only who may ask.
-        write("/api/platform/oauth/apps", PlatformRoutine, allow_app),
+        read("/api/platform/oauth/pairing", PlatformOwner, pairing),
+        write("/api/platform/oauth/pairing", PlatformOwner, open_pairing),
+        read("/api/platform/oauth/apps", PlatformOwner, apps),
+        write("/api/platform/oauth/apps", PlatformOwner, allow_app),
     ]
 }
 
