@@ -12,7 +12,10 @@ fn each_members_display_reads_as_they_saved_it_each_field_by_its_id() {
     crate::backend::support::install();
     let (_root, db, dsp) = testing::bootstrapped();
     // The platform's one user, and another member's id: each member's own are kept by their id.
-    let (member, other) = (testing::platform_owner(&db), "usr_another_member".to_owned());
+    let (member, other) = (
+        testing::platform_owner(&db),
+        "usr_another_member".to_owned(),
+    );
     let read = |member: &str| {
         settings::read_member::<MessageDisplay>(&db, &dsp, member, &DISPLAY).unwrap()
     };

@@ -1690,9 +1690,7 @@ button.sender {
 }
 
 /* Times shown only by the message pointed at or reached. */
-.communications[data-times='on_hover']
-  .msg-group:not(:hover, :focus-within)
-  :is(.meta, .sent-at) {
+.communications[data-times='on_hover'] .msg-group:not(:hover, :focus-within) :is(.meta, .sent-at) {
   visibility: hidden;
 }
 

@@ -53,7 +53,7 @@ export function Preview({
                 choose={nothing}
                 current={open}
                 readOlder={nothing}
-                pick={async () => undefined}
+                pick={() => Promise.resolve()}
                 open={open.id}
                 typing={[]}
                 timeZone={timeZone}
@@ -102,7 +102,7 @@ export function Preview({
                 <Composer
                   placeholder={`Message ${open.with.name.split(' ')[0]}`}
                   writable
-                  send={async () => undefined}
+                  send={() => Promise.resolve()}
                 />
               </section>
             </div>

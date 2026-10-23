@@ -158,7 +158,14 @@ pub const DISPLAY: Section = section(
 .on("display")
 .member()
 .custom()
-.keywords(&["text size", "font", "bubbles", "colors", "layout", "messages"]);
+.keywords(&[
+    "text size",
+    "font",
+    "bubbles",
+    "colors",
+    "layout",
+    "messages",
+]);
 
 #[cfg(test)]
 #[path = "../tests/backend/display.rs"]

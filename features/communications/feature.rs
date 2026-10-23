@@ -4,6 +4,11 @@ mod api;
 mod backend;
 mod integrations;
 
+/// How each member has the page look, as Settings keeps it for them.
+pub use api::display::{
+    BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageDisplay,
+    MessageLayout, MessageStyle, ProfileOpens, Spacing, TeamColor, TeamSide, Times,
+};
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
@@ -12,11 +17,6 @@ pub use api::types::{
     GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages, GroupPeople,
     GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGroup, Profile,
     ProfileToday, Reachable, Sender, Typing, Writing,
-};
-/// How each member has the page look, as Settings keeps it for them.
-pub use api::display::{
-    BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageDisplay,
-    MessageLayout, MessageStyle, ProfileOpens, Spacing, TeamColor, TeamSide, Times,
 };
 
 use dispatch_core::db::{

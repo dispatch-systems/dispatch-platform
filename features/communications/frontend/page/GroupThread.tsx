@@ -114,7 +114,9 @@ export function GroupThread({
                           {!plain && clock(first.at, timeZone)}
                           {!plain && gone && ' · '}
                           {gone && (
-                            <span className={gone.sending ? 'sending' : undefined}>{gone.text}</span>
+                            <span className={gone.sending ? 'sending' : undefined}>
+                              {gone.text}
+                            </span>
                           )}
                         </div>
                       )}
