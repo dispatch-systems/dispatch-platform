@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
     Native, Result, Runner, api, build, change::Change, check, ci, finish, logs, observation, pr,
-    preview, scaffold, ship, start, status, test, verify, workspace::Workspace,
+    preview, review, scaffold, ship, start, status, test, verify, workspace::Workspace,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -195,6 +195,17 @@ const COMMANDS: &[Spec] = &[
     .options(&["--title", "--body"])
     .arguments(1),
     spec(
+        "review",
+        &["review <name> [--passes <n>]", "       [--done]"],
+        "Only when a review is asked for: the brief of its next pass, on its committed head, \
+         for the reviewer started through T3 (GPT-6 Astra, xhigh, Fast); --passes sets how \
+         many, one unless told. --done, once the reviewer answered, checks it left the worktree \
+         as it found it and counts its findings.",
+    )
+    .flags(&["--done"])
+    .options(&["--passes"])
+    .arguments(1),
+    spec(
         "ship",
         &["ship <PR number>"],
         "Queue the PR as soon as GitHub admits it and wait until it merges.",
@@ -296,8 +307,8 @@ const SECTIONS: &[(&str, &[&str])] = &[
     (
         "A change, from start to finish:",
         &[
-            "start", "preview", "api", "logs", "verify", "test", "check", "ci", "pr", "ship",
-            "finish", "status", "browser",
+            "start", "preview", "api", "logs", "verify", "test", "check", "ci", "review", "pr",
+            "ship", "finish", "status", "browser",
         ],
     ),
     (
@@ -582,6 +593,25 @@ fn run() -> Result<()> {
                     &Native,
                 ),
                 (None, false) => Err(line.usage()),
+            }
+        }
+        "review" => {
+            let name = line.name()?;
+            let ws = line.workspace()?;
+            let passes = line
+                .option("--passes")
+                .map(|passes| {
+                    passes
+                        .parse::<u32>()
+                        .ok()
+                        .filter(|passes| *passes > 0)
+                        .ok_or("--passes is a number of passes, 1 or more.")
+                })
+                .transpose()?;
+            match (line.flag("--done"), passes) {
+                (true, Some(_)) => Err("Choose --passes or --done.".into()),
+                (true, None) => review::done(&ws, name, &Native),
+                (false, passes) => review::start(&ws, name, passes, &Native),
             }
         }
         "ship" => {
