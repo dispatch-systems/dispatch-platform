@@ -6,7 +6,7 @@ use chrono::NaiveDate;
 use dispatch_core::{Error, Result, ensure, foundation::crypto::sha, foundation::validate::token};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const JOB_KIND: &str = "cortex.associates.collect";
 /// Far more than one company has ever employed, those it offboarded among them: a longer
@@ -157,6 +157,22 @@ pub(crate) fn photo_address(path: &str) -> bool {
             .bytes()
             .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
 }
+/// Whether `value` could be the ETag a photo was served under.
+fn etag(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 256 && !value.chars().any(char::is_control)
+}
+
+/// What Driver Profiles holds of the roster's photos, as a collection asks before it
+/// downloads any.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KeptPhotos {
+    /// Photos that stand, by address: none is downloaded.
+    pub standing: BTreeSet<String>,
+    /// Photos due a refresh, by address, with the ETag each was served under: one is
+    /// downloaded only if Amazon changed it since.
+    pub versions: BTreeMap<String, String>,
+}
 
 /// What a photo's bytes are. S3 serves Amazon's photos with no type of their own, so it is
 /// read from their first bytes; anything else is not kept.
@@ -238,15 +254,19 @@ pub struct Photo {
     pub format: PhotoFormat,
     /// Its bytes, in base64.
     pub data: String,
+    /// The ETag the photo host served it under, naming the version it was shrunk from, so a
+    /// later collection can ask whether Amazon changed it.
+    pub etag: Option<String>,
 }
 impl Photo {
-    /// `bytes` as the photo at `address`, when they are an image.
-    pub fn new(address: &str, bytes: &[u8]) -> Option<Self> {
+    /// `bytes` as the photo at `address`, served under `etag`, when they are an image.
+    pub fn new(address: &str, bytes: &[u8], etag: Option<String>) -> Option<Self> {
         Some(Self {
             address: address.to_owned(),
             sha256: sha(bytes),
             format: PhotoFormat::of(bytes)?,
             data: STANDARD.encode(bytes),
+            etag,
         })
     }
     /// Its bytes, as its digest and format say they are.
@@ -278,7 +298,9 @@ pub struct Capture {
     pub associates: Vec<Associate>,
     /// Photos the DSP lacked, downloaded this time.
     pub photos: Vec<Photo>,
-    /// Photos it lacks still, left for the next collection: one brings only so many.
+    /// Photos due a refresh that Amazon said it hadn't changed, by address: they stand anew.
+    pub photos_unchanged: Vec<String>,
+    /// Photos it lacks still, left for the next collection.
     pub photos_waiting: usize,
 }
 impl Capture {
@@ -322,7 +344,15 @@ impl Capture {
                 addresses.contains(photo.address.as_str())
                     && photos.insert(photo.address.as_str())
                     && photo.sha256.len() == 64
-                    && photo.sha256.bytes().all(|b| b.is_ascii_hexdigit()),
+                    && photo.sha256.bytes().all(|b| b.is_ascii_hexdigit())
+                    && photo.etag.as_deref().is_none_or(etag),
+                "associates_capture_invalid",
+                502,
+            )?;
+        }
+        for address in &self.photos_unchanged {
+            ensure(
+                addresses.contains(address.as_str()) && photos.insert(address.as_str()),
                 "associates_capture_invalid",
                 502,
             )?;

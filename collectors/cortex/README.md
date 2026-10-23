@@ -26,4 +26,6 @@ daily share the performance HTTP reader, every dataset of a week or a day at onc
 their requests, datasets and job kinds separate; DVIC lists its weeks together and downloads
 fourteen reports at a time. The roster's photos are shrunk as they download, to at most 400
 pixels on the long side as a JPEG, a JPEG read straight at a fraction of its size, four at a time
-away from the threads that serve requests, each a little more than a core.
+away from the threads that serve requests, each a little more than a core. One collection brings
+every photo the DSP lacks, sixteen at a time, and stops at the first the application refuses the
+session for; a photo due a refresh is asked for by its ETag, so only a changed one comes again.

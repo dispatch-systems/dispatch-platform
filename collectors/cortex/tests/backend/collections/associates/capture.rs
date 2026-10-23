@@ -62,12 +62,12 @@ fn roster_rows_read_into_bounded_associates() {
 #[test]
 fn a_photo_is_kept_only_as_an_image_whose_bytes_match_its_digest() {
     let png = b"\x89PNG\r\n\x1a\n rest of the image";
-    assert!(Photo::new("/workforce/p", b"<html>signed out</html>").is_none());
-    let photo = Photo::new("/workforce/p", png).unwrap();
+    assert!(Photo::new("/workforce/p", b"<html>signed out</html>", None).is_none());
+    let photo = Photo::new("/workforce/p", png, None).unwrap();
     assert_eq!(photo.format, PhotoFormat::Png);
     assert_eq!(photo.bytes().unwrap(), png);
     let mut changed = photo.clone();
-    changed.data = Photo::new("/workforce/p", b"\x89PNG\r\n\x1a\n another image")
+    changed.data = Photo::new("/workforce/p", b"\x89PNG\r\n\x1a\n another image", None)
         .unwrap()
         .data;
     assert!(changed.bytes().is_err());

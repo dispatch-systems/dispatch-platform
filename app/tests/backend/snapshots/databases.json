@@ -153,7 +153,8 @@
     "cache_size": -512,
     "migrations": [
       [1, "baseline", "7883df84ca01f041"],
-      [2, "drop_settings", "c8a26bc3352c0fed"]
+      [2, "drop_settings", "c8a26bc3352c0fed"],
+      [3, "photo_etags", "code"]
     ]
   },
   {

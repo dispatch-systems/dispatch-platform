@@ -83,7 +83,7 @@ fn someone_offboarded_and_back_on_the_roster_is_as_the_roster_lists_them() {
 }
 
 #[tokio::test]
-async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies() {
+async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies_unless_unchanged() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let origin = format!("http://{FIXTURE}:{port}");
@@ -112,29 +112,58 @@ async fn a_photo_comes_from_where_its_address_redirects_without_amazons_cookies(
         )
         .route("/workforce/page", get(|| async { "<html>a page</html>" }))
         .route(
+            "/workforce/signed-out",
+            get(|| async { Response::builder().status(403).body(Body::empty()).unwrap() }),
+        )
+        .route(
             "/s3/photo",
             get(|headers: HeaderMap| async move {
                 assert!(headers.get("cookie").is_none());
                 assert!(headers.get("referer").is_none());
-                Body::from(&b"\xFF\xD8\xFF a jpeg"[..])
+                let current = headers
+                    .get("if-none-match")
+                    .is_some_and(|etag| etag == "\"v2\"");
+                Response::builder()
+                    .status(if current { 304 } else { 200 })
+                    .header("etag", "\"v2\"")
+                    .body(Body::from(if current {
+                        &b""[..]
+                    } else {
+                        b"\xFF\xD8\xFF a jpeg"
+                    }))
+                    .unwrap()
             }),
         );
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let http = Http::detached(&origin, &cortex::HOSTS).unwrap();
     let downloads = Http::detached(&origin, &cortex::PHOTO_HOSTS).unwrap();
-    let fetch = |address: &'static str| photo(&http, &downloads, &origin, "/workforce", address);
+    let fetch = |address: &'static str, etag: Option<&'static str>| {
+        photo(&http, &downloads, &origin, "/workforce", address, etag)
+    };
+    let served = Some((b"\xFF\xD8\xFF a jpeg".to_vec(), Some("\"v2\"".to_owned())));
+    assert_eq!(fetch("/workforce/photo", None).await.unwrap(), served);
+    // Asked for by the ETag it was kept under, it comes again only once it changed.
     assert_eq!(
-        fetch("/workforce/photo").await.unwrap(),
-        b"\xFF\xD8\xFF a jpeg"
+        fetch("/workforce/photo", Some("\"v2\"")).await.unwrap(),
+        None
     );
-    // Only where Amazon serves photos; an answer that isn't a redirect is no photo.
     assert_eq!(
-        fetch("/workforce/away").await.unwrap_err(),
-        "photo_redirect_unexpected"
+        fetch("/workforce/photo", Some("\"v1\"")).await.unwrap(),
+        served
+    );
+    // Only where Amazon serves photos; an answer that isn't a redirect is no photo. A session
+    // the application refuses would be refused every photo after.
+    assert_eq!(
+        fetch("/workforce/away", None).await.unwrap_err(),
+        Missed::Skipped("photo_redirect_unexpected")
     );
     assert_eq!(
-        fetch("/workforce/page").await.unwrap_err(),
-        "http_not_redirected"
+        fetch("/workforce/page", None).await.unwrap_err(),
+        Missed::Skipped("http_not_redirected")
+    );
+    assert_eq!(
+        fetch("/workforce/signed-out", None).await.unwrap_err(),
+        Missed::Refused("http_signed_out")
     );
     let s3 = url::Url::parse(&format!("https://{PHOTO_HOST}/photo?X-Amz-Expires=180")).unwrap();
     assert!(cortex::PHOTO_HOSTS.allows(&s3));

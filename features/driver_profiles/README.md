@@ -17,9 +17,11 @@ Settings' Collectors page.
   Collectors routes.
 - **Collection:** Cortex's `associates` reads the company whose short code is the DSP's
   abbreviation, then its whole roster in one request over HTTP and everyone it offboarded in
-  another, then downloads the photos the DSP lacks or holds for over 30 days, active
-  associates' first, about sixty at most a run, counted as Amazon serves them; the next brings
-  the rest. An offboarded associate's photo, once kept shrunk, is never downloaded again. A
+  another, then downloads every photo the DSP lacks, active associates' first, up to 96 MB of
+  them shrunk, about 3,600; the next brings any rest. It stops at the first photo the
+  application refuses the session for, or doesn't answer, keeping what it got. A photo held
+  for over 30 days is asked for by the ETag it was served under, and downloaded again only if
+  Amazon changed it; an offboarded associate's, once kept shrunk, is never asked for again. A
   roster naming no one is refused rather than taken to mean everyone left; no one offboarded is
   a DSP that never offboarded anyone. Someone on both lists, as a rehire, is as the roster
   lists them.
@@ -31,10 +33,11 @@ Settings' Collectors page.
 - **Photos** are files in the DSP's cache, `cache/driver_profiles/photos/<sha256>.<ext>`,
   shrunk as Cortex collects them: at most 400 pixels on the long side, as a JPEG of about
   20 KB, turned upright as its EXIF said and carrying none of it; one already that small, or a
-  GIF, WebP or AVIF, is kept as it came. A JPEG or PNG over 200 KB was kept before photos were
-  shrunk, and the next collection shrinks it. A photo that can't be shrunk, too large or in a
-  JPEG form the reader doesn't know, isn't kept, and every collection downloads and tries it
-  again, within the photos it tries. Backups leave the cache out, as a restore collects them
+  GIF, WebP or AVIF, is kept as it came. Each keeps the ETag it was served under, in `etag`
+  (migration 3); one kept before has none, and its next refresh downloads it. A JPEG or PNG over
+  200 KB was kept before photos were shrunk, and the next collection shrinks it. A photo that
+  can't be shrunk, too large or in a JPEG form the reader doesn't know, isn't kept, and every
+  collection downloads and tries it again. Backups leave the cache out, as a restore collects them
   again, and they go with the DSP's folder. A photo is deleted once Amazon no longer lists
   whoever it shows; an inactive or offboarded associate Amazon still lists keeps theirs.
 - **People:** its `Roster` names everyone Amazon has listed by the name Amazon has on file,
