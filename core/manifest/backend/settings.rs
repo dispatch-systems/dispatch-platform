@@ -43,8 +43,7 @@ pub struct Section {
     /// The page it's on: its feature's own (`Page::Own`), or one of the shared pages.
     pub page: Page,
     /// Who sees and changes it: a permission its feature declares (core's own for core's),
-    /// or `roles::ACCESS` for every member. A write under one that's `.recently_verified()`
-    /// asks for a recent verification.
+    /// or `roles::ACCESS` for every member.
     pub permission: &'static str,
     /// One value for the DSP, or each member's own.
     pub scope: Scope,

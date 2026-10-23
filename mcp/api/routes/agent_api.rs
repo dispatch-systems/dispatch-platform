@@ -1,8 +1,5 @@
 //! Agent keys and the agent API: the platform owner's Agents page, `whoami` under `/api/v1/`,
-//! and the MCP server at `/api/v1/mcp`. Making or changing a key asks the owner to have
-//! verified who they are recently, as approving an app does: either hands out a credential
-//! that outlives the session and may change things. Revoking asks for nothing, so a key stops
-//! at once.
+//! and the MCP server at `/api/v1/mcp`.
 use crate::{ActivityStore, KeyStore};
 use crate::{
     activity::{self, ActivityQuery, Outcomes},
@@ -18,7 +15,7 @@ use dispatch_core::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, optional_text, query_number},
-        route::{PlatformOwner, PlatformRoutine, Route, Served, User, agent_protocol, read, write},
+        route::{PlatformOwner, Route, Served, User, agent_protocol, read, write},
     },
 };
 
@@ -29,17 +26,13 @@ pub fn routes() -> Vec<Route> {
         write("/api/platform/agents/keys/{id}", PlatformOwner, update),
         write(
             "/api/platform/agents/keys/{id}/revoke",
-            PlatformRoutine,
+            PlatformOwner,
             revoke,
         ),
-        write(
-            "/api/platform/agents/revoke-all",
-            PlatformRoutine,
-            revoke_all,
-        ),
+        write("/api/platform/agents/revoke-all", PlatformOwner, revoke_all),
         read(
             "/api/platform/agents/activity",
-            PlatformRoutine,
+            PlatformOwner,
             |db, _, input| Reply::of(&db.agent_activity(&activity_query(&input.query)?)?),
         ),
         read("/api/v1/whoami", Agent::READ, |db, agent, _| {

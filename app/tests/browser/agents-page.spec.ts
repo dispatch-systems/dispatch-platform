@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import type { AgentKeys } from '../../../mcp/api/index.js';
 import { platformHash } from '../../../core/shell/frontend/runtime/navigation.js';
 import { utcDay } from '../../../core/shell/frontend/lib/format.js';
-import { test, expect, login, demo } from '../../../core/shell/tests/support/fixtures.js';
+import { test, expect, login } from '../../../core/shell/tests/support/fixtures.js';
 import { startingTools } from '../support/agent-keys.js';
 
 // The Agents page: keys, connected apps and what they called.
@@ -239,11 +239,7 @@ test('the Activity tab lists each call a key makes, and what Dispatch answered',
   await expect(page.getByRole('row')).toHaveCount(3);
 });
 
-test('the owner changes where a connected app reaches once they confirm it’s them', async ({
-  page,
-  baseURL,
-  dispatch,
-}) => {
+test('the owner changes where a connected app reaches', async ({ page, baseURL, dispatch }) => {
   await login(page);
   await expect(page.getByRole('heading', { name: 'DSPs', exact: true })).toBeVisible();
   const owner = await dispatch.client();
@@ -252,18 +248,7 @@ test('the owner changes where a connected app reaches once they confirm it’s t
   await connectApp(page, baseURL!, 'Laptop – Claude Code');
   const starting = await startingTools(dispatch);
   const agents = async () => (await owner.get('/api/platform/agents')).value as AgentKeys;
-  const { dsps } = await agents();
-  const summit = dsps.find((dsp) => dsp.name === 'Summit Delivery')!;
-  const north = dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
-  // Long after signing in, removing a DSP asks for the password again, and so does changing
-  // where an app reaches: either outlives the session.
-  dispatch.database('data/platform/accounts.sqlite', (db) => {
-    db.prepare('UPDATE sessions SET created_at=0').run();
-    db.prepare('UPDATE session_security SET verified_at=0, password_verified_at=0').run();
-  });
-  const remove = await owner.post(`/api/platform/dsps/${summit.id}/remove`, {});
-  expect([remove.status, remove.value.error], remove.body).toEqual([403, 'sign_in_again']);
-
+  const north = (await agents()).dsps.find((dsp) => dsp.name === 'Northline Logistics')!;
   await page.goto(`/${platformHash('agents')}`);
   const row = page.getByRole('row').filter({ hasText: 'Laptop – Claude Code' });
   await expect(row).toContainText('All DSPs');
@@ -277,13 +262,6 @@ test('the owner changes where a connected app reaches once they confirm it’s t
   await sheet.getByText('Choose DSPs', { exact: true }).click();
   await sheet.getByRole('checkbox', { name: 'Northline Logistics' }).check();
 
-  // Saving asks the owner to confirm it’s them; confirmed, they save again.
-  await sheet.getByRole('button', { name: 'Save changes', exact: true }).click();
-  const confirm = page.getByRole('dialog', { name: 'Confirm it’s you' });
-  await expect(confirm).toBeVisible();
-  await confirm.getByLabel('Password', { exact: true }).fill(demo.password);
-  await confirm.getByRole('button', { name: 'Verify password', exact: true }).click();
-  await expect(confirm).toHaveCount(0);
   await sheet.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(page.getByText('App updated', { exact: true })).toBeVisible();
   await expect(sheet).toHaveCount(0);

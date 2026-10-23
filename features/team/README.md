@@ -7,8 +7,7 @@ Nobody grants or manages beyond their own permissions, the Owner role holds ever
 and can't change, and a DSP keeps at least one owner.
 
 - **Permissions:** `members.invite` (Invite Members), `members.manage` (Manage Members) and
-  `roles.manage` (Manage Roles), listed under Team on the role sheet. Inviting and managing
-  members ask their holder to have verified who they are recently. Any of the three reads the
+  `roles.manage` (Manage Roles), listed under Team on the role sheet. Any of the three reads the
   member and role lists.
 - **API:** `GET /api/dsp/members` (each member, their role, and whether they're online now) and
   `GET /api/dsp/roles`, behind any of the three. Behind `members.invite`:

@@ -18,7 +18,7 @@ use crate::{
         cache::Scope as Cache,
         http::{
             input::{Input, Reply},
-            route::{Dsp, Member, Route, needs_recent_verification, read, write},
+            route::{Dsp, Member, Route, read, write},
         },
     },
     settings::{self, Saved, kinds, store},
@@ -134,8 +134,8 @@ fn skipped(c: &Context, section: &Section, error: &Error) {
 }
 
 /// Saves the section `id` of `declared` as `body` asks, once the member may see it and holds
-/// its permission, recently verified when that asks for it: the section as it is now, its
-/// options as the save listed them, or the words to confirm first.
+/// its permission: the section as it is now, its options as the save listed them, or the
+/// words to confirm first.
 pub(crate) fn save_as(
     db: &Store,
     c: &Context,
@@ -148,9 +148,6 @@ pub(crate) fn save_as(
         .find(|(feature, section)| section.id == id && shown(c, *feature, section))
         .ok_or_else(|| Error::new("not_found", 404))?;
     ensure(c.allows(section.permission), "permission_denied", 403)?;
-    if needs_recent_verification(section.permission) {
-        db.ensure_recent(&c.auth)?;
-    }
     let body: SettingsSave =
         serde_json::from_value(body.clone()).map_err(|_| Error::new("invalid_input", 400))?;
     let (saved, mut lists) = settings::save_listing(

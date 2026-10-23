@@ -3,7 +3,7 @@ use crate::{
     foundation::validate as v,
     server::http::{
         input::{Input, Reply, optional_text, query_number},
-        route::{Grant, PlatformRoutine, Route, Session, User, read, upload, write},
+        route::{Grant, PlatformOwner, Route, Session, User, read, upload, write},
         upload::Upload,
     },
     support::{approvals, attachments, conversations, notifications, tickets},
@@ -30,15 +30,15 @@ pub fn routes() -> Vec<Route> {
         read("/api/support/notifications", Session, notices),
         read("/api/support/notifications/unread", Session, unread),
         write("/api/support/notifications/read", Session, read_notices),
-        read("/api/platform/support/tickets", PlatformRoutine, inbox),
+        read("/api/platform/support/tickets", PlatformOwner, inbox),
         write(
             "/api/platform/support/tickets/{id}/decision",
-            PlatformRoutine,
+            PlatformOwner,
             decision,
         ),
         write(
             "/api/platform/support/tickets/{id}/resume",
-            PlatformRoutine,
+            PlatformOwner,
             resume,
         ),
     ];

@@ -25,8 +25,6 @@ pub struct Permission {
     /// The role sheet's section for a permission no page owns, such as `Team`. A page's own
     /// permissions are listed under the page.
     pub group: Option<&'static str>,
-    /// Whether a write it allows asks its holder to have verified who they are recently.
-    pub recently_verified: bool,
     /// Whether it lets its holder invite members. One permission at most does, and a member's
     /// invitations are good only while they hold it.
     pub invites: bool,
@@ -46,7 +44,6 @@ pub const fn perm(id: &'static str, label: &'static str, order: u16) -> Permissi
         under: None,
         demo: &[],
         group: None,
-        recently_verified: false,
         invites: false,
         legacy_role: None,
     }
@@ -68,12 +65,6 @@ impl Permission {
     pub const fn group(self, group: &'static str) -> Self {
         Self {
             group: Some(group),
-            ..self
-        }
-    }
-    pub const fn recently_verified(self) -> Self {
-        Self {
-            recently_verified: true,
             ..self
         }
     }

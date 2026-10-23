@@ -121,7 +121,7 @@ test('custom roles gate tenant APIs and never grant more than the actor holds', 
   assert.equal((await named('Viewer')).members, 1);
 });
 
-test('role edits need no fresh verification and invitations follow their sender authority', async (t) => {
+test('team changes need no fresh verification and invitations follow their sender authority', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -167,7 +167,7 @@ test('role edits need no fresh verification and invitations follow their sender 
     db.prepare('UPDATE sessions SET created_at=0 WHERE user_id=?').run(owner.session.user.id);
   });
 
-  // Long after signing in, role permissions still switch on and off without a password.
+  // Long after signing in, roles, invitations and members' roles change without a password.
   for (const permissions of [[], ['uniforms.view', 'timecard.view']])
     assert.equal(
       (await write(`/api/dsp/roles/${crew.id}`, { name: 'Crew', permissions })).status,
@@ -179,12 +179,7 @@ test('role edits need no fresh verification and invitations follow their sender 
     email: 'later@dispatch.test',
     role: crew.id,
   });
-  assert.equal(invite.status, 403, invite.body);
-  assert.ok(['sign_in_again', 'reauthentication_required'].includes(invite.value.error));
-  assert.equal(
-    (await owner.post('/api/auth/security/reauthenticate', { password: demo.password })).status,
-    200,
-  );
+  assert.equal(invite.status, 200, invite.body);
 
   // An invitation never outlives its sender's authority. Platform-owner invitations remain
   // usable through role edits.
