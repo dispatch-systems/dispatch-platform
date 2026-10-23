@@ -132,7 +132,7 @@ export function ConversationPane({
           </>
         )}
       </header>
-      {profile.open && person && (
+      {profile.drawn && person && (
         <Profile
           id={profile.id}
           conversation={id}
@@ -140,7 +140,9 @@ export function ConversationPane({
           workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
           timeZone={timeZone}
           docked={docked}
+          leaving={!profile.open}
           close={profile.close}
+          gone={profile.gone}
         />
       )}
       <ErrorBox message={error} />

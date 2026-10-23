@@ -1,23 +1,39 @@
-/* The Communications page: the list of conversations beside the one open, filling the window so
-   each scrolls on its own. Every size on it grows with the page's own width, smoothly, from a
-   laptop's (about 1,000px of page) to an ultrawide's (about 3,100px), then stops: measured
-   against the page itself (a container query, `cqi`), so the sidebar showing or not is counted.
+/* The Communications page: the list of conversations beside the one open, on the page itself
+   under its heading, out to the window's edges, filling the window so each scrolls on its own.
+   Its sizes are the app's own, the same at every width; a wider page gives more room, measured
+   against the page itself (a container query), so the sidebar showing or not is counted.
 
      page width   layout
-     < 760        one pane, edge to edge: the list, or the conversation open
-     760 – 1499   the list beside the conversation; the profile over the conversation
-     ≥ 1500       the profile, open, a column of its own beside the conversation
+     < 760        one pane: the list, or the conversation open
+     760 – 1149   the list beside the conversation; the profile over the conversation
+     ≥ 1150       the profile, open, a column of its own beside the conversation
 
-   useLayout.ts tells the page the same widths. Sizes go by a hundredth of the page's width
-   (`--cq`): within the page, its container's (`1cqi`), which each size reads where it's used; in
-   New message and the Update popup, which lie outside the page's container to cover the window or
-   the page beside the sidebar, the page's width as useLayout.ts measures it, set on the page. */
+   useLayout.ts tells the page the same widths. */
 .communications {
   --bubble-in: #eef1f5;
   --bubble-out: #2055ed;
   --bubble-out-foreground: #fff;
   --late: var(--destructive);
   --late-surface: #fbeaec;
+  --list-width: 340px;
+  --text-size: 14px;
+  --name-size: 14px;
+  --title-size: 15px;
+  --ui-size: 14px;
+  --small-size: 12px;
+  --face-list: 36px;
+  --face-head: 36px;
+  --face-message: 28px;
+  --face-profile: 64px;
+  --field-height: 36px;
+  --composer-height: 44px;
+  --round-size: 32px;
+  --gap: 12px;
+  --pad: 20px;
+  --photo-width: 240px;
+  --profile-width: 320px;
+  /* How the profile slides in and out, and the conversation beside it with it. */
+  --profile-slide: 340ms cubic-bezier(0.32, 0.72, 0, 1);
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -30,34 +46,10 @@
 }
 .communications-page {
   container: communications / inline-size;
-  --cq: 1cqi;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-}
-/* The sizes, each declared where its `--cq` is: the page, and each popup. */
-.communications-page,
-.communications > .modal-backdrop {
-  --list-width: clamp(296px, calc(18 * var(--cq) + 120px), 440px);
-  /* The conversation's messages and the box under them, centred on a wide page. */
-  --column-width: clamp(880px, calc(56 * var(--cq)), 1320px);
-  --text-size: clamp(14px, calc(10.6px + 0.3 * var(--cq)), 17.5px);
-  --name-size: clamp(14px, calc(10.9px + 0.27 * var(--cq)), 17px);
-  --title-size: clamp(15px, calc(11px + 0.35 * var(--cq)), 20px);
-  --ui-size: clamp(13px, calc(10.3px + 0.24 * var(--cq)), 16px);
-  --small-size: clamp(11.5px, calc(9.4px + 0.18 * var(--cq)), 14px);
-  --face-list: clamp(40px, calc(28px + 1.05 * var(--cq)), 56px);
-  --face-head: clamp(40px, calc(28px + 1.05 * var(--cq)), 54px);
-  --face-message: clamp(30px, calc(21px + 0.78 * var(--cq)), 42px);
-  --face-profile: clamp(72px, calc(56px + 1.3 * var(--cq)), 96px);
-  --field-height: clamp(38px, calc(28px + 0.88 * var(--cq)), 50px);
-  --composer-height: clamp(46px, calc(33px + 1.1 * var(--cq)), 60px);
-  --round-size: clamp(34px, calc(25px + 0.78 * var(--cq)), 44px);
-  --gap: clamp(12px, calc(8px + 0.35 * var(--cq)), 18px);
-  --pad: clamp(18px, calc(8px + 0.9 * var(--cq)), 40px);
-  --photo-width: clamp(232px, calc(140px + 8 * var(--cq)), 340px);
-  --profile-width: clamp(300px, calc(200px + 9 * var(--cq)), 400px);
 }
 .communications .page-heading {
   margin-bottom: 22px;
@@ -142,7 +134,7 @@
 .communications .group-faces > .face {
   --face: calc(var(--group-face) * 0.64);
   position: absolute;
-  box-shadow: 0 0 0 2px var(--card);
+  box-shadow: 0 0 0 2px var(--background);
 }
 .group-faces > .face:first-child {
   top: 0;
@@ -181,16 +173,16 @@
   text-align: center;
 }
 
-/* The list beside the conversation. */
+/* The list beside the conversation, on the page itself: under the heading's line, out through
+   the page's padding to the window's edges at the sides and below. */
 .chat-frame {
   display: grid;
   grid-template-columns: var(--list-width) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+  margin: 0 calc(-1 * var(--page-gutter)) calc(-1 * var(--page-bottom));
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
+  border-top: 1px solid var(--border);
 }
 .pane-list {
   display: flex;
@@ -549,15 +541,16 @@
   color: var(--late);
 }
 
-/* The conversation open: its messages and the box under them keep to a centred column once
-   it's wider than that. */
+/* The conversation open: its messages and the box under them across the whole pane, `--side`
+   in from its edges. Beside its profile, it makes room for it as the profile slides. */
 .pane-thread {
-  --side: max(var(--pad), calc((100% - var(--column-width)) / 2));
+  --side: var(--pad);
   position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  transition: padding-right var(--profile-slide);
 }
 .thread-head {
   display: flex;
@@ -847,7 +840,8 @@ button.sender {
   height: 1px;
 }
 
-/* The profile of who it's with, over the conversation; on a wide page beside it (below). */
+/* The profile of who it's with, over the conversation; on a wide page beside it (below). It
+   slides in from the window's edge, and closed, slides back out before it goes (`leaving`). */
 .profile {
   --profile-pad: calc(var(--pad) + 4px);
   position: absolute;
@@ -862,8 +856,22 @@ button.sender {
   padding: calc(var(--profile-pad) + 4px) var(--profile-pad);
   overflow-y: auto;
   border-left: 1px solid var(--border);
-  background: var(--card);
+  background: var(--background);
   box-shadow: -18px 0 44px var(--shadow-color);
+  animation: profile-in var(--profile-slide);
+}
+.profile.leaving {
+  animation: profile-out var(--profile-slide) forwards;
+}
+@keyframes profile-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes profile-out {
+  to {
+    transform: translateX(100%);
+  }
 }
 /* Its X stays in reach while it scrolls, 12px from its corner (sticking within its padding),
    taking no room from what's below. */
@@ -1021,10 +1029,17 @@ button.sender {
   color: var(--late);
 }
 
-/* Writing a message. */
+/* Writing a message, its text `--typed-size`: on a touch screen 16px, so a phone's browser
+   doesn't zoom in on the page as the box is tapped. */
 .composer {
+  --typed-size: var(--text-size);
   margin: 0;
   padding: 10px var(--side) calc(var(--pad) - 2px);
+}
+@media (pointer: coarse) {
+  .composer {
+    --typed-size: 16px;
+  }
 }
 .composer .box {
   display: flex;
@@ -1042,13 +1057,13 @@ button.sender {
 .composer textarea {
   flex: 1;
   min-height: var(--round-size);
-  max-height: calc(var(--text-size) * 10);
-  padding: calc((var(--round-size) - var(--text-size) * 1.42) / 2) 6px;
+  max-height: calc(var(--typed-size) * 10);
+  padding: calc((var(--round-size) - var(--typed-size) * 1.42) / 2) 6px;
   border: 0;
   background: transparent;
   resize: none;
   outline: none;
-  font-size: var(--text-size);
+  font-size: var(--typed-size);
   line-height: 1.42;
 }
 .composer textarea:disabled {
@@ -1278,7 +1293,7 @@ button.sender {
 }
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(clamp(200px, calc(15 * var(--cq)), 300px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: calc(var(--gap) * 0.7);
 }
 .pick {
@@ -1580,8 +1595,8 @@ button.sender {
 }
 
 /* On a wide page, the profile, open, is a column of its own beside the conversation, which it
-   no longer covers. */
-@container communications (width >= 1500px) {
+   no longer covers: the conversation keeps 560px or more beside the list and the profile. */
+@container communications (width >= 1150px) {
   .pane-thread.profiled {
     padding-right: var(--profile-width);
   }
@@ -1590,8 +1605,8 @@ button.sender {
   }
 }
 
-/* On a phone: one pane at a time, edge to edge, the list or the conversation open, which takes
-   the whole page, with a way back. Without hover, Done in the conversation marks it done. */
+/* On a phone: one pane at a time, the list or the conversation open, which takes the whole page,
+   with a way back. Without hover, Done in the conversation marks it done. */
 @container communications (width < 760px) {
   .communications .page-heading {
     flex-wrap: nowrap;
@@ -1614,9 +1629,6 @@ button.sender {
   }
   .chat-frame {
     grid-template-columns: minmax(0, 1fr);
-    margin: 0 calc(-1 * var(--page-gutter)) calc(-1 * var(--page-bottom));
-    border-width: 1px 0 0;
-    border-radius: 0;
   }
   .communications .pane-thread,
   .communications.reading .pane-list {

@@ -22,7 +22,9 @@ export function Profile({
   workspace,
   timeZone,
   docked,
+  leaving,
   close,
+  gone,
 }: {
   /** The panel's own ID, which its openers control. */
   id: string;
@@ -33,15 +35,27 @@ export function Profile({
   timeZone: string;
   /** Whether it's a column of its own beside the conversation. */
   docked: boolean;
+  /** Whether it's closed, sliding away. */
+  leaving: boolean;
   /** Closes it: `refocus`, focus goes back to what opened it. */
   close: (refocus: boolean) => void;
+  /** Says it has slid away. */
+  gone: () => void;
 }) {
   const { data: profile, error } = useProfile(conversation);
   const title = useId();
   const today = profile?.today;
   const role = roleText(person);
   return (
-    <Panel id={id} labelledBy={title} className="profile" docked={docked} close={close}>
+    <Panel
+      id={id}
+      labelledBy={title}
+      className="profile"
+      docked={docked}
+      leaving={leaving}
+      close={close}
+      gone={gone}
+    >
       <div className="me">
         <Face {...person} size="profile" />
         <div>
