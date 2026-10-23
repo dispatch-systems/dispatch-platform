@@ -45,9 +45,10 @@ nothing; the queue's own gate decides, and a PR queued before it passed is dropp
 invalid merge commit.
 
 `dispatchdev` (`tooling/cli/`) holds what runs on this machine, and `dispatchdev help` lists
-it. A change goes from `start` (its worktree, branch and scratch folder) through `preview`
-(its link), `api` (signed-in calls to the preview), `check`, `pr` and `ship` to `finish`, which
-removes what it made and waits for Dev; `status` shows the workspace. `dispatchdev build`
+it. A change goes from `start` (its worktree, branch and scratch folder, once the changes whose
+PRs merged are removed) through `preview` (its link), `api` (signed-in calls to the preview),
+`check`, `pr` and `ship` to `finish`, which removes what it made and waits for Dev; `status`
+shows the workspace. `dispatchdev build`
 builds the package's two executables, the backend and the support worker, in one Cargo pass,
 through a cache keyed by their exact inputs and the compiler's fingerprint.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and

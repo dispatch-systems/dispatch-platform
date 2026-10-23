@@ -2,11 +2,11 @@
 //! `worktrees/`, its branch, its preview's unit and its scratch folder's, and its PR is the
 //! newest one GitHub has from that branch.
 use crate::{
-    REPOSITORY, Result, Runner, require,
+    REPOSITORY, Result, Runner, preview, require,
     workspace::{self, Workspace},
 };
 use serde_json::Value;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 pub struct Change {
     pub name: String,
@@ -98,6 +98,68 @@ impl Change {
             state: pr["state"].as_str().unwrap_or("").to_owned(),
             merge: pr["mergeCommit"]["oid"].as_str().map(str::to_owned),
         }))
+    }
+    /// Everything the change made goes: its preview and port, its worktree with its build, its
+    /// branch here and on GitHub, and its scratch folder. Returns what went, in that order.
+    pub fn clean(&self, ws: &Workspace, runner: &dyn Runner) -> Result<Vec<String>> {
+        let name = &self.name;
+        let dev = ws.dev();
+        let git =
+            |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&dev));
+        let mut done = vec![];
+        let unit = preview::unit(name);
+        if preview::running(runner)?
+            .iter()
+            .any(|running| running == name)
+        {
+            runner.command(&["systemctl", "--user", "stop", &unit], None, 120)?;
+            done.push("its preview stopped".to_owned());
+        }
+        // A preview that failed stays listed as failed until told otherwise, which a unit that
+        // never failed refuses.
+        let _ = runner.command(&["systemctl", "--user", "reset-failed", &unit], None, 120);
+        if fs::remove_file(preview::env_file(name)?).is_ok() {
+            done.push("its port released".to_owned());
+        }
+        if self.path.exists() {
+            let build = workspace::size(runner, &self.path.join("target"));
+            git(&[
+                "worktree",
+                "remove",
+                self.path.to_str().ok_or("Non-UTF8 path")?,
+            ])?;
+            done.push(match build {
+                Some(bytes) => format!(
+                    "worktrees/{name} removed with its {} build",
+                    workspace::human(bytes)
+                ),
+                None => format!("worktrees/{name} removed"),
+            });
+        }
+        git(&["worktree", "prune"])?;
+        if git(&[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{name}"),
+        ])
+        .is_ok()
+        {
+            git(&["branch", "-D", name])?;
+            done.push("its branch deleted".to_owned());
+        }
+        // GitHub deletes a merged PR's branch itself; this catches the rest.
+        if !git(&["ls-remote", "--heads", "origin", name])?.is_empty() {
+            git(&["push", "-q", "origin", "--delete", name])?;
+            done.push("its branch on GitHub deleted".to_owned());
+        }
+        let scratch = self.scratch();
+        if scratch.exists() {
+            fs::remove_dir_all(&scratch)?;
+            done.push(format!("{} removed", scratch.display()));
+        }
+        git(&["fetch", "-q", "--prune", "origin"])?;
+        Ok(done)
     }
 }
 

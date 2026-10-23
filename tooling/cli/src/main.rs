@@ -96,7 +96,7 @@ const COMMANDS: &[Spec] = &[
         "start",
         &["start <name> [--from <ref>]"],
         "A worktree and branch for the change from origin/main, its packages installed and its \
-         scratch folder made.",
+         scratch folder made, once the changes whose PRs merged are removed as finish would.",
     )
     .options(&["--from"])
     .arguments(1),
