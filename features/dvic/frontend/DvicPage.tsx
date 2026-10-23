@@ -55,11 +55,9 @@ const views = [
 ] as const;
 
 function selectedWeek(status: DvicStatus | undefined, today: string, chosenWeek?: string) {
-  const latestDate = status?.reports
-    .map((report) => report.maxDate)
-    .filter((date): date is string => !!date && date <= today)
-    .sort()
-    .at(-1);
+  // The latest collected day, whether or not anyone was short that day.
+  const through = status?.covered.at(-1)?.through;
+  const latestDate = through && through > today ? today : through;
   const start =
     chosenWeek && chosenWeek >= '2000-01-02' && chosenWeek <= today
       ? chosenWeek
@@ -137,7 +135,7 @@ export function DvicPage({ view }: { view: DspView }) {
   const { start, latestDate } = selectedWeek(status.data, today, chosenWeek);
   const days = useMemo(() => weekDays(start), [start]);
   const end = days[6]!;
-  // The latest reported day in this week, else the last day that has happened.
+  // The latest collected day in this week, else the last day that has happened.
   const day =
     chosenDay && chosenDay >= start && chosenDay <= end && chosenDay <= today
       ? chosenDay
@@ -256,7 +254,7 @@ export function DvicPage({ view }: { view: DspView }) {
           <button
             disabled={!status.data || start === weekStart(latestDate ?? today)}
             onClick={() => selectWeek(latestDate ?? today)}
-            title="The most recent week with reported inspections"
+            title="The most recent collected week"
           >
             Latest
           </button>
