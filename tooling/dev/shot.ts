@@ -23,18 +23,17 @@ const [width, height] = values.size!.split('x').map(Number) as [number, number];
  * for live updates, so the page is never without one.
  */
 function settled(page: Page) {
-  const events = ['request', 'requestfinished', 'requestfailed'] as const;
   return new Promise<void>((resolve) => {
-    const done = () => {
-      for (const event of events) page.off(event, wait);
-      resolve();
-    };
     let timer = setTimeout(done, 500);
-    const wait = () => {
+    function wait() {
       clearTimeout(timer);
       timer = setTimeout(done, 500);
-    };
-    for (const event of events) page.on(event, wait);
+    }
+    function done() {
+      page.off('request', wait).off('requestfinished', wait).off('requestfailed', wait);
+      resolve();
+    }
+    page.on('request', wait).on('requestfinished', wait).on('requestfailed', wait);
   });
 }
 
