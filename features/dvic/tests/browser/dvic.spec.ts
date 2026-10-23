@@ -63,20 +63,7 @@ test('the day digest and week grid read the same inspections, with details on de
     'Sep 20 – Sep 26',
   );
   await expect(page.getByRole('button', { name: 'Latest' })).toBeDisabled();
-  // The latest reported day opens first, with its headline numbers and repeat drivers.
-  await expect(page.getByRole('heading', { name: 'Sat, Sep 26, 2026' })).toBeVisible();
-  // Today opens the DSP's current day, even before it has been collected; Latest returns.
-  const today = new Intl.DateTimeFormat('en-US', {
-    timeZone: dsp.timezone,
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date());
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
-  await expect(page.getByRole('heading', { name: today })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Latest' }).click();
+  // The latest collected day opens first, with its headline numbers and repeat drivers.
   await expect(page.getByRole('heading', { name: 'Sat, Sep 26, 2026' })).toBeVisible();
   await expect(page.locator('.dvic-footer')).toContainText('3 records');
   await expect(page.locator('.dvic-kpi')).toHaveText('Short inspections3');
@@ -145,6 +132,37 @@ test('the day digest and week grid read the same inspections, with details on de
   await page.locator('.dvic-item').first().click();
   await expect(page.getByRole('dialog')).toContainText('Inspection duration');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('the latest collected day opens first even when nobody was short; Today leaves it and Latest returns', async ({
+  page,
+  dispatch,
+}) => {
+  const { dsp } = await seedDvic(dispatch);
+  // Sep 26, the last day Sep 27's report covers, had no short inspections.
+  dispatch.database(`dsps/${dsp.id}/data/dvic/dvic.sqlite`, (db) => {
+    db.prepare('DELETE FROM dvic_inspections WHERE start_date=?').run('2026-09-26');
+    db.prepare('UPDATE dvic_reports SET max_date=?').run('2026-09-25');
+  });
+  await login(page);
+  await openDsp(page, dsp.name);
+  await page.getByRole('link', { name: 'DVIC', exact: true }).click();
+  const latest = page.getByRole('heading', { name: 'Sat, Sep 26, 2026' });
+  await expect(latest).toBeVisible();
+  await expect(page.getByText('No short inspections on this day', { exact: true })).toBeVisible();
+  // Today opens the DSP's current day, even before it has been collected; Latest returns.
+  const today = new Intl.DateTimeFormat('en-US', {
+    timeZone: dsp.timezone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date());
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await expect(page.getByRole('heading', { name: today })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Latest' }).click();
+  await expect(latest).toBeVisible();
 });
 
 test('a large week opens without downloading every inspection and never shows a failed summary as zero', async ({
