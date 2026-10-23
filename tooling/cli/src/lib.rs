@@ -15,6 +15,7 @@ pub mod preview;
 pub mod review;
 pub mod scaffold;
 pub mod ship;
+pub mod shot;
 pub mod slot;
 pub mod start;
 pub mod status;
