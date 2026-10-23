@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
-import type { Route } from '../runtime/slots.js';
 
-type Badge = NonNullable<Route['badge']>;
+/** A page's badge, as its page declares it: what draws it, loaded as it is first drawn. */
+type Badge = { load: () => Promise<ComponentType<{ active: boolean }>> };
 const badges = new WeakMap<Badge, ComponentType<{ active: boolean }>>();
 
 /**
