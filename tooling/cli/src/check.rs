@@ -387,7 +387,7 @@ pub fn next_step(plan: &Plan) -> &'static str {
     if plan.running {
         "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
     } else {
-        "Next, dispatchdev ci <name> runs the full checks on GitHub while the change is tried. Open the PR and ship it only once told to: dispatchdev ship <n> queues it at once."
+        "Next, dispatchdev ci <name> runs the full checks on GitHub while the change is tried. Open the PR and ship it only once told to: dispatchdev ship <name> takes it to Dev."
     }
 }
 /// `dispatchdev check --plan`: what to run, without running it.

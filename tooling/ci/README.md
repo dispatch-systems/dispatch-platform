@@ -77,13 +77,18 @@ and stops at the first failed job; a newer run of the branch replaces it.
 `--removability <feature>` starts and follows `removability.yml` the same way, for that
 feature alone, and `verify --removability` does when the branch is pushed as it is, or else
 runs the check in a copy of the checkout, built in a folder of its own.
-`dispatchdev ship <number>` reads the PR from GitHub's API every 10 seconds, adds it to the
-merge queue once its admission check passed and GitHub knows it merges cleanly, and waits
-until GitHub merges it, printing the squash commit. A newer push is queued
-in its turn. A head whose branch run failed isn't queued, and a branch run still going is
-cancelled when the PR is, since the queue runs the checks again. It stops with the reason when the PR conflicts with `main`, is a draft, closes,
-leaves the queue unmerged, with GitHub's reason and the failed jobs of its own queue run, or
-has not merged after 90 minutes.
+`dispatchdev ship <name>` takes a change to Dev: it runs `dispatchdev check`, pushes the branch
+and opens or updates the PR from the scratch folder's `pr-body.md`, whose first line is the
+title. It then reads the PR from GitHub's API every 10 seconds, adds it to the merge queue once
+its admission check passed and GitHub knows it merges cleanly, and waits until GitHub merges
+it. A newer push is queued in its turn. A head whose branch run failed isn't queued, and a
+branch run still going is cancelled when the PR is, since the queue runs the checks again. It
+stops with the reason when the PR conflicts with `main`, is a draft, closes, leaves the queue
+unmerged, with GitHub's reason and the failed jobs of its own queue run, or has not merged
+after 90 minutes. Once merged, it removes what the change made, as `finish` does, and waits
+until Dev runs the merge. Run again, it picks up where it stopped. It exits with 1 for a stop to
+fix and ship again, 2 for one the owner decides, such as a closed PR, and 3 once the PR merged
+but the clean-up or Dev's install didn't finish, which `finish` completes.
 
 Caches: only `main`'s reach every branch, since the queue's branches are deleted after each
 run. `caches.yml` refreshes them on every push to `main`: the release executables keyed by
