@@ -10,6 +10,7 @@ export { ErrorBox } from './ErrorBox.js';
 export { Header } from './Header.js';
 export { Loading } from './Loading.js';
 export { Modal } from './Modal.js';
+export { PageBadge } from './PageBadge.js';
 export { Pagination } from './Pagination.js';
 export { Popover, openContextMenu } from './Popover.js';
 export { SearchInput } from './SearchInput.js';

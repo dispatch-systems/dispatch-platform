@@ -162,16 +162,14 @@ test('a member without management permissions never sees the Data page or Driver
   page,
 }) => {
   await login(page, 'member@dispatch.test');
-  // Settings takes the app's sidebar over once open, so Driver Match is looked for before.
-  const settings = page
+  await page
     .getByRole('navigation', { name: 'Primary navigation' })
-    .getByRole('button', { name: 'Settings', exact: true });
-  await expect(settings).toBeVisible();
-  await expect(page.getByRole('link', { name: /^Driver Match/ })).toHaveCount(0);
-  await settings.click();
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
   const pages = page.getByRole('navigation', { name: 'Settings', exact: true });
   await expect(pages.getByRole('link', { name: 'Profile', exact: true })).toBeVisible();
   await expect(pages.getByRole('link', { name: 'Data', exact: true })).toHaveCount(0);
+  await expect(pages.getByRole('link', { name: /^Driver Match/ })).toHaveCount(0);
 });
 
 test('a Routes rule reads yesterday unless it is set to read today so far', async ({

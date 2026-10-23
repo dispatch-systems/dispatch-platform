@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import type { DspView } from '../../../../core/accounts/api/index.js';
+import type { DspView, SessionView } from '../../../../core/accounts/api/index.js';
 import { useSettings } from '../../../../core/settings/api/client.js';
 import { dspHash, navigate } from '../../../../core/shell/frontend/runtime/navigation.js';
 import { settingsPage, type SidebarProps } from '../../../../core/shell/frontend/runtime/slots.js';
@@ -7,7 +7,14 @@ import { SidebarHead } from '../../../../core/shell/frontend/ui/index.js';
 import { moveTo, useAddressedPage } from '../address.js';
 import { whoseSettings } from '../drafts.js';
 import { search, type Found } from '../search/search.js';
-import { drawnPages, drawnSections, loadPage, openPage, prefetchPage } from '../pages.js';
+import {
+  drawnSections,
+  listedPages,
+  loadPage,
+  openPage,
+  prefetchPage,
+  warmRoute,
+} from '../pages.js';
 import { PageList } from './PageList.js';
 import { Results, resultId } from './Results.js';
 import { SearchField } from './SearchField.js';
@@ -16,6 +23,7 @@ import '../settings.css';
 /**
  * Settings' sidebar, in place of the app's: the way back to the app's, a search of the member's
  * pages, and the pages themselves, under their groups, or, while they search, the pages it found.
+ * A page a feature puts under Settings opens at its own address, as the app's sidebar opens it.
  */
 export function SettingsSidebar({ session, view, page, back, close }: SidebarProps) {
   // The search outlives the view opening again for the same member, DSP and role viewed as, as
@@ -28,6 +36,7 @@ export function SettingsSidebar({ session, view, page, back, close }: SidebarPro
       {view && whose && (
         <Pages
           key={whose}
+          session={session}
           view={view}
           page={page}
           close={close}
@@ -40,12 +49,14 @@ export function SettingsSidebar({ session, view, page, back, close }: SidebarPro
 }
 
 function Pages({
+  session,
   view,
   page,
   close,
   query,
   setQuery,
 }: {
+  session: SessionView;
   view: DspView;
   page: string;
   close: () => void;
@@ -58,9 +69,19 @@ function Pages({
   const addressed = useAddressedPage();
   const list = useId();
   const host = settingsPage();
-  // A page under Settings, as one it links to, shows its sidebar with none of its pages open.
-  const current = settings && page === host ? openPage(settings, view, addressed) : undefined;
-  const pages = useMemo(() => (settings ? drawnPages(settings, view) : []), [settings, view]);
+  const pages = useMemo(
+    () => (settings ? listedPages(settings, { session, view }) : []),
+    [settings, session, view],
+  );
+  const routed = (to: string) => pages.find((each) => each.id === to)?.route;
+  // A page under Settings it doesn't list, as one it links to, shows its sidebar with none of its
+  // pages open.
+  const current =
+    settings && page === host
+      ? openPage(settings, view, addressed)
+      : routed(page)
+        ? page
+        : undefined;
   const found = useMemo(
     () => (settings ? search(pages, drawnSections(settings, view), query) : []),
     [settings, view, pages, query],
@@ -71,14 +92,19 @@ function Pages({
     if (chosen) document.getElementById(chosen)?.scrollIntoView({ block: 'nearest' });
   }, [chosen]);
   if (!settings || !host) return null;
-  const href = (to: string, section?: string) =>
-    dspHash(view.dsp.id, host, section ? { tab: to, find: section } : { tab: to });
+  const href = (to: string, section?: string) => {
+    const route = routed(to);
+    if (route) return dspHash(view.dsp.id, route.id);
+    return dspHash(view.dsp.id, host, section ? { tab: to, find: section } : { tab: to });
+  };
   const open = (to: string, section?: string) => {
     close();
-    if (page === host) moveTo(to, current, section);
+    if (page === host && !routed(to)) moveTo(to, current, section);
     else navigate(href(to, section));
   };
   const warm = (to: string) => {
+    const route = routed(to);
+    if (route) return warmRoute(route, { session, view });
     void loadPage(settings, view, to).catch(() => undefined);
     prefetchPage(to, view);
   };

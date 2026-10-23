@@ -13,7 +13,8 @@ declare module '../../../core/shell/frontend/runtime/slots.js' {
   }
 }
 
-// Driver Match's frontend manifest, loaded up front. Its one screen is a page of its own.
+// Driver Match's frontend manifest, loaded up front. Its one screen is a page of its own, listed
+// in Settings, under Features, rather than in the app's sidebar.
 
 const load = () => import('./index.js');
 const DriverMatchPage = lazy(() => load().then((module) => ({ default: module.DriverMatchPage })));
@@ -29,6 +30,7 @@ export const feature: FrontendFeature = {
       scope: 'dsp',
       label: 'Driver Match',
       icon: Fingerprint,
+      parent: 'settings',
       // How many questions wait.
       badge: { load: () => import('./badge.js').then((module) => module.DriverMatchCount) },
       nav: true,

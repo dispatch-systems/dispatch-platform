@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { DspView, Permission, SessionView } from '../../../../accounts/api/index.js';
 import type { Feature } from '../../../../tenancy/api/index.js';
+import { hasFeature } from '../features.js';
 import { manifests } from './installed.js';
 
 // The pages slot: an owner's pages, inside a DSP or outside, and which of them a DSP opens on,
@@ -33,7 +34,8 @@ type Page<Context> = {
   /**
    * The item it is under: a page, highlighted while this one is open, or a sidebar of pages
    * (`sidebars`), which lists it in place of the app's. A page under a page of a sidebar's, as
-   * a page of detail is, shows that sidebar too.
+   * a page of detail is, shows that sidebar too. The sidebar may be another owner's, as
+   * Settings' is for a feature's page it lists under Features (`parent: 'settings'`).
    */
   parent?: string;
   icon?: LucideIcon;
@@ -231,8 +233,10 @@ export const listed = (route: Route, access: Access) =>
   (!route.permission || route.permission(access));
 /**
  * The items of the app's sidebar for `access`, from `pages` in their order: each page it lists,
- * but those under a sidebar of pages, which is listed in their place, once, where the first is,
- * with them. A sidebar none of whose pages it lists is left out.
+ * but those under a sidebar of pages, which is listed in their place, once, with them: where its
+ * own page is, the one sharing its id, which leads its pages, or else where the first is. So a
+ * page another owner puts under it never moves it. A sidebar none of whose pages it lists is left
+ * out.
  */
 export function sidebarItems<P extends Route>(
   scope: Route['scope'],
@@ -240,18 +244,41 @@ export function sidebarItems<P extends Route>(
   pages: readonly P[],
 ) {
   type Listing = { sidebar: Sidebar; pages: P[] };
-  const items: (P | Listing)[] = [];
-  for (const page of pages) {
-    if (page.scope !== scope || !listed(page, access)) continue;
-    const sidebar = pageSidebar(scope, page.id);
-    const there =
-      sidebar &&
-      items.find((item): item is Listing => 'sidebar' in item && item.sidebar === sidebar);
-    if (!sidebar) items.push(page);
-    else if (there) there.pages.push(page);
-    else items.push({ sidebar, pages: [page] });
+  const shown = pages
+    .filter((page) => page.scope === scope && listed(page, access))
+    .map((page) => ({ page, sidebar: pageSidebar(scope, page.id) }));
+  const listings = new Map<Sidebar, Listing>();
+  for (const { page, sidebar } of shown) {
+    if (!sidebar) continue;
+    const listing = listings.get(sidebar) ?? { sidebar, pages: [] };
+    if (page.id === sidebar.id) listing.pages.unshift(page);
+    else listing.pages.push(page);
+    listings.set(sidebar, listing);
   }
-  return items;
+  return shown.flatMap(({ page, sidebar }): (P | Listing)[] => {
+    if (!sidebar) return [page];
+    const listing = listings.get(sidebar)!;
+    return listing.pages[0] === page ? [listing] : [];
+  });
+}
+/**
+ * The pages a sidebar of pages that draws its own lists for `access` beside its own, as Settings
+ * lists a feature's page among its pages: those naming it their `parent` but its own page, the one
+ * sharing its id, while the DSP has their feature, in the order their owners are listed. It lists
+ * each as the app's sidebar would, by its icon, its name and its badge, and opens it at its own
+ * address.
+ */
+export function pagesUnder(sidebar: string, access: Access & { view: DspView }) {
+  return manifests().flatMap((owner) =>
+    (owner.routes ?? []).filter(
+      (route): route is DspRoute =>
+        route.scope === 'dsp' &&
+        route.parent === sidebar &&
+        route.id !== sidebar &&
+        (!route.feature || hasFeature(access.view, route.feature)) &&
+        listed(route, access),
+    ),
+  );
 }
 type Drawing = NonNullable<Sidebar['draw']>;
 const drawings = new WeakMap<Drawing, ComponentType<SidebarProps>>();
@@ -266,6 +293,14 @@ export const loadSidebar = (drawing: Drawing) =>
   });
 export const loadedSidebar = (drawing: Drawing) => drawings.get(drawing);
 
+/**
+ * Where an owner is listed among those installed, as the app lists them, the features in their
+ * places: none for one not installed. A feature's switch's id is its owner's name.
+ */
+export const ownerPlace = (name: string) => {
+  const at = manifests().findIndex((owner) => owner.name === name);
+  return at < 0 ? undefined : at;
+};
 /**
  * A feature's icon: that of the first of its DSP pages with one in the sidebar, else the one its
  * manifest gives (its switch's id is its owner's name).
