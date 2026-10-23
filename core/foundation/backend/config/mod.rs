@@ -23,6 +23,9 @@ pub struct Config {
     pub source: crate::accounts::api::types::RuntimeSource,
     pub fixture: bool,
     pub fixture_url: Option<String>,
+    /// Whether passwords are tried without a limit, as on a preview, whose checkers sign in
+    /// again and again: only with fixture providers, while developing.
+    pub unlimited_sign_in: bool,
     pub browser_capacity: usize,
     pub dashboard: PathBuf,
     pub browseros: PathBuf,
@@ -115,6 +118,7 @@ impl Config {
             source,
             fixture: provider == "fixture",
             fixture_url: env::var("DISPATCH_FIXTURE_PROVIDER_URL").ok(),
+            unlimited_sign_in: variable("DISPATCH_FIXTURE_UNLIMITED_SIGN_IN", "0") == "1",
             browser_capacity: 2,
             dashboard: bundle.join("dashboard"),
             browseros: PathBuf::from(variable(
@@ -195,6 +199,11 @@ impl Config {
             .transpose()?;
         ensure(
             today.is_none() || (c.development && c.fixture),
+            "fixture_forbidden",
+            403,
+        )?;
+        ensure(
+            !c.unlimited_sign_in || (c.development && c.fixture),
             "fixture_forbidden",
             403,
         )?;
