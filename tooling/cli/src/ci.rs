@@ -7,7 +7,9 @@
 //! `--removability <feature>` runs and follows the weekly `removability.yml` the same way, for
 //! that feature alone: its runs are told apart by the name the workflow gives them.
 use crate::{
-    REPOSITORY, Result, Runner, require,
+    REPOSITORY, Result, Runner,
+    change::Change,
+    require,
     ship::{ATTEMPTS, PAUSE, failed_jobs, report, rest},
     workspace::{self, Workspace},
 };
@@ -102,9 +104,7 @@ pub fn run(
     pause: &dyn Fn(u64),
     say: &mut dyn FnMut(&str),
 ) -> Result<String> {
-    workspace::valid_name(name)?;
-    let path = ws.worktree(name);
-    require(path.is_dir(), &format!("worktrees/{name} doesn't exist."))?;
+    let path = Change::existing(ws, name)?.path;
     match removability {
         Some(feature) => self::removability(&path, name, feature, runner, pause, say),
         None => follow(&path, name, &Workflow::checks(), runner, pause, say),

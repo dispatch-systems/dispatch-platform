@@ -4,6 +4,7 @@
 //! the merge queue.
 pub mod api;
 pub mod build;
+pub mod change;
 pub mod check;
 pub mod ci;
 pub mod finish;

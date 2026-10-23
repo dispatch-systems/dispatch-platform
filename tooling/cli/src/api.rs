@@ -2,7 +2,9 @@
 //! owner at the admin's address or as any demo account at its DSP's, with the session's CSRF
 //! token and, for a DSP's routes, its view. Sessions are kept in the change's scratch folder.
 use crate::{
-    Result, Runner, require,
+    Result, Runner,
+    change::Change,
+    require,
     workspace::{self, Workspace},
 };
 use serde_json::{Value, json};
@@ -137,11 +139,7 @@ struct Running {
 }
 impl Running {
     fn find(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Self> {
-        workspace::valid_name(name)?;
-        require(
-            ws.worktree(name).is_dir(),
-            &format!("worktrees/{name} doesn't exist."),
-        )?;
+        let change = Change::existing(ws, name)?;
         let port = crate::preview::port(name)?.ok_or_else(|| {
             format!("{name} has no preview. Start it with dispatchdev preview {name}.")
         })?;
@@ -155,7 +153,7 @@ impl Running {
             host,
             port,
             log,
-            scratch: workspace::scratch_dir(name)?,
+            scratch: change.scratch_dir()?,
         })
     }
     /// The admin's address, where the platform owner signs in.

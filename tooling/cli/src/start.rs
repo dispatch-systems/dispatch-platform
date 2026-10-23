@@ -1,7 +1,9 @@
 //! `dispatchdev start <name>`: a worktree for one change, on a branch of the same name from
 //! `origin/main` (or `--from`), with its packages installed and its scratch folder made.
 use crate::{
-    Result, Runner, require,
+    Result, Runner,
+    change::Change,
+    require,
     workspace::{self, Workspace},
 };
 
@@ -9,8 +11,8 @@ use crate::{
 pub const LOW_DISK: u64 = 20_000_000_000;
 
 pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Result<()> {
-    workspace::valid_name(name)?;
-    let path = ws.worktree(name);
+    let change = Change::named(ws, name)?;
+    let path = &change.path;
     require(!path.exists(), &format!("worktrees/{name} exists already."))?;
     let dev = ws.dev();
     let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&dev));
@@ -39,11 +41,11 @@ pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Resul
         name,
         from,
     ])?;
-    let scratch = workspace::scratch_dir(name)?;
+    let scratch = change.scratch_dir()?;
     let log = scratch.join("npm-ci.log");
     let (installed, took) = workspace::logged(
         "npm ci --silent",
-        &path,
+        path,
         &log,
         &[("TMPDIR", scratch.as_os_str())],
     )?;
