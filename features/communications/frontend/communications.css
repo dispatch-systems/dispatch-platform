@@ -1026,17 +1026,11 @@ button.sender {
   color: var(--late);
 }
 
-/* Writing a message, its text `--typed-size`: on a touch screen 16px, so a phone's browser
-   doesn't zoom in on the page as the box is tapped. */
+/* Writing a message, its text `--typed-size`, 16px on a touch screen (below). */
 .composer {
   --typed-size: var(--text-size);
   margin: 0;
   padding: 10px var(--side) calc(var(--pad) - 2px);
-}
-@media (pointer: coarse) {
-  .composer {
-    --typed-size: 16px;
-  }
 }
 .composer .box {
   display: flex;
@@ -1586,6 +1580,20 @@ button.sender {
   width: calc(var(--list-width) * 0.56);
   min-height: calc(var(--field-height) - 2px);
   font-size: calc(var(--small-size) + 0.5px);
+}
+
+/* On a touch screen, what's typed or tapped in is 16px, so a phone's browser doesn't zoom in on
+   the page as a field is tapped. */
+@media (pointer: coarse) {
+  .composer {
+    --typed-size: 16px;
+  }
+  .pane-list .search input,
+  .to-field input,
+  .new-message .new-search input,
+  .update-buttons input {
+    font-size: 16px;
+  }
 }
 
 /* On a wide page, the profile, open, is a column of its own beside the conversation, which it
