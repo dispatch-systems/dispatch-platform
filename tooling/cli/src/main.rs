@@ -195,11 +195,9 @@ const COMMANDS: &[Spec] = &[
     .arguments(1),
     spec(
         "ship",
-        &["ship <PR number> [--review]"],
-        "Queue the PR as soon as GitHub admits it and wait until it merges; --review first asks \
-         CodeRabbit, once.",
+        &["ship <PR number>"],
+        "Queue the PR as soon as GitHub admits it and wait until it merges.",
     )
-    .flags(&["--review"])
     .arguments(1),
     spec(
         "finish",
@@ -588,17 +586,6 @@ fn run() -> Result<()> {
                 _ => None,
             }
             .ok_or_else(|| line.usage())?;
-            if line.flag("--review") {
-                let asked = ship::request_review(number, &Native)?;
-                println!(
-                    "{}",
-                    if asked {
-                        "Asked CodeRabbit for its review; shipping waits for it."
-                    } else {
-                        "CodeRabbit was asked already; shipping waits for its review."
-                    }
-                );
-            }
             let merge = ship::run(
                 number,
                 &Native,

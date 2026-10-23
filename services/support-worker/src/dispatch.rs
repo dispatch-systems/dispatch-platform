@@ -178,7 +178,7 @@ fn rules(config: &Config) -> Result<String> {
         instructions.push_str("\n\n");
         instructions.push_str(&fs::read_to_string(skill.join(file))?);
     }
-    instructions.push_str("\n\nThe approved AI Support policy overrides interactive workflow steps: owner approval authorizes implementation, agent browser verification, PR creation and automatic existing-queue merge without another user preview or CodeRabbit. Production releases remain separately authorized. Do not message other users via external channels.");
+    instructions.push_str("\n\nThe approved AI Support policy overrides interactive workflow steps: owner approval authorizes implementation, agent browser verification, PR creation and automatic existing-queue merge without another user preview or code review. Production releases remain separately authorized. Do not message other users via external channels.");
     Ok(instructions)
 }
 
