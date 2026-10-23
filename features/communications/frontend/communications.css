@@ -1689,8 +1689,9 @@ button.sender {
   display: none;
 }
 
-/* Times shown only by the message pointed at or reached. */
-.communications[data-times='on_hover'] .msg-group:not(:hover, :focus-within) :is(.meta, .sent-at) {
+/* Times shown only by the message pointed at or reached; how far a group's message has gone
+   stays. */
+.communications[data-times='on_hover'] .msg-group:not(:hover, :focus-within) :is(.at, .sent-at) {
   visibility: hidden;
 }
 
@@ -1856,8 +1857,10 @@ button.sender {
   .composer {
     padding: 8px 10px 10px;
   }
+  /* A phone's narrower conversation gives each bubble a little more of it: 80% at the default
+     70%. */
   .stack {
-    max-width: 80%;
+    max-width: min(100%, calc(var(--bubble-width) * 8 / 7));
   }
 }
 /* The Update popup, over a phone's window. */

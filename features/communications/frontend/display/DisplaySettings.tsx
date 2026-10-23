@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import { saveSettings, useSettings } from '../../../../core/settings/api/client.js';
-import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
-import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
+import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
+import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
+import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import type { MessageDisplay } from '../../api/index.js';
 import { Choice, Segments, Sketch, Slider, Swatches, Switch, Tiles } from './controls.js';
 import { defaults, lookOf, looks, lookSizes, ownDisplay, section, type Look } from './display.js';
 import { Preview } from './Preview.js';
+import { choicesSaver } from './saving.js';
 import '../communications.css';
 import './display.css';
 
@@ -15,8 +17,8 @@ import './display.css';
 // preview of the page with them, which changes as they choose. What they choose is shown at once
 // and saved a moment later, their own; Reset goes back to the defaults. The preview shows a
 // desktop as wide as the room beside the choices, at its actual size, while that's room for the
-// list beside the conversation; or as wide as the member's window, made to fit; or a phone, whose
-// text size is its own.
+// list beside the conversation; or as wide as the member's window, made to fit; or a phone, at its
+// actual size, whose text size is its own.
 
 /** How long after a choice it's saved, so a slider dragged saves once. */
 const SAVE_MS = 400;
@@ -24,50 +26,69 @@ const SAVE_MS = 400;
 const SIDEBAR = 240;
 const HEADING = 150;
 const PHONE = { width: 390, height: 760 };
+/** A phone's edge, round its screen. */
+const PHONE_EDGE = 20;
 /** The least room a desktop is shown in at its actual size: the list beside the conversation. */
 const ACTUAL_LEAST = 900;
 
-/** The member's choices as they make them: shown at once, saved shortly after, one save at a time. */
-function useChoices() {
-  const { fail } = useFeedback();
+/**
+ * The member's choices as they make them: shown at once, saved a moment after the last one
+ * (`choicesSaver`), and shown as made until the newest of them is saved, then as Settings holds
+ * them. A save that fails says why at the top of the page until one succeeds; one refused because
+ * another session saved first reads Settings again, and what it holds replaces the choices made.
+ */
+function useChoices(refresh: () => void) {
   const { data: settings } = useSettings();
   const saved = ownDisplay(settings);
   const kept = settings?.sections.find((each) => each.id === section);
   const [draft, setDraft] = useState<MessageDisplay>();
-  // The choices waiting to be saved, and the revision the next save goes on from.
-  const waiting = useRef<MessageDisplay>(undefined);
-  const revision = useRef(kept?.revision ?? 0);
-  useEffect(() => {
-    if (kept) revision.current = kept.revision;
-  }, [kept]);
-  const timer = useRef(0);
-  const saving = useRef(Promise.resolve());
-  const save = useCallback(() => {
-    window.clearTimeout(timer.current);
-    const values = waiting.current;
-    if (!values) return;
-    waiting.current = undefined;
-    saving.current = saving.current.then(async () => {
-      try {
-        const answer = await saveSettings(section, { values, revision: revision.current });
-        if ('section' in answer) revision.current = answer.section.revision;
-      } catch (error) {
-        fail(messageOf(error));
-      }
-      // Saved, Settings holds them: shown from there, unless more wait.
-      if (!waiting.current) setDraft(undefined);
-    });
-  }, [fail]);
-  const change = useCallback(
-    (changes: Partial<MessageDisplay>) => {
-      setDraft((draft) => (waiting.current = { ...(draft ?? saved), ...changes }));
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(save, SAVE_MS);
-    },
-    [saved, save],
+  // The newest choices, as made, before the page draws them.
+  const latest = useRef<MessageDisplay>(undefined);
+  const [saver] = useState(() =>
+    choicesSaver({
+      save: async (values, revision) => {
+        const answer = await saveSettings(section, { values, revision });
+        return 'section' in answer ? answer.section.revision : revision;
+      },
+      view: () => dataCache.session,
+      revision: kept?.revision ?? 0,
+    }),
   );
+  useEffect(() => {
+    if (kept) saver.reread(kept.revision);
+  }, [kept, saver]);
+  const saving = useAction(async () => {
+    const done = await saver.flush();
+    if (!done || done.dropped) return;
+    if (done.version === saver.made) {
+      latest.current = undefined;
+      setDraft(undefined);
+    }
+    if (!done.error) return;
+    if (
+      done.error instanceof ApiError &&
+      done.error.code === 'settings_changed_reload_before_saving'
+    )
+      refresh();
+    throw done.error;
+  });
+  const timer = useRef(0);
+  const change = (changes: Partial<MessageDisplay>) => {
+    const next = { ...(latest.current ?? saved), ...changes };
+    latest.current = next;
+    setDraft(next);
+    saver.change(next);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => void saving.run(), SAVE_MS);
+  };
   // Leaving the page saves what waits.
-  useEffect(() => save, [save]);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timer.current);
+      void saver.flush();
+    },
+    [saver],
+  );
   return { shown: draft ?? saved, change };
 }
 
@@ -86,8 +107,8 @@ function useRoom(box: RefObject<HTMLElement | null>) {
   return room;
 }
 
-export function DisplaySettings({ view }: { view: DspView }) {
-  const { shown, change } = useChoices();
+export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () => void }) {
+  const { shown, change } = useChoices(refresh);
   const [screen, setScreen] = useState<'desktop' | 'phone'>(() =>
     matchMedia('(width <= 760px)').matches ? 'phone' : 'desktop',
   );
@@ -99,12 +120,17 @@ export function DisplaySettings({ view }: { view: DspView }) {
   // The screen previewed, and how much it's made smaller to fit the room it has.
   const roomy = room.width >= ACTUAL_LEAST;
   const actual = !phone && size === 'actual' && roomy;
+  // A phone, always at its actual size, in as much of one as there's room for (inside its edge).
   const whole = phone
-    ? PHONE
+    ? {
+        width: Math.min(PHONE.width, room.width - PHONE_EDGE),
+        height: Math.min(PHONE.height, room.height - PHONE_EDGE),
+      }
     : actual
       ? room
       : { width: window.innerWidth - SIDEBAR, height: window.innerHeight - HEADING };
-  const scale = actual ? 1 : Math.min(1, room.width / whole.width, room.height / whole.height);
+  const scale =
+    phone || actual ? 1 : Math.min(1, room.width / whole.width, room.height / whole.height);
   const look = lookOf(shown);
   const textSize = phone ? 'phone_text_size' : 'text_size';
   const bubbles = shown.style === 'bubbles';

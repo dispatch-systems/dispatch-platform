@@ -47,7 +47,7 @@ export const feature: FrontendFeature = {
     {
       id: 'communications.display',
       load: loadDisplay,
-      render: ({ view }) => view && createElement(DisplaySettings, { view }),
+      render: ({ view, refresh }) => view && createElement(DisplaySettings, { view, refresh }),
       prefetch: () => ['/api/dsp/settings'],
     },
   ],

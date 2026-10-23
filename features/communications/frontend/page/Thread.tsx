@@ -137,12 +137,16 @@ export function Thread({
                       <Fragment key={message.id}>
                         <Written message={message} />
                         {!plain && times === 'each_message' && (
-                          <div className="meta">{clock(message.at, timeZone)}</div>
+                          <div className="meta">
+                            <span className="at">{clock(message.at, timeZone)}</span>
+                          </div>
                         )}
                       </Fragment>
                     ))}
                     {!plain && times !== 'each_message' && (
-                      <div className="meta">{clock(written.at(-1)!.at, timeZone)}</div>
+                      <div className="meta">
+                        <span className="at">{clock(written.at(-1)!.at, timeZone)}</span>
+                      </div>
                     )}
                   </div>
                 </div>

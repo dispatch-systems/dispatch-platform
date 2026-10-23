@@ -111,8 +111,12 @@ export function GroupThread({
                       <Written message={first} />
                       {(!plain || gone) && (
                         <div className="meta">
-                          {!plain && clock(first.at, timeZone)}
-                          {!plain && gone && ' · '}
+                          {!plain && (
+                            <span className="at">
+                              {clock(first.at, timeZone)}
+                              {gone && ' · '}
+                            </span>
+                          )}
                           {gone && (
                             <span className={gone.sending ? 'sending' : undefined}>
                               {gone.text}
@@ -146,12 +150,16 @@ export function GroupThread({
                       <Fragment key={entry.id}>
                         <Written message={entry} />
                         {!plain && times === 'each_message' && (
-                          <div className="meta">{clock(entry.at, timeZone)}</div>
+                          <div className="meta">
+                            <span className="at">{clock(entry.at, timeZone)}</span>
+                          </div>
                         )}
                       </Fragment>
                     ))}
                     {!plain && times !== 'each_message' && (
-                      <div className="meta">{clock(last.at, timeZone)}</div>
+                      <div className="meta">
+                        <span className="at">{clock(last.at, timeZone)}</span>
+                      </div>
                     )}
                   </div>
                   <button

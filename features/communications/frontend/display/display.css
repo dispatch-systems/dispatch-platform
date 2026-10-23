@@ -373,7 +373,8 @@
     background: none;
   }
   .display-scaled.phone {
-    border: 1px solid var(--border);
+    border-width: 1px;
+    border-color: var(--border);
     border-radius: 12px;
   }
   .display-tiles {

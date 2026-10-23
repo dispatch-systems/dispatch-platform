@@ -343,7 +343,7 @@ test('an owner messages a group from New message, its answers come back together
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 });
 
-test('Display opens the member’s own Message display, where Enter can start a new line, and Ctrl+Enter still sends', async ({
+test('Display opens the member’s own Message display, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation', async ({
   page,
   dispatch,
 }) => {
@@ -390,4 +390,26 @@ test('Display opens the member’s own Message display, where Enter can start a 
   await box.press('Control+Enter');
   await expect(box).toHaveValue('');
   await expect(casey.getByText('Cam takes Sunday')).toBeVisible();
+
+  // Kept open, a conversation's profile opens with it, though Settings is read after it opens.
+  await page.getByRole('button', { name: 'Display' }).click();
+  const kept = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await page.getByRole('switch', { name: 'Keep profile open' }).check();
+  await kept;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/dsp/settings', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goBack();
+  await page.reload();
+  await expect(box).toBeVisible();
+  const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
+  await expect(profile).toHaveCount(0);
+  release();
+  await expect(profile).toBeVisible();
 });
