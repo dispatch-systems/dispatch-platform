@@ -24,8 +24,9 @@
   position: fixed;
   inset: 0 auto 0 0;
 }
-/* What fills the sidebar above the account, the app's or a sidebar of pages: the two share its
-   place while one slides in for the other, and what slides beside it is clipped. */
+/* What fills the sidebar between the app's name and the account, the app's pages or a sidebar
+   of pages: the two share its place while one slides in for the other, and what slides beside
+   it is clipped. */
 .sidebar-panels {
   display: grid;
   flex: 1;
@@ -38,6 +39,7 @@
   flex-direction: column;
   display: flex;
 }
+/* The app's name and the DSP's, atop every sidebar: it stays as one slides in for another. */
 .sidebar-brand {
   padding: 27px 24px 26px;
 }

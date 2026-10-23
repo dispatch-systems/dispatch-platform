@@ -17,11 +17,12 @@
   font-size: 14px;
 }
 
-/* The top of a sidebar standing in for another: the way back, and its name. */
+/* The top of a sidebar standing in for another, under the app's name: the way back, and its
+   name, in line with the app's first item. */
 .sidebar-head {
   align-items: center;
   gap: 10px;
-  padding: 24px 18px 16px;
+  padding: 18px 18px 16px;
   display: flex;
 }
 .sidebar-head .icon-button {
