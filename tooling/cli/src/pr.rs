@@ -3,10 +3,11 @@
 //! the release notes take its summary. `--skeleton` in place of `--body` starts the body with
 //! the sections the title's type needs.
 use crate::{
-    REPOSITORY, Result, Runner, require,
+    REPOSITORY, Result, Runner,
+    change::Change,
+    require,
     workspace::{self, Workspace},
 };
-use serde_json::Value;
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 const TYPES: &[&str] = &[
@@ -140,12 +141,9 @@ pub fn skeleton(title: &str, path: &Path) -> Result<&'static [&'static str]> {
 /// `dispatchdev pr <name> --skeleton --title <title>`: the body's sections, in the change's
 /// scratch folder, where `pr` reads it from.
 pub fn start_body(ws: &Workspace, name: &str, title: &str) -> Result<()> {
-    workspace::valid_name(name)?;
-    require(
-        ws.worktree(name).is_dir(),
-        &format!("worktrees/{name} doesn't exist."),
-    )?;
-    let body = workspace::scratch_dir(name)?.join("pr-body.md");
+    let body = Change::existing(ws, name)?
+        .scratch_dir()?
+        .join("pr-body.md");
     let wanted = skeleton(title, &body)?;
     println!("Wrote {}: {}.", body.display(), wanted.join(", "));
     println!(
@@ -166,42 +164,22 @@ pub fn run(
     body: &std::path::Path,
     runner: &dyn Runner,
 ) -> Result<()> {
-    workspace::valid_name(name)?;
-    let path = ws.worktree(name);
-    require(path.is_dir(), &format!("worktrees/{name} doesn't exist."))?;
+    let change = Change::existing(ws, name)?;
     let text =
         std::fs::read_to_string(body).map_err(|_| format!("Couldn't read {}.", body.display()))?;
     check_body(title, &text)?;
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&path));
     require(
-        git(&["status", "--porcelain"])?.is_empty(),
+        !change.dirty(runner)?,
         "Commit the change before opening its PR.",
     )?;
     require(
-        git(&["rev-parse", "--abbrev-ref", "HEAD"])? == name,
+        change.branch(runner)? == name,
         &format!("worktrees/{name} isn't on its branch."),
     )?;
-    git(&["push", "-q", "-u", "origin", name])?;
+    change.git(runner, &["push", "-q", "-u", "origin", name])?;
     let body = body.to_str().ok_or("Non-UTF8 path")?;
-    let open: Vec<Value> = serde_json::from_str(&workspace::text(
-        runner,
-        &[
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            REPOSITORY,
-            "--head",
-            name,
-            "--state",
-            "open",
-            "--json",
-            "number,url",
-        ],
-        None,
-    )?)?;
-    if let Some(pr) = open.first() {
-        let number = pr["number"].to_string();
+    if let Some(pr) = change.pull(runner)?.filter(|pr| pr.open()) {
+        let number = pr.number.to_string();
         workspace::text(
             runner,
             &[
@@ -218,7 +196,7 @@ pub fn run(
             ],
             None,
         )?;
-        println!("Updated #{number}: {}", pr["url"].as_str().unwrap_or(""));
+        println!("Updated #{number}: {}", pr.url);
     } else {
         let url = workspace::text(
             runner,

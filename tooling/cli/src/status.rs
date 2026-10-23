@@ -3,6 +3,7 @@
 //! disk space.
 use crate::{
     REPOSITORY, Result, Runner,
+    change::Change,
     workspace::{self, Workspace},
 };
 use serde_json::Value;
@@ -48,15 +49,15 @@ pub fn run(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
         println!("  none");
     }
     for name in &names {
-        let path = ws.worktree(name);
-        let git =
-            |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&path));
-        let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "?".into());
+        let change = Change::named(ws, name)?;
+        let path = &change.path;
+        let git = |args: &[&str]| change.git(runner, args);
+        let branch = change.branch(runner).unwrap_or_else(|_| "?".into());
         let mut notes = vec![];
         if branch != *name {
             notes.push(format!("on {branch}"));
         }
-        if git(&["status", "--porcelain"]).is_ok_and(|changes| !changes.is_empty()) {
+        if change.dirty(runner).unwrap_or(false) {
             notes.push("uncommitted changes".into());
         }
         if let Ok(ahead) = git(&["rev-list", "--count", "origin/main..HEAD"])

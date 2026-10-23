@@ -2,7 +2,9 @@
 //! this machine's Tailscale address with demo data. Each change keeps one port, so its link
 //! survives restarts.
 use crate::{
-    Result, Runner, require, slot,
+    Result, Runner,
+    change::Change,
+    require, slot,
     workspace::{self, Workspace},
 };
 use std::{
@@ -204,11 +206,7 @@ pub fn run(
     open: &Open<'_>,
     runner: &dyn Runner,
 ) -> Result<()> {
-    workspace::valid_name(name)?;
-    require(
-        ws.worktree(name).is_dir(),
-        &format!("worktrees/{name} doesn't exist. Start it with dispatchdev start {name}."),
-    )?;
+    Change::existing(ws, name)?;
     require(
         open.tab.is_none() || open.page.is_some(),
         "--tab is a tab of a page: name the page with --page too.",

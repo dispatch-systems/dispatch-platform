@@ -1,55 +1,25 @@
 //! `dispatchdev finish <name>`: after a change merged, everything it made goes, then Dev is
 //! waited for until it runs the merge. A change that didn't merge goes only with `--abandon`.
 use crate::{
-    REPOSITORY, Result, Runner, require,
+    Result, Runner,
+    change::Change,
+    require,
     workspace::{self, Workspace},
 };
 use serde_json::Value;
-use std::{fs, path::Path};
-
-/// The change's PR, if it has one: whether it merged, and its merge commit.
-fn pull(name: &str, runner: &dyn Runner) -> Result<Option<(u64, bool, String)>> {
-    let list: Vec<Value> = serde_json::from_str(&workspace::text(
-        runner,
-        &[
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            REPOSITORY,
-            "--head",
-            name,
-            "--state",
-            "all",
-            "--json",
-            "number,state,mergeCommit",
-            "--limit",
-            "1",
-        ],
-        None,
-    )?)?;
-    Ok(list.first().map(|pr| {
-        (
-            pr["number"].as_u64().unwrap_or(0),
-            pr["state"] == "MERGED",
-            pr["mergeCommit"]["oid"].as_str().unwrap_or("").to_owned(),
-        )
-    }))
-}
+use std::fs;
 
 pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Result<()> {
-    workspace::valid_name(name)?;
-    let path = ws.worktree(name);
+    let change = Change::named(ws, name)?;
+    let path = &change.path;
     let dev = ws.dev();
-    let git = |args: &[&str], cwd: &Path| {
-        workspace::text(runner, &[&["git"][..], args].concat(), Some(cwd))
-    };
+    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&dev));
     if path.exists() {
         require(
-            git(&["status", "--porcelain"], &path)?.is_empty(),
+            !change.dirty(runner)?,
             &format!("worktrees/{name} holds uncommitted changes; commit or drop them first."),
         )?;
-        let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"], &path)?;
+        let branch = change.branch(runner)?;
         require(
             branch == name,
             &format!(
@@ -57,13 +27,14 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
             ),
         )?;
     }
-    let pr = pull(name, runner)?;
-    let merged = pr.as_ref().filter(|(_, merged, _)| *merged);
+    let pr = change.pull(runner)?;
+    let merged = pr.as_ref().filter(|pr| pr.merged());
     require(
         merged.is_some() || abandon,
         &match &pr {
-            Some((number, ..)) => format!(
-                "#{number} hasn't merged. Ship it first, or drop the change with --abandon."
+            Some(pr) => format!(
+                "#{} hasn't merged. Ship it first, or drop the change with --abandon.",
+                pr.number
             ),
             None => format!("{name} has no PR. Drop the change with --abandon."),
         },
@@ -84,10 +55,7 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
     }
     if path.exists() {
         let build = workspace::size(runner, &path.join("target"));
-        git(
-            &["worktree", "remove", path.to_str().ok_or("Non-UTF8 path")?],
-            &dev,
-        )?;
+        git(&["worktree", "remove", path.to_str().ok_or("Non-UTF8 path")?])?;
         done.push(match build {
             Some(bytes) => format!(
                 "worktrees/{name} removed with its {} build",
@@ -96,30 +64,27 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
             None => format!("worktrees/{name} removed"),
         });
     }
-    if git(
-        &[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{name}"),
-        ],
-        &dev,
-    )
+    if git(&[
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        &format!("refs/heads/{name}"),
+    ])
     .is_ok()
     {
-        git(&["branch", "-D", name], &dev)?;
+        git(&["branch", "-D", name])?;
         done.push("its branch deleted".to_owned());
     }
-    if !git(&["ls-remote", "--heads", "origin", name], &dev)?.is_empty() {
-        git(&["push", "-q", "origin", "--delete", name], &dev)?;
+    if !git(&["ls-remote", "--heads", "origin", name])?.is_empty() {
+        git(&["push", "-q", "origin", "--delete", name])?;
         done.push("its branch on GitHub deleted".to_owned());
     }
-    let scratch = workspace::scratch(name);
+    let scratch = change.scratch();
     if scratch.exists() {
         fs::remove_dir_all(&scratch)?;
         done.push(format!("{} removed", scratch.display()));
     }
-    git(&["fetch", "-q", "--prune", "origin"], &dev)?;
+    git(&["fetch", "-q", "--prune", "origin"])?;
     println!(
         "Finished {name}: {}.",
         if done.is_empty() {
@@ -128,7 +93,8 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
             done.join(", ")
         }
     );
-    if let Some((number, _, commit)) = merged {
+    if let Some(pr) = merged {
+        let commit = pr.merge.as_deref().unwrap_or("");
         let host = dev.join(".runtime/management/dispatch-host");
         require(
             host.is_file(),
@@ -151,7 +117,8 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         )?;
         let status: Value = serde_json::from_slice(&live).unwrap_or(Value::Null);
         println!(
-            "#{number} is live on Dev at {}.",
+            "#{} is live on Dev at {}.",
+            pr.number,
             status["commit"]
                 .as_str()
                 .unwrap_or(commit)
