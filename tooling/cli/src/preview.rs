@@ -38,7 +38,8 @@ pub fn read_env(text: &str) -> BTreeMap<String, String> {
         .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
         .collect()
 }
-fn env_file(name: &str) -> Result<PathBuf> {
+/// Where a change's preview keeps its port.
+pub fn env_file(name: &str) -> Result<PathBuf> {
     Ok(config()?.join(format!("{name}.env")))
 }
 /// The port a change's preview keeps, if it has one.

@@ -1,19 +1,23 @@
 //! `dispatchdev start <name>`: a worktree for one change, on a branch of the same name from
-//! `origin/main` (or `--from`), with its packages installed and its scratch folder made.
+//! `origin/main` (or `--from`), with its packages installed and its scratch folder made. First,
+//! the changes that merged go, as `finish` would remove them.
 use crate::{
-    Result, Runner,
+    REPOSITORY, Result, Runner,
     change::Change,
     require,
     workspace::{self, Workspace},
 };
+use serde_json::Value;
 
-/// Below this, a new worktree's build could fill the disk: each takes 13–17 GB.
+/// Below this, a new worktree's build could fill the disk: a preview's takes about 3 GB, and
+/// 7 GB once tested.
 pub const LOW_DISK: u64 = 20_000_000_000;
 
 pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Result<()> {
     let change = Change::named(ws, name)?;
     let path = &change.path;
     require(!path.exists(), &format!("worktrees/{name} exists already."))?;
+    sweep(ws, runner);
     let dev = ws.dev();
     let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&dev));
     require(
@@ -78,7 +82,7 @@ pub fn disk(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
         return Ok(());
     }
     println!(
-        "Disk: only {} free. Builds can take 13–17 GB each; a merged change's go with dispatchdev finish:",
+        "Disk: only {} free. Builds can take 3–7 GB each; a merged change's go with dispatchdev finish:",
         workspace::human(free)
     );
     for name in ws.worktrees()? {
@@ -87,4 +91,92 @@ pub fn disk(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Removes each change whose PR merged with exactly what its worktree holds, committed, so a
+/// change that merged without `finish` keeps no build or preview. The support worker finishes
+/// its own `support-*` changes. Any trouble is said and skipped: the new change starts anyway.
+fn sweep(ws: &Workspace, runner: &dyn Runner) {
+    let merged = workspace::text(
+        runner,
+        &[
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            REPOSITORY,
+            "--state",
+            "merged",
+            "--limit",
+            "100",
+            "--json",
+            "number,headRefName,headRefOid",
+        ],
+        None,
+    )
+    .and_then(|text| Ok(serde_json::from_str::<Vec<Value>>(&text)?));
+    let merged = match merged {
+        Ok(merged) => merged,
+        Err(error) => {
+            println!("Couldn't look for merged changes to remove: {error}");
+            return;
+        }
+    };
+    let heads: Vec<(String, String)> = ws
+        .worktrees()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|name| !name.starts_with("support-"))
+        .filter_map(|name| {
+            let change = Change::named(ws, &name).ok()?;
+            let settled = !change.dirty(runner).ok()? && change.branch(runner).ok()? == name;
+            let head = change.git(runner, &["rev-parse", "HEAD"]).ok()?;
+            settled.then_some((name, head))
+        })
+        .collect();
+    let mut removed = vec![];
+    for (name, number) in landed(&heads, &merged) {
+        match Change::named(ws, &name).and_then(|change| change.clean(ws, runner)) {
+            Ok(_) => removed.push(format!("{name} (#{number})")),
+            Err(error) => println!("Couldn't remove {name}, merged as #{number}: {error}"),
+        }
+    }
+    if !removed.is_empty() {
+        println!("Removed merged changes: {}.", removed.join(", "));
+    }
+}
+
+/// The worktrees, given by name and head, whose PR among `merged` merged that very head, each
+/// with its PR's number.
+fn landed(heads: &[(String, String)], merged: &[Value]) -> Vec<(String, u64)> {
+    heads
+        .iter()
+        .filter_map(|(name, head)| {
+            let pr = merged.iter().find(|pr| {
+                pr["headRefName"] == name.as_str() && pr["headRefOid"] == head.as_str()
+            })?;
+            Some((name.clone(), pr["number"].as_u64()?))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn only_a_worktree_holding_exactly_its_merged_head_is_removed() {
+        let merged = [
+            json!({"number": 7, "headRefName": "fix-week", "headRefOid": "aaa"}),
+            json!({"number": 8, "headRefName": "add-total", "headRefOid": "bbb"}),
+        ];
+        let heads = [
+            ("fix-week".to_owned(), "aaa".to_owned()),
+            // A commit after the merge, or an old PR of a name used again, keeps it.
+            ("add-total".to_owned(), "ccc".to_owned()),
+            ("audit".to_owned(), "ddd".to_owned()),
+        ];
+        assert_eq!(landed(&heads, &merged), [("fix-week".to_owned(), 7)]);
+    }
 }

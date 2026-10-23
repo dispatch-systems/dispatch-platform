@@ -1,20 +1,11 @@
 //! `dispatchdev finish <name>`: after a change merged, everything it made goes, then Dev is
 //! waited for until it runs the merge. A change that didn't merge goes only with `--abandon`.
-use crate::{
-    Result, Runner,
-    change::Change,
-    require,
-    workspace::{self, Workspace},
-};
+use crate::{Result, Runner, change::Change, require, workspace::Workspace};
 use serde_json::Value;
-use std::fs;
 
 pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Result<()> {
     let change = Change::named(ws, name)?;
-    let path = &change.path;
-    let dev = ws.dev();
-    let git = |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&dev));
-    if path.exists() {
+    if change.path.exists() {
         require(
             !change.dirty(runner)?,
             &format!("worktrees/{name} holds uncommitted changes; commit or drop them first."),
@@ -39,52 +30,7 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
             None => format!("{name} has no PR. Drop the change with --abandon."),
         },
     )?;
-    let mut done = vec![];
-    if crate::preview::running(runner)?
-        .iter()
-        .any(|running| running == name)
-    {
-        let unit = crate::preview::unit(name);
-        runner.command(&["systemctl", "--user", "stop", &unit], None, 120)?;
-        done.push("its preview stopped".to_owned());
-    }
-    let config = std::path::PathBuf::from(std::env::var("HOME")?)
-        .join(format!(".config/dispatch-preview/{name}.env"));
-    if fs::remove_file(&config).is_ok() {
-        done.push("its port released".to_owned());
-    }
-    if path.exists() {
-        let build = workspace::size(runner, &path.join("target"));
-        git(&["worktree", "remove", path.to_str().ok_or("Non-UTF8 path")?])?;
-        done.push(match build {
-            Some(bytes) => format!(
-                "worktrees/{name} removed with its {} build",
-                workspace::human(bytes)
-            ),
-            None => format!("worktrees/{name} removed"),
-        });
-    }
-    if git(&[
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        &format!("refs/heads/{name}"),
-    ])
-    .is_ok()
-    {
-        git(&["branch", "-D", name])?;
-        done.push("its branch deleted".to_owned());
-    }
-    if !git(&["ls-remote", "--heads", "origin", name])?.is_empty() {
-        git(&["push", "-q", "origin", "--delete", name])?;
-        done.push("its branch on GitHub deleted".to_owned());
-    }
-    let scratch = change.scratch();
-    if scratch.exists() {
-        fs::remove_dir_all(&scratch)?;
-        done.push(format!("{} removed", scratch.display()));
-    }
-    git(&["fetch", "-q", "--prune", "origin"])?;
+    let done = change.clean(ws, runner)?;
     println!(
         "Finished {name}: {}.",
         if done.is_empty() {
@@ -94,37 +40,37 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         }
     );
     if let Some(pr) = merged {
-        let commit = pr.merge.as_deref().unwrap_or("");
-        let host = dev.join(".runtime/management/dispatch-host");
-        require(
-            host.is_file(),
-            "Dev's host manager is missing; check Dev by hand.",
-        )?;
-        let dev_root = dev.to_str().ok_or("Non-UTF8 path")?;
-        // The host manager returns once Dev runs the commit, or one containing it.
-        let live = runner.command(
-            &[
-                host.to_str().ok_or("Non-UTF8 path")?,
-                "host",
-                "dev",
-                "--root",
-                dev_root,
-                "--wait",
-                commit,
-            ],
-            None,
-            16 * 60,
-        )?;
-        let status: Value = serde_json::from_slice(&live).unwrap_or(Value::Null);
         println!(
             "#{} is live on Dev at {}.",
             pr.number,
-            status["commit"]
-                .as_str()
-                .unwrap_or(commit)
-                .get(..8)
-                .unwrap_or(commit)
+            live(ws, pr.merge.as_deref().unwrap_or(""), runner)?
         );
     }
     Ok(())
+}
+
+/// Waits until Dev runs `commit`, or one containing it, and returns the commit it runs, short.
+pub fn live(ws: &Workspace, commit: &str, runner: &dyn Runner) -> Result<String> {
+    let dev = ws.dev();
+    let host = dev.join(".runtime/management/dispatch-host");
+    require(
+        host.is_file(),
+        "Dev's host manager is missing; check Dev by hand.",
+    )?;
+    let live = runner.command(
+        &[
+            host.to_str().ok_or("Non-UTF8 path")?,
+            "host",
+            "dev",
+            "--root",
+            dev.to_str().ok_or("Non-UTF8 path")?,
+            "--wait",
+            commit,
+        ],
+        None,
+        16 * 60,
+    )?;
+    let status: Value = serde_json::from_slice(&live).unwrap_or(Value::Null);
+    let runs = status["commit"].as_str().unwrap_or(commit);
+    Ok(runs.get(..8).unwrap_or(runs).to_owned())
 }
