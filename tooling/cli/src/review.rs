@@ -1,8 +1,9 @@
 //! `dispatchdev review <name>`: a review pass on a change, by a reviewer the agent starts
-//! through T3 Code with the brief this writes. Each pass reviews the change's committed head,
-//! read-only, against what the owner approved and `tooling/review/rules.md`, and writes its
-//! findings to its own folder under the change's scratch folder; the next pass is given the
-//! earlier ones. `--done` then checks the reviewer left the worktree as it found it.
+//! through T3 Code with the brief this writes. The first pass reviews the change's committed
+//! head, read-only, against what the owner approved and `tooling/review/rules.md`, and writes
+//! its findings to its own folder under the change's scratch folder. Another pass follows only
+//! a pass that found something to fix, and reviews only those fixes. `--done` then checks the
+//! reviewer left the worktree as it found it.
 use crate::{
     Result, Runner,
     change::Change,
@@ -69,11 +70,18 @@ impl Brief<'_> {
         }
         for (pass, (reviewed, findings)) in self.earlier.iter().enumerate() {
             lines.push(format!(
-                "- Pass {} reviewed {reviewed} and found {}; `git log {reviewed}..{head}` shows \
-                 what changed since, and the PR body's Review section what was set aside and why. \
-                 Say whether each of its findings was settled, and review what changed afresh.",
+                "- Pass {} reviewed {reviewed} and found {}.",
                 pass + 1,
                 findings.display()
+            ));
+        }
+        if let Some((reviewed, _)) = self.earlier.last() {
+            lines.push(format!(
+                "- This pass reviews only the fixes made since pass {}, what `git diff \
+                 {reviewed}..{head}` shows: whether each of its fixes is settled, and whether a \
+                 fix broke anything. The rest of the change is there for context, not to review \
+                 again.",
+                self.earlier.len()
             ));
         }
         lines.extend(
@@ -90,10 +98,13 @@ impl Brief<'_> {
                 "## Out of scope: <path>:<line> <what, in a sentence>",
                 "<Why it matters.>",
                 "",
-                "A fix is a defect: wrong behaviour, a broken rule, a security or privacy problem, or \
-                 new behaviour without a test. A suggestion is anything else worth doing within the \
-                 change. Check each against the code before writing it, and leave out what you can't \
-                 show. With nothing to report, write `No findings.` alone.",
+                "A fix is a defect or a real risk: wrong behaviour, a broken rule, a security or \
+                 privacy problem, or new behaviour without a test, each with the failure it causes. \
+                 A suggestion is anything else worth doing within the change: style, naming, \
+                 structure, or a case with no failure you can show. Only fixes are made; \
+                 suggestions are listed as set aside. Check each against the code before writing \
+                 it, and leave out what you can't show. With nothing to report, write `No \
+                 findings.` alone.",
             ]
             .map(str::to_owned),
         );
@@ -112,7 +123,7 @@ fn count(findings: &str) -> (usize, usize) {
     (heads("Fix"), heads("Suggestion"))
 }
 
-/// The passes that are planned, and each pass's folder, in order: `review/passes` and
+/// The most passes there may be, and each pass's folder, in order: `review/passes` and
 /// `review/<n>/` in the change's scratch folder.
 struct Passes {
     folder: std::path::PathBuf,
@@ -123,11 +134,12 @@ impl Passes {
             folder: change.scratch().join("review"),
         }
     }
-    fn planned(&self) -> u32 {
+    /// Two unless told: the first, and one on its fixes.
+    fn most(&self) -> u32 {
         fs::read_to_string(self.folder.join("passes"))
             .ok()
             .and_then(|text| text.trim().parse().ok())
-            .unwrap_or(1)
+            .unwrap_or(2)
     }
     /// The passes started so far.
     fn started(&self) -> u32 {
@@ -144,9 +156,9 @@ impl Passes {
 /// Where a change's review stands, once a pass started.
 #[derive(Debug, serde::Serialize)]
 pub struct Progress {
-    /// The latest pass started, and how many are planned.
+    /// The latest pass started, and the most there may be.
     pub pass: u32,
-    pub of: u32,
+    pub most: u32,
     /// Whether its reviewer wrote its findings.
     pub answered: bool,
 }
@@ -155,13 +167,43 @@ pub fn progress(change: &Change) -> Option<Progress> {
     let pass = reviews.started();
     (pass > 0).then(|| Progress {
         pass,
-        of: reviews.planned(),
+        most: reviews.most(),
         answered: reviews.pass(pass).join("findings.md").is_file(),
     })
 }
 
+/// Whether pass `pass` may follow the one before it, which reviewed `reviewed` and found
+/// `findings`, now that the worktree is at `head`: only to review fixes that pass asked for.
+fn follows(pass: u32, findings: &str, reviewed: &str, head: &str) -> Result<()> {
+    let before = pass - 1;
+    require(
+        count(findings).0 > 0,
+        &format!("Pass {before} found nothing to fix, so the review is done: ship it."),
+    )?;
+    require(
+        reviewed != head,
+        &format!("Commit pass {before}'s fixes first: pass {pass} reviews them."),
+    )
+}
+
+/// What to do once pass `pass` of at most `most` found `fixes` to make.
+fn next_step(name: &str, pass: u32, most: u32, fixes: usize) -> String {
+    let aside = "list the suggestions as set aside in the PR's Review section";
+    if fixes == 0 {
+        format!("Nothing to fix: {aside}, and ship it.")
+    } else if pass < most {
+        format!(
+            "Make the fixes and commit them; then `dispatchdev review {name}` starts pass {}, \
+             which reviews them. Meanwhile, {aside}.",
+            pass + 1
+        )
+    } else {
+        format!("Make the fixes, commit them, {aside}, and ship it.")
+    }
+}
+
 /// `dispatchdev review <name> [--passes <n>]`: the brief of the change's next pass. `passes`
-/// sets how many there are to be, one unless told.
+/// sets the most there may be, two unless told.
 pub fn start(ws: &Workspace, name: &str, passes: Option<u32>, runner: &dyn Runner) -> Result<()> {
     let change = Change::existing(ws, name)?;
     require(
@@ -174,25 +216,27 @@ pub fn start(ws: &Workspace, name: &str, passes: Option<u32>, runner: &dyn Runne
     )?;
     let reviews = Passes::of(&change);
     let started = reviews.started();
+    let pass = started + 1;
+    let head = change.git(runner, &["rev-parse", "HEAD"])?;
     if started > 0 {
-        require(
-            reviews.pass(started).join("findings.md").is_file(),
-            &format!(
+        let folder = reviews.pass(started);
+        let findings = fs::read_to_string(folder.join("findings.md")).map_err(|_| {
+            format!(
                 "Pass {started} has no findings yet: wait for its reviewer, then run dispatchdev \
                  review {name} --done."
-            ),
-        )?;
+            )
+        })?;
+        let reviewed = fs::read_to_string(folder.join("head"))?;
+        follows(pass, &findings, reviewed.trim(), &head)?;
     }
     if let Some(passes) = passes {
         workspace::write_private(&reviews.folder.join("passes"), &format!("{passes}\n"))?;
     }
-    let planned = reviews.planned();
-    let pass = started + 1;
+    let most = reviews.most();
     require(
-        pass <= planned,
-        &format!("All {planned} of {name}'s passes are done; --passes asks for more, or ship it."),
+        pass <= most,
+        &format!("{name} had all {most} of its passes: ship it, or --passes asks for more."),
     )?;
-    let head = change.git(runner, &["rev-parse", "HEAD"])?;
     let base = change.git(runner, &["merge-base", "origin/main", "HEAD"])?;
     let folder = reviews.pass(pass);
     let earlier: Vec<_> = (1..pass)
@@ -219,7 +263,7 @@ pub fn start(ws: &Workspace, name: &str, passes: Option<u32>, runner: &dyn Runne
     workspace::write_private(&folder.join("head"), &format!("{head}\n"))?;
     workspace::write_private(&folder.join("brief.md"), &brief.text())?;
     println!(
-        "Pass {pass} of {planned} on {}: its brief is {}.",
+        "Pass {pass} on {}: its brief is {}.",
         &head[..head.len().min(8)],
         folder.join("brief.md").display()
     );
@@ -265,9 +309,8 @@ pub fn done(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<()> {
         )
     })?;
     let (fixes, suggestions) = count(&findings);
-    let planned = reviews.planned();
     println!(
-        "Pass {pass} of {planned}: {}.",
+        "Pass {pass}: {}.",
         match (fixes, suggestions) {
             (0, 0) => "no findings".to_owned(),
             _ => format!("{fixes} to fix, {suggestions} suggested"),
@@ -275,14 +318,7 @@ pub fn done(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<()> {
     );
     println!(
         "{}",
-        workspace::next(&[if pass < planned && fixes + suggestions > 0 {
-            format!(
-                "Make them, commit, and run `dispatchdev review {name}` for pass {}.",
-                pass + 1
-            )
-        } else {
-            "Make them, commit, write the Review section, and ship it.".to_owned()
-        }])
+        workspace::next(&[next_step(name, pass, reviews.most(), fixes)])
     );
     Ok(())
 }
@@ -318,7 +354,26 @@ mod tests {
         assert!(brief.contains("/tmp/dispatch-fix-week/decisions.md"));
         assert!(!brief.contains("The PR's body"));
         assert!(brief.contains("Pass 1 reviewed 1111111"));
-        assert!(brief.contains("`git log 1111111..2222222`"));
+        assert!(
+            brief.contains("only the fixes made since pass 1, what `git diff 1111111..2222222`")
+        );
+    }
+
+    #[test]
+    fn another_pass_reviews_only_the_fixes_the_last_one_asked_for() {
+        let fix = "## Fix: a.rs:3 x\nbecause\n\n## Suggestion: b.rs:9 y\n";
+        follows(2, fix, "1111111", "2222222").unwrap();
+        // Suggestions alone are set aside, not made, so there is nothing for a pass to review.
+        let error = follows(2, "## Suggestion: b.rs:9 y\n", "1111111", "2222222").unwrap_err();
+        assert!(error.to_string().starts_with("Pass 1 found nothing to fix"));
+        assert!(follows(2, "No findings.\n", "1111111", "2222222").is_err());
+        let error = follows(2, fix, "2222222", "2222222").unwrap_err();
+        assert!(error.to_string().starts_with("Commit pass 1's fixes first"));
+        assert!(
+            next_step("fix-week", 1, 2, 1).contains("`dispatchdev review fix-week` starts pass 2")
+        );
+        assert!(next_step("fix-week", 2, 2, 1).ends_with("and ship it."));
+        assert!(next_step("fix-week", 1, 2, 0).starts_with("Nothing to fix"));
     }
 
     #[test]
