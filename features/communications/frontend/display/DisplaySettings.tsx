@@ -22,6 +22,7 @@ import {
   type Look,
   type Screen,
 } from './display.js';
+import { ACTUAL_LEAST, frame } from './frame.js';
 import { Preview } from './Preview.js';
 import { autosave } from './saving.js';
 import '../communications.css';
@@ -31,23 +32,11 @@ import './display.css';
 // desktop's or a phone's own (the screen in use to start), beside a preview of the page with them,
 // which changes as they choose. A phone has the choices that apply on one. What they choose is
 // shown at once and saved a moment later, their own; Reset takes the screen back to its defaults.
-// The preview shows a desktop at its actual size: the whole page while there's room for the list
-// beside the conversation, else the conversation alone, the list beside it out of view; or the
-// whole page as wide as the member's window, made to fit. A phone it shows at its actual size.
+// The preview shows the screen chosen at its actual size, or a desktop's whole page made to fit
+// (`frame`).
 
 /** How long after a choice it's saved, so a slider dragged saves once. */
 const SAVE_MS = 400;
-/** The app's sidebar beside the page, and its heading above it, on a desktop. */
-const SIDEBAR = 240;
-const HEADING = 150;
-const PHONE = { width: 390, height: 760 };
-/** A phone's edge, round its screen. */
-const PHONE_EDGE = 20;
-/** The least room a desktop's whole page is shown in at its actual size: list and conversation. */
-const ACTUAL_LEAST = 900;
-/** The least room its conversation alone is shown in at its actual size. */
-const ALONE_LEAST = 420;
-
 /**
  * The member's choices as they make them, saved by `autosave` through the page's action, which says
  * why a save failed at the top of the page until one succeeds; one refused because another session
@@ -114,23 +103,13 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
   const stage = useRef<HTMLDivElement>(null);
   const room = useRoom(stage);
   const phone = screen === 'phone';
-  // The screen previewed, and how much it's made smaller to fit the room it has: a phone, always
-  // at its actual size, in as much of one as there's room for inside its edge; a desktop's whole
-  // page at its actual size, or its conversation alone, the page laid out wider by the list,
-  // which is kept out of view (`aside`); or the whole page as wide as the window, made to fit.
-  const roomy = room.width >= ACTUAL_LEAST;
-  const actual = !phone && size === 'actual' && room.width >= ALONE_LEAST;
-  const aside = actual && !roomy ? listWidths[shown.list_width] : 0;
-  const whole = phone
-    ? {
-        width: Math.min(PHONE.width, room.width - PHONE_EDGE),
-        height: Math.min(PHONE.height, room.height - PHONE_EDGE),
-      }
-    : actual
-      ? { width: room.width + aside, height: room.height }
-      : { width: window.innerWidth - SIDEBAR, height: window.innerHeight - HEADING };
-  const scale =
-    phone || actual ? 1 : Math.min(1, room.width / whole.width, room.height / whole.height);
+  const { width, height, scale, aside } = frame({
+    room,
+    phone,
+    fit: size === 'fit',
+    list: listWidths[shown.list_width],
+    window: { width: window.innerWidth, height: window.innerHeight },
+  });
   const look = lookOf(shown);
   const bubbles = shown.style === 'bubbles';
   const sections = [
@@ -472,7 +451,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
               onChange={(event) => setProfile(event.target.checked)}
             />
           </label>
-          {!phone && room.width >= ALONE_LEAST && (
+          {!phone && room.width >= ACTUAL_LEAST && (
             <Choice
               label="Size"
               value={size}
@@ -489,8 +468,8 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
             <div
               className={phone ? 'display-scaled phone' : 'display-scaled'}
               style={{
-                width: Math.min(whole.width * scale, room.width),
-                height: Math.min(whole.height * scale, room.height),
+                width: Math.min(width * scale, room.width),
+                height: Math.min(height * scale, room.height),
               }}
             >
               <div
@@ -501,8 +480,8 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
                   display={shown}
                   phone={phone}
                   profile={profile}
-                  width={whole.width}
-                  height={whole.height}
+                  width={width}
+                  height={height}
                   timeZone={view.dsp.timezone}
                 />
               </div>

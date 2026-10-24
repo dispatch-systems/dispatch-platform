@@ -83,9 +83,12 @@ const onAPhone = {
   keep_profile_open: false,
 } satisfies Omit<Display, PhoneChoice>;
 
-/** What the page draws by on `screen`, of what Settings keeps. */
+/** What the page draws by on `screen`, of what Settings keeps: that screen's alone. */
 export function onScreen(values: MessageDisplay, screen: Screen): Display {
-  if (screen === 'desktop') return values;
+  if (screen === 'desktop')
+    return Object.fromEntries(
+      Object.entries(values).filter(([key]) => !key.startsWith('phone_')),
+    ) as Display;
   const own = Object.fromEntries(phoneChoices.map((choice) => [choice, values[`phone_${choice}`]]));
   return { ...onAPhone, ...own } as Display;
 }
