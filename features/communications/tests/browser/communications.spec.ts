@@ -513,7 +513,7 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
   // Settings shows the profile's width as drawn, and saves the width it's chosen as at 14px.
   await page.getByRole('button', { name: 'Display' }).click();
   const drawn = `${Math.round(at20.width)} px`;
-  const profileWidth = page.getByRole('slider', { name: 'Width' });
+  const profileWidth = page.getByRole('slider', { name: 'Width', exact: true });
   await expect(profileWidth).toHaveAttribute('aria-valuetext', drawn);
   await expect(page.getByText(drawn, { exact: true })).toBeVisible();
   const saved = page.waitForResponse(
