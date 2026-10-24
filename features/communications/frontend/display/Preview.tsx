@@ -1,12 +1,11 @@
 import { useId, useMemo } from 'react';
-import type { MessageDisplay } from '../../api/index.js';
 import { Composer } from '../page/Composer.js';
 import { ConversationHead } from '../page/ConversationHead.js';
 import { ListPane } from '../page/ListPane.js';
 import { roleText } from '../page/parts.js';
 import { ProfileShown } from '../page/Profile.js';
 import { Thread } from '../page/Thread.js';
-import { pageLook, Shown } from './display.js';
+import { pageLook, Shown, type Display } from './display.js';
 import { sample } from './sample.js';
 
 // Message display's preview: the Communications page as `display` has it look, drawn by the
@@ -24,7 +23,7 @@ export function Preview({
   height,
   timeZone,
 }: {
-  display: MessageDisplay;
+  display: Display;
   phone: boolean;
   /** Whether Jamal's profile is open. */
   profile: boolean;
@@ -43,7 +42,7 @@ export function Preview({
       inert
     >
       {/* On a phone, the conversation open, which takes the page. */}
-      <div className="communications reading" {...pageLook(display, phone)}>
+      <div className="communications reading" {...pageLook(display)}>
         <Shown value={display}>
           <div className="communications-page">
             <div className="chat-frame">

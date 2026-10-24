@@ -1,5 +1,5 @@
 //! A member's own Message display: what Settings keeps for them reads as the page reads it, each
-//! field by its id, the defaults until they save, and theirs alone.
+//! field by its id, a desktop's and a phone's, the defaults until they save, and theirs alone.
 use super::DISPLAY;
 use crate::api::display::{
     BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageDisplay,
@@ -21,7 +21,6 @@ fn each_members_display_reads_as_they_saved_it_each_field_by_its_id() {
     };
     let defaults = MessageDisplay {
         text_size: 14,
-        phone_text_size: 14,
         line_spacing: LineSpacing::Normal,
         spacing: Spacing::Comfortable,
         layout: MessageLayout::Full,
@@ -45,13 +44,30 @@ fn each_members_display_reads_as_they_saved_it_each_field_by_its_id() {
         profile_slide: true,
         keep_profile_open: false,
         enter_sends: true,
+        phone_text_size: 14,
+        phone_line_spacing: LineSpacing::Normal,
+        phone_spacing: Spacing::Comfortable,
+        phone_style: MessageStyle::Bubbles,
+        phone_team_side: TeamSide::Right,
+        phone_bubble_shape: BubbleShape::Round,
+        phone_bubble_width: 80,
+        phone_times: Times::EachGroup,
+        phone_message_photos: true,
+        phone_team_names: true,
+        phone_team_color: TeamColor::Blue,
+        phone_employee_color: EmployeeColor::Gray,
+        phone_list_rows: ListRows::Comfortable,
+        phone_list_preview: ListPreview::One,
+        phone_list_photos: true,
+        phone_waiting_time: true,
+        phone_profile_slide: true,
+        phone_enter_sends: false,
     };
     assert_eq!(read(&member), defaults);
 
     // Every field changed at once reads back as saved.
     let chosen = MessageDisplay {
         text_size: 16,
-        phone_text_size: 15,
         line_spacing: LineSpacing::Relaxed,
         spacing: Spacing::Spacious,
         layout: MessageLayout::Centred,
@@ -75,6 +91,24 @@ fn each_members_display_reads_as_they_saved_it_each_field_by_its_id() {
         profile_slide: false,
         keep_profile_open: true,
         enter_sends: false,
+        phone_text_size: 15,
+        phone_line_spacing: LineSpacing::Tight,
+        phone_spacing: Spacing::Compact,
+        phone_style: MessageStyle::Plain,
+        phone_team_side: TeamSide::Left,
+        phone_bubble_shape: BubbleShape::Soft,
+        phone_bubble_width: 95,
+        phone_times: Times::EachMessage,
+        phone_message_photos: false,
+        phone_team_names: false,
+        phone_team_color: TeamColor::Purple,
+        phone_employee_color: EmployeeColor::Blue,
+        phone_list_rows: ListRows::Compact,
+        phone_list_preview: ListPreview::None,
+        phone_list_photos: false,
+        phone_waiting_time: false,
+        phone_profile_slide: false,
+        phone_enter_sends: true,
     };
     let values = serde_json::to_value(&chosen).unwrap();
     settings::save(&db, &dsp, &member, &DISPLAY, &values, 0, false).unwrap();
