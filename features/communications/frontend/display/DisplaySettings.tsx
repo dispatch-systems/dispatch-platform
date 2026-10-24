@@ -9,7 +9,7 @@ import type { MessageDisplay } from '../../api/index.js';
 import { Choice, Segments, Sketch, Slider, Swatches, Switch, Tiles } from './controls.js';
 import { defaults, lookOf, looks, lookSizes, ownDisplay, section, type Look } from './display.js';
 import { Preview } from './Preview.js';
-import { choicesSaver } from './saving.js';
+import { autosave } from './saving.js';
 import '../communications.css';
 import './display.css';
 
@@ -32,63 +32,47 @@ const PHONE_EDGE = 20;
 const ACTUAL_LEAST = 900;
 
 /**
- * The member's choices as they make them: shown at once, saved a moment after the last one
- * (`choicesSaver`), and shown as made until the newest of them is saved, then as Settings holds
- * them. A save that fails says why at the top of the page until one succeeds; one refused because
- * another session saved first reads Settings again, and what it holds replaces the choices made.
+ * The member's choices as they make them, saved by `autosave` through the page's action, which says
+ * why a save failed at the top of the page until one succeeds; one refused because another session
+ * saved first reads Settings again, and what it holds replaces the choices made.
  */
 function useChoices(refresh: () => void) {
   const { data: settings } = useSettings();
   const saved = ownDisplay(settings);
   const kept = settings?.sections.find((each) => each.id === section);
   const [draft, setDraft] = useState<MessageDisplay>();
-  // The newest choices, as made, before the page draws them.
-  const latest = useRef<MessageDisplay>(undefined);
+  const action = useAction((work: () => Promise<void>) => work());
+  // The newest of each, for saves that run after the page draws again.
+  const run = useRef(action.run);
+  run.current = action.run;
+  const rereading = useRef(refresh);
+  rereading.current = refresh;
   const [saver] = useState(() =>
-    choicesSaver({
+    autosave({
       save: async (values, revision) => {
         const answer = await saveSettings(section, { values, revision });
         return 'section' in answer ? answer.section.revision : revision;
       },
       view: () => dataCache.session,
       revision: kept?.revision ?? 0,
+      perform: (work) => run.current(work),
+      later: (then) => {
+        const timer = window.setTimeout(then, SAVE_MS);
+        return () => window.clearTimeout(timer);
+      },
+      shown: setDraft,
+      clash: (error) =>
+        error instanceof ApiError && error.code === 'settings_changed_reload_before_saving',
+      reread: () => rereading.current(),
     }),
   );
   useEffect(() => {
     if (kept) saver.reread(kept.revision);
   }, [kept, saver]);
-  const saving = useAction(async () => {
-    const done = await saver.flush();
-    if (!done || done.dropped) return;
-    if (done.version === saver.made) {
-      latest.current = undefined;
-      setDraft(undefined);
-    }
-    if (!done.error) return;
-    if (
-      done.error instanceof ApiError &&
-      done.error.code === 'settings_changed_reload_before_saving'
-    )
-      refresh();
-    throw done.error;
-  });
-  const timer = useRef(0);
-  const change = (changes: Partial<MessageDisplay>) => {
-    const next = { ...(latest.current ?? saved), ...changes };
-    latest.current = next;
-    setDraft(next);
-    saver.change(next);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => void saving.run(), SAVE_MS);
-  };
   // Leaving the page saves what waits.
-  useEffect(
-    () => () => {
-      window.clearTimeout(timer.current);
-      void saver.flush();
-    },
-    [saver],
-  );
+  useEffect(() => () => void saver.flush(), [saver]);
+  const change = (changes: Partial<MessageDisplay>) =>
+    saver.change({ ...(saver.draft ?? saved), ...changes });
   return { shown: draft ?? saved, change };
 }
 

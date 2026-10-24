@@ -2,35 +2,70 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { MessageDisplay } from '../../api/index.js';
 import { defaults } from '../../frontend/display/display.js';
-import { choicesSaver } from '../../frontend/display/saving.js';
+import { autosave, type Perform } from '../../frontend/display/saving.js';
 
-/** Saves the test answers itself: each call, and what settles it. */
-function saves() {
+/** The clash a save gets when another session saved first. */
+class Clash extends Error {}
+
+/**
+ * Autosave as the Settings section has it, with what the test holds: each save, answered by the
+ * test; the moment after a change, which the test passes; what's shown; and the error a save
+ * leaves, as `useAction` keeps it, cleared as each save starts.
+ */
+function saving({ revision = 0, view = () => 'north' as unknown } = {}) {
   const calls: { values: MessageDisplay; revision: number }[] = [];
   const answers: { resolve: (revision: number) => void; reject: (error: unknown) => void }[] = [];
-  const save = (values: MessageDisplay, revision: number) => {
-    calls.push({ values, revision });
-    return new Promise<number>((resolve, reject) => answers.push({ resolve, reject }));
+  const state = { shown: undefined as MessageDisplay | undefined, error: '', rereads: 0, most: 0 };
+  let saving = 0;
+  const perform: Perform = async (work) => {
+    state.most = Math.max(state.most, ++saving);
+    state.error = '';
+    try {
+      await work();
+    } catch (error) {
+      state.error = (error as Error).message;
+    } finally {
+      saving--;
+    }
   };
-  return { calls, answers, save };
+  let pending: (() => void) | undefined;
+  const saver = autosave({
+    save: (values, revision) => {
+      calls.push({ values, revision });
+      return new Promise<number>((resolve, reject) => answers.push({ resolve, reject }));
+    },
+    view,
+    revision,
+    perform,
+    later: (then) => {
+      pending = then;
+      return () => (pending = undefined);
+    },
+    shown: (draft) => (state.shown = draft),
+    clash: (error) => error instanceof Clash,
+    reread: () => state.rereads++,
+  });
+  /** The moment after the last change passes. */
+  const wait = () => pending?.();
+  return { saver, calls, answers, state, wait };
 }
 /** Until what's queued has had its turn. */
 const turns = () => new Promise((resolve) => setImmediate(resolve));
 
-test('choices save one at a time, each the newest waiting, on the revision the save before answered', async () => {
-  const { calls, answers, save } = saves();
-  const saver = choicesSaver({ save, view: () => 'north', revision: 5 });
+test('choices save a moment after the last, one at a time, each the newest, on the revision before it', async () => {
+  const { saver, calls, answers, state, wait } = saving({ revision: 5 });
   saver.change({ ...defaults, text_size: 15 });
-  const first = saver.flush();
+  wait();
   await turns();
-  // While the first is saving, two more changes: only the newer goes.
+  // While the first saves, two more changes, then the moment after them: only the newer goes.
   saver.change({ ...defaults, text_size: 16 });
   saver.change({ ...defaults, text_size: 17 });
-  const second = saver.flush();
-  await turns();
-  assert.equal(calls.length, 1);
+  wait();
   answers[0]!.resolve(6);
-  assert.deepEqual(await first, { version: 1 });
+  await turns();
+  // Saved, the first isn't the newest: what's shown stays the newest made.
+  assert.equal(state.shown?.text_size, 17);
+  answers[1]!.resolve(7);
   await turns();
   assert.deepEqual(
     calls.map((call) => [call.values.text_size, call.revision]),
@@ -39,37 +74,74 @@ test('choices save one at a time, each the newest waiting, on the revision the s
       [17, 6],
     ],
   );
-  answers[1]!.resolve(7);
-  assert.deepEqual(await second, { version: 3 });
-  assert.equal(saver.made, 3);
+  assert.equal(state.most, 1);
+  // The newest saved, Settings holds what's shown.
+  assert.equal(state.shown, undefined);
 });
 
 test('choices made in one view are never saved once another is open', async () => {
-  const { calls, save } = saves();
   let view = 'north';
-  const saver = choicesSaver({ save, view: () => view, revision: 0 });
+  const { saver, calls, wait } = saving({ view: () => view });
   saver.change({ ...defaults, team_color: 'green' });
   view = 'summit';
-  assert.deepEqual(await saver.flush(), { version: 1, dropped: true });
+  wait();
+  await turns();
   assert.equal(calls.length, 0);
 });
 
-test('a failed save fails its own turn only: the next goes on from the last revision answered', async () => {
-  const { calls, answers, save } = saves();
-  const saver = choicesSaver({ save, view: () => 'north', revision: 2 });
+test('a save queued behind one that fails waits for it, and leaves no error once it succeeds', async () => {
+  const { saver, calls, answers, state, wait } = saving();
   saver.change({ ...defaults, spacing: 'compact' });
-  const failed = saver.flush();
+  wait();
   await turns();
-  const offline = new Error('offline');
-  answers[0]!.reject(offline);
-  assert.deepEqual(await failed, { version: 1, error: offline });
   saver.change({ ...defaults, spacing: 'spacious' });
-  const next = saver.flush();
+  wait();
   await turns();
-  answers[1]!.resolve(3);
-  assert.deepEqual(await next, { version: 2 });
-  assert.deepEqual(
-    calls.map((call) => call.revision),
-    [2, 2],
-  );
+  assert.equal(calls.length, 1);
+  answers[0]!.reject(new Error('offline'));
+  await turns();
+  assert.equal(calls.length, 2);
+  answers[1]!.resolve(1);
+  await turns();
+  assert.equal(state.error, '');
+  assert.equal(state.most, 1);
+});
+
+test('a clash drops every change not yet saved, reads Settings again, and takes none until it has', async () => {
+  const { saver, calls, answers, state, wait } = saving({ revision: 3 });
+  saver.change({ ...defaults, phone_text_size: 15 });
+  wait();
+  await turns();
+  // Another change queued behind the save that clashes, and one more still waiting.
+  saver.change({ ...defaults, phone_text_size: 16 });
+  wait();
+  saver.change({ ...defaults, phone_text_size: 17 });
+  answers[0]!.reject(new Clash('changed in another session'));
+  await turns();
+  assert.equal(state.error, 'changed in another session');
+  assert.equal(state.rereads, 1);
+  assert.equal(state.shown, undefined);
+  wait();
+  await turns();
+  assert.equal(calls.length, 1);
+  // Until Settings is read again, a change isn't taken; then it saves on what it holds.
+  assert.equal(saver.change({ ...defaults, phone_text_size: 18 }), false);
+  saver.reread(4);
+  assert.equal(saver.change({ ...defaults, phone_text_size: 18 }), true);
+  wait();
+  await turns();
+  assert.deepEqual(calls.at(-1), { values: { ...defaults, phone_text_size: 18 }, revision: 4 });
+  // The clash's error stays until the next save succeeds.
+  assert.equal(state.error, '');
+});
+
+test('leaving before the moment passes saves at once, and says so if it fails', async () => {
+  const { saver, calls, answers, state } = saving();
+  saver.change({ ...defaults, enter_sends: false });
+  void saver.flush();
+  await turns();
+  assert.equal(calls.length, 1);
+  answers[0]!.reject(new Error('offline'));
+  await turns();
+  assert.equal(state.error, 'offline');
 });
