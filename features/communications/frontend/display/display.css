@@ -1,6 +1,7 @@
 /* Settings' Message display: the choices in a column beside the preview, which stays in view as
-   the page scrolls by them; on a phone, the preview over them. The choices are drawn as Settings
-   draws its own sections and fields (settings.css), with tiles, sliders and colours besides. */
+   the page scrolls by them; with no room for both, the preview over them. The choices are drawn
+   as Settings draws its own sections and fields (settings.css), with tiles, sliders and colours
+   besides. */
 .message-display {
   display: grid;
   grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
@@ -34,6 +35,12 @@
 .message-display .settings-segments label {
   padding: 0 10px;
   white-space: nowrap;
+}
+
+/* Which screen's choices, first: a desktop's or a phone's. */
+.display-screens .settings-segments {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
 }
 
 /* Each section, a press away. */
@@ -325,7 +332,9 @@
   background: var(--background);
   box-shadow: 0 12px 40px var(--shadow-color);
 }
+/* A phone's edge, round its screen rather than over it. */
 .display-scaled.phone {
+  box-sizing: content-box;
   border: 10px solid #06080c;
   border-radius: 46px;
 }
@@ -353,16 +362,23 @@
   --page-gutter: 18px;
 }
 
-/* On a phone: the preview, the conversation itself, over the choices. */
-@media (width <= 760px) {
+/* With no room for the conversation at its actual size beside the choices: the preview over
+   them. */
+@media (width <= 1240px) {
   .message-display {
     grid-template-columns: minmax(0, 1fr);
   }
   .display-preview {
     position: static;
     order: -1;
-    height: 440px;
+    height: 520px;
     min-height: 0;
+  }
+}
+/* On a phone: the conversation itself, the bar's choices left out. */
+@media (width <= 760px) {
+  .display-preview {
+    height: 440px;
   }
   .display-bar {
     display: none;

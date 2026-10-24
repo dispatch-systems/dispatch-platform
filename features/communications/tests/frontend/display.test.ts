@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { MessageDisplay } from '../../api/index.js';
-import { defaults } from '../../frontend/display/display.js';
+import { defaults, kept, screenDefaults } from '../../frontend/display/display.js';
 import { autosave, type Perform } from '../../frontend/display/saving.js';
 
 /** The clash a save gets when another session saved first. */
@@ -172,4 +172,34 @@ test('leaving before the moment passes saves at once, and says so if it fails', 
   answers[0]!.reject(new Error('offline'));
   await turns();
   assert.equal(state.error, 'offline');
+});
+
+test('Reset takes one screen back to its defaults and leaves the other’s choices as they are', () => {
+  const chosen: MessageDisplay = {
+    ...defaults,
+    text_size: 16,
+    team_color: 'green',
+    phone_text_size: 18,
+    phone_team_color: 'purple',
+    phone_enter_sends: true,
+  };
+  const reset = (screen: 'desktop' | 'phone') => ({
+    ...chosen,
+    ...kept(screenDefaults(screen), screen),
+  });
+  const desktop = reset('desktop');
+  assert.deepEqual(
+    [desktop.text_size, desktop.team_color],
+    [defaults.text_size, defaults.team_color],
+  );
+  assert.deepEqual(
+    [desktop.phone_text_size, desktop.phone_team_color, desktop.phone_enter_sends],
+    [18, 'purple', true],
+  );
+  const phone = reset('phone');
+  assert.deepEqual(
+    [phone.phone_text_size, phone.phone_team_color, phone.phone_enter_sends],
+    [defaults.phone_text_size, defaults.phone_team_color, defaults.phone_enter_sends],
+  );
+  assert.deepEqual([phone.text_size, phone.team_color], [16, 'green']);
 });

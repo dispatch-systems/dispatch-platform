@@ -413,3 +413,65 @@ test('Display opens the member’s own Message display, where Enter can start a 
   release();
   await expect(profile).toBeVisible();
 });
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('Communications draws by the phone’s own Message display, where Return starts a new line, Send sends, and its text size is the phone’s alone', async ({
+    page,
+    dispatch,
+  }) => {
+    const owner = await dispatch.client();
+    const north = (owner.session.dsps as { id: string; name: string }[]).find(
+      (dsp) => dsp.name === 'Northline Logistics',
+    )!;
+    await owner.select(north.id);
+    expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+    const written = await fromSlack(
+      dispatch,
+      '/slack/events',
+      event('T0FIXTURE2', {
+        type: 'message',
+        channel_type: 'im',
+        channel: 'D0FIXCASEY',
+        user: 'U0FIXCASEY',
+        text: 'Can I swap Saturday?',
+        ts: (Date.now() / 1000).toFixed(6),
+      }),
+    );
+    expect(written.status).toBe(200);
+
+    await login(page);
+    await page.goto(`/#dsp/${north.id}/communications`);
+    await page.getByRole('button', { name: 'Display' }).click();
+    // A phone's own, to start.
+    await expect(page.getByRole('radio', { name: 'Phone' })).toBeChecked();
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+    );
+    await page.getByRole('slider', { name: 'Text size' }).fill('18');
+    await saved;
+
+    await page.goBack();
+    await page
+      .getByRole('region', { name: 'Conversations' })
+      .getByRole('button', { name: /^Casey Rivera/ })
+      .click();
+    const casey = page.getByRole('region', { name: 'Casey Rivera' });
+    const asked = casey.getByText('Can I swap Saturday?');
+    await expect(asked).toHaveCSS('font-size', '18px');
+    const box = casey.getByLabel('Message');
+    await box.fill('Yes');
+    await box.press('Enter');
+    await box.pressSequentially('Cam takes Sunday');
+    await expect(box).toHaveValue('Yes\nCam takes Sunday');
+    await casey.getByRole('button', { name: 'Send' }).click();
+    await expect(box).toHaveValue('');
+    await expect(casey.getByText('Cam takes Sunday')).toBeVisible();
+
+    // The same member on a desktop's screen keeps the desktop's text size.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(asked).toHaveCSS('font-size', '14px');
+  });
+});

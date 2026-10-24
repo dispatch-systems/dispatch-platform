@@ -26,12 +26,14 @@ unavailable.
   under `communications.use`, on Settings' Display page under Personal: drawn by its own component,
   `frontend/display/`, with a preview of the page beside the choices, and saved as they're made.
   Its values (`MessageDisplay`) are how the page looks to that member, which the page reads with
-  Settings: its text size on a desktop and on a phone, line spacing and spacing; the messages
-  across the conversation or in a centred column, bubbles or plain, your team's side, bubbles'
-  shape and width, each message's time or each run's or on hover, photos and your team's names
-  by them; your team's and the employees' colours; the list's width, rows, preview lines, photos
-  and waiting times; the profile beside or over the conversation, its width, its slide, and
-  whether it opens with each conversation; and whether Enter sends.
+  Settings: its text size, line spacing and spacing; the messages across the conversation or in
+  a centred column, bubbles or plain, your team's side, bubbles' shape and width, each message's
+  time or each run's or on hover, photos and your team's names by them; your team's and the
+  employees' colours; the list's width, rows, preview lines, photos and waiting times; the
+  profile beside or over the conversation, its width, its slide, and whether it opens with each
+  conversation; and whether Enter sends. A phone (a touch screen whose shorter side is under
+  500px) has its own of those that apply on one, `phone_<choice>`: no layout, list or profile
+  width, profile beside or kept open, or times on hover; and Enter starts a line there to start.
 
 ## The page
 

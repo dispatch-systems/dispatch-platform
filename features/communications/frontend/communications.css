@@ -1857,11 +1857,6 @@ button.sender {
   .composer {
     padding: 8px 10px 10px;
   }
-  /* A phone's narrower conversation gives each bubble a little more of it: 80% at the default
-     70%. */
-  .stack {
-    max-width: min(100%, calc(var(--bubble-width) * 8 / 7));
-  }
 }
 /* The Update popup, over a phone's window. */
 @media (width <= 760px) {

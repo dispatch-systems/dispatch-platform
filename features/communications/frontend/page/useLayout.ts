@@ -5,7 +5,7 @@ import { useLayoutEffect, useState, type RefObject } from 'react';
 // page the profile, open, beside the conversation too.
 
 /** Narrower than this, one pane at a time. */
-const BESIDE = 760;
+export const BESIDE = 760;
 /** From this wide, the profile, open, is a column of its own. */
 const DOCKED = 1150;
 

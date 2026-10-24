@@ -67,8 +67,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const page = useRef<HTMLDivElement>(null);
   const layout = useLayout(page);
   const display = useDisplay();
-  // The profile open as each conversation opens, as the member may keep it: not on a phone, where
-  // it would cover the conversation.
+  // The profile open as each conversation opens, as the member may keep it: not with one pane at a
+  // time, where it would cover the conversation.
   const kept = display.keep_profile_open && layout !== 'phone';
   // Beside the conversation with room for it, unless the member has it over the conversation.
   const docked = layout === 'docked' && display.profile_opens === 'beside';
@@ -183,7 +183,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     <div
       ref={page}
       className={reading ? 'communications reading' : 'communications'}
-      {...pageLook(display, layout === 'phone')}
+      {...pageLook(display)}
     >
       <Shown value={display}>
         <div className="communications-page" inert={updating.length > 0}>
