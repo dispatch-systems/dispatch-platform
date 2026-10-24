@@ -61,7 +61,9 @@
       ],
       "exposes": [],
       "env": [],
-      "settings": []
+      "settings": [
+        "communications.display"
+      ]
     },
     "switch": "communications",
     "mandatory": false,

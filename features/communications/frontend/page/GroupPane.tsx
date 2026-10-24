@@ -120,6 +120,7 @@ export function GroupPane({
           now={now}
           docked={docked}
           leaving={!people.open}
+          still={people.still}
           close={people.close}
           gone={people.gone}
           open={open}

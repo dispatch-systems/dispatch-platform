@@ -342,3 +342,74 @@ test('an owner messages a group from New message, its answers come back together
   await group.getByRole('button', { name: 'Done' }).click();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 });
+
+test('Display opens the member’s own Message display, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+  const written = await fromSlack(
+    dispatch,
+    '/slack/events',
+    event('T0FIXTURE2', {
+      type: 'message',
+      channel_type: 'im',
+      channel: 'D0FIXCASEY',
+      user: 'U0FIXCASEY',
+      text: 'Can I swap Saturday?',
+      ts: (Date.now() / 1000).toFixed(6),
+    }),
+  );
+  expect(written.status).toBe(200);
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('button', { name: 'Display' }).click();
+  await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
+  // Saved as it's changed, the member's own.
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await page.getByRole('switch', { name: 'Enter sends' }).uncheck();
+  await saved;
+
+  await page.goBack();
+  const casey = page.getByRole('region', { name: 'Casey Rivera' });
+  const box = casey.getByLabel('Message');
+  await box.fill('Yes');
+  await box.press('Enter');
+  await box.pressSequentially('Cam takes Sunday');
+  await expect(box).toHaveValue('Yes\nCam takes Sunday');
+  await box.press('Control+Enter');
+  await expect(box).toHaveValue('');
+  await expect(casey.getByText('Cam takes Sunday')).toBeVisible();
+
+  // Kept open, a conversation's profile opens with it, though Settings is read after it opens.
+  await page.getByRole('button', { name: 'Display' }).click();
+  const kept = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await page.getByRole('switch', { name: 'Keep profile open' }).check();
+  await kept;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/dsp/settings', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goBack();
+  await page.reload();
+  await expect(box).toBeVisible();
+  const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
+  await expect(profile).toHaveCount(0);
+  release();
+  await expect(profile).toBeVisible();
+});

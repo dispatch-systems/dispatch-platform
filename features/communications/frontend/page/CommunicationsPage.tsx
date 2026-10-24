@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SquarePen } from 'lucide-react';
+import { SlidersHorizontal, SquarePen } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import type { Contact, Conversation, Group } from '../../api/index.js';
 import { markDone, markGroupDone, openConversation } from '../../api/client.js';
 import { finishSlack } from '../../../slack/api/client.js';
 import { useSlackReturn } from '../../../slack/frontend/index.js';
 import { ErrorBox, Header, Loading } from '../../../../core/shell/frontend/ui/index.js';
-import { hashQuery, replaceHashQuery } from '../../../../core/shell/frontend/runtime/navigation.js';
+import {
+  hashQuery,
+  navigate,
+  replaceHashQuery,
+  settingsHash,
+} from '../../../../core/shell/frontend/runtime/navigation.js';
 import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
+import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route-prefetch.js';
+import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import { pageLook, Shown, useDisplay } from '../display/display.js';
 import { rows, type Row } from '../inbox.js';
 import { ConversationPane } from './ConversationPane.js';
 import { CopyChatLink } from './CopyChatLink.js';
@@ -26,7 +34,8 @@ import { useWorkspaceChoice } from './useWorkspaceChoice.js';
 // workspace or one; and the conversation or group open beside them, or a message to a group being
 // written, all kept up to date as they change. Those who manage the DSP's connections connect
 // Slack here while it isn't, and update it while a workspace hasn't approved what Communications
-// uses. The conversation or group open is kept in the address (`?open=`, `?group=`).
+// uses. The conversation or group open is kept in the address (`?open=`, `?group=`). It looks as
+// the member chose in Settings' Message display, which Display opens.
 
 /** How often the times waited move on. */
 const TICK_MS = 30_000;
@@ -57,6 +66,17 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const timeZone = view.dsp.timezone;
   const page = useRef<HTMLDivElement>(null);
   const layout = useLayout(page);
+  const display = useDisplay();
+  // The profile open as each conversation opens, as the member may keep it: not on a phone, where
+  // it would cover the conversation.
+  const kept = display.keep_profile_open && layout !== 'phone';
+  // Beside the conversation with room for it, unless the member has it over the conversation.
+  const docked = layout === 'docked' && display.profile_opens === 'beside';
+  const displaySettings = settingsHash(view.dsp.id, 'display', view);
+  const warmSettings = () => {
+    const host = settingsPage();
+    if (host) prefetchRouteData(host, view);
+  };
   const manages = can(view, 'connections.manage');
   const [chosen, choose] = useWorkspaceChoice(view.dsp.id, user);
   const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(chosen);
@@ -160,117 +180,135 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   };
   const reading = open || group || drafting;
   return (
-    <div ref={page} className={reading ? 'communications reading' : 'communications'}>
-      <div className="communications-page" inert={updating.length > 0}>
-        <Header title="Communications">
-          {working.length > 0 && (
-            <>
-              <CopyChatLink workspaces={working} />
-              <button
-                className="primary"
-                aria-label="New message"
-                onClick={() => setComposing(true)}
-              >
-                <SquarePen size={16} />
-                <span>New message</span>
-              </button>
-            </>
-          )}
-        </Header>
-        <ErrorBox message={error} />
-        {!inbox ? (
-          !error && <Loading />
-        ) : connect ? (
-          <ConnectSlack busy={returned.busy} />
-        ) : (
-          <div className="chat-frame">
-            <ListPane
-              inbox={inbox}
-              working={working}
-              team={team}
-              choose={chooseWorkspace}
-              draft={drafting ? draft : undefined}
-              pinned={unlisted}
-              current={current}
-              readOlder={readOlder}
-              pick={pick}
-              open={open ?? group}
-              typing={inbox.typing.writing}
-              timeZone={timeZone}
-              now={now}
-              select={select}
-              openGroup={openGroup}
-              done={(conversation) => void done.run(conversation)}
-              doneGroup={(listed) => void doneGroup.run(listed)}
-            />
-            {drafting ? (
-              <GroupDraft
-                workspaces={working}
-                timeZone={timeZone}
-                back={closed}
-                drafted={setDraft}
-                sent={(sent) => {
-                  showGroup(sent);
-                  openGroup(sent.id);
-                }}
-              />
-            ) : group ? (
-              <GroupPane
-                key={group}
-                id={group}
-                listed={listedGroup}
-                workspaces={inbox.workspaces}
-                docked={layout === 'docked'}
-                seen={seenGroup}
-                changed={changed}
-                timeZone={timeZone}
-                now={now}
-                show={showGroup}
-                back={closed}
-                closed={closed}
-                reply={(entry) => {
-                  if (entry.conversationId) select(entry.conversationId);
-                }}
-                open={(person) =>
-                  void reaching.run(person.teamId, person.person.userId, person.conversationId)
-                }
-              />
-            ) : open ? (
-              <ConversationPane
-                key={open}
-                id={open}
-                listed={current}
-                workspaces={inbox.workspaces}
-                docked={layout === 'docked'}
-                seen={seen}
-                changed={changed}
+    <div
+      ref={page}
+      className={reading ? 'communications reading' : 'communications'}
+      {...pageLook(display, layout === 'phone')}
+    >
+      <Shown value={display}>
+        <div className="communications-page" inert={updating.length > 0}>
+          <Header title="Communications">
+            {working.length > 0 && (
+              <>
+                {displaySettings && (
+                  <button
+                    aria-label="Display"
+                    onPointerEnter={warmSettings}
+                    onFocus={warmSettings}
+                    onClick={() => navigate(displaySettings)}
+                  >
+                    <SlidersHorizontal size={16} />
+                    <span>Display</span>
+                  </button>
+                )}
+                <CopyChatLink workspaces={working} />
+                <button
+                  className="primary"
+                  aria-label="New message"
+                  onClick={() => setComposing(true)}
+                >
+                  <SquarePen size={16} />
+                  <span>New message</span>
+                </button>
+              </>
+            )}
+          </Header>
+          <ErrorBox message={error} />
+          {!inbox ? (
+            !error && <Loading />
+          ) : connect ? (
+            <ConnectSlack busy={returned.busy} />
+          ) : (
+            <div className="chat-frame">
+              <ListPane
+                inbox={inbox}
+                working={working}
+                team={team}
+                choose={chooseWorkspace}
+                draft={drafting ? draft : undefined}
+                pinned={unlisted}
+                current={current}
+                readOlder={readOlder}
+                pick={pick}
+                open={open ?? group}
                 typing={inbox.typing.writing}
                 timeZone={timeZone}
                 now={now}
-                show={show}
-                back={closed}
-                closed={closed}
+                select={select}
                 openGroup={openGroup}
+                done={(conversation) => void done.run(conversation)}
+                doneGroup={(listed) => void doneGroup.run(listed)}
               />
-            ) : (
-              <section className="pane-thread" aria-label="Conversation" />
-            )}
-          </div>
+              {drafting ? (
+                <GroupDraft
+                  workspaces={working}
+                  timeZone={timeZone}
+                  back={closed}
+                  drafted={setDraft}
+                  sent={(sent) => {
+                    showGroup(sent);
+                    openGroup(sent.id);
+                  }}
+                />
+              ) : group ? (
+                <GroupPane
+                  key={group}
+                  id={group}
+                  listed={listedGroup}
+                  workspaces={inbox.workspaces}
+                  docked={docked}
+                  seen={seenGroup}
+                  changed={changed}
+                  timeZone={timeZone}
+                  now={now}
+                  show={showGroup}
+                  back={closed}
+                  closed={closed}
+                  reply={(entry) => {
+                    if (entry.conversationId) select(entry.conversationId);
+                  }}
+                  open={(person) =>
+                    void reaching.run(person.teamId, person.person.userId, person.conversationId)
+                  }
+                />
+              ) : open ? (
+                <ConversationPane
+                  key={open}
+                  id={open}
+                  listed={current}
+                  workspaces={inbox.workspaces}
+                  docked={docked}
+                  kept={kept}
+                  seen={seen}
+                  changed={changed}
+                  typing={inbox.typing.writing}
+                  timeZone={timeZone}
+                  now={now}
+                  show={show}
+                  back={closed}
+                  closed={closed}
+                  openGroup={openGroup}
+                />
+              ) : (
+                <section className="pane-thread" aria-label="Conversation" />
+              )}
+            </div>
+          )}
+        </div>
+        {updating.length > 0 && <UpdateSlack workspaces={updating} busy={returned.busy} />}
+        {composing && (
+          <NewMessage
+            workspaces={working}
+            pick={pick}
+            group={() => {
+              setComposing(false);
+              setDraft({ name: '', people: 0 });
+              opening({ drafting: true });
+            }}
+            close={() => setComposing(false)}
+          />
         )}
-      </div>
-      {updating.length > 0 && <UpdateSlack workspaces={updating} busy={returned.busy} />}
-      {composing && (
-        <NewMessage
-          workspaces={working}
-          pick={pick}
-          group={() => {
-            setComposing(false);
-            setDraft({ name: '', people: 0 });
-            opening({ drafting: true });
-          }}
-          close={() => setComposing(false)}
-        />
-      )}
+      </Shown>
     </div>
   );
 }

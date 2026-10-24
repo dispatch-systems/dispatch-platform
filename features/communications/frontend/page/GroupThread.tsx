@@ -1,7 +1,8 @@
-import { Fragment, useLayoutEffect, useRef } from 'react';
+import { Fragment, useContext, useLayoutEffect, useRef } from 'react';
 import { Reply } from 'lucide-react';
 import type { GroupEntry, GroupProgress } from '../../api/index.js';
 import { clock, dayLabel, dayOf } from '../format.js';
+import { Shown } from '../display/display.js';
 import { Face } from './Face.js';
 import { More } from './More.js';
 import { Written } from './Thread.js';
@@ -80,6 +81,8 @@ export function GroupThread({
       latest: element.scrollHeight - element.scrollTop - element.clientHeight < 80,
     };
   };
+  const { style, times } = useContext(Shown);
+  const plain = style === 'plain';
   return (
     <div className="thread" ref={scroller} onScroll={scrolled}>
       {more && <More read={readOlder} />}
@@ -101,19 +104,26 @@ export function GroupThread({
                       size="message"
                     />
                     <div className="stack">
-                      <div className="sender">{first.sender.name}</div>
+                      <div className="sender">
+                        <span className="sender-name">{first.sender.name}</span>
+                        {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
+                      </div>
                       <Written message={first} />
-                      <div className="meta">
-                        {clock(first.at, timeZone)}
-                        {gone && (
-                          <>
-                            {' · '}
+                      {(!plain || gone) && (
+                        <div className="meta">
+                          {!plain && (
+                            <span className="at">
+                              {clock(first.at, timeZone)}
+                              {gone && ' · '}
+                            </span>
+                          )}
+                          {gone && (
                             <span className={gone.sending ? 'sending' : undefined}>
                               {gone.text}
                             </span>
-                          </>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -134,11 +144,23 @@ export function GroupThread({
                   <div className="stack">
                     <button className="sender" onClick={() => reply(first)}>
                       {name}
+                      {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
                     </button>
                     {written.map((entry) => (
-                      <Written key={entry.id} message={entry} />
+                      <Fragment key={entry.id}>
+                        <Written message={entry} />
+                        {!plain && times === 'each_message' && (
+                          <div className="meta">
+                            <span className="at">{clock(entry.at, timeZone)}</span>
+                          </div>
+                        )}
+                      </Fragment>
                     ))}
-                    <div className="meta">{clock(last.at, timeZone)}</div>
+                    {!plain && times !== 'each_message' && (
+                      <div className="meta">
+                        <span className="at">{clock(last.at, timeZone)}</span>
+                      </div>
+                    )}
                   </div>
                   <button
                     className="reply-to"
