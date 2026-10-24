@@ -544,7 +544,7 @@ test.describe('on a phone', () => {
       (response) =>
         response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
     );
-    await page.getByRole('slider', { name: 'Text size' }).fill('18');
+    await page.getByRole('slider', { name: 'Text size' }).fill('20');
     await saved;
 
     await page.goBack();
@@ -554,7 +554,7 @@ test.describe('on a phone', () => {
       .click();
     const casey = page.getByRole('region', { name: 'Casey Rivera' });
     const asked = casey.getByText('Can I swap Saturday?');
-    await expect(asked).toHaveCSS('font-size', '18px');
+    await expect(asked).toHaveCSS('font-size', '20px');
     // Its header keeps a line each at that size: what they do and where, and Done, its mark alone.
     const about = await casey.locator('.thread-head .who small').evaluate((element) => ({
       height: element.getBoundingClientRect().height,
