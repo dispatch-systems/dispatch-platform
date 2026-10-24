@@ -343,7 +343,7 @@ test('an owner messages a group from New message, its answers come back together
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 });
 
-test('Display opens the member’s own Message display, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation', async ({
+test('Display opens the member’s own Message display, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation, beside the list in a 1024px window', async ({
   page,
   dispatch,
 }) => {
@@ -412,6 +412,12 @@ test('Display opens the member’s own Message display, where Enter can start a 
   await expect(profile).toHaveCount(0);
   release();
   await expect(profile).toBeVisible();
+
+  // A 1024px window, the app's sidebar beside the page, still has the list beside the
+  // conversation.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByRole('region', { name: 'Conversations' })).toBeVisible();
+  await expect(box).toBeVisible();
 });
 
 test.describe('on a phone', () => {
