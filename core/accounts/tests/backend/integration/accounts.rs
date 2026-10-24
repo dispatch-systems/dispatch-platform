@@ -49,9 +49,16 @@ async fn concurrent_password_resets_cannot_reuse_a_consumed_token() {
 }
 
 #[tokio::test]
-async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log() {
+async fn removing_a_member_deletes_their_account_and_settings_and_keeps_their_name_in_the_log() {
     common::install(&[], &[]);
-    use dispatch_core::{State, accounts::Auth};
+    use dispatch_core::{
+        State,
+        accounts::Auth,
+        manifest::settings::{Field, Section, section, toggle},
+        settings,
+    };
+    const ON: &[Field] = &[toggle("on", "On", false)];
+    const MINE: Section = section("stand_in.mine", "Mine", "access", ON).member();
     let (_root, db) = seeded();
     let one = |sql: &str| db.platform.one(sql, []).unwrap();
     let tenant = one("SELECT id FROM dsps WHERE name='Northline Logistics'").unwrap();
@@ -74,6 +81,15 @@ async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log
     };
     db.audit(Some(s(&member, "id")), Some(dsp), "schedule.updated", "")
         .unwrap();
+    // Their own settings, and the owner's.
+    let on = json!({"on": true});
+    for whose in [&member, &owner] {
+        settings::save(&db, dsp, s(whose, "id"), &MINE, &on, 0, false).unwrap();
+    }
+    let mine = |whose: &serde_json::Value| {
+        settings::read_member::<serde_json::Value>(&db, dsp, s(whose, "id"), &MINE).unwrap()["on"]
+            .clone()
+    };
     db.dsp(dsp)
         .unwrap()
         .exec(
@@ -114,6 +130,7 @@ async fn removing_a_member_deletes_their_account_and_keeps_their_name_in_the_log
         );
     }
     assert!(theirs("SELECT created_by FROM invitations").is_none());
+    assert_eq!((mine(&member), mine(&owner)), (json!(false), json!(true)));
     let log = audits(&db, Some(dsp)).unwrap();
     let event = log
         .as_array()
