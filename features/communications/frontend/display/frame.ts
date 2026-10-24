@@ -49,8 +49,10 @@ export function frame({
       aside: 0,
     };
   if (!fit && room.width >= ACTUAL_LEAST) {
-    const alone = room.width < WHOLE_LEAST && room.width + list - 2 * GUTTER >= BESIDE;
-    const aside = alone ? list : 0;
+    // The list as the page draws it, no more than 45% of the page, which it widens.
+    const drawn = Math.min(list, (room.width * 9) / 11);
+    const alone = room.width < WHOLE_LEAST && room.width + drawn - 2 * GUTTER >= BESIDE;
+    const aside = alone ? drawn : 0;
     return { width: room.width + aside, height: room.height, scale: 1, aside };
   }
   const whole = { width: window.width - SIDEBAR, height: window.height - HEADING };

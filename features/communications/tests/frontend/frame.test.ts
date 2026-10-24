@@ -12,8 +12,10 @@ test('a desktop shows at its actual size: the whole page with room for both pane
   // The page laid out wider by its list, which is kept out of view.
   assert.deepEqual(desktop(600), { width: 940, height: 700, scale: 1, aside: 340 });
   assert.deepEqual(desktop(500, 400), { width: 900, height: 700, scale: 1, aside: 400 });
+  // A list grown with the text is drawn no wider than 45% of the page.
+  assert.deepEqual(desktop(440, 486), { width: 800, height: 700, scale: 1, aside: 360 });
   // Too narrow for two panes even so: the page as wide as the room, one pane, nothing kept out.
-  assert.deepEqual(desktop(450), { width: 450, height: 700, scale: 1, aside: 0 });
+  assert.deepEqual(desktop(420, 300), { width: 420, height: 700, scale: 1, aside: 0 });
 });
 
 test('to fit, or with no room for its actual size, a desktop’s whole page is made smaller', () => {

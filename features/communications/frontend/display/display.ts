@@ -163,7 +163,7 @@ export const listWidths = { narrow: 300, medium: 340, wide: 400 };
 const radius = { round: '1.3em', soft: '0.75em', square: '0.3em' };
 
 /** The list's and the profile's widths as drawn: as chosen at 14px, growing with the text. */
-const widths = (display: Display) => {
+export const widths = (display: Display) => {
   const scale = display.text_size / 14;
   return { list: listWidths[display.list_width] * scale, profile: display.profile_width * scale };
 };
