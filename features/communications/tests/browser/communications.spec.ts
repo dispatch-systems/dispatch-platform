@@ -420,7 +420,7 @@ test('Display opens the member’s own Message display, where Enter can start a 
   await expect(box).toBeVisible();
 });
 
-test('on a wide screen a bubble is as wide as chosen, plain lines stay readable, and large text widens the list and docks the profile only with room for the conversation', async ({
+test('on a wide screen a bubble is as wide as chosen, plain lines stay readable, and large text widens the list and the profile, as Settings shows it, docking the profile only with room for the conversation', async ({
   page,
   dispatch,
 }) => {
@@ -478,10 +478,10 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
   await expect(look).toHaveAttribute('data-style', 'plain');
   expect(await width()).toBeLessThanOrEqual(usual + 1);
 
-  // At 14px the profile is a column of its own beside the conversation; at 20px the list grows
-  // with the text, and the profile goes over the conversation, which keeps its room.
+  // At 14px the profile is a column of its own beside the conversation; at 20px the list and the
+  // profile grow with the text, and the profile goes over the conversation, which keeps its room.
   const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
-  const beside = async () => {
+  const opened = async () => {
     await casey
       .locator('.thread-head')
       .getByRole('button', { name: /^Casey Rivera/ })
@@ -497,15 +497,35 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
     );
     const thread = (await casey.locator('.thread').boundingBox())!;
     const panel = (await profile.boundingBox())!;
-    return thread.x + thread.width <= panel.x + 1;
+    return { beside: thread.x + thread.width <= panel.x + 1, width: panel.width };
   };
   await display({ style: 'bubbles' }, /--text-size: 14px/);
   await expect(look).toHaveAttribute('data-style', 'bubbles');
   const listAt14 = (await list.boundingBox())!.width;
-  expect(await beside()).toBe(true);
+  const at14 = await opened();
+  expect(at14.beside).toBe(true);
   await display({ text_size: 20 }, /--text-size: 20px/);
   expect((await list.boundingBox())!.width).toBeGreaterThan(listAt14);
-  expect(await beside()).toBe(false);
+  const at20 = await opened();
+  expect(at20.beside).toBe(false);
+  expect(at20.width).toBeGreaterThan(at14.width);
+
+  // Settings shows the profile's width as drawn, and saves the width it's chosen as at 14px.
+  await page.getByRole('button', { name: 'Display' }).click();
+  const drawn = `${Math.round(at20.width)} px`;
+  const profileWidth = page.getByRole('slider', { name: 'Width' });
+  await expect(profileWidth).toHaveAttribute('aria-valuetext', drawn);
+  await expect(page.getByText(drawn, { exact: true })).toBeVisible();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await profileWidth.fill('400');
+  await saved;
+  const { values } = (await owner.read('/api/dsp/settings')).sections.find(
+    (each: { id: string }) => each.id === 'communications.display',
+  );
+  expect(values.profile_width).toBe(400);
 });
 
 test.describe('on a phone', () => {
