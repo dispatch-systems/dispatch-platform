@@ -420,10 +420,98 @@ test('Display opens the member’s own Message display, where Enter can start a 
   await expect(box).toBeVisible();
 });
 
+test('on a wide screen a bubble is as wide as chosen, plain lines stay readable, and large text widens the list and docks the profile only with room for the conversation', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+  const long =
+    'The gate code at Riverside changed again this morning and the leasing office said they would text the new one, but nobody has it yet, so stops 40 through 58 may be late unless someone calls them before ten';
+  const written = await fromSlack(
+    dispatch,
+    '/slack/events',
+    event('T0FIXTURE2', {
+      type: 'message',
+      channel_type: 'im',
+      channel: 'D0FIXCASEY',
+      user: 'U0FIXCASEY',
+      text: long,
+      ts: (Date.now() / 1000).toFixed(6),
+    }),
+  );
+  expect(written.status).toBe(200);
+  // Changes to the owner's own Message display, as Settings saves them, which the page draws once
+  // it's read them again (`drawn`).
+  const look = page.locator('.communications');
+  const display = async (values: Record<string, unknown>, drawn: RegExp) => {
+    const { revision } = (await owner.read('/api/dsp/settings')).sections.find(
+      (each: { id: string }) => each.id === 'communications.display',
+    );
+    const saved = await owner.post('/api/dsp/settings/communications.display', {
+      values,
+      revision,
+    });
+    expect(saved.status, saved.body).toBe(200);
+    await page.reload();
+    await expect(look).toHaveAttribute('style', drawn);
+  };
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await login(page);
+  await page.goto(`/#dsp/${north.id}/communications`);
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await list.getByRole('button', { name: /^Casey Rivera/ }).click();
+  const casey = page.getByRole('region', { name: 'Casey Rivera' });
+  const bubble = casey.getByText(long);
+  const width = async () => (await bubble.boundingBox())!.width;
+  const usual = await width();
+  await display({ bubble_width: 90 }, /--bubble-width: 90%/);
+  expect(await width()).toBeGreaterThan(usual);
+  await display({ bubble_width: 50 }, /--bubble-width: 50%/);
+  expect(await width()).toBeLessThan(usual);
+  await display({ bubble_width: 70, style: 'plain' }, /--bubble-width: 70%/);
+  await expect(look).toHaveAttribute('data-style', 'plain');
+  expect(await width()).toBeLessThanOrEqual(usual + 1);
+
+  // At 14px the profile is a column of its own beside the conversation; at 20px the list grows
+  // with the text, and the profile goes over the conversation, which keeps its room.
+  const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
+  const beside = async () => {
+    await casey
+      .locator('.thread-head')
+      .getByRole('button', { name: /^Casey Rivera/ })
+      .click();
+    await expect(profile).toBeVisible();
+    // Once it, and the conversation making room for it, have slid.
+    await profile.evaluate((panel) =>
+      Promise.all(
+        [panel, panel.closest('.pane-thread')!]
+          .flatMap((each) => each.getAnimations())
+          .map((each) => each.finished),
+      ),
+    );
+    const thread = (await casey.locator('.thread').boundingBox())!;
+    const panel = (await profile.boundingBox())!;
+    return thread.x + thread.width <= panel.x + 1;
+  };
+  await display({ style: 'bubbles' }, /--text-size: 14px/);
+  await expect(look).toHaveAttribute('data-style', 'bubbles');
+  const listAt14 = (await list.boundingBox())!.width;
+  expect(await beside()).toBe(true);
+  await display({ text_size: 20 }, /--text-size: 20px/);
+  expect((await list.boundingBox())!.width).toBeGreaterThan(listAt14);
+  expect(await beside()).toBe(false);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
-  test('Communications draws by the phone’s own Message display, where Return starts a new line, Send sends, and its text size is the phone’s alone', async ({
+  test('Communications draws by the phone’s own Message display, where Return starts a new line, Send sends, its text size is the phone’s alone, and its header keeps a line each', async ({
     page,
     dispatch,
   }) => {
@@ -467,6 +555,13 @@ test.describe('on a phone', () => {
     const casey = page.getByRole('region', { name: 'Casey Rivera' });
     const asked = casey.getByText('Can I swap Saturday?');
     await expect(asked).toHaveCSS('font-size', '18px');
+    // Its header keeps a line each at that size: what they do and where, and Done, its mark alone.
+    const about = await casey.locator('.thread-head .about').evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      size: parseFloat(getComputedStyle(element).fontSize),
+    }));
+    expect(about.height).toBeLessThan(about.size * 2);
+    expect(await casey.getByRole('button', { name: 'Done' }).innerText()).toBe('');
     const box = casey.getByLabel('Message');
     await box.fill('Yes');
     await box.press('Enter');

@@ -103,6 +103,7 @@ export function Slider({
   max,
   step = 1,
   unit,
+  scale = 1,
   ends,
   change,
 }: {
@@ -112,18 +113,18 @@ export function Slider({
   max: number;
   step?: number;
   unit: string;
+  /** How much bigger than `value` it's drawn, as a width that grows with the text: shown so. */
+  scale?: number;
   ends?: [ReactNode, ReactNode];
   change: (value: number) => void;
 }) {
   const id = useId();
+  const shown = `${Math.round(value * scale)}${unit === '%' ? '%' : ` ${unit}`}`;
   return (
     <div className="settings-field settings-wide display-slider">
       <div className="display-slider-head">
         <label htmlFor={id}>{label}</label>
-        <output htmlFor={id}>
-          {value}
-          {unit === '%' ? '%' : ` ${unit}`}
-        </output>
+        <output htmlFor={id}>{shown}</output>
       </div>
       <div className="display-slider-line">
         {ends && <span aria-hidden="true">{ends[0]}</span>}
@@ -134,6 +135,7 @@ export function Slider({
           max={max}
           step={step}
           value={value}
+          aria-valuetext={shown}
           onChange={(event) => change(Number(event.target.value))}
         />
         {ends && <span aria-hidden="true">{ends[1]}</span>}

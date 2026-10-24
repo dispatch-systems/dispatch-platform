@@ -409,6 +409,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
                   max={420}
                   step={10}
                   unit="px"
+                  scale={shown.text_size / 14}
                   change={(profile_width) => change({ profile_width })}
                 />
               </>
