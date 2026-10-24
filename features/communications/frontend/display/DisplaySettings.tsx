@@ -9,7 +9,6 @@ import type { MessageDisplay } from '../../api/index.js';
 import { Choice, Segments, Sketch, Slider, Swatches, Switch, Tiles } from './controls.js';
 import {
   kept,
-  listWidths,
   lookOf,
   looks,
   lookSizes,
@@ -18,6 +17,7 @@ import {
   screenDefaults,
   section,
   thisScreen,
+  widths,
   type Display,
   type Look,
   type Screen,
@@ -107,7 +107,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
     room,
     phone,
     fit: size === 'fit',
-    list: listWidths[shown.list_width],
+    list: widths(shown).list,
     window: { width: window.innerWidth, height: window.innerHeight },
   });
   const look = lookOf(shown);
@@ -409,6 +409,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
                   max={420}
                   step={10}
                   unit="px"
+                  scale={shown.text_size / 14}
                   change={(profile_width) => change({ profile_width })}
                 />
               </>

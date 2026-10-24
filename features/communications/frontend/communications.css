@@ -4,11 +4,13 @@
    against the page itself (a container query), so the sidebar showing or not is counted.
 
      page width   layout
-     < 760        one pane: the list, or the conversation open
-     760 – 1149   the list beside the conversation; the profile over the conversation
-     ≥ 1150       the profile, open, a column of its own beside the conversation
+     < 680        one pane: the list, or the conversation open
+     680 –        the list beside the conversation; the profile over the conversation
+     docked       the profile, open, a column of its own beside the conversation, from room for
+                  the list, the profile and the conversation between them: 1150 at 14px
 
-   useLayout.ts tells the page the same widths.
+   useLayout.ts tells the page the same widths, and when it docks (`dockAt`, display.ts), which
+   the page marks (`data-docked`).
 
    How it looks is the member's own, as they chose in Settings' Message display: the page sets
    its text size (`--text-size`, and `--scale`, that over 14px, which every other size goes by),
@@ -28,6 +30,7 @@
   --list-width: 340px;
   --column-width: 100%;
   --bubble-width: 70%;
+  --bubble-share: 1;
   --bubble-radius: 1.3em;
   --profile-width: 320px;
   --name-size: var(--text-size);
@@ -187,10 +190,11 @@
 
 /* The list beside the conversation, on the page itself: under the heading's line, out through
    the page's padding to the window's edges at the sides and below. It clips what lies past them,
-   as the profile does sliding in, without scrolling to it. */
+   as the profile does sliding in, without scrolling to it. The list, growing with the text, keeps
+   the conversation the most of a narrow page. */
 .chat-frame {
   display: grid;
-  grid-template-columns: var(--list-width) minmax(0, 1fr);
+  grid-template-columns: min(var(--list-width), 45%) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   margin: 0 calc(-1 * var(--page-gutter)) calc(-1 * var(--page-bottom));
@@ -407,7 +411,7 @@
   width: 47%;
   height: 47%;
 }
-@container communications (width >= 760px) {
+@container communications (width >= 680px) {
   .convo:hover .convo-done,
   .convo:focus-within .convo-done {
     display: inline-flex;
@@ -616,6 +620,12 @@
   gap: 6px;
   color: var(--muted-foreground);
   font-size: calc(var(--small-size) + 1px);
+  white-space: nowrap;
+}
+.thread-head .who .about {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .thread-head .actions button {
   min-height: calc(var(--field-height) - 2px);
@@ -678,7 +688,8 @@
   align-items: flex-start;
   gap: 3px;
   min-width: 0;
-  max-width: min(var(--bubble-width), calc(var(--text-size) * 44));
+  /* As wide as the member chose, in a readable line that grows and shrinks with it. */
+  max-width: min(var(--bubble-width), calc(var(--text-size) * 44 * var(--bubble-share)));
 }
 .msg-group.out .stack {
   align-items: flex-end;
@@ -812,7 +823,7 @@ button.sender {
   font-weight: 600;
   box-shadow: 0 2px 6px var(--shadow-color);
 }
-@container communications (width >= 760px) {
+@container communications (width >= 680px) {
   .msg-group.answer:hover .reply-to,
   .msg-group.answer:focus-within .reply-to {
     display: inline-flex;
@@ -870,7 +881,7 @@ button.sender {
   display: flex;
   flex-direction: column;
   gap: calc(var(--gap) + 4px);
-  width: var(--profile-width);
+  width: min(var(--profile-width), 100%);
   padding: calc(var(--profile-pad) + 4px) var(--profile-pad);
   overflow-y: auto;
   border-left: 1px solid var(--border);
@@ -1725,10 +1736,11 @@ button.sender {
 .communications[data-style='plain'] .msg-group > :is(.face, .face-button) {
   margin: 2px 0 0;
 }
+/* Plain, a readable line, as a bubble's is. */
 .communications[data-style='plain'] .stack {
   align-items: flex-start;
   gap: 2px;
-  max-width: 100%;
+  max-width: min(100%, calc(var(--text-size) * 44));
 }
 .communications[data-style='plain'] .bubble {
   padding: 0;
@@ -1767,20 +1779,18 @@ button.sender {
   }
 }
 
-/* On a wide page, the profile, open, is a column of its own beside the conversation, which it
-   no longer covers: the conversation keeps 560px or more beside the list and the profile. */
-@container communications (width >= 1150px) {
-  .communications:not([data-profile='over']) .pane-thread.profiled {
-    padding-right: var(--profile-width);
-  }
-  .communications:not([data-profile='over']) .profile {
-    box-shadow: none;
-  }
+/* Docked, the profile, open, is a column of its own beside the conversation, which it no longer
+   covers: the conversation keeps its room beside the list and the profile. */
+.communications[data-docked] .pane-thread.profiled {
+  padding-right: var(--profile-width);
+}
+.communications[data-docked] .profile {
+  box-shadow: none;
 }
 
 /* On a phone: one pane at a time, the list or the conversation open, which takes the whole page,
    with a way back. Without hover, Done in the conversation marks it done. */
-@container communications (width < 760px) {
+@container communications (width < 680px) {
   .communications .page-heading {
     flex-wrap: nowrap;
     align-items: center;
@@ -1815,6 +1825,13 @@ button.sender {
   }
   .thread-head {
     padding: 10px 12px;
+  }
+  /* Done, its mark alone, leaving who it's with the room. */
+  .thread-head .actions button > span {
+    display: none;
+  }
+  .thread-head .actions button {
+    padding-inline: 10px;
   }
   .thread-head .back,
   .to-line .back {

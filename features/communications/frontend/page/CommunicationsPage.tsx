@@ -16,7 +16,7 @@ import { can } from '../../../../core/shell/frontend/runtime/permissions.js';
 import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route-prefetch.js';
 import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { pageLook, Shown, useDisplay } from '../display/display.js';
+import { dockAt, pageLook, Shown, useDisplay } from '../display/display.js';
 import { rows, type Row } from '../inbox.js';
 import { ConversationPane } from './ConversationPane.js';
 import { CopyChatLink } from './CopyChatLink.js';
@@ -65,8 +65,8 @@ function addressed(): Opened {
 export function CommunicationsPage({ view, user }: { view: DspView; user: string }) {
   const timeZone = view.dsp.timezone;
   const page = useRef<HTMLDivElement>(null);
-  const layout = useLayout(page);
   const display = useDisplay();
+  const layout = useLayout(page, dockAt(display));
   // The profile open as each conversation opens, as the member may keep it: not with one pane at a
   // time, where it would cover the conversation.
   const kept = display.keep_profile_open && layout !== 'phone';
@@ -184,6 +184,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
       ref={page}
       className={reading ? 'communications reading' : 'communications'}
       {...pageLook(display)}
+      data-docked={docked || undefined}
     >
       <Shown value={display}>
         <div className="communications-page" inert={updating.length > 0}>

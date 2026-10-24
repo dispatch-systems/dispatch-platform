@@ -90,21 +90,19 @@ export function GroupPane({
               <span>
                 <strong>{group.name}</strong>
                 <small>
-                  {peopleText(group.people)}
-                  {group.waitingSince !== null && (
-                    <>
-                      {' · '}
-                      <Wait since={group.waitingSince} now={now} />
-                    </>
-                  )}
+                  <span className="about">
+                    {peopleText(group.people)}
+                    {group.waitingSince !== null && ' ·'}
+                  </span>
+                  {group.waitingSince !== null && <Wait since={group.waitingSince} now={now} />}
                 </small>
               </span>
             </button>
             {group.state === 'waiting' && (
               <div className="actions">
-                <button disabled={done.busy} onClick={() => void done.run()}>
+                <button disabled={done.busy} onClick={() => void done.run()} aria-label="Done">
                   <Check size={15} />
-                  Done
+                  <span>Done</span>
                 </button>
               </div>
             )}

@@ -5,7 +5,8 @@ import { Face } from './Face.js';
 import { Wait, type OpensProfile } from './parts.js';
 
 // A conversation's head: the way back to the list, on a phone; who it's with, what they do and
-// where, and while it waits how long, which opens their profile; and while it waits, Done.
+// where, and while it waits how long, which opens their profile; and while it waits, Done, on a
+// phone its mark alone.
 
 export function ConversationHead({
   conversation,
@@ -43,8 +44,12 @@ export function ConversationHead({
               <strong>{person.name}</strong>
               {(about || conversation.waitingSince !== null) && (
                 <small>
-                  {about}
-                  {about && conversation.waitingSince !== null && ' · '}
+                  {about && (
+                    <span className="about">
+                      {about}
+                      {conversation.waitingSince !== null && ' ·'}
+                    </span>
+                  )}
                   {conversation.waitingSince !== null && (
                     <Wait since={conversation.waitingSince} now={now} />
                   )}
@@ -54,9 +59,9 @@ export function ConversationHead({
           </button>
           {conversation.state === 'waiting' && (
             <div className="actions">
-              <button disabled={done.busy} onClick={done.run}>
+              <button disabled={done.busy} onClick={done.run} aria-label="Done">
                 <Check size={15} />
-                Done
+                <span>Done</span>
               </button>
             </div>
           )}

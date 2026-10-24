@@ -162,21 +162,39 @@ const line = { tight: 1.3, normal: 1.42, relaxed: 1.62 };
 export const listWidths = { narrow: 300, medium: 340, wide: 400 };
 const radius = { round: '1.3em', soft: '0.75em', square: '0.3em' };
 
+/** The list's and the profile's widths as drawn: as chosen at 14px, growing with the text. */
+export const widths = (display: Display) => {
+  const scale = display.text_size / 14;
+  return { list: listWidths[display.list_width] * scale, profile: display.profile_width * scale };
+};
+/**
+ * How wide the page is from which an open profile, beside the conversation, is a column of its
+ * own: room for the list, the profile, and the conversation between them, each growing with the
+ * text. At 14px, 1150px.
+ */
+export function dockAt(display: Display) {
+  const { list, profile } = widths(display);
+  return list + profile + (490 * display.text_size) / 14;
+}
+
 /**
  * What the page sets on itself to look as `display` has it: its sizes, and the classes
  * communications.css draws the rest by.
  */
 export function pageLook(display: Display) {
+  const { list, profile } = widths(display);
   const style = {
     '--text-size': `${display.text_size}px`,
     '--scale': display.text_size / 14,
     '--spacing': spacing[display.spacing],
     '--line': line[display.line_spacing],
-    '--list-width': `${listWidths[display.list_width]}px`,
+    '--list-width': `${list}px`,
     '--column-width': display.layout === 'centred' ? `${display.column_width}px` : '100%',
     '--bubble-width': `${display.bubble_width}%`,
+    // A bubble's line, as readable at any width, grows and shrinks with the width chosen.
+    '--bubble-share': display.bubble_width / 70,
     '--bubble-radius': radius[display.bubble_shape],
-    '--profile-width': `${display.profile_width}px`,
+    '--profile-width': `${profile}px`,
     ...(display.profile_slide ? {} : { '--profile-slide': '0s' }),
   } as CSSProperties;
   const hidden = [
