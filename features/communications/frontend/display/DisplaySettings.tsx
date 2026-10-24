@@ -45,8 +45,8 @@ function useChoices(refresh: () => void) {
   // The newest of each, for saves that run after the page draws again.
   const run = useRef(action.run);
   run.current = action.run;
-  const rereading = useRef(refresh);
-  rereading.current = refresh;
+  const reread = useRef(refresh);
+  reread.current = refresh;
   const [saver] = useState(() =>
     autosave({
       save: async (values, revision) => {
@@ -54,7 +54,6 @@ function useChoices(refresh: () => void) {
         return 'section' in answer ? answer.section.revision : revision;
       },
       view: () => dataCache.session,
-      revision: kept?.revision ?? 0,
       perform: (work) => run.current(work),
       later: (then) => {
         const timer = window.setTimeout(then, SAVE_MS);
@@ -63,16 +62,13 @@ function useChoices(refresh: () => void) {
       shown: setDraft,
       clash: (error) =>
         error instanceof ApiError && error.code === 'settings_changed_reload_before_saving',
-      reread: () => rereading.current(),
+      reread: () => reread.current(),
     }),
   );
-  useEffect(() => {
-    if (kept) saver.reread(kept.revision);
-  }, [kept, saver]);
   // Leaving the page saves what waits.
   useEffect(() => () => void saver.flush(), [saver]);
   const change = (changes: Partial<MessageDisplay>) =>
-    saver.change({ ...(saver.draft ?? saved), ...changes });
+    saver.change(changes, { values: saved, revision: kept?.revision ?? 0 });
   return { shown: draft ?? saved, change };
 }
 
