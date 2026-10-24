@@ -556,7 +556,7 @@ test.describe('on a phone', () => {
     const asked = casey.getByText('Can I swap Saturday?');
     await expect(asked).toHaveCSS('font-size', '18px');
     // Its header keeps a line each at that size: what they do and where, and Done, its mark alone.
-    const about = await casey.locator('.thread-head .about').evaluate((element) => ({
+    const about = await casey.locator('.thread-head .who small').evaluate((element) => ({
       height: element.getBoundingClientRect().height,
       size: parseFloat(getComputedStyle(element).fontSize),
     }));
