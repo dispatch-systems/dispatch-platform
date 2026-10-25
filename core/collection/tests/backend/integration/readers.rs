@@ -615,7 +615,7 @@ async fn started_again_a_dsp_keeps_its_slot_its_day_and_stops_a_day_it_missed() 
     let ((start, open), (stop, close)) = (server.at(5), server.at(30));
     server.window(&dsp, &start, &stop).await;
     server.switch(&dsp, true).await;
-    until(open + 2 * EVERY).await;
+    until(open + 2 * EVERY + MINUTE).await;
     let last = server.probe.reads(&dsp).last().unwrap().1;
 
     // Down for a minute, it reads at its own next slot, not as it's back, and its day goes
@@ -771,7 +771,7 @@ async fn switched_off_mid_window_a_dsp_stops_at_once_and_switched_on_goes_on_wit
     let (stop, _) = server.at(120);
     server.window(&dsp, &start, &stop).await;
     server.switch(&dsp, true).await;
-    until(open + 2 * EVERY).await;
+    until(open + 2 * EVERY + MINUTE).await;
     // Its next read waits on its provider as the feature is switched off: it's dropped, and
     // no other starts.
     set_script(&dsp, Script::Gated);
@@ -929,7 +929,7 @@ async fn a_dsps_records_go_after_two_weeks_though_none_of_its_reads_was_kept() {
         .await
         .unwrap();
     server.switch(&dsp, true).await;
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     let records = server.records(&dsp).await;
     let failed = |code: &str| ("failed".to_owned(), Some(code.to_owned()));
     assert_eq!(records, [failed("kept_on"), failed("probe_unavailable")]);

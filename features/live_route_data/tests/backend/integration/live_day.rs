@@ -309,7 +309,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     server.run_readers();
 
     // The day's first read empties live route data of the day before, and is kept.
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     assert_eq!(server.live().await.as_deref(), Some(READ));
     assert_eq!(server.live_day().await, Some(first_day.to_string()));
     // Every read through the window is kept on the DSP's grid: each the fixture's whole day,
@@ -345,7 +345,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     let second_day = pin(&server);
     assert_eq!(second_day, first_day.succ_opt().unwrap());
     server.kept_before().await;
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     assert_eq!(server.live().await.as_deref(), Some(READ));
     assert_eq!(server.live_day().await, Some(second_day.to_string()));
     // Started again inside its window, it reads on with the day as it was, emptying nothing.
@@ -374,7 +374,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     pin(&server);
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     let reads = server.records().await;
     assert_eq!(reads.len(), 12 + 1);
     until(instant(reads[12].at) + MINUTE).await;
@@ -388,7 +388,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     until(open - MINUTE).await;
     pin(&server);
     server.switch(true).await;
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     let reads = server.records().await;
     assert_eq!(reads.len(), 13 + 1);
     let slot = instant(reads[13].at) + EVERY;
@@ -407,7 +407,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     let fifth_day = pin(&server);
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     let first = instant(server.records().await[15].at);
     until(first + 5 * EVERY + SECOND).await;
     let busy = server.hold_history().await;
@@ -426,7 +426,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     let sixth_day = pin(&server);
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     let first = instant(server.records().await[21].at);
     until(first + 5 * EVERY + SECOND).await;
     server.station("TST2").await;
@@ -440,7 +440,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     let seventh_day = pin(&server);
-    until(open + EVERY).await;
+    until(open + MINUTE).await;
     let reads = server.records().await;
     assert_eq!(reads.len(), 27 + 1, "{:?}", &reads[26..]);
     assert_eq!(reads[27].outcome, "kept");
