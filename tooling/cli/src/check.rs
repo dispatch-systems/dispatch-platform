@@ -680,6 +680,7 @@ pub fn failure(log: &str) -> Vec<String> {
         "Expected",
         "Received",
         "Failed rules",
+        "Failed checks",
         "check failed",
         "[warn]",
     ];
@@ -1285,6 +1286,12 @@ mod tests {
                 "Failed rules: format"
             ]
         );
+        // A CI suite names the checks that failed once its tests have run.
+        let suite = "[start] dependency audit\n1 high severity vulnerability\n[fail] dependency audit (1.1s)\n"
+            .to_owned()
+            + &"ok 1 - a test that passed\n".repeat(30)
+            + "Failed checks: dependency audit\n";
+        assert_eq!(failure(&suite), ["Failed checks: dependency audit"]);
         let quiet: String = (1..=40).map(|n| format!("line {n}\n")).collect();
         let tail = failure(&quiet);
         assert_eq!(
