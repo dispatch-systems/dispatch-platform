@@ -123,13 +123,11 @@ pub async fn keep_live(state: &Arc<State>, dsp: &str, capture: Capture) -> Resul
         let shaped = tokio::task::spawn_blocking(move || Shaped::new(capture, &request))
             .await
             .map_err(blocking("routes.keep_failed"))??;
-        let (d, day) = (dsp.to_owned(), shaped.lists.scope.date.clone());
+        let d = dsp.to_owned();
         let (kept, named) = state
             .run_scoped(dsp, DOMAIN, move |db| {
                 on(db)?;
-                // Today as it's kept, however long reading and shaping it took.
-                day_allowed(Mode::Snapshot, &day, routes_today(db, &d)?)?;
-                keep(&*db.routes_live_db(&d)?, &shaped)
+                keep(db, &d, &shaped)
             })
             .await?;
         if named {
@@ -139,11 +137,14 @@ pub async fn keep_live(state: &Arc<State>, dsp: &str, capture: Capture) -> Resul
     })
     .await
 }
-/// Keeps a shaped read in place, in one transaction, answering what it counted and whether it
-/// named a driver live route data didn't.
-fn keep(db: &Db, read: &Shaped) -> Result<(LiveKept, bool)> {
+/// Keeps a shaped read in the DSP's live route data in place, in one transaction, answering what
+/// it counted and whether it named a driver live route data didn't. Refuses a read of a day that
+/// isn't today as it's written, however long reading and shaping it took.
+fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
     let (lists, scope) = (&read.lists, &read.lists.scope);
     let day = scope.date.as_str();
+    day_allowed(Mode::Snapshot, day, routes_today(store, dsp)?)?;
+    let db = &*store.routes_live_db(dsp)?;
     let listed: Vec<String> = read.itineraries.iter().map(|i| i.id.clone()).collect();
     db.transaction(|| {
         let held = db.one(
@@ -359,3 +360,7 @@ pub async fn save_live_day(state: &Arc<State>, dsp: &str) -> Result<Option<bool>
     };
     save_day(state, dsp, &key, capture, phones).await.map(Some)
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/live.rs"]
+mod tests;
