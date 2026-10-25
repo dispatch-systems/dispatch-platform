@@ -45,5 +45,6 @@ export type { TeamColor } from './generated/TeamColor';
 export type { TeamSide } from './generated/TeamSide';
 export type { Times } from './generated/Times';
 export type { Typing } from './generated/Typing';
+export type { WaitingMessage } from './generated/WaitingMessage';
 export type { Writing } from './generated/Writing';
 export type { PersonRole } from '../../../core/manifest/api/generated/PersonRole.js';

@@ -99,5 +99,5 @@ export {
   runWording,
   switchIcon,
 } from './slots/platform.js';
-export type { Watcher } from './slots/watchers.js';
+export type { Watcher, Watching } from './slots/watchers.js';
 export { watchers } from './slots/watchers.js';

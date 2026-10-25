@@ -424,6 +424,7 @@ pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWai
             Some(WaitingMessage {
                 message: written.remove(&conversation.id)?,
                 conversation_id: conversation.id.clone(),
+                group_id: conversation.group.clone(),
                 from: people
                     .correspondent(&conversation.team, &conversation.user, &conversation.name)
                     .name,

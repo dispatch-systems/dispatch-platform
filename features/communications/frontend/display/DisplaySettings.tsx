@@ -25,6 +25,7 @@ import {
 import { ACTUAL_LEAST, frame } from './frame.js';
 import { Preview } from './Preview.js';
 import { autosave } from './saving.js';
+import { canNotify, notifying } from '../alerts/notices.js';
 import '../communications.css';
 import './display.css';
 
@@ -32,6 +33,7 @@ import './display.css';
 // desktop's or a phone's own (the screen in use to start), beside a preview of the page with them,
 // which changes as they choose. A phone has the choices that apply on one. What they choose is
 // shown at once and saved a moment later, their own; Reset takes the screen back to its defaults.
+// Then how a new message alerts them, on any screen.
 // The preview shows the screen chosen at its actual size, or a desktop's whole page made to fit
 // (`frame`).
 
@@ -110,6 +112,16 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
     list: widths(shown).list,
     window: { width: window.innerWidth, height: window.innerHeight },
   });
+  // Notifications are on only where this browser may show them, which turning them on asks.
+  const [allowed, setAllowed] = useState(notifying);
+  const notifications = async (on: boolean) => {
+    if (on) {
+      const answer = allowed ? 'granted' : await Notification.requestPermission();
+      setAllowed(answer === 'granted');
+      if (answer !== 'granted') return;
+    }
+    choices.change({ notifications: on });
+  };
   const look = lookOf(shown);
   const bubbles = shown.style === 'bubbles';
   const sections = [
@@ -120,6 +132,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
     ['list', 'List'],
     ['profile', 'Profile'],
     ['writing', 'Writing'],
+    ['alerts', 'New messages'],
   ] as const;
   const at = (id: string) => `message-display-${id}`;
   return (
@@ -437,6 +450,24 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
               on={shown.enter_sends}
               change={(enter_sends) => change({ enter_sends })}
             />
+          </div>
+        </section>
+
+        <section className="settings-section" id={at('alerts')} aria-label="New messages">
+          <h2>New messages</h2>
+          <div className="settings-fields">
+            <Switch
+              label="Sound"
+              on={choices.values.sound}
+              change={(sound) => choices.change({ sound })}
+            />
+            {canNotify() && (
+              <Switch
+                label="Notifications"
+                on={choices.values.notifications && allowed}
+                change={(on) => void notifications(on)}
+              />
+            )}
           </div>
         </section>
       </div>

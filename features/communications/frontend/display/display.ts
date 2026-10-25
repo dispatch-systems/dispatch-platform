@@ -37,6 +37,8 @@ export const defaults: MessageDisplay = {
   profile_slide: true,
   keep_profile_open: false,
   enter_sends: true,
+  sound: true,
+  notifications: false,
   phone_text_size: 14,
   phone_line_spacing: 'normal',
   phone_spacing: 'comfortable',
@@ -59,8 +61,11 @@ export const defaults: MessageDisplay = {
 
 /** Which screen's choices: a desktop's (or laptop's or tablet's) or a phone's. */
 export type Screen = 'desktop' | 'phone';
+/** How a new message alerts the member, on any screen: not how the page looks. */
+type Alerting = 'sound' | 'notifications';
+const alerting = new Set<string>(['sound', 'notifications'] satisfies Alerting[]);
 /** What the page draws by on one screen. */
-export type Display = Omit<MessageDisplay, `phone_${string}`>;
+export type Display = Omit<MessageDisplay, `phone_${string}` | Alerting>;
 /** A choice a phone has of its own, kept as `phone_<choice>`. */
 type PhoneChoice = keyof MessageDisplay extends infer Key
   ? Key extends `phone_${infer Choice extends keyof Display}`
@@ -87,7 +92,7 @@ const onAPhone = {
 export function onScreen(values: MessageDisplay, screen: Screen): Display {
   if (screen === 'desktop')
     return Object.fromEntries(
-      Object.entries(values).filter(([key]) => !key.startsWith('phone_')),
+      Object.entries(values).filter(([key]) => !key.startsWith('phone_') && !alerting.has(key)),
     ) as Display;
   const own = Object.fromEntries(phoneChoices.map((choice) => [choice, values[`phone_${choice}`]]));
   return { ...onAPhone, ...own } as Display;

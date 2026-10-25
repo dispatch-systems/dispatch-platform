@@ -54,8 +54,8 @@ pub struct CommunicationsWaiting {
     /// before is a new one.
     pub latest: Vec<WaitingMessage>,
 }
-/// The latest message from whom a waiting conversation is with: its ID, who they are, and what
-/// they wrote.
+/// The latest message from whom a waiting conversation is with: its ID, the group it's listed
+/// under, if any, who they are, and what they wrote.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -65,6 +65,7 @@ pub struct CommunicationsWaiting {
 #[serde(rename_all = "camelCase")]
 pub struct WaitingMessage {
     pub conversation_id: String,
+    pub group_id: Option<String>,
     /// Their name, as the conversation's.
     pub from: String,
     pub message: Message,

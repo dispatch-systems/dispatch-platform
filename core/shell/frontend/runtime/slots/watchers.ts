@@ -1,35 +1,37 @@
+import type { ComponentType } from 'react';
 import type { DspView } from '../../../../accounts/api/index.js';
 import type { Feature } from '../../../../tenancy/api/index.js';
 import { present } from './installed.js';
+import type { Access } from './pages.js';
 
-// The watchers slot: What it keeps running on every DSP page for the member, drawing nothing.
-//
-// What's here is a start: what an owner puts in the slot, its field on `FrontendFeature`, and
-// what a host reads it with.
-// TODO(scaffold): give it what the host needs, and have the host draw it.
+// The watchers slot: what an owner keeps running on every DSP page for the person, drawing
+// nothing, as something that alerts them wherever they are in the app. The shell mounts each the
+// DSP has and the person passes, whatever page is open, loading its code as it first does.
 
-/** One of an owner's watchers. */
+/** Whom a watcher runs for: the person, at the DSP open. */
+export type Watching = Access & { view: DspView };
+
+/** What an owner keeps running on every DSP page, drawing nothing. */
 export type Watcher = {
-  /** Its own id among the owner's. */
+  /** Its id, `<owner>.<what>`. */
   id: string;
-  label: string;
-  /** Where it sits among every owner's, lowest first. */
-  order: number;
-  /** Who sees it; omitted means everyone. */
-  visible?: (view?: DspView) => boolean;
   /** The part of its owner's feature it belongs to: it goes with the part. */
   part?: Feature;
+  /** Whether it runs for the person; omitted, for everyone at a DSP with it. */
+  visible?: (access: Watching) => boolean;
+  /** Its code, loaded as the shell first mounts it. */
+  load: () => Promise<ComponentType<Watching>>;
 };
 
 declare module './installed.js' {
   interface FrontendFeature {
-    /** Its watchers. */
+    /** What it keeps running on every DSP page, drawing nothing. */
     watchers?: readonly Watcher[];
   }
 }
 
-/** The watchers the view has and sees, in their order. */
-export const watchers = (view: DspView) =>
-  present(view, (feature) => feature.watchers)
-    .filter((each) => !each.visible || each.visible(view))
-    .sort((a, b) => a.order - b.order);
+/** The watchers the DSP has that run for the person, in the order the owners are listed. */
+export const watchers = (access: Watching) =>
+  present(access.view, (feature) => feature.watchers).filter(
+    (each) => !each.visible || each.visible(access),
+  );

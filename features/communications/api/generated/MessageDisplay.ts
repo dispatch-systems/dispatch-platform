@@ -45,7 +45,11 @@ keep_profile_open: boolean,
 /**
  * Enter sends a message; without, it starts a new line.
  */
-enter_sends: boolean, phone_text_size: number, phone_line_spacing: LineSpacing, phone_spacing: Spacing, phone_style: MessageStyle, phone_team_side: TeamSide, phone_bubble_shape: BubbleShape, phone_bubble_width: number,
+enter_sends: boolean,
+/**
+ * A new message from an employee plays a chime, and shows the browser's notification.
+ */
+sound: boolean, notifications: boolean, phone_text_size: number, phone_line_spacing: LineSpacing, phone_spacing: Spacing, phone_style: MessageStyle, phone_team_side: TeamSide, phone_bubble_shape: BubbleShape, phone_bubble_width: number,
 /**
  * Each message's or each run's: a phone has no hover.
  */

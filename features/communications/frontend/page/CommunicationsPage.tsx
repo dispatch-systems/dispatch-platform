@@ -9,6 +9,7 @@ import { ErrorBox, Header, Loading } from '../../../../core/shell/frontend/ui/in
 import {
   hashQuery,
   navigate,
+  parseHash,
   replaceHashQuery,
   settingsHash,
 } from '../../../../core/shell/frontend/runtime/navigation.js';
@@ -34,7 +35,8 @@ import { useWorkspaceChoice } from './useWorkspaceChoice.js';
 // workspace or one; and the conversation or group open beside them, or a message to a group being
 // written, all kept up to date as they change. Those who manage the DSP's connections connect
 // Slack here while it isn't, and update it while a workspace hasn't approved what Communications
-// uses. The conversation or group open is kept in the address (`?open=`, `?group=`). It looks as
+// uses. The conversation or group open is kept in the address (`?open=`, `?group=`), and a link
+// to one opens it, the page open or not. It looks as
 // the member chose in Settings' Message display, which Display opens.
 
 /** How often the times waited move on. */
@@ -102,6 +104,16 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
       next.conversation ? { open: next.conversation } : next.group ? { group: next.group } : {},
     );
   }, []);
+  // A link to a conversation or a group, as a new message's notification is, opens it here.
+  useEffect(() => {
+    const followed = () => {
+      const next = addressed();
+      if (parseHash(location.hash).page === 'communications' && (next.conversation || next.group))
+        opening(next);
+    };
+    addEventListener('hashchange', followed);
+    return () => removeEventListener('hashchange', followed);
+  }, [opening]);
   const select = useCallback((id?: string) => opening({ conversation: id }), [opening]);
   const openGroup = useCallback((id: string) => opening({ group: id }), [opening]);
   const closed = useCallback(() => opening({}), [opening]);
