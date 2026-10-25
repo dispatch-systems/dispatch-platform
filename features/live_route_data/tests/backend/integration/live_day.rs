@@ -244,6 +244,17 @@ impl Server {
             .await
             .unwrap();
     }
+    /// The days live route data's database holds, at whatever station: its contract offers one
+    /// only at the DSP's station now.
+    async fn held(&self) -> Vec<String> {
+        let dsp = self.dsp.clone();
+        let data = self.state.read(move |db| db.area(&dsp, "data")).await;
+        let live = rusqlite::Connection::open(data.unwrap().join("routelive/routelive.sqlite"));
+        let live = live.unwrap();
+        let mut days = live.prepare("SELECT day FROM route_publications").unwrap();
+        let days = days.query_map([], |row| row.get::<_, String>(0)).unwrap();
+        days.map(|day| day.unwrap()).collect()
+    }
     /// Holds historical route data's database for writing, as a writer of its own busy with it
     /// does, until dropped.
     async fn hold_history(&self) -> rusqlite::Connection {
@@ -327,7 +338,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     }
     // Its stop saved the day into historical route data, and emptied live route data.
     assert_eq!(server.history(first_day).await.as_deref(), Some(READ));
-    assert_eq!(server.live_day().await, None);
+    assert!(server.held().await.is_empty());
 
     // The next day's first read empties live route data again.
     server.save(json!({"save_to_history":false})).await;
@@ -405,11 +416,11 @@ async fn a_dsps_live_route_data_through_its_days() {
     // Its stop is due as its window closes, at its place after the close.
     until(first + 6 * EVERY + 30 * SECOND).await;
     assert_eq!(server.history(fifth_day).await, None);
-    assert_eq!(server.live_day().await, Some(fifth_day.to_string()));
+    assert_eq!(server.held().await, [fifth_day.to_string()]);
     drop(busy);
     until(first + 6 * EVERY + 2 * MINUTE).await;
     assert_eq!(server.history(fifth_day).await.as_deref(), Some(READ));
-    assert_eq!(server.live_day().await, None);
+    assert!(server.held().await.is_empty());
     assert_eq!(server.records().await.len(), 15 + 6);
 
     // Moved to another station after the day's last read, the day can never be saved as read:
@@ -423,7 +434,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     server.station("TST2").await;
     until(close + 6 * MINUTE).await;
     assert_eq!(server.history(sixth_day).await, None);
-    assert_eq!(server.live_day().await, Some(sixth_day.to_string()));
+    assert_eq!(server.held().await, [sixth_day.to_string()]);
     let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     let seventh_day = pin(&server);
@@ -440,7 +451,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     server.saved_later().await;
     until(close + 6 * MINUTE).await;
     assert_eq!(server.history(seventh_day).await.as_deref(), Some(BEFORE));
-    assert_eq!(server.live_day().await, None);
+    assert!(server.held().await.is_empty());
     assert_eq!(server.records().await.len(), 27 + 6);
     testing::pin_today(None);
 }
