@@ -218,12 +218,13 @@ const COMMANDS: &[Spec] = &[
     spec(
         "ship",
         &["ship <name>"],
-        "Once told to merge it, by its name or its PR's number: check its PR body and that it merges cleanly, push it, run the \
-         rule checks unless the checks on GitHub passed on this commit, open or update its PR \
-         from pr-body.md, queue it as soon as GitHub admits it, wait until it merges, remove \
-         what the change made as finish does, and wait for Dev. Run again after a stop, it \
-         picks up where it stopped. It exits with 1 to fix and ship again, 2 for the owner to \
-         decide, and 3 once merged.",
+        "Once told to merge it, by its name or its PR's number: check its PR body and that it \
+         merges cleanly, push it, open or update its PR from pr-body.md, queue it as soon as \
+         GitHub admits it and wait until it merges, the rule checks running here meanwhile \
+         unless the checks on GitHub passed on this commit, then remove what the change made \
+         as finish does, and wait for Dev. Run again after a stop, it picks up where it \
+         stopped. It exits with 1 to fix and ship again, 2 for the owner to decide, and 3 once \
+         merged.",
     )
     .arguments(1),
     spec(
