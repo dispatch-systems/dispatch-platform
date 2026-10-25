@@ -458,7 +458,10 @@ async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
             .state
             .run(move |db| {
                 testing::set_dsp(db, &setup_dsp, "Northline Logistics", &zone)?;
-                db.set_profile(&setup_dsp, json!({"stationCode":"TST1","abbreviation":"NLL"}))?;
+                db.set_profile(
+                    &setup_dsp,
+                    json!({"stationCode":"TST1","abbreviation":"NLL"}),
+                )?;
                 let owner = testing::platform_owner(db);
                 db.set_feature(&setup_dsp, "live_route_data", true, &owner)
                     .map(drop)
@@ -470,9 +473,16 @@ async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
         let save = Call::post("/api/dsp/connections/cortex/save", credentials).who(&owner);
         let saved = server.send(save).await;
         assert_eq!(saved.status, 200, "{}", saved.body);
-        let opened = server.state.browsers.get_for(&dsp, cortex::PROVIDER).unwrap();
+        let opened = server
+            .state
+            .browsers
+            .get_for(&dsp, cortex::PROVIDER)
+            .unwrap();
         let verifying = password == "require-verification";
-        assert_eq!((opened.ready(), opened.challenge()), (!verifying, verifying));
+        assert_eq!(
+            (opened.ready(), opened.challenge()),
+            (!verifying, verifying)
+        );
 
         // Its window open for hours, the reader reads at once.
         let (stop, stopping) = tokio::sync::watch::channel(false);
@@ -497,7 +507,11 @@ async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
         stop.send_replace(true);
         reading.await.unwrap().unwrap();
         assert_eq!(read, ("failed".into(), Some("connection_busy".into())));
-        let kept = server.state.browsers.get_for(&dsp, cortex::PROVIDER).unwrap();
+        let kept = server
+            .state
+            .browsers
+            .get_for(&dsp, cortex::PROVIDER)
+            .unwrap();
         assert_eq!(kept.id, opened.id);
         assert_eq!(
             (kept.closed(), kept.ready(), kept.challenge()),

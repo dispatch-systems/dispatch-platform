@@ -359,7 +359,10 @@ export async function routesSite(day: string, timezone: string): Promise<RoutesS
       res.end();
     };
     if (!url.pathname.startsWith('/operations/execution/api/'))
-      site.documents.push({ path: url.pathname, browser: req.headers['sec-fetch-mode'] !== undefined });
+      site.documents.push({
+        path: url.pathname,
+        browser: req.headers['sec-fetch-mode'] !== undefined,
+      });
     if (url.pathname === '/dspconsolev2') {
       if (authenticated)
         return html(

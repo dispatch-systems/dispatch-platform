@@ -130,7 +130,10 @@ impl Server {
     async fn switch(&self, on: bool) {
         let (dsp, owner) = (self.dsp.clone(), self.owner.clone());
         self.state
-            .run(move |db| db.set_feature(&dsp, "live_route_data", on, &owner).map(drop))
+            .run(move |db| {
+                db.set_feature(&dsp, "live_route_data", on, &owner)
+                    .map(drop)
+            })
             .await
             .unwrap();
     }
@@ -176,10 +179,8 @@ impl Server {
         self.state
             .read(move |db| {
                 let history = db.routes_db(&dsp)?;
-                let read = history.one(
-                    "SELECT job_id FROM route_publications WHERE active=1",
-                    [],
-                )?;
+                let read =
+                    history.one("SELECT job_id FROM route_publications WHERE active=1", [])?;
                 Ok(read.map(|row| s(&row, "job_id").to_owned()))
             })
             .await

@@ -175,7 +175,8 @@ impl LiveReader for Routes {
     }
     fn kept<'a>(&'a self, reading: &'a Reading, read: Read) -> Pending<'a, Counts> {
         Box::pin(async move {
-            let kept = dispatch_routes::keep_live(&reading.state, &reading.dsp, read.capture).await?;
+            let kept =
+                dispatch_routes::keep_live(&reading.state, &reading.dsp, read.capture).await?;
             let mut counts = kept.counts();
             if read.browser {
                 counts.push(("browser", 1));
