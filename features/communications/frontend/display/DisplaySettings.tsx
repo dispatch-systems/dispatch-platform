@@ -32,8 +32,8 @@ import './display.css';
 // desktop's or a phone's own (the screen in use to start), beside a preview of the page with them,
 // which changes as they choose. A phone has the choices that apply on one. What they choose is
 // shown at once and saved a moment later, their own; Reset takes the screen back to its defaults.
-// The preview shows the screen chosen at its actual size, or a desktop's whole page made to fit
-// (`frame`).
+// The preview shows the screen chosen at its actual size, or a desktop's whole page made to fit,
+// as it starts (`frame`).
 
 /** How long after a choice it's saved, so a slider dragged saves once. */
 const SAVE_MS = 400;
@@ -98,7 +98,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
   const [screen, setScreen] = useState<Screen>(thisScreen);
   const shown = onScreen(choices.values, screen);
   const change = (changes: Partial<Display>) => choices.change(kept(changes, screen));
-  const [size, setSize] = useState<'actual' | 'fit'>('actual');
+  const [size, setSize] = useState<'actual' | 'fit'>('fit');
   const [profile, setProfile] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const room = useRoom(stage);
