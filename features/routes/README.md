@@ -57,9 +57,9 @@ it is live route data, in a database of its own, `routelive`.
   the first phone it showed today, read for every driver the list names, assigned only or
   dispatched; a claim made earlier is withdrawn. A driver holding a phone switches to another
   once two reads in a row show it. A claim of a phone someone holds is a handover, ending theirs,
-  and their record still showing it never takes it back. Only a handover ends a hold: a driver
-  keeps the last phone they held once Cortex ends their session or they're gone from the day's
-  list, until someone else claims it. Claims are settled oldest activity first, so the most
+  and their record still showing it never takes it back. A hold ends only with a switch or a
+  handover: a driver keeps the last phone they held once Cortex ends their session or they're
+  gone from the day's list, until someone else claims it. Claims are settled oldest activity first, so the most
   recently active driver holds a phone two records show. Every hold is kept, from its claim
   until it ends or the day does, so a restart neither repeats a claim nor loses one.
 - **Schedule:** the DSP's own rules, none made for it, set on Settings' Collectors page behind

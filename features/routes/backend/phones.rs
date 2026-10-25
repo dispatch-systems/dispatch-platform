@@ -1,9 +1,9 @@
 //! Who holds which of the company's work phones, settled from each whole live read: what each
 //! driver's record shows, in the day's list and in their itinerary, made into holds from a claim
-//! until someone else claims the phone. A phone passes from driver to driver, so a hold is never
-//! a sign that two drivers are one person. Its state is live route data's, `work_phones` and
-//! `work_phones_shown`, settled in the transaction that keeps the read it comes from, so a
-//! restart neither repeats a claim nor loses one.
+//! until its driver switches to another phone or someone else claims it. A phone passes from
+//! driver to driver, so a hold is never a sign that two drivers are one person. Its state is
+//! live route data's, `work_phones` and `work_phones_shown`, settled in the transaction that
+//! keeps the read it comes from, so a restart neither repeats a claim nor loses one.
 use super::*;
 use dispatch_cortex::routes::token;
 use std::collections::{BTreeMap, BTreeSet};
@@ -140,9 +140,9 @@ fn driver(db: &Db, day: &str, id: &str) -> Result<Driver> {
 /// every driver the list names, dispatched or not; a claim made before that is withdrawn, never
 /// having been a hold. A driver holding a phone switches to another once two reads in a row show
 /// it. A claim of a phone someone else holds is a handover and ends theirs, and their record
-/// still showing it never takes it back. Only a handover ends a hold: a driver keeps the last
-/// phone they held once Cortex ends their session or they're gone from the day's list, until
-/// someone else claims it, and goes on holding it if they're back. Claims are settled oldest
+/// still showing it never takes it back. A hold ends only with a switch or a handover: a driver
+/// keeps the last phone they held once Cortex ends their session or they're gone from the day's
+/// list, until someone else claims it, and goes on holding it if they're back. Claims are settled oldest
 /// activity first, so the most recently active driver holds a phone two records show. Every
 /// hold is kept, from its claim until it ends or the day does.
 pub(super) fn settle(db: &Db, day: &str, at: i64, shown: &Shown) -> Result<Settled> {
