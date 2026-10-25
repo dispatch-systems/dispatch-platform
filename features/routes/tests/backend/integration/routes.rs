@@ -1,5 +1,6 @@
 //! Routes storage: publication, supersession, the days a schedule queues and what the
 //! views read.
+use dispatch_core::State;
 use dispatch_core::db::{Store, s};
 use dispatch_core::manifest::Section;
 use dispatch_core::settings::{self, Saved};
@@ -8,7 +9,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::RoutesStore;
+use dispatch_routes::{RoutesStore, WorkPhone, save_day};
 use serde_json::{Value, json};
 
 /// Routes, and the Cortex collector whose routes it keeps.
@@ -416,7 +417,7 @@ fn a_package_moved_between_drivers_keeps_a_row_under_each() {
 }
 
 #[test]
-fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
+fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_shared_rows() {
     install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
@@ -431,8 +432,12 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     again.finished_at += 2000;
     let second = publish(&db, &id, "second", "2026-09-25", &again);
     assert_ne!(first, second);
+    // A read collected before the day's own changes nothing, though it arrives after it.
+    let mut earlier = capture.clone();
+    earlier.finished_at += 1000;
+    publish(&db, &id, "earlier", "2026-09-25", &earlier);
     let storage = db.routes_db(&id).unwrap();
-    // Readers see only the new day at once; the sweep deletes the old one in steps.
+    // Readers see only the later read at once; the sweep deletes the others in steps.
     let days = db.route_days(&id).unwrap();
     assert_eq!(days.days.len(), 1);
     assert_eq!(days.days[0].itinerary_count, 1);
@@ -442,7 +447,7 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
             &id,
             "SELECT count(*) FROM route_publications WHERE active=0"
         ),
-        1
+        2
     );
     assert!(sweep(&db, &id) > 1);
     let publications = storage
@@ -481,6 +486,103 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
         .enqueue_routes(&id, None, "third", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     assert!(db.stage_routes(&id, s(&jobs[0], "id"), other).is_err());
+}
+
+#[tokio::test]
+async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when_read_later() {
+    install();
+    let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
+    let day = "2026-09-25";
+    let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
+    let hour = 3_600_000;
+    let phones = vec![
+        WorkPhone {
+            transporter_id: "driver-1".into(),
+            phone: "15550000001".into(),
+            since: capture.started_at,
+            until: Some(capture.started_at + hour),
+        },
+        WorkPhone {
+            transporter_id: "driver-2".into(),
+            phone: "15550000001".into(),
+            since: capture.started_at + hour,
+            until: None,
+        },
+    ];
+    // The day's read and its phones, as `phones` holds them.
+    let read = |db: &Store| {
+        let days = db.route_days(&id).unwrap().days;
+        let held = db
+            .routes_db(&id)
+            .unwrap()
+            .all(
+                "SELECT transporter_id,phone,since,until FROM work_phones WHERE day=? \
+                 ORDER BY since",
+                [day],
+            )
+            .unwrap();
+        (days.iter().map(|d| d.itinerary_count).collect::<Vec<_>>(), held)
+    };
+    let held: Vec<Value> = phones
+        .iter()
+        .map(|p| json!({"transporter_id":p.transporter_id,"phone":p.phone,"since":p.since,"until":p.until}))
+        .collect();
+    let save = |key: &'static str, capture: &Capture, phones: &[WorkPhone]| {
+        save_day(&state, &id, key, capture.clone(), phones.to_vec())
+    };
+
+    // Saved whole, with its phones; saved again under its key, nothing changes.
+    assert!(save("live-1", &capture, &phones).await.unwrap());
+    assert_eq!(read(&db), (vec![2], held.clone()));
+    assert!(save("live-1", &capture, &phones).await.unwrap());
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM route_publications"), 1);
+
+    // The standard collection's read, collected later, replaces it whole: its phones too.
+    let mut later = capture.clone();
+    later.itineraries.truncate(1);
+    later.summaries["itinerarySummaries"]
+        .as_array_mut()
+        .unwrap()
+        .truncate(1);
+    later.finished_at += 2000;
+    publish(&db, &id, "standard", day, &later);
+    assert_eq!(read(&db), (vec![1], vec![]));
+    // One collected before it changes nothing; one collected after replaces it.
+    let mut earlier = capture.clone();
+    earlier.finished_at += 1000;
+    assert!(!save("live-2", &earlier, &phones).await.unwrap());
+    assert_eq!(read(&db), (vec![1], vec![]));
+    let mut latest = capture.clone();
+    latest.finished_at += 3000;
+    assert!(save("live-3", &latest, &phones).await.unwrap());
+    assert_eq!(read(&db), (vec![2], held));
+    sweep(&db, &id);
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM route_publications"), 1);
+
+    // Each refusal changes one thing from a save that's made, and stores nothing.
+    let mut missing = latest.clone();
+    missing.finished_at += 1000;
+    missing.itineraries.pop();
+    let mut twice = phones.clone();
+    twice.push(phones[0].clone());
+    let mut backwards = phones.clone();
+    backwards[0].until = Some(backwards[0].since - 1);
+    for (key, capture, phones, code) in [
+        ("live-4", &missing, &phones, "routes_capture_invalid"),
+        ("live 4", &latest, &phones, "invalid_input"),
+        ("live-4", &latest, &twice, "invalid_input"),
+        ("live-4", &latest, &backwards, "invalid_input"),
+    ] {
+        let refused = save(key, capture, phones).await.unwrap_err();
+        assert_eq!(refused.code, code, "{key}");
+    }
+    let actor = common::a_user(&db);
+    db.set_feature(&id, "routes", false, &actor).unwrap();
+    let refused = save("live-4", &latest, &phones).await.unwrap_err();
+    assert_eq!(refused.code, "routes_off");
+    sweep(&db, &id);
+    assert_eq!(count(&db, &id, "SELECT count(*) FROM route_publications"), 1);
 }
 
 #[test]

@@ -1,6 +1,77 @@
 //! Writing a captured day into the database: its route list, each itinerary with its stops,
-//! tasks and packages as `rows` flattens them, and every response whole, compressed.
+//! tasks and packages as `rows` flattens them, and every response whole, compressed; then
+//! making it the day's read.
 use super::*;
+
+/// Makes a staged day its scope's read, in one transaction, if it was collected later than
+/// the read the day has, whichever was published first: the day's last read is left
+/// inactive, and its work phones are replaced by `phones`, the new read's. A day collected no
+/// later is left inactive itself. Either way `sweep_routes` deletes what's inactive in small
+/// steps; only flags and phones change here, so the platform lock is held for moments.
+/// Answers whether it is the day's read now.
+pub(super) fn publish_day(
+    db: &Db,
+    job: &str,
+    staged: &Staged,
+    phones: &[WorkPhone],
+) -> Result<bool> {
+    db.transaction(|| {
+        let row = db
+            .one(
+                "SELECT collected_at,itinerary_count,\
+                 (SELECT count(*) FROM itineraries WHERE publication_id=p.id) stored \
+                 FROM route_publications p WHERE id=? AND job_id=? AND active=0",
+                [&staged.publication, job],
+            )?
+            .ok_or_else(|| Error::new("routes_capture_invalid", 502))?;
+        ensure(
+            row["itinerary_count"] == row["stored"] && row["stored"] == json!(staged.itineraries),
+            "routes_capture_invalid",
+            502,
+        )?;
+        let scope = "day=? AND station=? AND service_area_id=? AND provider=? AND active=1";
+        let later = db.one(
+            &format!("SELECT 1 FROM route_publications WHERE {scope} AND collected_at>=?"),
+            params![
+                staged.day,
+                staged.station,
+                staged.service_area_id,
+                staged.provider,
+                s(&row, "collected_at")
+            ],
+        )?;
+        if later.is_some() {
+            return Ok(false);
+        }
+        db.exec(
+            &format!("UPDATE route_publications SET active=0 WHERE {scope}"),
+            params![
+                staged.day,
+                staged.station,
+                staged.service_area_id,
+                staged.provider
+            ],
+        )?;
+        db.exec(
+            "UPDATE route_publications SET active=1 WHERE id=?",
+            [&staged.publication],
+        )?;
+        db.exec("DELETE FROM work_phones WHERE day=?", [&staged.day])?;
+        let mut insert = db.0.prepare_cached(
+            "INSERT INTO work_phones(day,transporter_id,phone,since,until) VALUES (?,?,?,?,?)",
+        )?;
+        for hold in phones {
+            insert.execute(params![
+                staged.day,
+                hold.transporter_id,
+                hold.phone,
+                hold.since,
+                hold.until
+            ])?;
+        }
+        Ok(true)
+    })
+}
 
 /// The day's planned routes, inside the caller's transaction.
 pub(super) fn insert_routes(db: &Db, publication: &str, day: &str, routes: &[Value]) -> Result<()> {

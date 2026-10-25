@@ -10,11 +10,14 @@ pub(crate) mod maintenance;
 pub(crate) mod people;
 mod publishing;
 mod rows;
+mod saving;
 pub(crate) mod settings;
 mod storage;
+mod wire;
 
 use publishing::*;
 use rows::*;
+pub use saving::{WorkPhone, save_day};
 pub use storage::RoutesStore;
 use storage::*;
 
@@ -163,18 +166,6 @@ pub(super) fn flag(value: &Value) -> Option<i64> {
         _ => None,
     }
 }
-/// The names of an object's flags that are set, for a compact record of a stop's kinds.
-pub(super) fn set_flags(value: &Value) -> Value {
-    let mut names: Vec<&str> = value
-        .as_object()
-        .into_iter()
-        .flat_map(|o| o.iter())
-        .filter(|(_, v)| **v == json!(true))
-        .map(|(k, _)| k.as_str())
-        .collect();
-    names.sort_unstable();
-    json!(names)
-}
 pub(super) fn gzip(bytes: &[u8]) -> Result<Vec<u8>> {
     let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     encoder.write_all(bytes)?;
@@ -191,6 +182,18 @@ pub fn gunzip(bytes: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// What shaping takes from an itinerary's response, however it was read: its detail's
+/// route-level fields, the rows of its stops and tasks, and the drivers and addresses it
+/// names.
+struct Read<'a> {
+    detail: &'a Value,
+    transporters: &'a Value,
+    addresses: &'a Value,
+    stops: Vec<StopRow>,
+    tasks: Vec<TaskRow>,
+    day: DayRow,
+    inactive: Vec<TaskRow>,
+}
 /// What shaping an itinerary needs from the day's list: each itinerary's summary and
 /// the drivers it names.
 pub struct Shaper {
@@ -212,42 +215,78 @@ impl Shaper {
                 .unwrap_or_default(),
         }
     }
-    /// One itinerary's rows and its compressed response. Its parsed tree lives only
-    /// while this runs.
+    /// One itinerary's rows and its compressed response. Its stops and tasks, most of it, are
+    /// read straight into what shaping reads of them (`wire`), without a tree; that reading
+    /// lives only while this runs.
     pub fn shape(&self, captured: &ItineraryCapture) -> Result<PreparedItinerary> {
-        let parsed = captured.parsed()?;
-        let detail = &parsed["itineraryDetails"];
-        let summary = self
-            .summaries
-            .get(&captured.id)
-            .cloned()
-            .unwrap_or(Value::Null);
+        ensure(
+            captured.detail.len() <= MAX_BODY,
+            "routes_source_too_large",
+            502,
+        )?;
+        let invalid = || Error::new("routes_capture_invalid", 502);
+        let response = wire::read(&captured.detail).map_err(|_| invalid())?;
+        let read = response.detail.0.ok_or_else(invalid)?;
+        let detail = Value::Object(read.rest);
+        let (stops, tasks, day) = stop_rows(
+            read.stops.0.iter(),
+            &detail["stopProgress"],
+            &captured.transporter_id,
+        );
+        let inactive = inactive_rows(read.inactive.0.iter());
+        drop((read.stops, read.inactive));
+        let read = Read {
+            detail: &detail,
+            transporters: &response.transporters,
+            addresses: &response.addresses,
+            stops,
+            tasks,
+            day,
+            inactive,
+        };
+        self.shape_read(
+            &captured.id,
+            &captured.transporter_id,
+            read,
+            captured.detail.len(),
+            gzip(captured.detail.as_bytes())?,
+        )
+    }
+    /// One itinerary's rows from what was read of its response, with `raw`, the response
+    /// compressed, kept beside them.
+    fn shape_read(
+        &self,
+        id: &str,
+        transporter_id: &str,
+        read: Read,
+        raw_bytes: usize,
+        raw: Vec<u8>,
+    ) -> Result<PreparedItinerary> {
+        let detail = read.detail;
+        let summary = self.summaries.get(id).cloned().unwrap_or(Value::Null);
         let person = self
             .people
             .iter()
-            .chain(parsed["transporters"].as_array().into_iter().flatten())
-            .find(|t| t["transporterId"] == json!(captured.transporter_id))
+            .chain(read.transporters.as_array().into_iter().flatten())
+            .find(|t| t["transporterId"] == json!(transporter_id))
             .cloned()
             .unwrap_or(Value::Null);
         let driver_name = match (text(&person["firstName"]), text(&person["lastName"])) {
             (Some(first), Some(last)) => format!("{first} {last}"),
-            _ => {
-                text(&detail["transporterName"]).unwrap_or_else(|| captured.transporter_id.clone())
-            }
+            _ => text(&detail["transporterName"]).unwrap_or_else(|| transporter_id.to_owned()),
         };
-        let flat = flatten(&summary, detail, &captured.transporter_id, &driver_name);
-        let (stops, tasks, day) = rows(detail, &captured.transporter_id);
+        let flat = flatten(&summary, detail, transporter_id, &driver_name);
         Ok(PreparedItinerary {
-            id: captured.id.clone(),
-            transporter_id: captured.transporter_id.clone(),
+            id: id.to_owned(),
+            transporter_id: transporter_id.to_owned(),
             columns: flat
                 .itinerary
                 .into_iter()
                 .map(|(c, v)| (c.to_owned(), v))
                 .collect(),
-            stops,
-            tasks,
-            inactive: inactive_tasks(detail),
+            stops: read.stops,
+            tasks: read.tasks,
+            inactive: read.inactive,
             breaks: break_rows(&summary, detail),
             unknown_stops: unknown_stop_rows(detail),
             day: DayRow {
@@ -260,12 +299,12 @@ impl Shaper {
                 breaks_secs: integer(&summary["totalBreaksDurationSecs"]),
                 overtime_secs: integer(&summary["overtimeDurationSecs"])
                     .or_else(|| integer(&detail["overtimeDurationSecs"])),
-                ..day
+                ..read.day
             },
-            addresses: parsed["addresses"].as_array().cloned().unwrap_or_default(),
+            addresses: read.addresses.as_array().cloned().unwrap_or_default(),
             person,
-            raw_bytes: captured.detail.len(),
-            raw: gzip(captured.detail.as_bytes())?,
+            raw_bytes,
+            raw,
         })
     }
 }
@@ -281,16 +320,39 @@ pub fn prepare(capture: &Capture) -> Result<Vec<PreparedItinerary>> {
         .collect()
 }
 
-/// Stores a finished day as an inactive publication, one itinerary at a time. Checking
-/// and shaping happen on blocking threads without the platform lock; each insert takes
-/// it only for that itinerary's rows, and first checks the job is still this worker's.
-/// Only one itinerary's parsed tree and rows exist at once.
+/// Stores a finished day as an inactive publication of its job, one itinerary at a time, each
+/// insert first checking the job is still this worker's.
 pub async fn stage(
     state: &std::sync::Arc<dispatch_core::State>,
     dsp: &str,
     job: &str,
     owner: &str,
+    capture: Capture,
+) -> Result<Staged> {
+    let (d, j) = (dsp.to_owned(), job.to_owned());
+    let request = state
+        .read(move |db| Ok(db.job_row(&j, Some(&d))?.request))
+        .await?;
+    let request = Request::parse(&serde_json::from_str(&request)?)?
+        .ok_or_else(|| Error::new("invalid_input", 400))?;
+    let (j, o) = (job.to_owned(), owner.to_owned());
+    stage_capture(state, dsp, job, request, capture, move |db| {
+        db.guard(&j, &o).map(drop)
+    })
+    .await
+}
+/// Stores a day as an inactive publication under `key`, one itinerary at a time, once
+/// `capture` is checked whole against `request`. Checking and shaping happen on blocking
+/// threads without the platform lock; each insert takes it only for that itinerary's rows,
+/// and first asks `mine` whether the work is still the caller's. Only one itinerary's
+/// reading and rows exist at once.
+async fn stage_capture(
+    state: &std::sync::Arc<dispatch_core::State>,
+    dsp: &str,
+    key: &str,
+    request: Request,
     mut capture: Capture,
+    mine: impl Fn(&Store) -> Result<()> + Clone + Send + 'static,
 ) -> Result<Staged> {
     let blocking = |error: tokio::task::JoinError| {
         dispatch_core::foundation::observability::event(
@@ -300,12 +362,6 @@ pub async fn stage(
         );
         Error::new("routes_capture_invalid", 500)
     };
-    let (d, j) = (dsp.to_owned(), job.to_owned());
-    let request = state
-        .read(move |db| Ok(db.job_row(&j, Some(&d))?.request))
-        .await?;
-    let request = Request::parse(&serde_json::from_str(&request)?)?
-        .ok_or_else(|| Error::new("invalid_input", 400))?;
     let capture_checked = tokio::task::spawn_blocking(move || {
         capture.validate(&request)?;
         capture.validate_response_budget()?;
@@ -317,11 +373,11 @@ pub async fn stage(
     let shaper = std::sync::Arc::new(Shaper::new(&capture));
     let itineraries = std::mem::take(&mut capture.itineraries);
     let count = itineraries.len();
-    let (d, j, o) = (dsp.to_owned(), job.to_owned(), owner.to_owned());
+    let (d, k, check) = (dsp.to_owned(), key.to_owned(), mine.clone());
     let staged = state
         .run_scoped(dsp, DOMAIN, move |db| {
-            db.guard(&j, &o)?;
-            db.stage_routes_start(&d, &j, &capture, count)
+            check(db)?;
+            db.stage_routes_start(&d, &k, &capture, count)
         })
         .await?;
     for captured in itineraries {
@@ -329,15 +385,10 @@ pub async fn stage(
         let shaped = tokio::task::spawn_blocking(move || shaper.shape(&captured))
             .await
             .map_err(blocking)??;
-        let (d, j, o, staged) = (
-            dsp.to_owned(),
-            job.to_owned(),
-            owner.to_owned(),
-            staged.clone(),
-        );
+        let (d, staged, check) = (dsp.to_owned(), staged.clone(), mine.clone());
         state
             .run_scoped(dsp, DOMAIN, move |db| {
-                db.guard(&j, &o)?;
+                check(db)?;
                 db.stage_routes_itinerary(&d, &staged, &shaped)
             })
             .await?;
@@ -407,6 +458,10 @@ fn routes_day(store: &Store, id: &str, at: i64) -> Result<NaiveDate> {
 /// The request for one day: the DSP's station and names, which the driver resolves
 /// to a service area and provider on Cortex.
 pub(crate) fn routes_request(store: &Store, id: &str, day: &str, mode: Mode) -> Result<Value> {
+    Ok(serde_json::to_value(day_request(store, id, day, mode)?)?)
+}
+/// What a job reading `day` in `mode` asks Cortex for, which a capture of it must match.
+fn day_request(store: &Store, id: &str, day: &str, mode: Mode) -> Result<Request> {
     let profile = store.profile(id)?;
     let dsp = store.find_dsp(id)?;
     ensure(
@@ -433,7 +488,7 @@ pub(crate) fn routes_request(store: &Store, id: &str, day: &str, mode: Mode) -> 
         provider: known.as_ref().map(|k| s(k, "provider").to_owned()),
     };
     request.validate()?;
-    Ok(serde_json::to_value(request)?)
+    Ok(request)
 }
 /// The first day the DSP's window keeps, or none when every day is kept.
 pub(super) fn retention_start(store: &Store, id: &str) -> Result<Option<NaiveDate>> {
@@ -449,7 +504,8 @@ pub(super) fn first_kept(store: &Store, id: &str, days: i64, at: i64) -> Result<
     Ok(routes_day(store, id, at)? - Duration::days(days))
 }
 /// Reuse the chosen publication during a scheduler batch. Every step checks its
-/// activity and job again, because another transition can run between deletions.
+/// activity and job again, because another transition can run between deletions. A
+/// publication a job or a save is still staging is kept.
 pub(crate) fn sweep_routes_step(
     store: &Store,
     id: &str,
@@ -457,7 +513,8 @@ pub(crate) fn sweep_routes_step(
 ) -> Result<bool> {
     const BATCH: i64 = 2000;
     let db = store.routes_db(id)?;
-    let running = store.active_job_ids(id, JOB_KIND)?;
+    let mut running = store.active_job_ids(id, JOB_KIND)?;
+    running.extend(saving::running(id));
     let retained = match selected.as_deref() {
         Some(publication) => db
             .one_as::<(String, String)>(

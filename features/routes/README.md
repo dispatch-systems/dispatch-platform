@@ -12,7 +12,15 @@ name `routedata` on disk.
   schedule and the retention window.
 - **Collecting:** a final read of a completed day (yesterday by default, or up to a run of
   days), or a snapshot of today so far. A day older than the retention window is refused
-  (`routes_day_outside_retention`), since the next hour would delete it again.
+  (`routes_day_outside_retention`), since the next hour would delete it again. Whichever read
+  of a day was collected later is the day's, whatever order they're published in: it replaces
+  the day's read whole, and one collected earlier is left for the sweep.
+- **Saving a day:** a feature that depends on Routes saves a whole read of a day it collected
+  itself into historical route data, as the standard collection saves a job's, with `save_day`
+  (`backend/saving.rs`): under a key of its own, checked whole against the DSP's station and
+  the day before anything is written, staged one itinerary at a time, and the day's read only
+  if collected later than the one it has, with the day's work phones it's given. It tells
+  Driver Match of new drivers at once (`people.changed`), and refuses while Routes is off.
 - **Schedule:** the DSP's own rules, none made for it, set on Settings' Collectors page behind
   `routes.manage` (its keeper's `schedules`, which offers the choice), through core's
   `/api/dsp/collectors/routes` routes. Each rule reads one day of its choosing, its Day:
@@ -27,8 +35,13 @@ name `routedata` on disk.
   owner rebuilds a DSP's rows from its stored responses with
   `POST /api/platform/dsps/{id}/routes/reprocess`, for every day or one, after a release that
   reads fields the earlier one didn't.
+- **Data:** historical route data, in `routedata`: each day's read with its route list,
+  itineraries, stops, tasks, breaks and unknown stops, and every response compressed; the
+  addresses and drivers the days share; and `work_phones`, each driver's holds on the
+  company's work phones a day, from when until when, which are the day's read's: a saved
+  day's, or none from the standard collection.
 - **Retention:** from 30 to 3,650 days, or every day. Hourly, data past the window is retired,
-  and then deleted in small steps, so the lock is never held long.
+  with its days' work phones, and then deleted in small steps, so the lock is never held long.
 - **Settings:** `routes.retention`, "Route data", on the shared Data page
   (`?tab=data`), behind `routes.manage` (`backend/settings.rs`). Its one field, `days`, is a
   number from 30 to 3,650 with presets, or none for every day, the default. A window that passes

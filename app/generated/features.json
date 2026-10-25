@@ -573,6 +573,18 @@
         {
           "id": 3,
           "name": "task_keys"
+        },
+        {
+          "id": 4,
+          "name": "driver_day_index"
+        },
+        {
+          "id": 5,
+          "name": "package_flags_index"
+        },
+        {
+          "id": 6,
+          "name": "work_phones"
         }
       ]
     },
@@ -645,7 +657,8 @@
         "routes",
         "stops",
         "tasks",
-        "unknown_stops"
+        "unknown_stops",
+        "work_phones"
       ]
     },
     "subfeatures": []

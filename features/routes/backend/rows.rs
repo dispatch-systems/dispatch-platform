@@ -200,76 +200,91 @@ pub(super) struct UnknownStopRow {
     pub(super) exit_latitude: Option<f64>,
     pub(super) exit_longitude: Option<f64>,
 }
+/// A stop as shaping reads it, as a JSON tree would answer it: read straight from the response
+/// (`wire`), without a tree of its tasks.
+pub(super) trait StopFields {
+    type Task: TaskFields;
+    /// One of its fields as a tree answers it: null when it has none.
+    fn field(&self, key: &str) -> &Value;
+    fn tasks(&self) -> impl Iterator<Item = &Self::Task>;
+    /// The names of its flags that are set, in order.
+    fn flags(&self) -> Value;
+}
+/// A task as shaping reads it, as a JSON tree would answer it.
+pub(super) trait TaskFields {
+    /// One of its fields as a tree answers it: null when it has none.
+    fn field(&self, key: &str) -> &Value;
+    /// A field of an object it holds, as a tree answers it.
+    fn inner(&self, object: &str, key: &str) -> &Value;
+    /// Its recent events as [time, state, context] triples: every event Amazon sends
+    /// carries just these three, and their names repeated in every row would be a third of
+    /// the table.
+    fn events(&self) -> Value;
+}
 /// A task's row, at `stop_id` or removed from the route. A task without an identifier
 /// cannot be a row.
-pub(super) fn task_row(task: &Value, stop_id: &str) -> Option<TaskRow> {
-    let task_id = text(&task["taskId"]).filter(|v| identifier(v, 256))?;
-    let dimension = |key: &str| number(&task[key]);
+pub(super) fn task_row(task: &impl TaskFields, stop_id: &str) -> Option<TaskRow> {
+    let task_id = text(task.field("taskId")).filter(|v| identifier(v, 256))?;
+    let dimension = |key: &str| number(task.field(key));
     Some(TaskRow {
         id: task_id,
         stop_id: stop_id.to_owned(),
-        tracking_id: text(&task["domainMap"]["scannableId"]).or_else(|| text(&task["scannableId"])),
-        order_id: text(&task["domainMap"]["orderId"]),
-        task_type: text(&task["taskType"]),
-        task_state: text(&task["taskState"]),
-        state_context: text(&task["taskStateContext"]),
-        execution_status: text(&task["executionStatus"]),
-        address_id: text(&task["addressId"]),
-        window_start_at: stamp(&task["windowStartTime"]),
-        window_end_at: stamp(&task["windowEndTime"]),
-        executed_at: stamp(&task["actualExecutionTime"])
-            .or_else(|| stamp(&task["taskExecutionTime"])),
-        latitude: number(&task["executionGeocode"]["latitude"]),
-        longitude: number(&task["executionGeocode"]["longitude"]),
-        box_type: text(&task["boxType"]),
+        tracking_id: text(task.inner("domainMap", "scannableId"))
+            .or_else(|| text(task.field("scannableId"))),
+        order_id: text(task.inner("domainMap", "orderId")),
+        task_type: text(task.field("taskType")),
+        task_state: text(task.field("taskState")),
+        state_context: text(task.field("taskStateContext")),
+        execution_status: text(task.field("executionStatus")),
+        address_id: text(task.field("addressId")),
+        window_start_at: stamp(task.field("windowStartTime")),
+        window_end_at: stamp(task.field("windowEndTime")),
+        executed_at: stamp(task.field("actualExecutionTime"))
+            .or_else(|| stamp(task.field("taskExecutionTime"))),
+        latitude: number(task.inner("executionGeocode", "latitude")),
+        longitude: number(task.inner("executionGeocode", "longitude")),
+        box_type: text(task.field("boxType")),
         weight: dimension("weight"),
-        weight_unit: text(&task["weightUnit"]),
+        weight_unit: text(task.field("weightUnit")),
         length: dimension("length"),
         width: dimension("width"),
         height: dimension("height"),
-        volume_unit: text(&task["volumeUnit"]),
-        time_windowed: flag(&task["timeWindowed"]),
-        high_value: flag(&task["highValueTaskFlag"]),
-        customer_return: flag(&task["customerReturn"]),
-        address_type: text(&task["addressTypeInfo"]),
-        events: compact_events(&task["recentTaskEvents"]),
+        volume_unit: text(task.field("volumeUnit")),
+        time_windowed: flag(task.field("timeWindowed")),
+        high_value: flag(task.field("highValueTaskFlag")),
+        customer_return: flag(task.field("customerReturn")),
+        address_type: text(task.field("addressTypeInfo")),
+        events: task.events(),
     })
 }
-/// A task's recent events as [time, state, context] triples: every event Amazon sends
-/// carries just these three, and their names repeated in every row would be a third of
-/// the table.
-pub(super) fn compact_events(events: &Value) -> Value {
-    Value::Array(
-        events
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|e| json!([e["executionTime"], e["taskState"], e["taskStateContext"]]))
-            .collect(),
-    )
-}
-/// The stops and tasks of a detail, and the day summary they add up to. A task or
-/// stop without an identifier, or one repeated, is skipped: it cannot be a row.
-pub(super) fn rows(detail: &Value, transporter: &str) -> (Vec<StopRow>, Vec<TaskRow>, DayRow) {
-    let mut stops = Vec::new();
+/// The rows of `stops`, and the day summary they add up to, with the stops completed as
+/// `progress` counts them when it does. A task or stop without an identifier, or one
+/// repeated, is skipped: it cannot be a row.
+pub(super) fn stop_rows<'a, S: StopFields + 'a>(
+    stops: impl Iterator<Item = &'a S>,
+    progress: &Value,
+    transporter: &str,
+) -> (Vec<StopRow>, Vec<TaskRow>, DayRow) {
+    let mut rows = Vec::new();
     let mut tasks = Vec::new();
     let mut day = DayRow::default();
     let mut seen_stops = std::collections::HashSet::new();
     let mut seen_tasks = std::collections::HashSet::new();
-    for (index, stop) in detail["stops"].as_array().into_iter().flatten().enumerate() {
+    for (index, stop) in stops.enumerate() {
         // The API sends no stop id; the page adds one. The sequence number is the
         // stop's identity within its itinerary, and its position stands in without one.
-        let stop_id = text(&stop["stopId"])
+        let stop_id = text(stop.field("stopId"))
             .filter(|v| identifier(v, 256))
-            .or_else(|| integer(&stop["sequenceNumber"]).map(|n| format!("seq-{n}")))
+            .or_else(|| integer(stop.field("sequenceNumber")).map(|n| format!("seq-{n}")))
             .unwrap_or_else(|| format!("index-{index}"));
         if !seen_stops.insert(stop_id.clone()) {
             continue;
         }
         let mut completed = false;
-        for task in stop["tasks"].as_array().into_iter().flatten() {
+        for task in stop.tasks() {
             // A task another driver executed belongs to that driver's itinerary.
-            if task["transporterId"]
+            if task
+                .field("transporterId")
                 .as_str()
                 .is_some_and(|t| t != transporter)
             {
@@ -301,35 +316,30 @@ pub(super) fn rows(detail: &Value, transporter: &str) -> (Vec<StopRow>, Vec<Task
         if completed {
             day.stops_completed += 1;
         }
-        let mut flags = stop.clone();
-        if let Some(object) = flags.as_object_mut() {
-            object.retain(|k, v| k.ends_with("Flag") || (k.starts_with("is") && v.is_boolean()));
-        }
-        stops.push(StopRow {
+        rows.push(StopRow {
             id: stop_id,
-            sequence: integer(&stop["sequenceNumber"]),
-            address_id: text(&stop["addressId"]),
-            stop_type: text(&stop["itineraryStopType"]),
-            route_code: text(&stop["routeCode"]),
-            planned_start_at: stamp(&stop["plannedStartTime"]),
-            planned_end_at: stamp(&stop["plannedEndTime"]),
-            expected_start_at: stamp(&stop["expectedStartTime"]),
-            actual_start_at: stamp(&stop["actualStartTime"]),
-            flags: set_flags(&flags),
+            sequence: integer(stop.field("sequenceNumber")),
+            address_id: text(stop.field("addressId")),
+            stop_type: text(stop.field("itineraryStopType")),
+            route_code: text(stop.field("routeCode")),
+            planned_start_at: stamp(stop.field("plannedStartTime")),
+            planned_end_at: stamp(stop.field("plannedEndTime")),
+            expected_start_at: stamp(stop.field("expectedStartTime")),
+            actual_start_at: stamp(stop.field("actualStartTime")),
+            flags: stop.flags(),
         });
     }
-    if let Some(completed) = integer(&detail["stopProgress"]["completed"]) {
+    if let Some(completed) = integer(&progress["completed"]) {
         day.stops_completed = completed;
     }
-    (stops, tasks, day)
+    (rows, tasks, day)
 }
-/// Tasks removed from the route, each once.
-pub(super) fn inactive_tasks(detail: &Value) -> Vec<TaskRow> {
+/// The rows of tasks removed from the route, each once.
+pub(super) fn inactive_rows<'a, T: TaskFields + 'a>(
+    tasks: impl Iterator<Item = &'a T>,
+) -> Vec<TaskRow> {
     let mut seen = std::collections::HashSet::new();
-    detail["inactiveTasks"]
-        .as_array()
-        .into_iter()
-        .flatten()
+    tasks
         .filter_map(|task| task_row(task, ""))
         .filter(|row| seen.insert(row.id.clone()))
         .collect()
