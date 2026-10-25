@@ -18,8 +18,8 @@ use std::{any::Any, collections::BTreeSet, time::Duration};
 /// is handed the DSP's `Reading`: its id, the window's day, and what it may ask of core.
 pub trait LiveReader: Sync + 'static {
     /// What it keeps in memory for one DSP between its reads, as a provider's session and its
-    /// key: made anew as a day's reading starts, and as a stalled one starts again, and
-    /// dropped as the day stops. Never written anywhere.
+    /// key: made anew for each day, and whenever the DSP's reading starts again, as after a
+    /// restart, a switch or a stall; dropped as the day stops. Never written anywhere.
     type Held: Default + Send + 'static;
     /// One whole read, from `read` to `kept`.
     type Read: Send + Sync + 'static;

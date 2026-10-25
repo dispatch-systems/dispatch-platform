@@ -55,6 +55,8 @@ pub struct Session {
     started: std::time::Instant,
     last_used: Mutex<std::time::Instant>,
     collecting: std::sync::atomic::AtomicBool,
+    /// A live reader's hook opened it: its own, which no job's end closes.
+    reader: bool,
     credential_lease: Mutex<Option<std::fs::File>>,
 }
 
@@ -174,9 +176,12 @@ impl Manager {
             session.close().await;
         }
     }
+    /// Closes a job's browser once the job ends: the DSP's for `provider` at the job's
+    /// revision, unless a live reader opened it since.
     pub async fn revoke_provider_revision(&self, id: &str, revision: i64, provider: Provider) {
         if let Some(session) = self.get_for(id, provider)
             && session.revision == revision
+            && !session.reader
         {
             self.revoke_current(&session).await;
         }
@@ -673,6 +678,7 @@ impl State {
             started: std::time::Instant::now(),
             last_used: Mutex::new(std::time::Instant::now()),
             collecting: std::sync::atomic::AtomicBool::new(authority.alone()),
+            reader: authority.alone(),
             credential_lease: Mutex::new(Some(credential_lease)),
         });
         {

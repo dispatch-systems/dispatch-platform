@@ -88,11 +88,13 @@ enum Seen {
     Started(NaiveDate),
     Kept(u64),
     Stopped(NaiveDate),
-    /// What the browser a read opened was, and what the next opening answered meanwhile.
+    /// What the browser a read opened was, what the next opening answered meanwhile, and
+    /// whether it was still open after a job at its revision ended.
     Browser {
         open: usize,
         busy: bool,
         second: String,
+        after_a_job: bool,
     },
 }
 static SCRIPTS: Mutex<Vec<(String, Arc<Probe>, Script)>> = Mutex::new(Vec::new());
@@ -204,12 +206,25 @@ impl LiveReader for Reader {
                         Ok(_) => "opened".to_owned(),
                         Err(error) => error.code,
                     };
+                    let (open_now, busy, revision) = session.map_or((0, false, 0), |session| {
+                        (
+                            reading.state.browsers.active(),
+                            session.busy(),
+                            session.revision,
+                        )
+                    });
+                    let browsers = &reading.state.browsers;
+                    browsers
+                        .revoke_provider_revision(&reading.dsp, revision, PROVIDER)
+                        .await;
+                    let after_a_job = browsers.get_for(&reading.dsp, PROVIDER).is_some();
                     probe.saw(
                         &reading.dsp,
                         Seen::Browser {
-                            open: reading.state.browsers.active(),
-                            busy: session.is_some_and(|session| session.busy()),
+                            open: open_now,
+                            busy,
                             second,
+                            after_a_job,
                         },
                     );
                     open.close().await;
@@ -716,11 +731,13 @@ async fn a_hooks_browser_is_its_own_within_the_servers_limits_and_closes_after_i
     server.window(&dsp, &start, &stop).await;
     server.switch(&dsp, true).await;
     until(open + EVERY).await;
-    // Open, it's the server's one browser, which no job takes; another opening is refused.
+    // Open, it's the server's one browser, which no job takes nor closes as it ends; another
+    // opening is refused.
     let browser = Seen::Browser {
         open: 1,
         busy: true,
         second: "connection_busy".into(),
+        after_a_job: true,
     };
     assert_eq!(server.probe.of(&dsp)[1], browser);
     assert_eq!(server.probe.of(&dsp)[3], Seen::Kept(1));

@@ -205,8 +205,7 @@ fn plans(
     for dsp in db.served_dsps()? {
         for (index, (feature, reader)) in readers.iter().enumerate() {
             let plan = (|| {
-                let on =
-                    feature.switch.mandatory || db.feature_enabled(&dsp.id, feature.switch.id)?;
+                let on = db.feature_enabled(&dsp.id, feature.switch.id)?;
                 let window = if on {
                     reader.window(db, &dsp.id)?
                 } else {
