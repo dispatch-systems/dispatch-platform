@@ -414,14 +414,15 @@ impl Driver {
         let mut method = *method;
         if method.navigation == Navigation::Native {
             let session = SignedIn::of(&self.browser, &self.origin, &cortex::HOSTS).await?;
+            let read = Native::new(&session)?.read(&scope, request.mode).await;
+            if read.is_ok() {
+                progress(95, "Validating routes".into()).await?;
+            }
             // A day is checked before the browser closes: one that fails is read with it.
-            let native = Native::new(&session)?
-                .read(&scope, request.mode)
-                .await
-                .and_then(|capture| {
-                    capture.validate(request)?;
-                    Ok(capture)
-                });
+            let native = read.and_then(|capture| {
+                capture.validate(request)?;
+                Ok(capture)
+            });
             match native {
                 Ok(capture) => {
                     // Nothing needs the browser now: it closes before the day is kept.
