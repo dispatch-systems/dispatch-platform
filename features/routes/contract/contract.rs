@@ -3,7 +3,9 @@
 //! packages they didn't deliver, and the days collected. Routes collects a day's routes whole,
 //! so a complete day without a driver's itinerary is a day they didn't drive; a day read while
 //! under way proves nothing by what it lacks, since it may be read before dispatch; and a day
-//! outside what's collected is unknown. Routes exposes it as `driver_routes`.
+//! outside what's collected is unknown. Routes exposes it as `driver_routes`, from historical
+//! route data; and today as live reads leave it, with the work phone each driver holds now, as
+//! `live_route_data` (`LiveRouteData`).
 use dispatch_core::{Result, db::Store, manifest::people::Source};
 
 /// The most IDs one read of a driver's routes names.
@@ -54,7 +56,8 @@ pub struct CollectedDay {
     pub complete: bool,
 }
 
-/// One itinerary a driver drove on a day. Times are epoch milliseconds.
+/// One itinerary a driver drove on a day, or, in live route data, a route they're assigned to and
+/// haven't started: its plan, with nothing departed or done. Times are epoch milliseconds.
 #[derive(Clone, Debug)]
 pub struct RouteDay {
     /// Its day, YYYY-MM-DD in the DSP's own time.
@@ -104,4 +107,43 @@ pub struct Undelivered {
 /// What reads the DSP's drivers' routes: only while Routes is on there.
 pub fn for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn DriverRoutes>> {
     dispatch_core::manifest::exposes::for_dsp::<dyn DriverRoutes>(db, dsp)
+}
+
+/// Live route data: today's routes as the last whole live read left them, and the company work
+/// phone each driver holds now; nothing of another day. Apart from the historical route data
+/// `DriverRoutes` reads: a day joins it once saved there, and stays in live route data until the
+/// next day's reads start.
+pub trait LiveRouteData: Send + Sync {
+    /// The source whose IDs name its drivers, to find them among the DSP's people.
+    fn source(&self) -> Source;
+    /// The day live route data holds, YYYY-MM-DD in the DSP's own time: today, or none when it
+    /// holds no read of today.
+    fn live_day(&self, db: &Store, dsp: &str) -> Result<Option<String>>;
+    /// Every driver's itineraries today as last read live, and each route a driver is assigned to
+    /// without an itinerary on it yet, as before dispatch; none without a live day. Its day is
+    /// never complete.
+    fn day(&self, db: &Store, dsp: &str) -> Result<Driven>;
+    /// The itineraries today of the drivers holding `ids` as last read live, and the routes
+    /// they're assigned to without one yet. An ID is matched exactly. Routes refuses more than
+    /// `MOST_IDS` IDs, or one that's empty or over 128 characters, with `invalid_input`.
+    fn routes(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Driven>;
+    /// The work phone each driver holds now, and since when; none without a live day.
+    fn work_phones(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhone>>;
+}
+
+/// A company work phone a driver holds now: a phone the DSP passes from driver to driver, so
+/// never a sign that two drivers are one person.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkPhone {
+    /// The ID that holds it: one of `LiveRouteData::source`'s.
+    pub driver_id: String,
+    /// Its ten digits.
+    pub phone: String,
+    /// When they took it, epoch milliseconds.
+    pub since: i64,
+}
+
+/// What reads the DSP's live route data: only while Routes is on there.
+pub fn live_for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn LiveRouteData>> {
+    dispatch_core::manifest::exposes::for_dsp::<dyn LiveRouteData>(db, dsp)
 }

@@ -615,7 +615,18 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
     another.scope.provider = "provider-other".into();
     let mut zoned = latest.clone();
     zoned.scope.timezone = "America/Chicago".into();
+    // A day's final read once it ended, its snapshot while it lasts.
+    let mut unfinished = latest.clone();
+    unfinished.finished_at = format!("{day}T20:00:00Z")
+        .parse::<chrono::DateTime<chrono::Utc>>()
+        .unwrap()
+        .timestamp_millis();
+    unfinished.started_at = unfinished.finished_at - hour;
+    let mut past = latest.clone();
+    past.mode = Mode::Snapshot;
     for (key, capture, phones, code) in [
+        ("live-4", &unfinished, &phones, "routes_day_not_available"),
+        ("live-4", &past, &phones, "routes_day_not_available"),
         ("live-4", &missing, &phones, "routes_capture_invalid"),
         ("live-4", &elsewhere, &phones, "routes_scope_mismatch"),
         ("live-4", &another, &phones, "routes_scope_mismatch"),

@@ -140,7 +140,16 @@
       [4, "driver_day_index", "cbeed9e551fb3d02"],
       [5, "package_flags_index", "79f9584ee1e26762"],
       [6, "work_phones", "12c86b4f236e45e1"],
-      [7, "staged_shared_rows", "aed480da151df28c"]
+      [7, "staged_shared_rows", "aed480da151df28c"],
+      [8, "drop_tasks_driver_day", "fc6e66099be72ce1"]
+    ]
+  },
+  {
+    "name": "routelive",
+    "user_version": 1,
+    "cache_size": -8192,
+    "migrations": [
+      [1, "baseline", "22c1a8563eb030a9"]
     ]
   },
   {

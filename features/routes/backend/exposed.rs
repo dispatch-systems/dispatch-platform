@@ -1,14 +1,16 @@
 //! What Routes exposes to every other feature and agent tool: each driver's routes, day by day,
-//! read from the rows its own pages read (`dispatch_routes_contract`).
-use super::RoutesStore;
+//! read from the rows its own pages read in historical route data; and today in live route data,
+//! with the work phone each driver holds now (`dispatch_routes_contract`).
+use super::{RoutesStore, routes_today};
 use dispatch_core::{
     Result,
-    db::{Store, s},
+    db::{Db, Store, s},
     foundation::validate,
     manifest::people::Source,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, MOST_IDS, RouteDay, Undelivered,
+    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, MOST_IDS, RouteDay, Undelivered,
+    WorkPhone,
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -51,6 +53,20 @@ const ROUTES: [&str; 2] = by_driver!(
     "d.transporter_id",
     "ORDER BY d.day,i.route_code,d.itinerary_id"
 );
+/// The provider's routes over a range each driver is assigned to and has no itinerary on yet, as
+/// before dispatch: those of the IDs given, or every driver's. The route list may name other
+/// providers' routes at the station.
+const ASSIGNED: [&str; 2] = by_driver!(
+    "SELECT r.day,a.value transporter_id,r.route_code,r.route_status,r.progress_status,\
+    r.planned_departure_at,r.total_stops FROM routes r \
+    JOIN route_publications p ON p.id=r.publication_id AND p.active=1 AND p.station=?1 \
+    JOIN json_each(r.transporter_ids) a \
+    WHERE r.day BETWEEN ?2 AND ?3 AND r.company_id=p.provider \
+    AND NOT EXISTS (SELECT 1 FROM driver_days d WHERE d.publication_id=r.publication_id \
+    AND d.transporter_id=a.value AND d.route_code IS r.route_code)",
+    "a.value",
+    "ORDER BY r.day,r.route_code"
+);
 /// The drivers' drop-offs over a range that weren't delivered, as the day summaries count them:
 /// those of the IDs given, or every driver's. A driver's are found in `tasks_undelivered`, which
 /// holds only those, so the terms stay as it has them: any others read every task of the days.
@@ -64,9 +80,12 @@ const UNDELIVERED: [&str; 2] = by_driver!(
     "ORDER BY t.executed_at,t.task_id"
 );
 
-/// Each driver's routes, as `DriverRoutes` reads them.
+/// Each driver's routes in historical route data, as `DriverRoutes` reads them.
 pub(crate) struct Exposed;
 pub(crate) static EXPOSED: Exposed = Exposed;
+/// Today in live route data, as `LiveRouteData` reads it.
+pub(crate) struct Live;
+pub(crate) static LIVE: Live = Live;
 
 impl DriverRoutes for Exposed {
     fn source(&self) -> Source {
@@ -95,21 +114,83 @@ impl DriverRoutes for Exposed {
     ) -> Result<Driven> {
         validate::days(from, to, LONGEST)?;
         validate::ids(ids, MOST_IDS)?;
-        driven(db, dsp, Some(ids), from, to)
+        let station = db.profile(dsp)?.station_code;
+        driven(&*db.routes_db(dsp)?, &station, Some(ids), from, to, false)
     }
     fn day(&self, db: &Store, dsp: &str, day: &str) -> Result<Driven> {
         validate::days(day, day, 1)?;
-        driven(db, dsp, None, day, day)
+        let station = db.profile(dsp)?.station_code;
+        driven(&*db.routes_db(dsp)?, &station, None, day, day, false)
     }
 }
 
-/// What the drivers holding `ids`, or every driver, drove from `from` to `to`, and which of those
-/// days were collected.
-fn driven(db: &Store, dsp: &str, ids: Option<&[String]>, from: &str, to: &str) -> Result<Driven> {
-    let station = db.profile(dsp)?.station_code;
+impl LiveRouteData for Live {
+    fn source(&self) -> Source {
+        dispatch_cortex::SOURCE
+    }
+    fn live_day(&self, db: &Store, dsp: &str) -> Result<Option<String>> {
+        let station = db.profile(dsp)?.station_code;
+        let today = routes_today(db, dsp)?.to_string();
+        let held = db.routes_live_db(dsp)?.one(
+            "SELECT 1 FROM route_publications WHERE station=? AND day=? AND active=1",
+            [&station, &today],
+        )?;
+        Ok(held.map(|_| today))
+    }
+    fn day(&self, db: &Store, dsp: &str) -> Result<Driven> {
+        self.driven(db, dsp, None)
+    }
+    fn routes(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Driven> {
+        validate::ids(ids, MOST_IDS)?;
+        self.driven(db, dsp, Some(ids))
+    }
+    fn work_phones(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhone>> {
+        let Some(day) = self.live_day(db, dsp)? else {
+            return Ok(Vec::new());
+        };
+        let held = db.routes_live_db(dsp)?.all(
+            "SELECT transporter_id,phone,since FROM work_phones WHERE day=? AND until IS NULL \
+             ORDER BY transporter_id",
+            [&day],
+        )?;
+        Ok(held
+            .iter()
+            .map(|hold| WorkPhone {
+                driver_id: s(hold, "transporter_id").into(),
+                phone: s(hold, "phone").into(),
+                since: hold["since"].as_i64().unwrap_or(0),
+            })
+            .collect())
+    }
+}
+impl Live {
+    /// What the drivers holding `ids`, or every driver, drive today as live route data holds it,
+    /// the routes they're assigned to with it; nothing when it holds no read of today.
+    fn driven(&self, db: &Store, dsp: &str, ids: Option<&[String]>) -> Result<Driven> {
+        let Some(day) = self.live_day(db, dsp)? else {
+            return Ok(Driven {
+                days: Vec::new(),
+                routes: Vec::new(),
+            });
+        };
+        let station = db.profile(dsp)?.station_code;
+        driven(&*db.routes_live_db(dsp)?, &station, ids, &day, &day, true)
+    }
+}
+
+/// What the drivers holding `ids`, or every driver, drove from `from` to `to` at `station` as
+/// `routes` holds it, and which of those days were collected; with the routes they're assigned
+/// to and haven't started when `assigned`.
+fn driven(
+    routes: &Db,
+    station: &str,
+    ids: Option<&[String]>,
+    from: &str,
+    to: &str,
+    assigned: bool,
+) -> Result<Driven> {
     let by = usize::from(ids.is_some());
     let ids = ids.map(serde_json::to_string).transpose()?;
-    let routes = db.routes_db(dsp)?;
     // One read, so a recollection can't land between the itineraries and their packages.
     routes.transaction(|| {
         let days = routes
@@ -130,6 +211,11 @@ fn driven(db: &Store, dsp: &str, ids: Option<&[String]>, from: &str, to: &str) -
             if let Some(&at) = found.get(&itinerary(&row)) {
                 driven[at].undelivered.push(undelivered(&row));
             }
+        }
+        if assigned {
+            let planned = routes.all(ASSIGNED[by], params![station, from, to, ids])?;
+            driven.extend(planned.iter().map(planned_day));
+            driven.sort_by(|a, b| (&a.day, &a.route_code).cmp(&(&b.day, &b.route_code)));
         }
         Ok(Driven {
             days,
@@ -171,6 +257,31 @@ fn route_day(row: &Value) -> RouteDay {
         removed: count("removed"),
         breaks_secs: row["breaks_secs"].as_i64(),
         overtime_secs: row["overtime_secs"].as_i64(),
+        undelivered: Vec::new(),
+    }
+}
+/// A route a driver is assigned to and hasn't started: as planned, nothing done yet.
+fn planned_day(row: &Value) -> RouteDay {
+    RouteDay {
+        day: s(row, "day").into(),
+        driver_id: s(row, "transporter_id").into(),
+        route_code: text(row, "route_code"),
+        status: text(row, "route_status"),
+        progress: text(row, "progress_status"),
+        vin: None,
+        wave_start_at: None,
+        planned_departure_at: row["planned_departure_at"].as_i64(),
+        departed_at: None,
+        first_delivery_at: None,
+        last_delivery_at: None,
+        session_end_at: None,
+        stops: row["total_stops"].as_i64().unwrap_or(0),
+        stops_completed: 0,
+        delivered: 0,
+        not_delivered: 0,
+        removed: 0,
+        breaks_secs: None,
+        overtime_secs: None,
         undelivered: Vec::new(),
     }
 }

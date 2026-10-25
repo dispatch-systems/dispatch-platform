@@ -1439,7 +1439,7 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
     strip('backend/mod.rs', /^pub\(crate\) mod exposed;\n/m);
     strip(
       'feature.rs',
-      /\n\s*\/\/ What it offers[^\n]*\n\s*exposes: &\[dispatch_core::expose!\([\s\S]*?\n\s*\)\],/,
+      /\n\s*\/\/ What it offers[^\n]*\n\s*exposes: &\[\s*dispatch_core::expose!\([\s\S]*?\n\s*\),?\s*\],/,
     );
     strip('README.md', /\n+- \*\*Exposed:\*\*[\s\S]*?(?=\n\n|\n- |\n#|\n?$)/);
   };

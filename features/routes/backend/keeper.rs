@@ -69,7 +69,7 @@ impl Keeper for Routes {
         store.routes_jobs(dsp, mode)
     }
     fn storages(&self) -> &'static [&'static AddedStorage] {
-        static STORAGES: [&AddedStorage; 1] = [&super::STORAGE];
+        static STORAGES: [&AddedStorage; 2] = [&super::STORAGE, &super::LIVE_STORAGE];
         &STORAGES
     }
 }

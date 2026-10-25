@@ -72,7 +72,9 @@ impl Drop for Saving {
 /// such as the saving feature's name and the read's time. A key already the day's read
 /// answers so without saving again, and one still saving is refused (`routes_save_running`).
 /// It refuses phones that aren't each one driver's hold on one phone from a time, until none
-/// or a time no earlier, at most 10,000 of them (`invalid_input`); a DSP without a station
+/// or a time no earlier, at most 10,000 of them (`invalid_input`); a read in a mode its day
+/// didn't allow when it was read, where the DSP is: a final read of a day not yet ended, or a
+/// snapshot of another day than it was then (`routes_day_not_available`); a DSP without a station
 /// (`routes_station_required`); a capture that isn't one of its station's day in that scope
 /// as listed (`routes_scope_mismatch`, `routes_capture_invalid`, `routes_source_too_large`);
 /// and saving while Routes is off for the DSP (`routes_off`).
@@ -96,6 +98,7 @@ pub async fn save_day(
             on.clone(),
         );
         let mode = capture.mode;
+        let finished_at = capture.finished_at;
         let (request, saved) = state
             .read(move |db| {
                 check(db)?;
@@ -103,6 +106,8 @@ pub async fn save_day(
                     "SELECT 1 FROM route_publications WHERE job_id=? AND active=1",
                     [&k],
                 )?;
+                // A day is read in the mode it allowed when it was read, as a job's is when queued.
+                day_allowed(mode, &day, routes_day(db, &d, finished_at)?)?;
                 Ok((day_request(db, &d, &day, mode)?, saved.is_some()))
             })
             .await?;

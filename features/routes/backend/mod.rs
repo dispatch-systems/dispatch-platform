@@ -3,11 +3,14 @@
 //! time, published into the DSP's route data database. Normalized rows hold what reads
 //! filter on; every response is kept whole, compressed, for reprocessing. Browser and
 //! HTTP data is untrusted input. The collection is `routes` to the platform; its database is
-//! `routedata`.
+//! `routedata`, historical route data. Today as live reads leave it is live route data, in a
+//! database of its own, `routelive`, which a feature reading routes live keeps (`live`).
 pub(crate) mod exposed;
 pub(crate) mod keeper;
+mod live;
 pub(crate) mod maintenance;
 pub(crate) mod people;
+mod phones;
 mod publishing;
 mod rows;
 mod saving;
@@ -15,6 +18,7 @@ pub(crate) mod settings;
 mod storage;
 mod wire;
 
+pub use live::{LiveKept, clear_live, keep_live, save_live_day};
 use publishing::*;
 use rows::*;
 pub use saving::{WorkPhone, save_day};
@@ -32,6 +36,7 @@ use dispatch_core::{
     collection::registry::AddedStorage,
     db::{Db, DspLease, Kind, Store, at, migrations::add_column, s},
     ensure,
+    foundation::observability,
     server::cache::DataDomain,
 };
 use dispatch_cortex::{
@@ -65,6 +70,16 @@ pub static STORAGE: AddedStorage = AddedStorage {
     marker: "storage.routedata",
     source: "routedata-v1",
     verify,
+};
+/// Live route data, beside historical route data: today alone, in the tables historical route
+/// data keeps its days in.
+pub const LIVE_DATABASE: Kind = Kind::new("routelive", 1).cache(8192);
+pub static LIVE_STORAGE: AddedStorage = AddedStorage {
+    id: "routelive",
+    kind: LIVE_DATABASE,
+    marker: "storage.routelive",
+    source: "routelive-v1",
+    verify: verify_live,
 };
 /// Migration 2: removed tasks join `tasks`, marked inactive; the itinerary keeps its
 /// route-level lists; breaks and unknown stops get tables, and two views pre-join the
@@ -104,6 +119,8 @@ pub struct PreparedItinerary {
     day: DayRow,
     addresses: Vec<Value>,
     person: Value,
+    /// The work phones its response shows its drivers with, by their ten digits.
+    work_phones: Vec<(String, String)>,
     raw_bytes: usize,
     /// The detail gzip-compressed.
     #[serde(skip)]
@@ -303,6 +320,9 @@ impl Shaper {
             },
             addresses: read.addresses.as_array().cloned().unwrap_or_default(),
             person,
+            work_phones: (phones::phones_of(read.transporters))
+                .filter_map(|(driver, phone)| Some((driver, phone?)))
+                .collect(),
             raw_bytes,
             raw,
         })
@@ -354,14 +374,7 @@ async fn stage_capture(
     mut capture: Capture,
     mine: impl Fn(&Store) -> Result<()> + Clone + Send + 'static,
 ) -> Result<Staged> {
-    let blocking = |error: tokio::task::JoinError| {
-        dispatch_core::foundation::observability::event(
-            "error",
-            "routes.stage_failed",
-            json!({"panic":error.is_panic()}),
-        );
-        Error::new("routes_capture_invalid", 500)
-    };
+    let blocking = blocking("routes.stage_failed");
     let capture_checked = tokio::task::spawn_blocking(move || {
         capture.validate(&request)?;
         capture.validate_response_budget()?;
@@ -396,24 +409,44 @@ async fn stage_capture(
     Ok(staged)
 }
 
+/// A blocking thread's end, logged as `event`, when it ends before its work does: only a panic
+/// ends one.
+fn blocking(event: &'static str) -> impl Fn(tokio::task::JoinError) -> Error + Copy {
+    move |error| {
+        observability::event("error", event, json!({"panic":error.is_panic()}));
+        Error::new("routes_capture_invalid", 500)
+    }
+}
+
+/// The tables route data reads: missing once initialized, they fail closed, rather than
+/// recreating lost data.
+const READ_TABLES: [&str; 9] = [
+    "route_publications",
+    "routes",
+    "itineraries",
+    "stops",
+    "tasks",
+    "addresses",
+    "drivers",
+    "driver_days",
+    "route_raw",
+];
 fn verify(db: &Db) -> Result<()> {
     ensure(
         db.all("SELECT version FROM routedata_schema", [])? == vec![json!({"version":1})],
         "unsupported_routedata_schema",
         503,
     )?;
-    // Missing initialized tables fail closed, rather than recreating lost data.
-    for table in [
-        "route_publications",
-        "routes",
-        "itineraries",
-        "stops",
-        "tasks",
-        "addresses",
-        "drivers",
-        "driver_days",
-        "route_raw",
-    ] {
+    for table in READ_TABLES {
+        db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
+    }
+    Ok(())
+}
+fn verify_live(db: &Db) -> Result<()> {
+    for table in READ_TABLES
+        .iter()
+        .chain(&["work_phones", "work_phones_shown"])
+    {
         db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
     }
     Ok(())
