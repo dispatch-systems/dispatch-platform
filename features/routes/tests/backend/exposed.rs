@@ -272,7 +272,13 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
         json!({"transporterId":"driver-9","firstName":"Other","lastName":"Driver",
         "personType":["DELIVERY_ASSOCIATE"]}),
     );
-    crate::keep_live(&state, &dsp, read.clone()).await.unwrap();
+    let revision = db
+        .connection_revision(&dsp, dispatch_cortex::PROVIDER)
+        .unwrap()
+        .unwrap();
+    crate::keep_live(&state, &dsp, read.clone(), revision)
+        .await
+        .unwrap();
     let named = db
         .routes_live_db(&dsp)
         .unwrap()

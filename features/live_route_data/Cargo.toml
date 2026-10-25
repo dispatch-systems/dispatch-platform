@@ -24,6 +24,7 @@ dispatch-core = { path = "../../core", features = ["testing"] }
 dispatch-routes-contract = { path = "../routes/contract" }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
+rusqlite = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 

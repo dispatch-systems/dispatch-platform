@@ -12,10 +12,10 @@
 //! a read taken under another revision is never kept. A read is kept only whole.
 use super::settings;
 use dispatch_core::{
-    Error, Result,
+    Code, Error, Result,
     collection::{browser::Pending, readers::Reading},
     db::Store,
-    ensure,
+    foundation::observability,
     manifest::{Counts, LiveReader, Window},
 };
 use dispatch_cortex::{
@@ -23,6 +23,7 @@ use dispatch_cortex::{
     discovery::Scope,
     routes::{self, Browser, Capture, Day, Failure, Native, Request},
 };
+use serde_json::json;
 use std::time::Duration;
 
 /// Native reads in a row that may find Cortex unavailable, each failing without a browser,
@@ -32,6 +33,18 @@ const UNAVAILABLE_READS: u32 = 2;
 /// read, and the next with no native read first. The read after them tries native again, as the
 /// experiment's ladder tried native again every sixth poll.
 const BROWSER_READS: u32 = 5;
+
+/// What Routes refuses a day's save with for good: saving that day again never changes it, as
+/// the DSP's station or Routes itself changed since it was read.
+const NEVER_SAVED: &[Code] = &[
+    Code::new("routes_scope_mismatch"),
+    Code::new("routes_station_required"),
+    Code::new("routes_day_not_available"),
+    Code::new("routes_capture_invalid"),
+    Code::new("routes_source_too_large"),
+    Code::new("invalid_input"),
+    Code::new("routes_off"),
+];
 
 /// Reads a DSP's routes live (`live_route_data.routes`).
 pub struct Routes;
@@ -136,16 +149,12 @@ impl LiveReader for Routes {
                     Ok((request, db.connection_revision(&dsp, cortex::PROVIDER)?))
                 })
                 .await?;
-            let Some(revision) = revision else {
-                held.native = None;
-                return Err(Error::new("connection_required", 409));
-            };
             let mut labels = Vec::new();
             // The native reader goes first while it reads the scope today's request names, under
-            // the connection's revision now.
+            // the connection's revision now: never once the connection is disabled.
             let native = held.native.take().filter(|handed| {
                 held.ladder.native_first()
-                    && handed.revision == revision
+                    && revision == Some(handed.revision)
                     && request
                         .scope_request()
                         .validate_scope(&handed.scope)
@@ -156,6 +165,7 @@ impl LiveReader for Routes {
                     Ok(capture) => match capture.validate(&request) {
                         Ok(()) => {
                             held.ladder.read_natively();
+                            let revision = handed.revision;
                             held.native = Some(handed);
                             return Ok(Read {
                                 capture,
@@ -186,7 +196,11 @@ impl LiveReader for Routes {
                 labels.push(fallback);
             }
             held.ladder.browsing();
+            // The DSP's browser opens only while its connection is enabled
+            // (`connection_required`): one enabled again since, under a revision this read didn't
+            // see, is the next read's.
             let (day, scope) = browse(reading, &request).await?;
+            let revision = revision.ok_or_else(|| Error::new("connection_changed", 409))?;
             held.ladder.browsed();
             held.native = day.native.map(|native| Handed {
                 native,
@@ -208,18 +222,13 @@ impl LiveReader for Routes {
     fn started<'a>(&'a self, reading: &'a Reading, _: &'a Read) -> Pending<'a, ()> {
         Box::pin(dispatch_routes::clear_live(&reading.state, &reading.dsp))
     }
-    /// Keeps a read taken under the connection's revision now: never one read with credentials
-    /// since replaced, or after the connection was disabled (`connection_changed`).
+    /// Keeps a read still under the connection's revision it was taken under, as it's written:
+    /// never one read with credentials since replaced, or after the connection was disabled
+    /// (`connection_changed`).
     fn kept<'a>(&'a self, reading: &'a Reading, read: Read) -> Pending<'a, Counts> {
         Box::pin(async move {
-            let dsp = reading.dsp.clone();
-            let revision = reading
-                .state
-                .read(move |db| db.connection_revision(&dsp, cortex::PROVIDER))
-                .await?;
-            ensure(revision == Some(read.revision), "connection_changed", 409)?;
-            let kept =
-                dispatch_routes::keep_live(&reading.state, &reading.dsp, read.capture).await?;
+            let (state, dsp) = (&reading.state, &reading.dsp);
+            let kept = dispatch_routes::keep_live(state, dsp, read.capture, read.revision).await?;
             let mut counts = kept.counts();
             if read.browser {
                 counts.push(("browser", 1));
@@ -229,7 +238,9 @@ impl LiveReader for Routes {
         })
     }
     /// The day is saved into historical route data if the DSP chose so; live route data keeps
-    /// it either way, until the next day starts.
+    /// it either way, until the next day starts. A save refused for good, as the DSP's station
+    /// changed since the day was read, ends the day unsaved, logged with its code; any other
+    /// failure is the stop's, which is asked again.
     fn stopped<'a>(&'a self, reading: &'a Reading) -> Pending<'a, ()> {
         Box::pin(async move {
             let dsp = reading.dsp.clone();
@@ -237,10 +248,20 @@ impl LiveReader for Routes {
                 .state
                 .read(move |db| settings::collection(db, &dsp))
                 .await?;
-            if collection.save_to_history {
-                dispatch_routes::save_live_day(&reading.state, &reading.dsp).await?;
+            if !collection.save_to_history {
+                return Ok(());
             }
-            Ok(())
+            match dispatch_routes::save_live_day(&reading.state, &reading.dsp).await {
+                Err(error) if error.is_any(NEVER_SAVED) => {
+                    observability::event(
+                        "warn",
+                        "live_route_data.not_saved",
+                        json!({"dspId":reading.dsp,"day":reading.day.to_string(),"error":error.code}),
+                    );
+                    Ok(())
+                }
+                saved => saved.map(drop),
+            }
         })
     }
 }

@@ -857,6 +857,7 @@ dependencies = [
  "dispatch-cortex",
  "dispatch-routes",
  "dispatch-routes-contract",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

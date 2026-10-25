@@ -39,15 +39,21 @@ first read empties it. It reads within the server through core's live readers
     verifying: the read fails (`connection_busy`) and the next tries again.
   - The native reader serves only the connection revision it was taken under
     (`Store::connection_revision`): once the DSP's Cortex credentials are replaced, or the
-    connection disabled, it goes unused, and a read taken under another revision is never kept
-    (`connection_changed`); a read while the connection is disabled is refused
-    (`connection_required`).
+    connection disabled, it goes unused, and a read taken under another revision is never kept,
+    as `keep_live` checks as it writes (`connection_changed`). While the connection is disabled,
+    the browser doesn't open (`connection_required`).
   - A read that isn't whole is never kept.
 - **A day:** its first whole read empties live route data of the day before (`clear_live`) before
   it is kept (`keep_live`). Each read after is kept in place. Once the window ends, the day is
   saved into historical route data (`save_live_day`) if `save_to_history` is on; that runs once,
-  even after the server was down, and saving again saves nothing twice. A restart inside the window
-  goes on with the day as it was, emptying nothing.
+  even after the server was down, and saving again saves nothing twice. A save Routes refuses for
+  good (`routes_scope_mismatch`, `routes_station_required`, `routes_day_not_available`,
+  `routes_capture_invalid`, `routes_source_too_large`, `invalid_input`, `routes_off`), as when the
+  DSP's station changed since the day was read, ends the day unsaved, logged as
+  `live_route_data.not_saved` with its day and code, so the next day reads; any other failure, as a
+  busy database, fails the stop, which is asked again a minute later. Live route data keeps the day
+  either way, until the next day starts. A restart inside the window goes on with the day as it
+  was, emptying nothing.
 - **Records:** each read in the jobs database's `live_reads` (core's), with counts and codes only.
   A kept read counts the itineraries listed, the rows changed, the work phones held and the holds
   changed (`listed`, `changed`, `holding`, `phoneEvents`). It also counts `browser` when it opened

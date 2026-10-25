@@ -12,7 +12,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::{LiveKept, RoutesStore, clear_live, keep_live, save_live_day};
+use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_live_day};
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
@@ -58,6 +58,19 @@ fn ready() -> (tempfile::TempDir, Store, String, Arc<State>) {
     common::ready_connection(&db, &dsp, cortex::PROVIDER).unwrap();
     let state = State::new(db.config.clone()).unwrap();
     (root, db, dsp, state)
+}
+/// Keeps `read` as a live reader does, under the DSP's Cortex connection as it stands.
+async fn keep_live(
+    state: &Arc<State>,
+    dsp: &str,
+    read: Capture,
+) -> dispatch_core::Result<LiveKept> {
+    let d = dsp.to_owned();
+    let revision = state
+        .read(move |db| db.connection_revision(&d, cortex::PROVIDER))
+        .await?
+        .expect("Cortex is connected");
+    dispatch_routes::keep_live(state, dsp, read, revision).await
 }
 /// Today where the DSP is.
 fn today(db: &Store, dsp: &str) -> chrono::NaiveDate {
@@ -381,6 +394,16 @@ async fn a_read_that_isnt_whole_or_isnt_of_today_changes_nothing() {
         let refused = keep_live(&state, &dsp, read).await.unwrap_err();
         assert_eq!(refused.code, code, "{why}");
     }
+    // One read under a revision of the Cortex connection it no longer has, as once its
+    // credentials were replaced, is no longer the DSP's to keep.
+    let revision = db
+        .connection_revision(&dsp, cortex::PROVIDER)
+        .unwrap()
+        .unwrap();
+    common::change_connection(&db, &dsp, cortex::PROVIDER).unwrap();
+    let stale = dispatch_routes::keep_live(&state, &dsp, day.read(3), revision);
+    assert_eq!(stale.await.unwrap_err().code, "connection_changed");
+    assert_eq!(held(&live), before);
     // One collected no later than the read kept is no read of today since.
     let earlier = keep_live(&state, &dsp, day.read(0)).await.unwrap();
     assert_eq!((earlier.changed, earlier.phone_events), (0, 0));

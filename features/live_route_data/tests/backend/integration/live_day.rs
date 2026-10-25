@@ -26,6 +26,7 @@ use tokio::{sync::watch, task::JoinHandle, time::Instant};
 const EVERY: Duration = Duration::from_secs(5 * 60);
 const MINUTE: Duration = Duration::from_secs(60);
 const DAY: Duration = Duration::from_secs(24 * 60 * 60);
+const SECOND: Duration = Duration::from_secs(1);
 /// How the fixture's routes progress, as each read shows them.
 const READ: &str = "ON_TIME";
 /// How a read kept before shows them.
@@ -60,6 +61,8 @@ struct Server {
     revision: i64,
     stop: watch::Sender<bool>,
     readers: Option<JoinHandle<Result<()>>>,
+    /// When the readers last started, which plan again each minute from then.
+    since: Instant,
 }
 impl Server {
     /// A DSP at a station, its Cortex connected, Routes and Live Route Data on, and its live
@@ -100,9 +103,11 @@ impl Server {
             revision: 0,
             stop,
             readers: None,
+            since: Instant::now(),
         }
     }
     fn run_readers(&mut self) {
+        self.since = Instant::now();
         self.stop.send_replace(false);
         let readers = readers::start(self.state.clone(), self.stop.subscribe());
         self.readers = Some(tokio::spawn(readers));
@@ -150,9 +155,12 @@ impl Server {
     /// routes `BEFORE`, collected two hours from now, so no read before then changes it.
     async fn kept_before(&self) {
         let dsp = self.dsp.clone();
-        let request = self
+        let (request, revision) = self
             .state
-            .read(move |db| dispatch_routes::live_request(db, &dsp))
+            .read(move |db| {
+                let request = dispatch_routes::live_request(db, &dsp)?;
+                Ok((request, db.connection_revision(&dsp, cortex::PROVIDER)?))
+            })
             .await
             .unwrap();
         let mut read = cortex::routes::fixture(&request).unwrap();
@@ -161,7 +169,7 @@ impl Server {
         }
         read.started_at += 2 * 60 * 60 * 1000;
         read.finished_at = read.started_at;
-        dispatch_routes::keep_live(&self.state, &self.dsp, read)
+        dispatch_routes::keep_live(&self.state, &self.dsp, read, revision.unwrap())
             .await
             .unwrap();
     }
@@ -198,13 +206,39 @@ impl Server {
             .await
             .unwrap()
     }
-    /// Disables the DSP's Cortex connection, as its owner does.
-    async fn disconnect(&self) {
+    /// Disables the DSP's Cortex connection, as its owner does, or connects it again.
+    async fn connected(&self, on: bool) {
         let dsp = self.dsp.clone();
         self.state
-            .run(move |db| testing::disable_connection(db, &dsp, cortex::PROVIDER))
+            .run(move |db| match on {
+                true => testing::ready_connection(db, &dsp, cortex::PROVIDER),
+                false => testing::disable_connection(db, &dsp, cortex::PROVIDER),
+            })
             .await
             .unwrap();
+    }
+    /// Moves the DSP to another station.
+    async fn station(&self, code: &'static str) {
+        let dsp = self.dsp.clone();
+        self.state
+            .run(move |db| db.set_profile(&dsp, json!({"stationCode":code})).map(drop))
+            .await
+            .unwrap();
+    }
+    /// Holds historical route data's database for writing, as a writer of its own busy with it
+    /// does, until dropped.
+    async fn hold_history(&self) -> rusqlite::Connection {
+        let dsp = self.dsp.clone();
+        let data = self.state.read(move |db| db.area(&dsp, "data")).await;
+        let busy = rusqlite::Connection::open(data.unwrap().join("routedata/routedata.sqlite"));
+        let busy = busy.unwrap();
+        busy.execute_batch("BEGIN IMMEDIATE").unwrap();
+        busy
+    }
+    /// The readers' last plan before `at`: they plan again each minute from their start.
+    fn plan_before(&self, at: Instant) -> Instant {
+        let minutes = ((at - self.since).as_millis() - 1) / 60_000;
+        self.since + Duration::from_secs(minutes as u64 * 60)
     }
     /// The DSP's reads as the server records them, in order.
     async fn records(&self) -> Vec<testing::LiveRead> {
@@ -291,7 +325,8 @@ async fn a_dsps_live_route_data_through_its_days() {
     let first = instant(server.records().await[6].at);
     until(first + MINUTE).await;
     server.stop_readers().await;
-    until(first + 2 * MINUTE).await;
+    // Half a minute off the grid, so its plans each minute from then fall between its slots.
+    until(first + 2 * MINUTE + 30 * SECOND).await;
     server.run_readers();
     until(first + EVERY + MINUTE).await;
     let reads = server.records().await;
@@ -328,19 +363,52 @@ async fn a_dsps_live_route_data_through_its_days() {
     until(open + EVERY).await;
     let reads = server.records().await;
     assert_eq!(reads.len(), 13 + 1);
-    let last = instant(reads[13].at);
-    until(last + MINUTE).await;
-    server.disconnect().await;
-    until(last + EVERY + MINUTE).await;
+    let slot = instant(reads[13].at) + EVERY;
+    until(server.plan_before(slot) + Duration::from_millis(1)).await;
+    server.connected(false).await;
+    until(slot + SECOND).await;
     let refused = server.records().await;
-    for read in &refused[14..] {
-        assert_eq!(
-            read.code.as_deref(),
-            Some("connection_required"),
-            "{read:?}"
-        );
-    }
+    assert_eq!(refused.len(), 14 + 1);
+    assert_eq!(refused[14].code.as_deref(), Some("connection_required"));
     until(close + 6 * MINUTE).await;
-    assert_eq!(server.records().await.len(), refused.len());
+    assert_eq!(server.records().await.len(), 14 + 1);
+
+    // Saved again, a day whose save meets a busy database stops once it's saved, a minute on.
+    server.connected(true).await;
+    server.save(json!({"save_to_history":true})).await;
+    let (open, close) = (open + DAY, close + DAY);
+    until(open - MINUTE).await;
+    let fifth_day = pin(&server);
+    until(open + EVERY).await;
+    let first = instant(server.records().await[15].at);
+    until(first + 5 * EVERY + SECOND).await;
+    let busy = server.hold_history().await;
+    // Its stop is due as its window closes, at its place after the close.
+    until(first + 6 * EVERY + 30 * SECOND).await;
+    assert_eq!(server.history(fifth_day).await, None);
+    drop(busy);
+    until(first + 6 * EVERY + 2 * MINUTE).await;
+    assert_eq!(server.history(fifth_day).await.as_deref(), Some(READ));
+    assert_eq!(server.records().await.len(), 15 + 6);
+
+    // Moved to another station after the day's last read, the day can never be saved as read:
+    // its stop ends it unsaved, and the next day reads at the new one.
+    let (open, close) = (open + DAY, close + DAY);
+    until(open - MINUTE).await;
+    let sixth_day = pin(&server);
+    until(open + EVERY).await;
+    let first = instant(server.records().await[21].at);
+    until(first + 5 * EVERY + SECOND).await;
+    server.station("TST2").await;
+    until(close + 6 * MINUTE).await;
+    assert_eq!(server.history(sixth_day).await, None);
+    let (open, _) = (open + DAY, close + DAY);
+    until(open - MINUTE).await;
+    let seventh_day = pin(&server);
+    until(open + EVERY).await;
+    let reads = server.records().await;
+    assert_eq!(reads.len(), 27 + 1, "{:?}", &reads[26..]);
+    assert_eq!(reads[27].outcome, "kept");
+    assert_eq!(server.live_day().await, Some(seventh_day.to_string()));
     testing::pin_today(None);
 }

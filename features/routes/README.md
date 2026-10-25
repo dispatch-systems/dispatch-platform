@@ -30,7 +30,10 @@ it is live route data, in a database of its own, `routelive`.
   for a day; and keeps each whole read with `keep_live` (`backend/live.rs`), counting for its read's record the itineraries
   listed, the rows written or deleted, the work phones held and the holds claimed, moved or
   ended (`LiveKept`). A read is checked whole as a snapshot of today where the DSP is, at its
-  station, in the scope its days are read in, then kept in place in one transaction, so a reader
+  station, in the scope its days are read in, and kept only while the DSP's Cortex connection has
+  the revision the read was taken under, checked in the transaction that keeps it
+  (`connection_changed`, as after its credentials were replaced or it was disabled); then kept in
+  place in one transaction, so a reader
   sees the last read or this one whole: a row new to it is inserted, one that changed updated,
   one it no longer holds deleted, one unchanged left unwritten. Its responses are kept in place
   too, so the last whole read can be read again as it came. A read that isn't whole changes
