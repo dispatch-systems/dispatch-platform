@@ -123,7 +123,8 @@ impl Stand {
             Plays::NoKey => html("DSP Console", "<div id=\"root\"></div>".into()),
             Plays::SignInPage => html("Amazon Sign-In", "<form></form>".into()),
             _ => {
-                let (session, secret) = (format!("session-{loads}"), format!("c2VjcmV0{loads}+/="));
+                let (session, secret) =
+                    (format!("session-{loads}"), format!("fixture-key-{loads}"));
                 self.keys
                     .lock()
                     .unwrap()

@@ -212,7 +212,7 @@ test(
       routePauseStatus: null,
     });
     // The key the list page carries once `keyed`, as Cortex's pages hold it in their state.
-    const native = { session: 'native-session', key: 'bmF0aXZlLWtleQ==' };
+    const native = { session: 'native-session', key: 'fixture-key' };
     let keyed = false;
     // Cortex's signature of one request with the page's key: its method, path, sorted query,
     // session and moment.
