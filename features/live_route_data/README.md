@@ -62,4 +62,5 @@ first read empties it. It reads within the server through core's live readers
   (`routes_native_no_key`, `_refused`, `_signed_out`, `_unavailable` or `_invalid`), each as 1. A
   failed read keeps its error's code. The days started and stopped are in `live_days`.
 - **Data:** none of its own: live route data and historical route data are Routes'.
-- **API, upkeep, environment:** none. It logs nothing of its own beyond core's `live.*` events.
+- **API, upkeep, environment:** none. Beside core's `live.*` events, it logs only
+  `live_route_data.not_saved`, a day's code when it can't be saved.
