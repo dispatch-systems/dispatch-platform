@@ -76,7 +76,7 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
   assert.equal(after.value.error, 'phones_removed');
 });
 
-test('Only those who manage the DSP's phones or connections see or pair them', async (t) => {
+test("Only those who manage the DSP's phones or connections see or pair them", async (t) => {
   const f = await fixture();
   t.after(f.close);
   const member = await f.client(demo.member);
