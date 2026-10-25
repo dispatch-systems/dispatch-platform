@@ -110,6 +110,10 @@ pub(crate) fn save_listing<'a>(
         }
         Ok(())
     })?;
+    // A DSP's live reader may read its window from what was saved.
+    if member.is_none() {
+        db.readers_moved();
+    }
     Ok((
         Saved::Saved {
             revision,

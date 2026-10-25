@@ -63,7 +63,7 @@ pub const TABLES: Tables = &[
             "support_github_events",
         ],
     ),
-    ("jobs", &["jobs", "job_metrics"]),
+    ("jobs", &["jobs", "job_metrics", "live_reads", "live_days"]),
     (
         "dsp",
         &[
@@ -222,6 +222,13 @@ const JOBS: &[Migration] = &[
         name: "open_kinds",
         apply: Sql(include_str!(
             "../../collection/migrations/jobs/0005_open_kinds.sql"
+        )),
+    },
+    Migration {
+        id: 6,
+        name: "live_reads",
+        apply: Sql(include_str!(
+            "../../collection/migrations/jobs/0006_live_reads.sql"
         )),
     },
 ];

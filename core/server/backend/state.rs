@@ -41,6 +41,9 @@ pub struct State {
     pub mail_transport: Mutex<mail::TransportHealth>,
     // Wakes the mailer when a request queues mail, instead of it waiting for its next tick.
     pub mail_wake: tokio::sync::Notify,
+    // Wakes the live readers when a write switches a feature or saves settings, so each DSP's
+    // reading follows at once rather than at the next minute.
+    pub readers_wake: tokio::sync::Notify,
     pub browsers: browser::Manager,
     pub updates: live::Updates,
     /// Every feature's own live channels.
@@ -96,6 +99,7 @@ impl State {
             password_slots: Arc::new(Semaphore::new(2)),
             mail_transport: Mutex::new(mail::TransportHealth::default()),
             mail_wake: tokio::sync::Notify::new(),
+            readers_wake: tokio::sync::Notify::new(),
             browsers,
             updates: live::Updates::new()?,
             topics: live::Topics::default(),
@@ -243,7 +247,7 @@ impl State {
             };
             let work_ms = work_started.elapsed().as_secs_f64() * 1000.0;
             // Any transaction in the work has committed, so the mailer finds what it queued,
-            // and the scheduler the deadlines it moved.
+            // the scheduler the deadlines it moved, and the live readers what was switched.
             if db.take_mail_queued() {
                 state.mail_wake.notify_one();
             }
@@ -251,6 +255,9 @@ impl State {
                 state
                     .schedule_revision
                     .fetch_add(1, std::sync::atomic::Ordering::Release);
+            }
+            if db.take_readers_moved() {
+                state.readers_wake.notify_one();
             }
             if queued_ms + lock_ms + work_ms >= 25.0 {
                 let context = trace

@@ -1,7 +1,7 @@
 # Collection
 
-The job engine, schedules, live results, checkpoints, metrics, the collection browser and the
-Connections and Collectors pages. It runs what the registry's collectors declare and hands each
+The job engine, schedules, live results, live readers, checkpoints, metrics, the collection
+browser and the Connections and Collectors pages. It runs what the registry's collectors declare and hands each
 result to the one feature that keeps it, naming neither. A collection runs only while the
 feature that keeps it is on, and each feature serves its own jobs under routes core builds for
 it; its schedules are set on the Collectors page, through core's routes.
@@ -15,6 +15,32 @@ one waiting request on `/api/dsp/collection-updates`, which the permissions feat
 the collections kept by features whose `live` permissions it holds, so a hint, such as the
 employee code a change names, stays with its feature's readers. A job's status isn't
 announced, so a page shows a run's progress by reading its status while it runs.
+
+Live readers (`backend/readers/`) run what features declare in `live_readers` within the
+server, beside the jobs rather than as them (`manifest/README.md`, "Live readers", says what a
+feature declares). The server plans each served DSP's reading as it starts, each minute, and at
+once when a write switches a feature or saves a DSP's settings; one light task for each DSP
+whose reader's feature is on and whose window is set waits for each slot of its grid, reads,
+hands a whole read to its reader to keep, and stops each day it started once its window ends.
+At most `READS_AT_ONCE` reads run at once across the server; a read that can't start within
+its interval misses its slot (`live_reads_busy`). Started again inside its window, a DSP
+reads at its next slot after its last read, at once only when that slot has passed, so a
+restart reads no burst. A DSP inside its window that hasn't moved on for three of its
+intervals is started again alone, its memory made anew, and logged as `live.stalled`.
+
+What it keeps is in the environment's jobs database: `live_reads`, each read's day, when it
+began, how long it took, and whether it was kept, with what it counted, or why not, by its
+code; and `live_days`, the days each reader started and stopped for each DSP, which a restart
+goes on from. A DSP's records go after two weeks, as its next day stops. Its log has
+`live.started` and `live.stopped` for each day, and `live.read_failed` with a failed read's
+code, never what it read.
+
+A hook's browser (`ProviderBrowser`) is opened as a job's is, through the same limits on
+browsers and memory, under the reader's feature's authority: refused while that feature is
+off for the DSP or the DSP is inactive, and checked again around each command. It never uses
+a browser another opened for the DSP (`connection_busy`), holds its own as a collecting job
+does, so neither a job nor the idle sweep takes it, closes rather than wait for an owner's
+verification (`verification_required`), and closes when dropped.
 
 Its Connections page is a custom section of a DSP's Settings, `collection.connections`, on the
 Connections page: the server shows it to every member, and its component in
