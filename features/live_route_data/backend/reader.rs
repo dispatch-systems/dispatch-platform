@@ -242,7 +242,8 @@ impl LiveReader for Routes {
     /// collected later. Unsaved, live route data keeps it until the next day starts. A save
     /// refused for good, as the DSP's station changed since the day was read, ends the day
     /// unsaved, logged with its code; any other failure is the stop's, which is asked again,
-    /// saving nothing twice.
+    /// saving nothing twice. Live route data holding no day by then is emptied all the same, as
+    /// after a stop that emptied it but failed to give its file's space back.
     fn stopped<'a>(&'a self, reading: &'a Reading) -> Pending<'a, ()> {
         Box::pin(async move {
             let dsp = reading.dsp.clone();
@@ -262,8 +263,8 @@ impl LiveReader for Routes {
                     );
                     Ok(())
                 }
-                Ok(Some(_)) => dispatch_routes::clear_live(&reading.state, &reading.dsp).await,
-                saved => saved.map(drop),
+                Ok(_) => dispatch_routes::clear_live(&reading.state, &reading.dsp).await,
+                Err(error) => Err(error),
             }
         })
     }
