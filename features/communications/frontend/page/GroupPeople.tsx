@@ -28,7 +28,10 @@ export function GroupPeople({
   timeZone,
   now,
   docked,
+  leaving,
+  still,
   close,
+  gone,
   open,
 }: {
   /** The panel's own ID, which its openers control. */
@@ -39,14 +42,29 @@ export function GroupPeople({
   timeZone: string;
   now: number;
   docked: boolean;
+  /** Whether it's closed, sliding away. */
+  leaving: boolean;
+  /** Whether it's kept open as the conversation opened, there without sliding in. */
+  still: boolean;
   close: (refocus: boolean) => void;
+  /** Says it has slid away. */
+  gone: () => void;
   /** Opens someone's own conversation. */
   open: (person: GroupPerson) => void;
 }) {
   const { data, error } = useGroupPeople(group.id, refresh);
   const title = useId();
   return (
-    <Panel id={id} labelledBy={title} className="profile people" docked={docked} close={close}>
+    <Panel
+      id={id}
+      labelledBy={title}
+      className="profile people"
+      docked={docked}
+      leaving={leaving}
+      still={still}
+      close={close}
+      gone={gone}
+    >
       <div className="me">
         <GroupFaces faces={group.faces} size="profile" />
         <div>

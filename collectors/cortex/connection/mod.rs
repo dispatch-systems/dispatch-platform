@@ -2,7 +2,7 @@
 pub mod performance;
 use crate::collections::associates::collect::COMPANIES;
 use crate::collections::meals::collect as collection;
-use crate::discovery::{Scope, known::KnownScopes};
+use crate::discovery::{CollectionRequest, Scope, known::KnownScopes};
 use dispatch_core::collection::browser::{
     Collected, Driver as Drives, Pending, Run,
     attempt::Attempts,
@@ -10,7 +10,9 @@ use dispatch_core::collection::browser::{
     http::{Http, Refusal},
     page::{Page, call},
 };
-use dispatch_core::{Error, Result, db::s, ensure, manifest::registry};
+use dispatch_core::{
+    Error, Result, collection::metrics::Recorder, db::s, ensure, manifest::registry,
+};
 use serde_json::{Value, json};
 use std::{path::Path, time::Duration};
 use tokio::time::{Instant, sleep};
@@ -32,7 +34,7 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Whether `html` is the console's own page, by its title: a sign-in, a verification or a
 /// robot check served in its place has another.
-fn console(html: &str) -> bool {
+pub(crate) fn console(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
     lower
         .split("<title>")
@@ -58,6 +60,40 @@ where
     }
     None
 }
+/// Where the application is, and the origins its tab may open: Amazon's, or only the
+/// stand-in a test points the browser at.
+pub(crate) fn application(fixture: Option<&str>) -> (String, Vec<String>) {
+    let origin = fixture.unwrap_or(ORIGIN).trim_end_matches('/').to_owned();
+    let origins = if fixture.is_some() {
+        vec![origin.clone()]
+    } else {
+        ORIGINS.iter().map(|v| (*v).to_owned()).collect()
+    };
+    (origin, origins)
+}
+/// The application in a browser, as a collection reads it: the browser, the tab it reads
+/// in and the origins that tab may open. A job's driver lends its own (`Driver::tab`); a
+/// browser a feature opened outside a job holds one of its own (`routes::Browser`).
+pub(crate) struct Tab<'a> {
+    pub browser: &'a browseros::Session,
+    pub page: &'a mut Page,
+    pub origin: &'a str,
+    pub origins: &'a [String],
+}
+impl Tab<'_> {
+    /// The tab, opened the first time a collection needs one: a session that started from
+    /// the saved one has none until then.
+    pub(crate) async fn ensure_page(&mut self) -> Result<()> {
+        if self.page.id.is_empty() {
+            *self.page = Page::open(self.browser.clone(), self.origin.to_owned()).await?;
+            self.page
+                .allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
+            self.page.size_window().await?;
+            self.page.front_alone().await?;
+        }
+        Ok(())
+    }
+}
 pub struct Driver {
     pub browser: browseros::Session,
     pub(crate) page: Page,
@@ -79,12 +115,7 @@ impl Driver {
         profile: &Path,
         fixture: Option<&str>,
     ) -> Result<Self> {
-        let origin = fixture.unwrap_or(ORIGIN).trim_end_matches('/').to_owned();
-        let origins = if fixture.is_some() {
-            vec![origin.clone()]
-        } else {
-            ORIGINS.iter().map(|v| (*v).to_owned()).collect()
-        };
+        let (origin, origins) = application(fixture);
         Ok(Self {
             page: Page::empty(browser.clone(), origin.clone()),
             browser,
@@ -98,20 +129,24 @@ impl Driver {
             password_submitted: false,
         })
     }
-    async fn open(&mut self) -> Result<()> {
-        self.page = Page::open(self.browser.clone(), self.origin.clone()).await?;
-        self.page
-            .allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
-        self.page.size_window().await?;
-        self.page.front_alone().await
-    }
-    /// The application's tab, opened the first time a collection needs one: a session
-    /// that started from the saved one has none until then.
-    pub(crate) async fn ensure_page(&mut self) -> Result<()> {
-        if self.page.id.is_empty() {
-            self.open().await?;
+    /// Its application, for a collection to read in.
+    pub(crate) fn tab(&mut self) -> Tab<'_> {
+        Tab {
+            browser: &self.browser,
+            page: &mut self.page,
+            origin: &self.origin,
+            origins: &self.origins,
         }
-        Ok(())
+    }
+    pub(crate) async fn ensure_page(&mut self) -> Result<()> {
+        self.tab().ensure_page().await
+    }
+    pub async fn resolve_scope(
+        &mut self,
+        request: &CollectionRequest,
+        metrics: &Recorder,
+    ) -> Result<Scope> {
+        self.tab().resolve_scope(request, metrics).await
     }
     /// Whether the session the profile kept still signs this browser in: it kept
     /// Amazon's cookies, Amazon serves the console page itself rather than sending it to

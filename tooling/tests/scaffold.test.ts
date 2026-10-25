@@ -100,9 +100,13 @@ test('with no flags, a feature is a crate with a switch, a view permission and a
   assert.match(manifest, /use dispatch_core::manifest::\{Feature, feature, optional, perm\};/);
   assert.match(manifest, /switch: optional\("parking", "Parking", &\[\]\),/);
   const order = Number(/perm\("parking.view", "View Parking", (\d+)\)/.exec(manifest)?.[1]);
-  const used = fs
-    .readdirSync('.', { recursive: true, encoding: 'utf8' })
-    .filter((name) => /^(core|collectors|features)\/.*\.rs$/.test(name))
+  // Only the source roots: a build writing to target/ meanwhile would pull names from under a
+  // walk of the whole checkout.
+  const used = ['core', 'collectors', 'features']
+    .flatMap((dir) =>
+      fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }).map((name) => `${dir}/${name}`),
+    )
+    .filter((name) => name.endsWith('.rs'))
     .flatMap((name) => [
       ...fs.readFileSync(name, 'utf8').matchAll(/\bperm\(\s*"[^"]*",\s*"[^"]*",\s*(\d+)/g),
     ])
@@ -1435,7 +1439,7 @@ test('--contract writes a contract crate on core alone, what fulfils it, its exp
     strip('backend/mod.rs', /^pub\(crate\) mod exposed;\n/m);
     strip(
       'feature.rs',
-      /\n\s*\/\/ What it offers[^\n]*\n\s*exposes: &\[dispatch_core::expose!\([\s\S]*?\n\s*\)\],/,
+      /\n\s*\/\/ What it offers[^\n]*\n\s*exposes: &\[\s*dispatch_core::expose!\([\s\S]*?\n\s*\),?\s*\],/,
     );
     strip('README.md', /\n+- \*\*Exposed:\*\*[\s\S]*?(?=\n\n|\n- |\n#|\n?$)/);
   };

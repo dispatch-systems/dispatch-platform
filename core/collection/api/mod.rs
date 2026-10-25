@@ -30,6 +30,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         types::ConnectionStatus,
         types::LastRun,
         types::RuleKind,
+        types::RunCounts,
         types::ScheduleChoice,
         types::ScheduleCollection,
         types::ScheduleOption,

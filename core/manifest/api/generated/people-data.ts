@@ -5,6 +5,7 @@ export const peopleKinds = [
   { id: "timecards", label: "Timecards", unit: "day", icon: CalendarDays },
   { id: "driver_profiles", label: "Roster", unit: null, icon: Contact },
   { id: "routes", label: "Routes", unit: "day", icon: Route },
+  { id: "routes_live", label: "Live routes", unit: "day", icon: Route },
   { id: "meal_breaks", label: "Meal breaks", unit: "day", icon: Utensils },
   { id: "weekly_scorecard", label: "Weekly Scorecard", unit: "week", icon: Award },
   { id: "daily_performance", label: "Daily Performance", unit: "day", icon: CalendarDays },

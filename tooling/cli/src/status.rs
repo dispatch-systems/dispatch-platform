@@ -208,9 +208,8 @@ pub fn print(status: &Status) {
         }
         if let Some(review) = &tree.review {
             notes.push(format!(
-                "review pass {} of {} {}",
+                "review pass {} {}",
                 review.pass,
-                review.of,
                 if review.answered {
                     "answered"
                 } else {

@@ -66,7 +66,8 @@ through Driver Match.
   breaks, under Cortex), each set on Settings' Collectors page behind `timecard.manage`; rules
   of both due together run in one batch. A schedule of `both`, which ran them at once, is
   retired: as a DSP opens, each becomes a rule of each, timed as it was
-  (`retired_schedule_aliases`).
+  (`retired_schedule_aliases`). What each collects, as the Collectors page shows under it, is
+  `frontend/collected.ts` (the `collected` slot).
 - **Live results:** the page follows collections through core's live collection updates, one
   waiting request for every tab, and refreshes only the days and employees a result changed.
 - **Errors** only its screens raise are worded in its API client, which loads with its page;

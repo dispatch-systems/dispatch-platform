@@ -26,6 +26,16 @@ pub struct JobMetrics {
     pub error: Option<String>,
     pub phase: Option<JobPhase>,
     pub detail: Option<String>,
+    /// How the collector read what it collected, for one that reads in more than one way: a
+    /// fixed label of its own. Metrics saved before it have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub method: Option<String>,
+    /// Why the collector read it some other way than its first, for one that falls back: a
+    /// fixed label of its own, kept as `method` is. Metrics saved before it have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub fallback: Option<String>,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub queue_ms: u64,
     #[cfg_attr(feature = "ts", ts(type = "number"))]

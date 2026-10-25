@@ -80,6 +80,7 @@ import { openView, saveRole } from '../../core/shell/frontend/runtime/session.js
 import { getSession } from '../../core/shell/frontend/runtime/endpoints.js';
 import { loadSite } from '../../core/shell/frontend/runtime/site.js';
 import { cancelPrefetches } from '../../core/shell/frontend/runtime/prefetch.js';
+import { verified } from '../../core/shell/frontend/runtime/access-recovery.js';
 function App({ initialSession }: { initialSession: Promise<Session> }) {
   const firstSession = useRef<Promise<Session> | undefined>(initialSession);
   const [pending, startTransition] = useTransition();
@@ -231,6 +232,11 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
     window.addEventListener('hashchange', changed);
     return () => window.removeEventListener('hashchange', changed);
   }, [fail, startTransition]);
+  // The requests waiting on the prompt are refused when it closes unverified, or with the session.
+  const verifying = reauthenticate && Boolean(session);
+  useEffect(() => {
+    if (!verifying) verified(false);
+  }, [verifying]);
   useEffect(() => {
     const verify = () => setReauthenticate(true);
     const required = () => void load();
@@ -440,9 +446,9 @@ function App({ initialSession }: { initialSession: Promise<Session> }) {
             <SecurityPrompt
               security={session.security}
               complete={async () => {
+                verified(true);
                 setReauthenticate(false);
                 await load(true);
-                fail('Verification complete. Retry your action.');
               }}
               signOut={logout}
             />

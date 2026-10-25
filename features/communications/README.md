@@ -22,6 +22,18 @@ unavailable.
   a workspace that hasn't approved them needs updating for it; and `files:read` to download what
   members attach, `files:write` to upload the photos someone at the DSP adds, and `im:read` to
   list the app's direct messages to catch up on.
+- **Settings:** `communications.display` (Message display), each member's own (`.member()`),
+  under `communications.use`, on Settings' Display page under Personal: drawn by its own component,
+  `frontend/display/`, with a preview of the page beside the choices, and saved as they're made.
+  Its values (`MessageDisplay`) are how the page looks to that member, which the page reads with
+  Settings: its text size, line spacing and spacing; the messages across the conversation or in
+  a centred column, bubbles or plain, your team's side, bubbles' shape and width, each message's
+  time or each run's or on hover, photos and your team's names by them; your team's and the
+  employees' colours; the list's width, rows, preview lines, photos and waiting times; the
+  profile beside or over the conversation, its width, its slide, and whether it opens with each
+  conversation; and whether Enter sends. A phone (a touch screen whose shorter side is under
+  500px) has its own of those that apply on one, `phone_<choice>`: no layout, list or profile
+  width, profile beside or kept open, or times on hover; and Enter starts a line there to start.
 
 ## The page
 
@@ -70,9 +82,10 @@ unavailable.
 - **New message** finds whom to write to by name, misspelt or not, and opens their
   conversation, or opens a direct message with them, kept at the top of the list until it holds
   a message. With nothing typed, Message a group comes first.
+- **Display** opens the member's own Message display in Settings, which the page looks as.
 - **Copy chat link** copies the address that opens the app's Messages tab in a workspace where
   Communications works, chosen from a menu with several, for employees to write to the DSP.
-  Neither it nor New message shows without such a workspace.
+  It, Display and New message show only with such a workspace.
 - **Setting Slack up**, for those who also hold `connections.manage`, which connects and updates
   the DSP's workspaces: while the DSP has none, Connect Slack takes the inbox's place; while a
   workspace where Communications is on hasn't approved all it uses (`needsUpdate`), Update

@@ -141,6 +141,25 @@ pub fn skeleton(title: &str, path: &Path) -> Result<&'static [&'static str]> {
     file.write_all(text.join("\n").as_bytes())?;
     Ok(wanted)
 }
+/// The branch of PR `number`, which is its change's name.
+pub fn branch(number: u64, runner: &dyn Runner) -> Result<String> {
+    workspace::text(
+        runner,
+        &[
+            "gh",
+            "pr",
+            "view",
+            &number.to_string(),
+            "--repo",
+            REPOSITORY,
+            "--json",
+            "headRefName",
+            "--jq",
+            ".headRefName",
+        ],
+        None,
+    )
+}
 /// Where a change's PR body is written, its title on the first line.
 pub fn body_file(change: &Change) -> std::path::PathBuf {
     change.scratch().join("pr-body.md")
@@ -200,7 +219,10 @@ pub fn run(
         change.branch(runner)? == name,
         &format!("worktrees/{name} isn't on its branch."),
     )?;
-    change.git(runner, &["push", "-q", "-u", "origin", name])?;
+    change.git(
+        runner,
+        &["push", "-q", "--force-with-lease", "-u", "origin", name],
+    )?;
     if let Some(pr) = change.pull(runner)?.filter(|pr| pr.open()) {
         let number = pr.number.to_string();
         workspace::text(

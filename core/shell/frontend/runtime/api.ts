@@ -1,4 +1,4 @@
-import { recoverAccess } from './access-recovery.js';
+import { asksVerification, recoverAccess, verification } from './access-recovery.js';
 import { performancePolicy } from '../lib/performance-policy.js';
 import { beginBrowserWrite, clearNavigationState } from './browser-update.js';
 import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from 'react';
@@ -79,6 +79,14 @@ const recoveryCodeResponses = new Set([
   '/api/auth/security/authenticator/register/finish',
   '/api/auth/security/recovery-codes',
 ]);
+/** The verification prompt's own requests, which answer it rather than wait on it. */
+const verifyingRequests = new Set([
+  '/api/auth/security/reauthenticate',
+  '/api/auth/security/recover',
+  '/api/auth/security/authenticator/verify',
+  '/api/auth/security/passkeys/verify/start',
+  '/api/auth/security/passkeys/verify/finish',
+]);
 /** What an error code says: core's own, else as the owner that raises it words it. */
 export function errorLabel(code: string): string | undefined {
   return labels[code] ?? errorLabelOf(code);
@@ -98,11 +106,31 @@ export const wordedApi =
       throw worded ? new ApiError(error.code, worded, error.status, error.requestId) : error;
     }
   };
+/** A request refused until the person confirms it's them goes through once they have. */
 export async function api<T>(
   url: string,
   body?: unknown,
   signal?: AbortSignal,
   priority: 'auto' | 'high' | 'low' = 'auto',
+): Promise<T> {
+  try {
+    return await request<T>(url, body, signal, priority);
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      asksVerification(error.code) &&
+      !verifyingRequests.has(url) &&
+      (await verification())
+    )
+      return request<T>(url, body, signal, priority);
+    throw error;
+  }
+}
+async function request<T>(
+  url: string,
+  body: unknown,
+  signal: AbortSignal | undefined,
+  priority: 'auto' | 'high' | 'low',
 ): Promise<T> {
   const finish = body === undefined ? undefined : beginBrowserWrite();
   const requestView = view;

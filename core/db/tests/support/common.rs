@@ -205,6 +205,13 @@ pub fn seeded() -> (tempfile::TempDir, Store) {
     (root, db)
 }
 
+/// Pins the day every clock reads as today, wherever it is, for the whole process, as a test
+/// server's `DISPATCH_FIXTURE_TODAY` does; none unpins it. A test that pins a day unpins it as it
+/// ends.
+pub fn pin_today(day: Option<chrono::NaiveDate>) {
+    crate::foundation::clock::pin(day);
+}
+
 /// The newest audit events the platform (`None`) or one DSP may see.
 pub fn audits(db: &Store, dsp: Option<&str>) -> Result<Value> {
     let mut page = db
@@ -276,11 +283,67 @@ pub fn enable_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()
     Ok(())
 }
 
+/// Switches a DSP's connection to `provider` off, as disabling it leaves it: not connected, at
+/// its next revision.
+pub fn disable_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()> {
+    db.collector(dsp, provider)?.exec(
+        "UPDATE connections SET enabled=0,status='not_connected',revision=revision+1",
+        [],
+    )?;
+    Ok(())
+}
+
 /// Switches a DSP's connection to `provider` on and ready, as a verified sign-in leaves it.
 pub fn ready_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()> {
     db.collector(dsp, provider)?
         .exec("UPDATE connections SET enabled=1,status='ready'", [])?;
     Ok(())
+}
+
+/// Keeps `credentials` for a DSP's connection to `provider`, sealed as a member's save keeps them,
+/// and switches the connection on and ready, as a verified sign-in leaves it: a browser opened
+/// for it signs in with them, in fixture mode as their password says.
+pub fn connect(db: &Store, dsp: &str, provider: Provider, credentials: &Value) -> Result<()> {
+    let area = db.area(dsp, "secrets")?;
+    let key = db::key_file(&area.join("vault.key"))?;
+    let named = format!("{dsp}:{}:2", provider.id());
+    let sealed = crate::foundation::crypto::encrypt(&key, &named, credentials)?;
+    db::write_private(
+        &area.join(format!("{}.enc", provider.id())),
+        sealed.as_bytes(),
+    )?;
+    ready_connection(db, dsp, provider)
+}
+
+/// One read a live reader recorded for a DSP.
+#[derive(Debug)]
+pub struct LiveRead {
+    /// When it began.
+    pub at: i64,
+    /// `kept` or `failed`.
+    pub outcome: String,
+    /// Why it failed, by its error's code.
+    pub code: Option<String>,
+    /// What it counted, kept; null for none.
+    pub counts: Value,
+}
+/// The reads the server's live readers recorded for a DSP, oldest first.
+pub fn live_reads(db: &Store, dsp: &str) -> Result<Vec<LiveRead>> {
+    let reads: Vec<(i64, String, Option<String>, Option<String>)> = db.jobs.query_as(
+        "SELECT at,outcome,code,counts FROM live_reads WHERE dsp_id=? ORDER BY at",
+        [dsp],
+    )?;
+    reads
+        .into_iter()
+        .map(|(at, outcome, code, counts)| {
+            Ok(LiveRead {
+                at,
+                outcome,
+                code,
+                counts: counts.map_or(Ok(Value::Null), |c| serde_json::from_str(&c))?,
+            })
+        })
+        .collect()
 }
 
 /// Sets the revision of a DSP's connection to `provider`, as a credential change does.

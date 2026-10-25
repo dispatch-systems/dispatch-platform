@@ -695,6 +695,195 @@
   letter-spacing: -0.2px;
 }
 
+/* What the chosen collection collects, a card under the panel: its kinds of record and their
+   fields on the left, two to a row; what a run reads and does on the right. */
+.collected {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  overflow: hidden;
+}
+.collected-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 56px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.collected-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.collected-from {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.collected-from b {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.collected-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+.collected-records {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+}
+.collected-records.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.collected-group {
+  min-width: 0;
+  padding: 18px 24px 20px;
+}
+.collected-group:nth-child(2n) {
+  border-left: 1px solid var(--border);
+}
+.collected-group:nth-child(n + 3) {
+  border-top: 1px solid var(--border);
+}
+.collected-group header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.collected-group h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.collected-group header > span:last-child {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.collected-tile {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.collected-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.collected-records.is-single ul {
+  columns: 2;
+  column-gap: 40px;
+}
+.collected-group li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+  break-inside: avoid;
+}
+.collected-group li > svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.collected-group li > span {
+  white-space: nowrap;
+}
+.collected-group li > .collected-personal {
+  margin-left: -4px;
+  color: var(--warning);
+}
+.collected-group li em {
+  margin-left: auto;
+  padding-left: 12px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collected-about {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  margin: 0;
+  padding: 18px 24px 20px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.collected-about dt {
+  margin-bottom: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.collected-about dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.collected-about dd + dd {
+  margin-top: 8px;
+}
+.collected-about dd small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 400;
+}
+.collected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.collected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* Read but not kept. */
+.collected-chip.is-dropped {
+  border-style: dashed;
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+/* Someone's own: their contact, place or likeness. */
+.collected-chip.is-personal {
+  border-color: var(--warning-border);
+  background: var(--warning-surface);
+}
+.collected-chip.is-personal svg {
+  color: var(--warning);
+}
+
 @media (max-width: 960px) {
   .collectors {
     grid-template-columns: minmax(0, 1fr);
@@ -705,6 +894,13 @@
   }
   .collectors-preview {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .collected-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .collected-about {
+    border-top: 1px solid var(--border);
+    border-left: 0;
   }
 }
 @media (max-width: 640px) {
@@ -720,5 +916,17 @@
   .collectors-stat {
     padding-left: 0;
     border-left: 0;
+  }
+  .collected-records {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .collected-records.is-single ul {
+    columns: 1;
+  }
+  .collected-group:nth-child(n) {
+    border-left: 0;
+  }
+  .collected-group + .collected-group {
+    border-top: 1px solid var(--border);
   }
 }

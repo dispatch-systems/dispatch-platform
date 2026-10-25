@@ -41,7 +41,8 @@
       [2, "scorecard_kind", "ebd9416e6f0716d4"],
       [3, "routes_kind", "de8b5fe1fb72270b"],
       [4, "dvic_kind", "311993998eedd13c"],
-      [5, "open_kinds", "13830dde50ae8243"]
+      [5, "open_kinds", "13830dde50ae8243"],
+      [6, "live_reads", "df1f39254c9fffb2"]
     ]
   },
   {
@@ -135,7 +136,20 @@
     "migrations": [
       [1, "baseline", "2c060a3b390b65b7"],
       [2, "details", "code"],
-      [3, "task_keys", "0e69273e130b765a"]
+      [3, "task_keys", "0e69273e130b765a"],
+      [4, "driver_day_index", "cbeed9e551fb3d02"],
+      [5, "package_flags_index", "79f9584ee1e26762"],
+      [6, "work_phones", "12c86b4f236e45e1"],
+      [7, "staged_shared_rows", "aed480da151df28c"],
+      [8, "drop_tasks_driver_day", "fc6e66099be72ce1"]
+    ]
+  },
+  {
+    "name": "routelive",
+    "user_version": 1,
+    "cache_size": -8192,
+    "migrations": [
+      [1, "baseline", "22c1a8563eb030a9"]
     ]
   },
   {

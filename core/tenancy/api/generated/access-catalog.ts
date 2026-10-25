@@ -15,7 +15,8 @@ export const pages = [
   "team",
   "settings",
   "slack",
-  "vans"
+  "vans",
+  "live_route_data"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -44,6 +45,7 @@ export const features = [
   "settings",
   "slack",
   "vans",
+  "live_route_data",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -215,6 +217,17 @@ export const featureCatalog = [
     "kind": "page"
   },
   {
+    "id": "live_route_data",
+    "label": "Live Route Data",
+    "permissions": [
+      "live_route_data.manage"
+    ],
+    "requires": [
+      "routes"
+    ],
+    "kind": "page"
+  },
+  {
     "id": "timecard.daily",
     "label": "Timecard",
     "permissions": [],
@@ -317,7 +330,8 @@ export const permissions = [
   "daily_performance.manage",
   "documents.use",
   "slack.manage",
-  "vans.collect"
+  "vans.collect",
+  "live_route_data.manage"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
@@ -332,6 +346,7 @@ export const permissionLabels = {
   "dvic.collect": "Collect DVIC",
   "dvic.manage": "Manage DVIC",
   "dvic.view": "View DVIC",
+  "live_route_data.manage": "Manage Live Route Data",
   "members.invite": "Invite Members",
   "members.manage": "Manage Members",
   "roles.manage": "Manage Roles",
@@ -433,6 +448,12 @@ export const permissionGroups = [
     "Vans",
     [
       "vans.collect"
+    ]
+  ],
+  [
+    "Live Route Data",
+    [
+      "live_route_data.manage"
     ]
   ],
   [

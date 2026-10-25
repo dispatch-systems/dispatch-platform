@@ -53,6 +53,7 @@ export const feature: FrontendFeature = {
   ],
   movedToSettings: { 'paycom-settings': 'timecard' },
   platformSlots: () => import('./platform-slots.js'),
+  collected: () => import('./collected.js'),
   replies: () => import('../api/runtime.js'),
   scheduleIssues: {
     schedule_scope_required: 'Run an initial Meal Break collection to set up the DSP’s station.',

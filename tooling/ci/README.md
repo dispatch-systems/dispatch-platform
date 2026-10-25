@@ -59,30 +59,39 @@ through a cache keyed by their exact inputs and the compiler's fingerprint.
 API tests, one at a time, a line each. Each run builds in a folder of its own under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
 and package it made for the browser tests (`--keep` keeps them), so worktrees hold no test
-builds and several can test at once. Its commands run in a systemd scope with a low CPU
-weight, a soft memory ceiling and a high out-of-memory score, so Dev keeps priority.
+builds and several can test at once. Its commands, like `check`'s and `verify`'s, run in
+systemd scopes of one slice, `app-dispatchdev.slice`, which shares a low CPU weight and a
+memory ceiling between them, so Dev keeps priority. They are the first the out-of-memory killer
+ends, before the agents' sessions, and stop when the session that started them ends.
 `dispatchdev test --owner <owner>` runs one owner's tests of every kind the same way, as
 `tooling/testing/owner-tests.ts` lists them, with the debug package for its browser tests;
 `--only` keeps one kind and `--file` one file. `dispatchdev verify <feature>` looks at a feature
 in progress, committed or not: `generate --check`, what a generator left to write, the rules,
 TypeScript, the changed files' format and lint, then its own tests as `test --owner` runs them.
-`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks and
-clippy the same way. A clippy pass is kept, in the repository's shared Git folder, for the
-Rust inputs it ran on, so clippy passes again without running until one of them changes, and
-a whole pass is kept for the committed tree it ran on, so the same tree passes again at once;
-`--plan` only names them.
-`dispatchdev ci <name>` runs the same checks earlier, on a change's committed branch while its
-preview is tried, so the queue run is rarely the first to fail. It runs `dispatchdev check`
-first, then pushes the branch and starts
-`checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed so it
-reports no `platform` check on the PR's head, is skipped. It follows the run every 10 seconds
-and stops at the first failed job; a newer run of the branch replaces it.
+`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks
+(`npm run check:rules`, everything a push can fail on without a build), the TypeScript linter
+and clippy side by side; clippy builds in the checkout's own `target`, so a
+run after a small change takes seconds. A clippy pass is kept, in the repository's shared Git
+folder, for the Rust inputs it ran on, so clippy passes again without running until one of them
+changes, and a whole pass is kept for the committed tree it ran on, so the same tree passes
+again at once; `--plan` only names them.
+`dispatchdev ci <name>` runs the full checks earlier, on a change's committed branch while its
+preview is tried, so the queue run is rarely the first to fail. It pushes the branch at once
+and starts `checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed
+so it reports no `platform` check on the PR's head, is skipped. The rule checks run here beside
+it, and their failure cancels the run. It follows the run every 10 seconds to its end and lists
+every failed job; jobs GitHub stopped itself, past their time limit or on a runner that never
+started, run again once. A newer run of the branch replaces it. `--rerun-failed` runs the failed
+jobs of the head's run again and follows them, for a failure that isn't the change's own.
 `--removability <feature>` starts and follows `removability.yml` the same way, for that
 feature alone, and `verify --removability` does when the branch is pushed as it is, or else
 runs the check in a copy of the checkout, built in a folder of its own.
-`dispatchdev ship <name>` takes a change to Dev: it runs `dispatchdev check`, pushes the branch
-and opens or updates the PR from the scratch folder's `pr-body.md`, whose first line is the
-title. It then reads the PR from GitHub's API every 10 seconds, adds it to the merge queue once
+`dispatchdev ship <name>`, or the PR's number, takes a change to Dev. It checks what takes
+seconds first: the PR's body in the scratch folder's `pr-body.md`, whose first line is the
+title, that the branch merges cleanly into `main`, and the push. It then runs the rule checks,
+unless the checks on GitHub passed on that very commit, since the queue runs every check again,
+and opens or updates the PR. It reads the PR from GitHub's API every 10 seconds, adds it to the
+merge queue once
 its admission check passed and GitHub knows it merges cleanly, and waits until GitHub merges
 it. A newer push is queued in its turn. A head whose branch run failed isn't queued, and a
 branch run still going is cancelled when the PR is, since the queue runs the checks again. It

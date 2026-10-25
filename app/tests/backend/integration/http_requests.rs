@@ -437,6 +437,120 @@ async fn revoked_connection_manager_cannot_persist_a_pending_provider_result() {
     );
 }
 
+/// A live reader never takes over a browser someone else opened for the DSP: a member's, idle
+/// once they signed in, or waiting for them to verify. The read is refused (`connection_busy`),
+/// and the member's browser stays theirs as it was, still verifying.
+#[cfg(feature = "live_route_data")]
+#[tokio::test]
+async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
+    use chrono::Timelike;
+    use dispatch_core::{collection::readers, testing};
+    use dispatch_cortex as cortex;
+    for password in ["fixture-password", "require-verification"] {
+        let server = Server::start().await;
+        let dsp = server.dsp("Northline Logistics").await;
+        // Northline at a station where it's late morning, inside Live Route Data's window since
+        // eight, and the feature switched on.
+        let hour = chrono::Utc::now().hour() as i32;
+        let zone = format!("Etc/GMT{:+}", hour - 11);
+        let setup_dsp = dsp.clone();
+        server
+            .state
+            .run(move |db| {
+                testing::set_dsp(db, &setup_dsp, "Northline Logistics", &zone)?;
+                db.set_profile(
+                    &setup_dsp,
+                    json!({"stationCode":"TST1","abbreviation":"NLL"}),
+                )?;
+                let owner = testing::platform_owner(db);
+                db.set_feature(&setup_dsp, "live_route_data", true, &owner)
+                    .map(drop)
+            })
+            .await
+            .unwrap();
+        let owner = server.member("owner@dispatch.test").await;
+        let credentials = json!({"username":"fixture@example.test","password":password});
+        let save = Call::post("/api/dsp/connections/cortex/save", credentials).who(&owner);
+        let saved = server.send(save).await;
+        assert_eq!(saved.status, 200, "{}", saved.body);
+        let opened = server
+            .state
+            .browsers
+            .get_for(&dsp, cortex::PROVIDER)
+            .unwrap();
+        let verifying = password == "require-verification";
+        assert_eq!(
+            (opened.ready(), opened.challenge()),
+            (!verifying, verifying)
+        );
+
+        // Its window open for hours, the reader reads at once.
+        let (stop, stopping) = tokio::sync::watch::channel(false);
+        let reading = tokio::spawn(readers::start(server.state.clone(), stopping));
+        let started = std::time::Instant::now();
+        let read = loop {
+            let at = dsp.clone();
+            let reads = server
+                .state
+                .read(move |db| testing::live_reads(db, &at))
+                .await
+                .unwrap();
+            if let Some(read) = reads.into_iter().next() {
+                break (read.outcome, read.code);
+            }
+            assert!(started.elapsed().as_secs() < 10, "the reader never read");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        };
+        stop.send_replace(true);
+        reading.await.unwrap().unwrap();
+        assert_eq!(read, ("failed".into(), Some("connection_busy".into())));
+        let kept = server
+            .state
+            .browsers
+            .get_for(&dsp, cortex::PROVIDER)
+            .unwrap();
+        assert_eq!(kept.id, opened.id);
+        assert_eq!(
+            (kept.closed(), kept.ready(), kept.challenge()),
+            (false, !verifying, verifying)
+        );
+        if verifying {
+            let code = json!({"code":"123456"});
+            let verify = Call::post("/api/dsp/connections/cortex/verify", code).who(&owner);
+            let verified = server.send(verify).await;
+            assert_eq!(verified.status, 200, "{}", verified.body);
+            assert_eq!(verified.body["status"], "ready");
+        }
+    }
+}
+
+/// A connection's revision, which what a live reader took from a sign-in is bound to: a new one
+/// once its credentials are replaced, and none while it's disabled.
+#[tokio::test]
+async fn a_connections_revision_moves_on_with_its_credentials_and_is_none_while_disabled() {
+    use dispatch_cortex as cortex;
+    let server = Server::start().await;
+    let dsp = server.dsp("Northline Logistics").await;
+    let owner = server.member("owner@dispatch.test").await;
+    let revision = || {
+        let dsp = dsp.clone();
+        server
+            .state
+            .read(move |db| db.connection_revision(&dsp, cortex::PROVIDER))
+    };
+    let mut revisions = Vec::new();
+    for username in ["first@example.test", "second@example.test"] {
+        let credentials = json!({"username":username,"password":"fixture-password"});
+        let save = Call::post("/api/dsp/connections/cortex/save", credentials).who(&owner);
+        assert_eq!(server.send(save).await.status, 200);
+        revisions.push(revision().await.unwrap().unwrap());
+    }
+    assert!(revisions[1] > revisions[0], "{revisions:?}");
+    let disable = Call::post("/api/dsp/connections/cortex/disable", json!({})).who(&owner);
+    assert_eq!(server.send(disable).await.status, 200);
+    assert_eq!(revision().await.unwrap(), None);
+}
+
 #[cfg(all(feature = "timecard", feature = "team"))]
 #[tokio::test]
 async fn unmatched_paths_and_methods_answer_as_they_always_have() {

@@ -15,6 +15,7 @@ export type { PageReads } from './generated/PageReads';
 
 export type { Collectors } from './generated/Collectors';
 export type { LastRun } from './generated/LastRun';
+export type { RunCounts } from './generated/RunCounts';
 export type { RuleKind } from './generated/RuleKind';
 export type { ScheduleChoice } from './generated/ScheduleChoice';
 export type { ScheduleOption } from './generated/ScheduleOption';

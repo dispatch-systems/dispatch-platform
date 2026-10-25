@@ -80,13 +80,41 @@ test('an owner connects Slack from Communications, answers a member as they writ
 
   // Who it's with, above, opens their profile over the conversation, and Escape closes it, back
   // to where it opened; their photo by their messages opens it too, its X closes it, back to that
-  // photo, and a press elsewhere closes it.
+  // photo, and a press elsewhere closes it. Closed, it slides away and is gone: looked for hidden
+  // too, as it is while it slides.
   const opensProfile = conversation.getByRole('button', { name: /^Jordan Ellis/ });
   await opensProfile.first().click();
-  const profile = page.getByRole('dialog', { name: 'Jordan Ellis' });
+  const profile = page.getByRole('dialog', { name: 'Jordan Ellis', includeHidden: true });
   await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
   await expect(profile).toContainText('jordan.ellis@example.com');
   await expect(profile).toContainText('Operations');
+  await page.keyboard.press('Escape');
+  await expect(profile).toHaveCount(0);
+  await expect(opensProfile.first()).toBeFocused();
+  // Opened again while it slides away, held there mid-slide, its X takes focus again, and
+  // let go, Escape closes it.
+  await page.keyboard.press('Enter');
+  await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    for (const sliding of document.getAnimations()) sliding.pause();
+  });
+  await page.keyboard.press('Enter');
+  await expect(profile.getByRole('button', { name: 'Close' })).toBeFocused();
+  await page.evaluate(() => {
+    for (const sliding of document.getAnimations()) sliding.play();
+  });
+  await page.keyboard.press('Escape');
+  await expect(profile).toHaveCount(0);
+  await expect(opensProfile.first()).toBeFocused();
+  // Closed before its slide in has moved, held there at the edge, it's gone all the same.
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    for (const sliding of document.getAnimations()) {
+      sliding.pause();
+      sliding.currentTime = 0;
+    }
+  });
   await page.keyboard.press('Escape');
   await expect(profile).toHaveCount(0);
   await expect(opensProfile.first()).toBeFocused();
@@ -313,4 +341,258 @@ test('an owner messages a group from New message, its answers come back together
   // Done marks everything waiting under it done.
   await group.getByRole('button', { name: 'Done' }).click();
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
+});
+
+test('Display opens the member’s own Message display, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation, beside the list in a 1024px window', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+  const written = await fromSlack(
+    dispatch,
+    '/slack/events',
+    event('T0FIXTURE2', {
+      type: 'message',
+      channel_type: 'im',
+      channel: 'D0FIXCASEY',
+      user: 'U0FIXCASEY',
+      text: 'Can I swap Saturday?',
+      ts: (Date.now() / 1000).toFixed(6),
+    }),
+  );
+  expect(written.status).toBe(200);
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Communications' }).click();
+  await page.getByRole('button', { name: 'Display' }).click();
+  await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
+  // Saved as it's changed, the member's own.
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await page.getByRole('switch', { name: 'Enter sends' }).uncheck();
+  await saved;
+
+  await page.goBack();
+  const casey = page.getByRole('region', { name: 'Casey Rivera' });
+  const box = casey.getByLabel('Message');
+  await box.fill('Yes');
+  await box.press('Enter');
+  await box.pressSequentially('Cam takes Sunday');
+  await expect(box).toHaveValue('Yes\nCam takes Sunday');
+  await box.press('Control+Enter');
+  await expect(box).toHaveValue('');
+  await expect(casey.getByText('Cam takes Sunday')).toBeVisible();
+
+  // Kept open, a conversation's profile opens with it, though Settings is read after it opens.
+  await page.getByRole('button', { name: 'Display' }).click();
+  const kept = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await page.getByRole('switch', { name: 'Keep profile open' }).check();
+  await kept;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/dsp/settings', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goBack();
+  await page.reload();
+  await expect(box).toBeVisible();
+  const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
+  await expect(profile).toHaveCount(0);
+  release();
+  await expect(profile).toBeVisible();
+
+  // A 1024px window, the app's sidebar beside the page, still has the list beside the
+  // conversation.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByRole('region', { name: 'Conversations' })).toBeVisible();
+  await expect(box).toBeVisible();
+});
+
+test('on a wide screen a bubble is as wide as chosen, plain lines stay readable, and large text widens the list and the profile, as Settings shows it, docking the profile only with room for the conversation', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+  const long =
+    'The gate code at Riverside changed again this morning and the leasing office said they would text the new one, but nobody has it yet, so stops 40 through 58 may be late unless someone calls them before ten';
+  const written = await fromSlack(
+    dispatch,
+    '/slack/events',
+    event('T0FIXTURE2', {
+      type: 'message',
+      channel_type: 'im',
+      channel: 'D0FIXCASEY',
+      user: 'U0FIXCASEY',
+      text: long,
+      ts: (Date.now() / 1000).toFixed(6),
+    }),
+  );
+  expect(written.status).toBe(200);
+  // Changes to the owner's own Message display, as Settings saves them, which the page draws once
+  // it's read them again (`drawn`).
+  const look = page.locator('.communications');
+  const display = async (values: Record<string, unknown>, drawn: RegExp) => {
+    const { revision } = (await owner.read('/api/dsp/settings')).sections.find(
+      (each: { id: string }) => each.id === 'communications.display',
+    );
+    const saved = await owner.post('/api/dsp/settings/communications.display', {
+      values,
+      revision,
+    });
+    expect(saved.status, saved.body).toBe(200);
+    await page.reload();
+    await expect(look).toHaveAttribute('style', drawn);
+  };
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await login(page);
+  await page.goto(`/#dsp/${north.id}/communications`);
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await list.getByRole('button', { name: /^Casey Rivera/ }).click();
+  const casey = page.getByRole('region', { name: 'Casey Rivera' });
+  const bubble = casey.getByText(long);
+  const width = async () => (await bubble.boundingBox())!.width;
+  const usual = await width();
+  await display({ bubble_width: 90 }, /--bubble-width: 90%/);
+  expect(await width()).toBeGreaterThan(usual);
+  await display({ bubble_width: 50 }, /--bubble-width: 50%/);
+  expect(await width()).toBeLessThan(usual);
+  await display({ bubble_width: 70, style: 'plain' }, /--bubble-width: 70%/);
+  await expect(look).toHaveAttribute('data-style', 'plain');
+  expect(await width()).toBeLessThanOrEqual(usual + 1);
+
+  // At 14px the profile is a column of its own beside the conversation; at 20px the list and the
+  // profile grow with the text, and the profile goes over the conversation, which keeps its room.
+  const profile = page.getByRole('dialog', { name: 'Casey Rivera' });
+  const opened = async () => {
+    await casey
+      .locator('.thread-head')
+      .getByRole('button', { name: /^Casey Rivera/ })
+      .click();
+    await expect(profile).toBeVisible();
+    // Once it, and the conversation making room for it, have slid.
+    await profile.evaluate((panel) =>
+      Promise.all(
+        [panel, panel.closest('.pane-thread')!]
+          .flatMap((each) => each.getAnimations())
+          .map((each) => each.finished),
+      ),
+    );
+    const thread = (await casey.locator('.thread').boundingBox())!;
+    const panel = (await profile.boundingBox())!;
+    return { beside: thread.x + thread.width <= panel.x + 1, width: panel.width };
+  };
+  await display({ style: 'bubbles' }, /--text-size: 14px/);
+  await expect(look).toHaveAttribute('data-style', 'bubbles');
+  const listAt14 = (await list.boundingBox())!.width;
+  const at14 = await opened();
+  expect(at14.beside).toBe(true);
+  await display({ text_size: 20 }, /--text-size: 20px/);
+  expect((await list.boundingBox())!.width).toBeGreaterThan(listAt14);
+  const at20 = await opened();
+  expect(at20.beside).toBe(false);
+  expect(at20.width).toBeGreaterThan(at14.width);
+
+  // Settings shows the profile's width as drawn, and saves the width it's chosen as at 14px.
+  await page.getByRole('button', { name: 'Display' }).click();
+  const drawn = `${Math.round(at20.width)} px`;
+  const profileWidth = page.getByRole('slider', { name: 'Width', exact: true });
+  await expect(profileWidth).toHaveAttribute('aria-valuetext', drawn);
+  await expect(page.getByText(drawn, { exact: true })).toBeVisible();
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+  );
+  await profileWidth.fill('400');
+  await saved;
+  const { values } = (await owner.read('/api/dsp/settings')).sections.find(
+    (each: { id: string }) => each.id === 'communications.display',
+  );
+  expect(values.profile_width).toBe(400);
+});
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('Communications draws by the phone’s own Message display, where Return starts a new line, Send sends, its text size is the phone’s alone, and its header keeps a line each', async ({
+    page,
+    dispatch,
+  }) => {
+    const owner = await dispatch.client();
+    const north = (owner.session.dsps as { id: string; name: string }[]).find(
+      (dsp) => dsp.name === 'Northline Logistics',
+    )!;
+    await owner.select(north.id);
+    expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
+    const written = await fromSlack(
+      dispatch,
+      '/slack/events',
+      event('T0FIXTURE2', {
+        type: 'message',
+        channel_type: 'im',
+        channel: 'D0FIXCASEY',
+        user: 'U0FIXCASEY',
+        text: 'Can I swap Saturday?',
+        ts: (Date.now() / 1000).toFixed(6),
+      }),
+    );
+    expect(written.status).toBe(200);
+
+    await login(page);
+    await page.goto(`/#dsp/${north.id}/communications`);
+    await page.getByRole('button', { name: 'Display' }).click();
+    // A phone's own, to start.
+    await expect(page.getByRole('radio', { name: 'Phone' })).toBeChecked();
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/dsp/settings/communications.display') && response.ok(),
+    );
+    await page.getByRole('slider', { name: 'Text size' }).fill('20');
+    await saved;
+
+    await page.goBack();
+    await page
+      .getByRole('region', { name: 'Conversations' })
+      .getByRole('button', { name: /^Casey Rivera/ })
+      .click();
+    const casey = page.getByRole('region', { name: 'Casey Rivera' });
+    const asked = casey.getByText('Can I swap Saturday?');
+    await expect(asked).toHaveCSS('font-size', '20px');
+    // Its header keeps a line each at that size: what they do and where, and Done, its mark alone.
+    const about = await casey.locator('.thread-head .who small').evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      size: parseFloat(getComputedStyle(element).fontSize),
+    }));
+    expect(about.height).toBeLessThan(about.size * 2);
+    expect(await casey.getByRole('button', { name: 'Done' }).innerText()).toBe('');
+    const box = casey.getByLabel('Message');
+    await box.fill('Yes');
+    await box.press('Enter');
+    await box.pressSequentially('Cam takes Sunday');
+    await expect(box).toHaveValue('Yes\nCam takes Sunday');
+    await casey.getByRole('button', { name: 'Send' }).click();
+    await expect(box).toHaveValue('');
+    await expect(casey.getByText('Cam takes Sunday')).toBeVisible();
+
+    // The same member on a desktop's screen keeps the desktop's text size.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(asked).toHaveCSS('font-size', '14px');
+  });
 });

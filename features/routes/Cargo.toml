@@ -37,3 +37,7 @@ tempfile = { workspace = true }
 [[test]]
 name = "routes"
 path = "tests/backend/integration/routes.rs"
+
+[[test]]
+name = "live_route_data"
+path = "tests/backend/integration/live_route_data.rs"

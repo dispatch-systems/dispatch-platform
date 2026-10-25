@@ -3125,30 +3125,44 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
 }
 
 #[tokio::test]
-async fn handing_out_a_key_or_app_asks_for_recent_verification_as_removing_a_dsp_does() {
+async fn only_disabling_removing_or_restoring_a_dsp_asks_the_owner_to_verify_again() {
     let server = Server::paired().await;
     let earlier = server.signed_in(db::now() - DAY).await;
-    let owner = server.owner().await;
     let north = server.dsp("Northline Logistics").await;
     let key = |name: &str| json!({"name":name,"allDsps":true,"dsps":[],"access":"read","allTools":true,"tools":{},"expiresAt":null});
+    let request = server
+        .requested(CLAUDE_CODE, "http://localhost:50022/callback")
+        .await;
+    // A day after signing in, the owner still makes and changes a key, approves an app and
+    // enables a DSP, though enabling shares its route with disabling.
     let made = server
-        .as_owner(&owner, "POST", "/api/platform/agents/keys", key("Desk"))
+        .as_owner(&earlier, "POST", "/api/platform/agents/keys", key("Desk"))
         .await;
     assert_eq!(made.status, 200, "{}", made.body);
     let id = s(&made.body["key"], "id").to_owned();
-    let local = "http://localhost:50022/callback";
-    let request = server.requested(CLAUDE_CODE, local).await;
-    // A day after signing in, the owner neither makes nor changes a key, nor approves an
-    // app: each hands out a credential that outlives the session, as removing a DSP and
-    // the account's own security ask.
     for (path, body) in [
-        ("/api/platform/agents/keys".to_owned(), key("Another")),
         (format!("/api/platform/agents/keys/{id}"), key("Desk")),
         (
             format!("/api/platform/oauth/requests/{request}/approve"),
             everything("Laptop"),
         ),
+        (
+            format!("/api/platform/dsps/{north}/status"),
+            json!({"status":"active"}),
+        ),
+    ] {
+        let answer = server.as_owner(&earlier, "POST", &path, body).await;
+        assert_eq!(answer.status, 200, "{path}: {}", answer.body);
+    }
+    // Disabling, removing or restoring a DSP waits until they verify, as the account's own
+    // security does.
+    for (path, body) in [
+        (
+            format!("/api/platform/dsps/{north}/status"),
+            json!({"status":"suspended"}),
+        ),
         (format!("/api/platform/dsps/{north}/remove"), json!({})),
+        (format!("/api/platform/dsps/{north}/restore"), json!({})),
         (
             "/api/auth/security/authenticator/register/start".to_owned(),
             json!({}),
@@ -3161,20 +3175,6 @@ async fn handing_out_a_key_or_app_asks_for_recent_verification_as_removing_a_dsp
             "{path}"
         );
     }
-    // Refused, the request still waits for the owner; and a key is still revoked at once.
-    let code = server
-        .approved(&owner, &request, everything("Laptop"))
-        .await;
-    assert_eq!(server.exchange(CLAUDE_CODE, local, &code).await.status, 200);
-    let revoked = server
-        .as_owner(
-            &earlier,
-            "POST",
-            &format!("/api/platform/agents/keys/{id}/revoke"),
-            json!({}),
-        )
-        .await;
-    assert_eq!(revoked.status, 200, "{}", revoked.body);
 }
 
 #[tokio::test]

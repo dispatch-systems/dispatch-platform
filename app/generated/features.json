@@ -61,7 +61,9 @@
       ],
       "exposes": [],
       "env": [],
-      "settings": []
+      "settings": [
+        "communications.display"
+      ]
     },
     "switch": "communications",
     "mandatory": false,
@@ -549,6 +551,45 @@
     "tables": {},
     "subfeatures": []
   },
+  "live_route_data": {
+    "collectors": [],
+    "depends_on": [
+      "cortex",
+      "routes"
+    ],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "live_route_data.manage"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "integrations": [],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [],
+      "exposes": [],
+      "env": [],
+      "settings": [
+        "live_route_data.collection"
+      ]
+    },
+    "switch": "live_route_data",
+    "mandatory": false,
+    "tables": {},
+    "subfeatures": []
+  },
   "routes": {
     "collectors": [
       "cortex"
@@ -571,6 +612,32 @@
         {
           "id": 3,
           "name": "task_keys"
+        },
+        {
+          "id": 4,
+          "name": "driver_day_index"
+        },
+        {
+          "id": 5,
+          "name": "package_flags_index"
+        },
+        {
+          "id": 6,
+          "name": "work_phones"
+        },
+        {
+          "id": 7,
+          "name": "staged_shared_rows"
+        },
+        {
+          "id": 8,
+          "name": "drop_tasks_driver_day"
+        }
+      ],
+      "routelive": [
+        {
+          "id": 1,
+          "name": "baseline"
         }
       ]
     },
@@ -603,7 +670,8 @@
       ],
       "on": [],
       "people": [
-        "routes"
+        "routes",
+        "routes_live"
       ],
       "routes": [
         "GET /api/dsp/routes/days",
@@ -620,6 +688,11 @@
           "name": "driver_routes",
           "contract": "dispatch_routes_contract::DriverRoutes",
           "about": "Each driver's routes day by day, with their stops and packages, and the days collected."
+        },
+        {
+          "name": "live_route_data",
+          "contract": "dispatch_routes_contract::LiveRouteData",
+          "about": "Today's routes as live route data last read them, and the work phone each driver holds now."
         }
       ],
       "env": [],
@@ -641,9 +714,27 @@
         "route_retention",
         "routedata_schema",
         "routes",
+        "staged_addresses",
+        "staged_drivers",
         "stops",
         "tasks",
-        "unknown_stops"
+        "unknown_stops",
+        "work_phones"
+      ],
+      "routelive": [
+        "addresses",
+        "breaks",
+        "driver_days",
+        "drivers",
+        "itineraries",
+        "route_publications",
+        "route_raw",
+        "routes",
+        "stops",
+        "tasks",
+        "unknown_stops",
+        "work_phones",
+        "work_phones_shown"
       ]
     },
     "subfeatures": []

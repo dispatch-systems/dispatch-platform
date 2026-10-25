@@ -403,7 +403,7 @@ fn jobs_from_before_kinds_were_open_keep_their_rows_through_the_rebuild() {
         .unwrap();
     let db = Db::create(&file, Kind::JOBS, "").unwrap();
     assert_eq!(dump(&db), recorded(Kind::JOBS));
-    assert_eq!(ids(&db), vec![1, 2, 3, 4, 5]);
+    assert_eq!(ids(&db), (1..=6).collect::<Vec<i64>>());
     assert_eq!(
         db.all("SELECT id,kind FROM jobs", []).unwrap(),
         vec![json!({"id":"job_1","kind":"cortex.dvic.collect"})]

@@ -121,23 +121,66 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim()
         .to_owned())
 }
-/// Whether this user can run a command in a systemd scope of its own, as on this machine; CI's
-/// runners can't.
+/// `runner`, with a `gh` call GitHub answered with a passing server error, HTTP 502, 503 or 504,
+/// made again up to twice, `pause` five seconds before each.
+pub struct Retried<'a> {
+    pub runner: &'a dyn Runner,
+    pub pause: &'a dyn Fn(u64),
+}
+impl Runner for Retried<'_> {
+    fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
+        let mut tries = 0;
+        loop {
+            match self.runner.command(args, cwd, timeout) {
+                Err(error)
+                    if args.first() == Some(&"gh")
+                        && tries < 2
+                        && ["HTTP 502", "HTTP 503", "HTTP 504"]
+                            .iter()
+                            .any(|code| error.to_string().contains(code)) =>
+                {
+                    tries += 1;
+                    (self.pause)(5);
+                }
+                answer => return answer,
+            }
+        }
+    }
+}
+/// The slice every command `logged` runs goes in, from every worktree at once. Between them they
+/// have a low CPU weight and one memory ceiling: at `MemoryMax` they swap, and past the swap
+/// they may use, the kernel ends one of them, never anything outside.
+const SLICE: &str = "app-dispatchdev.slice";
+const CEILINGS: [&str; 3] = ["CPUWeight=20", "MemoryMax=4G", "MemorySwapMax=2G"];
+/// Whether this user's service manager runs commands in scopes of their own, as on this
+/// machine, answered by setting `SLICE`'s ceilings until the next boot; CI's runners have none.
 fn scopes() -> bool {
     static SCOPES: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *SCOPES.get_or_init(|| {
-        Command::new("systemd-run")
-            .args(["--user", "--scope", "--quiet", "--collect", "true"])
+        Command::new("systemctl")
+            .args(["--user", "set-property", "--runtime", SLICE])
+            .args(CEILINGS)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .is_ok_and(|status| status.success())
     })
 }
+/// The unit of this user's service manager running the process whose `/proc/<pid>/cgroup` reads
+/// `cgroup`, such as an agent's session; none for a login's, which the system's manager runs.
+fn unit_of(cgroup: &str) -> Option<&str> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    let mut parts = path.split('/');
+    parts.find(|part| part.starts_with("user@") && part.ends_with(".service"))?;
+    parts
+        .next_back()
+        .filter(|unit| unit.ends_with(".scope") || unit.ends_with(".service"))
+}
 /// Runs `command` through the shell in `cwd` with `env` added, its output going to `log`, and
-/// answers whether it passed and how long it took. It runs below Dev: in a scope with a low CPU
-/// weight and a soft memory ceiling, and first in line for the out-of-memory killer after the
-/// previews, so tests running side by side never starve Dev.
+/// answers whether it passed and how long it took. It runs below Dev, in a scope of `SLICE`, and
+/// first in line for the out-of-memory killer, ahead of the agents' sessions and the previews:
+/// a command that fails can run again. The scope is bound to the unit running this, so an agent's
+/// session that ends, even one killed for memory, ends the commands it started.
 pub fn logged(
     command: &str,
     cwd: &Path,
@@ -157,16 +200,19 @@ pub fn logged(
             "--scope",
             "--quiet",
             "--collect",
-            "-p",
-            "CPUWeight=20",
-            "-p",
-            "MemoryHigh=3G",
-            "--",
-            "choom",
-            "-n",
-            "300",
-            "--",
+            "--slice",
+            SLICE,
         ]);
+        let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+        if let Some(unit) = unit_of(&cgroup) {
+            process.args([
+                "-p",
+                &format!("BindsTo={unit}"),
+                "-p",
+                &format!("After={unit}"),
+            ]);
+        }
+        process.args(["--", "choom", "-n", "900", "--"]);
         process
     } else {
         let mut process = Command::new("nice");
@@ -252,6 +298,50 @@ pub fn quote(arg: &str) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn a_passing_server_error_from_github_is_tried_again_twice() {
+        /// Fails each command with `error` its first `fails` times.
+        struct Flaky {
+            error: &'static str,
+            fails: u32,
+            calls: std::cell::Cell<u32>,
+        }
+        impl Runner for Flaky {
+            fn command(&self, _: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                self.calls.set(self.calls.get() + 1);
+                if self.calls.get() <= self.fails {
+                    return Err(self.error.into());
+                }
+                Ok(b"done".to_vec())
+            }
+        }
+        let flaky = |error, fails| Flaky {
+            error,
+            fails,
+            calls: std::cell::Cell::new(0),
+        };
+        let paused = std::cell::Cell::new(0);
+        let pause = |seconds| paused.set(paused.get() + seconds);
+        let call = |runner: &Flaky, args: &[&str]| {
+            Retried {
+                runner,
+                pause: &pause,
+            }
+            .command(args, None, 60)
+        };
+        let gateway = "gh workflow run failed: HTTP 504: Gateway Timeout";
+        let runner = flaky(gateway, 2);
+        assert_eq!(call(&runner, &["gh", "workflow", "run"]).unwrap(), b"done");
+        assert_eq!((runner.calls.get(), paused.get()), (3, 10));
+        // A third in a row is the answer, and so is any other error, or one from git.
+        assert!(call(&flaky(gateway, 3), &["gh", "workflow", "run"]).is_err());
+        let missing = flaky("gh api failed: HTTP 404: Not Found", 1);
+        assert!(call(&missing, &["gh", "api", "x"]).is_err());
+        assert_eq!(missing.calls.get(), 1);
+        let git = flaky("git push failed: HTTP 503", 1);
+        assert!(call(&git, &["git", "push"]).is_err());
+        assert_eq!(git.calls.get(), 1);
+    }
+    #[test]
     fn names_are_folders_branches_and_units_at_once() {
         for good in ["audit-driver-match", "fix2", "a"] {
             assert!(valid_name(good).is_ok(), "{good}");
@@ -300,6 +390,17 @@ mod tests {
             Workspace { root: root.clone() }.worktrees().unwrap(),
             ["one"]
         );
+    }
+    #[test]
+    fn a_command_is_bound_to_the_unit_of_this_users_manager_running_it() {
+        let uid = 1001;
+        let agent = format!(
+            "0::/user.slice/user-{uid}.slice/user@{uid}.service/app.slice/app-t3code.slice/t3code-claude-d0fa7f0d.scope\n"
+        );
+        assert_eq!(unit_of(&agent), Some("t3code-claude-d0fa7f0d.scope"));
+        // A login's session belongs to the system's manager, which this user's can't bind to.
+        let login = format!("0::/user.slice/user-{uid}.slice/session-3.scope\n");
+        assert_eq!(unit_of(&login), None);
     }
     #[test]
     fn sizes_and_times_read_plainly() {

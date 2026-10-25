@@ -1,9 +1,10 @@
-//! `dispatchdev ship <name>`: a change from its committed worktree to Dev. It runs the check
-//! before a push, opens or updates the PR from the body in the change's scratch folder, adds it
-//! to the merge queue as soon as GitHub admits it, waits until GitHub merges it, removes all
-//! the change made, and waits until Dev runs the merge. Run again after a stop, it picks up
-//! where it stopped: a change whose PR merged with what its worktree holds goes straight to
-//! the clean-up.
+//! `dispatchdev ship <name>`: a change from its committed worktree to Dev. It checks what
+//! takes seconds first: the PR's body in the change's scratch folder, the branch, that it
+//! merges cleanly into main, and the push. Then the rule checks, unless the checks on GitHub
+//! passed on this commit already; it opens or updates the PR, adds it to the merge queue as
+//! soon as GitHub admits it, waits until GitHub merges it, removes all the change made, and
+//! waits until Dev runs the merge. Run again after a stop, it picks up where it stopped: a
+//! change whose PR merged with what its worktree holds goes straight to the clean-up.
 //!
 //! The queue runs the checks on the exact squash commit it will push, so nothing but the
 //! admission check runs on the PR itself. A head that failed the checks `dispatchdev ci` ran on
@@ -61,7 +62,15 @@ pub fn change(
             body.display()
         )
     })?;
-    let title = pr::titled(&text).0.unwrap_or("").to_owned();
+    let (title, rest) = pr::titled(&text);
+    let title = title
+        .ok_or_else(|| {
+            format!(
+                "{} has no title: start it with a line # <title>.",
+                body.display()
+            )
+        })?
+        .to_owned();
     let landed = change
         .pull(runner)?
         .filter(|pr| pr.merged() && pr.head == head);
@@ -71,7 +80,37 @@ pub fn change(
             (pr.number, pr.merge.unwrap_or_default())
         }
         None => {
-            check::before_push(&change.path, runner)?;
+            // What stops it in seconds comes before what takes a minute.
+            pr::check_body(&title, rest)?;
+            require(
+                change.branch(runner)? == name,
+                &format!("worktrees/{name} isn't on its branch."),
+            )?;
+            change.git(runner, &["fetch", "-q", "origin", "main"])?;
+            require(
+                change
+                    .git(
+                        runner,
+                        &["merge-tree", "--write-tree", "origin/main", "HEAD"],
+                    )
+                    .is_ok(),
+                &format!(
+                    "{name} conflicts with main: merge origin/main, commit and ship it again."
+                ),
+            )?;
+            change.git(
+                runner,
+                &["push", "-q", "--force-with-lease", "-u", "origin", name],
+            )?;
+            // The queue runs every check again on the squash commit: here, only the rule
+            // checks, unless the checks on GitHub passed on this very commit.
+            match branch_run(runner, &head) {
+                Some(run) if run["conclusion"] == "success" => say(&format!(
+                    "The checks passed on {} on GitHub already.",
+                    &head[..head.len().min(7)]
+                )),
+                _ => check::rules(&change.path)?,
+            }
             let number = pr::run(ws, name, None, &body, runner)?;
             let queued = Instant::now();
             let merge = run(number, runner, pause, say)?;

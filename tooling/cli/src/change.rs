@@ -151,10 +151,15 @@ impl Change {
             git(&["branch", "-D", name])?;
             done.push("its branch deleted".to_owned());
         }
-        // GitHub deletes a merged PR's branch itself; this catches the rest.
-        if !git(&["ls-remote", "--heads", "origin", name])?.is_empty() {
-            git(&["push", "-q", "origin", "--delete", name])?;
-            done.push("its branch on GitHub deleted".to_owned());
+        // GitHub deletes a merged PR's branch itself; this catches the rest. One GitHub
+        // deleted meanwhile refuses the push, and is gone all the same.
+        let remote = || git(&["ls-remote", "--heads", "origin", name]);
+        if !remote()?.is_empty() {
+            match git(&["push", "-q", "origin", "--delete", name]) {
+                Ok(_) => done.push("its branch on GitHub deleted".to_owned()),
+                Err(_) if remote()?.is_empty() => {}
+                Err(error) => return Err(error),
+            }
         }
         let scratch = self.scratch();
         if scratch.exists() {
@@ -211,5 +216,43 @@ mod tests {
         assert!(pull.open() && pull.merge.is_none());
         assert_eq!(pull.url, "https://github.com/pull/8");
         assert_eq!(change.pull(&GitHub("[]")).unwrap(), None);
+    }
+
+    #[test]
+    fn a_branch_github_deletes_while_it_is_cleaned_up_is_gone_all_the_same() {
+        /// GitHub listing the branch until asked to delete it, then refusing, having deleted
+        /// it itself, or with `kept` still holding it.
+        struct Raced {
+            asked: std::cell::Cell<bool>,
+            kept: bool,
+        }
+        impl Runner for Raced {
+            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                match args {
+                    ["git", "push", ..] => {
+                        self.asked.set(true);
+                        Err("git push -q failed: cannot lock ref 'refs/heads/raced'".into())
+                    }
+                    ["git", "ls-remote", ..] if self.kept || !self.asked.get() => {
+                        Ok(b"1111111\trefs/heads/raced".to_vec())
+                    }
+                    ["git", "rev-parse", ..] => Err("no such branch here".into()),
+                    _ => Ok(vec![]),
+                }
+            }
+        }
+        let ws = Workspace {
+            root: PathBuf::from("/workspace"),
+        };
+        let change = Change::named(&ws, "clean-raced").unwrap();
+        let raced = |kept| Raced {
+            asked: std::cell::Cell::new(false),
+            kept,
+        };
+        assert_eq!(
+            change.clean(&ws, &raced(false)).unwrap(),
+            Vec::<String>::new()
+        );
+        assert!(change.clean(&ws, &raced(true)).is_err());
     }
 }

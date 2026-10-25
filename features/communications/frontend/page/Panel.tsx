@@ -3,14 +3,20 @@ import { X } from 'lucide-react';
 
 // A panel beside what's open, a conversation's profile or a group's people: over it until its X,
 // Escape, or a press anywhere else closes it; or, on a wide page (`docked`), a column of its own
-// beside it, covering nothing, until its X or Escape does. Focus moves to its X as it opens.
+// beside it, covering nothing, until its X or Escape does. Focus moves to its X as it opens, as
+// it does opened again while still sliding away. It slides in, and closed (`leaving`), slides
+// back out, out of reach, before it's `gone`; kept open, as it was first drawn (`still`), it's
+// there at once, and focus stays where it was.
 
 export function Panel({
   id,
   labelledBy,
   className,
   docked,
+  leaving,
+  still,
   close,
+  gone,
   children,
 }: {
   /** Its own ID, which its openers control. */
@@ -19,15 +25,28 @@ export function Panel({
   labelledBy: string;
   className: string;
   docked: boolean;
+  /** Whether it's closed, sliding away. */
+  leaving: boolean;
+  /** Whether it was kept open as it was first drawn, and hasn't been opened or closed since. */
+  still: boolean;
   /** Closes it: `refocus`, focus goes back to what opened it. */
   close: (refocus: boolean) => void;
+  /** Says it has slid away. */
+  gone: () => void;
   children: ReactNode;
 }) {
   const panel = useRef<HTMLElement>(null);
   const closer = useRef<HTMLButtonElement>(null);
-  useEffect(() => closer.current?.focus(), []);
   useEffect(() => {
-    if (docked) return;
+    if (!leaving && !still) closer.current?.focus();
+  }, [leaving, still]);
+  // Closed before its slide in has moved, it's still at the edge, with no slide back to wait
+  // for: it's gone at once.
+  useEffect(() => {
+    if (leaving && panel.current?.getAnimations().length === 0) gone();
+  }, [leaving, gone]);
+  useEffect(() => {
+    if (docked || leaving) return;
     // A press on what opens it is that control's own: it closes it.
     const pressed = ({ target }: PointerEvent) => {
       const opener = target instanceof Element && target.closest('[data-opens-profile]');
@@ -35,16 +54,21 @@ export function Panel({
     };
     document.addEventListener('pointerdown', pressed);
     return () => document.removeEventListener('pointerdown', pressed);
-  }, [docked, close]);
+  }, [docked, leaving, close]);
   return (
     <aside
       ref={panel}
       id={id}
-      className={className}
+      className={[className, leaving && 'leaving', still && 'still'].filter(Boolean).join(' ')}
       role="dialog"
       aria-labelledby={labelledBy}
+      inert={leaving}
       onKeyDown={(event) => {
         if (event.key === 'Escape') close(true);
+      }}
+      onTransitionEnd={(event) => {
+        if (leaving && event.target === event.currentTarget && event.propertyName === 'transform')
+          gone();
       }}
     >
       <button

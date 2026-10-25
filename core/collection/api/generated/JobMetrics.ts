@@ -3,7 +3,17 @@ import type { JobOutcome } from "./JobOutcome";
 import type { JobPhase } from "./JobPhase";
 import type { PageReads } from "./PageReads";
 
-export type JobMetrics = { attempt: number, startedAt: string, finishedAt: string | null, outcome: JobOutcome, error: string | null, phase: JobPhase | null, detail: string | null, queueMs: number, elapsedMs: number, authenticationMs: number | null, verificationMs: number | null, collectionMs: number | null, publicationMs: number | null, employees: number | null, timecards: number | null, itineraries: number | null, meals: number | null,
+export type JobMetrics = { attempt: number, startedAt: string, finishedAt: string | null, outcome: JobOutcome, error: string | null, phase: JobPhase | null, detail: string | null,
+/**
+ * How the collector read what it collected, for one that reads in more than one way: a
+ * fixed label of its own. Metrics saved before it have none.
+ */
+method?: string,
+/**
+ * Why the collector read it some other way than its first, for one that falls back: a
+ * fixed label of its own, kept as `method` is. Metrics saved before it have none.
+ */
+fallback?: string, queueMs: number, elapsedMs: number, authenticationMs: number | null, verificationMs: number | null, collectionMs: number | null, publicationMs: number | null, employees: number | null, timecards: number | null, itineraries: number | null, meals: number | null,
 /**
  * Weekly Scorecard rows across every dataset. Metrics saved before scorecards have none.
  */

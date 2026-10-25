@@ -10,7 +10,9 @@ is collected, on demand and by its rules, from Settings' Collectors page.
 - **Permission:** `vans.collect`, to see when the fleet was collected, collect it on demand and
   set when it's collected, on the Collectors page (its keeper's `permission` and `schedules`).
 - **API:** `POST /api/dsp/vans/jobs/{id}/cancel`, behind `vans.collect`. The fleet is
-  collected, and its schedule set, as the `vans` collection on core's Collectors routes.
+  collected, and its schedule set, as the `vans` collection on core's Collectors routes; what it
+  collects, as the Collectors page shows under it, is `frontend/collected.ts` (the `collected`
+  slot).
 - **Collection:** Cortex's `vans` reads the fleet as Amazon's fleet management page lists it,
   `/fleet-management/api/vehicles`, over plain HTTP with the session the job's browser started
   from, which closes once it is copied: every status the list accepts (active, maintenance,

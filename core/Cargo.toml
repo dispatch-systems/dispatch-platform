@@ -24,6 +24,7 @@ axum = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
+flate2 = { workspace = true }
 fs2 = { workspace = true }
 futures-util = { workspace = true }
 getrandom = { workspace = true }
@@ -63,3 +64,9 @@ path = "db/tests/backend/integration/main.rs"
 [[test]]
 name = "settings"
 path = "settings/tests/backend/integration/isolation.rs"
+
+# The live readers over time, under a registry with a stand-in feature that reads and a stand-in
+# collector whose browser it opens: a program holds one registry, so it can't share core's.
+[[test]]
+name = "readers"
+path = "collection/tests/backend/integration/readers.rs"

@@ -103,6 +103,17 @@ pub(crate) fn write(
     people.set(&key(section, member), &record)
 }
 
+/// Deletes `member`'s own records, as their account goes: each of theirs, matched as `Records`
+/// reads them, so one of a section no longer declared goes too.
+pub(crate) fn forget_member(people: &Db, member: &str) -> Result<()> {
+    people.exec(
+        "DELETE FROM settings WHERE key>='section:' AND key<'section;' \
+         AND instr(substr(key,9),':')>0 AND substr(key,-length(?1))=?1",
+        [format!(":{member}")],
+    )?;
+    Ok(())
+}
+
 /// Where a section's record is kept: `section:<id>`, or a member's own `section:<id>:<user>`.
 fn key(section: &Section, member: Option<&str>) -> String {
     match member {

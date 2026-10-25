@@ -16,6 +16,7 @@ use crate::{
         crypto,
     },
     manifest::registry,
+    settings,
     tenancy::api::types::{DspStatus, OwnerStatus},
 };
 use rusqlite::params;
@@ -642,7 +643,7 @@ impl Store {
         })
     }
     // A removed member's account goes with their membership, freeing the email for a fresh
-    // invitation. Their name stays on the activity they left.
+    // invitation, and their own settings with it. Their name stays on the activity they left.
     fn delete_account(&self, dsp: &str, user: &str) -> Result<()> {
         let people = self.dsp(dsp)?;
         if people.one(REMOVABLE_ACCOUNT, [user])?.is_none() {
@@ -650,6 +651,7 @@ impl Store {
         }
         people.exec("DELETE FROM sessions WHERE user_id=?", [user])?;
         people.exec("DELETE FROM resets WHERE user_id=?", [user])?;
+        settings::forget_member(&people, user)?;
         // Every invitation must name an existing sender, so the ones they sent go too.
         people.exec("DELETE FROM invitations WHERE created_by=?", [user])?;
         people.exec("DELETE FROM users WHERE id=?", [user])?;

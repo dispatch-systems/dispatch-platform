@@ -145,6 +145,11 @@ fn custom_build_inputs_and_untracked_external_sources_disable_reuse() {
     )
     .unwrap();
     assert!(eligible(&f.root, &f.env, false).unwrap());
+    // Reached through a link, as the workspace's worktrees are, its path dependencies are
+    // still its own.
+    let linked = f.temp.path().join("linked");
+    std::os::unix::fs::symlink(&f.root, &linked).unwrap();
+    assert!(eligible(&linked, &f.env, false).unwrap());
     // A member outside the fingerprinted roots, or one that escapes them, disables reuse.
     for members in [
         "\"app/backend\", \"elsewhere\"",

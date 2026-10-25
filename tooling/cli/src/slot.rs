@@ -152,9 +152,18 @@ mod tests {
             ]
         );
         assert_eq!(third.path, folder.path().join("1"));
-        // A slot is let go of when it drops, as when its process ends.
+        // A slot is let go of when it drops, as when its process ends. A process another test
+        // starts meanwhile holds a copy of the lock until it runs its command, so the slot can
+        // take a moment to come free.
         drop(first);
-        take("cargo build in four", free, &mut vec![]);
+        let tries = std::cell::Cell::new(0);
+        let pause = |_| {
+            tries.set(tries.get() + 1);
+            assert!(tries.get() < 5000, "a dropped slot is never let go of");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        };
+        let fourth = take("cargo build in four", &pause, &mut vec![]);
+        assert_eq!(fourth.path, folder.path().join("0"));
     }
     #[test]
     fn a_command_a_step_holding_a_slot_started_takes_none_and_nor_does_ci() {

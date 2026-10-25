@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef } from 'react';
+import { Fragment, useContext, useLayoutEffect, useRef } from 'react';
 import { FileText, Users } from 'lucide-react';
 import type { Conversation, Message, MessageFile, Writing } from '../../api/index.js';
 import { fileUrl } from '../../api/client.js';
@@ -6,6 +6,7 @@ import { clock, dayLabel, dayOf, fileStatus, isPhoto, size } from '../format.js'
 import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
+import { Shown } from '../display/display.js';
 import { Face } from './Face.js';
 import { More } from './More.js';
 import type { OpensProfile } from './parts.js';
@@ -13,7 +14,8 @@ import type { OpensProfile } from './parts.js';
 // A conversation's messages, in the order written, under the day each was written: the
 // member's on the left beside their photo, which opens their profile, the DSP's on the right
 // under the name and photo of whoever sent them, and the group one went to, which opens it; and
-// below, those at the DSP writing in it now.
+// below, those at the DSP writing in it now. Each run's time is under it, or each message's, as
+// the member chose (`Shown`); plain, every run is under its writer's name and time instead.
 
 /** Messages one after another from the same writer, within a few minutes, shown together. */
 type Run = { key: string; writer: string; messages: Message[] };
@@ -57,7 +59,7 @@ export function Thread({
   timeZone: string;
   now: number;
   /** What makes the member's photo open their profile. */
-  profile: OpensProfile;
+  profile: Partial<OpensProfile>;
   /** Opens the group a message went to. */
   openGroup: (id: string) => void;
 }) {
@@ -86,6 +88,8 @@ export function Thread({
     };
   };
   const person = conversation.with;
+  const { style, times } = useContext(Shown);
+  const plain = style === 'plain';
   return (
     <div className="thread" ref={scroller} onScroll={scrolled}>
       {more && <More read={readOlder} />}
@@ -117,9 +121,10 @@ export function Thread({
                     </button>
                   )}
                   <div className="stack">
-                    {sender && (
+                    {(sender || plain) && (
                       <div className="sender">
-                        {sender.name}
+                        <span className="sender-name">{sender?.name ?? person.name}</span>
+                        {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
                         {first.group && (
                           <button className="to-group" onClick={() => openGroup(first.group!.id)}>
                             <Users size={11} aria-hidden="true" />
@@ -129,9 +134,20 @@ export function Thread({
                       </div>
                     )}
                     {written.map((message) => (
-                      <Written key={message.id} message={message} />
+                      <Fragment key={message.id}>
+                        <Written message={message} />
+                        {!plain && times === 'each_message' && (
+                          <div className="meta">
+                            <span className="at">{clock(message.at, timeZone)}</span>
+                          </div>
+                        )}
+                      </Fragment>
                     ))}
-                    <div className="meta">{clock(written.at(-1)!.at, timeZone)}</div>
+                    {!plain && times !== 'each_message' && (
+                      <div className="meta">
+                        <span className="at">{clock(written.at(-1)!.at, timeZone)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -142,7 +158,9 @@ export function Thread({
           <div key={writer.userId} className="msg-group out">
             <Face name={writer.name} code={writer.code} photo={writer.photo} size="message" />
             <div className="stack">
-              <div className="sender">{writer.name}</div>
+              <div className="sender">
+                <span className="sender-name">{writer.name}</span>
+              </div>
               <div className="typing" role="status" aria-label={`${writer.firstName} is typing`}>
                 <i />
                 <i />

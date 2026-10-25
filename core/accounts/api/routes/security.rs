@@ -183,14 +183,12 @@ fn sessions(db: &Store, user: &User, _: &Input) -> Result<Reply> {
 
 fn revoke(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
-    db.ensure_recent(user)?;
     db.revoke_session(user, input.param("id"))?;
     Ok(Reply::ok())
 }
 
 fn revoke_others(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
-    db.ensure_recent(user)?;
     db.revoke_other_sessions(user)?;
     db.audit_account(
         &user.user,
@@ -203,7 +201,6 @@ fn revoke_others(db: &Store, user: &User, input: &Input) -> Result<Reply> {
 
 fn revoke_all(db: &Store, user: &User, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
-    db.ensure_recent(user)?;
     let people = db.people(user)?;
     people.transaction(|| {
         people.exec("DELETE FROM sessions WHERE user_id=?", [&user.user.id])?;

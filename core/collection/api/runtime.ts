@@ -31,6 +31,8 @@ const metricsSchema = z.object({
     z.enum(['starting', 'authentication', 'verification', 'collection', 'publication']),
   ),
   detail: z._default(z.nullable(text), null),
+  method: z.optional(text),
+  fallback: z.optional(text),
   queueMs: milliseconds,
   elapsedMs: milliseconds,
   authenticationMs: z.nullable(milliseconds),

@@ -46,6 +46,13 @@ pub struct Counts {
     pub rows: Option<usize>,
 }
 
+/// A label from collector code, when it is a short identifier.
+fn identifier(label: &str) -> Option<String> {
+    let valid = (1..=48).contains(&label.len())
+        && label.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+    valid.then(|| label.to_owned())
+}
+
 /// The journal line for one attempt: outcome and timings, without page reads.
 pub fn summary(metrics: &Metrics) -> Value {
     serde_json::json!({"outcome":metrics.outcome,"detail":metrics.detail,"queueMs":metrics.queue_ms,
@@ -76,6 +83,8 @@ impl Metrics {
             error: None,
             phase: Some(Phase::Starting),
             detail: None,
+            method: None,
+            fallback: None,
             queue_ms: db::now().saturating_sub(available_at).max(0) as u64,
             elapsed_ms: 0,
             authentication_ms: None,
@@ -275,9 +284,16 @@ impl Recorder {
     /// The most recent reason a provider page was not ready. Labels come from
     /// collector code, so anything that is not a short identifier is dropped.
     pub fn detail(&self, label: &str) {
-        let valid = (1..=48).contains(&label.len())
-            && label.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
-        self.0.lock().expect("job metrics").value.detail = valid.then(|| label.to_owned());
+        self.0.lock().expect("job metrics").value.detail = identifier(label);
+    }
+    /// How the collector read what it collected, which a run that succeeds keeps.
+    pub fn method(&self, label: &str) {
+        self.0.lock().expect("job metrics").value.method = identifier(label);
+    }
+    /// Why the collector fell back from its first way of reading, which a run that succeeds
+    /// keeps too.
+    pub fn fallback(&self, label: &str) {
+        self.0.lock().expect("job metrics").value.fallback = identifier(label);
     }
     pub fn counts(&self, counts: Counts) {
         let mut clock = self.0.lock().expect("job metrics");

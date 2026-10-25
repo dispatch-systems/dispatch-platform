@@ -19,6 +19,7 @@ pub const SHARED_PAGES: &[SharedPage] = &[
     shared("general", "Profile", Group::Personal, 10),
     shared("security", "Security", Group::Personal, 20),
     shared("theme", "Theme", Group::Personal, 90),
+    shared("display", "Display", Group::Personal, 95),
     shared("dsp", "DSP profile", Group::Dsp, 10),
     shared("connections", "Connections", Group::Dsp, 30),
     shared("collectors", "Collectors", Group::Dsp, 40),
@@ -43,8 +44,7 @@ pub struct Section {
     /// The page it's on: its feature's own (`Page::Own`), or one of the shared pages.
     pub page: Page,
     /// Who sees and changes it: a permission its feature declares (core's own for core's),
-    /// or `roles::ACCESS` for every member. A write under one that's `.recently_verified()`
-    /// asks for a recent verification.
+    /// or `roles::ACCESS` for every member.
     pub permission: &'static str,
     /// One value for the DSP, or each member's own.
     pub scope: Scope,

@@ -1,6 +1,6 @@
 import { useId, type ReactNode } from 'react';
 import { Clock, Hash, Mail, MapPin, Phone, Route, Truck, type LucideIcon } from 'lucide-react';
-import type { CommunicationsWorkspace, Correspondent } from '../../api/index.js';
+import type { CommunicationsWorkspace, Correspondent, Profile } from '../../api/index.js';
 import { useProfile } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
@@ -22,7 +22,10 @@ export function Profile({
   workspace,
   timeZone,
   docked,
+  leaving,
+  still,
   close,
+  gone,
 }: {
   /** The panel's own ID, which its openers control. */
   id: string;
@@ -33,15 +36,62 @@ export function Profile({
   timeZone: string;
   /** Whether it's a column of its own beside the conversation. */
   docked: boolean;
+  /** Whether it's closed, sliding away. */
+  leaving: boolean;
+  /** Whether it's kept open as the conversation opened, there without sliding in. */
+  still: boolean;
   /** Closes it: `refocus`, focus goes back to what opened it. */
   close: (refocus: boolean) => void;
+  /** Says it has slid away. */
+  gone: () => void;
 }) {
   const { data: profile, error } = useProfile(conversation);
   const title = useId();
+  return (
+    <Panel
+      id={id}
+      labelledBy={title}
+      className="profile"
+      docked={docked}
+      leaving={leaving}
+      still={still}
+      close={close}
+      gone={gone}
+    >
+      <ProfileShown
+        title={title}
+        person={person}
+        profile={profile}
+        error={error}
+        workspace={workspace}
+        timeZone={timeZone}
+      />
+    </Panel>
+  );
+}
+
+/** What the profile shows of `person`: who they are, then what's known of them, as read. */
+export function ProfileShown({
+  title,
+  person,
+  profile,
+  error,
+  workspace,
+  timeZone,
+}: {
+  /** The ID its name goes by, which names the panel. */
+  title: string;
+  person: Correspondent;
+  /** What's known of them, once read, or why it couldn't be. */
+  profile?: Profile;
+  error: string;
+  workspace?: CommunicationsWorkspace;
+  timeZone: string;
+}) {
   const today = profile?.today;
   const role = roleText(person);
   return (
-    <Panel id={id} labelledBy={title} className="profile" docked={docked} close={close}>
+    <>
       <div className="me">
         <Face {...person} size="profile" />
         <div>
@@ -91,7 +141,7 @@ export function Profile({
           ]}
         />
       )}
-    </Panel>
+    </>
   );
 }
 

@@ -71,14 +71,10 @@ pub trait Grant: Copy + Send + Sync + 'static {
 pub struct Public;
 #[derive(Clone, Copy)]
 pub struct Session;
-/// A platform owner who verified their identity recently, for writes that create,
-/// suspend or remove a DSP and the like.
+/// A platform owner. The few writes that ask them to have verified who they are recently,
+/// such as removing a DSP, ask for it themselves.
 #[derive(Clone, Copy)]
 pub struct PlatformOwner;
-/// A platform owner doing a routine, reversible change that asks for no fresh
-/// verification: switching a DSP's features, or what agents may read.
-#[derive(Clone, Copy)]
-pub struct PlatformRoutine;
 #[derive(Clone, Copy)]
 pub struct Dsp(pub &'static str);
 
@@ -161,31 +157,9 @@ impl Grant for PlatformOwner {
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
         let auth = Session.authorize(db, input)?;
-        let owner = auth.user.platform_owner;
-        ensure(owner, "platform_owner_required", 403)?;
-        if input.method == Method::POST {
-            db.ensure_recent(&auth)?;
-        }
-        Ok(auth)
-    }
-}
-impl Grant for PlatformRoutine {
-    type Who = Auth;
-    fn access(self) -> Access {
-        Access::PlatformOwner
-    }
-    fn authorize(self, db: &Store, input: &Input) -> Result<Auth> {
-        let auth = Session.authorize(db, input)?;
         ensure(auth.user.platform_owner, "platform_owner_required", 403)?;
         Ok(auth)
     }
-}
-/// Whether a member's write under `permission` asks them to have verified who they are
-/// recently, as the permission's owner declares. A route open to several asks for none.
-pub fn needs_recent_verification(permission: &str) -> bool {
-    registry()
-        .permissions()
-        .any(|declared| declared.id == permission && declared.recently_verified)
 }
 impl Grant for Dsp {
     type Who = Context;
@@ -194,9 +168,6 @@ impl Grant for Dsp {
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Context> {
         let auth = Session.authorize(db, input)?;
-        if input.method == Method::POST && needs_recent_verification(self.0) {
-            db.ensure_recent(&auth)?;
-        }
         let context = db.from_view(&auth, input.header("x-dispatch-view"), self.0)?;
         input
             .trace

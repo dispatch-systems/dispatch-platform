@@ -8,6 +8,7 @@ export const feature: FrontendFeature = {
   name: 'vans',
   icon: Truck,
   platformSlots: () => import('./platform-slots.js'),
+  collected: () => import('./collected.js'),
   // Collecting the fleet meets it, so the manifest words it.
   errors: {
     vans_abbreviation_required:

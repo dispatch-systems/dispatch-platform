@@ -127,6 +127,14 @@
       "requires": ["vans"],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "live_route_data",
+      "label": "Live Route Data",
+      "permissions": ["live_route_data.manage"],
+      "requires": ["routes"],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -197,6 +205,7 @@
     "settings",
     "slack",
     "vans",
+    "live_route_data",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

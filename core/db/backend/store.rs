@@ -37,6 +37,9 @@ pub struct Store {
     // Set when this work moved when schedules next run; the state wakes the scheduler once
     // the work is done.
     schedules_moved: std::cell::Cell<bool>,
+    // Set when this work switched a feature or saved settings; the state wakes the live
+    // readers once the work is done.
+    readers_moved: std::cell::Cell<bool>,
 }
 impl Store {
     pub fn initialize(config: Config) -> Result<Self> {
@@ -63,6 +66,7 @@ impl Store {
             dsp_cache: DspCache(std::cell::RefCell::new(Vec::new())),
             mail_queued: std::cell::Cell::new(false),
             schedules_moved: std::cell::Cell::new(false),
+            readers_moved: std::cell::Cell::new(false),
         };
         crate::manifest::retirement::platform(&store)?;
         store.keep_mandatory_features()?;
@@ -96,6 +100,7 @@ impl Store {
             dsp_cache: DspCache(std::cell::RefCell::new(Vec::new())),
             mail_queued: std::cell::Cell::new(false),
             schedules_moved: std::cell::Cell::new(false),
+            readers_moved: std::cell::Cell::new(false),
         })
     }
     /// Records that this work queued mail for delivery.
@@ -113,6 +118,15 @@ impl Store {
     /// Whether the work since the last call moved when schedules next run.
     pub fn take_schedules_moved(&self) -> bool {
         self.schedules_moved.replace(false)
+    }
+    /// Records that this work may have moved when a DSP's live readers read: it switched a
+    /// feature, or saved settings a reader's window comes from.
+    pub fn readers_moved(&self) {
+        self.readers_moved.set(true);
+    }
+    /// Whether the work since the last call may have moved when live readers read.
+    pub fn take_readers_moved(&self) -> bool {
+        self.readers_moved.replace(false)
     }
     /// One of a DSP's folders: `data`, `config`, `state`, `secrets`, or `cache`, where an
     /// owner keeps files it can collect again. Backups leave `cache` out, and it goes with

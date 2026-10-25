@@ -28,7 +28,8 @@
     ["daily_performance.manage", "Manage Daily Performance"],
     ["documents.use", "Use Documents"],
     ["slack.manage", "Manage Slack"],
-    ["vans.collect", "Collect Vans"]
+    ["vans.collect", "Collect Vans"],
+    ["live_route_data.manage", "Manage Live Route Data"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],

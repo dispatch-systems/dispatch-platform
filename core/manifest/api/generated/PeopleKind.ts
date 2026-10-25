@@ -3,4 +3,4 @@
 /**
  * A kind of collected data, by its id.
  */
-export type PeopleKind = "timecards" | "driver_profiles" | "routes" | "meal_breaks" | "weekly_scorecard" | "daily_performance" | "slack" | "dvic";
+export type PeopleKind = "timecards" | "driver_profiles" | "routes" | "routes_live" | "meal_breaks" | "weekly_scorecard" | "daily_performance" | "slack" | "dvic";

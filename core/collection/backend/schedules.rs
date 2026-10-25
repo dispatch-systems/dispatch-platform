@@ -60,6 +60,10 @@ const RUNNING: &str = concat!(
 );
 const LAST_RUN: &str = "SELECT status,completed_at,error FROM jobs WHERE dsp_id=? AND kind=? \
     AND status IN ('succeeded','failed') ORDER BY created_at DESC LIMIT 1";
+/// The metrics of a collection's latest successful run, as its last attempt kept them.
+const LAST_COUNTS: &str = "SELECT m.metrics FROM jobs j JOIN job_metrics m ON m.job_id=j.id \
+    WHERE j.dsp_id=? AND j.kind=? AND j.status='succeeded' \
+    ORDER BY j.created_at DESC, m.attempt DESC LIMIT 1";
 /// How many runs a preview lists.
 const UPCOMING: usize = 5;
 /// The most rules a DSP's collections have between them.
@@ -441,6 +445,7 @@ impl Store {
         let last: Option<(JobStatus, Option<String>, Option<String>)> =
             self.jobs.one_as(LAST_RUN, [id, kind])?;
         let running: Option<(String,)> = self.jobs.one_as(RUNNING, [id, kind])?;
+        let counts: Option<(String,)> = self.jobs.one_as(LAST_COUNTS, [id, kind])?;
         let choice = scheduled
             .keeper
             .schedules()
@@ -484,6 +489,7 @@ impl Store {
                     error,
                 })
             }),
+            counts: counts.and_then(|(metrics,)| serde_json::from_str(&metrics).ok()),
             running: running.is_some(),
             message: running.map(|(message,)| message).unwrap_or_default(),
             can_collect,

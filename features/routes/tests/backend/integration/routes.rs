@@ -1,5 +1,6 @@
 //! Routes storage: publication, supersession, the days a schedule queues and what the
 //! views read.
+use dispatch_core::State;
 use dispatch_core::db::{Store, s};
 use dispatch_core::manifest::Section;
 use dispatch_core::settings::{self, Saved};
@@ -8,7 +9,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::RoutesStore;
+use dispatch_routes::{RoutesStore, WorkPhone, save_day};
 use serde_json::{Value, json};
 
 /// Routes, and the Cortex collector whose routes it keeps.
@@ -415,13 +416,24 @@ fn a_package_moved_between_drivers_keeps_a_row_under_each() {
     );
 }
 
+/// `capture` naming its first driver and first address anew, as a later read might.
+fn renamed(capture: &Capture, name: &str, street: &str) -> Capture {
+    let mut renamed = capture.clone();
+    renamed.summaries["transporters"][0]["firstName"] = json!(name);
+    for itinerary in &mut renamed.itineraries {
+        let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+        detail["addresses"][0]["address1"] = json!(street);
+        itinerary.detail = detail.to_string();
+    }
+    renamed
+}
 #[test]
-fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
+fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_shared_rows() {
     install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let first = publish(&db, &id, "first", "2026-09-25", &capture);
-    let mut again = capture.clone();
+    let mut again = renamed(&capture, "Newer", "1 Newer St");
     again.itineraries.truncate(1);
     again.summaries["itinerarySummaries"]
         .as_array_mut()
@@ -431,8 +443,33 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
     again.finished_at += 2000;
     let second = publish(&db, &id, "second", "2026-09-25", &again);
     assert_ne!(first, second);
+    // A read collected before the day's own changes nothing, though it arrives after it: not
+    // the day, nor the drivers and addresses the days share. Nor does one collected later
+    // that never becomes the day's read, its job ended before publishing.
+    let mut earlier = renamed(&capture, "Older", "1 Older St");
+    earlier.finished_at += 1000;
+    publish(&db, &id, "earlier", "2026-09-25", &earlier);
+    let mut unfinished = renamed(&capture, "Unfinished", "1 Unfinished St");
+    unfinished.finished_at += 3000;
+    let jobs = db
+        .enqueue_routes(&id, None, "unfinished", Some("2026-09-25"), Mode::Final, 1)
+        .unwrap();
+    let job = s(&jobs[0], "id");
+    db.stage_routes(&id, job, unfinished).unwrap();
+    common::set_job_status(&db, job, "failed").unwrap();
     let storage = db.routes_db(&id).unwrap();
-    // Readers see only the new day at once; the sweep deletes the old one in steps.
+    let shared = storage
+        .all(
+            "SELECT (SELECT first_name FROM drivers WHERE transporter_id='driver-1') driver,\
+             (SELECT address1 FROM addresses WHERE address_id='address-1') street",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        shared,
+        vec![json!({"driver":"Newer","street":"1 Newer St"})]
+    );
+    // Readers see only the later read at once; the sweep deletes the others in steps.
     let days = db.route_days(&id).unwrap();
     assert_eq!(days.days.len(), 1);
     assert_eq!(days.days[0].itinerary_count, 1);
@@ -442,7 +479,7 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
             &id,
             "SELECT count(*) FROM route_publications WHERE active=0"
         ),
-        1
+        3
     );
     assert!(sweep(&db, &id) > 1);
     let publications = storage
@@ -481,6 +518,141 @@ fn a_recollected_day_replaces_its_previous_publication_and_keeps_shared_rows() {
         .enqueue_routes(&id, None, "third", Some("2026-09-25"), Mode::Final, 1)
         .unwrap();
     assert!(db.stage_routes(&id, s(&jobs[0], "id"), other).is_err());
+}
+
+#[tokio::test]
+async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when_read_later() {
+    install();
+    let (_root, db, id) = ready();
+    let state = State::new(db.config.clone()).unwrap();
+    let day = "2026-09-25";
+    let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
+    let hour = 3_600_000;
+    let phones = vec![
+        WorkPhone {
+            transporter_id: "driver-1".into(),
+            phone: "15550000001".into(),
+            since: capture.started_at,
+            until: Some(capture.started_at + hour),
+        },
+        WorkPhone {
+            transporter_id: "driver-2".into(),
+            phone: "15550000001".into(),
+            since: capture.started_at + hour,
+            until: None,
+        },
+    ];
+    // The day's read and its phones, as `phones` holds them.
+    let read = |db: &Store| {
+        let days = db.route_days(&id).unwrap().days;
+        let held = db
+            .routes_db(&id)
+            .unwrap()
+            .all(
+                "SELECT transporter_id,phone,since,until FROM work_phones WHERE day=? \
+                 ORDER BY since",
+                [day],
+            )
+            .unwrap();
+        (
+            days.iter().map(|d| d.itinerary_count).collect::<Vec<_>>(),
+            held,
+        )
+    };
+    let held: Vec<Value> = phones
+        .iter()
+        .map(|p| json!({"transporter_id":p.transporter_id,"phone":p.phone,"since":p.since,"until":p.until}))
+        .collect();
+    let save = |key: &'static str, capture: &Capture, phones: &[WorkPhone]| {
+        save_day(&state, &id, key, capture.clone(), phones.to_vec())
+    };
+
+    // Saved whole, with its phones; saved again under its key, nothing changes.
+    assert!(save("live-1", &capture, &phones).await.unwrap());
+    assert_eq!(read(&db), (vec![2], held.clone()));
+    assert!(save("live-1", &capture, &phones).await.unwrap());
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM route_publications"),
+        1
+    );
+
+    // The standard collection's read, collected later, replaces it whole but for its phones,
+    // which it reads none of.
+    let mut later = capture.clone();
+    later.itineraries.truncate(1);
+    later.summaries["itinerarySummaries"]
+        .as_array_mut()
+        .unwrap()
+        .truncate(1);
+    later.finished_at += 2000;
+    publish(&db, &id, "standard", day, &later);
+    assert_eq!(read(&db), (vec![1], held.clone()));
+    // One collected before it changes nothing; one collected after replaces it, phones and all.
+    let mut earlier = capture.clone();
+    earlier.finished_at += 1000;
+    assert!(!save("live-2", &earlier, &phones[..1]).await.unwrap());
+    assert_eq!(read(&db), (vec![1], held.clone()));
+    let mut latest = capture.clone();
+    latest.finished_at += 3000;
+    assert!(save("live-3", &latest, &phones[1..]).await.unwrap());
+    assert_eq!(read(&db), (vec![2], held[1..].to_vec()));
+    // A save that held no phones leaves the day none.
+    let mut idle = capture.clone();
+    idle.finished_at += 4000;
+    assert!(save("live-5", &idle, &[]).await.unwrap());
+    assert_eq!(read(&db), (vec![2], vec![]));
+    let latest = idle;
+    sweep(&db, &id);
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM route_publications"),
+        1
+    );
+
+    // Refused, each for one thing, before anything is stored.
+    let mut missing = latest.clone();
+    missing.finished_at += 1000;
+    missing.itineraries.pop();
+    let mut twice = phones.clone();
+    twice.push(phones[0].clone());
+    let mut backwards = phones.clone();
+    backwards[0].until = Some(backwards[0].since - 1);
+    let mut elsewhere = latest.clone();
+    elsewhere.scope.service_area_id = "area-other".into();
+    let mut another = latest.clone();
+    another.scope.provider = "provider-other".into();
+    let mut zoned = latest.clone();
+    zoned.scope.timezone = "America/Chicago".into();
+    // A day's final read once it ended, its snapshot while it lasts.
+    let mut unfinished = latest.clone();
+    unfinished.finished_at = format!("{day}T20:00:00Z")
+        .parse::<chrono::DateTime<chrono::Utc>>()
+        .unwrap()
+        .timestamp_millis();
+    unfinished.started_at = unfinished.finished_at - hour;
+    let mut past = latest.clone();
+    past.mode = Mode::Snapshot;
+    for (key, capture, phones, code) in [
+        ("live-4", &unfinished, &phones, "routes_day_not_available"),
+        ("live-4", &past, &phones, "routes_day_not_available"),
+        ("live-4", &missing, &phones, "routes_capture_invalid"),
+        ("live-4", &elsewhere, &phones, "routes_scope_mismatch"),
+        ("live-4", &another, &phones, "routes_scope_mismatch"),
+        ("live-4", &zoned, &phones, "routes_scope_mismatch"),
+        ("live 4", &latest, &phones, "invalid_input"),
+        ("live-4", &latest, &twice, "invalid_input"),
+        ("live-4", &latest, &backwards, "invalid_input"),
+    ] {
+        let refused = save(key, capture, phones).await.unwrap_err();
+        assert_eq!(refused.code, code, "{key}");
+    }
+    let actor = common::a_user(&db);
+    db.set_feature(&id, "routes", false, &actor).unwrap();
+    let refused = save("live-4", &latest, &phones).await.unwrap_err();
+    assert_eq!(refused.code, "routes_off");
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM route_publications"),
+        1
+    );
 }
 
 #[test]
@@ -653,6 +825,8 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
         "breaks",
         "unknown_stops",
         "route_raw",
+        "staged_addresses",
+        "staged_drivers",
     ] {
         assert_eq!(
             count(&db, &id, &format!("SELECT count(*) FROM {table}")),
