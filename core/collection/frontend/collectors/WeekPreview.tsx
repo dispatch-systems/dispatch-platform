@@ -1,6 +1,7 @@
 import type { ScheduleRuleInput } from '../../api/index.js';
+import { WEEKDAYS } from '../../../shell/frontend/lib/calendar.js';
 import { dateFormatter } from '../../../shell/frontend/lib/date-format.js';
-import { DAYS, week } from './rules.js';
+import { week } from './rules.js';
 
 // A collection's schedule as it would run: this week a strip a day, a tick a run, each rule in
 // its own colour; and the next runs, as the server works them out where the DSP is.
@@ -20,7 +21,7 @@ function nowIn(timeZone: string) {
   }).formatToParts(new Date());
   const part = (type: string) => parts.find((each) => each.type === type)?.value ?? '';
   return {
-    day: DAYS.indexOf(part('weekday')),
+    day: WEEKDAYS.indexOf(part('weekday')),
     minutes: Number(part('hour')) * 60 + Number(part('minute')),
   };
 }
@@ -92,7 +93,7 @@ export function WeekPreview({
       <div>
         <h3>This week</h3>
         <div className="collectors-strips">
-          {DAYS.map((day, index) => {
+          {WEEKDAYS.map((day, index) => {
             const today = index === now.day;
             return (
               <div className={`collectors-strip${today ? ' is-today' : ''}`} key={day}>

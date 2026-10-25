@@ -3,6 +3,7 @@ export { ConfirmDialog } from './ConfirmDialog.js';
 export { DataState } from './DataState.js';
 export { DataTable, TablePagination } from './DataTable.js';
 export { DateField } from './DateField.js';
+export { DayPicker } from './DayPicker.js';
 export { DetailList } from './DetailList.js';
 export { DspAvatar, dspTone } from './DspAvatar.js';
 export { Empty } from './Empty.js';
