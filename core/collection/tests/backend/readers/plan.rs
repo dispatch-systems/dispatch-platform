@@ -254,7 +254,10 @@ fn a_day_that_stopped_reads_no_more_though_its_window_is_moved_to_end_later() {
     // Its stop moved to 22:00 once the day stopped at 21:01:30, today's window is open again.
     let later = plan("08:00", "22:00");
     let now = local("2026-10-20 21:10:00");
-    assert_eq!(later.step(now, last, &[], None), Step::Read(later.day(today)));
+    assert_eq!(
+        later.step(now, last, &[], None),
+        Step::Read(later.day(today))
+    );
     // Stopped, the day reads no more: tomorrow's window is the next to read.
     let tomorrow = later.day(date("2026-10-21"));
     assert_eq!(
