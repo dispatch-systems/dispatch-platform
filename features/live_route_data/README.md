@@ -45,9 +45,9 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   - A read that isn't whole is never kept.
 - **A day:** its first whole read empties live route data of the day before (`clear_live`) before
   it is kept (`keep_live`). Each read after is kept in place. Once the window ends, the day is
-  saved into historical route data (`save_live_day`) if `save_to_history` is on, and live route
-  data is emptied once it is, as when historical route data already has a read of the day
-  collected later; that runs once, even after the server was down, and saving again saves
+  saved into historical route data if `save_to_history` is on, and live route data is emptied
+  once it is (`save_and_clear_live`), as when historical route data already has a read of the
+  day collected later; that runs once, even after the server was down, and saving again saves
   nothing twice. A save Routes refuses for good (`routes_scope_mismatch`,
   `routes_station_required`, `routes_day_not_available`, `routes_capture_invalid`,
   `routes_source_too_large`, `invalid_input`, `routes_off`), as when the DSP's station changed

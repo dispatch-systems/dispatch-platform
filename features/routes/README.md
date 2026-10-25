@@ -48,8 +48,10 @@ it is live route data, in a database of its own, `routelive`.
   through `save_day`, with every hold of the day, under the key `live:<day>:<collected ms>`, so
   saving it again saves nothing twice: a final read if it was read once its day had ended where
   the DSP is, a snapshot otherwise, so a day's later final read replaces it. It answers none
-  when live route data holds no day, and leaves live route data as it was. All three refuse
-  while Routes is off.
+  when live route data holds no day, and leaves live route data as it was.
+  `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
+  once it's saved, or once it holds no day, as after an earlier call emptied it but couldn't give
+  its space back. All four refuse while Routes is off.
 - **Work phones:** who holds which of the company's work phones is settled from each whole live
   read, in the transaction that keeps it (`backend/phones.rs`), from what each driver's record
   shows: the list's phone, else their itinerary's, by its last ten digits. A driver claims a

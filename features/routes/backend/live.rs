@@ -378,6 +378,17 @@ pub async fn save_live_day(state: &Arc<State>, dsp: &str) -> Result<Option<bool>
     save_day(state, dsp, &key, capture, phones).await.map(Some)
 }
 
+/// Saves the last whole read live route data holds into historical route data
+/// (`save_live_day`), then empties live route data (`clear_live`): once the day is saved, as the
+/// day's read or one collected no later than it has, or once it holds no day, as after an
+/// earlier call emptied it but couldn't give its file's space back. Answers as `save_live_day`
+/// does. A save refused leaves live route data as it was.
+pub async fn save_and_clear_live(state: &Arc<State>, dsp: &str) -> Result<Option<bool>> {
+    let saved = save_live_day(state, dsp).await?;
+    clear_live(state, dsp).await?;
+    Ok(saved)
+}
+
 #[cfg(test)]
 #[path = "../tests/backend/live.rs"]
 mod tests;

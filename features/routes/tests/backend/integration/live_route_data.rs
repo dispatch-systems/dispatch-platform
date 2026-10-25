@@ -12,7 +12,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_live_day};
+use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_and_clear_live, save_live_day};
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
@@ -521,6 +521,49 @@ async fn clearing_empties_live_route_data_and_gives_its_space_back() {
     db.set_feature(&dsp, "routes", false, &owner).unwrap();
     let refused = save_live_day(&state, &dsp).await.unwrap_err();
     assert_eq!(refused.code, "routes_off");
+}
+
+#[tokio::test]
+async fn a_saved_day_is_cleared_and_a_cleared_one_gives_its_space_back() {
+    let (_root, db, dsp, state) = ready();
+    let day = Day::new(&today(&db, &dsp).to_string());
+    let free = |db: &Store| {
+        let live = db.routes_live_db(&dsp).unwrap();
+        live.count("SELECT freelist_count FROM pragma_freelist_count()", [])
+            .unwrap()
+    };
+    let saved = |db: &Store| {
+        let historical = db.routes_db(&dsp).unwrap();
+        historical
+            .all("SELECT job_id FROM route_publications WHERE active=1", [])
+            .unwrap()
+    };
+    keep_live(&state, &dsp, day.read(1)).await.unwrap();
+    assert_eq!(save_and_clear_live(&state, &dsp).await.unwrap(), Some(true));
+    let offered = dispatch_routes_contract::live_for_dsp(&db, &dsp)
+        .unwrap()
+        .unwrap();
+    assert_eq!(offered.live_day(&db, &dsp).unwrap(), None);
+    let history = saved(&db);
+    assert_eq!(history.len(), 1);
+    assert_eq!(free(&db), 0);
+
+    // Emptied by an earlier call that couldn't give the space back, as when its VACUUM failed:
+    // the next gives it back, saving nothing.
+    keep_live(&state, &dsp, day.read(2)).await.unwrap();
+    let live = db.routes_live_db(&dsp).unwrap();
+    live.transaction(|| {
+        for table in shared_tables().into_iter().chain(["work_phones_shown"]) {
+            live.exec(&format!("DELETE FROM {table}"), [])?;
+        }
+        Ok(())
+    })
+    .unwrap();
+    drop(live);
+    assert!(free(&db) > 0);
+    assert_eq!(save_and_clear_live(&state, &dsp).await.unwrap(), None);
+    assert_eq!(free(&db), 0);
+    assert_eq!(saved(&db), history);
 }
 
 #[tokio::test]
