@@ -289,7 +289,7 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     );
     assert_eq!(differences(&db, &dsp), Vec::<String>::new(), "dispatched");
 
-    // One itinerary gone from the list, its driver's phone with it; a task gone and another
+    // One itinerary gone from the list, its driver keeping their phone; a task gone and another
     // changed, an unknown stop gone.
     day.summaries["itinerarySummaries"] = json!([listed[0]]);
     let first = day.detail("itinerary-1");
@@ -297,7 +297,7 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     first["stops"][1]["tasks"][0]["taskState"] = json!("UNDELIVERABLE");
     first["unknownStops"] = json!([]);
     let narrowed = keep_and_save(&state, &dsp, day.read(2)).await;
-    assert_eq!((narrowed.listed, narrowed.holding), (1, 1));
+    assert_eq!((narrowed.listed, narrowed.holding), (1, 2));
     assert_eq!(differences(&db, &dsp), Vec::<String>::new(), "narrowed");
 
     // Both back, the first without its breaks or its first stop; the second route off the list,
@@ -327,8 +327,7 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
         holds(&live),
         [
             ("driver-1".into(), P1.into(), started + 1, Some(started + 4)),
-            ("driver-2".into(), P2.into(), started + 1, Some(started + 2)),
-            ("driver-2".into(), P2.into(), started + 3, None),
+            ("driver-2".into(), P2.into(), started + 1, None),
             ("driver-1".into(), P3.into(), started + 4, None),
         ]
     );
