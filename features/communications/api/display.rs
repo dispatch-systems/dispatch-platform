@@ -48,6 +48,9 @@ pub struct MessageDisplay {
     pub keep_profile_open: bool,
     /// Enter sends a message; without, it starts a new line.
     pub enter_sends: bool,
+    /// A new message from an employee plays a chime, and shows the browser's notification.
+    pub sound: bool,
+    pub notifications: bool,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub phone_text_size: i64,
     pub phone_line_spacing: LineSpacing,

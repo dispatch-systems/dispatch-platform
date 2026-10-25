@@ -9,7 +9,7 @@ use crate::backend::{
     storage::ConversationState,
     support::{self, DRIVERS, USE},
 };
-use crate::integrations::messages::{ID, incoming};
+use crate::integrations::messages::ID;
 use dispatch_core::{
     accounts::Context,
     db::now,
@@ -97,12 +97,6 @@ async fn first_message(state: &Arc<State>, dsp: &str, group: &str) -> storage::G
         .await
         .unwrap()
 }
-/// The member `user` writing `text` to the app in the workspace `team`.
-async fn writes(state: &Arc<State>, dsp: &str, team: &str, user: &str, text: &str) {
-    let event = json!({"type": "message", "channel_type": "im", "channel": format!("D{}", &user[1..]),
-        "user": user, "text": text, "ts": incoming::ts(now())});
-    incoming::heard(state, dsp, team, &event).await.unwrap();
-}
 /// The conversation with the workspace's member `user`, as kept.
 async fn with(
     state: &Arc<State>,
@@ -183,7 +177,7 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     let dsp = bot.dsp.clone();
     let c = owner(&state, &dsp).await;
     // Casey asked something before the group message, still unanswered.
-    writes(&state, &dsp, DRIVERS_TEAM, "U0FIXCASEY", "Where do I park?").await;
+    support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXCASEY", "Where do I park?").await;
     let picked = [(DRIVERS_TEAM, "U0FIXJORDAN"), (DRIVERS_TEAM, "U0FIXCASEY")];
     let group = sent(&state, &c, "Drivers", &picked, "Pick up your vests").await;
     // A group message answers no one: Casey still waits, on their own.
@@ -200,8 +194,8 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     );
 
     // Jordan answers: waiting, under the group, which waits; Casey's answer is the group's too.
-    writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "ok").await;
-    writes(&state, &dsp, DRIVERS_TEAM, "U0FIXCASEY", "Got it").await;
+    support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "ok").await;
+    support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXCASEY", "Got it").await;
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.state, ConversationState::Waiting);
     assert_eq!(jordan.group.as_deref(), Some(group.id.as_str()));
@@ -254,7 +248,7 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
         ConversationState::Responded
     );
     // What they write after that answers no group.
-    writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "One more thing").await;
+    support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "One more thing").await;
     let shown = listed(&state, &dsp, &group.id).await;
     assert_eq!(shown.last.unwrap().text, "Vests are by the door");
 
@@ -271,7 +265,7 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
         "Van 214",
     )
     .await;
-    writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "On it").await;
+    support::writes(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN", "On it").await;
     let jordan = with(&state, &dsp, DRIVERS_TEAM, "U0FIXJORDAN").await;
     assert_eq!(jordan.group.as_deref(), Some(later.id.as_str()));
     let (shared, at, id) = (state.clone(), dsp.clone(), later.id.clone());

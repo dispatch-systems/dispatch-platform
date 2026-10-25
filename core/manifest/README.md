@@ -61,6 +61,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `integrations`             | `integrations` | What it does through another feature's connection, starting on or off in each of its accounts, and clears of one forgotten.                  |
 | `exposes`                  | `exposes`      | What it offers every other feature, each through a contract; one feature at most offers each.                                                |
 | `on`                       | `events`       | What it does when something happens for a DSP: a collection succeeding, the DSP's people changing, or another feature's event.               |
+| `watchers`                 | `watchers`     | What it keeps running on every DSP page for the member, drawing nothing.                                                                     |
 
 `collectors.rs` holds what a collector declares instead, `Collector`, and `agents.rs` the one
 piece outside the features that lets outside agents use Dispatch, `Agents`.
