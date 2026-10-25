@@ -524,6 +524,33 @@ async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
     }
 }
 
+/// A connection's revision, which what a live reader took from a sign-in is bound to: a new one
+/// once its credentials are replaced, and none while it's disabled.
+#[tokio::test]
+async fn a_connections_revision_moves_on_with_its_credentials_and_is_none_while_disabled() {
+    use dispatch_cortex as cortex;
+    let server = Server::start().await;
+    let dsp = server.dsp("Northline Logistics").await;
+    let owner = server.member("owner@dispatch.test").await;
+    let revision = || {
+        let dsp = dsp.clone();
+        server
+            .state
+            .read(move |db| db.connection_revision(&dsp, cortex::PROVIDER))
+    };
+    let mut revisions = Vec::new();
+    for username in ["first@example.test", "second@example.test"] {
+        let credentials = json!({"username":username,"password":"fixture-password"});
+        let save = Call::post("/api/dsp/connections/cortex/save", credentials).who(&owner);
+        assert_eq!(server.send(save).await.status, 200);
+        revisions.push(revision().await.unwrap().unwrap());
+    }
+    assert!(revisions[1] > revisions[0], "{revisions:?}");
+    let disable = Call::post("/api/dsp/connections/cortex/disable", json!({})).who(&owner);
+    assert_eq!(server.send(disable).await.status, 200);
+    assert_eq!(revision().await.unwrap(), None);
+}
+
 #[cfg(all(feature = "timecard", feature = "team"))]
 #[tokio::test]
 async fn unmatched_paths_and_methods_answer_as_they_always_have() {

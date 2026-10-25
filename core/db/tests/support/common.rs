@@ -205,6 +205,13 @@ pub fn seeded() -> (tempfile::TempDir, Store) {
     (root, db)
 }
 
+/// Pins the day every clock reads as today, wherever it is, for the whole process, as a test
+/// server's `DISPATCH_FIXTURE_TODAY` does; none unpins it. A test that pins a day unpins it as it
+/// ends.
+pub fn pin_today(day: Option<chrono::NaiveDate>) {
+    crate::foundation::clock::pin(day);
+}
+
 /// The newest audit events the platform (`None`) or one DSP may see.
 pub fn audits(db: &Store, dsp: Option<&str>) -> Result<Value> {
     let mut page = db
@@ -273,6 +280,16 @@ pub fn before_settings(db: &Store, dsp: &str) -> Result<()> {
 pub fn enable_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()> {
     db.collector(dsp, provider)?
         .exec("UPDATE connections SET enabled=1", [])?;
+    Ok(())
+}
+
+/// Switches a DSP's connection to `provider` off, as disabling it leaves it: not connected, at
+/// its next revision.
+pub fn disable_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()> {
+    db.collector(dsp, provider)?.exec(
+        "UPDATE connections SET enabled=0,status='not_connected',revision=revision+1",
+        [],
+    )?;
     Ok(())
 }
 

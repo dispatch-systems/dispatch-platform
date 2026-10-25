@@ -3,16 +3,16 @@
 //! never Amazon. Each day's first read empties live route data of the day before; reads are kept
 //! on the DSP's grid through its window; its stop saves the day into historical route data when
 //! the DSP chose so, and leaves live route data as it was either way; a restart inside the window
-//! empties nothing; and switched off, it reads no more. What Routes keeps is read as other
-//! features read it, through its contracts.
+//! empties nothing; and switched off, or with its Cortex connection disabled, it reads no more.
+//! Each day is the day Routes reckons too, pinned as the test moves to it. What Routes keeps is
+//! read as other features read it, through its contracts.
 //! A program of its own, as its registry holds the parts it names, and a program holds one.
-use chrono::{DateTime, Timelike};
+use chrono::{DateTime, NaiveDate, Timelike};
 use chrono_tz::Tz;
 use dispatch_core::{
     Result, State,
     collection::readers,
     db,
-    foundation::clock,
     manifest::settings::Section,
     settings::{self, Saved},
     testing,
@@ -176,16 +176,35 @@ impl Server {
             .await
             .unwrap()
     }
-    /// How it progresses in historical route data today.
-    async fn history(&self) -> Option<String> {
-        let (dsp, today) = (self.dsp.clone(), clock::today(self.zone).to_string());
+    /// The day live route data holds: none while it holds none.
+    async fn live_day(&self) -> Option<String> {
+        let dsp = self.dsp.clone();
         self.state
             .read(move |db| {
-                let history = routes::for_dsp(db, &dsp)?.expect("Routes is on");
-                Ok(first(history.day(db, &dsp, &today)?))
+                let live = routes::live_for_dsp(db, &dsp)?.expect("Routes is on");
+                live.live_day(db, &dsp)
             })
             .await
             .unwrap()
+    }
+    /// How the first driver's route progresses on `day` in historical route data.
+    async fn history(&self, day: NaiveDate) -> Option<String> {
+        let dsp = self.dsp.clone();
+        self.state
+            .read(move |db| {
+                let history = routes::for_dsp(db, &dsp)?.expect("Routes is on");
+                Ok(first(history.day(db, &dsp, &day.to_string())?))
+            })
+            .await
+            .unwrap()
+    }
+    /// Disables the DSP's Cortex connection, as its owner does.
+    async fn disconnect(&self) {
+        let dsp = self.dsp.clone();
+        self.state
+            .run(move |db| testing::disable_connection(db, &dsp, cortex::PROVIDER))
+            .await
+            .unwrap();
     }
     /// The DSP's reads as the server records them, in order.
     async fn records(&self) -> Vec<testing::LiveRead> {
@@ -216,9 +235,20 @@ fn instant(at: i64) -> Instant {
     }
 }
 
+/// Pins today, where the DSP is, as the day the readers read now: the day Routes reckons in.
+fn pin(server: &Server) -> NaiveDate {
+    let today = DateTime::from_timestamp_millis(now())
+        .unwrap()
+        .with_timezone(&server.zone)
+        .date_naive();
+    testing::pin_today(Some(today));
+    today
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_dsps_live_route_data_through_its_days() {
     let mut server = Server::start().await;
+    let first_day = pin(&server);
     server.kept_before().await;
     assert_eq!(server.live().await.as_deref(), Some(BEFORE));
     let ((start, open), (stop, close)) = (server.at(10), server.at(40));
@@ -228,6 +258,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     // The day's first read empties live route data of the day before, and is kept.
     until(open + EVERY).await;
     assert_eq!(server.live().await.as_deref(), Some(READ));
+    assert_eq!(server.live_day().await, Some(first_day.to_string()));
     // Every read through the window is kept on the DSP's grid: each the fixture's whole day,
     // read in the DSP's browser.
     until(close + 6 * MINUTE).await;
@@ -242,15 +273,19 @@ async fn a_dsps_live_route_data_through_its_days() {
         assert!((pair[1].at - pair[0].at - EVERY.as_millis() as i64).abs() <= 1000);
     }
     // Its stop saved the day into historical route data, and live route data holds it still.
-    assert_eq!(server.history().await.as_deref(), Some(READ));
+    assert_eq!(server.history(first_day).await.as_deref(), Some(READ));
     assert_eq!(server.live().await.as_deref(), Some(READ));
 
     // The next day's first read empties live route data again.
     server.save(json!({"save_to_history":false})).await;
-    server.kept_before().await;
     let (open, close) = (open + DAY, close + DAY);
+    until(open - MINUTE).await;
+    let second_day = pin(&server);
+    assert_eq!(second_day, first_day.succ_opt().unwrap());
+    server.kept_before().await;
     until(open + EVERY).await;
     assert_eq!(server.live().await.as_deref(), Some(READ));
+    assert_eq!(server.live_day().await, Some(second_day.to_string()));
     // Started again inside its window, it reads on with the day as it was, emptying nothing.
     server.kept_before().await;
     let first = instant(server.records().await[6].at);
@@ -263,15 +298,19 @@ async fn a_dsps_live_route_data_through_its_days() {
     assert_eq!(reads.len(), 6 + 2, "{reads:?}");
     assert_eq!(reads[7].outcome, "kept");
     assert_eq!(server.live().await.as_deref(), Some(BEFORE));
-    // Its stop saves nothing, as the DSP chose: historical route data has the first day's read,
-    // and live route data holds its own still.
+    // Its stop saves nothing, as the DSP chose: historical route data has the first day alone,
+    // and live route data holds the second still.
     until(close + 6 * MINUTE).await;
     assert_eq!(server.records().await.len(), 6 + 6);
-    assert_eq!(server.history().await.as_deref(), Some(READ));
+    assert_eq!(server.history(first_day).await.as_deref(), Some(READ));
+    assert_eq!(server.history(second_day).await, None);
     assert_eq!(server.live().await.as_deref(), Some(BEFORE));
+    assert_eq!(server.live_day().await, Some(second_day.to_string()));
 
     // Switched off inside the window, it reads no more.
     let (open, close) = (open + DAY, close + DAY);
+    until(open - MINUTE).await;
+    pin(&server);
     until(open + EVERY).await;
     let reads = server.records().await;
     assert_eq!(reads.len(), 12 + 1);
@@ -279,4 +318,29 @@ async fn a_dsps_live_route_data_through_its_days() {
     server.switch(false).await;
     until(close + 6 * MINUTE).await;
     assert_eq!(server.records().await.len(), 12 + 1);
+
+    // Nor once its Cortex connection is disabled inside the window: a read due before the next
+    // minute's plan is refused, reading nothing, and none follows.
+    let (open, close) = (open + DAY, close + DAY);
+    until(open - MINUTE).await;
+    pin(&server);
+    server.switch(true).await;
+    until(open + EVERY).await;
+    let reads = server.records().await;
+    assert_eq!(reads.len(), 13 + 1);
+    let last = instant(reads[13].at);
+    until(last + MINUTE).await;
+    server.disconnect().await;
+    until(last + EVERY + MINUTE).await;
+    let refused = server.records().await;
+    for read in &refused[14..] {
+        assert_eq!(
+            read.code.as_deref(),
+            Some("connection_required"),
+            "{read:?}"
+        );
+    }
+    until(close + 6 * MINUTE).await;
+    assert_eq!(server.records().await.len(), refused.len());
+    testing::pin_today(None);
 }

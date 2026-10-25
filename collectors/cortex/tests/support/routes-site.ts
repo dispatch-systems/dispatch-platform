@@ -24,6 +24,8 @@ export interface RoutesSite {
   unsigned: string[];
   /** Data requests signed with a key it handed out before its current one, refused too. */
   refused: string[];
+  /** Every data request's path and the session cookie it carried, accepted or not. */
+  sessions: { path: string; cookie: string }[];
   /** Documents loaded other than the list: Cortex's pages are one application that fetches
    * what its address shows, on load and whenever its history changes. */
   pages: string[];
@@ -38,7 +40,8 @@ export interface RoutesSite {
    * requests read them. */
   failing: (url: URL) => boolean;
   /** Whether the next list the page asks for ends the session it signed in with and hands it
-   * another, as Cortex may renew a session's cookie. */
+   * another, as Cortex may renew a session's cookie. Each sign-in starts a session of its own,
+   * ending the one before. */
   renewing: boolean;
   /** Hands out a new key from now on: reads signed with one before it are refused. */
   newKey(): void;
@@ -236,8 +239,14 @@ export async function routesSite(day: string, timezone: string): Promise<RoutesS
   // The key the list page carries once `keyed`, as Cortex's pages hold it in their state, and
   // how many it has handed out.
   const native = { session: 'native-session-1', key: 'fixture-key-1', keys: 1 };
-  // The session cookie a sign-in sets, and how many it has handed out.
-  const session = { cookie: 'session-1', cookies: 1 };
+  // The session cookie the last sign-in or renewal set, and how many it has handed out.
+  const session = { cookie: '', cookies: 0 };
+  // Ends the session, and hands the browser another.
+  const renew = (res: http.ServerResponse) => {
+    session.cookies += 1;
+    session.cookie = `session-${session.cookies}`;
+    res.setHeader('set-cookie', `authenticated=${session.cookie}; Path=/; Max-Age=3600`);
+  };
   // Cortex's signature of one request with the page's key: its method, path, sorted query,
   // session and moment.
   const signature = (url: URL, signedAs: string, stamp: string) => {
@@ -325,6 +334,7 @@ export async function routesSite(day: string, timezone: string): Promise<RoutesS
     requests: [],
     unsigned: [],
     refused: [],
+    sessions: [],
     pages: [],
     documents: [],
     keyed: false,
@@ -340,7 +350,8 @@ export async function routesSite(day: string, timezone: string): Promise<RoutesS
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://fixture.test');
     const cookies = (req.headers.cookie ?? '').split(/;\s*/);
-    const authenticated = cookies.includes(`authenticated=${session.cookie}`);
+    const cookie = cookies.find((c) => c.startsWith('authenticated='))?.slice(14) ?? '';
+    const authenticated = session.cookie !== '' && cookie === session.cookie;
     const html = (body: string) => {
       res.setHeader('content-type', 'text/html');
       const state = site.keyed
@@ -358,7 +369,9 @@ export async function routesSite(day: string, timezone: string): Promise<RoutesS
       res.writeHead(302, { location: path });
       res.end();
     };
-    if (!url.pathname.startsWith('/operations/execution/api/'))
+    if (url.pathname.startsWith('/operations/execution/api/'))
+      site.sessions.push({ path: url.pathname, cookie });
+    else
       site.documents.push({
         path: url.pathname,
         browser: req.headers['sec-fetch-mode'] !== undefined,
@@ -383,7 +396,7 @@ export async function routesSite(day: string, timezone: string): Promise<RoutesS
       );
     if (url.pathname === '/ap/submit') {
       assert.equal(fields.get('password'), 'fixture-password');
-      res.setHeader('set-cookie', `authenticated=${session.cookie}; Path=/; Max-Age=3600`);
+      renew(res);
       return redirect('/dspconsolev2');
     }
     if (!authenticated) {
@@ -424,9 +437,7 @@ export async function routesSite(day: string, timezone: string): Promise<RoutesS
       if (url.pathname === '/operations/execution/api/summaries') {
         if (by === 'page' && site.renewing) {
           site.renewing = false;
-          session.cookies += 1;
-          session.cookie = `session-${session.cookies}`;
-          res.setHeader('set-cookie', `authenticated=${session.cookie}; Path=/; Max-Age=3600`);
+          renew(res);
         }
         return json(summaries);
       }

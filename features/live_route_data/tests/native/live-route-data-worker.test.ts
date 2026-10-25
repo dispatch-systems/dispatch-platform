@@ -13,7 +13,8 @@ const EVERY = 5 * MINUTE;
 // page. Once that reader's key is refused and the page carries none, a read opens the browser
 // again, which reads with the application's signatures, the site renewing the session's cookie
 // meanwhile: the reader it hands back carries the renewed session, so the read after it reads
-// natively again, with no browser.
+// natively again, with no browser. Once the DSP's credentials are replaced, that reader goes
+// with the sign-in it came from: nothing is asked with its session again.
 test(
   'Live Route Data reads natively with the reader its browser hands back, and the session the browser ends with',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 420000 },
@@ -135,5 +136,27 @@ test(
       documents: [{ path: '/operations/execution/itineraries', browser: false }],
       by: ['native'],
     });
+
+    // Its credentials replaced, signing in again starts another session, and the reader the
+    // browser handed back is never used again: nothing is asked with the session it carried.
+    const old = site.sessions.at(-1)!.cookie;
+    const replaced = await owner.post('/api/dsp/connections/cortex', {
+      username: 'second@example.test',
+      password: 'fixture-password',
+    });
+    assert.equal(replaced.value.status, 'ready', replaced.body);
+    const asking = site.sessions.length;
+    await readSoon();
+    await until(async () => reads().length >= 5, 2 * MINUTE);
+    assert.deepEqual(
+      site.sessions.slice(asking).filter(({ cookie }) => cookie === old),
+      [],
+    );
+    // The next read opens a browser of its own, or finds the member's still open from signing in.
+    const fifth = reads()[4]!;
+    assert.ok(
+      fifth.outcome === 'kept' ? fifth.counts.browser === 1 : fifth.code === 'connection_busy',
+      JSON.stringify(fifth),
+    );
   },
 );

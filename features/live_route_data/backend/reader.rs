@@ -7,12 +7,15 @@
 //! next. Cortex briefly unavailable fails a read with no browser, and only a few in a row open
 //! one. A reader that fails on its first read after a browser handed it back leaves the next
 //! reads to the browser for a while, so a native reading that keeps failing doesn't add a
-//! failed read to every browser's. A read is kept only whole.
+//! failed read to every browser's. A native reader serves only the connection revision it was
+//! taken under: replacing the DSP's Cortex credentials, or disabling the connection, ends it, and
+//! a read taken under another revision is never kept. A read is kept only whole.
 use super::settings;
 use dispatch_core::{
-    Result,
+    Error, Result,
     collection::{browser::Pending, readers::Reading},
     db::Store,
+    ensure,
     manifest::{Counts, LiveReader, Window},
 };
 use dispatch_cortex::{
@@ -35,11 +38,18 @@ pub struct Routes;
 pub static READER: Routes = Routes;
 
 /// What the reader keeps in memory for a DSP between its reads: the native reader the last
-/// browser handed back, with the scope it reads, and when the next read goes to the browser.
+/// browser handed back, and when the next read goes to the browser.
 #[derive(Default)]
 pub struct Held {
-    native: Option<(Native, Scope)>,
+    native: Option<Handed>,
     ladder: Ladder,
+}
+/// A native reader a browser handed back: the scope it reads, and the revision of the DSP's
+/// Cortex connection it was taken under.
+struct Handed {
+    native: Native,
+    scope: Scope,
+    revision: i64,
 }
 
 /// When a read goes to the browser rather than natively.
@@ -87,6 +97,8 @@ impl Ladder {
 /// One whole read of today, and how it was read.
 pub struct Read {
     capture: Capture,
+    /// The revision of the DSP's Cortex connection it was read under.
+    revision: i64,
     /// Whether it opened the DSP's browser.
     browser: bool,
     /// What read it and why native reading fell back, as a job's metrics name them.
@@ -102,10 +114,14 @@ impl LiveReader for Routes {
     fn every(&self) -> Duration {
         Duration::from_secs(5 * 60)
     }
-    /// Its settings' window, while Routes keeps the DSP's route data at a station: none else.
+    /// Its settings' window, while Routes keeps the DSP's route data at a station and its
+    /// Cortex connection is enabled: none else.
     fn window(&self, db: &Store, dsp: &str) -> Result<Option<Window>> {
         let routes = db.feature_enabled(dsp, dispatch_routes::FEATURE.switch.id)?;
-        if !routes || db.profile(dsp)?.station_code.is_empty() {
+        if !routes
+            || db.profile(dsp)?.station_code.is_empty()
+            || !db.connection_for(dsp, cortex::PROVIDER)?.enabled
+        {
             return Ok(None);
         }
         settings::collection(db, dsp)?.window().map(Some)
@@ -113,23 +129,37 @@ impl LiveReader for Routes {
     fn read<'a>(&'a self, reading: &'a Reading, held: &'a mut Held) -> Pending<'a, Read> {
         Box::pin(async move {
             let dsp = reading.dsp.clone();
-            let request = reading
+            let (request, revision) = reading
                 .state
-                .read(move |db| dispatch_routes::live_request(db, &dsp))
+                .read(move |db| {
+                    let request = dispatch_routes::live_request(db, &dsp)?;
+                    Ok((request, db.connection_revision(&dsp, cortex::PROVIDER)?))
+                })
                 .await?;
+            let Some(revision) = revision else {
+                held.native = None;
+                return Err(Error::new("connection_required", 409));
+            };
             let mut labels = Vec::new();
-            // The native reader goes first while it reads the scope today's request names.
-            let native = held.native.take().filter(|(_, scope)| {
-                held.ladder.native_first() && request.scope_request().validate_scope(scope).is_ok()
+            // The native reader goes first while it reads the scope today's request names, under
+            // the connection's revision now.
+            let native = held.native.take().filter(|handed| {
+                held.ladder.native_first()
+                    && handed.revision == revision
+                    && request
+                        .scope_request()
+                        .validate_scope(&handed.scope)
+                        .is_ok()
             });
-            if let Some((mut native, scope)) = native {
-                let fallback = match native.read(&scope, request.mode).await {
+            if let Some(mut handed) = native {
+                let fallback = match handed.native.read(&handed.scope, request.mode).await {
                     Ok(capture) => match capture.validate(&request) {
                         Ok(()) => {
                             held.ladder.read_natively();
-                            held.native = Some((native, scope));
+                            held.native = Some(handed);
                             return Ok(Read {
                                 capture,
+                                revision,
                                 browser: false,
                                 labels: vec![routes::NATIVE],
                             });
@@ -144,7 +174,7 @@ impl LiveReader for Routes {
                         match failure {
                             // Cortex briefly unavailable keeps the reader for the next read.
                             Failure::Unavailable(error) if held.ladder.unavailable() => {
-                                held.native = Some((native, scope));
+                                held.native = Some(handed);
                                 return Err(error);
                             }
                             Failure::Unavailable(_) => {}
@@ -158,12 +188,17 @@ impl LiveReader for Routes {
             held.ladder.browsing();
             let (day, scope) = browse(reading, &request).await?;
             held.ladder.browsed();
-            held.native = day.native.map(|native| (native, scope));
+            held.native = day.native.map(|native| Handed {
+                native,
+                scope,
+                revision,
+            });
             labels.extend(day.fallback);
             labels.dedup();
             labels.extend(day.method);
             Ok(Read {
                 capture: day.capture,
+                revision,
                 browser: true,
                 labels,
             })
@@ -173,8 +208,16 @@ impl LiveReader for Routes {
     fn started<'a>(&'a self, reading: &'a Reading, _: &'a Read) -> Pending<'a, ()> {
         Box::pin(dispatch_routes::clear_live(&reading.state, &reading.dsp))
     }
+    /// Keeps a read taken under the connection's revision now: never one read with credentials
+    /// since replaced, or after the connection was disabled (`connection_changed`).
     fn kept<'a>(&'a self, reading: &'a Reading, read: Read) -> Pending<'a, Counts> {
         Box::pin(async move {
+            let dsp = reading.dsp.clone();
+            let revision = reading
+                .state
+                .read(move |db| db.connection_revision(&dsp, cortex::PROVIDER))
+                .await?;
+            ensure(revision == Some(read.revision), "connection_changed", 409)?;
             let kept =
                 dispatch_routes::keep_live(&reading.state, &reading.dsp, read.capture).await?;
             let mut counts = kept.counts();

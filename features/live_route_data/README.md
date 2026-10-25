@@ -21,8 +21,8 @@ first read empties it. It reads within the server through core's live readers
   each read is a read of today. Core keeps the values and records each change as
   `settings.changed`; saving wakes the readers.
 - **Reading** (`backend/reader.rs`, the live reader `live_route_data.routes`): every five minutes
-  from the window's start until its stop, at the DSP's own place on that grid, while Routes is on
-  and the DSP has a station; at none else. Each read asks what Routes' `live_request` names, a
+  from the window's start until its stop, at the DSP's own place on that grid, while Routes is on,
+  the DSP has a station and its Cortex connection is enabled; at none else. Each read asks what Routes' `live_request` names, a
   snapshot of today at the DSP's station:
   - natively, with no browser, when the reader holds one the DSP's browser handed back, and it
     reads the scope today's request names. A read whole and checked is kept.
@@ -37,6 +37,11 @@ first read empties it. It reads within the server through core's live readers
     five reads open it, that one among them, before native is tried again.
   - It never opens a browser someone else has open for the DSP, such as a member's signing in or
     verifying: the read fails (`connection_busy`) and the next tries again.
+  - The native reader serves only the connection revision it was taken under
+    (`Store::connection_revision`): once the DSP's Cortex credentials are replaced, or the
+    connection disabled, it goes unused, and a read taken under another revision is never kept
+    (`connection_changed`); a read while the connection is disabled is refused
+    (`connection_required`).
   - A read that isn't whole is never kept.
 - **A day:** its first whole read empties live route data of the day before (`clear_live`) before
   it is kept (`keep_live`). Each read after is kept in place. Once the window ends, the day is
