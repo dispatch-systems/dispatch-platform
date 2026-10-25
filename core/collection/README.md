@@ -6,7 +6,8 @@ result to the one feature that keeps it, naming neither. A collection runs only 
 feature that keeps it is on, and each feature serves its own jobs under routes core builds for
 it; its schedules are set on the Collectors page, through core's routes.
 What a browser or a site sends is untrusted input, and a job's metrics keep only timings,
-counts, memory and fixed failure labels.
+counts, memory and fixed labels: what failed, and how a collector that reads in more than one
+way read it.
 
 A page follows its collections live with `useCollectionUpdates()` (`frontend/live-collection.ts`):
 one waiting request on `/api/dsp/collection-updates`, which the permissions features list in

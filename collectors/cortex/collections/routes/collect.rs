@@ -418,7 +418,7 @@ impl Driver {
                 Ok(capture) => {
                     // Nothing needs the browser now: it closes before the day is checked and kept.
                     self.browser.close().await;
-                    metrics.detail("routes_native");
+                    metrics.method("routes_native");
                     progress(95, "Validating routes".into()).await?;
                     capture.validate(request)?;
                     return Ok(capture);
@@ -570,8 +570,8 @@ impl Driver {
             .map(|c| c.ok_or_else(|| Error::new("routes_capture_invalid", 502)))
             .collect::<Result<Vec<_>>>()?;
         if method.navigation == Navigation::Signed {
-            // Which read the day: the application's signatures alone, or moves as well.
-            metrics.detail(if todo.is_empty() {
+            // The application's signatures alone read the day, or moves as well.
+            metrics.method(if todo.is_empty() {
                 "routes_signed"
             } else {
                 "routes_signed_moved"

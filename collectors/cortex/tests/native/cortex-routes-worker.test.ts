@@ -459,7 +459,7 @@ test(
     };
     const job = await collected(day);
     // The page carried no key: the application's signatures read the day, and moves the rest.
-    assert.equal(job.metrics.at(-1).detail, 'routes_signed_moved');
+    assert.equal(job.metrics.at(-1).method, 'routes_signed_moved');
     const days = (await owner.get('/api/dsp/routes/days')).value;
     assert.equal(days.days.length, 1);
     assert.equal(days.days[0].itineraryCount, 2);
@@ -533,7 +533,7 @@ test(
     keyed = true;
     const asked = requests.length;
     const again = await collected('again');
-    assert.equal(again.metrics.at(-1).detail, 'routes_native');
+    assert.equal(again.metrics.at(-1).method, 'routes_native');
     assert.deepEqual(unsigned, []);
     assert.deepEqual(
       requests
