@@ -125,7 +125,7 @@ pub async fn save_day(
         let current = state
             .run_scoped(dsp, DOMAIN, move |db| {
                 on(db)?;
-                publish_day(&*db.routes_db(&d)?, &k, &staged, &phones)
+                publish_day(&*db.routes_db(&d)?, &k, &staged, Some(&phones))
             })
             .await?;
         if current {

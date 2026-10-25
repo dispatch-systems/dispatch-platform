@@ -17,8 +17,9 @@ pub(super) enum Writes {
 /// Makes a staged day its scope's read, in one transaction, if it was collected later than
 /// the read the day has, in whatever order the two are published: the day's last read is
 /// left inactive, what the new one sent of the drivers and addresses the days share is
-/// written over them, and the day's work phones become `phones`, the new read's. A day
-/// collected no later is left inactive itself, changing none of them. Either way
+/// written over them, and the day's work phones become `phones`, the new read's, when it
+/// read them: one that reads none, as the standard collection's, leaves the day's as they
+/// are. A day collected no later is left inactive itself, changing none of them. Either way
 /// `sweep_routes` deletes what's inactive in small steps; only flags and the day's shared
 /// rows and phones change here, so the platform lock is held for moments.
 /// Answers whether it is the day's read now.
@@ -26,7 +27,7 @@ pub(super) fn publish_day(
     db: &Db,
     job: &str,
     staged: &Staged,
-    phones: &[WorkPhone],
+    phones: Option<&[WorkPhone]>,
 ) -> Result<bool> {
     db.transaction(|| {
         let row = db
@@ -70,6 +71,9 @@ pub(super) fn publish_day(
             [&staged.publication],
         )?;
         share(db, &staged.publication, &staged.day)?;
+        let Some(phones) = phones else {
+            return Ok(true);
+        };
         db.exec("DELETE FROM work_phones WHERE day=?", [&staged.day])?;
         let mut insert = db.0.prepare_cached(
             "INSERT INTO work_phones(day,transporter_id,phone,since,until) VALUES (?,?,?,?,?)",

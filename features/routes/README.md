@@ -20,11 +20,11 @@ it is live route data, in a database of its own, `routelive`.
   itself into historical route data, as the standard collection saves a job's, with `save_day`
   (`backend/saving.rs`): under a key of its own, checked whole against the DSP's station and
   the day before anything is written, staged one itinerary at a time, and the day's read only
-  if collected later than the one it has, with the day's work phones it's given. A read in a
-  mode its day didn't allow when it was read (its `finished_at`, where the DSP is), a final read
-  of a day not yet ended or a snapshot of another day than it was then, is refused
-  (`routes_day_not_available`). It tells Driver Match of new drivers at once (`people.changed`),
-  and refuses while Routes is off.
+  if collected later than the one it has, with the day's work phones it's given, which a later
+  standard read keeps. A read in a mode its day didn't allow when it was read (its
+  `finished_at`, where the DSP is), a final read of a day not yet ended or a snapshot of another
+  day than it was then, is refused (`routes_day_not_available`). It tells Driver Match of new
+  drivers at once (`people.changed`), and refuses while Routes is off.
 - **Live route data:** a feature that depends on Routes and reads today live asks Cortex for
   what `live_request` names, a snapshot of today where the DSP is at its station, as a job asks
   for a day; and keeps each whole read with `keep_live` (`backend/live.rs`), counting for its read's record the itineraries
@@ -88,7 +88,7 @@ it is live route data, in a database of its own, `routelive`.
   addresses and drivers the days share, as the last read to become its day's read sent them
   (each read's are staged with it until then); and
   `work_phones`, each driver's holds on the company's work phones a day, from when until when,
-  which are the day's read's: a saved day's, or none from the standard collection.
+  which are the last saved day's: the standard collection reads none, so its read keeps them.
 - **Retention:** from 30 to 3,650 days, or every day. Hourly, data past the window is retired,
   with its days' work phones, and then deleted in small steps, so the lock is never held long.
 - **Settings:** `routes.retention`, "Route data", on the shared Data page
