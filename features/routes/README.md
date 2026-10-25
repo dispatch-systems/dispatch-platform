@@ -53,7 +53,7 @@ it is live route data, in a database of its own, `routelive`.
   the first phone it showed today, read for every driver the list names, assigned only or
   dispatched; a claim made earlier is withdrawn. A driver holding a phone switches to another
   once two reads in a row show it. A claim of a phone someone holds is a handover, ending theirs,
-  and their record showing it still takes it back never. A session Cortex ended ends its
+  and their record still showing it never takes it back. A session Cortex ended ends its
   driver's hold, as does going from the day's list, and the phone shown once they're back is
   claimed again; a list naming nobody ends none. Claims are settled oldest activity first, so the
   most recently active driver holds a phone two records show. Every hold is kept, from its claim

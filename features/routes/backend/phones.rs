@@ -156,8 +156,8 @@ fn end(db: &Db, day: &str, at: i64, driver: &str) -> Result<bool> {
 /// is a driver event today, or a record changed from the first phone it showed today, read for
 /// every driver the list names, dispatched or not; a claim made before that is withdrawn, never
 /// having been a hold. A driver holding a phone switches to another once two reads in a row show
-/// it. A claim of a phone someone else holds is a handover and ends theirs, whose record showing
-/// it still takes it back never. A session Cortex has ended ends its driver's hold, and forgets
+/// it. A claim of a phone someone else holds is a handover and ends theirs, and their record
+/// still showing it never takes it back. A session Cortex has ended ends its driver's hold, and forgets
 /// what it showed, so the same phone shown once the session is back is claimed again; a driver
 /// gone from the day's list ends theirs the same way, and a list naming nobody ends none. Claims
 /// are settled oldest activity first, so the most recently active driver holds a phone two
