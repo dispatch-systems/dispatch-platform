@@ -152,7 +152,9 @@ pub const FEATURE: Feature = Feature {
                 Migration {
                     id: 9,
                     name: "work_phones_phone",
-                    apply: Sql(include_str!("migrations/routedata/0009_work_phones_phone.sql")),
+                    apply: Sql(include_str!(
+                        "migrations/routedata/0009_work_phones_phone.sql"
+                    )),
                 },
             ],
         },

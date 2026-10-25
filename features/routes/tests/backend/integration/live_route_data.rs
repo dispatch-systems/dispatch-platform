@@ -279,7 +279,10 @@ fn hold(hold: WorkPhoneHold) -> Hold {
 /// Every hold of the live day, as other features read them.
 fn live_holds(db: &Store, dsp: &str) -> Vec<Hold> {
     let live = dispatch_routes_contract::live_for_dsp(db, dsp).unwrap();
-    let holds = live.expect("Routes is on").work_phone_holds(db, dsp).unwrap();
+    let holds = live
+        .expect("Routes is on")
+        .work_phone_holds(db, dsp)
+        .unwrap();
     holds.into_iter().map(hold).collect()
 }
 /// Every hold historical route data keeps of `day`, as other features read them.
