@@ -45,11 +45,14 @@ async fn fixture_mode_reads_a_whole_day_in_the_scope_it_resolves() {
     }
 }
 
+/// One thing changed in a scope.
+type Change = fn(&mut Scope);
+
 #[tokio::test]
 async fn a_scope_kept_for_another_request_is_refused() {
     let config = config(true, None);
     // A scope kept for `known`'s request with one thing changed, as a browser's read refuses it.
-    let refused = async |known: bool, change: fn(&mut Scope)| {
+    let refused = async |known: bool, change: Change| {
         let request = request(known);
         let mut kept = Browser::new(None, &config)
             .unwrap()
@@ -60,7 +63,7 @@ async fn a_scope_kept_for_another_request_is_refused() {
         let read = Browser::new(None, &config).unwrap().read(&request, &kept);
         read.await.err().map(|error| error.code)
     };
-    let changes: [(bool, fn(&mut Scope)); 7] = [
+    let changes: [(bool, Change); 7] = [
         (false, |scope| scope.date = "2026-09-24".into()),
         // Each part of the scope a request names.
         (true, |scope| scope.date = "2026-09-24".into()),
