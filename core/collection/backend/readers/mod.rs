@@ -108,9 +108,6 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
     let readers: Vec<(&'static Feature, &'static dyn Reads)> = registry().live_readers().collect();
     let reads = Arc::new(Semaphore::new(READS_AT_ONCE));
     let mut tasks = JoinSet::new();
-    // The browsers of DSPs that stopped reading, closing on their own, so a slow one holds up
-    // no other DSP's plan.
-    let mut closing = JoinSet::new();
     let mut keys: HashMap<Id, Key> = HashMap::new();
     let mut running: HashMap<Key, Running> = HashMap::new();
     let mut minute = tokio::time::interval(Duration::from_secs(60));
@@ -120,7 +117,6 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
             _ = crate::cancelled(&mut stop) => break,
             _ = state.readers_wake.notified() => {}
             _ = minute.tick() => {}
-            _ = closing.join_next(), if !closing.is_empty() => continue,
             joined = tasks.join_next_with_id(), if !tasks.is_empty() => {
                 let (id, failed) = match joined {
                     Some(Ok((id, ()))) => (id, false),
@@ -161,7 +157,7 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
         for (key, running) in &running {
             // A DSP no longer served stops reading.
             if !served.contains(&key) && running.plans.send_replace(None).is_some() {
-                close_browsers(&mut closing, &state, &key.1, readers[key.0].1);
+                state.close_reader_browsers(&key.1, readers[key.0].1.id());
             }
         }
         for (key, plan) in planned {
@@ -187,7 +183,7 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
                     });
                     // What a hook still holds of the DSP's browser fails from now on.
                     if stops {
-                        close_browsers(&mut closing, &state, &key.1, readers[key.0].1);
+                        state.close_reader_browsers(&key.1, readers[key.0].1.id());
                     }
                 }
                 None => {
@@ -210,20 +206,7 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
         );
     }
     tasks.shutdown().await;
-    closing.shutdown().await;
     Ok(())
-}
-
-/// Closes, on a task of its own, the DSP's browsers that `reader` opened, as it stops reading
-/// there.
-fn close_browsers(
-    closing: &mut JoinSet<()>,
-    state: &Arc<State>,
-    dsp: &str,
-    reader: &'static dyn Reads,
-) {
-    let (state, dsp) = (state.clone(), dsp.to_owned());
-    closing.spawn(async move { state.browsers.revoke_reader(&dsp, reader.id()).await });
 }
 
 /// Each served DSP's plan for each reader: none while the reader's feature is off there or its

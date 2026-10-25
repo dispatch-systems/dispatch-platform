@@ -34,6 +34,9 @@ pub struct Manager {
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     operations: Mutex<HashMap<String, std::sync::Weak<AsyncMutex<()>>>>,
     runtime: Mutex<Option<Arc<browseros::Runtime>>>,
+    /// Live readers' browsers closing on tasks of their own (`State::close_reader_browsers`),
+    /// which the manager's own close waits for.
+    closing: Mutex<tokio::task::JoinSet<()>>,
 }
 pub struct Session {
     pub id: String,
@@ -192,9 +195,8 @@ impl Manager {
         }
     }
 
-    /// Closes the DSP's browsers that the live reader `reader` opened, as it stops reading
-    /// there: what a hook still holds of one fails from then on.
-    pub async fn revoke_reader(&self, id: &str, reader: &str) {
+    /// Closes the DSP's browsers that the live reader `reader` opened.
+    async fn revoke_reader(&self, id: &str, reader: &str) {
         let opened: Vec<Arc<Session>> = self
             .sessions
             .lock()
@@ -247,6 +249,8 @@ impl Manager {
         for s in sessions {
             s.close().await;
         }
+        let mut closing = std::mem::take(&mut *self.closing.lock().expect("browser registry"));
+        while closing.join_next().await.is_some() {}
     }
 }
 impl Session {
@@ -553,6 +557,15 @@ impl Store {
     }
 }
 impl State {
+    /// Closes the DSP's browsers that the live reader `reader` opened, as it stops reading
+    /// there, on a task of its own: what a hook still holds of one fails from then on, and the
+    /// caller waits on none of them, as one still starting would keep it waiting.
+    pub(crate) fn close_reader_browsers(self: &Arc<Self>, dsp: &str, reader: &'static str) {
+        let (state, dsp) = (self.clone(), dsp.to_owned());
+        let mut closing = self.browsers.closing.lock().expect("browser registry");
+        while closing.try_join_next().is_some() {}
+        closing.spawn(async move { state.browsers.revoke_reader(&dsp, reader).await });
+    }
     pub async fn expire_browsers(self: &Arc<Self>) {
         let ids = self
             .browsers
@@ -868,3 +881,7 @@ impl State {
         .await
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/browser/sessions.rs"]
+mod tests;
