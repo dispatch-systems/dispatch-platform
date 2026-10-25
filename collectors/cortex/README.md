@@ -19,8 +19,13 @@ in, has the page asked for its key once more, and the browser closes once the da
 it could not: no key on the page, the key refused, the session ended, or Cortex unavailable.
 Otherwise the day is signed by the application's own API action, stopped before it leaves the
 browser and downloaded twelve at a time with its session, and whatever does not download is read
-as moves. Reports download cookie-free from the
-report host only. Vans are the fleet's one list over HTTP, every status it accepts at once and
+as moves. A job's metrics name what read the day (`method`) and, when native reading fell back,
+why (`fallback`): one of those reasons, or `routes_native_invalid` for a day it read whole that
+failed the collection's checks. A feature reads a day outside a job the same way through
+`routes::Browser`, made from the DSP's Cortex browser as `Reading::browser` opened it: the day's
+scope, then the day, with a native reader to keep and read the next with no browser. In fixture
+mode no browser runs, and each day it reads is the fixture's, as a job's is. Reports download
+cookie-free from the report host only. Vans are the fleet's one list over HTTP, every status it accepts at once and
 each continuation page after, for an account that sees the DSP's company alone, with the company
 list the start's session check read. A meal collection waits for sixteen routes at once in one
 tab, reads the day's list from the response the application fetched, and reads no itinerary for

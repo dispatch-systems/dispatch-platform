@@ -32,6 +32,7 @@ const metricsSchema = z.object({
   ),
   detail: z._default(z.nullable(text), null),
   method: z.optional(text),
+  fallback: z.optional(text),
   queueMs: milliseconds,
   elapsedMs: milliseconds,
   authenticationMs: z.nullable(milliseconds),

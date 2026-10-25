@@ -8,7 +8,12 @@ export type JobMetrics = { attempt: number, startedAt: string, finishedAt: strin
  * How the collector read what it collected, for one that reads in more than one way: a
  * fixed label of its own. Metrics saved before it have none.
  */
-method?: string, queueMs: number, elapsedMs: number, authenticationMs: number | null, verificationMs: number | null, collectionMs: number | null, publicationMs: number | null, employees: number | null, timecards: number | null, itineraries: number | null, meals: number | null,
+method?: string,
+/**
+ * Why the collector read it some other way than its first, for one that falls back: a
+ * fixed label of its own, kept as `method` is. Metrics saved before it have none.
+ */
+fallback?: string, queueMs: number, elapsedMs: number, authenticationMs: number | null, verificationMs: number | null, collectionMs: number | null, publicationMs: number | null, employees: number | null, timecards: number | null, itineraries: number | null, meals: number | null,
 /**
  * Weekly Scorecard rows across every dataset. Metrics saved before scorecards have none.
  */

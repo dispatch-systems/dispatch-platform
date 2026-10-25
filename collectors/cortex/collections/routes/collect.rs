@@ -8,13 +8,20 @@
 //! not read is read by moves inside the application: the address changes as a click in
 //! the list would change it, and the application fetches just that itinerary. An
 //! itinerary the application does not answer for is read by loading its own page instead.
+//!
+//! A job reads a day in its driver's tab; a feature reading outside a job, in the browser it
+//! opened (`Browser`), the same way.
 use super::capture::{
     Capture, Collection, ItineraryCapture, MAX_BODY, MAX_CAPTURE_BYTES, MAX_ITINERARIES, Request,
     add_capture_bytes, listed, token,
 };
 use super::native::Native;
 use crate as cortex;
-use crate::{codes, connection::Driver, discovery::Scope};
+use crate::{
+    codes,
+    connection::{Driver, Tab},
+    discovery::Scope,
+};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use dispatch_core::{
     Error, Result,
@@ -127,6 +134,24 @@ impl Method {
     }
 }
 
+/// What a job's metrics call a day read natively.
+const NATIVE: &str = "routes_native";
+/// Why a day read whole natively was not kept: it failed the collection's checks.
+const INVALID: &str = "routes_native_invalid";
+/// A day read with a browser, and how.
+pub struct Day {
+    pub capture: Capture,
+    /// What read it, as a job's metrics name it: `routes_native`, `routes_signed` or
+    /// `routes_signed_moved`. None in fixture mode, as a fixture job names none.
+    pub method: Option<&'static str>,
+    /// Why it was not read natively, when it was read another way: `Failure::label`, or
+    /// `routes_native_invalid` for a day read whole that failed the collection's checks.
+    pub fallback: Option<&'static str>,
+    /// A reader carrying the browser's session, and the key it found, to read the next with
+    /// no browser (`Native::read`): none in fixture mode.
+    pub native: Option<Native>,
+}
+
 /// Only the owner of an itinerary response, read without building the whole tree.
 #[derive(Deserialize)]
 struct Whose {
@@ -188,7 +213,7 @@ fn patterns(paths: &[&str]) -> Value {
         .collect();
     json!({ "patterns": patterns })
 }
-impl Driver {
+impl Tab<'_> {
     /// Lets one paused response go on, or hands it back when it is a data response under
     /// `path` from the application's origin.
     async fn settle(&self, page: &Page, event: &Value, path: &str) -> Result<Option<Value>> {
@@ -370,26 +395,27 @@ impl Driver {
             metrics.detail("route_changed");
         }
     }
-    pub(crate) async fn collect_routes(
+    /// The scope of the day `request` names: the service area and provider it names, or
+    /// found on Cortex as discovery finds them.
+    pub(super) async fn routes_scope(
         &mut self,
         request: &Request,
-        run: &Run<'_>,
-    ) -> Result<Capture> {
-        self.collect_routes_with(
-            request,
-            &Method::default(),
-            run.metrics,
-            |progress, message| run.progress(progress, message),
-        )
-        .await
+        metrics: &Recorder,
+    ) -> Result<Scope> {
+        request.validate()?;
+        self.resolve_scope(&request.scope_request(), metrics).await
     }
-    pub(crate) async fn collect_routes_with<F, Fut>(
+    /// The day `request` names, in `scope`, as `method` reads it. A day read natively closes
+    /// the browser once it is read whole and checked: nothing needs it after.
+    pub(super) async fn read_routes<F, Fut>(
         &mut self,
         request: &Request,
+        scope: &Scope,
+        started_at: i64,
         method: &Method,
         metrics: &Recorder,
         progress: F,
-    ) -> Result<Capture>
+    ) -> Result<Day>
     where
         F: Fn(i64, String) -> Fut,
         Fut: Future<Output = Result<()>>,
@@ -400,51 +426,46 @@ impl Driver {
             "routes_capture_invalid",
             502,
         )?;
-        let started_at = now();
-        progress(5, "Finding the station".into()).await?;
-        let scope = self
-            .resolve_scope(&request.scope_request(), metrics)
-            .await?;
-        ensure(
-            scope.date == request.date && scope.station == request.station,
-            "routes_scope_mismatch",
-            502,
-        )?;
+        // The day's, as discovery checks what it finds: one its caller kept too.
+        request.scope_request().validate_scope(scope)?;
         progress(10, "Reading the route list".into()).await?;
         let mut method = *method;
+        let mut native = None;
+        let mut fallback = None;
         if method.navigation == Navigation::Native {
-            let session = SignedIn::of(&self.browser, &self.origin, &cortex::HOSTS).await?;
-            let read = Native::new(&session)?.read(&scope, request.mode).await;
-            if read.is_ok() {
-                progress(95, "Validating routes".into()).await?;
-            }
+            let session = SignedIn::of(self.browser, self.origin, &cortex::HOSTS).await?;
             // A day is checked before the browser closes: one that fails is read with it.
-            let native = read.and_then(|capture| {
-                capture.validate(request)?;
-                Ok(capture)
-            });
-            match native {
+            let (reader, read) = read_natively(&session, request, scope, &progress).await?;
+            match read {
                 Ok(capture) => {
                     // Nothing needs the browser now: it closes before the day is kept.
                     self.browser.close().await;
-                    metrics.method("routes_native");
-                    return Ok(capture);
+                    metrics.method(NATIVE);
+                    return Ok(Day {
+                        capture,
+                        method: Some(NATIVE),
+                        fallback: None,
+                        native: Some(reader),
+                    });
                 }
-                Err(failure) => {
-                    metrics.detail(failure.label());
+                Err(label) => {
+                    metrics.detail(label);
+                    metrics.fallback(label);
+                    fallback = Some(label);
                     method.navigation = Navigation::Signed;
                 }
             }
+            native = Some(reader);
         }
         let method = &method;
         self.ensure_page().await?;
-        let origin = self.origin.clone();
+        let origin = self.origin;
         let parse = |text: String| -> Result<Value> {
             serde_json::from_str(&text).map_err(|_| Error::new("cortex_content_incomplete", 502))
         };
         let summaries_body = self
             .capture_page(
-                &self.page,
+                self.page,
                 &format!("{origin}{}", scope.list_path()),
                 SUMMARIES,
                 false,
@@ -453,7 +474,7 @@ impl Driver {
             .await?;
         let bytes = CaptureBudget::new(summaries_body.len())?;
         let summaries = parse(summaries_body)?;
-        let listed = listed(&summaries, &scope);
+        let listed = listed(&summaries, scope);
         ensure(
             listed.len() <= MAX_ITINERARIES,
             "routes_source_too_large",
@@ -473,8 +494,8 @@ impl Driver {
         if method.navigation == Navigation::Reload {
             let body = self
                 .capture_page(
-                    &self.page,
-                    &routes_page(&origin, &scope),
+                    self.page,
+                    &routes_page(origin, scope),
                     ROUTE_SUMMARIES,
                     false,
                     metrics,
@@ -487,14 +508,7 @@ impl Driver {
         let mut itineraries: Vec<Option<ItineraryCapture>> = vec![None; listed.len()];
         if method.navigation == Navigation::Signed {
             let read = self
-                .read_signed(
-                    &scope,
-                    &listed,
-                    method.downloads,
-                    &bytes,
-                    metrics,
-                    &progress,
-                )
+                .read_signed(scope, &listed, method.downloads, &bytes, metrics, &progress)
                 .await?;
             itineraries = read.itineraries;
             route_summaries = read.routes;
@@ -509,16 +523,16 @@ impl Driver {
         for _ in 1..method.tabs.min(todo.len()) {
             let mut page = if method.windows {
                 // Its own window stays visible, as a rendered page expects.
-                Page::open_window(self.browser.clone(), self.origin.clone()).await?
+                Page::open_window(self.browser.clone(), origin.to_owned()).await?
             } else {
-                Page::open(self.browser.clone(), self.origin.clone()).await?
+                Page::open(self.browser.clone(), origin.to_owned()).await?
             };
             page.allow_origins(&self.origins.iter().map(String::as_str).collect::<Vec<_>>());
             others.push(page);
         }
         let lanes = Lanes {
-            driver: &*self,
-            scope: &scope,
+            tab: &*self,
+            scope,
             method,
             listed: &listed,
             todo: &todo,
@@ -536,7 +550,7 @@ impl Driver {
             Vec::new()
         } else {
             futures_util::future::join_all(
-                std::iter::once((&self.page, true))
+                std::iter::once((&*self.page, true))
                     .chain(others.iter().map(|page| (page, false)))
                     .map(|(page, loaded)| lanes.read(page, loaded)),
             )
@@ -564,7 +578,7 @@ impl Driver {
         let route_summaries = match route_summaries {
             Some(value) => value,
             None => {
-                let body = self.route_summaries(&scope, method, metrics).await?;
+                let body = self.route_summaries(scope, method, metrics).await?;
                 lanes.bytes.add(body.len())?;
                 parse(body)?
             }
@@ -578,20 +592,21 @@ impl Driver {
             .into_iter()
             .map(|c| c.ok_or_else(|| Error::new("routes_capture_invalid", 502)))
             .collect::<Result<Vec<_>>>()?;
-        if method.navigation == Navigation::Signed {
-            // The application's signatures alone read the day, or moves as well.
-            metrics.method(if moved {
-                "routes_signed_moved"
-            } else {
-                "routes_signed"
-            });
+        // The application's signatures alone read the day, or moves as well.
+        let read_by = (method.navigation == Navigation::Signed).then_some(if moved {
+            "routes_signed_moved"
+        } else {
+            "routes_signed"
+        });
+        if let Some(label) = read_by {
+            metrics.method(label);
         }
         progress(95, "Validating routes".into()).await?;
         let capture = Capture {
             version: 1,
             collection: Collection::Routes,
             mode: request.mode,
-            scope,
+            scope: scope.clone(),
             started_at,
             finished_at: now().max(started_at),
             summaries,
@@ -599,7 +614,12 @@ impl Driver {
             itineraries,
         };
         capture.validate(request)?;
-        Ok(capture)
+        Ok(Day {
+            capture,
+            method: read_by,
+            fallback,
+            native,
+        })
     }
     /// The newer routes page's list: a move in the first tab's application, or the
     /// page loaded when the application does not answer.
@@ -609,18 +629,18 @@ impl Driver {
         method: &Method,
         metrics: &Recorder,
     ) -> Result<String> {
-        let url = routes_page(&self.origin, scope);
+        let url = routes_page(self.origin, scope);
         self.page
             .command("Fetch.enable", patterns(&[ROUTE_SUMMARIES]))
             .await?;
         let moved = self
-            .move_to(&self.page, &url, ROUTE_SUMMARIES, method, metrics, |_| true)
+            .move_to(self.page, &url, ROUTE_SUMMARIES, method, metrics, |_| true)
             .await;
-        self.stop_pausing(&self.page).await;
+        self.stop_pausing(self.page).await;
         match moved {
             Err(error) if error.is_any(MOVE_FAILED) => {
                 metrics.detail("routes_page_reloaded");
-                self.capture_page(&self.page, &url, ROUTE_SUMMARIES, false, metrics)
+                self.capture_page(self.page, &url, ROUTE_SUMMARIES, false, metrics)
                     .await
             }
             result => result,
@@ -628,9 +648,74 @@ impl Driver {
     }
 }
 
+/// The day `request` names, in `scope`, read natively with `session` and checked as every
+/// capture is: the reader, to keep and read the next with, and the day, or why it is not
+/// kept: what `Failure::label` calls it, or `routes_native_invalid` for a day read whole
+/// that failed the checks.
+pub(super) async fn read_natively<F, Fut>(
+    session: &SignedIn,
+    request: &Request,
+    scope: &Scope,
+    progress: &F,
+) -> Result<(Native, std::result::Result<Capture, &'static str>)>
+where
+    F: Fn(i64, String) -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
+    let mut reader = Native::new(session)?;
+    let read = match reader.read(scope, request.mode).await {
+        Ok(capture) => {
+            progress(95, "Validating routes".into()).await?;
+            capture
+                .validate(request)
+                .map(|()| capture)
+                .map_err(|_| INVALID)
+        }
+        Err(failure) => Err(failure.label()),
+    };
+    Ok((reader, read))
+}
+
+impl Driver {
+    pub(crate) async fn collect_routes(
+        &mut self,
+        request: &Request,
+        run: &Run<'_>,
+    ) -> Result<Capture> {
+        self.collect_routes_with(
+            request,
+            &Method::default(),
+            run.metrics,
+            |progress, message| run.progress(progress, message),
+        )
+        .await
+    }
+    /// The day `request` names, its scope found and the day read as `method` reads it.
+    pub(crate) async fn collect_routes_with<F, Fut>(
+        &mut self,
+        request: &Request,
+        method: &Method,
+        metrics: &Recorder,
+        progress: F,
+    ) -> Result<Capture>
+    where
+        F: Fn(i64, String) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
+        let started_at = now();
+        progress(5, "Finding the station".into()).await?;
+        let mut tab = self.tab();
+        let scope = tab.routes_scope(request, metrics).await?;
+        let day = tab
+            .read_routes(request, &scope, started_at, method, metrics, progress)
+            .await?;
+        Ok(day.capture)
+    }
+}
+
 /// The itineraries still to read, shared by the tabs.
 struct Lanes<'a, F> {
-    driver: &'a Driver,
+    tab: &'a Tab<'a>,
     scope: &'a Scope,
     method: &'a Method,
     listed: &'a [(String, String)],
@@ -658,7 +743,7 @@ where
         }
         let result = self.lane(page, &mut ready).await;
         if ready {
-            self.driver.stop_pausing(page).await;
+            self.tab.stop_pausing(page).await;
         }
         if result.is_err() {
             self.stopped.store(true, Ordering::SeqCst);
@@ -666,7 +751,7 @@ where
         result
     }
     async fn lane(&self, page: &Page, ready: &mut bool) -> Result<Vec<(usize, ItineraryCapture)>> {
-        let driver = self.driver;
+        let tab = self.tab;
         let mut read = Vec::new();
         while !self.stopped.load(Ordering::SeqCst) {
             let Some(&index) = self.todo.get(self.next.fetch_add(1, Ordering::SeqCst)) else {
@@ -678,8 +763,8 @@ where
             self.metrics.page_stage(ordinal, "content");
             let mut result = Err(Error::new("routes_move_unanswered", 502));
             if *ready {
-                let url = format!("{}{}", driver.origin, self.scope.detail_path(id));
-                result = driver
+                let url = format!("{}{}", tab.origin, self.scope.detail_path(id));
+                result = tab
                     .move_to(page, &url, ITINERARY, self.method, self.metrics, |text| {
                         owned_by(text, id, transporter)
                     })
@@ -692,14 +777,14 @@ where
                 // Not moved, or not answered: load the itinerary's own page, which
                 // leaves the tab showing an application to move within.
                 if *ready {
-                    driver.stop_pausing(page).await;
+                    tab.stop_pausing(page).await;
                     *ready = false;
                     self.metrics
                         .page_finish(ordinal, result.as_ref().err().map(|e| e.code.as_str()));
                     self.metrics.page_start(ordinal, 2);
                     self.metrics.page_stage(ordinal, "content");
                 }
-                result = driver
+                result = tab
                     .itinerary_page(
                         page,
                         self.scope,
