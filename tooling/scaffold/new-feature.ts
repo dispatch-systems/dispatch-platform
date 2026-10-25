@@ -5,6 +5,7 @@ import {
   addWorkspaceMember,
   capabilitiesOf,
   change,
+  collectionOf,
   collectionsOf,
   collectors,
   coreParts,
@@ -256,6 +257,8 @@ export function featureValues(root: string, argv: string[], adding = false) {
       );
   }
   const keeps = Boolean(kept);
+  // What Settings' Collectors page lists it as, which its declaration of what it collects names.
+  const listed = keeps ? collectionOf(root, site, collection) : undefined;
 
   const tables = args.options.get('tables');
   let database: Database | undefined;
@@ -414,6 +417,12 @@ export function featureValues(root: string, argv: string[], adding = false) {
   const screens = page || Boolean(host) || connection || sidebar;
   // A switch shows on the DSPs page with its icon, which the frontend's platform slots give.
   const frontend = screens || switched;
+  // What a keeper's collection collects is said in its frontend, which a browser test holds.
+  if (keeps && !frontend)
+    throw new UsageError(
+      '--keeps says what its collection collects in frontend/, which needs a switch or a ' +
+        'screen: add --page, or leave out --mandatory',
+    );
   // Its page of Settings shows the icon of the page its switch gates, or else its manifest's,
   // which a feature with settings gives when it has no such page.
   const pageIcon =
@@ -490,6 +499,9 @@ export function featureValues(root: string, argv: string[], adding = false) {
     siteIdent: site ? identOf(site) : '',
     siteLabel: site ? namesOf(site).label : '',
     collection,
+    schedule: listed?.schedule ?? '',
+    collectionLabel: listed?.label ?? '',
+    counted: listed?.counted ?? '',
     fixtureRequest: `{"collection": "${collection}"}`,
     publishParameters: `${parameters(Boolean(database), [
       ['store', '&Store'],
@@ -603,6 +615,8 @@ function pieces(values: Values): [boolean, string, string][] {
       'frontend/feature.ts',
       'frontend/feature.ts',
     ],
+    // What its collection collects, which Settings' Collectors page shows under it.
+    [values.keeps as boolean, 'frontend/collected.ts', 'frontend/collected.ts'],
     [(values.page || values.sidebar) as boolean, 'frontend/index.ts', 'frontend/index.ts'],
     [values.page as boolean, 'frontend/Page.tsx', `frontend/${pascal}Page.tsx`],
     // frontend/tabs/ holds the tabs of its own page, which its manifest declares.
@@ -723,6 +737,12 @@ export async function planFeature(root: string, argv: string[]) {
     plan.notes.push(
       `Its migration to the ${values.database} database is its own number 1, recorded under its ` +
         "name, apart from every other owner's.",
+    );
+  if (values.keeps)
+    plan.notes.push(
+      `\`frontend/collected.ts\` is what Settings' Collectors page shows ${values.collectionLabel} ` +
+        "collects: fill in its fields, what a run reads and what each run does. The app's " +
+        'Collectors test holds every collection to one.',
     );
   if (values.settings) plan.notes.push(settingsNote(name, values.slug as string));
   if (values.people)
