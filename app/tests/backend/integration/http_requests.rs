@@ -495,8 +495,8 @@ async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
                 .read(move |db| testing::live_reads(db, &at))
                 .await
                 .unwrap();
-            if let Some((_, outcome, code, _)) = reads.into_iter().next() {
-                break (outcome, code);
+            if let Some(read) = reads.into_iter().next() {
+                break (read.outcome, read.code);
             }
             assert!(started.elapsed().as_secs() < 10, "the reader never read");
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;

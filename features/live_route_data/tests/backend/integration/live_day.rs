@@ -50,14 +50,6 @@ fn collection() -> &'static Section {
         .unwrap()
 }
 
-/// One read as the server records it.
-#[derive(Debug)]
-struct Recorded {
-    at: i64,
-    outcome: String,
-    counts: Value,
-}
-
 struct Server {
     _root: tempfile::TempDir,
     state: Arc<State>,
@@ -196,21 +188,12 @@ impl Server {
             .unwrap()
     }
     /// The DSP's reads as the server records them, in order.
-    async fn records(&self) -> Vec<Recorded> {
+    async fn records(&self) -> Vec<testing::LiveRead> {
         let dsp = self.dsp.clone();
-        let reads = self
-            .state
+        self.state
             .read(move |db| testing::live_reads(db, &dsp))
             .await
-            .unwrap();
-        reads
-            .into_iter()
-            .map(|(at, outcome, _, counts)| Recorded {
-                at,
-                outcome,
-                counts,
-            })
-            .collect()
+            .unwrap()
     }
 }
 /// How the first driver's route progresses on `driven`.

@@ -298,9 +298,20 @@ pub fn connect(db: &Store, dsp: &str, provider: Provider, credentials: &Value) -
     ready_connection(db, dsp, provider)
 }
 
-/// The reads the server's live readers recorded for a DSP, oldest first: when each began, how it
-/// went (`kept` or `failed`), its error's code, and what it counted (null for none).
-pub fn live_reads(db: &Store, dsp: &str) -> Result<Vec<(i64, String, Option<String>, Value)>> {
+/// One read a live reader recorded for a DSP.
+#[derive(Debug)]
+pub struct LiveRead {
+    /// When it began.
+    pub at: i64,
+    /// `kept` or `failed`.
+    pub outcome: String,
+    /// Why it failed, by its error's code.
+    pub code: Option<String>,
+    /// What it counted, kept; null for none.
+    pub counts: Value,
+}
+/// The reads the server's live readers recorded for a DSP, oldest first.
+pub fn live_reads(db: &Store, dsp: &str) -> Result<Vec<LiveRead>> {
     let reads: Vec<(i64, String, Option<String>, Option<String>)> = db.jobs.query_as(
         "SELECT at,outcome,code,counts FROM live_reads WHERE dsp_id=? ORDER BY at",
         [dsp],
@@ -308,8 +319,12 @@ pub fn live_reads(db: &Store, dsp: &str) -> Result<Vec<(i64, String, Option<Stri
     reads
         .into_iter()
         .map(|(at, outcome, code, counts)| {
-            let counts = counts.map_or(Ok(Value::Null), |c| serde_json::from_str(&c))?;
-            Ok((at, outcome, code, counts))
+            Ok(LiveRead {
+                at,
+                outcome,
+                code,
+                counts: counts.map_or(Ok(Value::Null), |c| serde_json::from_str(&c))?,
+            })
         })
         .collect()
 }
