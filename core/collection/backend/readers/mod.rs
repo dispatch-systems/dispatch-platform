@@ -5,8 +5,9 @@
 //! (`Reading::browser`), and at most `READS_AT_ONCE` reads run at once across the server.
 //!
 //! The server plans every DSP's reading as it starts, each minute, and at once when a write
-//! switches a feature or saves settings (`State::readers_wake`). A task whose reads stop moving
-//! inside its window is started again on its own, with its memory made anew.
+//! switches a feature or saves settings (`State::readers_wake`). A task busy too long without
+//! moving on is stopped, letting go of its turn to read, and started again on its own, with its
+//! memory made anew, while its DSP still reads.
 mod plan;
 mod records;
 mod task;

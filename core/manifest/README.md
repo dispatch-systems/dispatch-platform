@@ -274,7 +274,8 @@ live_readers: &[&backend::live::READER],
   offset within the interval, so DSPs whose windows open together read apart, until the
   window closes. A read is whole, or an error whose code says why not; one slower than its
   interval is cut off (`live_read_timeout`). `held` is the DSP's memory, as a provider's
-  session and key: never written, and made anew each day and when its task starts again.
+  session and key: never written, and made anew each day and whenever its reading starts
+  again, as after a restart, a switch or a stall.
 - **A whole read** goes to `kept`, which answers what it counted, under fixed names. A day's
   first whole read goes to `started` first, which starts the day, as clearing the last day's
   data; a restart within the window, or a window saved again, doesn't start it again.
@@ -285,11 +286,12 @@ live_readers: &[&backend::live::READER],
 - **A browser** (`Reading::browser(provider)`): a hook that needs one, to sign in or take a
   key from a page, opens the DSP's own for a provider, signed in as a job's is and within the
   server's limits on browsers and memory. It's the reader's alone until it closes, closing
-  when dropped; what the hook takes from it, as its cookies (`http::Http::signed_in`), stays
-  in memory. In fixture mode no browser runs (`ProviderBrowser::browser` is none).
+  when dropped and as the reader stops for the DSP; what the hook takes from it, as its
+  cookies (`http::Http::signed_in`), stays in memory. In fixture mode no browser runs
+  (`ProviderBrowser::browser` is none).
 - **Switched off**, or its window cleared, a DSP stops reading at once: a read under way is
-  dropped, while what keeps a read or a day finishes. Switched on again within the window, it
-  goes on with its day.
+  dropped, while what keeps a read or a day finishes, though without the DSP's browser, which
+  closes. Switched on again within the window, it goes on with its day.
 
 The registry refuses two readers with one id, an id outside its feature's name, and an
 interval under a minute or of part of a second.
