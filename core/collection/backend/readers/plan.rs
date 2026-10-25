@@ -118,22 +118,21 @@ impl Plan {
     }
 
     /// What a task does next at `now`, having read last at `after` (none: its first slot),
-    /// started the days `unstopped` without stopping them yet, and stopped the day `stopped`
-    /// last. A day other than the one open now stops once its stop is due, and the open day
-    /// reads only once each earlier day it started has stopped. The open day reads at its first
-    /// slot after `after`, at once when that has passed, while the slot is before its close;
-    /// never once it has stopped, though its window was moved to end later: the next day's
-    /// window is the next to read.
+    /// started the days `unstopped` without stopping them yet, and ended the day `ended` last,
+    /// its stop begun or done. A day other than the one open now stops once its stop is due,
+    /// at once when it began already, and the open day reads only once each earlier day it
+    /// started has stopped. The open day reads at its first slot after `after`, at once when
+    /// that has passed, while the slot is before its close; never once it has ended, though its
+    /// window was moved to end later: the next day's window is the next to read.
     pub fn step(
         &self,
         now: i64,
         after: i64,
         unstopped: &[NaiveDate],
-        stopped: Option<NaiveDate>,
+        ended: Option<NaiveDate>,
     ) -> Step {
-        let open = self
-            .open_at(now)
-            .filter(|day| stopped.is_none_or(|last| day.date > last));
+        let ended_by = |date: NaiveDate| ended.is_some_and(|last| date <= last);
+        let open = self.open_at(now).filter(|day| !ended_by(day.date));
         let mut until = match open {
             Some(day) => day.close,
             None => self.next(now).open,
@@ -142,7 +141,11 @@ impl Plan {
             if open.is_some_and(|day| day.date == date) {
                 continue;
             }
-            let stop = self.stop(&self.day(date));
+            let stop = if ended_by(date) {
+                now
+            } else {
+                self.stop(&self.day(date))
+            };
             if stop <= now {
                 return Step::Stop(date);
             }

@@ -248,7 +248,7 @@ fn a_started_day_stops_after_its_window_ends_before_a_later_day_reads() {
 }
 
 #[test]
-fn a_day_that_stopped_reads_no_more_though_its_window_is_moved_to_end_later() {
+fn a_day_that_ended_reads_no_more_though_its_window_is_moved_to_end_later() {
     let today = date("2026-10-20");
     let last = local("2026-10-20 20:56:30");
     // Its stop moved to 22:00 once the day stopped at 21:01:30, today's window is open again.
@@ -257,6 +257,12 @@ fn a_day_that_stopped_reads_no_more_though_its_window_is_moved_to_end_later() {
     assert_eq!(
         later.step(now, last, &[], None),
         Step::Read(later.day(today))
+    );
+    // Its stop begun but not done, as when its hook failed part of the way, it stops at once,
+    // reading nothing first.
+    assert_eq!(
+        later.step(now, last, &[today], Some(today)),
+        Step::Stop(today)
     );
     // Stopped, the day reads no more: tomorrow's window is the next to read.
     let tomorrow = later.day(date("2026-10-21"));

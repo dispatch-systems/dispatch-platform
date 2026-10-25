@@ -281,9 +281,10 @@ live_readers: &[&backend::live::READER],
   data; a restart within the window, or a window saved again, doesn't start it again.
 - **A day ends** (`stopped`) once its window has closed, at the DSP's offset past the close:
   once for each day it started, even when the server was down then, and before a later day
-  starts. A day that ended reads no more, though its window is moved to end later: its next
-  reads are the next day's. A hook that fails is asked again: `started` with the next whole
-  read, `stopped` a minute later.
+  starts. A day reads no more once its stop has begun, though its window is moved to end later
+  or `stopped` fails part of the way: its stop is finished first, after a restart too, and its
+  next reads are the next day's. A hook that fails is asked again: `started` with the next
+  whole read, `stopped` a minute later.
 - **A browser** (`Reading::browser(provider)`): a hook that needs one, to sign in or take a
   key from a page, opens the DSP's own for a provider, signed in as a job's is and within the
   server's limits on browsers and memory. It's the reader's alone until it closes, closing
