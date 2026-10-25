@@ -28,7 +28,8 @@ use std::{sync::Arc, time::Duration};
 const WAIT: Duration = Duration::from_secs(20);
 
 /// A paired phone, by the key it was given: `Authorization: Bearer <key>`, at its DSP's address,
-/// while Phones is on there.
+/// while Phones is on there. Public to the server, as Slack's signed events are: the route checks
+/// the key itself, and no session reaches it.
 #[derive(Clone, Copy)]
 pub(super) struct Phone;
 /// Who a phone's call comes from: the DSP, and the phone.
@@ -39,7 +40,7 @@ pub(super) struct Caller {
 impl Grant for Phone {
     type Who = Caller;
     fn access(self) -> Access {
-        Access::Agent("dispatch phone")
+        Access::Public
     }
     fn authorize(self, db: &Store, input: &Input) -> Result<Caller> {
         let dsp = site_dsp(db, input)?.id;

@@ -37,8 +37,9 @@ keeps its texts; its key works no more, and its next call is refused as `phones_
 
 At the DSP's own address alone, never from a browser (a request with a cookie is refused), while
 the DSP is active and Phones is on there (`phones_off` otherwise). `POST /api/phones/pair` is
-public, by the code; every other call carries `Authorization: Bearer <key>`
-(`Agent("dispatch phone")`) and counts as checking in.
+public, by the code; every other call carries `Authorization: Bearer <key>`, which the route
+checks itself, as Slack's signed events are checked (public to the server, which no session
+reaches), and counts as checking in.
 
 - `GET /api/phones/outbox`: waits up to 20 seconds for the texts Dispatch has for the phone,
   each to send from its number to `number`, with its pictures to fetch first; a text tried again
