@@ -412,7 +412,10 @@ pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWai
     let waiting = db.waiting_communications(dsp)?;
     let ids: Vec<String> = waiting.iter().map(|each| each.id.clone()).collect();
     let written = db.latest_communications_written(dsp, &ids)?;
-    let of: Vec<String> = written.iter().map(|each| each.conversation.clone()).collect();
+    let of: Vec<String> = written
+        .iter()
+        .map(|each| each.conversation.clone())
+        .collect();
     let people = People::read(db, state, dsp)?;
     let mut written: HashMap<String, Message> = of
         .into_iter()

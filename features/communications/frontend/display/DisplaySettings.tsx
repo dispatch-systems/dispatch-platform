@@ -116,7 +116,7 @@ export function DisplaySettings({ view, refresh }: { view: DspView; refresh: () 
   const [allowed, setAllowed] = useState(notifying);
   const notifications = async (on: boolean) => {
     if (on) {
-      const answer = allowed ? 'granted' : await Notification.requestPermission();
+      const answer = notifying() ? 'granted' : await Notification.requestPermission();
       setAllowed(answer === 'granted');
       if (answer !== 'granted') return;
     }

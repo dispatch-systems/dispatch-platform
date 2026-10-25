@@ -33,9 +33,17 @@ async fn waiting_names_the_latest_message_each_waits_on_from_whom_its_with() {
 
     // A message to a group answers no one: Casey's question is still the latest they wrote.
     let people = [(TEAM.to_owned(), "U0FIXCASEY".to_owned())];
-    send::create(&state, &c, USE, "Drivers", &people, "Pick up your vests", &[])
-        .await
-        .unwrap();
+    send::create(
+        &state,
+        &c,
+        USE,
+        "Drivers",
+        &people,
+        "Pick up your vests",
+        &[],
+    )
+    .await
+    .unwrap();
     send::drain(&state, &dsp).await;
     assert_eq!(latest(&state, &dsp).await, casey("Where do I park?"));
 
