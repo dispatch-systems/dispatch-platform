@@ -1,6 +1,6 @@
-//! Live Route Data: each DSP's routes read every five minutes inside a window it sets, kept as
-//! today's live route data, and saved into historical route data as the window ends if it
-//! chooses. Its README says more.
+//! Live Route Data: each DSP's routes read every few minutes on the days and inside the window it
+//! sets, kept as today's live route data, and saved into historical route data as the window ends
+//! if it chooses. Its README says more.
 mod backend;
 
 use dispatch_core::manifest::{Feature, feature, optional, perm};

@@ -1,10 +1,10 @@
 //! The live readers as the server runs them, under a stand-in feature that reads every five
-//! minutes inside the window each DSP saves, on time the test moves: each DSP on its grid
-//! through its window, its days started and stopped, its slot kept across a restart, no more
+//! minutes inside the window each DSP saves, on time the test moves: each DSP on its grid from
+//! its window's start, its days started and stopped, its slot kept across a restart, no more
 //! reads at once than the server allows, a stalled DSP started again alone, switching off
 //! mid-window, a switch or a saved window taking effect at once, and the browser a hook opens.
 //! A program of its own, as its registry holds the stand-ins, and a program holds one registry.
-use chrono::{DateTime, NaiveDate, Timelike};
+use chrono::{DateTime, NaiveDate, Timelike, Weekday::*};
 use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result, State,
@@ -15,8 +15,8 @@ use dispatch_core::{
     },
     db::{self, Kind, Migration, Migrations, Store, migrations::Apply},
     manifest::{
-        Capability, Collection, Collector, Counts, Feature, LiveReader, Window, feature, optional,
-        perm, section, settings::Section, time,
+        Capability, Collection, Collector, Counts, Feature, LiveReader, Schedule, feature,
+        optional, perm, section, settings::Section, time,
     },
     settings::{self, Saved},
     testing,
@@ -36,7 +36,7 @@ use tokio::{sync::Semaphore, task::JoinHandle, time::Instant};
 const EVERY: Duration = Duration::from_secs(300);
 const MINUTE: Duration = Duration::from_secs(60);
 
-// The stand-in feature: a DSP's window is its section's two times.
+// The stand-in feature: a DSP reads every day, its window its section's two times.
 
 const WINDOW: Section = section(
     "probe.window",
@@ -217,12 +217,10 @@ impl LiveReader for Reader {
     fn id(&self) -> &'static str {
         "probe.routes"
     }
-    fn every(&self) -> Duration {
-        EVERY
-    }
-    fn window(&self, db: &Store, dsp: &str) -> Result<Option<Window>> {
+    fn schedule(&self, db: &Store, dsp: &str) -> Result<Option<Schedule>> {
         let times: Times = settings::read(db, dsp, &WINDOW)?;
-        Window::parse(&times.start, &times.stop).map(Some)
+        let days = [Mon, Tue, Wed, Thu, Fri, Sat, Sun];
+        Schedule::new(&days, &times.start, &times.stop, EVERY).map(Some)
     }
     fn read<'a>(&'a self, reading: &'a Reading, held: &'a mut Held) -> Pending<'a, u64> {
         Box::pin(async move {
@@ -571,10 +569,7 @@ async fn a_dsp_reads_on_its_grid_through_its_window_and_each_day_starts_and_stop
     until(close + 6 * MINUTE).await;
     let reads = server.probe.reads(&dsp);
     let (first, last) = (reads[0].1, reads.last().unwrap().1);
-    assert!(
-        first >= open && first < open + EVERY,
-        "its first slot is in its first interval"
-    );
+    assert!(near(first, open), "its first slot is its window's start");
     for pair in reads.windows(2) {
         assert!(near(pair[1].1, pair[0].1 + EVERY), "a read every interval");
     }

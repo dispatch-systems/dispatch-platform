@@ -34,11 +34,11 @@ pub use commands::{Commands, Demo};
 pub use keeping::{
     Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias, Schedules, schedules,
 };
-pub use live_readers::{Counts, LiveReader, Reads, Window};
+pub use live_readers::{Counts, LiveReader, Reads, Schedule};
 pub use permissions::{DefaultRole, Permission, perm};
 pub use settings::{
-    Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, choice, many, number,
-    pick, section, text, time, timezone, toggle,
+    Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, choice, days, many,
+    number, pick, section, text, time, timezone, toggle,
 };
 pub use storage::Tables;
 pub use switches::{Sub, Switch, mandatory, optional, sub, tab};
@@ -182,7 +182,7 @@ pub struct Feature {
     /// The permissions that may follow its collections' progress as it arrives, through
     /// the collection updates the dashboard waits on.
     pub live: &'static [&'static str],
-    /// What it reads from a provider for each DSP every few minutes, inside a window the DSP
+    /// What it reads from a provider for each DSP every few minutes, on a schedule the DSP
     /// sets, within the server rather than as jobs (`live_readers::LiveReader`).
     pub live_readers: &'static [&'static dyn Reads],
     /// The server's environment variables it reads with `config.setting`, in groups that go

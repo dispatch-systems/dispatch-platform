@@ -411,7 +411,7 @@ async fn a_dsps_live_route_data_through_its_days() {
     let first = instant(server.records().await[15].at);
     until(first + 5 * EVERY + SECOND).await;
     let busy = server.hold_history().await;
-    // Its stop is due as its window closes, at its place after the close.
+    // Its stop is due as its window closes.
     until(first + 6 * EVERY + 30 * SECOND).await;
     assert_eq!(server.history(fifth_day).await, None);
     assert_eq!(server.live_day().await, Some(fifth_day.to_string()));
