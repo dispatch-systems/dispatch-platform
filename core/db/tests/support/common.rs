@@ -283,6 +283,21 @@ pub fn ready_connection(db: &Store, dsp: &str, provider: Provider) -> Result<()>
     Ok(())
 }
 
+/// Keeps `credentials` for a DSP's connection to `provider`, sealed as a member's save keeps them,
+/// and switches the connection on and ready, as a verified sign-in leaves it: a browser opened
+/// for it signs in with them, in fixture mode as their password says.
+pub fn connect(db: &Store, dsp: &str, provider: Provider, credentials: &Value) -> Result<()> {
+    let area = db.area(dsp, "secrets")?;
+    let key = db::key_file(&area.join("vault.key"))?;
+    let named = format!("{dsp}:{}:2", provider.id());
+    let sealed = crate::foundation::crypto::encrypt(&key, &named, credentials)?;
+    db::write_private(
+        &area.join(format!("{}.enc", provider.id())),
+        sealed.as_bytes(),
+    )?;
+    ready_connection(db, dsp, provider)
+}
+
 /// Sets the revision of a DSP's connection to `provider`, as a credential change does.
 pub fn set_connection_revision(
     db: &Store,

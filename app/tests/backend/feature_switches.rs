@@ -48,7 +48,7 @@ fn optional_page() -> &'static str {
 }
 
 #[test]
-fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all() {
+fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all_but_live_readers() {
     use std::os::unix::fs::PermissionsExt;
     crate::install();
     let root = tempfile::tempdir().unwrap();
@@ -99,9 +99,20 @@ fn a_new_dsp_starts_with_only_what_every_dsp_has_and_a_demo_dsp_with_all() {
             .filter(|role| !role.owner)
             .all(|role| role.permissions.is_empty())
     );
+    // A demo has every feature but those that read a provider live, which only a switch starts.
     db.enable_all_features(&dsp.id).unwrap();
-    let all: Vec<_> = catalog().iter().map(|f| f.id.to_owned()).collect();
+    let reads_live = |id: &str| {
+        let mut features = dispatch_core::manifest::registry().features.iter();
+        features.any(|f| f.switch.id == id && !f.live_readers.is_empty())
+    };
+    let all: Vec<_> = catalog()
+        .iter()
+        .filter(|f| !reads_live(f.id))
+        .map(|f| f.id.to_owned())
+        .collect();
     assert_eq!(db.features(&dsp.id).unwrap(), all);
+    #[cfg(feature = "live_route_data")]
+    assert!(reads_live("live_route_data") && !all.contains(&"live_route_data".to_owned()));
 }
 #[cfg(feature = "dvic")]
 #[test]

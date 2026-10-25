@@ -31,6 +31,7 @@ default = [
     "driver_profiles",
     "dvic",
     "home",
+    "live_route_data",
     "routes",
     "settings",
     "slack",
@@ -47,6 +48,7 @@ driver_match = ["dep:dispatch-driver-match", "dispatch-mcp/driver_match"]
 driver_profiles = ["dep:dispatch-driver-profiles"]
 dvic = ["dep:dispatch-dvic", "dispatch-mcp/dvic"]
 home = ["dep:dispatch-home"]
+live_route_data = ["dep:dispatch-live-route-data", "routes"]
 routes = ["dep:dispatch-routes"]
 settings = ["dep:dispatch-settings"]
 slack = ["dep:dispatch-slack"]
@@ -74,6 +76,7 @@ dispatch-driver-match = { path = "../../features/driver_match", optional = true 
 dispatch-driver-profiles = { path = "../../features/driver_profiles", optional = true }
 dispatch-dvic = { path = "../../features/dvic", optional = true }
 dispatch-home = { path = "../../features/home", optional = true }
+dispatch-live-route-data = { path = "../../features/live_route_data", optional = true }
 dispatch-routes = { path = "../../features/routes", optional = true }
 dispatch-settings = { path = "../../features/settings", optional = true }
 dispatch-slack = { path = "../../features/slack", optional = true }

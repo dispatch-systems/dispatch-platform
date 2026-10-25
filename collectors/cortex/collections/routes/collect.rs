@@ -135,9 +135,9 @@ impl Method {
 }
 
 /// What a job's metrics call a day read natively.
-const NATIVE: &str = "routes_native";
+pub const NATIVE: &str = "routes_native";
 /// Why a day read whole natively was not kept: it failed the collection's checks.
-const INVALID: &str = "routes_native_invalid";
+pub const INVALID: &str = "routes_native_invalid";
 /// A day read with a browser, and how.
 pub struct Day {
     pub capture: Capture,
@@ -147,8 +147,10 @@ pub struct Day {
     /// Why it was not read natively, when it was read another way: `Failure::label`, or
     /// `routes_native_invalid` for a day read whole that failed the collection's checks.
     pub fallback: Option<&'static str>,
-    /// A reader carrying the browser's session, and the key it found, to read the next with
-    /// no browser (`Native::read`): none in fixture mode.
+    /// A reader to read the next with no browser (`Native::read`): the one that read the day
+    /// natively, with the key it found; read another way, one carrying the browser's session as
+    /// the read left it (`Browser::read`). None in fixture mode, and for a job, which reads
+    /// no next.
     pub native: Option<Native>,
 }
 
@@ -430,7 +432,6 @@ impl Tab<'_> {
         request.scope_request().validate_scope(scope)?;
         progress(10, "Reading the route list".into()).await?;
         let mut method = *method;
-        let mut native = None;
         let mut fallback = None;
         if method.navigation == Navigation::Native {
             let session = SignedIn::of(self.browser, self.origin, &cortex::HOSTS).await?;
@@ -448,6 +449,7 @@ impl Tab<'_> {
                         native: Some(reader),
                     });
                 }
+                // The reader that failed is let go: its session may not outlast the read.
                 Err(label) => {
                     metrics.detail(label);
                     metrics.fallback(label);
@@ -455,7 +457,6 @@ impl Tab<'_> {
                     method.navigation = Navigation::Signed;
                 }
             }
-            native = Some(reader);
         }
         let method = &method;
         self.ensure_page().await?;
@@ -618,7 +619,7 @@ impl Tab<'_> {
             capture,
             method: read_by,
             fallback,
-            native,
+            native: None,
         })
     }
     /// The newer routes page's list: a move in the first tab's application, or the

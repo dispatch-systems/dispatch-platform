@@ -1,0 +1,32 @@
+[package]
+name = "dispatch-live-route-data"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+autotests = false
+
+[lib]
+path = "feature.rs"
+doctest = false
+
+# Core, the Cortex collector it reads and Routes, which keeps what it reads.
+[dependencies]
+dispatch-core = { path = "../../core" }
+dispatch-cortex = { path = "../../collectors/cortex" }
+dispatch-routes = { path = "../routes" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+dispatch-core = { path = "../../core", features = ["testing"] }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+
+# A DSP's live day as the server reads it, under a registry of the parts it names.
+[[test]]
+name = "live_day"
+path = "tests/backend/integration/live_day.rs"

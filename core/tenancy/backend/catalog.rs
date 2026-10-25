@@ -145,6 +145,13 @@ pub fn automation(kind_or_collection: &str) -> Option<&'static str> {
         .or_else(aliasing)
         .map(|feature| feature.switch.id)
 }
+/// Whether `feature` is the page of a feature that reads a provider live (`live_readers`).
+fn reads_live(feature: &Feature) -> bool {
+    registry()
+        .features
+        .iter()
+        .any(|page| page.switch.id == feature.id && !page.live_readers.is_empty())
+}
 /// Whether a page that runs collections is on: one whose feature keeps a collection.
 pub fn automates(enabled: &[String]) -> bool {
     let runs = |id: &str| {
@@ -487,9 +494,11 @@ impl Store {
         }))
     }
     /// Switches every feature on for a development or preview DSP, so its demo shows every
-    /// page. Real DSPs start with none and get theirs from the platform owner.
+    /// page, but those that read a provider live (`live_readers`): nothing reads a provider for
+    /// it unasked, as no schedule is made for it, until a preview or a test switches one on.
+    /// Real DSPs start with none and get theirs from the platform owner.
     pub fn enable_all_features(&self, dsp: &str) -> Result<()> {
-        self.write_features(dsp, |_| true, true)
+        self.write_features(dsp, |f| !reads_live(f), true)
     }
     /// Writes a new DSP's rows, so a later change of a default leaves it as it was made.
     pub fn seed_features(&self, dsp: &str) -> Result<()> {

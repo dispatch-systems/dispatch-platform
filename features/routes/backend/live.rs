@@ -87,6 +87,14 @@ impl Shaped {
     }
 }
 
+/// What a live read asks Cortex for: a snapshot of today where the DSP is, at its station, as a
+/// job asks for a day and as `keep_live` checks the read. Refuses a DSP without a station
+/// (`routes_station_required`).
+pub fn live_request(store: &Store, dsp: &str) -> Result<Request> {
+    let today = routes_today(store, dsp)?.to_string();
+    day_request(store, dsp, &today, Mode::Snapshot)
+}
+
 /// The key a live read is saved into historical route data under: its day and when it was
 /// collected, the same however often it's saved.
 fn key(day: &str, collected: i64) -> String {

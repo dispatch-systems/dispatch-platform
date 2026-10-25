@@ -11,9 +11,10 @@ pub use api::types::{
 /// What the app uses: its storage and its database, and how it shapes a day's capture, which
 /// the app's Cortex route probe measures.
 pub use backend::{DATABASE, RoutesStore, prepare};
-/// What a feature that reads routes live keeps each whole read of today in live route data with,
-/// empties it with as a day starts, and saves its day into historical route data with.
-pub use backend::{LiveKept, clear_live, keep_live, save_live_day};
+/// What a feature that reads routes live asks Cortex for, keeps each whole read of today in live
+/// route data with, empties it with as a day starts, and saves its day into historical route data
+/// with.
+pub use backend::{LiveKept, clear_live, keep_live, live_request, save_live_day};
 /// What its integration tests check beside the storage: the most jobs a scheduled run queues,
 /// how a capture is shaped and how kept responses are read back.
 pub use backend::{MAX_JOBS_PER_RUN, Shaper, gunzip};

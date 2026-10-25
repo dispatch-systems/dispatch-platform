@@ -10,5 +10,5 @@ pub use capture::{
     Capture, Collection, ItineraryCapture, JOB_KIND, MAX_BODY, MAX_CAPTURE_BYTES, MAX_ITINERARIES,
     Mode, Request, add_capture_bytes, fixture, listed, token,
 };
-pub use collect::Day;
+pub use collect::{Day, INVALID, NATIVE};
 pub use native::{Failure, Native};
