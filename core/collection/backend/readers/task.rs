@@ -58,15 +58,20 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
         let Some(plan) = *plans.borrow_and_update() else {
             return;
         };
-        let Some(unstopped) = task
-            .query(|db, reader, dsp| db.unstopped_days(reader, dsp))
+        let Some((unstopped, stopped)) = task
+            .query(|db, reader, dsp| {
+                Ok((
+                    db.unstopped_days(reader, dsp)?,
+                    db.last_stopped(reader, dsp)?,
+                ))
+            })
             .await
         else {
             task.retry(&mut plans).await;
             continue;
         };
         let at = now();
-        match plan.step(at, after, &unstopped) {
+        match plan.step(at, after, &unstopped, stopped) {
             Step::Wait(at) => {
                 let wait = Duration::from_millis((at - now()).max(0) as u64);
                 task.waiting();

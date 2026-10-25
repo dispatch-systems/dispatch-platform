@@ -2,9 +2,9 @@
 //! Cortex in fixture mode: each read is the fixture's whole day, read in the DSP's browser, and
 //! never Amazon. Each day's first read empties live route data of the day before; reads are kept
 //! on the DSP's grid through its window; its stop saves the day into historical route data when
-//! the DSP chose so, emptying live route data once it's saved and leaving it as it was otherwise;
-//! a restart inside the window empties nothing; and switched off, or with its Cortex connection
-//! disabled, it reads no more.
+//! the DSP chose so, emptying live route data once it's saved and leaving it as it was otherwise,
+//! and the day reads no more, though its stop moves later; a restart inside the window empties
+//! nothing; and switched off, or with its Cortex connection disabled, it reads no more.
 //! Each day is the day Routes reckons too, pinned as the test moves to it. What Routes keeps is
 //! read as other features read it, through its contracts.
 //! A program of its own, as its registry holds the parts it names, and a program holds one.
@@ -328,6 +328,15 @@ async fn a_dsps_live_route_data_through_its_days() {
     // Its stop saved the day into historical route data, and emptied live route data.
     assert_eq!(server.history(first_day).await.as_deref(), Some(READ));
     assert_eq!(server.live_day().await, None);
+    // Stopped, the day reads no more, though its stop is moved past now; moved back, the next
+    // day's window is as before.
+    let (later, until_later) = server.at(20);
+    server.save(json!({"stop":later})).await;
+    until(until_later + 6 * MINUTE).await;
+    assert_eq!(server.records().await.len(), 6);
+    assert_eq!(server.live_day().await, None);
+    assert_eq!(server.history(first_day).await.as_deref(), Some(READ));
+    server.save(json!({"stop":stop})).await;
 
     // The next day's first read empties live route data again.
     server.save(json!({"save_to_history":false})).await;

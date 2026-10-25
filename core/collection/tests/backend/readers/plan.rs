@@ -131,31 +131,31 @@ fn a_dsp_waits_for_its_first_slot_and_reads_on_each_one_until_the_window_closes(
     let plan = plan("08:00", "21:00");
     let day = plan.day(date("2026-10-20"));
     assert_eq!(
-        plan.step(local("2026-10-20 07:00:00"), i64::MIN, &[]),
+        plan.step(local("2026-10-20 07:00:00"), i64::MIN, &[], None),
         Step::Wait(day.open)
     );
     assert_eq!(
-        plan.step(day.open, i64::MIN, &[]),
+        plan.step(day.open, i64::MIN, &[], None),
         Step::Wait(local("2026-10-20 08:01:30"))
     );
     assert_eq!(
-        plan.step(local("2026-10-20 08:01:30"), i64::MIN, &[]),
+        plan.step(local("2026-10-20 08:01:30"), i64::MIN, &[], None),
         Step::Read(day)
     );
     // Read, it waits for its next slot, which a slow read that passed it skips.
     let read = local("2026-10-20 08:01:31");
     assert_eq!(
-        plan.step(read, read, &[]),
+        plan.step(read, read, &[], None),
         Step::Wait(local("2026-10-20 08:06:30"))
     );
     let slow = local("2026-10-20 08:07:00");
     assert_eq!(
-        plan.step(slow, slow, &[]),
+        plan.step(slow, slow, &[], None),
         Step::Wait(local("2026-10-20 08:11:30"))
     );
     // Its last slot is the last before the close; then it waits for the close.
     let last = local("2026-10-20 20:56:31");
-    assert_eq!(plan.step(last, last, &[]), Step::Wait(day.close));
+    assert_eq!(plan.step(last, last, &[], None), Step::Wait(day.close));
 }
 
 #[test]
@@ -164,7 +164,7 @@ fn started_again_a_dsp_keeps_its_slot_and_reads_at_once_only_past_it() {
     let day = plan.day(date("2026-10-20"));
     let resumed = |now: &str, last: &str| {
         let now = local(now);
-        plan.step(now, plan.resumed(now, Some(local(last))), &[])
+        plan.step(now, plan.resumed(now, Some(local(last))), &[], None)
     };
     // Back two minutes after its last read, it waits for its own next slot.
     assert_eq!(
@@ -178,7 +178,7 @@ fn started_again_a_dsp_keeps_its_slot_and_reads_at_once_only_past_it() {
         Step::Read(day)
     );
     assert_eq!(
-        plan.step(back, back, &[]),
+        plan.step(back, back, &[], None),
         Step::Wait(local("2026-10-20 10:21:30"))
     );
     // Its last read came late, its turn delayed: back soon after, though its slot has
@@ -195,7 +195,7 @@ fn started_again_a_dsp_keeps_its_slot_and_reads_at_once_only_past_it() {
     // Never read, it reads as soon as a slot has come.
     let first = local("2026-10-20 09:00:00");
     assert_eq!(
-        plan.step(first, plan.resumed(first, None), &[]),
+        plan.step(first, plan.resumed(first, None), &[], None),
         Step::Read(day)
     );
 }
@@ -207,21 +207,21 @@ fn a_started_day_stops_after_its_window_ends_before_a_later_day_reads() {
     let last = local("2026-10-20 20:56:30");
     // Closed, a started day stops at its offset past the close.
     assert_eq!(
-        plan.step(local("2026-10-20 21:00:00"), last, &[today]),
+        plan.step(local("2026-10-20 21:00:00"), last, &[today], None),
         Step::Wait(local("2026-10-20 21:01:30"))
     );
     assert_eq!(
-        plan.step(local("2026-10-20 21:01:30"), last, &[today]),
+        plan.step(local("2026-10-20 21:01:30"), last, &[today], None),
         Step::Stop(today)
     );
     // A day that never started has nothing to stop: it waits for tomorrow's window.
     assert_eq!(
-        plan.step(local("2026-10-20 21:01:30"), last, &[]),
+        plan.step(local("2026-10-20 21:01:30"), last, &[], None),
         Step::Wait(local("2026-10-21 08:00:00"))
     );
     // Down as it closed, the server stops it as it's back, whenever that is.
     assert_eq!(
-        plan.step(local("2026-10-21 09:00:00"), last, &[today]),
+        plan.step(local("2026-10-21 09:00:00"), last, &[today], None),
         Step::Stop(today)
     );
     // An all-day window's next day reads only once the day before has stopped.
@@ -234,15 +234,35 @@ fn a_started_day_stops_after_its_window_ends_before_a_later_day_reads() {
     };
     let tomorrow = all_day.day(date("2026-10-21"));
     assert_eq!(
-        all_day.step(tomorrow.open, last, &[today]),
+        all_day.step(tomorrow.open, last, &[today], None),
         Step::Wait(local("2026-10-21 06:01:30"))
     );
     assert_eq!(
-        all_day.step(local("2026-10-21 06:01:30"), last, &[today]),
+        all_day.step(local("2026-10-21 06:01:30"), last, &[today], None),
         Step::Stop(today)
     );
     assert_eq!(
-        all_day.step(local("2026-10-21 06:01:30"), last, &[]),
+        all_day.step(local("2026-10-21 06:01:30"), last, &[], Some(today)),
+        Step::Read(tomorrow)
+    );
+}
+
+#[test]
+fn a_day_that_stopped_reads_no_more_though_its_window_is_moved_to_end_later() {
+    let today = date("2026-10-20");
+    let last = local("2026-10-20 20:56:30");
+    // Its stop moved to 22:00 once the day stopped at 21:01:30, today's window is open again.
+    let later = plan("08:00", "22:00");
+    let now = local("2026-10-20 21:10:00");
+    assert_eq!(later.step(now, last, &[], None), Step::Read(later.day(today)));
+    // Stopped, the day reads no more: tomorrow's window is the next to read.
+    let tomorrow = later.day(date("2026-10-21"));
+    assert_eq!(
+        later.step(now, last, &[], Some(today)),
+        Step::Wait(tomorrow.open)
+    );
+    assert_eq!(
+        later.step(tomorrow.open + later.offset, last, &[], Some(today)),
         Step::Read(tomorrow)
     );
 }

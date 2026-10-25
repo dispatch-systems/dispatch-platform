@@ -54,8 +54,9 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   since the day was read, ends the day unsaved, logged as `live_route_data.not_saved` with its day
   and code, so the next day reads; any other failure, as a busy database, fails the stop, which is
   asked again a minute later. A day unsaved, refused or with `save_to_history` off, stays in live
-  route data until the next day starts. A restart inside the window goes on with the day as it
-  was, emptying nothing.
+  route data until the next day starts. A stopped day reads no more, even with its Stop moved
+  later: the next day starts afresh. A restart inside the window goes on with the day as it was,
+  emptying nothing.
 - **Records:** each read in the jobs database's `live_reads` (core's), with counts and codes only.
   A kept read counts the itineraries listed, the rows changed, the work phones held and the holds
   changed (`listed`, `changed`, `holding`, `phoneEvents`). It also counts `browser` when it opened
