@@ -16,7 +16,8 @@ Management routes use `/api/dsp/daily-performance`: the base lists collected day
 `/collect` accepts a date or an inclusive from/to backfill of up to 31 days; `/jobs` manages
 this collection's alone. When it runs is set on Settings' Collectors page, under
 `daily_performance.manage` (its keeper's `schedules`), through core's
-`/api/dsp/collectors/daily_performance` routes.
+`/api/dsp/collectors/daily_performance` routes. What it collects, as the Collectors page shows
+under it, is `frontend/collected.ts` (the `collected` slot).
 
 Its one section of Settings, `daily_performance.collection` "Collection", goes with its
 collection (`.collection("daily_performance")`), so Settings draws it below that collection's

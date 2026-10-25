@@ -14,7 +14,8 @@ Settings' Collectors page.
   `schedules`).
 - **API:** `POST /api/dsp/driver-profiles/jobs/{id}/cancel`, behind `driver_profiles.collect`.
   The roster is collected, and its schedule set, as the `associates` collection on core's
-  Collectors routes.
+  Collectors routes; what it collects, as the Collectors page shows under it, is
+  `frontend/collected.ts` (the `collected` slot).
 - **Collection:** Cortex's `associates` reads the company whose short code is the DSP's
   abbreviation, then its whole roster in one request over HTTP and everyone it offboarded in
   another, then downloads every photo the DSP lacks, active associates' first, up to 96 MB of

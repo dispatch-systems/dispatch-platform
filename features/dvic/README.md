@@ -74,7 +74,8 @@ prioritizes never-checked weeks, then least recently checked weeks older than se
 days. Missing/empty reports stay eligible for later checks. Manual sync can target
 older publication weeks explicitly. DVIC's schedule is set on Settings' Collectors page,
 behind `dvic.manage` (its keeper's `schedules`), and runs only while DVIC is on; the DVIC
-page's Collection settings button opens Collectors on DVIC. It has no Settings page of its
+page's Collection settings button opens Collectors on DVIC, which shows what it collects
+under it from `frontend/collected.ts` (the `collected` slot). It has no Settings page of its
 own. Its errors are worded in its API client, but for a missing station
 (`dvic_station_required`), which a schedule meets too, worded in its manifest.
 

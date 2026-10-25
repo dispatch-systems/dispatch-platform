@@ -69,7 +69,9 @@ it is live route data, in a database of its own, `routelive`.
   yesterday and of the days in the week before it without one, newest first, at most four a run;
   or **Today so far** (`routes_today`, a schedule alias of the routes collection), a snapshot of
   the day it is where the DSP is. Collect now there offers the same two. A snapshot is never a day's final read, so the first Yesterday
-  run after the day ends still reads it whole, and catches it up if missed.
+  run after the day ends still reads it whole, and catches it up if missed. What it collects,
+  each Day's period among it, as the Collectors page shows under it, is `frontend/collected.ts`
+  (the `collected` slot).
 - **API:** behind `routes.view`, `GET /api/dsp/routes/days`, `…/days/{day}`,
   `…/days/{day}/itineraries/{id}`, `…/packages/{tracking}` and `…/jobs`. Behind
   `routes.collect`, `POST /api/dsp/routes/collect` and `…/jobs/{id}/cancel`. The platform

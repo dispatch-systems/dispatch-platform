@@ -4,7 +4,7 @@
 #[cfg(feature = "timecard")]
 use dispatch_core::testing::schedule;
 use dispatch_core::{
-    collection::schedules::Scheduled,
+    collection::{metrics::Metrics, schedules::Scheduled},
     db::{Store, iso, now, s},
     foundation::{config::Config, crypto},
     testing::schedule_due_at,
@@ -552,4 +552,48 @@ fn a_newer_releases_schedule_and_job_wait_untouched_for_it() {
     assert_eq!(db.recent_jobs(Some(&id)).unwrap().len(), 2);
 
     assert_eq!(newer(), left);
+}
+
+/// The Collectors page counts what a collection's latest successful run brought, as its last
+/// attempt counted it: an earlier run, or a later one that failed, counts for nothing.
+#[test]
+fn a_collection_counts_what_its_latest_successful_run_brought() {
+    let (_root, db, id) = setup();
+    let counts = || {
+        db.scheduled_collection(&id, Scheduled::named("paycom").unwrap(), false)
+            .unwrap()
+            .counts
+            .map(|counts| (counts.employees, counts.timecards))
+    };
+    assert_eq!(counts(), None);
+    let run = |job: &str, status: &str, created_at: &str, attempts: &[(i64, usize)]| {
+        db.jobs
+            .exec(
+                "INSERT INTO jobs(id,dsp_id,environment,kind,status,available_at,created_at,\
+                 release,connection_revision,idempotency_key) \
+                 VALUES (?,?,'preview','paycom.collect',?,0,?,'test',1,?)",
+                params![job, id, status, created_at, job],
+            )
+            .unwrap();
+        for &(attempt, employees) in attempts {
+            let mut metrics = Metrics::new(&json!({ "attempt": attempt }));
+            metrics.employees = Some(employees);
+            metrics.timecards = Some(employees * 8);
+            db.jobs
+                .exec(
+                    "INSERT INTO job_metrics(job_id,attempt,owner,metrics) VALUES (?,?,'test',?)",
+                    params![job, attempt, serde_json::to_string(&metrics).unwrap()],
+                )
+                .unwrap();
+        }
+    };
+    run("earlier", "succeeded", "2026-09-01T05:00:00Z", &[(1, 50)]);
+    run(
+        "latest",
+        "succeeded",
+        "2026-09-02T05:00:00Z",
+        &[(1, 10), (2, 64)],
+    );
+    run("failed", "failed", "2026-09-03T05:00:00Z", &[(1, 3)]);
+    assert_eq!(counts(), Some((Some(64), Some(512))));
 }
