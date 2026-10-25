@@ -705,11 +705,18 @@ pub fn failure(log: &str) -> Vec<String> {
     found
 }
 /// Whether a line names a finding by its place, as linters and scanners print one:
-/// `path/to/file.rs:12: rule` or `file.ts:3:9: message`.
+/// `path/to/file.rs:12: rule` or `file.ts:3:9: message`. A warning Python prints in the same
+/// shape, `mock.py:2259: ResourceWarning: …`, isn't one.
 fn located(line: &str) -> bool {
     let Some((place, said)) = line.split_once(": ") else {
         return false;
     };
+    if said
+        .split_once(": ")
+        .is_some_and(|(category, _)| category.ends_with("Warning") && !category.contains(' '))
+    {
+        return false;
+    }
     let mut parts = place.split(':');
     let file = parts.next().unwrap_or("");
     let numbers: Vec<&str> = parts.collect();
@@ -1264,6 +1271,18 @@ mod tests {
             [
                 "tooling/cli/src/pr.rs:259: fixed-network-address",
                 "Privacy check failed; matching values are withheld."
+            ]
+        );
+        // However many warnings come first, what failed is shown.
+        let warned =
+            "/usr/lib/python3.14/unittest/mock.py:2259: ResourceWarning: unclosed database\n"
+                .repeat(40)
+                + "[warn] features/dvic/frontend/feature.ts\nFailed rules: format\n";
+        assert_eq!(
+            failure(&warned),
+            [
+                "[warn] features/dvic/frontend/feature.ts",
+                "Failed rules: format"
             ]
         );
         let quiet: String = (1..=40).map(|n| format!("line {n}\n")).collect();
