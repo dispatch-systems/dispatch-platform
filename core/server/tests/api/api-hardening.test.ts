@@ -107,8 +107,9 @@ test('production rejects conflicting modes and unsafe defaults before opening st
     { NODE_ENV: 'development' },
     { NODE_ENV: 'test' },
     { DISPATCH_PROVIDER_MODE: 'fixture' },
-    // Only a test server takes another day as today.
+    // Only a test server takes another day as today, and only a preview signs in without a limit.
     { DISPATCH_FIXTURE_TODAY: '2026-10-14' },
+    { DISPATCH_FIXTURE_UNLIMITED_SIGN_IN: '1' },
     { DISPATCH_PRODUCTION_MAIL_MODE: 'capture' },
     { DISPATCH_ORIGIN: 'http://admin.dispatch.example' },
     { DISPATCH_STATE_ROOT: undefined },
@@ -134,8 +135,9 @@ test('production rejects conflicting modes and unsafe defaults before opening st
   );
   const real = { ...f.env, DISPATCH_PROVIDER_MODE: 'native' };
   assert.equal(status(real).status, 0, status(real).stderr);
-  assert.match(
-    status({ ...real, DISPATCH_FIXTURE_TODAY: '2026-10-14' }).stderr,
-    /fixture_forbidden/,
-  );
+  for (const fixtureOnly of [
+    { DISPATCH_FIXTURE_TODAY: '2026-10-14' },
+    { DISPATCH_FIXTURE_UNLIMITED_SIGN_IN: '1' },
+  ])
+    assert.match(status({ ...real, ...fixtureOnly }).stderr, /fixture_forbidden/);
 });

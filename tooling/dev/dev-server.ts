@@ -128,7 +128,8 @@ export async function startPreview({
     const origin = `http://${isIP(host) === 6 ? `[${host}]` : host}:${address.port}`;
     app = await fixture({
       binary,
-      env: { DISPATCH_ORIGIN: origin },
+      // Whoever checks a preview signs in again and again, as an agent does for each look.
+      env: { DISPATCH_ORIGIN: origin, DISPATCH_FIXTURE_UNLIMITED_SIGN_IN: '1' },
       output: 'inherit',
     });
     ui = await createServer({

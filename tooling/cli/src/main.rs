@@ -1,8 +1,8 @@
 use dispatchdev_cli::{
     Native, Result, Runner, api, build,
     change::Change,
-    check, ci, finish, logs, observation, pr, preview, require, review, scaffold, ship, start,
-    status, test, verify,
+    check, ci, finish, logs, observation, pr, preview, require, review, scaffold, ship, shot,
+    start, status, test, verify,
     workspace::{Retried, Workspace},
 };
 use std::{collections::BTreeMap, path::PathBuf};
@@ -111,13 +111,14 @@ const COMMANDS: &[Spec] = &[
             "preview <name> [--page <page>]",
             "        [--tab <tab>]",
             "        [--dsp <dsp>]",
+            "        [--platform]",
             "        [--restart | --stop]",
         ],
         "Start its preview, or with --restart after a backend edit, and print the link that \
-         signs in by itself: to --page, in the DSP --dsp names by its name or id, on the \
-         page's --tab.",
+         signs in by itself: to --page, in the fixture's DSP or the one --dsp names by its name \
+         or id, or with --platform on the platform owner's own pages, on the page's --tab.",
     )
-    .flags(&["--restart", "--stop"])
+    .flags(&["--platform", "--restart", "--stop"])
     .options(&["--page", "--dsp", "--tab"])
     .arguments(1),
     spec(
@@ -132,6 +133,24 @@ const COMMANDS: &[Spec] = &[
     )
     .options(&["--dsp", "--as", "--data"])
     .arguments(3),
+    spec(
+        "shot",
+        &[
+            "shot <name> [--page <page>]",
+            "     [--tab <tab>]",
+            "     [--dsp <dsp> | --platform]",
+            "     [--as <email>]",
+            "     [--size <w>x<h>]",
+            "     [--theme <light | dark>]",
+        ],
+        "A PNG of a page of its preview, saved in its scratch folder, whose path it prints: \
+         opened as preview's link opens it, as the owner, or --as a demo account at the address \
+         of the DSP --dsp names, signed in as api signs in, once a run of the preview. The \
+         window is --size, 1440x1000 unless told, in --theme, light unless told.",
+    )
+    .flags(&["--platform"])
+    .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme"])
+    .arguments(1),
     spec(
         "logs",
         &[
@@ -325,8 +344,8 @@ const SECTIONS: &[(&str, &[&str])] = &[
     (
         "A change, from start to finish:",
         &[
-            "start", "preview", "api", "logs", "verify", "test", "check", "ci", "review", "pr",
-            "ship", "finish", "status", "browser",
+            "start", "preview", "api", "shot", "logs", "verify", "test", "check", "ci", "review",
+            "pr", "ship", "finish", "status", "browser",
         ],
     ),
     (
@@ -520,6 +539,7 @@ fn run() -> Result<()> {
             let open = preview::Open {
                 page: line.option("--page"),
                 dsp: line.option("--dsp"),
+                platform: line.flag("--platform"),
                 tab: line.option("--tab"),
             };
             preview::run(&line.workspace()?, line.name()?, action, &open, &Native)
@@ -539,6 +559,20 @@ fn run() -> Result<()> {
                 true => Ok(()),
                 false => Err("The call failed.".into()),
             }
+        }
+        "shot" => {
+            let shot = shot::Shot {
+                open: preview::Open {
+                    page: line.option("--page"),
+                    dsp: line.option("--dsp"),
+                    platform: line.flag("--platform"),
+                    tab: line.option("--tab"),
+                },
+                who: line.option("--as"),
+                size: line.option("--size").unwrap_or("1440x1000"),
+                theme: line.option("--theme").unwrap_or("light"),
+            };
+            shot::run(&line.workspace()?, line.name()?, &shot, &Native)
         }
         "logs" => {
             let options = logs::Options {
