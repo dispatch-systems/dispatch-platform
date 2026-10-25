@@ -5,8 +5,7 @@ use super::{
     storage::{DOMAIN, PhonesStore},
 };
 use dispatch_core::{
-    Error, State,
-    db,
+    Error, State, db,
     foundation::observability,
     manifest::{Maintenance, Upkeep},
 };

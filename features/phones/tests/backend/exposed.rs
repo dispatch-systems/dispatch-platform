@@ -28,7 +28,11 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
     let sent = texting.send(&state, &dsp, outgoing).await.unwrap();
     assert_eq!(sent.phone, phones[0].id);
     assert_eq!(sent.number, "+14255550199");
-    assert_eq!(sent.status, Some(Status::Delivered), "the demo's stand-in delivers at once");
+    assert_eq!(
+        sent.status,
+        Some(Status::Delivered),
+        "the demo's stand-in delivers at once"
+    );
     let (at, after) = (dsp.clone(), received.last);
     let changed = state
         .read(move |db| texting.changes(db, &at, after, 100))

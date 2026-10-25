@@ -62,7 +62,9 @@ impl Texting for Exposed {
         Box::pin(async move {
             let (at, wanted) = (dsp.to_owned(), id.to_owned());
             let text = state
-                .run_scoped(dsp, DOMAIN, move |db| db.phones_retry(&at, &wanted, db::now()))
+                .run_scoped(dsp, DOMAIN, move |db| {
+                    db.phones_retry(&at, &wanted, db::now())
+                })
                 .await?;
             live::queued(state, dsp);
             live::changed(state, dsp).await;

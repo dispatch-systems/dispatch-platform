@@ -24,7 +24,12 @@ pub trait Texting: Send + Sync {
     /// Sends `outgoing` from one of the DSP's phones, waiting for it until it says how it
     /// went. Refused as `phones_none` while the DSP has no phone, `phones_not_found` for a
     /// phone not its own, and `phones_file_not_found` for a picture not added by `by`.
-    fn send<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str, outgoing: Outgoing) -> Answer<'a, Text>;
+    fn send<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        outgoing: Outgoing,
+    ) -> Answer<'a, Text>;
     /// Sends again a text Dispatch sent that failed. Refused as `phones_text_not_found`
     /// otherwise.
     fn retry<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str, id: &'a str) -> Answer<'a, Text>;

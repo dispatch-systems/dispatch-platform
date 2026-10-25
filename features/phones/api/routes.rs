@@ -32,7 +32,12 @@ pub fn routes() -> Vec<Route> {
         async_post("/api/phones/pair", Public, phone::pair),
         async_get("/api/phones/outbox", Phone, phone::outbox),
         async_post("/api/phones/texts", Phone, phone::texts),
-        upload("/api/phones/files/{id}", Phone, files::LARGEST, phone::file_in),
+        upload(
+            "/api/phones/files/{id}",
+            Phone,
+            files::LARGEST,
+            phone::file_in,
+        ),
         async_get("/api/phones/files/{id}", Phone, phone::file_out),
         async_post("/api/phones/statuses", Phone, phone::statuses),
     ]
@@ -97,7 +102,11 @@ fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         .ok_or_else(|| Error::new("phones_not_found", 404))?;
     let device = db.phones_rename(c.dsp_id(), id, &name)?;
     if device.name != before.name {
-        c.audit(db, "phones.renamed", &format!("{} to {}", before.name, device.name))?;
+        c.audit(
+            db,
+            "phones.renamed",
+            &format!("{} to {}", before.name, device.name),
+        )?;
     }
     Reply::of(&row(&device, db::now()))
 }

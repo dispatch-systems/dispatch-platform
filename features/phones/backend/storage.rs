@@ -142,8 +142,14 @@ pub trait PhonesStore {
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text>;
     fn phones_retry(&self, dsp: &str, id: &str, at: i64) -> Result<Text>;
     /// Keeps a picture someone added for a text not sent yet.
-    fn phones_add_file(&self, dsp: &str, by: &str, file: &ReportedFile, sha256: &str, at: i64)
-    -> Result<File>;
+    fn phones_add_file(
+        &self,
+        dsp: &str,
+        by: &str,
+        file: &ReportedFile,
+        sha256: &str,
+        at: i64,
+    ) -> Result<File>;
     fn phones_file(&self, dsp: &str, id: &str) -> Result<Option<StoredFile>>;
     /// Lets go of pictures added and never sent, and pairing codes expired, before `before`:
     /// the SHA-256 of each picture let go.
@@ -155,7 +161,8 @@ pub trait PhonesStore {
     /// Who made the code that paired the phone.
     fn phones_paired_by(&self, dsp: &str, device: &str) -> Result<Option<String>>;
     /// A picture of a text Dispatch has for the phone `device` to send.
-    fn phones_outgoing_file(&self, dsp: &str, device: &str, id: &str) -> Result<Option<StoredFile>>;
+    fn phones_outgoing_file(&self, dsp: &str, device: &str, id: &str)
+    -> Result<Option<StoredFile>>;
     /// Whether the phone is a stand-in, the demo's, which no app holds.
     fn phones_stand_in(&self, dsp: &str, device: &str) -> Result<bool>;
     /// Pairs a stand-in phone, `number`, as the demo's, with texts it received.
@@ -583,7 +590,12 @@ impl PhonesStore for Store {
             .map(|row| s(&row, "paired_by").to_owned())
             .filter(|by| !by.is_empty()))
     }
-    fn phones_outgoing_file(&self, dsp: &str, device: &str, id: &str) -> Result<Option<StoredFile>> {
+    fn phones_outgoing_file(
+        &self,
+        dsp: &str,
+        device: &str,
+        id: &str,
+    ) -> Result<Option<StoredFile>> {
         let found = self.dsp(dsp)?.count(
             "SELECT count(*) FROM phones_files f JOIN phones_texts t ON t.id=f.text_id \
              WHERE f.id=? AND t.device_id=? AND t.origin='dispatch'",

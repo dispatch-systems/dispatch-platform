@@ -3,10 +3,10 @@
 //! receives and sends, their pictures' bytes, and how Dispatch's texts went. No browser calls
 //! these: a request carrying a cookie, or at another address than a DSP's, is refused.
 use crate::backend::{
-    files, live, pairing,
-    storage::{DOMAIN, Device, Kept, Pairing, PhonesStore, Reported, ReportedFile, MOST_TEXTS},
-    numbers,
+    files, live, numbers, pairing,
+    storage::{DOMAIN, Device, Kept, MOST_TEXTS, Pairing, PhonesStore, Reported, ReportedFile},
 };
+use dispatch_core::accounts::api::types::Dsp;
 use dispatch_core::{
     Error, Result, State,
     db::{self, Store},
@@ -19,7 +19,6 @@ use dispatch_core::{
     },
     tenancy::api::types::DspStatus,
 };
-use dispatch_core::accounts::api::types::Dsp;
 use dispatch_phones_contract::{Direction, Status, Text};
 use serde::Serialize;
 use serde_json::Value;
@@ -88,7 +87,11 @@ fn site_dsp(db: &Store, input: &Input) -> Result<Dsp> {
     let Site::Dsp(code) = &input.site else {
         return Err(Error::new("sign_in_required", 401));
     };
-    ensure(!input.headers.contains_key("cookie"), "sign_in_required", 401)?;
+    ensure(
+        !input.headers.contains_key("cookie"),
+        "sign_in_required",
+        401,
+    )?;
     let dsp = db
         .dsp_at(code)?
         .filter(|dsp| dsp.status == DspStatus::Active)
@@ -142,7 +145,12 @@ pub(super) async fn pair(state: Arc<State>, input: Input, access: Public) -> Res
             };
             let device = db.phones_pair(&dsp.id, &code, &kept, &pairing, db::now())?;
             let by = db.phones_paired_by(&dsp.id, &device.id)?;
-            db.audit(by.as_deref(), Some(&dsp.id), "phones.paired", &shown(&device))?;
+            db.audit(
+                by.as_deref(),
+                Some(&dsp.id),
+                "phones.paired",
+                &shown(&device),
+            )?;
             Ok(device)
         })
         .await?;
@@ -271,11 +279,17 @@ pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Res
     Reply::of(&Reports {
         texts: kept
             .into_iter()
-            .map(|Kept { client_id, id, files }| Report {
-                client_id,
-                id,
-                files,
-            })
+            .map(
+                |Kept {
+                     client_id,
+                     id,
+                     files,
+                 }| Report {
+                    client_id,
+                    id,
+                    files,
+                },
+            )
             .collect(),
     })
 }
@@ -351,7 +365,9 @@ pub(super) async fn file_out(state: Arc<State>, input: Input, access: Phone) -> 
         })
         .await?;
     let file = file.ok_or_else(|| Error::new("phones_file_not_found", 404))?;
-    let sha256 = file.sha256.ok_or_else(|| Error::new("phones_file_not_found", 404))?;
+    let sha256 = file
+        .sha256
+        .ok_or_else(|| Error::new("phones_file_not_found", 404))?;
     files::answer(&state, &dsp, &sha256, &file.file.name, &file.file.mime).await
 }
 

@@ -70,8 +70,11 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
     assert_eq!(old.unwrap_err().code.as_str(), "phones_pairing_invalid");
     let late = db.phones_pair(&dsp, "new", "key-2", &pairing, 10_000 + PAIRING_MS);
     assert_eq!(late.unwrap_err().code.as_str(), "phones_pairing_invalid");
-    db.phones_new_pairing(&dsp, &owner, "third", 20_000).unwrap();
-    let second = db.phones_pair(&dsp, "third", "key-2", &pairing, 21_000).unwrap();
+    db.phones_new_pairing(&dsp, &owner, "third", 20_000)
+        .unwrap();
+    let second = db
+        .phones_pair(&dsp, "third", "key-2", &pairing, 21_000)
+        .unwrap();
     assert_eq!(second.name, "Phone 2");
     // Removed, a phone's key works no more.
     db.phones_remove(&dsp, &second.id, 22_000).unwrap();
@@ -84,7 +87,11 @@ fn a_text_reported_twice_is_kept_once() {
     let (_root, db, dsp) = store();
     let phone = paired(&db, &dsp, "key", "2065550100");
     let first = db
-        .phones_report(&dsp, &phone.id, vec![reported("a", "+14255550199", 5_000, 2)])
+        .phones_report(
+            &dsp,
+            &phone.id,
+            vec![reported("a", "+14255550199", 5_000, 2)],
+        )
         .unwrap();
     let again = db
         .phones_report(
@@ -103,7 +110,10 @@ fn a_text_reported_twice_is_kept_once() {
     let ids: Vec<_> = changes.texts.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(ids, [first[0].id.as_str(), again[1].id.as_str()]);
     let text = &changes.texts[0];
-    assert_eq!((text.direction, text.origin), (Direction::In, Origin::Phone));
+    assert_eq!(
+        (text.direction, text.origin),
+        (Direction::In, Origin::Phone)
+    );
     assert!(text.files.iter().all(|file| !file.kept), "bytes come after");
     // Its picture's bytes arrive: the text changes again, after the other.
     db.phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha")
@@ -119,7 +129,9 @@ fn a_text_reported_twice_is_kept_once() {
         model: "Pixel",
         app_version: "1",
     };
-    let other = db.phones_pair(&dsp, "other", "key-2", &pairing, 7_000).unwrap();
+    let other = db
+        .phones_pair(&dsp, "other", "key-2", &pairing, 7_000)
+        .unwrap();
     let foreign = db.phones_file_arrived(&dsp, &other.id, &first[0].files[1], "sha");
     assert_eq!(foreign.unwrap_err().code.as_str(), "phones_file_not_found");
 }
@@ -129,31 +141,58 @@ fn how_a_text_went_only_moves_on() {
     let (_root, db, dsp) = store();
     let phone = paired(&db, &dsp, "key", "2065550100");
     let owner = testing::a_user(&db);
-    let status = |id: &str, status| db.phones_status(&dsp, &phone.id, id, status, 9_000, Some("no signal")).unwrap();
-    let text = db.phones_send(&dsp, &outgoing("(425) 555-0199", vec![], &owner), 8_000).unwrap();
+    let status = |id: &str, status| {
+        db.phones_status(&dsp, &phone.id, id, status, 9_000, Some("no signal"))
+            .unwrap()
+    };
+    let text = db
+        .phones_send(&dsp, &outgoing("(425) 555-0199", vec![], &owner), 8_000)
+        .unwrap();
     assert_eq!(text.status, Some(Status::Waiting));
     assert_eq!(db.phones_outbox(&dsp, &phone.id).unwrap().len(), 1);
     assert!(status(&text.id, Status::Sent));
-    assert!(db.phones_outbox(&dsp, &phone.id).unwrap().is_empty(), "sent leaves the outbox");
+    assert!(
+        db.phones_outbox(&dsp, &phone.id).unwrap().is_empty(),
+        "sent leaves the outbox"
+    );
     assert!(!status(&text.id, Status::Sent), "nothing moves twice");
     assert!(status(&text.id, Status::Delivered));
-    assert!(!status(&text.id, Status::Failed), "delivered stays delivered");
+    assert!(
+        !status(&text.id, Status::Failed),
+        "delivered stays delivered"
+    );
     let kept = db.phones_text(&dsp, &text.id).unwrap().unwrap();
     assert_eq!((kept.status, kept.error), (Some(Status::Delivered), None));
 
-    let failing = db.phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 8_000).unwrap();
+    let failing = db
+        .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 8_000)
+        .unwrap();
     assert!(status(&failing.id, Status::Failed));
-    assert!(!status(&failing.id, Status::Sent), "a failure isn't undone by sent");
+    assert!(
+        !status(&failing.id, Status::Sent),
+        "a failure isn't undone by sent"
+    );
     let failed = db.phones_text(&dsp, &failing.id).unwrap().unwrap();
     assert_eq!(failed.error.as_deref(), Some("no signal"));
     // Tried again, it waits for the phone once more.
     let retried = db.phones_retry(&dsp, &failing.id, 10_000).unwrap();
-    assert_eq!((retried.status, retried.error), (Some(Status::Waiting), None));
+    assert_eq!(
+        (retried.status, retried.error),
+        (Some(Status::Waiting), None)
+    );
     assert_eq!(db.phones_outbox(&dsp, &phone.id).unwrap()[0].id, failing.id);
-    assert!(status(&failing.id, Status::Delivered), "a delivery report counts after a failure");
+    assert!(
+        status(&failing.id, Status::Delivered),
+        "a delivery report counts after a failure"
+    );
     // A phone says nothing of another's texts.
-    let other = db.phones_send(&dsp, &outgoing("4255550198", vec![], &owner), 8_000).unwrap();
-    assert!(!db.phones_status(&dsp, "phone_other", &other.id, Status::Sent, 9_000, None).unwrap());
+    let other = db
+        .phones_send(&dsp, &outgoing("4255550198", vec![], &owner), 8_000)
+        .unwrap();
+    assert!(
+        !db.phones_status(&dsp, "phone_other", &other.id, Status::Sent, 9_000, None)
+            .unwrap()
+    );
 }
 
 #[test]
@@ -163,20 +202,31 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number() {
     let none = db.phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 1_000);
     assert_eq!(none.unwrap_err().code.as_str(), "phones_none");
     let first = paired(&db, &dsp, "key-1", "2065550100");
-    db.phones_new_pairing(&dsp, &owner, "second", 3_000).unwrap();
+    db.phones_new_pairing(&dsp, &owner, "second", 3_000)
+        .unwrap();
     let pairing = Pairing {
         number: "2065550177",
         model: "Galaxy",
         app_version: "1",
     };
-    let second = db.phones_pair(&dsp, "second", "key-2", &pairing, 3_000).unwrap();
+    let second = db
+        .phones_pair(&dsp, "second", "key-2", &pairing, 3_000)
+        .unwrap();
     // Neither has texted the number: the one seen last.
     db.phones_seen(&dsp, &first.id, 9_000).unwrap();
-    let to = |number: &str| db.phones_send(&dsp, &outgoing(number, vec![], &owner), 10_000).unwrap().phone;
+    let to = |number: &str| {
+        db.phones_send(&dsp, &outgoing(number, vec![], &owner), 10_000)
+            .unwrap()
+            .phone
+    };
     assert_eq!(to("4255550199"), first.id);
     // Once the second hears from it, its replies go from the second.
-    db.phones_report(&dsp, &second.id, vec![reported("x", "+14255550199", 11_000, 0)])
-        .unwrap();
+    db.phones_report(
+        &dsp,
+        &second.id,
+        vec![reported("x", "+14255550199", 11_000, 0)],
+    )
+    .unwrap();
     assert_eq!(to("(425) 555-0199"), second.id);
     // Pictures go only with the text of who added them, once.
     let file = ReportedFile {
@@ -184,12 +234,28 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number() {
         mime: "image/jpeg".into(),
         size: 10,
     };
-    let picture = db.phones_add_file(&dsp, &owner, &file, "sha", 12_000).unwrap();
-    let someone = db.phones_send(&dsp, &outgoing("4255550199", vec![picture.id.clone()], "usr_other"), 12_000);
+    let picture = db
+        .phones_add_file(&dsp, &owner, &file, "sha", 12_000)
+        .unwrap();
+    let someone = db.phones_send(
+        &dsp,
+        &outgoing("4255550199", vec![picture.id.clone()], "usr_other"),
+        12_000,
+    );
     assert_eq!(someone.unwrap_err().code.as_str(), "phones_file_not_found");
-    let sent = db.phones_send(&dsp, &outgoing("4255550199", vec![picture.id.clone()], &owner), 12_000).unwrap();
+    let sent = db
+        .phones_send(
+            &dsp,
+            &outgoing("4255550199", vec![picture.id.clone()], &owner),
+            12_000,
+        )
+        .unwrap();
     assert_eq!(sent.files[0].id, picture.id);
-    let twice = db.phones_send(&dsp, &outgoing("4255550199", vec![picture.id], &owner), 12_000);
+    let twice = db.phones_send(
+        &dsp,
+        &outgoing("4255550199", vec![picture.id], &owner),
+        12_000,
+    );
     assert_eq!(twice.unwrap_err().code.as_str(), "phones_file_not_found");
 }
 
@@ -203,11 +269,24 @@ fn pictures_never_sent_and_codes_expired_are_let_go() {
         mime: "image/png".into(),
         size: 1,
     };
-    let sent = db.phones_add_file(&dsp, &owner, &file("sent.png"), "sha-sent", 1_000).unwrap();
-    db.phones_send(&dsp, &Outgoing { phone: Some(phone.id), ..outgoing("4255550199", vec![sent.id.clone()], &owner) }, 1_000)
+    let sent = db
+        .phones_add_file(&dsp, &owner, &file("sent.png"), "sha-sent", 1_000)
         .unwrap();
-    let unsent = db.phones_add_file(&dsp, &owner, &file("unsent.png"), "sha-unsent", 1_000).unwrap();
-    let recent = db.phones_add_file(&dsp, &owner, &file("recent.png"), "sha-recent", 5_000).unwrap();
+    db.phones_send(
+        &dsp,
+        &Outgoing {
+            phone: Some(phone.id),
+            ..outgoing("4255550199", vec![sent.id.clone()], &owner)
+        },
+        1_000,
+    )
+    .unwrap();
+    let unsent = db
+        .phones_add_file(&dsp, &owner, &file("unsent.png"), "sha-unsent", 1_000)
+        .unwrap();
+    let recent = db
+        .phones_add_file(&dsp, &owner, &file("recent.png"), "sha-recent", 5_000)
+        .unwrap();
     assert_eq!(db.phones_tidy(&dsp, 2_000).unwrap(), ["sha-unsent"]);
     assert!(db.phones_file(&dsp, &unsent.id).unwrap().is_none());
     assert!(db.phones_file(&dsp, &sent.id).unwrap().is_some());
