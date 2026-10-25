@@ -16,7 +16,7 @@ fn reads_what_settings_saves_and_refuses_no_day_or_a_window_past_midnight() {
         let collection = collection(&store, &dsp).unwrap();
         (collection.schedule().unwrap(), collection.save_to_history)
     };
-    let schedule = |days: &[Weekday], start, stop, minutes| {
+    let schedule = |days: &[Weekday], start, stop, minutes: u64| {
         Schedule::new(days, start, stop, Duration::from_secs(minutes * 60)).unwrap()
     };
     // Its defaults, until the DSP saves one: every day from eight until nine, every five
