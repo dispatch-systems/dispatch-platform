@@ -34,7 +34,8 @@ while its DSP still reads; it's logged as `live.stalled`.
 What it keeps is in the environment's jobs database: `live_reads`, each read's day, when it
 began, how long it took, and whether it was kept, with what it counted, or why not, by its
 code, `live_read_stopped` for one dropped as its reader stopped; and `live_days`, the days each
-reader started and stopped for each DSP, which a restart goes on from. A DSP's records from
+reader started and stopped for each DSP, and when each one's stop began, which a restart goes on
+from. A DSP's records from
 before the last two weeks go as each of its days' reading starts. Its log has `live.started`
 and `live.stopped` for each day, and `live.read_failed` with a failed read's code, never what
 it read.

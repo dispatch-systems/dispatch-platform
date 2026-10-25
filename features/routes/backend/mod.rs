@@ -18,7 +18,7 @@ pub(crate) mod settings;
 mod storage;
 mod wire;
 
-pub use live::{LiveKept, clear_live, keep_live, live_request, save_live_day};
+pub use live::{LiveKept, clear_live, keep_live, live_request, save_and_clear_live, save_live_day};
 use publishing::*;
 use rows::*;
 pub use saving::{WorkPhone, save_day};
