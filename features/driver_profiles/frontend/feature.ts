@@ -8,6 +8,7 @@ export const feature: FrontendFeature = {
   name: 'driver_profiles',
   icon: Contact,
   platformSlots: () => import('./platform-slots.js'),
+  collected: () => import('./collected.js'),
   // Collecting the roster meets it, so the manifest words it.
   errors: {
     driver_profiles_abbreviation_required:

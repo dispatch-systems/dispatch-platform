@@ -5,7 +5,7 @@ use crate::{
     manifest::registry,
     text_enum,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
@@ -89,6 +89,19 @@ pub struct LastRun {
     pub at: String,
     pub error: Option<String>,
 }
+/// What a collection's latest successful run brought, as its collector counted it: only the
+/// counts it keeps are set.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct RunCounts {
+    pub employees: Option<usize>,
+    pub timecards: Option<usize>,
+    pub itineraries: Option<usize>,
+    pub meals: Option<usize>,
+    pub rows: Option<usize>,
+}
 /// One collection on Settings' Collectors page: what reads it, its schedule, and its runs.
 /// `revision` is what a save or switch of its schedule is made against.
 #[derive(Clone, Debug, Serialize)]
@@ -111,6 +124,8 @@ pub struct ScheduledCollection {
     pub revision: String,
     pub next_run: Option<String>,
     pub last_run: Option<LastRun>,
+    /// What its latest successful run brought, which may be older than `last_run`.
+    pub counts: Option<RunCounts>,
     /// Whether a run of it is queued or under way.
     pub running: bool,
     /// What that run says, as it waits or runs: empty until it says anything.

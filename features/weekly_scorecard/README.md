@@ -19,7 +19,8 @@ dispute that removed rows settles.
 
 Its scheduled runs refresh recent completed weeks, including already posted weeks whose
 dispute outcomes can change. When they run is its own schedule, set on Settings' Collectors
-page behind `weekly_scorecard.manage`, apart from Daily Performance's.
+page behind `weekly_scorecard.manage`, apart from Daily Performance's. What it collects, as the
+Collectors page shows under it, is `frontend/collected.ts` (the `collected` slot).
 Manual recollection can target older weeks.
 
 Its one section of Settings, `weekly_scorecard.collection` "Collection", goes with its

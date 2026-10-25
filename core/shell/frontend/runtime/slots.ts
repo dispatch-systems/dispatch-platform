@@ -78,6 +78,13 @@ export {
   scheduleIssueOf,
 } from './slots/api.js';
 export type {
+  Collected,
+  CollectedField,
+  CollectedPeriod,
+  CollectedRecords,
+} from './slots/collected.js';
+export { collectedOf } from './slots/collected.js';
+export type {
   AuditPart,
   AuditPhrases,
   AuditWording,

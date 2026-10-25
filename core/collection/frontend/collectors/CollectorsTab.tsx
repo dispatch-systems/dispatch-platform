@@ -6,6 +6,7 @@ import type { Leave } from '../../../shell/frontend/runtime/leave.js';
 import { hashQuery, replaceHashQuery } from '../../../shell/frontend/runtime/navigation.js';
 import { DataState } from '../../../shell/frontend/ui/index.js';
 import { useCollectionUpdates } from '../live-collection.js';
+import { CollectedFields } from './CollectedFields.js';
 import { CollectionIcon } from './CollectionIcon.js';
 import { CollectionSchedule } from './CollectionSchedule.js';
 import { runShort } from './WeekPreview.js';
@@ -14,7 +15,8 @@ import './collectors.css';
 
 // Settings' Collectors page: every collection whose schedule the member sets, under the
 // collector that reads it, each with its schedule in words and when it runs next; and the one
-// chosen, `?collection=`, its schedule to set, with the settings that go with it.
+// chosen, `?collection=`, its schedule to set, with the settings that go with it, then what it
+// collects.
 
 /** How often the collections are read again while one runs, for what it says it's doing. */
 const POLL_MS = 3000;
@@ -76,68 +78,71 @@ export function CollectorsTab({
         if (!current) return null;
         const groups = [...new Set(collections.map((each) => each.collectorLabel))];
         return (
-          <div className="collectors">
-            <nav className="collectors-list" aria-label="Collections">
-              {groups.map((group, index) => (
-                <div className="collectors-group" key={group}>
-                  <h3>
-                    <span>
-                      {group}
-                      {!collections.some(
-                        (each) => each.collectorLabel === group && each.connected,
-                      ) && <em>Not connected</em>}
-                    </span>
-                    {index === 0 && <span>Next run</span>}
-                  </h3>
-                  {collections
-                    .filter((each) => each.collectorLabel === group)
-                    .map((each) => (
-                      <button
-                        type="button"
-                        key={each.collection}
-                        className="collectors-item"
-                        aria-current={each === current || undefined}
-                        onClick={() => choose(each.collection)}
-                      >
-                        <span className="collectors-tile">
-                          <CollectionIcon feature={each.feature} size={14} />
-                        </span>
-                        <span className="collectors-name">
-                          <span>
-                            {each.label}
-                            <i className={`dot run-${state(each)}`} />
+          <>
+            <div className="collectors">
+              <nav className="collectors-list" aria-label="Collections">
+                {groups.map((group, index) => (
+                  <div className="collectors-group" key={group}>
+                    <h3>
+                      <span>
+                        {group}
+                        {!collections.some(
+                          (each) => each.collectorLabel === group && each.connected,
+                        ) && <em>Not connected</em>}
+                      </span>
+                      {index === 0 && <span>Next run</span>}
+                    </h3>
+                    {collections
+                      .filter((each) => each.collectorLabel === group)
+                      .map((each) => (
+                        <button
+                          type="button"
+                          key={each.collection}
+                          className="collectors-item"
+                          aria-current={each === current || undefined}
+                          onClick={() => choose(each.collection)}
+                        >
+                          <span className="collectors-tile">
+                            <CollectionIcon feature={each.feature} size={14} />
                           </span>
-                          <small>
-                            {each.rules.length
-                              ? each.rules.map((rule) => ruleText(rule)).join('; ')
-                              : 'Not scheduled'}
-                          </small>
-                        </span>
-                        <span className="collectors-next">
-                          {each.enabled && each.nextRun
-                            ? runShort(each.nextRun, data.timezone)
-                            : each.rules.length
-                              ? 'Off'
-                              : ''}
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              ))}
-            </nav>
-            <CollectionSchedule
-              key={current.collection}
-              collection={current}
-              timezone={data.timezone}
-              leaveRef={leaveRef}
-              saved={(answer) => {
-                setAnswers((before) => ({ ...before, [answer.collection]: answer }));
-                collectors.refresh();
-              }}
-              refresh={collectors.refresh}
-              settings={collectionSections?.(current.collection)}
-            />
-          </div>
+                          <span className="collectors-name">
+                            <span>
+                              {each.label}
+                              <i className={`dot run-${state(each)}`} />
+                            </span>
+                            <small>
+                              {each.rules.length
+                                ? each.rules.map((rule) => ruleText(rule)).join('; ')
+                                : 'Not scheduled'}
+                            </small>
+                          </span>
+                          <span className="collectors-next">
+                            {each.enabled && each.nextRun
+                              ? runShort(each.nextRun, data.timezone)
+                              : each.rules.length
+                                ? 'Off'
+                                : ''}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                ))}
+              </nav>
+              <CollectionSchedule
+                key={current.collection}
+                collection={current}
+                timezone={data.timezone}
+                leaveRef={leaveRef}
+                saved={(answer) => {
+                  setAnswers((before) => ({ ...before, [answer.collection]: answer }));
+                  collectors.refresh();
+                }}
+                refresh={collectors.refresh}
+                settings={collectionSections?.(current.collection)}
+              />
+            </div>
+            <CollectedFields collection={current} />
+          </>
         );
       }}
     </DataState>

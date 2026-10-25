@@ -8,4 +8,5 @@ export const feature: FrontendFeature = {
   // The icon of its page of Settings, as it has no page in the sidebar.
   icon: Route,
   platformSlots: () => import('./platform-slots.js'),
+  collected: () => import('./collected.js'),
 };

@@ -60,7 +60,9 @@ Its Collectors page is another, `collection.collectors`, on the shared page `col
 (`frontend/collectors/`): every collection whose schedule the member sets, under the collector
 that reads it, with its schedule in words, when it ran last and runs next, or what a run under
 way says it's doing, on or off, and Collect now; then the sections of Settings that go with it
-(`.collection(..)`), which Settings draws there. It follows each collection's end as it comes,
+(`.collection(..)`), which Settings draws there; and under it what the collection collects,
+as the feature that keeps it says (the `collected` slot), with how many of each kind its latest
+successful run brought, from that run's metrics (`counts`). It follows each collection's end as it comes,
 and reads the collections every few seconds while one runs. Who sets a collection's schedule is its keeper's to say (`Keeper::schedules`), and
 the page shows only to those holding one of those permissions (`schedulingPermissions`, which
 the access catalog generates). No collection is scheduled until a member makes it a rule.

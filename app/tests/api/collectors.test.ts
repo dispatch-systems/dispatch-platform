@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture } from '../../../core/shell/tests/support/support.js';
+import '../support/manifests.js';
+import { collections } from '../../../core/collection/api/generated/collections.js';
+import { collectedOf } from '../../../core/shell/frontend/runtime/slots.js';
 
 // Settings' Collectors page, over HTTP: core's routes, with the collections Timecard keeps from
 // Paycom. Who sets a collection's schedule is its keeper's to say; its rules are saved together
-// at the revision they were read at; and each DSP's are its own.
+// at the revision they were read at; and each DSP's are its own. What each collection collects
+// is the feature's that keeps it, as the page shows it.
 
 const everyDay = [0, 1, 2, 3, 4, 5, 6];
 const at = (times: string[], collects = 'paycom') => ({
@@ -178,4 +182,23 @@ test("a collection's schedule is set by those its keeper names, at the revision 
     (await collection(owner, 'paycom')).rules.map((each) => each.id),
     kept.map((each: { id: string }) => each.id),
   );
+});
+
+test('what every collection collects is said by the feature that keeps it', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  await owner.select(
+    owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics').id,
+  );
+  const shown: { collection: string; feature: string }[] = (await owner.read('/api/dsp/collectors'))
+    .collections;
+  for (const { schedule, label } of collections) {
+    const each = shown.find((collection) => collection.collection === schedule);
+    assert(each, `${label} isn't on the Collectors page`);
+    assert(
+      await collectedOf(each.feature, schedule),
+      `${each.feature} doesn't say what ${label} collects`,
+    );
+  }
 });

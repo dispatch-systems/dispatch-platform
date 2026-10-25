@@ -8,4 +8,5 @@ export const feature: FrontendFeature = {
   name: 'weekly_scorecard',
   icon: Award,
   platformSlots: () => import('./platform-slots.js'),
+  collected: () => import('./collected.js'),
 };

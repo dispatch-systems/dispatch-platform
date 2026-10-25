@@ -9,4 +9,5 @@ export const feature: FrontendFeature = {
   icon: LayoutGrid,
   // Its switch's icon on the DSPs page.
   platformSlots: () => import('./platform-slots.js'),
+  collected: () => import('./collected.js'),
 };
