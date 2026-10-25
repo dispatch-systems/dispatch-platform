@@ -119,24 +119,6 @@ pub struct ItineraryCapture {
     pub transporter_id: String,
     pub detail: String,
 }
-impl ItineraryCapture {
-    /// The detail parsed, once, when a reader needs it.
-    pub fn parsed(&self) -> Result<Value> {
-        ensure(
-            self.detail.len() <= MAX_BODY,
-            "routes_source_too_large",
-            502,
-        )?;
-        let value: Value = serde_json::from_str(&self.detail)
-            .map_err(|_| Error::new("routes_capture_invalid", 502))?;
-        ensure(
-            value["itineraryDetails"].is_object(),
-            "routes_capture_invalid",
-            502,
-        )?;
-        Ok(value)
-    }
-}
 /// A day's routes as collected, before they are stored: the two lists and every
 /// itinerary, each as Amazon sent it.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -265,9 +247,12 @@ impl Capture {
 
 /// What fixture mode collects: a small, complete day with two drivers.
 pub fn fixture(request: &Request) -> Result<Capture> {
-    request.validate()?;
-    let started_at = now();
-    let scope = Scope {
+    fixture_in(request, &fixture_scope(request))
+}
+/// Where fixture mode reads `request`: the service area and provider it names, or the
+/// fixture's own.
+pub(super) fn fixture_scope(request: &Request) -> Scope {
+    Scope {
         date: request.date.clone(),
         station: request.station.clone(),
         service_area_id: request
@@ -279,7 +264,14 @@ pub fn fixture(request: &Request) -> Result<Capture> {
             .clone()
             .unwrap_or_else(|| "provider-demo".into()),
         timezone: request.timezone.clone(),
-    };
+    }
+}
+/// Fixture mode's day for `request`, read in `scope`.
+pub(super) fn fixture_in(request: &Request, scope: &Scope) -> Result<Capture> {
+    request.validate()?;
+    request.scope_request().validate_scope(scope)?;
+    let started_at = now();
+    let scope = scope.clone();
     let midnight = NaiveDate::parse_from_str(&request.date, "%Y-%m-%d")
         .map_err(|_| Error::new("invalid_date", 400))?
         .and_hms_opt(8, 0, 0)

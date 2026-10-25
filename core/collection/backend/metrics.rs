@@ -84,6 +84,7 @@ impl Metrics {
             phase: Some(Phase::Starting),
             detail: None,
             method: None,
+            fallback: None,
             queue_ms: db::now().saturating_sub(available_at).max(0) as u64,
             elapsed_ms: 0,
             authentication_ms: None,
@@ -288,6 +289,11 @@ impl Recorder {
     /// How the collector read what it collected, which a run that succeeds keeps.
     pub fn method(&self, label: &str) {
         self.0.lock().expect("job metrics").value.method = identifier(label);
+    }
+    /// Why the collector fell back from its first way of reading, which a run that succeeds
+    /// keeps too.
+    pub fn fallback(&self, label: &str) {
+        self.0.lock().expect("job metrics").value.fallback = identifier(label);
     }
     pub fn counts(&self, counts: Counts) {
         let mut clock = self.0.lock().expect("job metrics");

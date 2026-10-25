@@ -12,7 +12,7 @@ import { fixture, until } from '../../../../core/shell/tests/support/support.js'
 // itinerary and the routes page's list whose downloads keep failing are read by moving the
 // application to them. Once the page carries a key, the day is read again with no page,
 // every read signed by the driver, and read as before when what that read fails its
-// checks. The day is published from each.
+// checks. The day is published from each, and each job's metrics keep why it fell back.
 test(
   'Cortex BrowserOS collects a day of routes signed natively, or as the application signs it, moving to what will not download',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 240000 },
@@ -466,6 +466,7 @@ test(
     const job = await collected(day);
     // The page carried no key: the application's signatures read the day, and moves the rest.
     assert.equal(job.metrics.at(-1).method, 'routes_signed_moved');
+    assert.equal(job.metrics.at(-1).fallback, 'routes_native_no_key');
     const days = (await owner.get('/api/dsp/routes/days')).value;
     assert.equal(days.days.length, 1);
     assert.equal(days.days[0].itineraryCount, 2);
@@ -542,6 +543,7 @@ test(
     const checked = requests.length;
     const refused = await collected('refused');
     assert.equal(refused.metrics.at(-1).method, 'routes_signed_moved');
+    assert.equal(refused.metrics.at(-1).fallback, 'routes_native_invalid');
     assert.deepEqual([...new Set(requests.slice(checked).map(({ by }) => by))].sort(), [
       'driver',
       'native',
@@ -554,6 +556,7 @@ test(
     const asked = requests.length;
     const again = await collected('again');
     assert.equal(again.metrics.at(-1).method, 'routes_native');
+    assert.equal(again.metrics.at(-1).fallback, undefined);
     assert.deepEqual(unsigned, []);
     assert.deepEqual(
       requests

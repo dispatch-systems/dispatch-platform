@@ -4,7 +4,7 @@ mod scope;
 
 pub use scope::{CollectionRequest, Discovery, Scope};
 
-use crate::{codes, connection::Driver};
+use crate::{codes, connection::Tab};
 use dispatch_core::{
     Code, Error, Result,
     collection::{browser::page::call, metrics::Recorder},
@@ -23,8 +23,8 @@ const PAGE_NOT_READY: &[dispatch_core::Code] = &[
 
 const DISCOVER: &str = include_str!("../scripts/discovery.js");
 
-impl Driver {
-    pub async fn resolve_scope(
+impl Tab<'_> {
+    pub(crate) async fn resolve_scope(
         &mut self,
         request: &CollectionRequest,
         metrics: &Recorder,

@@ -11,7 +11,7 @@
 use super::capture::{ItineraryCapture, MAX_BODY};
 use super::collect::{CaptureBudget, ITINERARY, ROUTE_SUMMARIES, itinerary_path, owned_by};
 use crate as cortex;
-use crate::{connection::Driver, discovery::Scope};
+use crate::{connection::Tab, discovery::Scope};
 use dispatch_core::{
     Code, Result,
     collection::{
@@ -330,7 +330,7 @@ where
     }
 }
 
-impl Driver {
+impl Tab<'_> {
     /// Every itinerary of `listed` and the routes page's list, as far as signing and
     /// downloading them reads them, `downloads` at a time.
     pub(super) async fn read_signed<F, Fut>(
@@ -351,7 +351,7 @@ impl Driver {
             itineraries: vec![None; listed.len()],
             routes: None,
         };
-        let http = Arc::new(Http::signed_in(&self.browser, &self.origin, &cortex::HOSTS).await?);
+        let http = Arc::new(Http::signed_in(self.browser, self.origin, &cortex::HOSTS).await?);
         let referer: Arc<str> = format!("{}{}", self.origin, scope.list_path()).into();
         let mut throttled = false;
         for attempt in 1..=ATTEMPTS {
@@ -499,7 +499,7 @@ impl Driver {
             // session.
             let event = self.browser.event(&self.page.id).await?;
             if !event.is_null() {
-                let signed = day.signed(&self.origin, &event["request"]);
+                let signed = day.signed(self.origin, &event["request"]);
                 // None leaves the browser.
                 self.page
                     .command(
