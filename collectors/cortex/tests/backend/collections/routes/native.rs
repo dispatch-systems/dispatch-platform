@@ -50,6 +50,8 @@ enum Plays {
     NoKey,
     /// A sign-in page served in the console's place.
     SignInPage,
+    /// The list answered is not one.
+    MalformedList,
     /// The second itinerary never answers.
     ItineraryDown,
     /// The second itinerary is answered with the first's.
@@ -178,7 +180,10 @@ impl Stand {
             ("serviceAreaId", AREA),
         ];
         let body = match path.strip_prefix("/operations/execution/api/") {
-            Some("summaries") if asks(&day) => self.day.summaries.to_string(),
+            Some("summaries") if asks(&day) => match self.plays {
+                Plays::MalformedList => "[]".into(),
+                _ => self.day.summaries.to_string(),
+            },
             Some("route-summaries")
                 if asks(&[day.as_slice(), &[("statsFromSummaries", "true")]].concat()) =>
             {
@@ -328,6 +333,8 @@ async fn a_day_not_read_whole_says_why() {
         (Plays::SignsOut, "routes_native_signed_out", 2),
         (Plays::NoKey, "routes_native_no_key", 1),
         (Plays::SignInPage, "routes_native_signed_out", 1),
+        // Never a day of no itineraries from a list that is not one.
+        (Plays::MalformedList, "cortex_content_incomplete", 1),
         (Plays::ItineraryDown, "provider_unavailable", 1),
         (Plays::WrongItinerary, "routes_scope_mismatch", 1),
     ];

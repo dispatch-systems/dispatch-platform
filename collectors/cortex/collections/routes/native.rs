@@ -303,6 +303,12 @@ impl Reading<'_> {
         let text = self.list(SUMMARIES, &lists).await?;
         let bytes = CaptureBudget::new(text.len())?;
         let summaries = parsed(&text)?;
+        // A list that is not one would list no itinerary, and replace the day with none.
+        ensure(
+            summaries["itinerarySummaries"].is_array(),
+            "cortex_content_incomplete",
+            502,
+        )?;
         let text = self
             .list(
                 ROUTE_SUMMARIES,

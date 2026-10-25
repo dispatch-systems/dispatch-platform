@@ -414,13 +414,19 @@ impl Driver {
         let mut method = *method;
         if method.navigation == Navigation::Native {
             let session = SignedIn::of(&self.browser, &self.origin, &cortex::HOSTS).await?;
-            match Native::new(&session)?.read(&scope, request.mode).await {
+            // A day is checked before the browser closes: one that fails is read with it.
+            let native = Native::new(&session)?
+                .read(&scope, request.mode)
+                .await
+                .and_then(|capture| {
+                    capture.validate(request)?;
+                    Ok(capture)
+                });
+            match native {
                 Ok(capture) => {
-                    // Nothing needs the browser now: it closes before the day is checked and kept.
+                    // Nothing needs the browser now: it closes before the day is kept.
                     self.browser.close().await;
                     metrics.method("routes_native");
-                    progress(95, "Validating routes".into()).await?;
-                    capture.validate(request)?;
                     return Ok(capture);
                 }
                 Err(failure) => {
@@ -552,6 +558,8 @@ impl Driver {
         if let Some(error) = failure {
             return Err(error);
         }
+        // Whether moves read any of the day, after the application's signatures.
+        let moved = !todo.is_empty() || route_summaries.is_none();
         let route_summaries = match route_summaries {
             Some(value) => value,
             None => {
@@ -571,10 +579,10 @@ impl Driver {
             .collect::<Result<Vec<_>>>()?;
         if method.navigation == Navigation::Signed {
             // The application's signatures alone read the day, or moves as well.
-            metrics.method(if todo.is_empty() {
-                "routes_signed"
-            } else {
+            metrics.method(if moved {
                 "routes_signed_moved"
+            } else {
+                "routes_signed"
             });
         }
         progress(95, "Validating routes".into()).await?;

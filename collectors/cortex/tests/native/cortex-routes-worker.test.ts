@@ -11,7 +11,8 @@ import { fixture, until } from '../../../../core/shell/tests/support/support.js'
 // itinerary and the newer routes page's list, which the driver downloads itself, and the
 // itinerary and the routes page's list whose downloads keep failing are read by moving the
 // application to them. Once the page carries a key, the day is read again with no page,
-// every read signed by the driver. The day is published from each.
+// every read signed by the driver, and read as before when what that read fails its
+// checks. The day is published from each.
 test(
   'Cortex BrowserOS collects a day of routes signed natively, or as the application signs it, moving to what will not download',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 240000 },
@@ -214,6 +215,13 @@ test(
     // The key the list page carries once `keyed`, as Cortex's pages hold it in their state.
     const native = { session: 'native-session', key: 'fixture-key' };
     let keyed = false;
+    // Whether an itinerary read with the page's key is one the collection refuses.
+    let unreadable = false;
+    // The downloads with the application's signature that never come; the page's own
+    // requests read them.
+    let failing = (url: URL) =>
+      url.searchParams.get('itineraryId') === 'itinerary-2' ||
+      url.pathname === '/operations/execution/api/route-summaries';
     // Cortex's signature of one request with the page's key: its method, path, sorted query,
     // session and moment.
     const signature = (url: URL, session: string, stamp: string) => {
@@ -365,12 +373,7 @@ test(
           res.writeHead(400);
           return res.end();
         }
-        // The second driver's itinerary and the routes page's list never download with the
-        // page's signature; the page's own requests read them.
-        const failing =
-          url.searchParams.get('itineraryId') === 'itinerary-2' ||
-          url.pathname === '/operations/execution/api/route-summaries';
-        if (by === 'driver' && failing) {
+        if (by === 'driver' && failing(url)) {
           res.writeHead(503);
           return res.end();
         }
@@ -384,7 +387,10 @@ test(
             res.writeHead(404);
             return res.end();
           }
-          return json(detail(drivers[index]!, index));
+          const read = detail(drivers[index]!, index);
+          if (by === 'native' && unreadable)
+            return json({ ...read, itineraryDetails: { ...read.itineraryDetails, stops: 'none' } });
+          return json(read);
         }
         res.writeHead(404);
         return res.end();
@@ -528,9 +534,23 @@ test(
       { tracking_id: 'TBA000000000002', task_state: 'DELIVERED', transporter_id: 'driver-2' },
     ]);
 
+    // A day read with the page's key that fails the collection's checks is read as before:
+    // here every itinerary downloads, and only the routes page's list is read by a move.
+    keyed = true;
+    unreadable = true;
+    failing = (url) => url.pathname === '/operations/execution/api/route-summaries';
+    const checked = requests.length;
+    const refused = await collected('refused');
+    assert.equal(refused.metrics.at(-1).method, 'routes_signed_moved');
+    assert.deepEqual([...new Set(requests.slice(checked).map(({ by }) => by))].sort(), [
+      'driver',
+      'native',
+      'page',
+    ]);
+
     // Once the list page carries a key, the day is read again with no page: each list and
     // itinerary asked for once, signed by the driver.
-    keyed = true;
+    unreadable = false;
     const asked = requests.length;
     const again = await collected('again');
     assert.equal(again.metrics.at(-1).method, 'routes_native');
