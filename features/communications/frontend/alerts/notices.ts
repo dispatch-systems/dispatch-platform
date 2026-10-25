@@ -13,12 +13,12 @@ export const canNotify = () =>
 export const notifying = () => canNotify() && Notification.permission === 'granted';
 
 /**
- * Shows a notification titled `title` saying `body`, in place of an earlier one under `tag`;
- * clicking it brings Dispatch to the front and `opens` what it's of.
+ * Shows a notification titled `title` saying `body`; clicking it brings Dispatch to the front and
+ * `opens` what it's of.
  */
-export function notify(title: string, body: string, tag: string, opens: () => void) {
+export function notify(title: string, body: string, opens: () => void) {
   try {
-    const notice = new Notification(title, { body, tag });
+    const notice = new Notification(title, { body });
     notice.onclick = () => {
       window.focus();
       opens();

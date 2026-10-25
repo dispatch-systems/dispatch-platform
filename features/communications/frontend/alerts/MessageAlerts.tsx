@@ -57,7 +57,7 @@ export function MessageAlerts(access: Watching) {
       if (!chosen.notifications) return;
       for (const each of fresh) {
         const opens = pageHash(access, 'communications', { open: each.conversationId });
-        notify(each.from, preview(each.message), each.conversationId, () => {
+        notify(each.from, preview(each.message), () => {
           if (opens) navigate(opens);
         });
       }

@@ -34,6 +34,12 @@ unavailable.
   conversation; and whether Enter sends. A phone (a touch screen whose shorter side is under
   500px) has its own of those that apply on one, `phone_<choice>`: no layout, list or profile
   width, profile beside or kept open, or times on hover; and Enter starts a line there to start.
+  Then, on any screen, how a new message alerts them, under New messages: `sound`, on to start,
+  and `notifications`, off, which turning on asks the browser for, staying off if it refuses, and
+  which shows on only in a browser that has allowed it; left out where the browser can't show
+  one, as a phone's.
+- **On every page:** `communications.alerts`, a watcher (`frontend/alerts/`), for those with
+  `communications.use`, alerting them to new messages ([New messages](#new-messages)).
 
 ## The page
 
@@ -45,7 +51,8 @@ unavailable.
   container query on the page). On a wide page, the messages and the box under them keep to a
   centred column. Under 760 pixels of page, as on a phone, one pane at a time, edge to edge:
   the list, or the conversation open, which takes the whole page, with a way back. The
-  conversation open is in the address (`?open=<id>`).
+  conversation open is in the address (`?open=<id>`), and a link to one opens it, the page open
+  or not.
 - **The list:** with two or more workspaces where Communications works, which it shows, every
   one or one of them, each by its logo (else the first letters of its name), as the Update
   popup, Copy chat link and the profile's Slack row show it too, with how many of its
@@ -235,6 +242,28 @@ of its messages, as one edited or a file kept, so a page with it open reads it a
 which conversation is kept in memory alone, each for six seconds after their page last said so
 (`typing`), or until they send, and shown to everyone else with Communications.
 
+## New messages
+
+A new message from an employee alerts each member with `communications.use` as they chose in
+Message display: a short chime (`sound`), and the browser's notification (`notifications`), titled
+with who wrote it and saying what, as the list shows it, which brings Dispatch to the front and
+opens the conversation. On any page, while Dispatch is open in a tab of their browser, in view or
+not; nothing reaches a browser closed, as nothing is pushed.
+
+- **What's new:** a message a conversation waits on that the member's tabs hadn't seen there
+  (`waiting`'s `latest`), as one starting to wait or another in one waiting; never the DSP's own,
+  nor one answered before it was seen. What waited before Dispatch was open there alerts no one:
+  what the tabs saw is kept in the browser, by message ID, and three minutes old it's from before.
+- **Once:** one of the member's tabs at the DSP alerts them, the one they last focused (Web Locks),
+  the others in line for when it closes. It looks every five seconds at what waits, as the tab
+  read it in the last half minute, else read again, so a message alerts within about 35 seconds.
+- **Not in front of them:** never for the conversation open on the page, or the group it's listed
+  under, while the window is in view and focused.
+- **Sound** plays once the member has clicked or pressed a key in the page, as browsers ask: the
+  chime is made as it plays (Web Audio), two soft notes, and rests between chimes.
+- **A phone's browser** shows notifications only from a service worker or a Home Screen app, so
+  there Notifications isn't offered.
+
 ## What it reads of other features
 
 The profile, and the groups a group message can go to, read what other features expose, each
@@ -272,7 +301,9 @@ Behind `communications.use`:
   there, `chatLink`, whether, on there, it needs updating for what Communications uses,
   `needsUpdate`, and the version of its logo, `logo`, none without one), who is typing, each
   with their person and photo, and the latest change (`revision`).
-- `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar.
+- `GET …/waiting`: how many conversations wait, and since when each has, for the sidebar; and the
+  latest message from whom each is with (`latest`: the conversation, the group it's listed under,
+  their name and the message), for alerts.
 - `GET …/updates?after=<revision>&typing=<version>`: the long poll, with the workspaces as they
   are.
 - `GET …/conversations?q=<name>`, or `?before=<lastAt>:<id>`, with `team=<id>` for one
