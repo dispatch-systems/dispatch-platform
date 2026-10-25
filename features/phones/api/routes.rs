@@ -40,7 +40,7 @@ pub fn routes() -> Vec<Route> {
 
 /// One of Phones' IDs, `phone_` and 32 hexadecimal digits.
 fn phone_id(value: &str) -> Result<&str> {
-    ensure(db::identifier(value, "phone"), "invalid_input", 400)?;
+    ensure(db::identifier(value, "phone_"), "invalid_input", 400)?;
     Ok(value)
 }
 fn row(device: &Device, now: i64) -> PhoneRow {

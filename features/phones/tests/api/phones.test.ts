@@ -45,6 +45,12 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
   assert.equal(row.number, '+12065550177');
   assert.equal(row.online, true);
 
+  const renamed = await owner.post(`/api/dsp/phones/${paired.value.phone.id}/rename`, {
+    name: 'Station 2',
+  });
+  assert.equal(renamed.status, 200, renamed.body);
+  assert.equal(renamed.value.name, 'Station 2');
+
   const key = { authorization: `Bearer ${paired.value.key}` };
   const text = {
     clientId: 'sms-1',
