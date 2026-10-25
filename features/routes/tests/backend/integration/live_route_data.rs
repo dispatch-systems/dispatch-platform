@@ -383,10 +383,6 @@ async fn a_read_that_isnt_whole_or_isnt_of_today_changes_nothing() {
         clear_live(&state, &dsp).await.unwrap_err().code,
         "routes_off"
     );
-    assert_eq!(
-        save_live_day(&state, &dsp).await.unwrap_err().code,
-        "routes_off"
-    );
     assert_eq!(held(&live), before);
 }
 
@@ -486,6 +482,11 @@ async fn clearing_empties_live_route_data_and_gives_its_space_back() {
         .unwrap();
     assert_eq!(offered.live_day(&db, &dsp).unwrap(), None);
     assert_eq!(save_live_day(&state, &dsp).await.unwrap(), None);
+    // Off, saving is refused, though live route data holds no day to save.
+    let owner = common::a_user(&db);
+    db.set_feature(&dsp, "routes", false, &owner).unwrap();
+    let refused = save_live_day(&state, &dsp).await.unwrap_err();
+    assert_eq!(refused.code, "routes_off");
 }
 
 #[tokio::test]
