@@ -65,6 +65,8 @@ pub const FEATURE: Feature = Feature {
             "breaks",
             "unknown_stops",
             "work_phones",
+            "staged_addresses",
+            "staged_drivers",
             // The window chosen before Settings kept it, read once to move it there.
             "route_retention",
         ],
@@ -108,8 +110,10 @@ pub const FEATURE: Feature = Feature {
             },
             Migration {
                 id: 7,
-                name: "shared_rows_collected",
-                apply: Code(backend::add_read_times),
+                name: "staged_shared_rows",
+                apply: Sql(include_str!(
+                    "migrations/routedata/0007_staged_shared_rows.sql"
+                )),
             },
         ],
     }],

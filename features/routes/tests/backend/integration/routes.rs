@@ -444,10 +444,19 @@ fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_share
     let second = publish(&db, &id, "second", "2026-09-25", &again);
     assert_ne!(first, second);
     // A read collected before the day's own changes nothing, though it arrives after it: not
-    // the day, nor the drivers and addresses the days share.
+    // the day, nor the drivers and addresses the days share. Nor does one collected later
+    // that never becomes the day's read, its job ended before publishing.
     let mut earlier = renamed(&capture, "Older", "1 Older St");
     earlier.finished_at += 1000;
     publish(&db, &id, "earlier", "2026-09-25", &earlier);
+    let mut unfinished = renamed(&capture, "Unfinished", "1 Unfinished St");
+    unfinished.finished_at += 3000;
+    let jobs = db
+        .enqueue_routes(&id, None, "unfinished", Some("2026-09-25"), Mode::Final, 1)
+        .unwrap();
+    let job = s(&jobs[0], "id");
+    db.stage_routes(&id, job, unfinished).unwrap();
+    common::set_job_status(&db, job, "failed").unwrap();
     let storage = db.routes_db(&id).unwrap();
     let shared = storage
         .all(
@@ -470,7 +479,7 @@ fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_share
             &id,
             "SELECT count(*) FROM route_publications WHERE active=0"
         ),
-        2
+        3
     );
     assert!(sweep(&db, &id) > 1);
     let publications = storage
@@ -798,6 +807,8 @@ fn the_sweep_keeps_a_running_jobs_day_and_deletes_what_no_reader_sees() {
         "breaks",
         "unknown_stops",
         "route_raw",
+        "staged_addresses",
+        "staged_drivers",
     ] {
         assert_eq!(
             count(&db, &id, &format!("SELECT count(*) FROM {table}")),

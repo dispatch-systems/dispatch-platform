@@ -588,7 +588,7 @@
         },
         {
           "id": 7,
-          "name": "shared_rows_collected"
+          "name": "staged_shared_rows"
         }
       ]
     },
@@ -659,6 +659,8 @@
         "route_retention",
         "routedata_schema",
         "routes",
+        "staged_addresses",
+        "staged_drivers",
         "stops",
         "tasks",
         "unknown_stops",

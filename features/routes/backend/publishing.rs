@@ -5,9 +5,11 @@ use super::*;
 
 /// Makes a staged day its scope's read, in one transaction, if it was collected later than
 /// the read the day has, in whatever order the two are published: the day's last read is
-/// left inactive, and the day's work phones become `phones`, the new read's. A day collected
-/// no later is left inactive itself. Either way `sweep_routes` deletes what's inactive in
-/// small steps; only flags and phones change here, so the platform lock is held for moments.
+/// left inactive, what the new one sent of the drivers and addresses the days share is
+/// written over them, and the day's work phones become `phones`, the new read's. A day
+/// collected no later is left inactive itself, changing none of them. Either way
+/// `sweep_routes` deletes what's inactive in small steps; only flags and the day's shared
+/// rows and phones change here, so the platform lock is held for moments.
 /// Answers whether it is the day's read now.
 pub(super) fn publish_day(
     db: &Db,
@@ -56,6 +58,7 @@ pub(super) fn publish_day(
             "UPDATE route_publications SET active=1 WHERE id=?",
             [&staged.publication],
         )?;
+        share(db, &staged.publication, &staged.day)?;
         db.exec("DELETE FROM work_phones WHERE day=?", [&staged.day])?;
         let mut insert = db.0.prepare_cached(
             "INSERT INTO work_phones(day,transporter_id,phone,since,until) VALUES (?,?,?,?,?)",
@@ -130,46 +133,13 @@ pub(super) fn insert_raw(
     .execute(params![publication, name, raw_bytes as i64, body])?;
     Ok(())
 }
-/// Sets each of a shared row's columns named as the read collected latest sent it: the
-/// upserted read's, if it was collected no earlier than the one that last wrote the row, or
-/// else the row's own; the row then keeps the later of the two times.
-macro_rules! latest {
-    ($table:literal: $($column:literal),+) => {
-        concat!(
-            $($column, "=iif(excluded.collected_at>=ifnull(", $table, ".collected_at,''),excluded.",
-                $column, ",", $table, ".", $column, "),",)+
-            "collected_at=max(ifnull(", $table, ".collected_at,''),excluded.collected_at)"
-        )
-    };
-}
-/// A location the day's stops were at, as the read collected latest sent it; any read widens
-/// the days it was seen.
-const UPSERT_ADDRESS: &str = concat!(
-    "INSERT INTO addresses(address_id,address1,address2,address3,city,state,postal_code,\
-     latitude,longitude,first_seen_day,last_seen_day,collected_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) \
-     ON CONFLICT(address_id) DO UPDATE SET first_seen_day=min(first_seen_day,excluded.first_seen_day),\
-     last_seen_day=max(last_seen_day,excluded.last_seen_day),",
-    latest!("addresses": "address1", "address2", "address3", "city", "state", "postal_code",
-        "latitude", "longitude")
-);
-/// A driver the day's itineraries name, as the read collected latest sent them; any read
-/// widens the days they were seen.
-const UPSERT_DRIVER: &str = concat!(
-    "INSERT INTO drivers(transporter_id,first_name,last_name,initials,work_phone,person_type,company_id,\
-     first_seen_day,last_seen_day,collected_at) VALUES (?,?,?,?,?,?,?,?,?,?) \
-     ON CONFLICT(transporter_id) DO UPDATE SET first_seen_day=min(first_seen_day,excluded.first_seen_day),\
-     last_seen_day=max(last_seen_day,excluded.last_seen_day),",
-    latest!("drivers": "first_name", "last_name", "initials", "work_phone", "person_type",
-        "company_id")
-);
-/// One shaped itinerary's rows under `publication`, its read collected at `collected_at`,
-/// inside the caller's transaction. Its compressed response is stored beside them by staging,
-/// and kept by a reprocess.
+/// One shaped itinerary's rows under `publication`, inside the caller's transaction, with
+/// what it sends of the drivers and addresses the days share staged beside them until `share`.
+/// Its compressed response is stored beside them by staging, and kept by a reprocess.
 pub(super) fn insert_itinerary(
     db: &Db,
     publication: &str,
     day: &str,
-    collected_at: &str,
     itinerary: &PreparedItinerary,
 ) -> Result<()> {
     let connection = &db.0;
@@ -198,8 +168,14 @@ pub(super) fn insert_itinerary(
         "INSERT INTO unknown_stops(publication_id,day,itinerary_id,transporter_id,ordinal,entered_at,exited_at,\
          enter_latitude,enter_longitude,exit_latitude,exit_longitude) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
     )?;
-    let mut upsert_address = connection.prepare_cached(UPSERT_ADDRESS)?;
-    let mut upsert_driver = connection.prepare_cached(UPSERT_DRIVER)?;
+    let mut stage_address = connection.prepare_cached(
+        "INSERT OR REPLACE INTO staged_addresses(publication_id,address_id,address1,address2,address3,\
+         city,state,postal_code,latitude,longitude) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    )?;
+    let mut stage_driver = connection.prepare_cached(
+        "INSERT OR REPLACE INTO staged_drivers(publication_id,transporter_id,first_name,last_name,\
+         initials,work_phone,person_type,company_id) VALUES (?,?,?,?,?,?,?,?)",
+    )?;
     let columns: Vec<&str> = itinerary.columns.iter().map(|(c, _)| c.as_str()).collect();
     let placeholders = vec!["?"; columns.len() + 3].join(",");
     let mut bound: Vec<Value> = vec![json!(publication), json!(day), json!(itinerary.id)];
@@ -329,7 +305,8 @@ pub(super) fn insert_itinerary(
         let Some(address_id) = text(&address["addressId"]) else {
             continue;
         };
-        upsert_address.execute(params![
+        stage_address.execute(params![
+            publication,
             address_id,
             text(&address["address1"]),
             text(&address["address2"]),
@@ -338,10 +315,7 @@ pub(super) fn insert_itinerary(
             text(&address["state"]),
             text(&address["postalCode"]),
             number(&address["geocode"]["latitude"]),
-            number(&address["geocode"]["longitude"]),
-            day,
-            day,
-            collected_at
+            number(&address["geocode"]["longitude"])
         ])?;
     }
     let person = &itinerary.person;
@@ -351,7 +325,8 @@ pub(super) fn insert_itinerary(
             .iter()
             .find(|(c, _)| c == "company_id")
             .and_then(|(_, v)| v.as_str().map(str::to_owned));
-        upsert_driver.execute(params![
+        stage_driver.execute(params![
+            publication,
             itinerary.transporter_id,
             text(&person["firstName"]),
             text(&person["lastName"]),
@@ -361,12 +336,45 @@ pub(super) fn insert_itinerary(
                 .as_array()
                 .map(|v| Value::Array(v.clone()).to_string())
                 .unwrap_or_else(|| "[]".into()),
-            company,
-            day,
-            day,
-            collected_at
+            company
         ])?;
     }
 
+    Ok(())
+}
+/// Writes what `publication`'s read sent of the drivers and addresses the days share over
+/// them, as its day's read, `day`, now is, widening the days each was seen; then drops it from
+/// staging. Inside the caller's transaction.
+pub(super) fn share(db: &Db, publication: &str, day: &str) -> Result<()> {
+    db.exec(
+        "INSERT INTO addresses(address_id,address1,address2,address3,city,state,postal_code,\
+         latitude,longitude,first_seen_day,last_seen_day) \
+         SELECT address_id,address1,address2,address3,city,state,postal_code,latitude,longitude,?2,?2 \
+         FROM staged_addresses WHERE publication_id=?1 \
+         ON CONFLICT(address_id) DO UPDATE SET address1=excluded.address1,address2=excluded.address2,\
+         address3=excluded.address3,city=excluded.city,state=excluded.state,postal_code=excluded.postal_code,\
+         latitude=excluded.latitude,longitude=excluded.longitude,\
+         first_seen_day=min(first_seen_day,excluded.first_seen_day),\
+         last_seen_day=max(last_seen_day,excluded.last_seen_day)",
+        params![publication, day],
+    )?;
+    db.exec(
+        "INSERT INTO drivers(transporter_id,first_name,last_name,initials,work_phone,person_type,company_id,\
+         first_seen_day,last_seen_day) \
+         SELECT transporter_id,first_name,last_name,initials,work_phone,person_type,company_id,?2,?2 \
+         FROM staged_drivers WHERE publication_id=?1 \
+         ON CONFLICT(transporter_id) DO UPDATE SET \
+         first_name=excluded.first_name,last_name=excluded.last_name,initials=excluded.initials,\
+         work_phone=excluded.work_phone,person_type=excluded.person_type,company_id=excluded.company_id,\
+         first_seen_day=min(first_seen_day,excluded.first_seen_day),\
+         last_seen_day=max(last_seen_day,excluded.last_seen_day)",
+        params![publication, day],
+    )?;
+    for table in ["staged_addresses", "staged_drivers"] {
+        db.exec(
+            &format!("DELETE FROM {table} WHERE publication_id=?"),
+            [publication],
+        )?;
+    }
     Ok(())
 }

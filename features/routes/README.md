@@ -37,7 +37,8 @@ name `routedata` on disk.
   reads fields the earlier one didn't.
 - **Data:** historical route data, in `routedata`: each day's read with its route list,
   itineraries, stops, tasks, breaks and unknown stops, and every response compressed; the
-  addresses and drivers the days share, as the read collected latest sent them; and
+  addresses and drivers the days share, as the last read to become its day's read sent them
+  (each read's are staged with it until then); and
   `work_phones`, each driver's holds on the company's work phones a day, from when until when,
   which are the day's read's: a saved day's, or none from the standard collection.
 - **Retention:** from 30 to 3,650 days, or every day. Hourly, data past the window is retired,
