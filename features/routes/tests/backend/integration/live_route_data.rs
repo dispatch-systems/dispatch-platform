@@ -1,7 +1,8 @@
 //! Live route data: today's whole reads kept in place, read by read, which must read as each read
 //! staged whole into historical route data does; what a read that isn't whole changes, which is
-//! nothing; work phones settled across a restart; the day saved into historical route data and
-//! live route data emptied; and Driver Match told of the drivers it names. Made-up days only.
+//! nothing; work phones settled across a restart, and who held them read as other features read
+//! it; the day saved into historical route data and live route data emptied; and Driver Match
+//! told of the drivers it names, and other features of who holds a work phone. Made-up days only.
 use dispatch_core::{
     State,
     db::{Db, Store, s},
@@ -13,6 +14,7 @@ use dispatch_cortex::{
     routes::{self, Capture, Mode, Request},
 };
 use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_and_clear_live, save_live_day};
+use dispatch_routes_contract::{WorkPhoneHold, WorkPhonesChanged};
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
@@ -23,11 +25,15 @@ const P1: &str = "5550100001";
 const P2: &str = "5550100002";
 const P3: &str = "5550100003";
 
-/// A feature hearing of the people the DSP's data names changing, on for a test's DSP as every
-/// feature is: Driver Match, as Routes tells it.
+/// A feature hearing of the people the DSP's data names changing, and of who holds its work
+/// phones, on for a test's DSP as every feature is: Driver Match, and texting, as Routes tells
+/// them.
 static HEARING: Feature = Feature {
     switch: optional("hearing", "Hearing", &[]),
-    on: &[dispatch_core::on!(PeopleChanged, people_changed)],
+    on: &[
+        dispatch_core::on!(PeopleChanged, people_changed),
+        dispatch_core::on!(WorkPhonesChanged, phones_changed),
+    ],
     ..feature("hearing")
 };
 /// Each DSP whose people the stand-in heard changed, once each time.
@@ -41,6 +47,27 @@ fn people_changed(_: Arc<State>, dsp: String, _: PeopleChanged) -> Upkeep {
 fn changed(dsp: &str) -> usize {
     let heard = CHANGED.lock().unwrap_or_else(|poison| poison.into_inner());
     heard.iter().filter(|at| *at == dsp).count()
+}
+/// Each time the stand-in heard who holds a DSP's work phones changed, the DSP and what it read
+/// then: how many holds live route data has, and historical route data keeps of today.
+static PHONES: Mutex<Vec<(String, usize, usize)>> = Mutex::new(Vec::new());
+fn phones_changed(state: Arc<State>, dsp: String, _: WorkPhonesChanged) -> Upkeep {
+    Box::pin(async move {
+        let d = dsp.clone();
+        let read = state.read(move |db| {
+            let today = today(db, &d).to_string();
+            Ok((live_holds(db, &d).len(), saved_holds(db, &d, &today).len()))
+        });
+        let (live, saved) = read.await.unwrap();
+        let mut heard = PHONES.lock().unwrap_or_else(|poison| poison.into_inner());
+        heard.push((dsp, live, saved));
+    })
+}
+/// What the stand-in read each time it heard who holds the DSP's work phones changed.
+fn phones_heard(dsp: &str) -> Vec<(usize, usize)> {
+    let heard = PHONES.lock().unwrap_or_else(|poison| poison.into_inner());
+    let of = heard.iter().filter(|(at, ..)| at == dsp);
+    of.map(|(_, live, saved)| (*live, *saved)).collect()
 }
 
 /// A DSP with a station and Cortex connected, Routes on, with its server's state.
@@ -244,27 +271,29 @@ async fn keep_and_save(state: &Arc<State>, dsp: &str, read: Capture) -> LiveKept
     assert_eq!(save_live_day(state, dsp).await.unwrap(), Some(true));
     kept
 }
-/// Every hold of the day in `db`'s work phones, as (driver, phone, since, until).
-fn holds(db: &Db) -> Vec<(String, String, i64, Option<i64>)> {
-    let rows = db
-        .all(
-            "SELECT transporter_id,phone,since,until FROM work_phones ORDER BY since,transporter_id",
-            [],
-        )
-        .unwrap();
-    rows.iter()
-        .map(|row| {
-            let (driver, phone) = (s(row, "transporter_id"), s(row, "phone"));
-            let since = row["since"].as_i64().unwrap();
-            (driver.into(), phone.into(), since, row["until"].as_i64())
-        })
-        .collect()
+/// A hold on a work phone as (driver, phone, since, until).
+type Hold = (String, String, i64, Option<i64>);
+fn hold(hold: WorkPhoneHold) -> Hold {
+    (hold.driver_id, hold.phone, hold.since, hold.until)
+}
+/// Every hold of the live day, as other features read them.
+fn live_holds(db: &Store, dsp: &str) -> Vec<Hold> {
+    let live = dispatch_routes_contract::live_for_dsp(db, dsp).unwrap();
+    let holds = live.expect("Routes is on").work_phone_holds(db, dsp).unwrap();
+    holds.into_iter().map(hold).collect()
+}
+/// Every hold historical route data keeps of `day`, as other features read them.
+fn saved_holds(db: &Store, dsp: &str, day: &str) -> Vec<Hold> {
+    let routes = dispatch_routes_contract::for_dsp(db, dsp).unwrap();
+    let holds = routes.expect("Routes is on").work_phone_holds(db, dsp, day);
+    holds.unwrap().into_iter().map(hold).collect()
 }
 
 #[tokio::test]
 async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     let (_root, db, dsp, state) = ready();
-    let mut day = Day::new(&today(&db, &dsp).to_string());
+    let today = today(&db, &dsp);
+    let mut day = Day::new(&today.to_string());
     let listed = day.summaries["itinerarySummaries"].clone();
     let started = day.lists.started_at;
 
@@ -319,19 +348,25 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     keep_and_save(&state, &dsp, day.read(3)).await;
     assert_eq!(differences(&db, &dsp), Vec::<String>::new(), "changed");
 
-    // Read again unchanged, nothing is written, and its switch is confirmed.
+    // Read again unchanged, nothing is written, and its switch is confirmed: every hold of the
+    // day, the one it ended too, live and as saved, and none of another day.
     let again = keep_and_save(&state, &dsp, day.read(4)).await;
     assert_eq!((again.listed, again.changed), (2, 0));
     assert_eq!(differences(&db, &dsp), Vec::<String>::new(), "unchanged");
     assert_eq!(
-        holds(&live),
+        live_holds(&db, &dsp),
         [
             ("driver-1".into(), P1.into(), started + 1, Some(started + 4)),
             ("driver-2".into(), P2.into(), started + 1, None),
             ("driver-1".into(), P3.into(), started + 4, None),
         ]
     );
-    assert_eq!(holds(&db.routes_db(&dsp).unwrap()), holds(&live));
+    assert_eq!(
+        saved_holds(&db, &dsp, &today.to_string()),
+        live_holds(&db, &dsp)
+    );
+    let yesterday = (today - chrono::Duration::days(1)).to_string();
+    assert_eq!(saved_holds(&db, &dsp, &yesterday), []);
 }
 
 #[tokio::test]
@@ -437,7 +472,7 @@ async fn work_phones_are_settled_across_a_restart_without_a_claim_repeated_or_lo
     let confirmed = keep_live(&state, &dsp, day.read(3)).await.unwrap();
     assert_eq!(confirmed.phone_events, 1);
     assert_eq!(
-        holds(&db.routes_live_db(&dsp).unwrap()),
+        live_holds(&db, &dsp),
         [
             ("driver-1".into(), P1.into(), started + 1, Some(started + 3)),
             ("driver-2".into(), P2.into(), started + 1, None),
@@ -464,7 +499,7 @@ async fn the_live_day_is_saved_once_under_its_reads_key_and_live_route_data_kept
         .all("SELECT job_id,mode,active FROM route_publications", [])
         .unwrap();
     assert_eq!(saved, [json!({"job_id":key,"mode":"snapshot","active":1})]);
-    assert_eq!(holds(&historical).len(), 2);
+    assert_eq!(saved_holds(&db, &dsp, &today.to_string()).len(), 2);
     let offered = dispatch_routes_contract::live_for_dsp(&db, &dsp)
         .unwrap()
         .unwrap();
@@ -579,4 +614,45 @@ async fn driver_match_hears_of_each_driver_live_route_data_names_first() {
     day.summaries["itinerarySummaries"] = listed;
     keep_live(&state, &dsp, day.read(3)).await.unwrap();
     assert_eq!(changed(&dsp), 2);
+}
+
+#[tokio::test]
+async fn a_number_once_held_as_a_work_phone_is_one_live_or_saved() {
+    let (_root, db, dsp, state) = ready();
+    let mut day = Day::new(&today(&db, &dsp).to_string());
+    let routes = dispatch_routes_contract::for_dsp(&db, &dsp)
+        .unwrap()
+        .unwrap();
+    let was = |phone: &str| routes.was_work_phone(&db, &dsp, phone).unwrap();
+    assert!(!was(P1));
+
+    // The first driver claims their phone; the second, not signed in yet, only shows theirs.
+    day.summaries["itinerarySummaries"][1]["lastDriverEventTime"] = json!(0);
+    keep_live(&state, &dsp, day.read(1)).await.unwrap();
+    assert!(was(P1) && was("+1 (555) 010-0001"), "held live");
+    assert!(!was(P2), "shown, never held");
+    assert!(!was("0100001"), "fewer than ten digits");
+
+    // Saved, then gone from live route data: held on a saved day.
+    save_and_clear_live(&state, &dsp).await.unwrap();
+    assert_eq!(live_holds(&db, &dsp), []);
+    assert!(was(P1), "held on a saved day");
+}
+
+#[tokio::test]
+async fn features_hear_who_holds_a_work_phone_changed_once_its_kept() {
+    let (_root, db, dsp, state) = ready();
+    let mut day = Day::new(&today(&db, &dsp).to_string());
+    // Each driver claims their phone.
+    keep_live(&state, &dsp, day.read(1)).await.unwrap();
+    assert_eq!(phones_heard(&dsp), [(2, 0)]);
+    // A read moving no phone, its switch shown once, isn't heard; the next confirms it.
+    day.phone(0, P3);
+    keep_live(&state, &dsp, day.read(2)).await.unwrap();
+    assert_eq!(phones_heard(&dsp), [(2, 0)]);
+    keep_live(&state, &dsp, day.read(3)).await.unwrap();
+    assert_eq!(phones_heard(&dsp), [(2, 0), (3, 0)]);
+    // Saved with its holds, then emptied at the stop.
+    save_and_clear_live(&state, &dsp).await.unwrap();
+    assert_eq!(phones_heard(&dsp), [(2, 0), (3, 0), (3, 3), (0, 3)]);
 }

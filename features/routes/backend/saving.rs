@@ -7,6 +7,7 @@ use dispatch_core::{
     manifest::events::{self, PeopleChanged},
 };
 use dispatch_cortex::routes::{MAX_ITINERARIES, token};
+use dispatch_routes_contract::WorkPhonesChanged;
 use std::{
     collections::BTreeSet,
     sync::{Arc, Mutex, PoisonError},
@@ -65,8 +66,10 @@ impl Drop for Saving {
 /// the DSP's station, in the scope its days were read in, before anything is written, then
 /// staged one itinerary at a time. It becomes the day's read only if it was collected (its
 /// `finished_at`) later than the one the day has, replacing it whole, down to the day's work
-/// phones, which become `phones`; an earlier read changes nothing and is swept. Answers
-/// whether it is the day's read now.
+/// phones, which become `phones`; an earlier read changes nothing and is swept. Once it's the
+/// day's read it tells Driver Match of its drivers (`people.changed`), then every feature that
+/// hears it of the day's holds (`routes.work_phones_changed`). Answers whether it is the day's
+/// read now.
 ///
 /// `key` is the read's own, unique among the DSP's reads: a token of up to 128 characters,
 /// such as the saving feature's name and the read's time. A key already the day's read
@@ -131,6 +134,7 @@ pub async fn save_day(
         if current {
             // Drivers the standard collection hasn't read are told apart at once.
             events::publish(state, dsp, PeopleChanged).await;
+            events::publish(state, dsp, WorkPhonesChanged).await;
         }
         Ok(current)
     })

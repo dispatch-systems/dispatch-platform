@@ -233,6 +233,32 @@ pub(super) fn settle(db: &Db, day: &str, at: i64, shown: &Shown) -> Result<Settl
     })
 }
 
+/// Every hold `db` keeps of `day` on a work phone, ended ones too, oldest first: live route
+/// data's or historical route data's, which keep them alike.
+pub(super) fn holds(db: &Db, day: &str) -> Result<Vec<WorkPhone>> {
+    let rows = db.all(
+        "SELECT transporter_id,phone,since,until FROM work_phones WHERE day=? \
+         ORDER BY since,transporter_id",
+        [day],
+    )?;
+    Ok(rows
+        .iter()
+        .map(|hold| WorkPhone {
+            transporter_id: s(hold, "transporter_id").into(),
+            phone: s(hold, "phone").into(),
+            since: hold["since"].as_i64().unwrap_or(0),
+            until: hold["until"].as_i64(),
+        })
+        .collect())
+}
+/// A hold on a phone of any day, found by the phone (`work_phones_phone` in historical route
+/// data, which keeps every day's).
+pub(super) const EVER_HELD: &str = "SELECT 1 FROM work_phones WHERE phone=? LIMIT 1";
+/// Whether `db` keeps a hold on `phone`, its ten digits, of any day.
+pub(super) fn ever_held(db: &Db, phone: &str) -> Result<bool> {
+    Ok(db.one(EVER_HELD, [phone])?.is_some())
+}
+
 #[cfg(test)]
 #[path = "../tests/backend/phones.rs"]
 mod tests;
