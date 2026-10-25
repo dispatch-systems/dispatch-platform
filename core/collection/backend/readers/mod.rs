@@ -39,9 +39,12 @@ use tokio::{
 /// the memory reading takes, and the provider's load, however many DSPs read together. A read
 /// waits its turn for as long as its interval at most.
 pub const READS_AT_ONCE: usize = 4;
-/// How many of its intervals a DSP inside its window may go without moving on before its task
-/// is started again.
+/// How many of its intervals a DSP's task may be busy without moving on, in a read, a hook or
+/// its turn to read, before it's stopped and started again. Each moves on within one interval
+/// when it works.
 const STALLED_AFTER: i64 = 3;
+/// A task's progress while it waits for a time, as its next slot, which is no stall.
+const WAITING: i64 = i64::MAX;
 
 /// One DSP's reading, as each hook of its reader is handed it.
 pub struct Reading {
@@ -50,18 +53,22 @@ pub struct Reading {
     /// The day its window opened on, where the DSP is: today, as the server reckons it.
     pub day: NaiveDate,
     pub timezone: Tz,
+    /// The reader, by its id, whose browser closes as it stops for the DSP.
+    reader: &'static str,
     /// The feature reading, whose switch the browser it opens answers to.
     feature: &'static Feature,
 }
 impl Reading {
     /// The DSP's browser for `provider`, signed in as a job's is, through the same limits on
-    /// browsers and memory, and the reader's alone until it closes; it closes when dropped.
+    /// browsers and memory, and the reader's alone until it closes; it closes when dropped, and
+    /// as the reader stops for the DSP, as when its feature is switched off.
     /// What a hook takes from it, as its session's cookies (`http::Http::signed_in`), it keeps
     /// in memory only. Refused while the feature is off for the DSP (`feature_disabled`),
     /// while another browser of the DSP's for that provider is open (`connection_busy`), and
     /// when only the owner can finish signing in (`verification_required`).
     pub async fn browser(&self, provider: Provider) -> Result<ProviderBrowser> {
-        ProviderBrowser::open(&self.state, &self.dsp, provider, self.feature.switch.id).await
+        let (reader, feature) = (self.reader, self.feature.switch.id);
+        ProviderBrowser::open(&self.state, &self.dsp, provider, reader, feature).await
     }
 }
 
@@ -82,6 +89,7 @@ fn now() -> i64 {
 /// A DSP's reading under way.
 struct Running {
     plans: watch::Sender<Option<Plan>>,
+    /// Since when its task has been busy, or `WAITING`.
     progress: Arc<AtomicI64>,
     task: AbortHandle,
 }
@@ -147,8 +155,9 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
         let served: Vec<&Key> = planned.iter().map(|(key, _)| key).collect();
         for (key, running) in &running {
             // A DSP no longer served stops reading.
-            if !served.contains(&key) {
-                running.plans.send_replace(None);
+            if !served.contains(&key) && running.plans.send_replace(None).is_some() {
+                let reader = readers[key.0].1.id();
+                state.browsers.revoke_reader(&key.1, reader).await;
             }
         }
         for (key, plan) in planned {
@@ -166,11 +175,17 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
             };
             match running.get(&key) {
                 Some(running) => {
+                    let stops = plan.is_none() && running.plans.borrow().is_some();
                     running.plans.send_if_modified(|current| {
                         let changed = *current != plan;
                         *current = plan;
                         changed
                     });
+                    // What a hook still holds of the DSP's browser fails from now on.
+                    if stops {
+                        let reader = readers[key.0].1.id();
+                        state.browsers.revoke_reader(&key.1, reader).await;
+                    }
                 }
                 None => {
                     if let Some(plan) = plan {
@@ -252,8 +267,9 @@ fn spawn(
     }
 }
 
-/// Starts again, with its memory made anew, each task inside its DSP's window that hasn't
-/// moved on for `STALLED_AFTER` of its intervals: that DSP alone.
+/// Stops each task that has been busy for `STALLED_AFTER` of its intervals, which lets go of
+/// its turn to read, and starts it again, with its memory made anew, while its DSP still reads:
+/// that DSP alone.
 fn watchdog(
     running: &mut HashMap<Key, Running>,
     keys: &mut HashMap<Id, Key>,
@@ -264,25 +280,26 @@ fn watchdog(
 ) {
     let now = now();
     for (key, stalled) in running.iter_mut() {
-        let Some(plan) = *stalled.plans.borrow() else {
-            continue;
-        };
-        let Some(day) = plan.open_at(now) else {
-            continue;
-        };
-        let moved = stalled.progress.load(Ordering::Acquire).max(day.open);
-        if now - moved <= STALLED_AFTER * plan.every {
+        let (feature, reader) = readers[key.0];
+        let every = reader.every().as_millis() as i64;
+        if now - stalled.progress.load(Ordering::Acquire) <= STALLED_AFTER * every {
             continue;
         }
-        let (feature, reader) = readers[key.0];
         observability::event(
             "warn",
             "live.stalled",
             json!({"reader":reader.id(),"dspId":key.1}),
         );
         stalled.task.abort();
-        keys.remove(&stalled.task.id());
-        *stalled = spawn(tasks, state, feature, reader, &key.1, reads, plan);
-        keys.insert(stalled.task.id(), key.clone());
+        let plan = *stalled.plans.borrow();
+        match plan {
+            Some(plan) => {
+                keys.remove(&stalled.task.id());
+                *stalled = spawn(tasks, state, feature, reader, &key.1, reads, plan);
+                keys.insert(stalled.task.id(), key.clone());
+            }
+            // One that no longer reads goes as its task ends.
+            None => stalled.progress.store(WAITING, Ordering::Release),
+        }
     }
 }

@@ -101,6 +101,17 @@ impl Plan {
         first + ((after - first) / self.every + 1) * self.every
     }
 
+    /// What a DSP's slots go on from as its reading starts again at `now`, having read last at
+    /// `last`: a read less than an interval old, as one that came late, keeps it to its next
+    /// slot to come, so it reads at once only when its last read is over an interval old.
+    pub fn resumed(&self, now: i64, last: Option<i64>) -> i64 {
+        match last {
+            Some(last) if now - last < self.every => last.max(now),
+            Some(last) => last,
+            None => i64::MIN,
+        }
+    }
+
     /// When `day` stops: `offset` past its window's close.
     pub fn stop(&self, day: &Day) -> i64 {
         day.close + self.offset

@@ -89,15 +89,19 @@ impl Store {
         )?;
         Ok(())
     }
-    /// Records that `day` stopped for the DSP, and lets the DSP's records from before the
-    /// last two weeks go.
+    /// Records that `day` stopped for the DSP.
     pub(super) fn stop_day(&self, reader: &str, dsp: &str, day: NaiveDate, at: i64) -> Result<()> {
+        self.jobs.exec(
+            "UPDATE live_days SET stopped_at=? WHERE reader=? AND dsp_id=? AND day=?",
+            params![at, reader, dsp, day.to_string()],
+        )?;
+        Ok(())
+    }
+    /// Lets the DSP's reads from before the last two weeks go, and the days that stopped
+    /// before then, whether any read was kept since or none.
+    pub(super) fn prune_reads(&self, reader: &str, dsp: &str, at: i64) -> Result<()> {
+        let before = at - KEPT_FOR_MS;
         self.jobs.transaction(|| {
-            self.jobs.exec(
-                "UPDATE live_days SET stopped_at=? WHERE reader=? AND dsp_id=? AND day=?",
-                params![at, reader, dsp, day.to_string()],
-            )?;
-            let before = at - KEPT_FOR_MS;
             self.jobs.exec(
                 "DELETE FROM live_reads WHERE reader=? AND dsp_id=? AND at<?",
                 params![reader, dsp, before],

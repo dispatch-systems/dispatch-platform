@@ -162,24 +162,41 @@ fn a_dsp_waits_for_its_first_slot_and_reads_on_each_one_until_the_window_closes(
 fn started_again_a_dsp_keeps_its_slot_and_reads_at_once_only_past_it() {
     let plan = plan("08:00", "21:00");
     let day = plan.day(date("2026-10-20"));
-    let last = local("2026-10-20 10:01:30");
+    let resumed = |now: &str, last: &str| {
+        let now = local(now);
+        plan.step(now, plan.resumed(now, Some(local(last))), &[])
+    };
     // Back two minutes after its last read, it waits for its own next slot.
     assert_eq!(
-        plan.step(local("2026-10-20 10:03:30"), last, &[]),
+        resumed("2026-10-20 10:03:30", "2026-10-20 10:01:30"),
         Step::Wait(local("2026-10-20 10:06:30"))
     );
     // Back once that slot has passed, it reads at once, and only once.
     let back = local("2026-10-20 10:20:00");
-    assert_eq!(plan.step(back, last, &[]), Step::Read(day));
+    assert_eq!(
+        resumed("2026-10-20 10:20:00", "2026-10-20 10:01:30"),
+        Step::Read(day)
+    );
     assert_eq!(
         plan.step(back, back, &[]),
         Step::Wait(local("2026-10-20 10:21:30"))
     );
-    // Its last read yesterday counts for nothing today: it reads at its first slot.
-    let yesterday = local("2026-10-19 20:56:30");
+    // Its last read came late, its turn delayed: back soon after, though its slot has
+    // passed, it waits for the next.
     assert_eq!(
-        plan.step(day.open, yesterday, &[]),
+        resumed("2026-10-20 10:06:40", "2026-10-20 10:06:20"),
+        Step::Wait(local("2026-10-20 10:11:30"))
+    );
+    // Its last read yesterday counts for nothing today: it reads at its first slot.
+    assert_eq!(
+        resumed("2026-10-20 08:00:00", "2026-10-19 20:56:30"),
         Step::Wait(local("2026-10-20 08:01:30"))
+    );
+    // Never read, it reads as soon as a slot has come.
+    let first = local("2026-10-20 09:00:00");
+    assert_eq!(
+        plan.step(first, plan.resumed(first, None), &[]),
+        Step::Read(day)
     );
 }
 

@@ -55,8 +55,9 @@ pub struct Session {
     started: std::time::Instant,
     last_used: Mutex<std::time::Instant>,
     collecting: std::sync::atomic::AtomicBool,
-    /// A live reader's hook opened it: its own, which no job's end closes.
-    reader: bool,
+    /// The live reader whose hook opened it, by its id: its own, which no job's end closes,
+    /// and which closes as the reader stops for the DSP.
+    reader: Option<&'static str>,
     credential_lease: Mutex<Option<std::fs::File>>,
 }
 
@@ -72,6 +73,7 @@ pub(crate) enum ProviderAuthority {
     },
     /// A live reader's hook, while its feature, by its switch, is on for the DSP.
     Reader {
+        reader: &'static str,
         feature: &'static str,
     },
 }
@@ -89,17 +91,20 @@ impl ProviderAuthority {
                 let job = db.job_row(id, Some(dsp))?;
                 ensure(job.provider() == provider, "connection_changed", 409)
             }
-            Self::Reader { feature } => {
+            Self::Reader { feature, .. } => {
                 db.ensure_dsp_active(dsp)?;
                 ensure(db.feature_enabled(dsp, feature)?, "feature_disabled", 409)
             }
         }
     }
-    /// Whether its browser is its own alone: a live reader's never uses one another opened,
-    /// and holds its own from the start, as a job does while it collects, so neither a job nor
-    /// the sweep of idle browsers takes it.
-    fn alone(&self) -> bool {
-        matches!(self, Self::Reader { .. })
+    /// The live reader it is, whose browser is its own alone: it never uses one another
+    /// opened, and holds its own from the start, as a job does while it collects, so neither a
+    /// job nor the sweep of idle browsers takes it.
+    fn reader(&self) -> Option<&'static str> {
+        match self {
+            Self::Reader { reader, .. } => Some(reader),
+            _ => None,
+        }
     }
     pub(crate) async fn revalidate(
         &self,
@@ -181,12 +186,30 @@ impl Manager {
     pub async fn revoke_provider_revision(&self, id: &str, revision: i64, provider: Provider) {
         if let Some(session) = self.get_for(id, provider)
             && session.revision == revision
-            && !session.reader
+            && session.reader.is_none()
         {
             self.revoke_current(&session).await;
         }
     }
 
+    /// Closes the DSP's browsers that the live reader `reader` opened, as it stops reading
+    /// there: what a hook still holds of one fails from then on.
+    pub async fn revoke_reader(&self, id: &str, reader: &str) {
+        let opened: Vec<Arc<Session>> = self
+            .sessions
+            .lock()
+            .map(|sessions| {
+                sessions
+                    .values()
+                    .filter(|session| session.dsp == id && session.reader == Some(reader))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        for session in opened {
+            self.revoke_current(&session).await;
+        }
+    }
     pub fn get_for(&self, id: &str, provider: Provider) -> Option<Arc<Session>> {
         self.sessions.lock().ok()?.get(&provider.key(id)).cloned()
     }
@@ -369,48 +392,32 @@ impl Session {
         }
     }
 }
-/// A DSP's browser for a provider that a live reader's hook opened outside a job
-/// (`readers::Reading::browser`), signed in and its alone: closed when dropped.
-pub struct ProviderBrowser {
+/// A browser session that closes when dropped, unless kept: one a start registered until
+/// it's done, or a live reader's until its hook is done with it.
+struct Closing {
     state: Arc<State>,
     session: Option<Arc<Session>>,
 }
-impl ProviderBrowser {
-    pub(crate) async fn open(
-        state: &Arc<State>,
-        dsp: &str,
-        provider: Provider,
-        feature: &'static str,
-    ) -> Result<Self> {
-        let authority = ProviderAuthority::Reader { feature };
-        let session = state
-            .ensure_provider_browser(dsp, false, provider, authority)
-            .await?;
-        let browser = Self {
+impl Closing {
+    fn new(state: &Arc<State>, session: Arc<Session>) -> Self {
+        Self {
             state: state.clone(),
             session: Some(session),
-        };
-        // Nobody is there to finish signing in: it closes rather than wait for the owner.
-        ensure(browser.session().ready(), "verification_required", 409)?;
-        Ok(browser)
+        }
     }
     fn session(&self) -> &Arc<Session> {
         self.session.as_ref().expect("open until it closes")
     }
-    /// The browser, signed in, for what the hook takes from it: none in fixture mode, where
-    /// no browser runs.
-    pub async fn browser(&self) -> Option<browseros::Session> {
-        let worker = self.session().worker.lock().await;
-        worker.as_ref().and_then(|driver| driver.browser().cloned())
+    fn keep(mut self) -> Arc<Session> {
+        self.session.take().expect("open until it closes")
     }
-    /// Closes it, as a job's closes once it ends.
-    pub async fn close(mut self) {
+    async fn close(&mut self) {
         if let Some(session) = self.session.take() {
             self.state.browsers.revoke_current(&session).await;
         }
     }
 }
-impl Drop for ProviderBrowser {
+impl Drop for Closing {
     fn drop(&mut self) {
         if let Some(session) = self.session.take()
             && let Ok(runtime) = tokio::runtime::Handle::try_current()
@@ -418,6 +425,39 @@ impl Drop for ProviderBrowser {
             let state = self.state.clone();
             runtime.spawn(async move { state.browsers.revoke_current(&session).await });
         }
+    }
+}
+
+/// A DSP's browser for a provider that a live reader's hook opened outside a job
+/// (`readers::Reading::browser`), signed in and its alone: closed when dropped, and as the
+/// reader stops for the DSP.
+pub struct ProviderBrowser(Closing);
+impl ProviderBrowser {
+    pub(crate) async fn open(
+        state: &Arc<State>,
+        dsp: &str,
+        provider: Provider,
+        reader: &'static str,
+        feature: &'static str,
+    ) -> Result<Self> {
+        let authority = ProviderAuthority::Reader { reader, feature };
+        let session = state
+            .ensure_provider_browser(dsp, false, provider, authority)
+            .await?;
+        let browser = Self(Closing::new(state, session));
+        // Nobody is there to finish signing in: it closes rather than wait for the owner.
+        ensure(browser.0.session().ready(), "verification_required", 409)?;
+        Ok(browser)
+    }
+    /// The browser, signed in, for what the hook takes from it: none in fixture mode, where
+    /// no browser runs, and once it's closed.
+    pub async fn browser(&self) -> Option<browseros::Session> {
+        let worker = self.0.session().worker.lock().await;
+        worker.as_ref().and_then(|driver| driver.browser().cloned())
+    }
+    /// Closes it, as a job's closes once it ends.
+    pub async fn close(mut self) {
+        self.0.close().await;
     }
 }
 
@@ -615,7 +655,7 @@ impl State {
             .await?;
         if let Some(session) = self.browsers.get_for(id, provider) {
             ensure(
-                !authority.alone() && !session.closed() && !session.busy(),
+                authority.reader().is_none() && !session.closed() && !session.busy(),
                 "connection_busy",
                 409,
             )?;
@@ -677,8 +717,8 @@ impl State {
             fixture: self.config.fixture && self.config.fixture_url.is_none(),
             started: std::time::Instant::now(),
             last_used: Mutex::new(std::time::Instant::now()),
-            collecting: std::sync::atomic::AtomicBool::new(authority.alone()),
-            reader: authority.alone(),
+            collecting: std::sync::atomic::AtomicBool::new(authority.reader().is_some()),
+            reader: authority.reader(),
             credential_lease: Mutex::new(Some(credential_lease)),
         });
         {
@@ -706,6 +746,9 @@ impl State {
             }
             sessions.insert(provider.key(id), session.clone());
         }
+        // Registered, it closes unless the start ends with it ready to use: a start dropped
+        // partway, as a read cut off or switched off, leaves nothing behind.
+        let mut starting = Closing::new(self, session.clone());
         let start = async {
             let mut worker = session.worker.lock().await;
             ensure(!session.closed(), "verification_expired", 409)?;
@@ -781,11 +824,11 @@ impl State {
         .await;
         let persisted = self.browser_result(&session, &start, &authority).await;
         if start.is_err() || persisted.is_err() {
-            self.browsers.revoke_current(&session).await;
+            starting.close().await;
         }
         persisted?;
         start?;
-        Ok(session)
+        Ok(starting.keep())
     }
     pub(crate) async fn browser_result(
         self: &Arc<Self>,

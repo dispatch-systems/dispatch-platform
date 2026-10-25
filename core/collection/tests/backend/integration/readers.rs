@@ -76,8 +76,14 @@ enum Script {
     Gated,
     /// Its next keeping never ends.
     Hangs,
+    /// Each read fails.
+    Fails,
     /// Each read opens the DSP's browser.
     Browses,
+    /// Each read gives up opening the DSP's browser as it signs in, then opens it.
+    CutsOff,
+    /// Each keeping opens the DSP's browser and waits for the probe's gate.
+    KeepsBrowsing,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum Seen {
@@ -85,6 +91,8 @@ enum Seen {
     Read(u64, Instant),
     /// A read dropped before it ended.
     Dropped,
+    /// A keeping dropped before it ended.
+    Abandoned,
     Started(NaiveDate),
     Kept(u64),
     Stopped(NaiveDate),
@@ -95,6 +103,16 @@ enum Seen {
         busy: bool,
         second: String,
         after_a_job: bool,
+    },
+    /// Whether a browser given up on as it signed in was still there, and what opening it
+    /// again answered.
+    CutOff {
+        left: bool,
+        again: String,
+    },
+    /// Whether the browser a keeping held was closed as it waited.
+    KeptBrowsing {
+        closed: bool,
     },
 }
 static SCRIPTS: Mutex<Vec<(String, Arc<Probe>, Script)>> = Mutex::new(Vec::new());
@@ -145,6 +163,20 @@ impl Probe {
                 _ => None,
             })
             .collect()
+    }
+}
+/// A keeping that never ends, seen abandoned once it's dropped.
+struct Hang(Arc<Probe>, String);
+impl Drop for Hang {
+    fn drop(&mut self) {
+        self.0.saw(&self.1, Seen::Abandoned);
+    }
+}
+/// What opening the DSP's browser answers: its error's code, or `opened`.
+async fn opening(reading: &Reading) -> String {
+    match reading.browser(PROVIDER).await {
+        Ok(_) => "opened".to_owned(),
+        Err(error) => error.code,
     }
 }
 /// A read under way: counted while it flies, and seen dropped unless it lands.
@@ -202,10 +234,7 @@ impl LiveReader for Reader {
                 Script::Browses => {
                     let open = reading.browser(PROVIDER).await?;
                     let session = reading.state.browsers.get_for(&reading.dsp, PROVIDER);
-                    let second = match reading.browser(PROVIDER).await {
-                        Ok(_) => "opened".to_owned(),
-                        Err(error) => error.code,
-                    };
+                    let second = opening(reading).await;
                     let (open_now, busy, revision) = session.map_or((0, false, 0), |session| {
                         (
                             reading.state.browsers.active(),
@@ -229,7 +258,23 @@ impl LiveReader for Reader {
                     );
                     open.close().await;
                 }
-                Script::Reads | Script::Hangs => {}
+                Script::CutsOff => {
+                    let signing_in = reading.browser(PROVIDER);
+                    let gave_up = tokio::time::timeout(Duration::from_millis(100), signing_in);
+                    assert!(gave_up.await.is_err(), "signing in takes longer");
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                    let left = reading.state.browsers.get_for(&reading.dsp, PROVIDER);
+                    let again = opening(reading).await;
+                    probe.saw(
+                        &reading.dsp,
+                        Seen::CutOff {
+                            left: left.is_some(),
+                            again,
+                        },
+                    );
+                }
+                Script::Fails => return Err(Error::new("probe_unavailable", 503)),
+                Script::Reads | Script::Hangs | Script::KeepsBrowsing => {}
             }
             flight.landed = true;
             Ok(held.0)
@@ -248,7 +293,15 @@ impl LiveReader for Reader {
             let (probe, script) = script(&reading.dsp);
             if script == Script::Hangs {
                 set_script(&reading.dsp, Script::Reads);
+                let _hang = Hang(probe.clone(), reading.dsp.clone());
                 std::future::pending::<()>().await;
+            }
+            if script == Script::KeepsBrowsing {
+                let _open = reading.browser(PROVIDER).await?;
+                drop(probe.gate.acquire().await.unwrap());
+                let open = reading.state.browsers.get_for(&reading.dsp, PROVIDER);
+                let closed = open.is_none();
+                probe.saw(&reading.dsp, Seen::KeptBrowsing { closed });
             }
             probe.saw(&reading.dsp, Seen::Kept(read));
             Ok(vec![("reads", read)])
@@ -463,6 +516,36 @@ impl Server {
             .with_timezone(&self.zone)
             .date_naive()
     }
+    /// Connects the DSP to the stand-in collector, its password saying how signing in goes.
+    async fn connect(&self, dsp: &str, password: &str) {
+        let credentials = json!({"username":"probe","password":password});
+        let at = dsp.to_owned();
+        self.state
+            .run(move |db| {
+                let area = db.area(&at, "secrets")?;
+                let key = db::key_file(&area.join("vault.key"))?;
+                let named = format!("{at}:{}:2", PROVIDER.id());
+                let sealed = crypto::encrypt(&key, &named, &credentials)?;
+                let file = area.join(format!("{}.enc", PROVIDER.id()));
+                db::write_private(&file, sealed.as_bytes())?;
+                testing::ready_connection(db, &at, PROVIDER)
+            })
+            .await
+            .unwrap();
+    }
+    /// The DSP's reads as the server keeps them, in order: each one's outcome and code.
+    async fn records(&self, dsp: &str) -> Vec<(String, Option<String>)> {
+        let dsp = dsp.to_owned();
+        self.state
+            .read(move |db| {
+                db.jobs.query_as(
+                    "SELECT outcome,code FROM live_reads WHERE dsp_id=? ORDER BY at",
+                    [dsp],
+                )
+            })
+            .await
+            .unwrap()
+    }
     /// Half a minute after one of the readers' own plans, so what follows within seconds
     /// follows from a wake alone.
     fn between_plans(&self, after: Instant) -> Instant {
@@ -611,25 +694,35 @@ async fn no_more_reads_run_at_once_than_the_server_allows() {
 #[tokio::test(start_paused = true)]
 async fn a_dsp_whose_reads_stop_moving_is_started_again_alone() {
     let server = Server::start().await;
-    let (stalls, reads) = (
+    let (stalls, unplugged, reads) = (
+        server.dsp(Script::Hangs).await,
         server.dsp(Script::Hangs).await,
         server.dsp(Script::Reads).await,
     );
     let (start, open) = server.at(5);
     let (stop, _) = server.at(120);
-    for dsp in [&stalls, &reads] {
+    for dsp in [&stalls, &unplugged, &reads] {
         server.window(dsp, &start, &stop).await;
         server.switch(dsp, true).await;
     }
+    // Switched off as it hangs, its keeping is let go of all the same: its turn isn't held.
+    until(open + EVERY).await;
+    server.switch(&unplugged, false).await;
     until(open + 7 * EVERY).await;
+    let let_go = server.probe.of(&unplugged);
+    assert!(matches!(
+        let_go[..],
+        [Seen::Read(1, _), Seen::Started(_), Seen::Abandoned]
+    ));
     // Its first read was never kept: three intervals on, it read again at once, with its
     // memory made anew, and goes on from there.
     let stalled = server.probe.of(&stalls);
     assert!(matches!(
-        stalled[..4],
+        stalled[..5],
         [
             Seen::Read(1, _),
             Seen::Started(_),
+            Seen::Abandoned,
             Seen::Read(1, _),
             Seen::Kept(1)
         ]
@@ -668,6 +761,10 @@ async fn switched_off_mid_window_a_dsp_stops_at_once_and_switched_on_goes_on_wit
     assert_eq!(server.probe.of(&dsp).last(), Some(&Seen::Dropped));
     tokio::time::sleep(5 * EVERY).await;
     assert_eq!(server.probe.reads(&dsp).len(), read + 1);
+    let records = server.records(&dsp).await;
+    let stopped = ("failed".to_owned(), Some("live_read_stopped".to_owned()));
+    assert_eq!(records.len(), read + 1);
+    assert_eq!(records.last(), Some(&stopped));
 
     // Switched on again, it reads at once, going on with its day.
     set_script(&dsp, Script::Reads);
@@ -710,22 +807,7 @@ async fn a_switch_or_a_saved_window_takes_effect_at_once() {
 async fn a_hooks_browser_is_its_own_within_the_servers_limits_and_closes_after_it() {
     let server = Server::start().await;
     let dsp = server.dsp(Script::Browses).await;
-    let credentials = json!({"username":"probe","password":"fixture-password"});
-    let at = dsp.clone();
-    server
-        .state
-        .run(move |db| {
-            let area = db.area(&at, "secrets")?;
-            let key = db::key_file(&area.join("vault.key"))?;
-            let sealed = crypto::encrypt(&key, &format!("{at}:{}:2", PROVIDER.id()), &credentials)?;
-            db::write_private(
-                &area.join(format!("{}.enc", PROVIDER.id())),
-                sealed.as_bytes(),
-            )?;
-            testing::ready_connection(db, &at, PROVIDER)
-        })
-        .await
-        .unwrap();
+    server.connect(&dsp, "fixture-password").await;
     let (start, open) = server.at(5);
     let (stop, _) = server.at(60);
     server.window(&dsp, &start, &stop).await;
@@ -742,4 +824,91 @@ async fn a_hooks_browser_is_its_own_within_the_servers_limits_and_closes_after_i
     assert_eq!(server.probe.of(&dsp)[1], browser);
     assert_eq!(server.probe.of(&dsp)[3], Seen::Kept(1));
     assert_eq!(server.state.browsers.active(), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_hooks_browser_leaves_nothing_behind_cut_off_and_closes_as_its_reader_stops() {
+    let server = Server::start().await;
+    let (cuts, keeps) = (
+        server.dsp(Script::CutsOff).await,
+        server.dsp(Script::KeepsBrowsing).await,
+    );
+    // Signing in takes a quarter of a second.
+    server.connect(&cuts, "slow-valid-password").await;
+    server.connect(&keeps, "fixture-password").await;
+    let (start, open) = server.at(5);
+    let (stop, _) = server.at(60);
+    for dsp in [&cuts, &keeps] {
+        server.window(dsp, &start, &stop).await;
+        server.switch(dsp, true).await;
+    }
+    until(open + EVERY).await;
+    // Given up on as it signed in, nothing of it is left to refuse the next.
+    let cut = Seen::CutOff {
+        left: false,
+        again: "opened".into(),
+    };
+    assert_eq!(server.probe.of(&cuts)[1], cut);
+    // Switched off while a keeping holds its browser, the browser closes under it.
+    server.switch(&keeps, false).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    server.probe.gate.add_permits(1);
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let kept = server.probe.of(&keeps);
+    assert_eq!(kept[kept.len() - 2], Seen::KeptBrowsing { closed: true });
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_whose_turn_comes_after_its_window_closed_never_starts() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(60);
+    // Every turn to read is held by a read that waits on its provider.
+    for _ in 0..READS_AT_ONCE {
+        let dsp = server.dsp(Script::Gated).await;
+        server.window(&dsp, &opened, &stop).await;
+        server.switch(&dsp, true).await;
+    }
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(server.probe.flying.load(Ordering::SeqCst), READS_AT_ONCE);
+    // Its window closes within the minute, as it waits for its turn.
+    let late = server.dsp(Script::Reads).await;
+    let (closes, close) = server.at(1);
+    server.window(&late, &opened, &closes).await;
+    server.switch(&late, true).await;
+    until(close + MINUTE).await;
+    server.probe.gate.add_permits(READS_AT_ONCE);
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(server.probe.flying.load(Ordering::SeqCst) < READS_AT_ONCE);
+    assert!(server.probe.reads(&late).is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_dsps_records_go_after_two_weeks_though_none_of_its_reads_was_kept() {
+    let server = Server::start().await;
+    let dsp = server.dsp(Script::Fails).await;
+    let (start, open) = server.at(5);
+    let (stop, _) = server.at(60);
+    server.window(&dsp, &start, &stop).await;
+    let day = 24 * 60 * 60 * 1000;
+    let (at, older) = (dsp.clone(), now());
+    server
+        .state
+        .run_bookkeeping(move |db| {
+            for (ago, code) in [(15, "too_old"), (13, "kept_on")] {
+                db.jobs.exec(
+                    "INSERT INTO live_reads(reader,dsp_id,day,at,ms,outcome,code) \
+                     VALUES ('probe.routes',?,'2026-01-01',?,0,'failed',?)",
+                    rusqlite::params![at, older - ago * day, code],
+                )?;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+    server.switch(&dsp, true).await;
+    until(open + EVERY).await;
+    let records = server.records(&dsp).await;
+    let failed = |code: &str| ("failed".to_owned(), Some(code.to_owned()));
+    assert_eq!(records, [failed("kept_on"), failed("probe_unavailable")]);
 }

@@ -2,7 +2,7 @@
 //! reads, hands what it read to its reader to keep, records how it went, and stops each day it
 //! started once its window ends.
 use super::{
-    Reading, now,
+    Reading, WAITING, now,
     plan::{Day, Plan, Step},
     records,
 };
@@ -24,8 +24,8 @@ use std::{
 };
 use tokio::sync::{Semaphore, watch};
 
-/// What a task is handed: its reader, the DSP, the server's turns at reading, and where it
-/// says it moved on, for the watchdog.
+/// What a task is handed: its reader, the DSP, the server's turns at reading, and since when
+/// it has been busy, for the watchdog.
 pub(super) struct Task {
     pub state: Arc<State>,
     pub feature: &'static Feature,
@@ -36,25 +36,25 @@ pub(super) struct Task {
 }
 
 /// Reads for the DSP as its plan says, until the plan is none, when what's under way ends: a
-/// read is dropped, while what keeps it or a day finishes.
+/// read is dropped and recorded so, while what keeps it or a day finishes.
 pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
     // Its next slot is the first after its last read, whenever that was.
     let mut after = loop {
-        if plans.borrow().is_none() {
+        let Some(plan) = *plans.borrow() else {
             return;
-        }
+        };
         match task
             .query(|db, reader, dsp| db.last_read(reader, dsp))
             .await
         {
-            Some(last) => break last.unwrap_or(i64::MIN),
+            Some(last) => break plan.resumed(now(), last),
             None => task.retry(&mut plans).await,
         }
     };
     // What the reader holds for the day being read.
     let mut held: Option<(NaiveDate, Box<dyn Any + Send>)> = None;
     loop {
-        task.moved();
+        task.busy();
         let Some(plan) = *plans.borrow_and_update() else {
             return;
         };
@@ -69,6 +69,7 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
         match plan.step(at, after, &unstopped) {
             Step::Wait(at) => {
                 let wait = Duration::from_millis((at - now()).max(0) as u64);
+                task.waiting();
                 tokio::select! {
                     _ = tokio::time::sleep(wait) => {}
                     changed = plans.changed() => if changed.is_err() { return },
@@ -83,8 +84,16 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
                 }
             }
             Step::Read(day) => {
+                // A day's first read makes its memory, and lets the records from before the
+                // last two weeks go.
                 if held.as_ref().is_none_or(|(date, _)| *date != day.date) {
                     held = Some((day.date, task.reader.held()));
+                    if let Err(error) = task
+                        .write(move |db, reader, dsp| db.prune_reads(reader, dsp, at))
+                        .await
+                    {
+                        task.log("error", "live.prune_failed", json!({"error":error.code}));
+                    }
                 }
                 let memory = &mut held.as_mut().expect("held for the day").1;
                 if task
@@ -103,8 +112,13 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
 }
 
 impl Task {
-    fn moved(&self) {
+    /// Busy from now: in a read, a hook or its turn to read.
+    fn busy(&self) {
         self.progress.store(now(), Ordering::Release);
+    }
+    /// Waiting for a time, as its next slot, which is no stall.
+    fn waiting(&self) {
+        self.progress.store(WAITING, Ordering::Release);
     }
     fn reading(&self, plan: &Plan, day: &Day) -> Reading {
         Reading {
@@ -112,6 +126,7 @@ impl Task {
             dsp: self.dsp.clone(),
             day: clock::day(plan.timezone, day.open),
             timezone: plan.timezone,
+            reader: self.reader.id(),
             feature: self.feature,
         }
     }
@@ -123,7 +138,8 @@ impl Task {
     }
 
     /// One read of `day`, waiting its turn among the server's reads, kept when whole, and
-    /// recorded. Answers false once its plan is none.
+    /// recorded. Answers false once its plan is none. A read whose turn comes once its window
+    /// has closed or its plan has changed is left to plan again.
     async fn read_once(
         &self,
         plan: &Plan,
@@ -145,15 +161,23 @@ impl Task {
                 .await;
             return true;
         };
-        self.moved();
+        self.busy();
         let at = now();
+        if *plans.borrow() != Some(*plan) || at >= day.close {
+            return true;
+        }
         let read = tokio::select! {
             read = tokio::time::timeout(every, self.reader.read(&reading, held)) => {
-                read.unwrap_or_else(|_| Err(Error::new("live_read_timeout", 504)))
+                Some(read.unwrap_or_else(|_| Err(Error::new("live_read_timeout", 504))))
             }
-            _ = plans.wait_for(Option::is_none) => return false,
+            _ = plans.wait_for(Option::is_none) => None,
         };
-        self.moved();
+        let Some(read) = read else {
+            self.record(&day, at, Err(Error::new("live_read_stopped", 409)))
+                .await;
+            return false;
+        };
+        self.busy();
         let outcome = match read {
             Ok(read) => self.keep(&reading, &day, read).await,
             Err(error) => Err(error),
@@ -204,7 +228,7 @@ impl Task {
                 json!({"day":date.to_string(),"error":error.code}),
             ),
         }
-        self.moved();
+        self.busy();
         stopped.is_ok()
     }
 
@@ -233,7 +257,7 @@ impl Task {
         if let Err(error) = kept {
             self.log("error", "live.record_failed", json!({"error":error.code}));
         }
-        self.moved();
+        self.busy();
     }
 
     /// What `f` reads of the DSP's reading, or none when it can't be read now, logged.
@@ -261,6 +285,7 @@ impl Task {
     }
     /// Waits a minute, or until its plan changes, before trying again what failed.
     async fn retry(&self, plans: &mut watch::Receiver<Option<Plan>>) {
+        self.waiting();
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(60)) => {}
             _ = plans.changed() => {}
