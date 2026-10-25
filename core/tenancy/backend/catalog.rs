@@ -653,6 +653,7 @@ impl Store {
                 // Open views sign the DSP revision, so members pick up the change.
                 self.platform
                     .exec("UPDATE dsps SET revision=revision+1 WHERE id=?", [dsp])?;
+                self.readers_moved();
             }
             Ok(DspFeatures {
                 features: self.features(dsp)?,

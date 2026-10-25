@@ -18,6 +18,7 @@ pub mod events;
 pub mod exposes;
 pub mod integrations;
 pub mod keeping;
+pub mod live_readers;
 pub mod people;
 pub mod permissions;
 pub(crate) mod retirement;
@@ -33,6 +34,7 @@ pub use commands::{Commands, Demo};
 pub use keeping::{
     Keeper, MAX_QUEUE_CAPACITY, MIN_QUEUE_CAPACITY, ScheduleAlias, Schedules, schedules,
 };
+pub use live_readers::{Counts, LiveReader, Reads, Window};
 pub use permissions::{DefaultRole, Permission, perm};
 pub use settings::{
     Field, Group, Kept, Kind, Options, Page, Scope, Section, SharedPage, choice, many, number,
@@ -116,6 +118,7 @@ impl Registry {
         env::check(self);
         retirement::check(self);
         keeping::check(self);
+        live_readers::check(self);
         switches::check(self);
         for feature in self.features {
             for dependency in feature.depends_on {
@@ -179,6 +182,9 @@ pub struct Feature {
     /// The permissions that may follow its collections' progress as it arrives, through
     /// the collection updates the dashboard waits on.
     pub live: &'static [&'static str],
+    /// What it reads from a provider for each DSP every few minutes, inside a window the DSP
+    /// sets, within the server rather than as jobs (`live_readers::LiveReader`).
+    pub live_readers: &'static [&'static dyn Reads],
     /// The server's environment variables it reads with `config.setting`, in groups that go
     /// together: `&[&["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]]`. A server with only part
     /// of a group set refuses to start.
@@ -243,6 +249,7 @@ pub const fn feature(name: &'static str) -> Feature {
         dsp_connection: false,
         routes: Vec::new,
         live: &[],
+        live_readers: &[],
         env: &[],
         settings: &[],
         keeps: &[],
