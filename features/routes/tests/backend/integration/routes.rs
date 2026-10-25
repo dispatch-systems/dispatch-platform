@@ -576,7 +576,8 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
         1
     );
 
-    // The standard collection's read, collected later, replaces it whole: its phones too.
+    // The standard collection's read, collected later, replaces it whole but for its phones,
+    // which it reads none of.
     let mut later = capture.clone();
     later.itineraries.truncate(1);
     later.summaries["itinerarySummaries"]
@@ -585,16 +586,22 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
         .truncate(1);
     later.finished_at += 2000;
     publish(&db, &id, "standard", day, &later);
-    assert_eq!(read(&db), (vec![1], vec![]));
-    // One collected before it changes nothing; one collected after replaces it.
+    assert_eq!(read(&db), (vec![1], held.clone()));
+    // One collected before it changes nothing; one collected after replaces it, phones and all.
     let mut earlier = capture.clone();
     earlier.finished_at += 1000;
-    assert!(!save("live-2", &earlier, &phones).await.unwrap());
-    assert_eq!(read(&db), (vec![1], vec![]));
+    assert!(!save("live-2", &earlier, &phones[..1]).await.unwrap());
+    assert_eq!(read(&db), (vec![1], held.clone()));
     let mut latest = capture.clone();
     latest.finished_at += 3000;
-    assert!(save("live-3", &latest, &phones).await.unwrap());
-    assert_eq!(read(&db), (vec![2], held));
+    assert!(save("live-3", &latest, &phones[1..]).await.unwrap());
+    assert_eq!(read(&db), (vec![2], held[1..].to_vec()));
+    // A save that held no phones leaves the day none.
+    let mut idle = capture.clone();
+    idle.finished_at += 4000;
+    assert!(save("live-5", &idle, &[]).await.unwrap());
+    assert_eq!(read(&db), (vec![2], vec![]));
+    let latest = idle;
     sweep(&db, &id);
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),

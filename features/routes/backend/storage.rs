@@ -268,10 +268,10 @@ impl RoutesStore for Store {
         })
     }
     /// Makes a staged day the day's read if it was collected later than the one the day has
-    /// (`publish_day`), with no work phones: the standard collection reads none. Answers
-    /// whether it is the day's read now.
+    /// (`publish_day`), keeping the day's work phones: the standard collection reads none.
+    /// Answers whether it is the day's read now.
     fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool> {
-        publish_day(&*self.routes_db(id)?, job, staged, &[])
+        publish_day(&*self.routes_db(id)?, job, staged, None)
     }
     /// Retires the days a DSP's retention window has passed: they become inactive, and
     /// `sweep_routes` deletes them in small steps. Addresses and drivers last seen before
