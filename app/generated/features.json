@@ -589,6 +589,16 @@
         {
           "id": 7,
           "name": "staged_shared_rows"
+        },
+        {
+          "id": 8,
+          "name": "drop_tasks_driver_day"
+        }
+      ],
+      "routelive": [
+        {
+          "id": 1,
+          "name": "baseline"
         }
       ]
     },
@@ -621,7 +631,8 @@
       ],
       "on": [],
       "people": [
-        "routes"
+        "routes",
+        "routes_live"
       ],
       "routes": [
         "GET /api/dsp/routes/days",
@@ -638,6 +649,11 @@
           "name": "driver_routes",
           "contract": "dispatch_routes_contract::DriverRoutes",
           "about": "Each driver's routes day by day, with their stops and packages, and the days collected."
+        },
+        {
+          "name": "live_route_data",
+          "contract": "dispatch_routes_contract::LiveRouteData",
+          "about": "Today's routes as live route data last read them, and the work phone each driver holds now."
         }
       ],
       "env": [],
@@ -665,6 +681,21 @@
         "tasks",
         "unknown_stops",
         "work_phones"
+      ],
+      "routelive": [
+        "addresses",
+        "breaks",
+        "driver_days",
+        "drivers",
+        "itineraries",
+        "route_publications",
+        "route_raw",
+        "routes",
+        "stops",
+        "tasks",
+        "unknown_stops",
+        "work_phones",
+        "work_phones_shown"
       ]
     },
     "subfeatures": []

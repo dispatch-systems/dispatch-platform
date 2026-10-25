@@ -29,7 +29,6 @@ CREATE INDEX routes_day ON routes(day,route_code);
 CREATE INDEX stops_address ON stops(address_id);
 CREATE INDEX tasks_address ON tasks(address_id);
 CREATE INDEX tasks_day_driver ON tasks(day,transporter_id);
-CREATE INDEX tasks_driver_day ON tasks(transporter_id, day);
 CREATE INDEX tasks_removed ON tasks(publication_id, itinerary_id) WHERE active=0;
 CREATE INDEX tasks_tracking ON tasks(tracking_id);
 CREATE INDEX tasks_undelivered ON tasks(transporter_id, day) WHERE active=1 AND task_type='DROP_OFF' AND task_state IS NOT 'DELIVERED';

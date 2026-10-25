@@ -6,7 +6,10 @@ use super::*;
 /// What Routes reads and writes for a DSP: each day's routes, itineraries and packages, in
 /// the database beside Cortex's, the collections that bring them and their expiry.
 pub trait RoutesStore {
+    /// Historical route data: the days kept.
     fn routes_db(&self, id: &str) -> Result<DspLease<'_>>;
+    /// Live route data: today as the last whole live read left it.
+    fn routes_live_db(&self, id: &str) -> Result<DspLease<'_>>;
     fn enqueue_routes(
         &self,
         id: &str,
@@ -49,6 +52,9 @@ pub trait RoutesStore {
 impl RoutesStore for Store {
     fn routes_db(&self, id: &str) -> Result<DspLease<'_>> {
         self.added_storage(id, cortex::PROVIDER, &STORAGE)
+    }
+    fn routes_live_db(&self, id: &str) -> Result<DspLease<'_>> {
+        self.added_storage(id, cortex::PROVIDER, &LIVE_STORAGE)
     }
     /// Queues `days` days ending at `day`, or the default day of `mode`, answering with
     /// the jobs. A day already queued under `key` answers the same job.
@@ -189,15 +195,14 @@ impl RoutesStore for Store {
                 itineraries as i64,
                 ADAPTER_VERSION
             ])?;
-            insert_routes(&db, &publication, day, &routes)?;
-            insert_raw(&db, &publication, "summaries", summaries.len(), &gzip(&summaries)?)?;
-            insert_raw(
-                &db,
-                &publication,
-                "route_summaries",
-                route_summaries.len(),
-                &gzip(&route_summaries)?,
-            )
+            write_routes(&db, Writes::Staged, &publication, day, &routes)?;
+            for (name, list) in [
+                ("summaries", &summaries),
+                ("route_summaries", &route_summaries),
+            ] {
+                write_raw(&db, Writes::Staged, &publication, name, list.len(), &gzip(list)?)?;
+            }
+            Ok(())
         })?;
         Ok(Staged {
             collection: Collection::Routes,
@@ -242,9 +247,10 @@ impl RoutesStore for Store {
                 "routes_capture_invalid",
                 502,
             )?;
-            insert_itinerary(&db, &staged.publication, &staged.day, itinerary)?;
-            insert_raw(
+            write_itinerary(&db, Writes::Staged, &staged.publication, &staged.day, itinerary)?;
+            write_raw(
                 &db,
+                Writes::Staged,
                 &staged.publication,
                 &format!("itinerary:{}", itinerary.id),
                 itinerary.raw_bytes,
@@ -339,9 +345,9 @@ impl RoutesStore for Store {
                     )?;
                 }
                 let day = s(row, "day");
-                insert_routes(&db, &publication, day, &routes)?;
+                write_routes(&db, Writes::Staged, &publication, day, &routes)?;
                 for itinerary in &prepared {
-                    insert_itinerary(&db, &publication, day, itinerary)?;
+                    write_itinerary(&db, Writes::Staged, &publication, day, itinerary)?;
                 }
                 share(&db, &publication, day)?;
                 db.exec(
