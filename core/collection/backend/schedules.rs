@@ -8,8 +8,8 @@ use crate::{
         api::{
             jobs::{JobKind, JobStatus, PublicJob},
             types::{
-                Collectors, LastRun, RuleKind, RunCounts, ScheduleChoice, ScheduleCollection,
-                ScheduleOption, ScheduleRule, ScheduleRuns, ScheduledCollection,
+                Collectors, LastRun, RuleKind, ScheduleChoice, ScheduleCollection, ScheduleOption,
+                ScheduleRule, ScheduleRuns, ScheduledCollection,
             },
         },
         registry::Provider,
