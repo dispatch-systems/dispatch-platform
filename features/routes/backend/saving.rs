@@ -71,9 +71,10 @@ impl Drop for Saving {
 /// such as the saving feature's name and the read's time. A key already the day's read
 /// answers so without saving again, and one still saving is refused (`routes_save_running`).
 /// It refuses phones that aren't each one driver's hold on one phone from a time, until none
-/// or a time no earlier, at most 10,000 of them (`invalid_input`); a capture that isn't one of
-/// the DSP's station's day as listed (`routes_scope_mismatch`, `routes_capture_invalid`,
-/// `routes_source_too_large`); and saving while Routes is off for the DSP (`routes_off`).
+/// or a time no earlier, at most 10,000 of them (`invalid_input`); a DSP without a station
+/// (`routes_station_required`); a capture that isn't one of its station's day as listed
+/// (`routes_scope_mismatch`, `routes_capture_invalid`, `routes_source_too_large`); and saving
+/// while Routes is off for the DSP (`routes_off`).
 pub async fn save_day(
     state: &Arc<State>,
     dsp: &str,

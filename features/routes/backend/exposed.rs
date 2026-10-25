@@ -26,7 +26,13 @@ macro_rules! by_driver {
     ($sql:literal, $column:literal, $order:literal) => {
         [
             concat!($sql, " AND ?4 IS NULL ", $order),
-            concat!($sql, " AND ", $column, " IN (SELECT value FROM json_each(?4)) ", $order),
+            concat!(
+                $sql,
+                " AND ",
+                $column,
+                " IN (SELECT value FROM json_each(?4)) ",
+                $order
+            ),
         ]
     };
 }

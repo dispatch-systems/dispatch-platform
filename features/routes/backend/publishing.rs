@@ -4,10 +4,10 @@
 use super::*;
 
 /// Makes a staged day its scope's read, in one transaction, if it was collected later than
-/// the read the day has, whichever was published first: the day's last read is left
-/// inactive, and its work phones are replaced by `phones`, the new read's. A day collected no
-/// later is left inactive itself. Either way `sweep_routes` deletes what's inactive in small
-/// steps; only flags and phones change here, so the platform lock is held for moments.
+/// the read the day has, in whatever order the two are published: the day's last read is
+/// left inactive, and the day's work phones become `phones`, the new read's. A day collected
+/// no later is left inactive itself. Either way `sweep_routes` deletes what's inactive in
+/// small steps; only flags and phones change here, so the platform lock is held for moments.
 /// Answers whether it is the day's read now.
 pub(super) fn publish_day(
     db: &Db,

@@ -522,7 +522,10 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
                 [day],
             )
             .unwrap();
-        (days.iter().map(|d| d.itinerary_count).collect::<Vec<_>>(), held)
+        (
+            days.iter().map(|d| d.itinerary_count).collect::<Vec<_>>(),
+            held,
+        )
     };
     let held: Vec<Value> = phones
         .iter()
@@ -536,7 +539,10 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
     assert!(save("live-1", &capture, &phones).await.unwrap());
     assert_eq!(read(&db), (vec![2], held.clone()));
     assert!(save("live-1", &capture, &phones).await.unwrap());
-    assert_eq!(count(&db, &id, "SELECT count(*) FROM route_publications"), 1);
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM route_publications"),
+        1
+    );
 
     // The standard collection's read, collected later, replaces it whole: its phones too.
     let mut later = capture.clone();
@@ -558,9 +564,12 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
     assert!(save("live-3", &latest, &phones).await.unwrap());
     assert_eq!(read(&db), (vec![2], held));
     sweep(&db, &id);
-    assert_eq!(count(&db, &id, "SELECT count(*) FROM route_publications"), 1);
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM route_publications"),
+        1
+    );
 
-    // Each refusal changes one thing from a save that's made, and stores nothing.
+    // Refused, each for one thing, before anything is stored.
     let mut missing = latest.clone();
     missing.finished_at += 1000;
     missing.itineraries.pop();
@@ -581,8 +590,10 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
     db.set_feature(&id, "routes", false, &actor).unwrap();
     let refused = save("live-4", &latest, &phones).await.unwrap_err();
     assert_eq!(refused.code, "routes_off");
-    sweep(&db, &id);
-    assert_eq!(count(&db, &id, "SELECT count(*) FROM route_publications"), 1);
+    assert_eq!(
+        count(&db, &id, "SELECT count(*) FROM route_publications"),
+        1
+    );
 }
 
 #[test]

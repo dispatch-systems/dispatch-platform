@@ -128,7 +128,9 @@ impl<'de> Deserialize<'de> for Scalar {
                 Ok(Scalar(Value::Number(value.into())))
             }
             fn visit_f64<E>(self, value: f64) -> Result<Scalar, E> {
-                Ok(Scalar(Number::from_f64(value).map_or(Value::Null, Value::Number)))
+                Ok(Scalar(
+                    Number::from_f64(value).map_or(Value::Null, Value::Number),
+                ))
             }
             fn visit_str<E>(self, value: &str) -> Result<Scalar, E> {
                 Ok(Scalar(Value::String(value.to_owned())))
@@ -164,7 +166,8 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for Object<T> {
                 f.write_str("any JSON value")
             }
             fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Object<T>, A::Error> {
-                T::deserialize(serde::de::value::MapAccessDeserializer::new(map)).map(|read| Object(Some(read)))
+                T::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                    .map(|read| Object(Some(read)))
             }
             fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Object<T>, A::Error> {
                 while seq.next_element::<IgnoredAny>()?.is_some() {}
@@ -226,7 +229,11 @@ wire!(
     else rest_of_detail => { rest: Map<String, Value>, }
 );
 /// A detail's route-level field, kept whole.
-fn rest_of_detail<'de, A: MapAccess<'de>>(detail: &mut Detail, key: Cow<'de, str>, map: &mut A) -> Result<(), A::Error> {
+fn rest_of_detail<'de, A: MapAccess<'de>>(
+    detail: &mut Detail,
+    key: Cow<'de, str>,
+    map: &mut A,
+) -> Result<(), A::Error> {
     detail.rest.insert(key.into_owned(), map.next_value()?);
     Ok(())
 }
@@ -248,7 +255,11 @@ wire!(
 );
 /// A stop's flag, named for one or by `is`, kept while it's set: one set again later as
 /// unset is unset, as the tree holds it.
-fn flag_of_stop<'de, A: MapAccess<'de>>(stop: &mut Stop, key: Cow<'de, str>, map: &mut A) -> Result<(), A::Error> {
+fn flag_of_stop<'de, A: MapAccess<'de>>(
+    stop: &mut Stop,
+    key: Cow<'de, str>,
+    map: &mut A,
+) -> Result<(), A::Error> {
     if !(key.ends_with("Flag") || key.starts_with("is")) {
         map.next_value::<IgnoredAny>()?;
     } else if map.next_value::<Value>()? == Value::Bool(true) {

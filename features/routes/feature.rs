@@ -11,12 +11,12 @@ pub use api::types::{
 /// What the app uses: its storage and its database, and how it shapes a day's capture, which
 /// the app's Cortex route probe measures.
 pub use backend::{DATABASE, RoutesStore, prepare};
-/// What a feature that depends on it saves a whole read of a day into historical route data
-/// with, as the standard collection saves its own, the day's work phones with it.
-pub use backend::{WorkPhone, save_day};
 /// What its integration tests check beside the storage: the most jobs a scheduled run queues,
 /// how a capture is shaped and how kept responses are read back.
 pub use backend::{MAX_JOBS_PER_RUN, Shaper, gunzip};
+/// What a feature that depends on it saves a whole read of a day into historical route data
+/// with, as the standard collection saves its own, the day's work phones with it.
+pub use backend::{WorkPhone, save_day};
 
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
@@ -90,12 +90,16 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 4,
                 name: "driver_day_index",
-                apply: Sql(include_str!("migrations/routedata/0004_driver_day_index.sql")),
+                apply: Sql(include_str!(
+                    "migrations/routedata/0004_driver_day_index.sql"
+                )),
             },
             Migration {
                 id: 5,
                 name: "package_flags_index",
-                apply: Sql(include_str!("migrations/routedata/0005_package_flags_index.sql")),
+                apply: Sql(include_str!(
+                    "migrations/routedata/0005_package_flags_index.sql"
+                )),
             },
             Migration {
                 id: 6,
