@@ -856,6 +856,7 @@ dependencies = [
  "dispatch-core",
  "dispatch-cortex",
  "dispatch-routes",
+ "dispatch-routes-contract",
  "serde",
  "serde_json",
  "tempfile",

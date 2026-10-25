@@ -490,16 +490,13 @@ async fn a_live_reader_never_takes_over_a_browser_a_member_opened() {
         let started = std::time::Instant::now();
         let read = loop {
             let at = dsp.clone();
-            let read: Option<(String, Option<String>)> = server
+            let reads = server
                 .state
-                .read(move |db| {
-                    db.jobs
-                        .one_as("SELECT outcome,code FROM live_reads WHERE dsp_id=?", [at])
-                })
+                .read(move |db| testing::live_reads(db, &at))
                 .await
                 .unwrap();
-            if let Some(read) = read {
-                break read;
+            if let Some((_, outcome, code, _)) = reads.into_iter().next() {
+                break (outcome, code);
             }
             assert!(started.elapsed().as_secs() < 10, "the reader never read");
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;

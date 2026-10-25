@@ -298,6 +298,22 @@ pub fn connect(db: &Store, dsp: &str, provider: Provider, credentials: &Value) -
     ready_connection(db, dsp, provider)
 }
 
+/// The reads the server's live readers recorded for a DSP, oldest first: when each began, how it
+/// went (`kept` or `failed`), its error's code, and what it counted (null for none).
+pub fn live_reads(db: &Store, dsp: &str) -> Result<Vec<(i64, String, Option<String>, Value)>> {
+    let reads: Vec<(i64, String, Option<String>, Option<String>)> = db.jobs.query_as(
+        "SELECT at,outcome,code,counts FROM live_reads WHERE dsp_id=? ORDER BY at",
+        [dsp],
+    )?;
+    reads
+        .into_iter()
+        .map(|(at, outcome, code, counts)| {
+            let counts = counts.map_or(Ok(Value::Null), |c| serde_json::from_str(&c))?;
+            Ok((at, outcome, code, counts))
+        })
+        .collect()
+}
+
 /// Sets the revision of a DSP's connection to `provider`, as a credential change does.
 pub fn set_connection_revision(
     db: &Store,
