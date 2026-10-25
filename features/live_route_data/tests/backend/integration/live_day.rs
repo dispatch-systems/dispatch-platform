@@ -2,8 +2,9 @@
 //! Cortex in fixture mode: each read is the fixture's whole day, read in the DSP's browser, and
 //! never Amazon. Each day's first read empties live route data of the day before; reads are kept
 //! on the DSP's grid through its window; its stop saves the day into historical route data when
-//! the DSP chose so, and leaves live route data as it was either way; a restart inside the window
-//! empties nothing; and switched off, or with its Cortex connection disabled, it reads no more.
+//! the DSP chose so, emptying live route data once it's saved and leaving it as it was otherwise;
+//! a restart inside the window empties nothing; and switched off, or with its Cortex connection
+//! disabled, it reads no more.
 //! Each day is the day Routes reckons too, pinned as the test moves to it. What Routes keeps is
 //! read as other features read it, through its contracts.
 //! A program of its own, as its registry holds the parts it names, and a program holds one.
@@ -173,6 +174,24 @@ impl Server {
             .await
             .unwrap();
     }
+    /// Saves a whole read of today into historical route data, as the standard collection would:
+    /// its routes `BEFORE`, collected now, later than any read live route data holds.
+    async fn saved_later(&self) {
+        let dsp = self.dsp.clone();
+        let request = self
+            .state
+            .read(move |db| dispatch_routes::live_request(db, &dsp))
+            .await
+            .unwrap();
+        let mut read = cortex::routes::fixture(&request).unwrap();
+        for summary in read.summaries["itinerarySummaries"].as_array_mut().unwrap() {
+            summary["progressStatus"] = json!(BEFORE);
+        }
+        read.finished_at = now();
+        read.started_at = read.finished_at - 1000;
+        let saved = dispatch_routes::save_day(&self.state, &self.dsp, "later", read, Vec::new());
+        assert!(saved.await.unwrap());
+    }
     /// How the first driver's route progresses in live route data: none while it holds no day.
     async fn live(&self) -> Option<String> {
         let dsp = self.dsp.clone();
@@ -306,9 +325,9 @@ async fn a_dsps_live_route_data_through_its_days() {
     for pair in reads.windows(2) {
         assert!((pair[1].at - pair[0].at - EVERY.as_millis() as i64).abs() <= 1000);
     }
-    // Its stop saved the day into historical route data, and live route data holds it still.
+    // Its stop saved the day into historical route data, and emptied live route data.
     assert_eq!(server.history(first_day).await.as_deref(), Some(READ));
-    assert_eq!(server.live().await.as_deref(), Some(READ));
+    assert_eq!(server.live_day().await, None);
 
     // The next day's first read empties live route data again.
     server.save(json!({"save_to_history":false})).await;
@@ -386,13 +405,15 @@ async fn a_dsps_live_route_data_through_its_days() {
     // Its stop is due as its window closes, at its place after the close.
     until(first + 6 * EVERY + 30 * SECOND).await;
     assert_eq!(server.history(fifth_day).await, None);
+    assert_eq!(server.live_day().await, Some(fifth_day.to_string()));
     drop(busy);
     until(first + 6 * EVERY + 2 * MINUTE).await;
     assert_eq!(server.history(fifth_day).await.as_deref(), Some(READ));
+    assert_eq!(server.live_day().await, None);
     assert_eq!(server.records().await.len(), 15 + 6);
 
     // Moved to another station after the day's last read, the day can never be saved as read:
-    // its stop ends it unsaved, and the next day reads at the new one.
+    // its stop ends it unsaved, live route data keeping it, and the next day reads at the new one.
     let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     let sixth_day = pin(&server);
@@ -402,7 +423,8 @@ async fn a_dsps_live_route_data_through_its_days() {
     server.station("TST2").await;
     until(close + 6 * MINUTE).await;
     assert_eq!(server.history(sixth_day).await, None);
-    let (open, _) = (open + DAY, close + DAY);
+    assert_eq!(server.live_day().await, Some(sixth_day.to_string()));
+    let (open, close) = (open + DAY, close + DAY);
     until(open - MINUTE).await;
     let seventh_day = pin(&server);
     until(open + EVERY).await;
@@ -410,5 +432,15 @@ async fn a_dsps_live_route_data_through_its_days() {
     assert_eq!(reads.len(), 27 + 1, "{:?}", &reads[26..]);
     assert_eq!(reads[27].outcome, "kept");
     assert_eq!(server.live_day().await, Some(seventh_day.to_string()));
+
+    // A day historical route data has a later read of by its stop is historical route data's
+    // already: that read stays the day's, and live route data is emptied all the same.
+    let first = instant(reads[27].at);
+    until(first + 5 * EVERY + SECOND).await;
+    server.saved_later().await;
+    until(close + 6 * MINUTE).await;
+    assert_eq!(server.history(seventh_day).await.as_deref(), Some(BEFORE));
+    assert_eq!(server.live_day().await, None);
+    assert_eq!(server.records().await.len(), 27 + 6);
     testing::pin_today(None);
 }

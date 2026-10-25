@@ -43,12 +43,13 @@ it is live route data, in a database of its own, `routelive`.
   read collected no later than the one kept. A day or scope other than the one live route data
   holds starts it afresh. The drivers its route list assigns are named before their itinerary
   is read, and Driver Match hears of each driver it names first (`people.changed`).
-  `clear_live` empties it and gives the file's space back, as a day starts; `save_live_day`
-  saves the last whole read it holds into historical route data through `save_day`, with every
-  hold of the day, under the key `live:<day>:<collected ms>`, so saving it again saves nothing
-  twice: a final read if it was read once its day had ended where the DSP is, a snapshot
-  otherwise, so a day's later final read replaces it. It answers none when live route data
-  holds no day, and leaves live route data as it was. All three refuse while Routes is off.
+  `clear_live` empties it and gives the file's space back, as a day starts or once a stopped
+  day is saved; `save_live_day` saves the last whole read it holds into historical route data
+  through `save_day`, with every hold of the day, under the key `live:<day>:<collected ms>`, so
+  saving it again saves nothing twice: a final read if it was read once its day had ended where
+  the DSP is, a snapshot otherwise, so a day's later final read replaces it. It answers none
+  when live route data holds no day, and leaves live route data as it was. All three refuse
+  while Routes is off.
 - **Work phones:** who holds which of the company's work phones is settled from each whole live
   read, in the transaction that keeps it (`backend/phones.rs`), from what each driver's record
   shows: the list's phone, else their itinerary's, by its last ten digits. A driver claims a

@@ -313,8 +313,8 @@ fn empty(db: &Db) -> Result<()> {
     Ok(())
 }
 
-/// Empties live route data, as a new day starts, and gives back the file's space, its log's
-/// with it. Refuses while Routes is off for the DSP (`routes_off`).
+/// Empties live route data, as a new day starts or a saved one stops, and gives back the
+/// file's space, its log's with it. Refuses while Routes is off for the DSP (`routes_off`).
 pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
     let d = dsp.to_owned();
     State::patiently(state.run_scoped(dsp, DOMAIN, move |db| {

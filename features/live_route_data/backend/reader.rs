@@ -237,10 +237,12 @@ impl LiveReader for Routes {
             Ok(counts)
         })
     }
-    /// The day is saved into historical route data if the DSP chose so; live route data keeps
-    /// it either way, until the next day starts. A save refused for good, as the DSP's station
-    /// changed since the day was read, ends the day unsaved, logged with its code; any other
-    /// failure is the stop's, which is asked again.
+    /// The day is saved into historical route data if the DSP chose so, and live route data is
+    /// emptied once it is: the day is historical route data's then, as the saved read or one
+    /// collected later. Unsaved, live route data keeps it until the next day starts. A save
+    /// refused for good, as the DSP's station changed since the day was read, ends the day
+    /// unsaved, logged with its code; any other failure is the stop's, which is asked again,
+    /// saving nothing twice.
     fn stopped<'a>(&'a self, reading: &'a Reading) -> Pending<'a, ()> {
         Box::pin(async move {
             let dsp = reading.dsp.clone();
@@ -260,6 +262,7 @@ impl LiveReader for Routes {
                     );
                     Ok(())
                 }
+                Ok(Some(_)) => dispatch_routes::clear_live(&reading.state, &reading.dsp).await,
                 saved => saved.map(drop),
             }
         })

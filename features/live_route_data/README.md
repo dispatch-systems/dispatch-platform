@@ -3,9 +3,9 @@
 A DSP's routes for today, read from Cortex every five minutes inside a window it sets, and kept as
 live route data through Routes, which keeps them and offers them to other features
 (`live_route_data`, Routes' `LiveRouteData`). As the window ends, the day is saved into historical
-route data if the DSP chose so. Live route data keeps the day either way, until the next day's
-first read empties it. It reads within the server through core's live readers
-(`core/collection/backend/readers/`), never as jobs.
+route data if the DSP chose so, and live route data is emptied once it is. A day left unsaved
+stays in live route data until the next day's first read empties it. It reads within the server
+through core's live readers (`core/collection/backend/readers/`), never as jobs.
 
 - **Switch:** `live_route_data`, off for every DSP until the platform owner switches it on. It needs
   a route source (Cortex), which switches on with it. A development or preview DSP's demo leaves it
@@ -45,14 +45,16 @@ first read empties it. It reads within the server through core's live readers
   - A read that isn't whole is never kept.
 - **A day:** its first whole read empties live route data of the day before (`clear_live`) before
   it is kept (`keep_live`). Each read after is kept in place. Once the window ends, the day is
-  saved into historical route data (`save_live_day`) if `save_to_history` is on; that runs once,
-  even after the server was down, and saving again saves nothing twice. A save Routes refuses for
-  good (`routes_scope_mismatch`, `routes_station_required`, `routes_day_not_available`,
-  `routes_capture_invalid`, `routes_source_too_large`, `invalid_input`, `routes_off`), as when the
-  DSP's station changed since the day was read, ends the day unsaved, logged as
-  `live_route_data.not_saved` with its day and code, so the next day reads; any other failure, as a
-  busy database, fails the stop, which is asked again a minute later. Live route data keeps the day
-  either way, until the next day starts. A restart inside the window goes on with the day as it
+  saved into historical route data (`save_live_day`) if `save_to_history` is on, and live route
+  data is emptied once it is, as when historical route data already has a read of the day
+  collected later; that runs once, even after the server was down, and saving again saves
+  nothing twice. A save Routes refuses for good (`routes_scope_mismatch`,
+  `routes_station_required`, `routes_day_not_available`, `routes_capture_invalid`,
+  `routes_source_too_large`, `invalid_input`, `routes_off`), as when the DSP's station changed
+  since the day was read, ends the day unsaved, logged as `live_route_data.not_saved` with its day
+  and code, so the next day reads; any other failure, as a busy database, fails the stop, which is
+  asked again a minute later. A day unsaved, refused or with `save_to_history` off, stays in live
+  route data until the next day starts. A restart inside the window goes on with the day as it
   was, emptying nothing.
 - **Records:** each read in the jobs database's `live_reads` (core's), with counts and codes only.
   A kept read counts the itineraries listed, the rows changed, the work phones held and the holds
