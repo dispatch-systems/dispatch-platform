@@ -112,4 +112,8 @@ export const feature: FrontendFeature = {
   // Its switch's icon on the DSPs page.
   platformSlots: () => import('./platform-slots.js'),
 {{/platformSlots}}
+{{#keeps}}
+  // What its collection collects, under it on Settings' Collectors page.
+  collected: () => import('./collected.js'),
+{{/keeps}}
 };
