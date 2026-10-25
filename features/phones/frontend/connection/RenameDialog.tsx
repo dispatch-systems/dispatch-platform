@@ -31,7 +31,12 @@ export function RenameDialog({
       >
         <label className="field">
           <span>Name</span>
-          <input value={name} maxLength={60} required onChange={(event) => setName(event.target.value)} />
+          <input
+            value={name}
+            maxLength={60}
+            required
+            onChange={(event) => setName(event.target.value)}
+          />
         </label>
         <div className="form-actions">
           <button type="button" onClick={() => onClose(false)}>

@@ -8,15 +8,16 @@ pub use api::types::{PhonePairing, PhoneRow, Phones};
 
 use dispatch_core::{
     db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql},
-    manifest::{Audit, Feature, feature, optional},
+    manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
 
 pub const FEATURE: Feature = Feature {
     place: 150,
     switch: optional("phones", "Phones", &[]),
-    // Pairing and removing phones is managing the DSP's connections; reading their texts is
-    // whoever reads them through `texting`, under their own permissions.
+    // Pairing, renaming and removing phones, as those who manage the DSP's connections may too;
+    // reading their texts is whoever reads them through `texting`, under their own permissions.
+    permissions: &[perm("phones.manage", "Manage Phones", 150)],
     routes: api::routes::routes,
     domains: &[backend::storage::DOMAIN],
     tables: &[(

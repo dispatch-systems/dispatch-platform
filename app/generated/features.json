@@ -596,7 +596,9 @@
     "frontend": true,
     "keeps": [],
     "migrations": {},
-    "permissions": [],
+    "permissions": [
+      "phones.manage"
+    ],
     "slots": {
       "audit": {
         "areas": [

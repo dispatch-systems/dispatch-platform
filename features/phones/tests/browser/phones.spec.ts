@@ -14,7 +14,9 @@ test('Add phone shows the code that pairs the next phone', async ({ page }) => {
     .getByRole('navigation', { name: 'Settings', exact: true })
     .getByRole('link', { name: 'Connections', exact: true })
     .click();
-  const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
+  const card = page
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
   await expect(card.getByRole('list', { name: 'Phones' })).toContainText('(206) 555-0100');
   await card.getByRole('button', { name: 'Add phone' }).click();
   const dialog = page.getByRole('dialog', { name: 'Add phone' });

@@ -14,6 +14,11 @@ const wording: Record<string, string> = {
   phones_not_found: "That phone isn't paired anymore. Refresh the page.",
   phones_address_required: 'The DSP needs its own address first.',
   phones_pairing_unavailable: "A code couldn't be made. Try again.",
+  // Only the phones' app meets these.
+  phones_off: 'Phones is off for this DSP.',
+  phones_pairing_invalid: "That code didn't work. Make a new one.",
+  phones_removed: 'This phone was removed.',
+  phones_file_not_found: "That picture isn't there anymore.",
 };
 const call = wordedApi(wording);
 

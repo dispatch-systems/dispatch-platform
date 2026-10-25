@@ -232,7 +232,9 @@ export const featureCatalog = [
   {
     "id": "phones",
     "label": "Phones",
-    "permissions": [],
+    "permissions": [
+      "phones.manage"
+    ],
     "requires": [],
     "kind": "page",
     "connects": true
@@ -341,7 +343,8 @@ export const permissions = [
   "documents.use",
   "slack.manage",
   "vans.collect",
-  "live_route_data.manage"
+  "live_route_data.manage",
+  "phones.manage"
 ] as const;
 export const permissionLabels = {
   "collections.run": "Run Collections",
@@ -359,6 +362,7 @@ export const permissionLabels = {
   "live_route_data.manage": "Manage Live Route Data",
   "members.invite": "Invite Members",
   "members.manage": "Manage Members",
+  "phones.manage": "Manage Phones",
   "roles.manage": "Manage Roles",
   "routes.collect": "Collect Routes",
   "routes.manage": "Manage Routes",
@@ -464,6 +468,12 @@ export const permissionGroups = [
     "Live Route Data",
     [
       "live_route_data.manage"
+    ]
+  ],
+  [
+    "Phones",
+    [
+      "phones.manage"
     ]
   ],
   [

@@ -8,14 +8,15 @@ itself.
 
 - **Switch:** `phones`, off for every DSP until the platform owner switches it on. It needs no
   connection of another's.
-- **Permissions:** none of its own. Its card and the card's routes are behind core's
-  `connections.manage` (Manage DSP Connections); a feature reading texts through `texting` does
-  so under its own permission.
+- **Permissions:** `phones.manage` (Manage Phones), for its card: pairing, renaming and removing
+  the DSP's phones, as core's `connections.manage` (Manage DSP Connections) allows too. Owners hold
+  it; another role holds it once the DSP's owner turns it on. A feature reading texts through
+  `texting` does so under its own permission.
 
 ## The card
 
-On Settings' DSP Connections, for those who manage the DSP's connections (`connectionPieces`,
-`dsp`): each phone, by its number, with its name, model and the app's version, Online once it
+On Settings' DSP Connections, for those who manage the DSP's phones or all its connections
+(`connectionPieces`, `dsp`): each phone, by its number, with its name, model and the app's version, Online once it
 checked in in the last two minutes, else Offline and for how long, read again every 30 seconds;
 Rename and Remove in its menu. With none, No phone. **Add phone** shows the code that pairs the
 next phone, as a QR code its app reads and as its eight letters, and how long it lasts; one
@@ -25,8 +26,7 @@ reach: without one, `phones_address_required`.
 
 ## Pairing
 
-A code is eight letters of 32 (no 0, O, 1 or I), made by someone who manages the DSP's
-connections, working once, for ten minutes, one at a time: a new one replaces any not used yet.
+A code is eight letters of 32 (no 0, O, 1 or I), made by someone who manages the DSP's phones, working once, for ten minutes, one at a time: a new one replaces any not used yet.
 Only its SHA-256 is kept. The phone reads it with the DSP's address from the QR code
 (`dispatch-phone:pair?site=<address>&code=<code>`) and trades it, with its own number, model and
 the app's version, for a key: 32 random bytes in hexadecimal, of which only the SHA-256 is kept.

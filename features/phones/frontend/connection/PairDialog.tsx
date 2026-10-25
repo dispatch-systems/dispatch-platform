@@ -15,7 +15,7 @@ export function PairDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
   const phones = usePhones(POLL);
-  const known = useRef<number>();
+  const known = useRef<number | undefined>(undefined);
   const make = () => {
     setError('');
     setPairing(undefined);

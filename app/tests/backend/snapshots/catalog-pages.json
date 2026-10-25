@@ -139,7 +139,7 @@
     {
       "id": "phones",
       "label": "Phones",
-      "permissions": [],
+      "permissions": ["phones.manage"],
       "requires": [],
       "default": false,
       "mandatory": false

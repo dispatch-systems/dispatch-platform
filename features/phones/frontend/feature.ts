@@ -10,13 +10,13 @@ const PhonesCard = lazy(() => loadCard().then((module) => ({ default: module.Pho
 
 export const feature: FrontendFeature = {
   name: 'phones',
-  // The DSP's phones, on Settings' Connections, for those who manage its connections.
+  // The DSP's phones, on Settings' Connections, for those who manage them or all its connections.
   connectionPieces: [
     {
       id: 'phones',
       section: 'dsp',
       order: 100,
-      visible: (view) => can(view, 'connections.manage'),
+      visible: (view) => can(view, 'connections.manage') || can(view, 'phones.manage'),
       reads: [phonesUrl],
       load: loadCard,
       render: ({ view }) => view && createElement(PhonesCard, { view }),
@@ -24,4 +24,9 @@ export const feature: FrontendFeature = {
   ],
   // Its switch's icon, and how its events read in the audit log.
   platformSlots: () => import('./platform-slots.js'),
+  // Sending a text through `texting` meets these, on whichever page sends it.
+  errors: {
+    phones_none: 'Pair a phone first.',
+    phones_text_not_found: "That text isn't there anymore. Refresh the page.",
+  },
 };

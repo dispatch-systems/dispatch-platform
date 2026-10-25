@@ -1,6 +1,6 @@
 //! Phones' endpoints, each registered with its path and access: the Phones card's behind
-//! `connections.manage` (Manage DSP Connections), and its phones' behind the key each was given,
-//! at the DSP's own address (`phone.rs`).
+//! `phones.manage` (Manage Phones) or `connections.manage` (Manage DSP Connections), and its
+//! phones' behind the key each was given, at the DSP's own address (`phone.rs`).
 use super::{
     phone::{self, Phone},
     types::{PhonePairing, PhoneRow, Phones},
@@ -20,8 +20,8 @@ use dispatch_core::{
     },
 };
 
-/// Managing the DSP's connections, its phones among them.
-const MANAGE: Dsp = Dsp("connections.manage");
+/// Managing the DSP's phones, as managing all its connections includes.
+const MANAGE: Dsp = Dsp("connections.manage|phones.manage");
 
 pub fn routes() -> Vec<Route> {
     vec![

@@ -20,10 +20,18 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
   assert.match(pairing.value.picture, /^data:image\/svg\+xml;base64,/);
 
   const at = f.at(demo.memberDsp);
-  const phone = { code: pairing.value.code, number: '(206) 555-0177', model: 'Pixel 8a', version: '1.0.0' };
+  const phone = {
+    code: pairing.value.code,
+    number: '(206) 555-0177',
+    model: 'Pixel 8a',
+    version: '1.0.0',
+  };
   // Only at a DSP's own address, and never from a browser.
   assert.equal((await f.request('/api/phones/pair', phone)).status, 401);
-  const browser = await f.request('/api/phones/pair', phone, { ...at, cookie: 'dispatch_session=x' });
+  const browser = await f.request('/api/phones/pair', phone, {
+    ...at,
+    cookie: 'dispatch_session=x',
+  });
   assert.equal(browser.status, 401);
   const paired = await f.request('/api/phones/pair', phone, at);
   assert.equal(paired.status, 200, paired.body);
@@ -38,7 +46,13 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
   assert.equal(row.online, true);
 
   const key = { authorization: `Bearer ${paired.value.key}` };
-  const text = { clientId: 'sms-1', direction: 'in', number: '4255550199', body: 'Gate code?', at: Date.now() };
+  const text = {
+    clientId: 'sms-1',
+    direction: 'in',
+    number: '4255550199',
+    body: 'Gate code?',
+    at: Date.now(),
+  };
   const reported = await f.request('/api/phones/texts', { texts: [text] }, { ...at, ...key });
   assert.equal(reported.status, 200, reported.body);
   assert.equal(reported.value.texts[0].clientId, 'sms-1');
@@ -46,16 +60,23 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
   const elsewhere = await f.request('/api/phones/texts', { texts: [text] }, key);
   assert.equal(elsewhere.status, 401);
   const wrong = { authorization: `Bearer ${'0'.repeat(64)}` };
-  assert.equal((await f.request('/api/phones/texts', { texts: [text] }, { ...at, ...wrong })).status, 401);
+  assert.equal(
+    (await f.request('/api/phones/texts', { texts: [text] }, { ...at, ...wrong })).status,
+    401,
+  );
 
   const removed = await owner.post(`/api/dsp/phones/${paired.value.phone.id}/remove`);
   assert.equal(removed.status, 200, removed.body);
-  const after = await f.request('/api/phones/statuses', { statuses: [{ id: 'text_x', status: 'sent', at: 1 }] }, { ...at, ...key });
+  const after = await f.request(
+    '/api/phones/statuses',
+    { statuses: [{ id: 'text_x', status: 'sent', at: 1 }] },
+    { ...at, ...key },
+  );
   assert.equal(after.status, 401);
   assert.equal(after.value.error, 'phones_removed');
 });
 
-test('Only those who manage the DSP connections see or pair its phones', async (t) => {
+test('Only those who manage the DSP's phones or connections see or pair them', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const member = await f.client(demo.member);

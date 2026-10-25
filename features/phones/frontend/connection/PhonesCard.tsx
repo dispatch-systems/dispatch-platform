@@ -3,7 +3,12 @@ import { Ellipsis, Plus, Smartphone } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { Badge, ConfirmDialog, DataState, Popover } from '../../../../core/shell/frontend/ui/index.js';
+import {
+  Badge,
+  ConfirmDialog,
+  DataState,
+  Popover,
+} from '../../../../core/shell/frontend/ui/index.js';
 import { removePhone, usePhones, type PhoneRow } from '../../api/client.js';
 import { PairDialog } from './PairDialog.js';
 import { RenameDialog } from './RenameDialog.js';
@@ -30,7 +35,10 @@ export function PhonesCard(_: { view: DspView }) {
     { success: 'Phone removed' },
   );
   return (
-    <article className="archived-connection-card phones-connection-card" aria-labelledby="phones-connection">
+    <article
+      className="archived-connection-card phones-connection-card"
+      aria-labelledby="phones-connection"
+    >
       <header>
         <h3 id="phones-connection">
           <Smartphone size={20} className="phones-mark" />
@@ -53,7 +61,9 @@ export function PhonesCard(_: { view: DspView }) {
                     </span>
                     <div className="phones-row-body">
                       <strong>{phone.number ? phoneText(phone.number) : phone.name}</strong>
-                      <small>{[phone.name, phone.model, phone.appVersion].filter(Boolean).join(' · ')}</small>
+                      <small>
+                        {[phone.name, phone.model, phone.appVersion].filter(Boolean).join(' · ')}
+                      </small>
                     </div>
                     {phone.online ? (
                       <Badge value="ready">Online</Badge>
@@ -122,6 +132,10 @@ function offline(lastSeenAt: number | null) {
   if (lastSeenAt === null) return 'Offline';
   const minutes = Math.max(1, Math.floor((Date.now() - lastSeenAt) / 60_000));
   const ago =
-    minutes < 60 ? `${minutes}m` : minutes < 24 * 60 ? `${Math.floor(minutes / 60)}h` : `${Math.floor(minutes / (24 * 60))}d`;
+    minutes < 60
+      ? `${minutes}m`
+      : minutes < 24 * 60
+        ? `${Math.floor(minutes / 60)}h`
+        : `${Math.floor(minutes / (24 * 60))}d`;
   return `Offline · ${ago}`;
 }
