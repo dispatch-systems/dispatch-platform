@@ -32,7 +32,7 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Whether `html` is the console's own page, by its title: a sign-in, a verification or a
 /// robot check served in its place has another.
-fn console(html: &str) -> bool {
+pub(crate) fn console(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
     lower
         .split("<title>")

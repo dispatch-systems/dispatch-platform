@@ -1,15 +1,19 @@
-//! A day's routes. The scope comes from discovery, as for meals; the route list is then
-//! taken as the page's own data response, which the page signs, arrives.
+//! A day's routes. The scope comes from discovery, as for meals. The day is read first
+//! with no page at all (`native`): the browser's session, and every read signed here with
+//! the key the list's page carries; the browser closes once that reads it whole.
 //!
-//! The list is one page load. Every itinerary and the newer routes page's list are then
-//! signed by that loaded application and downloaded (`signed`). Whatever that does not
-//! read is read by moves inside the application: the address changes as a click in the
-//! list would change it, and the application fetches just that itinerary. An itinerary
-//! the application does not answer for is read by loading its own page instead.
+//! Otherwise the route list is taken as the page's own data response, which the page
+//! signs, arrives: one page load. Every itinerary and the newer routes page's list are
+//! then signed by that loaded application and downloaded (`signed`). Whatever that does
+//! not read is read by moves inside the application: the address changes as a click in
+//! the list would change it, and the application fetches just that itinerary. An
+//! itinerary the application does not answer for is read by loading its own page instead.
 use super::capture::{
     Capture, Collection, ItineraryCapture, MAX_BODY, MAX_CAPTURE_BYTES, MAX_ITINERARIES, Request,
     add_capture_bytes, listed, token,
 };
+use super::native::Native;
+use crate as cortex;
 use crate::{codes, connection::Driver, discovery::Scope};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use dispatch_core::{
@@ -17,6 +21,7 @@ use dispatch_core::{
     collection::{
         browser::{
             Run,
+            http::SignedIn,
             page::{Page, call},
         },
         metrics::Recorder,
@@ -33,7 +38,7 @@ use std::{
 };
 use tokio::time::Instant;
 
-const SUMMARIES: &str = "/operations/execution/api/summaries";
+pub(super) const SUMMARIES: &str = "/operations/execution/api/summaries";
 pub(super) const ROUTE_SUMMARIES: &str = "/operations/execution/api/route-summaries";
 pub(super) const ITINERARY: &str = "/operations/execution/api/itineraries/";
 /// Where the application's API action asks for itinerary `id`.
@@ -71,13 +76,18 @@ pub(crate) enum Navigation {
     /// The list's application signs every read, which is downloaded; what that does not
     /// read is read as `InApp` does.
     Signed,
+    /// Every read is signed here, with no page; a day that does not read whole is read as
+    /// `Signed` reads it.
+    Native,
 }
-/// How a day is read. The default was measured against the alternatives on a real day of
-/// 41 itineraries (`measure_route_method`): signed by the application and downloaded
-/// twelve at a time, it read the day in under a third of the time and CPU of moving in
-/// the application in three background tabs with every response withheld, which itself
-/// took a quarter of the time and a tenth of the CPU of loading each page.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// How a day is read. The default was measured against the alternatives on real days.
+/// Signed here and downloaded twelve at a time, with no page, a day of 46 itineraries read
+/// in 5.7 s and half a CPU-second, where the application's own signatures took 8.2 s and
+/// 8.4 CPU-seconds with the browser at 611 MB. Those, on a day of 41
+/// (`measure_route_method`), took under a third of the time and CPU of moving in the
+/// application in three background tabs with every response withheld, which itself took
+/// a quarter of the time and a tenth of the CPU of loading each page.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub(crate) struct Method {
     pub navigation: Navigation,
@@ -89,13 +99,13 @@ pub(crate) struct Method {
     /// A captured response is failed for the page, which then never parses or renders
     /// it.
     pub withhold: bool,
-    /// Signed reads downloaded at once.
+    /// Reads the application signs downloaded at once.
     pub downloads: usize,
 }
 impl Default for Method {
     fn default() -> Self {
         Self {
-            navigation: Navigation::Signed,
+            navigation: Navigation::Native,
             tabs: 3,
             windows: false,
             withhold: true,
@@ -139,7 +149,7 @@ pub(super) fn owned_by(text: &str, id: &str, transporter: &str) -> bool {
 /// responses. A failed reservation leaves the total unchanged.
 pub(super) struct CaptureBudget(AtomicUsize);
 impl CaptureBudget {
-    fn new(bytes: usize) -> Result<Self> {
+    pub(super) fn new(bytes: usize) -> Result<Self> {
         Ok(Self(AtomicUsize::new(add_capture_bytes(0, bytes)?)))
     }
     /// What the day may still hold.
@@ -390,7 +400,6 @@ impl Driver {
             "routes_capture_invalid",
             502,
         )?;
-        self.ensure_page().await?;
         let started_at = now();
         progress(5, "Finding the station".into()).await?;
         let scope = self
@@ -402,6 +411,33 @@ impl Driver {
             502,
         )?;
         progress(10, "Reading the route list".into()).await?;
+        let mut method = *method;
+        if method.navigation == Navigation::Native {
+            let session = SignedIn::of(&self.browser, &self.origin, &cortex::HOSTS).await?;
+            let read = Native::new(&session)?.read(&scope, request.mode).await;
+            if read.is_ok() {
+                progress(95, "Validating routes".into()).await?;
+            }
+            // A day is checked before the browser closes: one that fails is read with it.
+            let native = read.and_then(|capture| {
+                capture.validate(request)?;
+                Ok(capture)
+            });
+            match native {
+                Ok(capture) => {
+                    // Nothing needs the browser now: it closes before the day is kept.
+                    self.browser.close().await;
+                    metrics.method("routes_native");
+                    return Ok(capture);
+                }
+                Err(failure) => {
+                    metrics.detail(failure.label());
+                    method.navigation = Navigation::Signed;
+                }
+            }
+        }
+        let method = &method;
+        self.ensure_page().await?;
         let origin = self.origin.clone();
         let parse = |text: String| -> Result<Value> {
             serde_json::from_str(&text).map_err(|_| Error::new("cortex_content_incomplete", 502))
@@ -523,6 +559,8 @@ impl Driver {
         if let Some(error) = failure {
             return Err(error);
         }
+        // Whether moves read any of the day, after the application's signatures.
+        let moved = !todo.is_empty() || route_summaries.is_none();
         let route_summaries = match route_summaries {
             Some(value) => value,
             None => {
@@ -540,6 +578,14 @@ impl Driver {
             .into_iter()
             .map(|c| c.ok_or_else(|| Error::new("routes_capture_invalid", 502)))
             .collect::<Result<Vec<_>>>()?;
+        if method.navigation == Navigation::Signed {
+            // The application's signatures alone read the day, or moves as well.
+            metrics.method(if moved {
+                "routes_signed_moved"
+            } else {
+                "routes_signed"
+            });
+        }
         progress(95, "Validating routes".into()).await?;
         let capture = Capture {
             version: 1,

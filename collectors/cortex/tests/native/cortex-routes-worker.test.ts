@@ -1,17 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 // The real Rust driver against a staged execution site: discovery finds the service
-// area and provider, and the itinerary list is read as the page's own data response.
-// The list's application then signs every itinerary and the newer routes page's list,
-// which the driver downloads itself; the itinerary and the routes page's list whose
-// downloads keep failing are read by moving the application to them. The day is
-// published from them.
+// area and provider. Its list page carries no key to sign with at first, so the itinerary
+// list is read as the page's own data response; the list's application then signs every
+// itinerary and the newer routes page's list, which the driver downloads itself, and the
+// itinerary and the routes page's list whose downloads keep failing are read by moving the
+// application to them. Once the page carries a key, the day is read again with no page,
+// every read signed by the driver, and read as before when what that read fails its
+// checks. The day is published from each.
 test(
-  'Cortex BrowserOS collects a day of routes the application signs, moving to what will not download',
+  'Cortex BrowserOS collects a day of routes signed natively, or as the application signs it, moving to what will not download',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 240000 },
   async (t) => {
     const area = '7b0d842b-699a-41a1-8881-d6dd5f89939d';
@@ -19,8 +22,9 @@ test(
     const day = '2026-09-25';
     const base = Date.UTC(2026, 8, 25, 15);
     const hour = 3_600_000;
-    // Each data request, and whether the page sent it or the driver downloaded it.
-    const requests: { url: URL; page: boolean }[] = [];
+    // Each data request, and who sent it: the page, the driver with the page's signature,
+    // or the driver signing it itself.
+    const requests: { url: URL; by: 'page' | 'driver' | 'native' }[] = [];
     // Data requests without a valid signature for their address, which Cortex refuses.
     const unsigned: string[] = [];
     // Documents loaded other than the list: Cortex's pages are one application that
@@ -208,9 +212,39 @@ test(
       itineraryPartners: null,
       routePauseStatus: null,
     });
-    // Cortex's signature of one request: its address, the session and the moment, which
-    // only the application can make and the server checks. A header of the page's own
-    // tells the page's requests from the driver's, which send only the signature.
+    // The key the list page carries once `keyed`, as Cortex's pages hold it in their state.
+    const native = { session: 'native-session', key: 'fixture-key' };
+    let keyed = false;
+    // Whether an itinerary read with the page's key is one the collection refuses.
+    let unreadable = false;
+    // The downloads with the application's signature that never come; the page's own
+    // requests read them.
+    let failing = (url: URL) =>
+      url.searchParams.get('itineraryId') === 'itinerary-2' ||
+      url.pathname === '/operations/execution/api/route-summaries';
+    // Cortex's signature of one request with the page's key: its method, path, sorted query,
+    // session and moment.
+    const signature = (url: URL, session: string, stamp: string) => {
+      const query = new URLSearchParams(
+        [...url.searchParams].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      );
+      return createHmac('sha256', native.key)
+        .update(
+          [
+            'GET',
+            url.pathname,
+            query.toString(),
+            `x-cortex-session:${session}`,
+            `x-cortex-timestamp:${stamp}`,
+            '',
+            'x-cortex-session;x-cortex-timestamp',
+          ].join('\n'),
+        )
+        .digest('base64');
+    };
+    // The application's own signature of one request: its address, the session and the
+    // moment, which only the application can make and the server checks. A header of the
+    // page's own tells the page's requests from the driver's, which send only the signature.
     const canonical = (url: URL, session: string, stamp: string) =>
       [
         'GET',
@@ -274,8 +308,11 @@ test(
       const authenticated = req.headers.cookie?.includes('authenticated=yes');
       const html = (body: string) => {
         res.setHeader('content-type', 'text/html');
+        const state = keyed
+          ? `<script type="a-state">${JSON.stringify({ hmacSession: { sessionKey: native.key, sessionId: native.session } })}</script>`
+          : '';
         res.end(
-          `<html><head><title>DSP Console</title></head><body><div id="root">${body}</div></body></html>`,
+          `<html><head><title>DSP Console</title></head><body><div id="root">${body}</div>${state}</body></html>`,
         );
       };
       const json = (value: unknown) => {
@@ -317,26 +354,26 @@ test(
         return redirect('/ap/signin');
       }
       if (url.pathname.startsWith('/operations/execution/api/')) {
-        const page = req.headers['x-fixture-page'] === 'yes';
-        requests.push({ url, page });
         const session = String(req.headers['x-cortex-session'] ?? '');
         const stamp = String(req.headers['x-cortex-timestamp'] ?? '');
-        const signature = String(req.headers['x-cortex-hmac-signature'] ?? '');
-        if (
-          !session ||
-          !stamp ||
-          Buffer.from(signature, 'base64').toString() !== canonical(url, session, stamp)
-        ) {
+        const signed = String(req.headers['x-cortex-hmac-signature'] ?? '');
+        const by =
+          session === native.session
+            ? 'native'
+            : req.headers['x-fixture-page'] === 'yes'
+              ? 'page'
+              : 'driver';
+        requests.push({ url, by });
+        const valid =
+          by === 'native'
+            ? signed === signature(url, session, stamp)
+            : Buffer.from(signed, 'base64').toString() === canonical(url, session, stamp);
+        if (!session || !stamp || !valid) {
           unsigned.push(url.pathname);
           res.writeHead(400);
           return res.end();
         }
-        // The second driver's itinerary and the routes page's list never download; the
-        // page's own requests read them.
-        const failing =
-          url.searchParams.get('itineraryId') === 'itinerary-2' ||
-          url.pathname === '/operations/execution/api/route-summaries';
-        if (!page && failing) {
+        if (by === 'driver' && failing(url)) {
           res.writeHead(503);
           return res.end();
         }
@@ -350,7 +387,10 @@ test(
             res.writeHead(404);
             return res.end();
           }
-          return json(detail(drivers[index]!, index));
+          const read = detail(drivers[index]!, index);
+          if (by === 'native' && unreadable)
+            return json({ ...read, itineraryDetails: { ...read.itineraryDetails, stops: 'none' } });
+          return json(read);
         }
         res.writeHead(404);
         return res.end();
@@ -410,14 +450,22 @@ test(
       password: 'fixture-password',
     });
     assert.equal(saved.value.status, 'ready', saved.body);
-    const queued = await owner.post('/api/dsp/routes/collect', { requestId: day, date: day });
-    assert.equal(queued.status, 202, queued.body);
-    const job = queued.value[0];
-    await until(async () => {
-      const current = (await owner.read('/api/dsp/routes/jobs')).find((j: any) => j.id === job.id);
-      assert.notEqual(current.status, 'failed', JSON.stringify(current));
-      return current.status === 'succeeded';
-    }, 120000);
+    const collected = async (requestId: string) => {
+      const queued = await owner.post('/api/dsp/routes/collect', { requestId, date: day });
+      assert.equal(queued.status, 202, queued.body);
+      let job: any;
+      await until(async () => {
+        job = (await owner.read('/api/dsp/routes/jobs')).find(
+          (j: any) => j.id === queued.value[0].id,
+        );
+        assert.notEqual(job.status, 'failed', JSON.stringify(job));
+        return job.status === 'succeeded';
+      }, 120000);
+      return job;
+    };
+    const job = await collected(day);
+    // The page carried no key: the application's signatures read the day, and moves the rest.
+    assert.equal(job.metrics.at(-1).method, 'routes_signed_moved');
     const days = (await owner.get('/api/dsp/routes/days')).value;
     assert.equal(days.days.length, 1);
     assert.equal(days.days[0].itineraryCount, 2);
@@ -442,7 +490,7 @@ test(
       requests
         .filter(({ url }) => url.pathname.startsWith(path))
         .filter(({ url }) => !id || url.searchParams.get('itineraryId') === id)
-        .map(({ page }) => (page ? 'page' : 'driver'));
+        .map(({ by }) => by);
     assert.ok(sent('/operations/execution/api/summaries').length > 0);
     assert.ok(sent('/operations/execution/api/summaries').every((by) => by === 'page'));
     assert.deepEqual(sent('/operations/execution/api/route-summaries').slice(-3), [
@@ -485,5 +533,46 @@ test(
       { tracking_id: 'TBA000000000001', task_state: 'DELIVERED', transporter_id: 'driver-1' },
       { tracking_id: 'TBA000000000002', task_state: 'DELIVERED', transporter_id: 'driver-2' },
     ]);
+
+    // A day read with the page's key that fails the collection's checks is read as before:
+    // here every itinerary downloads, and only the routes page's list is read by a move.
+    keyed = true;
+    unreadable = true;
+    failing = (url) => url.pathname === '/operations/execution/api/route-summaries';
+    const checked = requests.length;
+    const refused = await collected('refused');
+    assert.equal(refused.metrics.at(-1).method, 'routes_signed_moved');
+    assert.deepEqual([...new Set(requests.slice(checked).map(({ by }) => by))].sort(), [
+      'driver',
+      'native',
+      'page',
+    ]);
+
+    // Once the list page carries a key, the day is read again with no page: each list and
+    // itinerary asked for once, signed by the driver.
+    unreadable = false;
+    const asked = requests.length;
+    const again = await collected('again');
+    assert.equal(again.metrics.at(-1).method, 'routes_native');
+    assert.deepEqual(unsigned, []);
+    assert.deepEqual(
+      requests
+        .slice(asked)
+        .map(({ url, by }) => `${by} ${url.pathname}`)
+        .sort(),
+      [
+        'native /operations/execution/api/itineraries/itinerary-1',
+        'native /operations/execution/api/itineraries/itinerary-2',
+        'native /operations/execution/api/route-summaries',
+        'native /operations/execution/api/summaries',
+      ],
+    );
+    const republished = f.database(`dsps/${dsp.id}/data/routedata/routedata.sqlite`, (db) =>
+      db
+        .prepare('SELECT job_id FROM route_publications WHERE active=1')
+        .all()
+        .map((r: any) => r.job_id),
+    );
+    assert.deepEqual(republished, [again.id]);
   },
 );

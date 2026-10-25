@@ -3,18 +3,19 @@
 //! Requests keep to the browser's egress rules: the provider's own HTTPS hosts on
 //! public IPv4 addresses, no redirects or ambient proxies, bounded in size and time. An
 //! isolated support verification uses its fixed trusted provider broker. Session cookies
-//! stay in memory for the job and are never written or logged.
+//! stay in memory, for the job or a reader that goes on after it, and are never written or
+//! logged.
 use super::{browseros, egress};
 use crate::{Error, Result, db::s};
 use reqwest::{
     Client, Response, StatusCode,
     cookie::Jar,
     dns::{Addrs, Name, Resolve, Resolving},
-    header::CONTENT_TYPE,
+    header::{CONTENT_ENCODING, CONTENT_TYPE},
     redirect::Policy,
 };
 use serde_json::{Map, Value, json};
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{io::Read, net::SocketAddr, sync::Arc, time::Duration};
 use url::Url;
 
 /// As much as a reader in the tab accepts.
@@ -50,6 +51,18 @@ enum Hosts {
     Fixture(u16),
 }
 impl Hosts {
+    /// Where a session at `origin` may go: the local stand-in it names, or `hosts` when the
+    /// origin is one of theirs.
+    fn of(origin: &str, hosts: &'static RequestHosts) -> Result<Self> {
+        let url = Url::parse(origin).map_err(|_| Error::new("egress_denied", 403))?;
+        match url.host_str() {
+            Some(FIXTURE) => Ok(Self::Fixture(
+                url.port().ok_or_else(|| Error::new("egress_denied", 403))?,
+            )),
+            Some(host) if (hosts.allowed)(host) => Ok(Self::Provider(hosts)),
+            _ => Err(Error::new("egress_denied", 403)),
+        }
+    }
     fn allows(self, url: &Url) -> bool {
         match self {
             Self::Provider(hosts) => hosts.allows(url),
@@ -106,6 +119,88 @@ pub enum Refusal {
     Unavailable,
     /// Anything else, named by a fixed label.
     Unreadable(&'static str),
+}
+
+/// A provider's session as a signed-in browser held it: the cookies its requests carry and
+/// the browser's user agent, so a reader can go on with it after the browser closes. Kept in
+/// memory only.
+#[derive(Clone)]
+pub struct SignedIn {
+    /// The provider's origin: one of its hosts, or the local stand-in.
+    pub origin: String,
+    pub cookies: Vec<Cookie>,
+    pub user_agent: String,
+}
+/// One cookie of a session, as the browser held it.
+#[derive(Clone)]
+pub struct Cookie {
+    pub name: String,
+    pub value: String,
+    pub domain: String,
+    pub path: String,
+    pub secure: bool,
+}
+impl SignedIn {
+    /// What `browser` holds for the provider at `origin`, one of its `hosts`: its cookies
+    /// on the hosts' cookie domains, and its user agent.
+    pub async fn of(
+        browser: &browseros::Session,
+        origin: &str,
+        hosts: &'static RequestHosts,
+    ) -> Result<Self> {
+        let carried = Hosts::of(origin, hosts)?;
+        let cookies = browser
+            .command("Storage.getCookies", json!({}), None)
+            .await?;
+        let version = browser
+            .command("Browser.getVersion", json!({}), None)
+            .await?;
+        let cookies = cookies["cookies"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|cookie| carried.cookie(s(cookie, "domain").trim_start_matches('.')))
+            .map(|cookie| Cookie {
+                name: s(cookie, "name").into(),
+                value: s(cookie, "value").into(),
+                domain: s(cookie, "domain").into(),
+                path: s(cookie, "path").into(),
+                secure: cookie["secure"] == true,
+            })
+            .collect();
+        Ok(Self {
+            origin: origin.trim_end_matches('/').to_owned(),
+            cookies,
+            user_agent: s(&version, "userAgent").into(),
+        })
+    }
+}
+
+/// A body as the wire sent it, from `Http::wire`.
+pub struct Wire {
+    body: Vec<u8>,
+    gzipped: bool,
+}
+impl Wire {
+    /// Its text within `limit` bytes, decoded when it came gzipped, as strict as `json_text`.
+    /// Decoding takes a core: a reader on the threads serving requests hands it to a blocking
+    /// one.
+    pub fn into_text(self, limit: usize) -> std::result::Result<String, Refusal> {
+        let bytes = if self.gzipped {
+            let mut decoded = Vec::new();
+            flate2::read::GzDecoder::new(self.body.as_slice())
+                .take(limit as u64 + 1)
+                .read_to_end(&mut decoded)
+                .map_err(|_| Refusal::Unreadable("http_encoding"))?;
+            decoded
+        } else {
+            self.body
+        };
+        if bytes.len() > limit {
+            return Err(Refusal::Unreadable("http_too_large"));
+        }
+        utf8(bytes)
+    }
 }
 
 pub struct Http {
@@ -212,44 +307,35 @@ impl Http {
         origin: &str,
         hosts: &'static RequestHosts,
     ) -> Result<Self> {
-        let origin_url = Url::parse(origin).map_err(|_| Error::new("egress_denied", 403))?;
-        let hosts = match origin_url.host_str() {
-            Some(FIXTURE) => Hosts::Fixture(
-                origin_url
-                    .port()
-                    .ok_or_else(|| Error::new("egress_denied", 403))?,
-            ),
-            Some(host) if (hosts.allowed)(host) => Hosts::Provider(hosts),
-            _ => return Err(Error::new("egress_denied", 403)),
+        Self::carrying(&SignedIn::of(browser, origin, hosts).await?, hosts, true)
+    }
+    /// A client carrying `session` as `signed_in` makes one, but handing bodies back as the
+    /// wire sent them, for a reader that asks for gzip with `wire` and decodes them itself.
+    pub fn with_session(session: &SignedIn, hosts: &'static RequestHosts) -> Result<Self> {
+        Self::carrying(session, hosts, false)
+    }
+    fn carrying(session: &SignedIn, hosts: &'static RequestHosts, decoded: bool) -> Result<Self> {
+        let hosts = Hosts::of(&session.origin, hosts)?;
+        let scheme = if matches!(hosts, Hosts::Fixture(_)) {
+            "http"
+        } else {
+            "https"
         };
-        let cookies = browser
-            .command("Storage.getCookies", json!({}), None)
-            .await?;
-        let version = browser
-            .command("Browser.getVersion", json!({}), None)
-            .await?;
         let jar = Jar::default();
-        let scheme = origin_url.scheme();
         let mut carried = 0;
-        for cookie in cookies["cookies"].as_array().into_iter().flatten() {
-            let domain = s(cookie, "domain");
-            let host = domain.trim_start_matches('.');
+        for cookie in &session.cookies {
+            let host = cookie.domain.trim_start_matches('.');
             if !hosts.cookie(host) {
                 continue;
             }
             let Ok(url) = Url::parse(&format!("{scheme}://{host}/")) else {
                 continue;
             };
-            let mut line = format!(
-                "{}={}; Path={}",
-                s(cookie, "name"),
-                s(cookie, "value"),
-                s(cookie, "path")
-            );
-            if domain.starts_with('.') {
+            let mut line = format!("{}={}; Path={}", cookie.name, cookie.value, cookie.path);
+            if cookie.domain.starts_with('.') {
                 line.push_str(&format!("; Domain={host}"));
             }
-            if cookie["secure"] == true {
+            if cookie.secure {
                 line.push_str("; Secure");
             }
             jar.add_cookie_str(&line, &url);
@@ -262,19 +348,23 @@ impl Http {
         )?;
         // HTTP/2 only where the provider's hosts ask for it, never for the local stand-in.
         if !hosts.http2() {
-            client = client.http1_only().no_gzip();
+            client = client.http1_only();
+        }
+        // Compressed only over HTTP/2, and decoded here unless the reader decodes itself.
+        if !hosts.http2() || !decoded {
+            client = client.no_gzip();
         }
         let client = client
             .dns_resolver(Arc::new(Resolver(hosts)))
             .https_only(!matches!(hosts, Hosts::Fixture(_)))
             .connect_timeout(Duration::from_secs(10))
-            .user_agent(s(&version, "userAgent"))
+            .user_agent(&session.user_agent)
             .build()
             .map_err(|_| Error::new("browser_unavailable", 503))?;
         Ok(Self {
             client,
             hosts,
-            origin: origin.trim_end_matches('/').to_owned(),
+            origin: session.origin.clone(),
             cookies: carried,
         })
     }
@@ -311,6 +401,14 @@ impl Http {
         if status != StatusCode::OK {
             return Err(Refusal::Unreadable("http_status"));
         }
+        utf8(Self::bytes(response, kind, limit).await?)
+    }
+    /// An answer's bytes as they came, when it is of type `kind` and within `limit`.
+    async fn bytes(
+        mut response: Response,
+        kind: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<u8>, Refusal> {
         let expected = response
             .headers()
             .get(CONTENT_TYPE)
@@ -326,7 +424,6 @@ impl Http {
         {
             return Err(Refusal::Unreadable("http_too_large"));
         }
-        let mut response = response;
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| Refusal::Unavailable)? {
             bytes.extend_from_slice(&chunk);
@@ -334,9 +431,7 @@ impl Http {
                 return Err(Refusal::Unreadable("http_too_large"));
             }
         }
-        // As `TextDecoder('utf-8', {fatal: true})`: strict, with a leading BOM dropped.
-        let text = String::from_utf8(bytes).map_err(|_| Refusal::Unreadable("http_encoding"))?;
-        Ok(text.strip_prefix('\u{feff}').unwrap_or(&text).to_owned())
+        Ok(bytes)
     }
     /// Sends `body` with `headers` as a page at the session's origin would, and answers
     /// the JSON text that comes back, within the size a tab accepts. A target outside the
@@ -402,6 +497,65 @@ impl Http {
         let response = request.send().await.map_err(|_| Refusal::Unavailable)?;
         Self::body_within(response, "application/json", limit).await
     }
+    /// A GET of `url`, sent with `headers` as well, that asks for gzip and answers the body
+    /// as the wire sent it, within `limit` bytes as sent. `kind` is the type it must be,
+    /// `application/json` or `text/html`, asked for as a tab asks. Unlike the reads above,
+    /// it refuses a redirect as `http_redirected` and a 401 or 403 as `http_refused`, so a
+    /// reader signing its own requests tells a session that ended from a signature refused.
+    pub async fn wire(
+        &self,
+        url: &str,
+        kind: &str,
+        headers: &[(String, String)],
+        referer: &str,
+        limit: usize,
+    ) -> std::result::Result<Wire, Refusal> {
+        let target = self.target(url)?;
+        let accept = if kind == "text/html" {
+            "text/html,application/xhtml+xml"
+        } else {
+            "application/json, text/plain, */*"
+        };
+        let mut request = self
+            .client
+            .get(target)
+            .timeout(Duration::from_secs(60))
+            .header("Accept", accept)
+            .header("Accept-Encoding", "gzip")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Referer", referer);
+        for (name, value) in headers {
+            request = request.header(name, value);
+        }
+        let response = request.send().await.map_err(|_| Refusal::Unavailable)?;
+        let status = response.status();
+        if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+            return Err(Refusal::Unavailable);
+        }
+        if status.is_redirection() {
+            return Err(Refusal::Unreadable("http_redirected"));
+        }
+        if [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN].contains(&status) {
+            return Err(Refusal::Unreadable("http_refused"));
+        }
+        if status != StatusCode::OK {
+            return Err(Refusal::Unreadable("http_status"));
+        }
+        let gzipped = match response
+            .headers()
+            .get(CONTENT_ENCODING)
+            .map(|v| v.to_str().map(str::trim))
+        {
+            None => false,
+            Some(Ok(encoding)) if encoding.eq_ignore_ascii_case("identity") => false,
+            Some(Ok(encoding)) if encoding.eq_ignore_ascii_case("gzip") => true,
+            Some(_) => return Err(Refusal::Unreadable("http_encoding")),
+        };
+        Ok(Wire {
+            body: Self::bytes(response, kind, limit).await?,
+            gzipped,
+        })
+    }
     /// Where `url` redirects, as a tab following it would go next: for an address the
     /// provider answers with the place a file is served from. The redirect itself is not
     /// followed; its target is the caller's to check.
@@ -450,6 +604,15 @@ impl Http {
             .map_err(|_| Refusal::Unavailable)?;
         Self::body(response, "text/html").await
     }
+}
+
+/// Text as `TextDecoder('utf-8', {fatal: true})` reads it: strict, a leading BOM dropped.
+fn utf8(bytes: Vec<u8>) -> std::result::Result<String, Refusal> {
+    let text = String::from_utf8(bytes).map_err(|_| Refusal::Unreadable("http_encoding"))?;
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_owned(),
+        None => text,
+    })
 }
 
 fn verification_proxy(client: reqwest::ClientBuilder) -> Result<reqwest::ClientBuilder> {
