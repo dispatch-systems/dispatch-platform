@@ -11,9 +11,15 @@ the profile for a week; performance and DVIC collections read for it, at the add
 last answered, with no page, and find it again when the credentials change or what they read
 names another station, company or DSP. Meals are asked of the application's own API action, as
 its pages ask, or read as moves inside an application whose action declines, each response
-withheld from the page so nothing renders. A day's routes are signed by the application's own
-API action, stopped before they leave the browser and downloaded twelve at a time with its
-session, and whatever does not download is read as moves. Reports download cookie-free from the
+withheld from the page so nothing renders. A day's routes are read first with no page, with the
+browser's session: every read signed here with the key Cortex gives the list's own page, and
+downloaded gzipped twelve at a time; a key Cortex refuses, or a session it keeps sending to sign
+in, has the page asked for its key once more, and the browser closes once the day is read whole.
+`routes::Native` reads a day so for anything holding a session, outside a job too, and says why
+it could not: no key on the page, the key refused, the session ended, or Cortex unavailable.
+Otherwise the day is signed by the application's own API action, stopped before it leaves the
+browser and downloaded twelve at a time with its session, and whatever does not download is read
+as moves. Reports download cookie-free from the
 report host only. Vans are the fleet's one list over HTTP, every status it accepts at once and
 each continuation page after, for an account that sees the DSP's company alone, with the company
 list the start's session check read. A meal collection waits for sixteen routes at once in one
