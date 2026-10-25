@@ -384,17 +384,27 @@ pub(super) fn prune_routes(db: &Db, publication: &str, routes: &[Value]) -> Resu
         params![publication, serde_json::to_string(&kept)?],
     )
 }
-/// The drivers the day's route list assigns who have none of `itineraries`, the read's, written
-/// over the rows of the drivers live route data names where they changed, inside the caller's
-/// transaction: a driver assigned to a route is known before their itinerary is read, which
-/// names them from then on. Their work phone is left as it was: before a driver signs in, the
-/// list shows the last phone they had. Answers the rows written.
+/// The drivers the provider's routes on the day's route list assign who have none of
+/// `itineraries`, the read's, written over the rows of the drivers live route data names where
+/// they changed, inside the caller's transaction: a driver assigned to a route is known before
+/// their itinerary is read, which names them from then on. Their work phone is left as it was:
+/// before a driver signs in, the list shows the last phone they had. Answers the rows written.
 pub(super) fn write_assigned(
     db: &Db,
     day: &str,
+    provider: &str,
     route_summaries: &Value,
     itineraries: &[PreparedItinerary],
 ) -> Result<usize> {
+    let routes = route_summaries["rmsRouteSummaries"].as_array();
+    let assigned: std::collections::BTreeSet<String> = routes
+        .into_iter()
+        .flatten()
+        .filter(|route| text(&route["companyId"]).as_deref() == Some(provider))
+        .flat_map(|route| route["transporters"].as_array().into_iter().flatten())
+        .filter_map(|transporter| text(&transporter["transporterId"]))
+        .filter(|id| !itineraries.iter().any(|i| i.transporter_id == *id))
+        .collect();
     let mut upsert =
         db.0.prepare_cached(&shared("drivers", "transporter_id", ASSIGNED_COLUMNS))?;
     let mut written = 0;
@@ -403,12 +413,9 @@ pub(super) fn write_assigned(
         .into_iter()
         .flatten()
     {
-        let Some(id) = text(&person["transporterId"]) else {
+        let Some(id) = text(&person["transporterId"]).filter(|id| assigned.contains(id)) else {
             continue;
         };
-        if itineraries.iter().any(|i| i.transporter_id == id) {
-            continue;
-        }
         written += upsert.execute(params![
             id,
             text(&person["firstName"]),

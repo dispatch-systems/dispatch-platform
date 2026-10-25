@@ -46,6 +46,12 @@ impl Shaped {
     /// `capture` checked whole against `request`, in the scope its days are read in, then shaped.
     fn new(mut capture: Capture, request: &Request) -> Result<Self> {
         capture.validate(request)?;
+        // A list without its itineraries names none only by mistake.
+        ensure(
+            capture.summaries["itinerarySummaries"].is_array(),
+            "routes_capture_invalid",
+            502,
+        )?;
         request
             .scope_request()
             .validate_scope(&capture.scope)
@@ -110,7 +116,6 @@ pub async fn keep_live(state: &Arc<State>, dsp: &str, capture: Capture) -> Resul
         let request = state
             .read(move |db| {
                 check(db)?;
-                day_allowed(Mode::Snapshot, &day, routes_today(db, &d)?)?;
                 day_request(db, &d, &day, Mode::Snapshot)
             })
             .await?;
@@ -118,10 +123,12 @@ pub async fn keep_live(state: &Arc<State>, dsp: &str, capture: Capture) -> Resul
         let shaped = tokio::task::spawn_blocking(move || Shaped::new(capture, &request))
             .await
             .map_err(blocking("routes.keep_failed"))??;
-        let d = dsp.to_owned();
+        let (d, day) = (dsp.to_owned(), shaped.lists.scope.date.clone());
         let (kept, named) = state
             .run_scoped(dsp, DOMAIN, move |db| {
                 on(db)?;
+                // Today as it's kept, however long reading and shaping it took.
+                day_allowed(Mode::Snapshot, &day, routes_today(db, &d)?)?;
                 keep(&*db.routes_live_db(&d)?, &shaped)
             })
             .await?;
@@ -207,7 +214,13 @@ fn keep(db: &Db, read: &Shaped) -> Result<(LiveKept, bool)> {
             .unwrap_or_default();
         let mut changed = write_routes(db, Writes::InPlace, &publication, day, routes)?
             + prune_routes(db, &publication, routes)?
-            + write_assigned(db, day, &lists.route_summaries, &read.itineraries)?;
+            + write_assigned(
+                db,
+                day,
+                &scope.provider,
+                &lists.route_summaries,
+                &read.itineraries,
+            )?;
         for (name, bytes, body) in &read.responses {
             changed += write_raw(db, Writes::InPlace, &publication, name, *bytes, body)?;
         }

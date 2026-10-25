@@ -53,14 +53,15 @@ const ROUTES: [&str; 2] = by_driver!(
     "d.transporter_id",
     "ORDER BY d.day,i.route_code,d.itinerary_id"
 );
-/// The routes over a range each driver is assigned to and has no itinerary on yet, as before
-/// dispatch: those of the IDs given, or every driver's.
+/// The provider's routes over a range each driver is assigned to and has no itinerary on yet, as
+/// before dispatch: those of the IDs given, or every driver's. The route list may name other
+/// providers' routes at the station.
 const ASSIGNED: [&str; 2] = by_driver!(
     "SELECT r.day,a.value transporter_id,r.route_code,r.route_status,r.progress_status,\
     r.planned_departure_at,r.total_stops FROM routes r \
     JOIN route_publications p ON p.id=r.publication_id AND p.active=1 AND p.station=?1 \
     JOIN json_each(r.transporter_ids) a \
-    WHERE r.day BETWEEN ?2 AND ?3 \
+    WHERE r.day BETWEEN ?2 AND ?3 AND r.company_id=p.provider \
     AND NOT EXISTS (SELECT 1 FROM driver_days d WHERE d.publication_id=r.publication_id \
     AND d.transporter_id=a.value AND d.route_code IS r.route_code)",
     "a.value",

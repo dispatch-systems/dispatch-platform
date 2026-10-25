@@ -157,11 +157,12 @@ fn end(db: &Db, day: &str, at: i64, driver: &str) -> Result<bool> {
 /// every driver the list names, dispatched or not; a claim made before that is withdrawn, never
 /// having been a hold. A driver holding a phone switches to another once two reads in a row show
 /// it. A claim of a phone someone else holds is a handover and ends theirs, and their record
-/// still showing it never takes it back. A session Cortex has ended ends its driver's hold, and forgets
-/// what it showed, so the same phone shown once the session is back is claimed again; a driver
-/// gone from the day's list ends theirs the same way, and a list naming nobody ends none. Claims
-/// are settled oldest activity first, so the most recently active driver holds a phone two
-/// records show. Every hold is kept, from its claim until it ends.
+/// still showing it never takes it back. A session Cortex has ended ends its driver's hold,
+/// whatever their record shows then, and forgets what it showed, so the same phone shown once the
+/// session is back is claimed again; a driver gone from the day's list ends theirs the same way,
+/// and a list naming nobody ends none. Claims are settled oldest activity first, so the most
+/// recently active driver holds a phone two records show. Every hold is kept, from its claim
+/// until it ends.
 pub(super) fn settle(db: &Db, day: &str, at: i64, shown: &Shown) -> Result<Settled> {
     let mut events = 0;
     // The first phone each driver's record shows today: the list's before their itinerary's.
@@ -233,7 +234,7 @@ pub(super) fn settle(db: &Db, day: &str, at: i64, shown: &Shown) -> Result<Settl
         )?;
         events += 1 + handed as u64;
     }
-    for (listed, _) in &observed {
+    for listed in &shown.listed {
         if listed.ended && end(db, day, at, &listed.driver)? {
             events += 1;
         }

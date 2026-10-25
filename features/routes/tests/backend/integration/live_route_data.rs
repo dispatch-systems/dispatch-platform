@@ -327,6 +327,17 @@ async fn a_read_that_isnt_whole_or_isnt_of_today_changes_nothing() {
     let (_root, db, dsp, state) = ready();
     let today = today(&db, &dsp);
     let day = Day::new(&today.to_string());
+    // Before the day's first itinerary, a list naming none is whole; one without its list of
+    // itineraries is not.
+    let mut planned = day.read(0);
+    planned.summaries["itinerarySummaries"] = json!([]);
+    planned.itineraries.clear();
+    keep_live(&state, &dsp, planned.clone()).await.unwrap();
+    let mut unlisted = day.read(1);
+    unlisted.summaries = json!({"transporters": planned.summaries["transporters"]});
+    unlisted.itineraries.clear();
+    let refused = keep_live(&state, &dsp, unlisted).await.unwrap_err();
+    assert_eq!(refused.code, "routes_capture_invalid");
     keep_live(&state, &dsp, day.read(1)).await.unwrap();
     let live = db.routes_live_db(&dsp).unwrap();
     let held = |live: &Db| {

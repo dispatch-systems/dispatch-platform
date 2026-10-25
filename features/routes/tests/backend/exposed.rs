@@ -258,7 +258,30 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
     read.summaries["itinerarySummaries"] = json!([first]);
     read.summaries["itinerarySummaries"][0]["lastDriverEventTime"] = json!(read.started_at);
     read.itineraries.truncate(1);
+    // Another provider's route at the station, its driver assigned, is none of the DSP's.
+    let mut other = read.route_summaries["rmsRouteSummaries"][1].clone();
+    other["routeId"] = json!("2000");
+    other["companyId"] = json!("provider-other");
+    other["transporters"] = json!([{"transporterId":"driver-9"}]);
+    let routes = read.route_summaries["rmsRouteSummaries"]
+        .as_array_mut()
+        .unwrap();
+    routes.push(other);
+    let people = read.route_summaries["transporters"].as_array_mut().unwrap();
+    people.push(
+        json!({"transporterId":"driver-9","firstName":"Other","lastName":"Driver",
+        "personType":["DELIVERY_ASSOCIATE"]}),
+    );
     crate::keep_live(&state, &dsp, read.clone()).await.unwrap();
+    let named = db
+        .routes_live_db(&dsp)
+        .unwrap()
+        .count(
+            "SELECT count(*) FROM drivers WHERE transporter_id='driver-9'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(named, 0);
 
     assert_eq!(offered.live_day(&db, &dsp).unwrap(), Some(today.clone()));
     let driven = offered.day(&db, &dsp).unwrap();

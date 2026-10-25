@@ -79,9 +79,15 @@ fn a_shift_that_ends_and_resumes_on_the_same_phone_claims_it_again() {
     assert_eq!(read(&db, &dsp, 2, vec![seen("a", P1, true, 2)]), 1);
     assert!(holders(&db, &dsp, P1).is_empty());
     assert_eq!(read(&db, &dsp, 3, vec![seen("a", P1, false, 3)]), 1);
+    // A session ends its hold though its record shows no phone as it does.
+    let ended = Listed {
+        phone: None,
+        ..seen("a", P1, true, 4)
+    };
+    assert_eq!(read(&db, &dsp, 4, vec![ended]), 1);
     assert_eq!(
         holds(&db, &dsp, "a"),
-        [(P1.into(), 1, Some(2)), (P1.into(), 3, None)]
+        [(P1.into(), 1, Some(2)), (P1.into(), 3, Some(4))]
     );
 }
 
