@@ -135,6 +135,14 @@
       "requires": ["routes"],
       "default": false,
       "mandatory": false
+    },
+    {
+      "id": "phones",
+      "label": "Phones",
+      "permissions": [],
+      "requires": [],
+      "default": false,
+      "mandatory": false
     }
   ],
   "subfeatures": [
@@ -206,6 +214,7 @@
     "slack",
     "vans",
     "live_route_data",
+    "phones",
     "timecard.daily",
     "timecard.meal_breaks",
     "timecard.employees",

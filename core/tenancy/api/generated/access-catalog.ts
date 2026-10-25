@@ -16,7 +16,8 @@ export const pages = [
   "settings",
   "slack",
   "vans",
-  "live_route_data"
+  "live_route_data",
+  "phones"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -46,6 +47,7 @@ export const features = [
   "slack",
   "vans",
   "live_route_data",
+  "phones",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -226,6 +228,14 @@ export const featureCatalog = [
       "routes"
     ],
     "kind": "page"
+  },
+  {
+    "id": "phones",
+    "label": "Phones",
+    "permissions": [],
+    "requires": [],
+    "kind": "page",
+    "connects": true
   },
   {
     "id": "timecard.daily",

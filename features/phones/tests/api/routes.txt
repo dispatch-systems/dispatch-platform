@@ -1,0 +1,13 @@
+# Every route phones registers: its method and path, who may call it, the
+# database access its work runs under, and whether it wakes the scheduler.
+# Each changes with this file, so a reviewer sees who can reach what.
+GET /api/dsp/phones Dsp("connections.manage") Read
+GET /api/phones/files/{id} Agent("dispatch phone") Async
+GET /api/phones/outbox Agent("dispatch phone") Async
+POST /api/dsp/phones/pairing Dsp("connections.manage") Write
+POST /api/dsp/phones/{id}/remove Dsp("connections.manage") Write
+POST /api/dsp/phones/{id}/rename Dsp("connections.manage") Write
+POST /api/phones/files/{id} Agent("dispatch phone") Upload
+POST /api/phones/pair Public Async
+POST /api/phones/statuses Agent("dispatch phone") Async
+POST /api/phones/texts Agent("dispatch phone") Async
