@@ -439,7 +439,10 @@ impl Tab<'_> {
             let read = match reader.read(scope, request.mode).await {
                 Ok(capture) => {
                     progress(95, "Validating routes".into()).await?;
-                    capture.validate(request).map(|()| capture).map_err(|_| INVALID)
+                    capture
+                        .validate(request)
+                        .map(|()| capture)
+                        .map_err(|_| INVALID)
                 }
                 Err(failure) => Err(failure.label()),
             };
@@ -472,7 +475,7 @@ impl Tab<'_> {
         };
         let summaries_body = self
             .capture_page(
-                &self.page,
+                self.page,
                 &format!("{origin}{}", scope.list_path()),
                 SUMMARIES,
                 false,
@@ -501,7 +504,7 @@ impl Tab<'_> {
         if method.navigation == Navigation::Reload {
             let body = self
                 .capture_page(
-                    &self.page,
+                    self.page,
                     &routes_page(origin, scope),
                     ROUTE_SUMMARIES,
                     false,
@@ -515,14 +518,7 @@ impl Tab<'_> {
         let mut itineraries: Vec<Option<ItineraryCapture>> = vec![None; listed.len()];
         if method.navigation == Navigation::Signed {
             let read = self
-                .read_signed(
-                    scope,
-                    &listed,
-                    method.downloads,
-                    &bytes,
-                    metrics,
-                    &progress,
-                )
+                .read_signed(scope, &listed, method.downloads, &bytes, metrics, &progress)
                 .await?;
             itineraries = read.itineraries;
             route_summaries = read.routes;
@@ -648,13 +644,13 @@ impl Tab<'_> {
             .command("Fetch.enable", patterns(&[ROUTE_SUMMARIES]))
             .await?;
         let moved = self
-            .move_to(&self.page, &url, ROUTE_SUMMARIES, method, metrics, |_| true)
+            .move_to(self.page, &url, ROUTE_SUMMARIES, method, metrics, |_| true)
             .await;
-        self.stop_pausing(&self.page).await;
+        self.stop_pausing(self.page).await;
         match moved {
             Err(error) if error.is_any(MOVE_FAILED) => {
                 metrics.detail("routes_page_reloaded");
-                self.capture_page(&self.page, &url, ROUTE_SUMMARIES, false, metrics)
+                self.capture_page(self.page, &url, ROUTE_SUMMARIES, false, metrics)
                     .await
             }
             result => result,

@@ -71,12 +71,7 @@ impl Browser {
     /// found on Cortex as a job finds them.
     pub async fn scope(&mut self, request: &Request) -> Result<Scope> {
         match &mut self.application {
-            Some(application) => {
-                application
-                    .tab()
-                    .routes_scope(request, &unrecorded())
-                    .await
-            }
+            Some(application) => application.tab().routes_scope(request, &unrecorded()).await,
             None => {
                 request.validate()?;
                 Ok(fixture_scope(request))

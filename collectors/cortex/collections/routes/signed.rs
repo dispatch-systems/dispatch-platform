@@ -389,7 +389,7 @@ impl Tab<'_> {
                 .await;
             throttled = signing.throttled;
             let signed_out = signing.signed_out;
-            let stopped = self.stop_signing(&self.page).await;
+            let stopped = self.stop_signing(self.page).await;
             let attempt = result?;
             stopped?;
             // Signing again cannot help an application that signs nothing, nor a session
