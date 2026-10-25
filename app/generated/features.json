@@ -585,6 +585,10 @@
         {
           "id": 6,
           "name": "work_phones"
+        },
+        {
+          "id": 7,
+          "name": "shared_rows_collected"
         }
       ]
     },

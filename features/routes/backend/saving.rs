@@ -62,19 +62,20 @@ impl Drop for Saving {
 /// Saves `capture`, a whole read of its day another feature collected, into historical route
 /// data under `key`, as the standard collection saves a job's: its two lists and every
 /// itinerary they list, checked whole against what a job reading that day in its mode asks of
-/// the DSP's station before anything is written, then staged one itinerary at a time. It
-/// becomes the day's read only if it was collected (its `finished_at`) later than the one the
-/// day has, replacing it whole, down to the day's work phones, which become `phones`; an
-/// earlier read changes nothing and is swept. Answers whether it is the day's read now.
+/// the DSP's station, in the scope its days were read in, before anything is written, then
+/// staged one itinerary at a time. It becomes the day's read only if it was collected (its
+/// `finished_at`) later than the one the day has, replacing it whole, down to the day's work
+/// phones, which become `phones`; an earlier read changes nothing and is swept. Answers
+/// whether it is the day's read now.
 ///
 /// `key` is the read's own, unique among the DSP's reads: a token of up to 128 characters,
 /// such as the saving feature's name and the read's time. A key already the day's read
 /// answers so without saving again, and one still saving is refused (`routes_save_running`).
 /// It refuses phones that aren't each one driver's hold on one phone from a time, until none
 /// or a time no earlier, at most 10,000 of them (`invalid_input`); a DSP without a station
-/// (`routes_station_required`); a capture that isn't one of its station's day as listed
-/// (`routes_scope_mismatch`, `routes_capture_invalid`, `routes_source_too_large`); and saving
-/// while Routes is off for the DSP (`routes_off`).
+/// (`routes_station_required`); a capture that isn't one of its station's day in that scope
+/// as listed (`routes_scope_mismatch`, `routes_capture_invalid`, `routes_source_too_large`);
+/// and saving while Routes is off for the DSP (`routes_off`).
 pub async fn save_day(
     state: &Arc<State>,
     dsp: &str,
@@ -108,6 +109,12 @@ pub async fn save_day(
         if saved {
             return Ok(true);
         }
+        // A job's capture has the scope its request resolves to: the one the DSP's days were
+        // read in, once one was. A save's has it too, so it reads as the day's other reads.
+        request
+            .scope_request()
+            .validate_scope(&capture.scope)
+            .map_err(|_| Error::new("routes_scope_mismatch", 502))?;
         let staged = stage_capture(state, dsp, key, request, capture, on.clone()).await?;
         let (d, k) = (dsp.to_owned(), key.to_owned());
         let current = state

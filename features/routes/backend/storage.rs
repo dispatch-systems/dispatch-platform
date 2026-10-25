@@ -233,16 +233,19 @@ impl RoutesStore for Store {
     ) -> Result<()> {
         let db = self.routes_db(id)?;
         db.transaction(|| {
-            ensure(
-                db.one(
-                    "SELECT id FROM route_publications WHERE id=? AND active=0",
+            let publication = db
+                .one(
+                    "SELECT collected_at FROM route_publications WHERE id=? AND active=0",
                     [&staged.publication],
                 )?
-                .is_some(),
-                "routes_capture_invalid",
-                502,
+                .ok_or_else(|| Error::new("routes_capture_invalid", 502))?;
+            insert_itinerary(
+                &db,
+                &staged.publication,
+                &staged.day,
+                s(&publication, "collected_at"),
+                itinerary,
             )?;
-            insert_itinerary(&db, &staged.publication, &staged.day, itinerary)?;
             insert_raw(
                 &db,
                 &staged.publication,
@@ -341,7 +344,7 @@ impl RoutesStore for Store {
                 let day = s(row, "day");
                 insert_routes(&db, &publication, day, &routes)?;
                 for itinerary in &prepared {
-                    insert_itinerary(&db, &publication, day, itinerary)?;
+                    insert_itinerary(&db, &publication, day, s(row, "collected_at"), itinerary)?;
                 }
                 db.exec(
                     "UPDATE route_publications SET route_count=?,itinerary_count=?,stop_count=?,task_count=?,\

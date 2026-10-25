@@ -106,6 +106,11 @@ pub const FEATURE: Feature = Feature {
                 name: "work_phones",
                 apply: Sql(include_str!("migrations/routedata/0006_work_phones.sql")),
             },
+            Migration {
+                id: 7,
+                name: "shared_rows_collected",
+                apply: Code(backend::add_read_times),
+            },
         ],
     }],
     domains: &[backend::DOMAIN],

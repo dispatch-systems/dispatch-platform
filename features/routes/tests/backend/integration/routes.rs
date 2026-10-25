@@ -416,13 +416,24 @@ fn a_package_moved_between_drivers_keeps_a_row_under_each() {
     );
 }
 
+/// `capture` naming its first driver and first address anew, as a later read might.
+fn renamed(capture: &Capture, name: &str, street: &str) -> Capture {
+    let mut renamed = capture.clone();
+    renamed.summaries["transporters"][0]["firstName"] = json!(name);
+    for itinerary in &mut renamed.itineraries {
+        let mut detail: Value = serde_json::from_str(&itinerary.detail).unwrap();
+        detail["addresses"][0]["address1"] = json!(street);
+        itinerary.detail = detail.to_string();
+    }
+    renamed
+}
 #[test]
 fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_shared_rows() {
     install();
     let (_root, db, id) = ready();
     let capture = routes::fixture(&request("2026-09-25", Mode::Final)).unwrap();
     let first = publish(&db, &id, "first", "2026-09-25", &capture);
-    let mut again = capture.clone();
+    let mut again = renamed(&capture, "Newer", "1 Newer St");
     again.itineraries.truncate(1);
     again.summaries["itinerarySummaries"]
         .as_array_mut()
@@ -432,11 +443,23 @@ fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_share
     again.finished_at += 2000;
     let second = publish(&db, &id, "second", "2026-09-25", &again);
     assert_ne!(first, second);
-    // A read collected before the day's own changes nothing, though it arrives after it.
-    let mut earlier = capture.clone();
+    // A read collected before the day's own changes nothing, though it arrives after it: not
+    // the day, nor the drivers and addresses the days share.
+    let mut earlier = renamed(&capture, "Older", "1 Older St");
     earlier.finished_at += 1000;
     publish(&db, &id, "earlier", "2026-09-25", &earlier);
     let storage = db.routes_db(&id).unwrap();
+    let shared = storage
+        .all(
+            "SELECT (SELECT first_name FROM drivers WHERE transporter_id='driver-1') driver,\
+             (SELECT address1 FROM addresses WHERE address_id='address-1') street",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        shared,
+        vec![json!({"driver":"Newer","street":"1 Newer St"})]
+    );
     // Readers see only the later read at once; the sweep deletes the others in steps.
     let days = db.route_days(&id).unwrap();
     assert_eq!(days.days.len(), 1);
@@ -577,8 +600,17 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
     twice.push(phones[0].clone());
     let mut backwards = phones.clone();
     backwards[0].until = Some(backwards[0].since - 1);
+    let mut elsewhere = latest.clone();
+    elsewhere.scope.service_area_id = "area-other".into();
+    let mut another = latest.clone();
+    another.scope.provider = "provider-other".into();
+    let mut zoned = latest.clone();
+    zoned.scope.timezone = "America/Chicago".into();
     for (key, capture, phones, code) in [
         ("live-4", &missing, &phones, "routes_capture_invalid"),
+        ("live-4", &elsewhere, &phones, "routes_scope_mismatch"),
+        ("live-4", &another, &phones, "routes_scope_mismatch"),
+        ("live-4", &zoned, &phones, "routes_scope_mismatch"),
         ("live 4", &latest, &phones, "invalid_input"),
         ("live-4", &latest, &twice, "invalid_input"),
         ("live-4", &latest, &backwards, "invalid_input"),

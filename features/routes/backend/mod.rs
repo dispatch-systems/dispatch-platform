@@ -77,6 +77,13 @@ pub(crate) fn add_details(db: &Db) -> Result<()> {
     db.0.execute_batch(include_str!("../migrations/routedata/0002_details.sql"))?;
     Ok(())
 }
+/// Migration 7: the drivers and addresses the days share keep when the read that last wrote
+/// them was collected, so one collected earlier and published after it writes nothing over
+/// them.
+pub(crate) fn add_read_times(db: &Db) -> Result<()> {
+    add_column(db, "drivers", "collected_at", "TEXT")?;
+    add_column(db, "addresses", "collected_at", "TEXT")
+}
 /// How far back a schedule collects days it has no final publication of.
 pub const BACKFILL_DAYS: usize = 7;
 /// Jobs one scheduled run queues at most; the queue admits five active per DSP.
