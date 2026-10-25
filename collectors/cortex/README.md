@@ -23,8 +23,12 @@ as moves. A job's metrics name what read the day (`method`) and, when native rea
 why (`fallback`): one of those reasons, or `routes_native_invalid` for a day it read whole that
 failed the collection's checks. A feature reads a day outside a job the same way through
 `routes::Browser`, made from the DSP's Cortex browser as `Reading::browser` opened it: the day's
-scope, then the day, with a native reader to keep and read the next with no browser. In fixture
-mode no browser runs, and each day it reads is the fixture's, as a job's is. Reports download
+scope, then the day, with a native reader to keep and read the next with no browser: the one
+that read the day natively, with its key, or after another way one carrying the browser's
+session as the read left it, as signing in again or the application may renew it. A scope kept
+for another request is refused, whichever of its day, station, timezone, service area or provider
+differs, as is every driver's for a request that names none. In fixture mode no browser runs,
+and each day it reads is the fixture's, as a job's is. Reports download
 cookie-free from the report host only. Vans are the fleet's one list over HTTP, every status it accepts at once and
 each continuation page after, for an account that sees the DSP's company alone, with the company
 list the start's session check read. A meal collection waits for sixteen routes at once in one

@@ -436,9 +436,8 @@ impl Tab<'_> {
         if method.navigation == Navigation::Native {
             let session = SignedIn::of(self.browser, self.origin, &cortex::HOSTS).await?;
             // A day is checked before the browser closes: one that fails is read with it.
-            let (reader, read) = read_natively(&session, request, scope, &progress).await?;
-            match read {
-                Ok(capture) => {
+            match read_natively(&session, request, scope, &progress).await? {
+                Ok((reader, capture)) => {
                     // Nothing needs the browser now: it closes before the day is kept.
                     self.browser.close().await;
                     metrics.method(NATIVE);
@@ -449,7 +448,6 @@ impl Tab<'_> {
                         native: Some(reader),
                     });
                 }
-                // The reader that failed is let go: its session may not outlast the read.
                 Err(label) => {
                     metrics.detail(label);
                     metrics.fallback(label);
@@ -650,31 +648,31 @@ impl Tab<'_> {
 }
 
 /// The day `request` names, in `scope`, read natively with `session` and checked as every
-/// capture is: the reader, to keep and read the next with, and the day, or why it is not
-/// kept: what `Failure::label` calls it, or `routes_native_invalid` for a day read whole
-/// that failed the checks.
+/// capture is: the day, with the reader that read it, to keep and read the next with; or why
+/// it is not kept: what `Failure::label` calls it, or `routes_native_invalid` for a day read
+/// whole that failed the checks. A reader that failed is let go, as reading another way may
+/// change the browser's session.
 pub(super) async fn read_natively<F, Fut>(
     session: &SignedIn,
     request: &Request,
     scope: &Scope,
     progress: &F,
-) -> Result<(Native, std::result::Result<Capture, &'static str>)>
+) -> Result<std::result::Result<(Native, Capture), &'static str>>
 where
     F: Fn(i64, String) -> Fut,
     Fut: Future<Output = Result<()>>,
 {
     let mut reader = Native::new(session)?;
-    let read = match reader.read(scope, request.mode).await {
+    Ok(match reader.read(scope, request.mode).await {
         Ok(capture) => {
             progress(95, "Validating routes".into()).await?;
-            capture
-                .validate(request)
-                .map(|()| capture)
-                .map_err(|_| INVALID)
+            match capture.validate(request) {
+                Ok(()) => Ok((reader, capture)),
+                Err(_) => Err(INVALID),
+            }
         }
         Err(failure) => Err(failure.label()),
-    };
-    Ok((reader, read))
+    })
 }
 
 impl Driver {

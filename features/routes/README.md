@@ -25,8 +25,9 @@ it is live route data, in a database of its own, `routelive`.
   of a day not yet ended or a snapshot of another day than it was then, is refused
   (`routes_day_not_available`). It tells Driver Match of new drivers at once (`people.changed`),
   and refuses while Routes is off.
-- **Live route data:** a feature that depends on Routes and reads today live keeps each whole
-  read with `keep_live` (`backend/live.rs`), counting for its read's record the itineraries
+- **Live route data:** a feature that depends on Routes and reads today live asks Cortex for
+  what `live_request` names, a snapshot of today where the DSP is at its station, as a job asks
+  for a day; and keeps each whole read with `keep_live` (`backend/live.rs`), counting for its read's record the itineraries
   listed, the rows written or deleted, the work phones held and the holds claimed, moved or
   ended (`LiveKept`). A read is checked whole as a snapshot of today where the DSP is, at its
   station, in the scope its days are read in, then kept in place in one transaction, so a reader
