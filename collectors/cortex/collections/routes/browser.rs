@@ -3,14 +3,16 @@
 //! with the native reader it hands back, with no browser, until that reader fails.
 use super::capture::{Request, fixture_in, fixture_scope};
 use super::collect::{Day, Method};
+use super::native::Native;
 use crate::{
+    HOSTS,
     connection::{Tab, application},
     discovery::Scope,
 };
 use dispatch_core::{
     Error, Result,
     collection::{
-        browser::{browseros, page::Page},
+        browser::{browseros, http::SignedIn, page::Page},
         metrics::Recorder,
     },
     db::now,
@@ -80,7 +82,9 @@ impl Browser {
     }
     /// The day `request` names, in `scope`, read as the routes collection reads it: natively
     /// first, then with the application's signatures, then by moves and pages. A day read
-    /// natively closes the browser, as a job's does: nothing needs it after.
+    /// natively closes the browser, as a job's does: nothing needs it after. Read another way,
+    /// it hands back a reader carrying the browser's session as the read left it, which
+    /// signing in again or the application may have changed since the native read began.
     pub async fn read(mut self, request: &Request, scope: &Scope) -> Result<Day> {
         let Some(application) = &mut self.application else {
             return Ok(Day {
@@ -90,7 +94,7 @@ impl Browser {
                 native: None,
             });
         };
-        application
+        let mut day = application
             .tab()
             .read_routes(
                 request,
@@ -100,7 +104,12 @@ impl Browser {
                 &unrecorded(),
                 |_, _| async { Ok(()) },
             )
-            .await
+            .await?;
+        if day.native.is_none() {
+            let session = SignedIn::of(&application.browser, &application.origin, &HOSTS).await?;
+            day.native = Some(Native::new(&session)?);
+        }
+        Ok(day)
     }
 }
 

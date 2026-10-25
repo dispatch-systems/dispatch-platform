@@ -46,7 +46,11 @@ hook still holds of it fails from then on. It never uses a browser another opene
 (`connection_busy`), holds its own as a collecting job does, so neither a job nor the idle
 sweep takes it, and no job's end closes it; it closes rather than wait for an owner's
 verification (`verification_required`), and when dropped. A start dropped partway, as a read
-cut off, closes what it registered, as any start of a provider's browser now does.
+cut off, closes what it registered, as any start of a provider's browser now does. What a hook
+takes from a sign-in to keep after the browser closes, as a provider's cookies, it binds to
+`Store::connection_revision(dsp, provider)`: the connection's revision while it's enabled, none
+while it's disabled. Replacing the credentials or disabling the connection moves it on, so what
+was taken under another revision is stale and goes unused.
 
 Its Connections page is a custom section of a DSP's Settings, `collection.connections`, on the
 Connections page: the server shows it to every member, and its component in

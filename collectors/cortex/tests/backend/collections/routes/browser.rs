@@ -43,21 +43,44 @@ async fn fixture_mode_reads_a_whole_day_in_the_scope_it_resolves() {
         // Nothing read it but the fixture, and there is no session to read the next with.
         assert!(day.method.is_none() && day.fallback.is_none() && day.native.is_none());
     }
-    // A scope kept from another day is refused, as a browser's read refuses it.
-    let request = request(false);
-    let mut kept = Browser::new(None, &config)
-        .unwrap()
-        .scope(&request)
-        .await
-        .unwrap();
-    kept.date = "2026-09-24".into();
-    let refused = Browser::new(None, &config)
-        .unwrap()
-        .read(&request, &kept)
-        .await
-        .err()
-        .unwrap();
-    assert_eq!(refused.code, "cortex_scope_mismatch");
+}
+
+/// One thing changed in a scope.
+type Change = fn(&mut Scope);
+
+#[tokio::test]
+async fn a_scope_kept_for_another_request_is_refused() {
+    let config = config(true, None);
+    // A scope kept for `known`'s request with one thing changed, as a browser's read refuses it.
+    let refused = async |known: bool, change: Change| {
+        let request = request(known);
+        let mut kept = Browser::new(None, &config)
+            .unwrap()
+            .scope(&request)
+            .await
+            .unwrap();
+        change(&mut kept);
+        let read = Browser::new(None, &config).unwrap().read(&request, &kept);
+        read.await.err().map(|error| error.code)
+    };
+    let changes: [(bool, Change); 7] = [
+        (false, |scope| scope.date = "2026-09-24".into()),
+        // Each part of the scope a request names.
+        (true, |scope| scope.date = "2026-09-24".into()),
+        (true, |scope| scope.provider = "company-2".into()),
+        (true, |scope| scope.service_area_id = "area-2".into()),
+        (true, |scope| scope.station = "TST2".into()),
+        (true, |scope| scope.timezone = "America/Denver".into()),
+        // Every driver is never a DSP's own provider.
+        (false, |scope| scope.provider = "ALL_DRIVERS".into()),
+    ];
+    for (index, (known, change)) in changes.into_iter().enumerate() {
+        assert_eq!(
+            refused(known, change).await.as_deref(),
+            Some("cortex_scope_mismatch"),
+            "change {index}"
+        );
+    }
 }
 
 #[test]

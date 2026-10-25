@@ -466,6 +466,15 @@ impl ProviderBrowser {
 }
 
 impl Store {
+    /// The revision of the DSP's connection to `provider` while it's enabled; none while it's
+    /// disabled or the DSP has none. Replacing its credentials or disabling it moves it on, so
+    /// what was taken from a sign-in under one revision can be told stale under another.
+    pub fn connection_revision(&self, id: &str, provider: Provider) -> Result<Option<i64>> {
+        Ok(self
+            .connection_lease(id, provider)?
+            .filter(|lease| lease.enabled)
+            .map(|lease| lease.revision))
+    }
     pub fn connection_for(&self, id: &str, provider: Provider) -> Result<Connection> {
         self.collector(id, provider)?
             .one_as(

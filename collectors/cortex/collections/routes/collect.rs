@@ -135,9 +135,9 @@ impl Method {
 }
 
 /// What a job's metrics call a day read natively.
-const NATIVE: &str = "routes_native";
+pub const NATIVE: &str = "routes_native";
 /// Why a day read whole natively was not kept: it failed the collection's checks.
-const INVALID: &str = "routes_native_invalid";
+pub const INVALID: &str = "routes_native_invalid";
 /// A day read with a browser, and how.
 pub struct Day {
     pub capture: Capture,
@@ -147,8 +147,10 @@ pub struct Day {
     /// Why it was not read natively, when it was read another way: `Failure::label`, or
     /// `routes_native_invalid` for a day read whole that failed the collection's checks.
     pub fallback: Option<&'static str>,
-    /// A reader carrying the browser's session, and the key it found, to read the next with
-    /// no browser (`Native::read`): none in fixture mode.
+    /// A reader to read the next with no browser (`Native::read`): the one that read the day
+    /// natively, with the key it found; read another way, one carrying the browser's session as
+    /// the read left it (`Browser::read`). None in fixture mode, and for a job, which reads
+    /// no next.
     pub native: Option<Native>,
 }
 
@@ -430,14 +432,12 @@ impl Tab<'_> {
         request.scope_request().validate_scope(scope)?;
         progress(10, "Reading the route list".into()).await?;
         let mut method = *method;
-        let mut native = None;
         let mut fallback = None;
         if method.navigation == Navigation::Native {
             let session = SignedIn::of(self.browser, self.origin, &cortex::HOSTS).await?;
             // A day is checked before the browser closes: one that fails is read with it.
-            let (reader, read) = read_natively(&session, request, scope, &progress).await?;
-            match read {
-                Ok(capture) => {
+            match read_natively(&session, request, scope, &progress).await? {
+                Ok((reader, capture)) => {
                     // Nothing needs the browser now: it closes before the day is kept.
                     self.browser.close().await;
                     metrics.method(NATIVE);
@@ -455,7 +455,6 @@ impl Tab<'_> {
                     method.navigation = Navigation::Signed;
                 }
             }
-            native = Some(reader);
         }
         let method = &method;
         self.ensure_page().await?;
@@ -618,7 +617,7 @@ impl Tab<'_> {
             capture,
             method: read_by,
             fallback,
-            native,
+            native: None,
         })
     }
     /// The newer routes page's list: a move in the first tab's application, or the
@@ -649,31 +648,31 @@ impl Tab<'_> {
 }
 
 /// The day `request` names, in `scope`, read natively with `session` and checked as every
-/// capture is: the reader, to keep and read the next with, and the day, or why it is not
-/// kept: what `Failure::label` calls it, or `routes_native_invalid` for a day read whole
-/// that failed the checks.
+/// capture is: the day, with the reader that read it, to keep and read the next with; or why
+/// it is not kept: what `Failure::label` calls it, or `routes_native_invalid` for a day read
+/// whole that failed the checks. A reader that failed is let go, as reading another way may
+/// change the browser's session.
 pub(super) async fn read_natively<F, Fut>(
     session: &SignedIn,
     request: &Request,
     scope: &Scope,
     progress: &F,
-) -> Result<(Native, std::result::Result<Capture, &'static str>)>
+) -> Result<std::result::Result<(Native, Capture), &'static str>>
 where
     F: Fn(i64, String) -> Fut,
     Fut: Future<Output = Result<()>>,
 {
     let mut reader = Native::new(session)?;
-    let read = match reader.read(scope, request.mode).await {
+    Ok(match reader.read(scope, request.mode).await {
         Ok(capture) => {
             progress(95, "Validating routes".into()).await?;
-            capture
-                .validate(request)
-                .map(|()| capture)
-                .map_err(|_| INVALID)
+            match capture.validate(request) {
+                Ok(()) => Ok((reader, capture)),
+                Err(_) => Err(INVALID),
+            }
         }
         Err(failure) => Err(failure.label()),
-    };
-    Ok((reader, read))
+    })
 }
 
 impl Driver {

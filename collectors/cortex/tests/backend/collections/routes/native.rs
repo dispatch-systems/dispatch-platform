@@ -383,14 +383,15 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
     let read = |plays| async move {
         let (stand, session) = stand_in(plays).await;
         let scope = stand.day.scope.clone();
-        let (reader, day) = read_natively(&session, &request(), &scope, &unprompted)
+        let read = read_natively(&session, &request(), &scope, &unprompted)
             .await
             .unwrap();
-        (stand, reader, day)
+        (stand, read)
     };
     // A whole day is kept, and the reader that read it reads the next with the key it found.
-    let (stand, mut reader, day) = read(Plays::FlakyItinerary).await;
-    day.unwrap().validate(&request()).unwrap();
+    let (stand, day) = read(Plays::FlakyItinerary).await;
+    let (mut reader, day) = day.unwrap();
+    day.validate(&request()).unwrap();
     reader.read(&stand.day.scope, Mode::Final).await.unwrap();
     assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
     // Otherwise it says why: as the reader names it, or a day read whole that fails the checks.
@@ -398,7 +399,7 @@ async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next(
         (Plays::NoKey, "routes_native_no_key"),
         (Plays::UncheckedItinerary, "routes_native_invalid"),
     ] {
-        let (_, _, day) = read(plays).await;
+        let (_, day) = read(plays).await;
         assert_eq!(day.err(), Some(why), "{plays:?}");
     }
 }

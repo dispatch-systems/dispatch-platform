@@ -5,7 +5,9 @@ view. Screens and routes check permissions, never features: a permission exists 
 feature is on. Every feature is mandatory, which every DSP has, or optional, off for every DSP
 until the platform owner switches it on. Switching one off removes its pages, permissions and
 automation for that DSP and deletes nothing it stored. One made optional later stays on, once,
-for every DSP that had it. Whether a DSP has a feature is `feature_enabled`, and when it came
+for every DSP that had it. A development or preview DSP's demo has every feature on but those
+that read a provider live (`live_readers`), so nothing reads a provider for it unasked until a
+preview or a test switches one on. Whether a DSP has a feature is `feature_enabled`, and when it came
 on, `feature_on_since`: none while it's off, and never before it came on, as hiding or showing
 it counts as later.
 

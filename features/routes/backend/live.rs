@@ -87,6 +87,14 @@ impl Shaped {
     }
 }
 
+/// What a live read asks Cortex for: a snapshot of today where the DSP is, at its station, as a
+/// job asks for a day and as `keep_live` checks the read. Refuses a DSP without a station
+/// (`routes_station_required`).
+pub fn live_request(store: &Store, dsp: &str) -> Result<Request> {
+    let today = routes_today(store, dsp)?.to_string();
+    day_request(store, dsp, &today, Mode::Snapshot)
+}
+
 /// The key a live read is saved into historical route data under: its day and when it was
 /// collected, the same however often it's saved.
 fn key(day: &str, collected: i64) -> String {
@@ -105,9 +113,16 @@ fn key(day: &str, collected: i64) -> String {
 /// It refuses, changing nothing, a day other than today where the DSP is
 /// (`routes_day_not_available`); a DSP without a station (`routes_station_required`); a read that
 /// isn't whole, or a list naming no itinerary once the day has had one, which is a lost read
-/// (`routes_capture_invalid`, `routes_scope_mismatch`, `routes_source_too_large`); and keeping
+/// (`routes_capture_invalid`, `routes_scope_mismatch`, `routes_source_too_large`); a read taken
+/// under another `revision` of the DSP's Cortex connection than it has as the read is written,
+/// as once its credentials were replaced or it was disabled (`connection_changed`); and keeping
 /// while Routes is off for the DSP (`routes_off`).
-pub async fn keep_live(state: &Arc<State>, dsp: &str, capture: Capture) -> Result<LiveKept> {
+pub async fn keep_live(
+    state: &Arc<State>,
+    dsp: &str,
+    capture: Capture,
+    revision: i64,
+) -> Result<LiveKept> {
     let d = dsp.to_owned();
     let on = move |db: &Store| ensure(db.feature_enabled(&d, COLLECTION)?, "routes_off", 409);
     // Like a job's work, a read has no one to try it again.
@@ -127,6 +142,8 @@ pub async fn keep_live(state: &Arc<State>, dsp: &str, capture: Capture) -> Resul
         let (kept, named) = state
             .run_scoped(dsp, DOMAIN, move |db| {
                 on(db)?;
+                let current = db.connection_revision(&d, cortex::PROVIDER)? == Some(revision);
+                ensure(current, "connection_changed", 409)?;
                 keep(db, &d, &shaped)
             })
             .await?;

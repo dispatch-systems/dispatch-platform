@@ -18,6 +18,8 @@ pub const FEATURES: &[&Feature] = &[
     &dispatch_dvic::FEATURE,
     #[cfg(feature = "home")]
     &dispatch_home::FEATURE,
+    #[cfg(feature = "live_route_data")]
+    &dispatch_live_route_data::FEATURE,
     #[cfg(feature = "routes")]
     &dispatch_routes::FEATURE,
     #[cfg(feature = "settings")]

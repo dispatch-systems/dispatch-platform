@@ -14,7 +14,6 @@ use dispatch_core::{
         registry::{self, Provider},
     },
     db::{self, Kind, Migration, Migrations, Store, migrations::Apply},
-    foundation::crypto,
     manifest::{
         Capability, Collection, Collector, Counts, Feature, LiveReader, Window, feature, optional,
         perm, section, settings::Section, time,
@@ -426,11 +425,10 @@ struct Server {
 impl Server {
     async fn start() -> Self {
         testing::install(&[&SITE], &[&PROBE]);
-        let (root, store, first) = testing::bootstrapped();
+        // The first DSP, a preview's, has every feature on but this one, as it reads live: it
+        // reads only in the DSPs a test makes.
+        let (root, store, _) = testing::bootstrapped();
         let owner = testing::platform_owner(&store);
-        // The first DSP has every feature on, as a preview's does: this one reads only in the
-        // DSPs a test makes.
-        store.set_feature(&first, "probe", false, &owner).unwrap();
         let state = State::new(store.config.clone()).unwrap();
         drop(store);
         let hour = DateTime::from_timestamp_millis(now()).unwrap().hour() as i32;
@@ -521,15 +519,7 @@ impl Server {
         let credentials = json!({"username":"probe","password":password});
         let at = dsp.to_owned();
         self.state
-            .run(move |db| {
-                let area = db.area(&at, "secrets")?;
-                let key = db::key_file(&area.join("vault.key"))?;
-                let named = format!("{at}:{}:2", PROVIDER.id());
-                let sealed = crypto::encrypt(&key, &named, &credentials)?;
-                let file = area.join(format!("{}.enc", PROVIDER.id()));
-                db::write_private(&file, sealed.as_bytes())?;
-                testing::ready_connection(db, &at, PROVIDER)
-            })
+            .run(move |db| testing::connect(db, &at, PROVIDER, &credentials))
             .await
             .unwrap();
     }

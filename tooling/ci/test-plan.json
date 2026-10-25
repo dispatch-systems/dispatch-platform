@@ -23,7 +23,8 @@
     "cortex": [
       "collectors/cortex/tests/native/cortex-worker.test.ts",
       "collectors/cortex/tests/native/cortex-weekly-scorecard-worker.test.ts",
-      "collectors/cortex/tests/native/cortex-vans-worker.test.ts"
+      "collectors/cortex/tests/native/cortex-vans-worker.test.ts",
+      "features/live_route_data/tests/native/live-route-data-worker.test.ts"
     ],
     "cortex-meals": [
       "collectors/cortex/tests/native/cortex-meals-worker.test.ts",

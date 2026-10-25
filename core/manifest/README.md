@@ -292,6 +292,9 @@ live_readers: &[&backend::live::READER],
 - **Switched off**, or its window cleared, a DSP stops reading at once: a read under way is
   dropped, while what keeps a read or a day finishes, though without the DSP's browser, which
   closes. Switched on again within the window, it goes on with its day.
+- **A demo DSP** (`enable_all_features`, a development or preview DSP's) has every feature on
+  but those that declare a live reader, so nothing reads a provider for it unasked: a preview or
+  a test switches one on.
 
 The registry refuses two readers with one id, an id outside its feature's name, and an
 interval under a minute or of part of a second.

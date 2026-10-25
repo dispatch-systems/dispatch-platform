@@ -551,6 +551,45 @@
     "tables": {},
     "subfeatures": []
   },
+  "live_route_data": {
+    "collectors": [],
+    "depends_on": [
+      "cortex",
+      "routes"
+    ],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "live_route_data.manage"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": false,
+      "domains": [],
+      "integrations": [],
+      "live": [],
+      "maintenance": [],
+      "on": [],
+      "people": [],
+      "routes": [],
+      "exposes": [],
+      "env": [],
+      "settings": [
+        "live_route_data.collection"
+      ]
+    },
+    "switch": "live_route_data",
+    "mandatory": false,
+    "tables": {},
+    "subfeatures": []
+  },
   "routes": {
     "collectors": [
       "cortex"

@@ -5,7 +5,10 @@ import { featureCatalog } from '../../../core/tenancy/api/generated/access-catal
 
 type Role = { id: string; name: string; permissions: string[] };
 // Every feature this build has, in the catalog's order: pages, their parts, the connections.
-const all: string[] = featureCatalog.map((feature) => feature.id);
+const catalog: string[] = featureCatalog.map((feature) => feature.id);
+// What the seeded DSP has: every feature but those that read a provider live, which only a
+// switch starts.
+const all = catalog.filter((id) => id !== 'live_route_data');
 /** `features` without `gone`, and without the parts of a page among them. */
 const without = (features: readonly string[], ...gone: string[]) =>
   features.filter((id) => {
@@ -34,7 +37,7 @@ test('a feature switched off for a DSP stops existing there until it is switched
       state.feature,
       state.enabled,
     ]),
-    all.map((feature) => [feature, true]),
+    catalog.map((feature) => [feature, all.includes(feature)]),
   );
   assert.equal(typeof report.features[0].changedAt, 'string');
   assert.deepEqual([report.schedules, report.activeJobs], [0, 0]);
