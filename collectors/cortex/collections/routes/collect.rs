@@ -434,18 +434,8 @@ impl Tab<'_> {
         let mut fallback = None;
         if method.navigation == Navigation::Native {
             let session = SignedIn::of(self.browser, self.origin, &cortex::HOSTS).await?;
-            let mut reader = Native::new(&session)?;
             // A day is checked before the browser closes: one that fails is read with it.
-            let read = match reader.read(scope, request.mode).await {
-                Ok(capture) => {
-                    progress(95, "Validating routes".into()).await?;
-                    capture
-                        .validate(request)
-                        .map(|()| capture)
-                        .map_err(|_| INVALID)
-                }
-                Err(failure) => Err(failure.label()),
-            };
+            let (reader, read) = read_natively(&session, request, scope, &progress).await?;
             match read {
                 Ok(capture) => {
                     // Nothing needs the browser now: it closes before the day is kept.
@@ -656,6 +646,34 @@ impl Tab<'_> {
             result => result,
         }
     }
+}
+
+/// The day `request` names, in `scope`, read natively with `session` and checked as every
+/// capture is: the reader, to keep and read the next with, and the day, or why it is not
+/// kept: what `Failure::label` calls it, or `routes_native_invalid` for a day read whole
+/// that failed the checks.
+pub(super) async fn read_natively<F, Fut>(
+    session: &SignedIn,
+    request: &Request,
+    scope: &Scope,
+    progress: &F,
+) -> Result<(Native, std::result::Result<Capture, &'static str>)>
+where
+    F: Fn(i64, String) -> Fut,
+    Fut: Future<Output = Result<()>>,
+{
+    let mut reader = Native::new(session)?;
+    let read = match reader.read(scope, request.mode).await {
+        Ok(capture) => {
+            progress(95, "Validating routes".into()).await?;
+            capture
+                .validate(request)
+                .map(|()| capture)
+                .map_err(|_| INVALID)
+        }
+        Err(failure) => Err(failure.label()),
+    };
+    Ok((reader, read))
 }
 
 impl Driver {

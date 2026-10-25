@@ -1,4 +1,5 @@
 use super::*;
+use crate::collections::routes::collect::read_natively;
 use crate::routes::{Request, fixture};
 use axum::{
     Router,
@@ -56,6 +57,8 @@ enum Plays {
     ItineraryDown,
     /// The second itinerary is answered with the first's.
     WrongItinerary,
+    /// The second itinerary is its driver's, but not one the collection keeps.
+    UncheckedItinerary,
 }
 
 /// Cortex for one session: its list page hands out a key, and every read must be signed
@@ -219,6 +222,12 @@ impl Stand {
                         return status(StatusCode::SERVICE_UNAVAILABLE);
                     }
                     Plays::WrongItinerary if index == 1 => self.day.itineraries[0].detail.clone(),
+                    Plays::UncheckedItinerary if index == 1 => {
+                        let mut detail: Value =
+                            serde_json::from_str(&self.day.itineraries[1].detail).unwrap();
+                        detail["itineraryDetails"]["stops"] = json!("none");
+                        detail.to_string()
+                    }
                     _ => self.day.itineraries[index].detail.clone(),
                 }
             }
@@ -362,5 +371,34 @@ async fn a_day_not_read_whole_says_why() {
             (expected, expected_pages),
             "{plays:?}"
         );
+    }
+}
+
+async fn unprompted(_: i64, _: String) -> Result<()> {
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_day_read_natively_is_kept_once_checked_and_its_reader_reads_the_next() {
+    let read = |plays| async move {
+        let (stand, session) = stand_in(plays).await;
+        let scope = stand.day.scope.clone();
+        let (reader, day) = read_natively(&session, &request(), &scope, &unprompted)
+            .await
+            .unwrap();
+        (stand, reader, day)
+    };
+    // A whole day is kept, and the reader that read it reads the next with the key it found.
+    let (stand, mut reader, day) = read(Plays::FlakyItinerary).await;
+    day.unwrap().validate(&request()).unwrap();
+    reader.read(&stand.day.scope, Mode::Final).await.unwrap();
+    assert_eq!(stand.pages.load(Ordering::SeqCst), 1);
+    // Otherwise it says why: as the reader names it, or a day read whole that fails the checks.
+    for (plays, why) in [
+        (Plays::NoKey, "routes_native_no_key"),
+        (Plays::UncheckedItinerary, "routes_native_invalid"),
+    ] {
+        let (_, _, day) = read(plays).await;
+        assert_eq!(day.err(), Some(why), "{plays:?}");
     }
 }
