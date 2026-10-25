@@ -188,8 +188,8 @@ fn a_read_shows_each_driver_once_with_their_phones_by_their_digits() {
     let summaries = json!({"itinerarySummaries":[
             {"itineraryId":"it-1","transporterId":"f","driverSessionEnded":true,"lastDriverEventTime":100},
             {"itineraryId":"it-2","transporterId":"f","driverSessionEnded":false,"lastDriverEventTime":50},
-            {"itineraryId":"it-3","transporterId":"g","driverSessionEnded":false,"lastDriverEventTime":10},
-            {"itineraryId":"it-4","transporterId":"g","driverSessionEnded":false,"lastDriverEventTime":20},
+            {"itineraryId":"it-3","transporterId":"g","driverSessionEnded":false,"lastDriverEventTime":20},
+            {"itineraryId":"it-4","transporterId":"g","driverSessionEnded":false,"lastDriverEventTime":10},
             {"itineraryId":"it-5","transporterId":"h"}],
         "transporters":[{"transporterId":"f","workPhoneNumber":"+1 555 000 0005"},
             {"transporterId":"g","workPhoneNumber":"5550000006"},
