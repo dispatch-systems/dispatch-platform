@@ -111,8 +111,9 @@ pub fn for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn DriverRoutes
 
 /// Live route data: today's routes as the last whole live read left them, and the company work
 /// phone each driver holds now; nothing of another day. Apart from the historical route data
-/// `DriverRoutes` reads: a day joins it once saved there, and leaves live route data then; a day
-/// left unsaved, as when the DSP saves none, stays until the next day's first read.
+/// `DriverRoutes` reads: a day joins it once saved there, and leaves live route data as a stop
+/// saves it (`save_and_clear_live`); a day left unsaved, as when the DSP saves none, stays until
+/// the next day's first read.
 pub trait LiveRouteData: Send + Sync {
     /// The source whose IDs name its drivers, to find them among the DSP's people.
     fn source(&self) -> Source;
