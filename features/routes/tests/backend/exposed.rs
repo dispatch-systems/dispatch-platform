@@ -1,6 +1,6 @@
 //! Each driver's routes, as a feature or agent tool reads them: only while Routes is on for the
-//! DSP, the right driver's days for the IDs given, every driver's on a day, and the days
-//! collected apart from the rest.
+//! DSP, the right driver's days for the IDs given, found by driver, every driver's on a day,
+//! and the days collected apart from the rest.
 use super::*;
 use crate::backend::{routes_today, tests::publish};
 use chrono::Duration;
@@ -137,4 +137,39 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn a_drivers_days_are_read_by_driver_and_reach_only_the_packages_they_count() {
+    testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    let ids = serde_json::to_string(&["driver-1"]).unwrap();
+    let routes = db.routes_db(&dsp).unwrap();
+    // Each partial index holds only the tasks it names, so a driver's read reaches no other
+    // task: through the indexes on every task of the days, 60 of one driver's were about
+    // 9,000 rows.
+    for (sql, table, index) in [
+        (ROUTES[1], "d", "INDEX driver_days_driver_day"),
+        (ROUTES[1], "t", "COVERING INDEX tasks_removed"),
+        (UNDELIVERED[1], "t", "INDEX tasks_undelivered"),
+    ] {
+        let plan = routes
+            .all(
+                &format!("EXPLAIN QUERY PLAN {sql}"),
+                params!["TST1", "2026-08-01", "2026-09-30", ids],
+            )
+            .unwrap();
+        let steps: Vec<_> = plan
+            .iter()
+            .map(|step| s(step, "detail"))
+            .filter(|step| step.split_whitespace().nth(1) == Some(table))
+            .collect();
+        assert!(
+            !steps.is_empty()
+                && steps
+                    .iter()
+                    .all(|step| step.starts_with(&format!("SEARCH {table} USING {index} "))),
+            "{table}: {steps:?}"
+        );
+    }
 }

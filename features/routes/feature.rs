@@ -14,6 +14,9 @@ pub use backend::{DATABASE, RoutesStore, prepare};
 /// What its integration tests check beside the storage: the most jobs a scheduled run queues,
 /// how a capture is shaped and how kept responses are read back.
 pub use backend::{MAX_JOBS_PER_RUN, Shaper, gunzip};
+/// What a feature that depends on it saves a whole read of a day into historical route data
+/// with, as the standard collection saves its own, the day's work phones with it.
+pub use backend::{WorkPhone, save_day};
 
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
@@ -61,6 +64,9 @@ pub const FEATURE: Feature = Feature {
             "route_raw",
             "breaks",
             "unknown_stops",
+            "work_phones",
+            "staged_addresses",
+            "staged_drivers",
             // The window chosen before Settings kept it, read once to move it there.
             "route_retention",
         ],
@@ -82,6 +88,32 @@ pub const FEATURE: Feature = Feature {
                 id: 3,
                 name: "task_keys",
                 apply: Sql(include_str!("migrations/routedata/0003_task_keys.sql")),
+            },
+            Migration {
+                id: 4,
+                name: "driver_day_index",
+                apply: Sql(include_str!(
+                    "migrations/routedata/0004_driver_day_index.sql"
+                )),
+            },
+            Migration {
+                id: 5,
+                name: "package_flags_index",
+                apply: Sql(include_str!(
+                    "migrations/routedata/0005_package_flags_index.sql"
+                )),
+            },
+            Migration {
+                id: 6,
+                name: "work_phones",
+                apply: Sql(include_str!("migrations/routedata/0006_work_phones.sql")),
+            },
+            Migration {
+                id: 7,
+                name: "staged_shared_rows",
+                apply: Sql(include_str!(
+                    "migrations/routedata/0007_staged_shared_rows.sql"
+                )),
             },
         ],
     }],

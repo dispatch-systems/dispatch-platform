@@ -573,6 +573,22 @@
         {
           "id": 3,
           "name": "task_keys"
+        },
+        {
+          "id": 4,
+          "name": "driver_day_index"
+        },
+        {
+          "id": 5,
+          "name": "package_flags_index"
+        },
+        {
+          "id": 6,
+          "name": "work_phones"
+        },
+        {
+          "id": 7,
+          "name": "staged_shared_rows"
         }
       ]
     },
@@ -643,9 +659,12 @@
         "route_retention",
         "routedata_schema",
         "routes",
+        "staged_addresses",
+        "staged_drivers",
         "stops",
         "tasks",
-        "unknown_stops"
+        "unknown_stops",
+        "work_phones"
       ]
     },
     "subfeatures": []

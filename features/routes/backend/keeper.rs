@@ -53,7 +53,9 @@ impl Keeper for Routes {
         })
     }
     fn publish(&self, store: &Store, dsp: &str, job: &str, collected: Collected) -> Result<()> {
-        store.publish_routes(dsp, job, &serde_json::from_value(collected.data)?)
+        // A read collected before the day's own is left for the sweep.
+        store.publish_routes(dsp, job, &serde_json::from_value(collected.data)?)?;
+        Ok(())
     }
     fn schedule_ready(&self, store: &Store, dsp: &str) -> Result<()> {
         store.routes_schedule_ready(dsp)

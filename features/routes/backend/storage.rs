@@ -32,7 +32,7 @@ pub trait RoutesStore {
         staged: &Staged,
         itinerary: &PreparedItinerary,
     ) -> Result<()>;
-    fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<()>;
+    fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool>;
     fn expire_routes(&self, id: &str) -> Result<usize>;
     fn sweep_routes(&self, id: &str) -> Result<bool>;
     fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess>;
@@ -261,46 +261,17 @@ impl RoutesStore for Store {
             Ok(())
         })
     }
-    /// Makes a staged day its scope's active publication. Only flags change here, so the
-    /// platform lock is held for moments; the day's previous publication is left
-    /// inactive, and `sweep_routes` deletes it and its rows in small steps.
-    fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<()> {
-        let db = self.routes_db(id)?;
-        db.transaction(|| {
-            let row = db
-                .one(
-                    "SELECT itinerary_count,(SELECT count(*) FROM itineraries WHERE publication_id=p.id) stored \
-                     FROM route_publications p WHERE id=? AND job_id=? AND active=0",
-                    [&staged.publication, job],
-                )?
-                .ok_or_else(|| Error::new("routes_capture_invalid", 502))?;
-            ensure(
-                row["itinerary_count"] == row["stored"]
-                    && row["stored"] == json!(staged.itineraries),
-                "routes_capture_invalid",
-                502,
-            )?;
-            db.exec(
-                "UPDATE route_publications SET active=0 WHERE day=? AND station=? AND service_area_id=? \
-                 AND provider=? AND active=1",
-                params![
-                    staged.day,
-                    staged.station,
-                    staged.service_area_id,
-                    staged.provider
-                ],
-            )?;
-            db.exec(
-                "UPDATE route_publications SET active=1 WHERE id=?",
-                [&staged.publication],
-            )?;
-            Ok(())
-        })
+    /// Makes a staged day the day's read if it was collected later than the one the day has
+    /// (`publish_day`), with no work phones: the standard collection reads none. Answers
+    /// whether it is the day's read now.
+    fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool> {
+        publish_day(&*self.routes_db(id)?, job, staged, &[])
     }
     /// Retires the days a DSP's retention window has passed: they become inactive, and
     /// `sweep_routes` deletes them in small steps. Addresses and drivers last seen before
-    /// the window go with them. Nothing is retired while the routes feature is off, so
-    /// switching it off never deletes. Answers how many days were retired.
+    /// the window go with them, as do the days' work phones. Nothing is retired while the
+    /// routes feature is off, so switching it off never deletes. Answers how many days were
+    /// retired.
     fn expire_routes(&self, id: &str) -> Result<usize> {
         if !self.feature_enabled(id, COLLECTION)? {
             return Ok(0);
@@ -317,6 +288,7 @@ impl RoutesStore for Store {
             )?;
             db.exec("DELETE FROM addresses WHERE last_seen_day<?", [&start])?;
             db.exec("DELETE FROM drivers WHERE last_seen_day<?", [&start])?;
+            db.exec("DELETE FROM work_phones WHERE day<?", [&start])?;
             Ok(retired)
         })?;
         if retired > 0 {
@@ -371,6 +343,7 @@ impl RoutesStore for Store {
                 for itinerary in &prepared {
                     insert_itinerary(&db, &publication, day, itinerary)?;
                 }
+                share(&db, &publication, day)?;
                 db.exec(
                     "UPDATE route_publications SET route_count=?,itinerary_count=?,stop_count=?,task_count=?,\
                      adapter_version=? WHERE id=?",

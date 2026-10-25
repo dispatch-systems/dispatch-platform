@@ -135,7 +135,11 @@
     "migrations": [
       [1, "baseline", "2c060a3b390b65b7"],
       [2, "details", "code"],
-      [3, "task_keys", "0e69273e130b765a"]
+      [3, "task_keys", "0e69273e130b765a"],
+      [4, "driver_day_index", "cbeed9e551fb3d02"],
+      [5, "package_flags_index", "79f9584ee1e26762"],
+      [6, "work_phones", "12c86b4f236e45e1"],
+      [7, "staged_shared_rows", "aed480da151df28c"]
     ]
   },
   {
