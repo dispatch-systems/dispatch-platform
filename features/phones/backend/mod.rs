@@ -8,6 +8,10 @@ pub(crate) mod pairing;
 pub(crate) mod storage;
 pub(crate) mod tidy;
 
+#[cfg(test)]
+#[path = "../tests/backend/support.rs"]
+pub(crate) mod support;
+
 /// How Phones writes a number, as its contract offers it (`dispatch_phones_contract::normal`).
 #[cfg(test)]
 #[path = "../tests/backend/numbers.rs"]

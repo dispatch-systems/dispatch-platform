@@ -7,7 +7,7 @@ use super::{
 };
 use crate::backend::{
     files, live, pairing,
-    storage::{Device, PAIRING_MS, PhonesStore},
+    storage::{Device, DeviceStore, PAIRING_MS},
 };
 use dispatch_core::{
     Error, Result,

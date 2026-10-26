@@ -3,7 +3,7 @@
 //! arrive beside the folder's files, then take their place, and are let go, only under the
 //! platform's write lock, with the files that keep them: so letting go never removes the bytes of
 //! a file kept a moment before.
-use super::storage::PhonesStore;
+use super::storage::FileStore;
 use dispatch_core::{
     Error, Result, State,
     db::{self, Store},

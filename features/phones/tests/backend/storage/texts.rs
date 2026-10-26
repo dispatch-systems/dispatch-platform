@@ -1,86 +1,12 @@
-//! Phones' storage, against a real store in a temporary directory: pairing, the texts a phone
-//! reports, how Dispatch's texts go, the order readers find changes in, and letting go.
+//! The texts the DSP's phones relay, against a real store in a temporary directory: the texts a
+//! phone reports, how Dispatch's texts go, and the order readers find changes in.
 use super::*;
+use crate::backend::{
+    storage::{DeviceStore, FileStore, Pairing, ReportedFile},
+    support::{outgoing, paired, reported, store},
+};
 use dispatch_core::testing;
-use dispatch_phones_contract::{Direction, Origin, Outgoing, Status};
-
-const CODE: &str = "code-sha";
-
-fn store() -> (tempfile::TempDir, Store, String) {
-    testing::install(&[], &[&crate::FEATURE]);
-    testing::bootstrapped()
-}
-/// A phone paired by a code the DSP's owner made, with the key `key`.
-fn paired(db: &Store, dsp: &str, key: &str, number: &str) -> Device {
-    let owner = testing::a_user(db);
-    db.phones_new_pairing(dsp, &owner, CODE, 1_000).unwrap();
-    let pairing = Pairing {
-        number,
-        model: "Pixel 8a",
-        app_version: "1.0.0",
-    };
-    db.phones_pair(dsp, CODE, key, &pairing, 2_000).unwrap()
-}
-fn reported(id: &str, number: &str, at: i64, files: usize) -> Reported {
-    Reported {
-        client_id: id.into(),
-        direction: Direction::In,
-        number: number.into(),
-        body: format!("text {id}"),
-        at,
-        files: (0..files)
-            .map(|index| ReportedFile {
-                name: format!("photo{index}.jpg"),
-                mime: "image/jpeg".into(),
-                size: 100,
-            })
-            .collect(),
-    }
-}
-fn outgoing(to: &str, files: Vec<String>, by: &str) -> Outgoing {
-    Outgoing {
-        phone: None,
-        to: to.into(),
-        body: "On my way".into(),
-        files,
-        by: by.into(),
-    }
-}
-
-#[test]
-fn a_code_pairs_one_phone_once_while_it_lasts() {
-    let (_root, db, dsp) = store();
-    let first = paired(&db, &dsp, "key-1", "(206) 555-0100");
-    assert_eq!(first.name, "Dispatch");
-    assert_eq!(first.number, "+12065550100");
-    assert_eq!(db.phones_device_by_key(&dsp, "key-1").unwrap(), Some(first));
-    let pairing = Pairing {
-        number: "",
-        model: "Galaxy A35",
-        app_version: "1.0.0",
-    };
-    // Used once, the code pairs nothing more.
-    let again = db.phones_pair(&dsp, CODE, "key-2", &pairing, 3_000);
-    assert_eq!(again.unwrap_err().code.as_str(), "phones_pairing_invalid");
-    // A new code replaces one not used yet, and expires.
-    let owner = testing::a_user(&db);
-    db.phones_new_pairing(&dsp, &owner, "old", 10_000).unwrap();
-    db.phones_new_pairing(&dsp, &owner, "new", 10_000).unwrap();
-    let old = db.phones_pair(&dsp, "old", "key-2", &pairing, 11_000);
-    assert_eq!(old.unwrap_err().code.as_str(), "phones_pairing_invalid");
-    let late = db.phones_pair(&dsp, "new", "key-2", &pairing, 10_000 + PAIRING_MS);
-    assert_eq!(late.unwrap_err().code.as_str(), "phones_pairing_invalid");
-    db.phones_new_pairing(&dsp, &owner, "third", 20_000)
-        .unwrap();
-    let second = db
-        .phones_pair(&dsp, "third", "key-2", &pairing, 21_000)
-        .unwrap();
-    assert_eq!(second.name, "Phone 2");
-    // Removed, a phone's key works no more.
-    db.phones_remove(&dsp, &second.id, 22_000).unwrap();
-    assert_eq!(db.phones_device_by_key(&dsp, "key-2").unwrap(), None);
-    assert!(db.phones_key_removed(&dsp, "key-2").unwrap());
-}
+use dispatch_phones_contract::{Direction, Origin, Status};
 
 #[test]
 fn a_text_reported_twice_is_kept_once() {
@@ -282,42 +208,6 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number() {
         12_000,
     );
     assert_eq!(twice.unwrap_err().code.as_str(), "phones_file_not_found");
-}
-
-#[test]
-fn pictures_never_sent_and_codes_expired_are_let_go() {
-    let (_root, db, dsp) = store();
-    let owner = testing::a_user(&db);
-    let phone = paired(&db, &dsp, "key", "2065550100");
-    let file = |name: &str| ReportedFile {
-        name: name.into(),
-        mime: "image/png".into(),
-        size: 1,
-    };
-    let sent = db
-        .phones_add_file(&dsp, &owner, &file("sent.png"), "sha-sent", 1_000)
-        .unwrap();
-    db.phones_send(
-        &dsp,
-        &Outgoing {
-            phone: Some(phone.id),
-            ..outgoing("4255550199", vec![sent.id.clone()], &owner)
-        },
-        1_000,
-    )
-    .unwrap();
-    let unsent = db
-        .phones_add_file(&dsp, &owner, &file("unsent.png"), "sha-unsent", 1_000)
-        .unwrap();
-    let recent = db
-        .phones_add_file(&dsp, &owner, &file("recent.png"), "sha-recent", 5_000)
-        .unwrap();
-    assert_eq!(db.phones_tidy(&dsp, 2_000).unwrap(), ["sha-unsent"]);
-    assert!(db.phones_file(&dsp, &unsent.id).unwrap().is_none());
-    assert!(db.phones_file(&dsp, &sent.id).unwrap().is_some());
-    assert!(db.phones_file(&dsp, &recent.id).unwrap().is_some());
-    assert!(!db.phones_bytes_kept(&dsp, "sha-unsent").unwrap());
-    assert!(db.phones_bytes_kept(&dsp, "sha-sent").unwrap());
 }
 
 #[test]

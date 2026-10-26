@@ -2,7 +2,7 @@
 //! and of pairing codes expired.
 use super::{
     files,
-    storage::{DOMAIN, PhonesStore},
+    storage::{DOMAIN, DeviceStore, FileStore},
 };
 use dispatch_core::{
     Error, Result, State,
@@ -57,14 +57,15 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
     })
 }
 /// Lets go of the DSP's pictures added before `before` and never sent, and their bytes, each on
-/// its own: bytes that can't be let go are logged, and the rest still go.
+/// its own: bytes that can't be let go are logged, and the rest still go. Then of the codes
+/// expired.
 fn let_go(db: &Store, dsp: &str, before: i64) -> Result<()> {
-    for sha256 in db.phones_tidy(dsp, before)? {
+    for sha256 in db.phones_tidy_files(dsp, before)? {
         if let Err(error) = files::forget(db, dsp, &sha256) {
             failed(&error);
         }
     }
-    Ok(())
+    db.phones_tidy_pairings(dsp, db::now())
 }
 
 #[cfg(test)]

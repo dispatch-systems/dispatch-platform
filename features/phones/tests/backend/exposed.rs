@@ -1,16 +1,13 @@
 //! What Phones exposes, as a feature using it finds it: only while it's on for the DSP, with
 //! the DSP's phones and the texts they relay, sending one from them, sending one that failed again
 //! as its caller's condition allows, and the pictures added for one, let go of while not sent.
-use crate::backend::storage::{PhonesStore, StatusReport};
-use axum::body::Bytes;
-use dispatch_core::{
-    Error, State,
-    db::{self, Store},
-    ensure,
-    server::http::upload::Upload,
-    testing,
+use crate::backend::{
+    storage::{StatusReport, TextStore},
+    support::{always, kept},
 };
-use dispatch_phones_contract::{Added, Condition, Outgoing, Status, Texting, for_dsp};
+use axum::body::Bytes;
+use dispatch_core::{Error, State, db::Store, ensure, server::http::upload::Upload, testing};
+use dispatch_phones_contract::{Added, Outgoing, Status, Texting, for_dsp};
 use futures_util::stream;
 use std::sync::Arc;
 
@@ -62,11 +59,6 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
     let at = dsp.clone();
     let offered = state.read(move |db| for_dsp(db, &at)).await.unwrap();
     assert!(offered.is_none());
-}
-
-/// A condition that always holds.
-fn always() -> Condition {
-    Box::new(|_: &Store| Ok(()))
 }
 
 #[tokio::test]
@@ -143,11 +135,6 @@ async fn texting_sends_a_text_or_a_failed_one_again_only_as_its_condition_allows
     assert_eq!(retried.status, Some(Status::Waiting));
 }
 
-/// Where the DSP's pictures' bytes are kept, made private as the feature makes it.
-fn kept(db: &Store, dsp: &str) -> std::path::PathBuf {
-    let owner = db::private_dir(&db.area(dsp, "data").unwrap().join("phones")).unwrap();
-    db::private_dir(&owner.join("files")).unwrap()
-}
 /// The picture `bytes`, as `by` adds it for a text.
 async fn add(
     texting: &dyn Texting,

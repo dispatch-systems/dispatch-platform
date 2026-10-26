@@ -2,7 +2,7 @@
 //! (`dispatch_phones_contract`).
 use super::{
     files, live,
-    storage::{DOMAIN, PhonesStore, ReportedFile},
+    storage::{DOMAIN, DeviceStore, FileStore, ReportedFile, TextStore},
 };
 use dispatch_core::{
     Result, State,

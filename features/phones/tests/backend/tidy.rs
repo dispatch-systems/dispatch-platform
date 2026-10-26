@@ -1,12 +1,11 @@
 //! Upkeep lets go of each picture never sent on its own: one whose bytes can't go leaves the
 //! rest to go, and bytes a later file of the same picture keeps stay.
 use super::let_go;
-use crate::backend::storage::{PhonesStore, ReportedFile};
-use dispatch_core::{
-    db::{self, Store},
-    testing,
+use crate::backend::{
+    storage::{FileStore, ReportedFile},
+    support::kept,
 };
-use std::path::PathBuf;
+use dispatch_core::testing;
 
 fn picture() -> ReportedFile {
     ReportedFile {
@@ -14,11 +13,6 @@ fn picture() -> ReportedFile {
         mime: "image/jpeg".into(),
         size: 4,
     }
-}
-/// Where the DSP's pictures' bytes are kept, made private as the feature makes it.
-fn kept(db: &Store, dsp: &str) -> PathBuf {
-    let owner = db::private_dir(&db.area(dsp, "data").unwrap().join("phones")).unwrap();
-    db::private_dir(&owner.join("files")).unwrap()
 }
 
 #[test]

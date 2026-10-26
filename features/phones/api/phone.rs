@@ -5,8 +5,8 @@
 use crate::backend::{
     files, live, pairing,
     storage::{
-        DOMAIN, Device, Kept, MOST_TEXTS, Pairing, PhonesStore, Reported, ReportedFile,
-        StatusReport,
+        DOMAIN, Device, DeviceStore, FileStore, Kept, MOST_TEXTS, Pairing, Reported,
+        ReportedFile, StatusReport, TextStore,
     },
 };
 use dispatch_core::accounts::api::types::Dsp;
