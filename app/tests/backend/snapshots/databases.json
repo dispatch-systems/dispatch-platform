@@ -42,7 +42,8 @@
       [3, "routes_kind", "de8b5fe1fb72270b"],
       [4, "dvic_kind", "311993998eedd13c"],
       [5, "open_kinds", "13830dde50ae8243"],
-      [6, "live_reads", "df1f39254c9fffb2"]
+      [6, "live_reads", "df1f39254c9fffb2"],
+      [7, "live_days_stopping", "code"]
     ]
   },
   {
@@ -85,7 +86,8 @@
       ["slack", 8, "slack_workspaces_added", "code"],
       ["slack", 9, "slack_install_links_by_workspace", "c02a5b6288a083bc"],
       ["slack", 10, "slack_install_pages", "code"],
-      ["slack", 11, "slack_logos", "b75a1f564d324b29"]
+      ["slack", 11, "slack_logos", "b75a1f564d324b29"],
+      ["phones", 1, "phones", "d5e4a32a62e1bb6d"]
     ]
   },
   {

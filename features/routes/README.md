@@ -43,12 +43,15 @@ it is live route data, in a database of its own, `routelive`.
   read collected no later than the one kept. A day or scope other than the one live route data
   holds starts it afresh. The drivers its route list assigns are named before their itinerary
   is read, and Driver Match hears of each driver it names first (`people.changed`).
-  `clear_live` empties it and gives the file's space back, as a day starts; `save_live_day`
-  saves the last whole read it holds into historical route data through `save_day`, with every
-  hold of the day, under the key `live:<day>:<collected ms>`, so saving it again saves nothing
-  twice: a final read if it was read once its day had ended where the DSP is, a snapshot
-  otherwise, so a day's later final read replaces it. It answers none when live route data
-  holds no day, and leaves live route data as it was. All three refuse while Routes is off.
+  `clear_live` empties it and gives the file's space back, as a day starts or once a stopped
+  day is saved; `save_live_day` saves the last whole read it holds into historical route data
+  through `save_day`, with every hold of the day, under the key `live:<day>:<collected ms>`, so
+  saving it again saves nothing twice: a final read if it was read once its day had ended where
+  the DSP is, a snapshot otherwise, so a day's later final read replaces it. It answers none
+  when live route data holds no day, and leaves live route data as it was.
+  `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
+  once it's saved, or once it holds no day, as after an earlier call emptied it but couldn't give
+  its space back. All four refuse while Routes is off.
 - **Work phones:** who holds which of the company's work phones is settled from each whole live
   read, in the transaction that keeps it (`backend/phones.rs`), from what each driver's record
   shows: the list's phone, else their itinerary's, by its last ten digits. A driver claims a
@@ -57,11 +60,11 @@ it is live route data, in a database of its own, `routelive`.
   the first phone it showed today, read for every driver the list names, assigned only or
   dispatched; a claim made earlier is withdrawn. A driver holding a phone switches to another
   once two reads in a row show it. A claim of a phone someone holds is a handover, ending theirs,
-  and their record still showing it never takes it back. A session Cortex ended ends its
-  driver's hold, as does going from the day's list, and the phone shown once they're back is
-  claimed again; a list naming nobody ends none. Claims are settled oldest activity first, so the
-  most recently active driver holds a phone two records show. Every hold is kept, from its claim
-  until it ends, so a restart neither repeats a claim nor loses one.
+  and their record still showing it never takes it back. A hold ends only with a switch or a
+  handover: a driver keeps the last phone they held once Cortex ends their session or they're
+  gone from the day's list, until someone else claims it. Claims are settled oldest activity first, so the most
+  recently active driver holds a phone two records show. Every hold is kept, from its claim
+  until it ends or the day does, so a restart neither repeats a claim nor loses one.
 - **Schedule:** the DSP's own rules, none made for it, set on Settings' Collectors page behind
   `routes.manage` (its keeper's `schedules`, which offers the choice), through core's
   `/api/dsp/collectors/routes` routes. Each rule reads one day of its choosing, its Day:

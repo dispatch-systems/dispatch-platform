@@ -10,6 +10,7 @@ use crate::{
     manifest::{Feature, Registry},
     tenancy::roles,
 };
+use chrono::WeekdaySet;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -292,6 +293,9 @@ pub enum Kind {
         code: bool,
         locked: bool,
     },
+    /// Any of the days of the week, kept in their order from Monday, each by its short name:
+    /// `mon` to `sun`.
+    Days { default: WeekdaySet },
     /// A time of day, `HH:MM`.
     Time { default: &'static str },
     /// A timezone, by its IANA name.
@@ -386,6 +390,10 @@ pub const fn text(
         locked: false,
     };
     field(id, label, kind)
+}
+/// Days of the week: `days("days", "Days", WeekdaySet::ALL)`, which reads as `Vec<Weekday>`.
+pub const fn days(id: &'static str, label: &'static str, default: WeekdaySet) -> Field {
+    field(id, label, Kind::Days { default })
 }
 pub const fn time(id: &'static str, label: &'static str, default: &'static str) -> Field {
     field(id, label, Kind::Time { default })

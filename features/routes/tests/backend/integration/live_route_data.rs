@@ -12,7 +12,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_live_day};
+use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_and_clear_live, save_live_day};
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeMap,
@@ -289,7 +289,7 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     );
     assert_eq!(differences(&db, &dsp), Vec::<String>::new(), "dispatched");
 
-    // One itinerary gone from the list, its driver's phone with it; a task gone and another
+    // One itinerary gone from the list, its driver keeping their phone; a task gone and another
     // changed, an unknown stop gone.
     day.summaries["itinerarySummaries"] = json!([listed[0]]);
     let first = day.detail("itinerary-1");
@@ -297,7 +297,7 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
     first["stops"][1]["tasks"][0]["taskState"] = json!("UNDELIVERABLE");
     first["unknownStops"] = json!([]);
     let narrowed = keep_and_save(&state, &dsp, day.read(2)).await;
-    assert_eq!((narrowed.listed, narrowed.holding), (1, 1));
+    assert_eq!((narrowed.listed, narrowed.holding), (1, 2));
     assert_eq!(differences(&db, &dsp), Vec::<String>::new(), "narrowed");
 
     // Both back, the first without its breaks or its first stop; the second route off the list,
@@ -327,8 +327,7 @@ async fn a_live_day_kept_in_place_reads_as_each_read_saved_whole() {
         holds(&live),
         [
             ("driver-1".into(), P1.into(), started + 1, Some(started + 4)),
-            ("driver-2".into(), P2.into(), started + 1, Some(started + 2)),
-            ("driver-2".into(), P2.into(), started + 3, None),
+            ("driver-2".into(), P2.into(), started + 1, None),
             ("driver-1".into(), P3.into(), started + 4, None),
         ]
     );
@@ -370,8 +369,9 @@ async fn a_read_that_isnt_whole_or_isnt_of_today_changes_nothing() {
     let yesterday = Day::new(&(today - chrono::Duration::days(1)).to_string()).read(2);
     let mut finished = day.read(2);
     finished.mode = Mode::Final;
+    // East of the DSP's UTC, where its day has always begun, so only the scope refuses it.
     let mut zoned = day.read(2);
-    zoned.scope.timezone = "America/Chicago".into();
+    zoned.scope.timezone = "Asia/Tokyo".into();
     for (read, code, why) in [
         (
             missing,
@@ -521,6 +521,49 @@ async fn clearing_empties_live_route_data_and_gives_its_space_back() {
     db.set_feature(&dsp, "routes", false, &owner).unwrap();
     let refused = save_live_day(&state, &dsp).await.unwrap_err();
     assert_eq!(refused.code, "routes_off");
+}
+
+#[tokio::test]
+async fn a_saved_day_is_cleared_and_a_cleared_one_gives_its_space_back() {
+    let (_root, db, dsp, state) = ready();
+    let day = Day::new(&today(&db, &dsp).to_string());
+    let free = |db: &Store| {
+        let live = db.routes_live_db(&dsp).unwrap();
+        live.count("SELECT freelist_count FROM pragma_freelist_count()", [])
+            .unwrap()
+    };
+    let saved = |db: &Store| {
+        let historical = db.routes_db(&dsp).unwrap();
+        historical
+            .all("SELECT job_id FROM route_publications WHERE active=1", [])
+            .unwrap()
+    };
+    keep_live(&state, &dsp, day.read(1)).await.unwrap();
+    assert_eq!(save_and_clear_live(&state, &dsp).await.unwrap(), Some(true));
+    let offered = dispatch_routes_contract::live_for_dsp(&db, &dsp)
+        .unwrap()
+        .unwrap();
+    assert_eq!(offered.live_day(&db, &dsp).unwrap(), None);
+    let history = saved(&db);
+    assert_eq!(history.len(), 1);
+    assert_eq!(free(&db), 0);
+
+    // Emptied by an earlier call that couldn't give the space back, as when its VACUUM failed:
+    // the next gives it back, saving nothing.
+    keep_live(&state, &dsp, day.read(2)).await.unwrap();
+    let live = db.routes_live_db(&dsp).unwrap();
+    live.transaction(|| {
+        for table in shared_tables().into_iter().chain(["work_phones_shown"]) {
+            live.exec(&format!("DELETE FROM {table}"), [])?;
+        }
+        Ok(())
+    })
+    .unwrap();
+    drop(live);
+    assert!(free(&db) > 0);
+    assert_eq!(save_and_clear_live(&state, &dsp).await.unwrap(), None);
+    assert_eq!(free(&db), 0);
+    assert_eq!(saved(&db), history);
 }
 
 #[tokio::test]

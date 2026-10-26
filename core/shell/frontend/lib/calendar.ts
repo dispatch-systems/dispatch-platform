@@ -8,6 +8,8 @@ const parse = (day: string) => {
 const format = (value: Date) =>
   `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`;
 
+/** The days of the week as a schedule names them, Monday first. */
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 /** 0 for Sunday through 6 for Saturday. */
 export const weekdayOf = (day: string) => parse(day).getUTCDay();
 export const monthOf = (day: string) => day.slice(0, 7);

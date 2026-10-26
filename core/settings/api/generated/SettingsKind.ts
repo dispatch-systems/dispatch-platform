@@ -5,4 +5,4 @@ import type { SettingsPreset } from "./SettingsPreset";
 /**
  * What a field holds, as its value is drawn and sent.
  */
-export type SettingsKind = { "kind": "toggle" } | { "kind": "choice", options: Array<SettingsOption>, } | { "kind": "pick", options: Array<SettingsOption>, none: string | null, } | { "kind": "many", options: Array<SettingsOption>, ordered: boolean, } | { "kind": "number", min: number, max: number, unit: string | null, presets: Array<SettingsPreset>, none: string | null, } | { "kind": "text", min: number, max: number, code: boolean, locked: boolean, } | { "kind": "time" } | { "kind": "timezone" };
+export type SettingsKind = { "kind": "toggle" } | { "kind": "choice", options: Array<SettingsOption>, } | { "kind": "pick", options: Array<SettingsOption>, none: string | null, } | { "kind": "many", options: Array<SettingsOption>, ordered: boolean, } | { "kind": "number", min: number, max: number, unit: string | null, presets: Array<SettingsPreset>, none: string | null, } | { "kind": "text", min: number, max: number, code: boolean, locked: boolean, } | { "kind": "days" } | { "kind": "time" } | { "kind": "timezone" };

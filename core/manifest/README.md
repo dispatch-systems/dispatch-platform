@@ -42,7 +42,7 @@ Every field of `Feature`, as `feature.rs` fills it.
 | `keeps`                    | `keeping`      | The collections it keeps: for each, what a run needs, how what it brings is stored, what a schedule of it queues and who sets it (`Keeper`). |
 | `schedule_aliases`         | `keeping`      | A name a schedule collects by that reads one of its collections another way, as Routes' Today so far, offered as its rules' choice.          |
 | `live`                     | `mod.rs`       | The permissions that may follow its collections' progress through the collection updates the dashboard waits on.                             |
-| `live_readers`             | `live_readers` | What it reads from a provider for each DSP every few minutes, inside a window each DSP sets, within the server rather than as jobs.          |
+| `live_readers`             | `live_readers` | What it reads from a provider for each DSP every few minutes, on a schedule each DSP sets, within the server rather than as jobs.            |
 | `migrations`               | `storage`      | What it adds to a database it keeps whole: that database's one list.                                                                         |
 | `own_migrations`           | `storage`      | What it adds to a database other owners add to, numbered by the feature from 1 and recorded under its name.                                  |
 | `retired_migrations`       | `storage`      | The ledger of a database it no longer opens, kept so its retired storage can be read during an import.                                       |
@@ -230,10 +230,10 @@ failures. The registry refuses two types under one name, and a feature hearing o
 
 ### Live readers
 
-What a feature reads from a provider for each DSP every few minutes, inside a window each DSP
+What a feature reads from a provider for each DSP every few minutes, on a schedule each DSP
 sets (`live_readers.rs`). Jobs don't suit it: each starts a browser, a few run at once, and a DSP's schedule runs every half
 hour at most. A live reader runs within the server instead, as `collection::readers` describes:
-one light task for each DSP whose feature is on and whose window is set, which holds what the
+one light task for each DSP whose feature is on and whose schedule is set, which holds what the
 reader keeps in memory between reads and starts no browser unless a hook opens one.
 
 ```rust
@@ -246,12 +246,10 @@ impl LiveReader for Routes {
     fn id(&self) -> &'static str {
         "fuel.prices" // `<feature>.<what>`, permanent: each read's record is kept under it
     }
-    fn every(&self) -> Duration {
-        Duration::from_secs(300) // whole seconds, a minute at least
-    }
-    fn window(&self, db: &Store, dsp: &str) -> Result<Option<Window>> {
-        let times: Times = settings::read(db, dsp, &COLLECTION)?;
-        Window::parse(&times.start, &times.stop).map(Some)
+    fn schedule(&self, db: &Store, dsp: &str) -> Result<Option<Schedule>> {
+        let set: Set = settings::read(db, dsp, &COLLECTION)?; // its days, times and interval
+        let every = Duration::from_secs(set.minutes * 60); // whole seconds, a minute at least
+        Schedule::new(&set.days, &set.start, &set.stop, every).map(Some)
     }
     fn read<'a>(&'a self, reading: &'a Reading, held: &'a mut Session) -> Pending<'a, Day> {
         Box::pin(async move { … }) // whole, or an error whose code says why not
@@ -266,23 +264,28 @@ impl LiveReader for Routes {
 live_readers: &[&backend::live::READER],
 ```
 
-- **Its window** (`window`): the DSP's start and stop, in its own time, read from the feature's
-  settings with one keyed read; none while it reads nothing there. A stop no later than the
-  start is the next day's, and the same as the start reads all day. A day's window is the day
-  it opens on, which the hooks are handed as `Reading::day`, today as the server reckons it.
-- **Its reads** (`read`): one each `every`, on a grid from the window's start at the DSP's own
-  offset within the interval, so DSPs whose windows open together read apart, until the
-  window closes. A read is whole, or an error whose code says why not; one slower than its
-  interval is cut off (`live_read_timeout`). `held` is the DSP's memory, as a provider's
-  session and key: never written, and made anew each day and whenever its reading starts
-  again, as after a restart, a switch or a stall.
+- **Its schedule** (`schedule`): the days of the week its window opens on, the window's start
+  and stop, in the DSP's own time, and how often it reads, read from the feature's settings
+  with one keyed read; none while it reads nothing there. `Schedule::new` refuses one on no day,
+  or reading other than every whole number of seconds, a minute or more (`invalid_schedule`). A
+  stop no later than the start is the next day's, and the same as the start reads all day. A
+  day's window is the day it opens on, which the hooks are handed as `Reading::day`, today as
+  the server reckons it.
+- **Its reads** (`read`): one each interval, from the window's start until it closes, on each
+  day it opens on; DSPs whose windows open together wait their turns to read. A read is whole,
+  or an error whose code says why not; one slower than its interval is cut off
+  (`live_read_timeout`). `held` is the DSP's memory, as a provider's session and key: never
+  written, and made anew each day and whenever its reading starts again, as after a restart, a
+  switch or a stall.
 - **A whole read** goes to `kept`, which answers what it counted, under fixed names. A day's
   first whole read goes to `started` first, which starts the day, as clearing the last day's
   data; a restart within the window, or a window saved again, doesn't start it again.
-- **A day ends** (`stopped`) once its window has closed, at the DSP's offset past the close:
-  once for each day it started, even when the server was down then, and before a later day
-  starts. A hook that fails is asked again: `started` with the next whole read, `stopped` a
-  minute later.
+- **A day ends** (`stopped`) as its window closes: once for each day it started, even when the
+  server was down then or the day is no longer one it opens on, and before a later day starts.
+  A day reads no more once its stop has begun, though its window is moved to end later or
+  `stopped` fails part of the way: its stop is finished first, after a restart too, and its
+  next reads are the next day's. A hook that fails is asked again: `started` with the next
+  whole read, `stopped` a minute later.
 - **A browser** (`Reading::browser(provider)`): a hook that needs one, to sign in or take a
   key from a page, opens the DSP's own for a provider, signed in as a job's is and within the
   server's limits on browsers and memory. It's the reader's alone until it closes, closing
@@ -296,8 +299,7 @@ live_readers: &[&backend::live::READER],
   but those that declare a live reader, so nothing reads a provider for it unasked: a preview or
   a test switches one on.
 
-The registry refuses two readers with one id, an id outside its feature's name, and an
-interval under a minute or of part of a second.
+The registry refuses two readers with one id, and an id outside its feature's name.
 
 ## Frontend slots
 
@@ -325,5 +327,5 @@ them is `core/shell/frontend/runtime/slots/`, one module per slot, gathered by `
 | `replies`                | `api`          | How the API client checks the replies of its routes, loaded apart from the first page.                                                                                                                                                                                                                                                            |
 | `errors`                 | `api`          | What its error codes say, for a code something outside its own screens raises.                                                                                                                                                                                                                                                                    |
 | `scheduleIssues`         | `api`          | Why a schedule of its collections waits, by the code it last stopped on.                                                                                                                                                                                                                                                                          |
-| `collected`              | `collected`    | What each collection it keeps collects, by the collection's name: its kinds of record and their fields, each with a made-up value, the count of the latest successful run that counts each kind, what a run reads, does, skips and doesn't keep. Settings' Collectors page shows it under the collection, loading it as it does.                  |
+| `collected`              | `collected`    | What each collection it keeps collects, by the collection's name: its kinds of record and their fields, each with a made-up value, the count of the latest successful run that counts each kind, what a run reads, does, skips and doesn't keep. Settings' Collectors page loads it under the collection; `new feature --keeps` writes one.       |
 | `platformSlots`          | `platform`     | What it puts in the platform owner's slots: its switch's icon, its audit wording, how Diagnostics words its runs, its mail kinds.                                                                                                                                                                                                                 |

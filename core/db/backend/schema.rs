@@ -231,6 +231,11 @@ const JOBS: &[Migration] = &[
             "../../collection/migrations/jobs/0006_live_reads.sql"
         )),
     },
+    Migration {
+        id: 7,
+        name: "live_days_stopping",
+        apply: Code(live_days_stopping),
+    },
 ];
 const DSP: &[Migration] = &[
     Migration {
@@ -288,6 +293,11 @@ const DSP: &[Migration] = &[
         )),
     },
 ];
+// When each live day's stop began: once it has, the day reads no more and its stop is
+// finished first, after a restart too (`collection/backend/readers`).
+fn live_days_stopping(db: &Db) -> Result<()> {
+    add_column(db, "live_days", "stopping_at", "INTEGER")
+}
 fn role_columns(db: &Db) -> Result<()> {
     add_column(db, "memberships", "role_id", "TEXT REFERENCES roles(id)")?;
     add_column(db, "invitations", "role_id", "TEXT")?;

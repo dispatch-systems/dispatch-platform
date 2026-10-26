@@ -1,5 +1,5 @@
 //! The work phone rules on made-up drivers and phones, each settled read by read into a DSP's
-//! live route data: who claims a phone and when, how it passes on and ends, and the holds kept.
+//! live route data: who claims a phone and when, how it passes on, and the holds kept.
 use super::*;
 use crate::{backend::RoutesStore, testing};
 
@@ -73,22 +73,24 @@ fn holds(db: &Store, dsp: &str, driver: &str) -> Vec<(String, i64, Option<i64>)>
 }
 
 #[test]
-fn a_shift_that_ends_and_resumes_on_the_same_phone_claims_it_again() {
+fn a_shift_that_ends_keeps_its_phone_until_someone_else_claims_it() {
     let (_root, db, dsp) = live();
     assert_eq!(read(&db, &dsp, 1, vec![seen("a", P1, false, 1)]), 1);
-    assert_eq!(read(&db, &dsp, 2, vec![seen("a", P1, true, 2)]), 1);
-    assert!(holders(&db, &dsp, P1).is_empty());
-    assert_eq!(read(&db, &dsp, 3, vec![seen("a", P1, false, 3)]), 1);
-    // A session ends its hold though its record shows no phone as it does.
+    assert_eq!(read(&db, &dsp, 2, vec![seen("a", P1, true, 2)]), 0);
+    assert_eq!(holders(&db, &dsp, P1), ["a"]);
+    // Resumed on the same phone, the hold goes on; ended with no phone shown, it's kept.
+    assert_eq!(read(&db, &dsp, 3, vec![seen("a", P1, false, 3)]), 0);
     let ended = Listed {
         phone: None,
         ..seen("a", P1, true, 4)
     };
-    assert_eq!(read(&db, &dsp, 4, vec![ended]), 1);
-    assert_eq!(
-        holds(&db, &dsp, "a"),
-        [(P1.into(), 1, Some(2)), (P1.into(), 3, Some(4))]
-    );
+    assert_eq!(read(&db, &dsp, 4, vec![ended]), 0);
+    assert_eq!(holds(&db, &dsp, "a"), [(P1.into(), 1, None)]);
+    // Claimed by another driver, it's handed over.
+    let claimed = vec![seen("a", P1, true, 4), seen("b", P1, false, 5)];
+    assert_eq!(read(&db, &dsp, 5, claimed), 2);
+    assert_eq!(holders(&db, &dsp, P1), ["b"]);
+    assert_eq!(holds(&db, &dsp, "a"), [(P1.into(), 1, Some(5))]);
 }
 
 #[test]
@@ -112,7 +114,7 @@ fn a_handed_over_holders_record_never_takes_the_phone_back() {
 }
 
 #[test]
-fn a_driver_gone_from_the_list_ends_their_hold_and_a_list_naming_nobody_ends_none() {
+fn a_driver_gone_from_the_list_keeps_their_phone_until_someone_else_claims_it() {
     let (_root, db, dsp) = live();
     read(
         &db,
@@ -120,14 +122,18 @@ fn a_driver_gone_from_the_list_ends_their_hold_and_a_list_naming_nobody_ends_non
         1,
         vec![seen("d", P3, false, 1), seen("e", P4, false, 1)],
     );
-    assert_eq!(read(&db, &dsp, 2, vec![seen("e", P4, false, 2)]), 1);
-    assert!(holders(&db, &dsp, P3).is_empty());
+    assert_eq!(read(&db, &dsp, 2, vec![seen("e", P4, false, 2)]), 0);
+    assert_eq!(holders(&db, &dsp, P3), ["d"]);
     assert_eq!(read(&db, &dsp, 3, vec![]), 0);
     assert_eq!(holders(&db, &dsp, P4), ["e"]);
-    // Back on the list, they claim it again.
+    // Back on the list, the hold goes on.
     let back = vec![seen("d", P3, false, 4), seen("e", P4, false, 4)];
-    assert_eq!(read(&db, &dsp, 4, back), 1);
-    assert_eq!(holders(&db, &dsp, P3), ["d"]);
+    assert_eq!(read(&db, &dsp, 4, back), 0);
+    assert_eq!(holds(&db, &dsp, "d"), [(P3.into(), 1, None)]);
+    // Gone again, their phone is handed over once another driver claims it.
+    assert_eq!(read(&db, &dsp, 5, vec![seen("f", P3, false, 5)]), 2);
+    assert_eq!(holders(&db, &dsp, P3), ["f"]);
+    assert_eq!(holds(&db, &dsp, "d"), [(P3.into(), 1, Some(5))]);
 }
 
 #[test]

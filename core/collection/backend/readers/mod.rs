@@ -1,7 +1,7 @@
 //! The live readers features declare (`manifest::live_readers`), run within the server rather
-//! than as jobs: one light task for each DSP whose reader's feature is on and whose window is
-//! set, which reads on a grid from the window's start, at the DSP's own offset, and holds what
-//! its reader keeps in memory between reads. No browser starts unless a hook opens one
+//! than as jobs: one light task for each DSP whose reader's feature is on and whose schedule is
+//! set, which reads every interval from its window's start on each day the window opens, and
+//! holds what its reader keeps in memory between reads. No browser starts unless a hook opens one
 //! (`Reading::browser`), and at most `READS_AT_ONCE` reads run at once across the server.
 //!
 //! The server plans every DSP's reading as it starts, each minute, and at once when a write
@@ -90,6 +90,8 @@ fn now() -> i64 {
 /// A DSP's reading under way.
 struct Running {
     plans: watch::Sender<Option<Plan>>,
+    /// Milliseconds between its reads, by its latest plan: what its stalls are counted in.
+    every: i64,
     /// Since when its task has been busy, or `WAITING`.
     progress: Arc<AtomicI64>,
     task: AbortHandle,
@@ -173,9 +175,12 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
                     continue;
                 }
             };
-            match running.get(&key) {
+            match running.get_mut(&key) {
                 Some(running) => {
                     let stops = plan.is_none() && running.plans.borrow().is_some();
+                    if let Some(plan) = &plan {
+                        running.every = plan.every();
+                    }
                     running.plans.send_if_modified(|current| {
                         let changed = *current != plan;
                         *current = plan;
@@ -210,7 +215,7 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
 }
 
 /// Each served DSP's plan for each reader: none while the reader's feature is off there or its
-/// window isn't set, or why it couldn't be planned.
+/// schedule isn't set, or why it couldn't be planned.
 fn plans(
     db: &db::Store,
     readers: &[(&'static Feature, &'static dyn Reads)],
@@ -220,8 +225,8 @@ fn plans(
         for (index, (feature, reader)) in readers.iter().enumerate() {
             let plan = (|| {
                 let on = db.feature_enabled(&dsp.id, feature.switch.id)?;
-                let window = if on {
-                    reader.window(db, &dsp.id)?
+                let schedule = if on {
+                    reader.schedule(db, &dsp.id)?
                 } else {
                     None
                 };
@@ -229,9 +234,7 @@ fn plans(
                     .timezone
                     .parse()
                     .map_err(|_| crate::Error::new("invalid_timezone", 400))?;
-                Ok(window.map(|window| {
-                    Plan::new(window, timezone, reader.every(), reader.id(), &dsp.id)
-                }))
+                Ok(schedule.map(|schedule| Plan { schedule, timezone }))
             })();
             planned.push(((index, dsp.id.clone()), plan));
         }
@@ -261,6 +264,7 @@ fn spawn(
     let task = tasks.spawn(State::patiently(task::run(task, receiver)));
     Running {
         plans,
+        every: plan.every(),
         progress,
         task,
     }
@@ -280,8 +284,7 @@ fn watchdog(
     let now = now();
     for (key, stalled) in running.iter_mut() {
         let (feature, reader) = readers[key.0];
-        let every = reader.every().as_millis() as i64;
-        if now - stalled.progress.load(Ordering::Acquire) <= STALLED_AFTER * every {
+        if now - stalled.progress.load(Ordering::Acquire) <= STALLED_AFTER * stalled.every {
             continue;
         }
         observability::event(

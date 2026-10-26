@@ -1,0 +1,16 @@
+import { {{icon}} } from 'lucide-react';
+import type { Collected } from '{{toRoot}}core/shell/frontend/runtime/slots.js';
+
+// What {{label}} collects of {{siteLabel}}'s, as Settings' Collectors page shows it under
+// {{collectionLabel}}. Each value is made up, to show what a field holds.
+
+export const collected: Record<string, Collected> = {
+  // TODO(scaffold): where {{siteLabel}} reads it, the fields of each kind of record it keeps, what
+  // a run reads and what each run does with what it keeps.
+  {{schedule}}: {
+    from: ['{{collectionLabel}}'],
+    records: [{ label: '{{collectionLabel}}', icon: {{icon}}, counted: '{{counted}}', fields: [] }],
+    period: [{ label: 'Everything listed' }],
+    each: 'Replaces what it keeps',
+  },
+};

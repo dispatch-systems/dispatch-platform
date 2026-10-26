@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { startPreview } from '../dev/dev-server.js';
 import { demo, until } from '../../core/shell/tests/support/support.js';
 
-test('parallel worktree previews isolate ports, files, fixtures and browser sessions', async (t) => {
+test('parallel worktree previews isolate ports, files, fixtures and browser sessions, and sign in without a limit', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-preview-test-'));
   const worktrees = ['first', 'second'].map((name) => {
     const cwd = path.join(root, name);
@@ -92,6 +93,17 @@ test('parallel worktree previews isolate ports, files, fixtures and browser sess
   const wrongMethod = await fetch(first.previewUrl, { method: 'POST' });
   assert.equal(wrongMethod.status, 405);
   assert.equal(wrongMethod.headers.get('set-cookie'), null);
+  // Each entry signs the owner in, which a preview never limits: not even with their attempts
+  // used up.
+  const accounts = new DatabaseSync(path.join(first.root, 'data/platform/accounts.sqlite'));
+  accounts.exec('PRAGMA busy_timeout=5000');
+  accounts
+    .prepare("INSERT INTO throttle(key,count,reset_at,namespace) VALUES (?,10,?,'login')")
+    .run(
+      createHash('sha256').update(`login:email:${demo.email}`).digest('hex'),
+      Date.now() + 900_000,
+    );
+  accounts.close();
   const [firstBrowser, secondBrowser] = await Promise.all([enter(first), enter(first)]);
   assert.notEqual(firstBrowser, secondBrowser);
   const firstSession = await session(first, firstBrowser);

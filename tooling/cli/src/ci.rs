@@ -367,7 +367,7 @@ fn watch(
     Err(format!("{what} on {short} of {name} have not ended after an hour.").into())
 }
 /// The check here once it ended: what it found, or nothing when there was none.
-fn joined(local: Option<ScopedJoinHandle<Result<()>>>) -> Result<()> {
+pub(crate) fn joined(local: Option<ScopedJoinHandle<Result<()>>>) -> Result<()> {
     match local.map(ScopedJoinHandle::join) {
         Some(Ok(result)) => result,
         Some(Err(_)) => Err("The check here stopped unexpectedly.".into()),

@@ -1,9 +1,10 @@
 //! `dispatchdev ship <name>`: a change from its committed worktree to Dev. It checks what
 //! takes seconds first: the PR's body in the change's scratch folder, the branch, that it
-//! merges cleanly into main, and the push. Then the rule checks, unless the checks on GitHub
-//! passed on this commit already; it opens or updates the PR, adds it to the merge queue as
-//! soon as GitHub admits it, waits until GitHub merges it, removes all the change made, and
-//! waits until Dev runs the merge. Run again after a stop, it picks up where it stopped: a
+//! merges cleanly into main, and the push. It opens or updates the PR, adds it to the merge
+//! queue as soon as GitHub admits it and waits until GitHub merges it, the rule checks running
+//! here beside it unless the checks on GitHub passed on this commit already; their failure
+//! takes it out of the queue. Then it removes all the change made, and waits until Dev runs the
+//! merge. Run again after a stop, it picks up where it stopped: a
 //! change whose PR merged with what its worktree holds goes straight to the clean-up.
 //!
 //! The queue runs the checks on the exact squash commit it will push, so nothing but the
@@ -19,7 +20,7 @@ use crate::{
     workspace::{self, Workspace},
 };
 use serde_json::Value;
-use std::time::Instant;
+use std::{thread::ScopedJoinHandle, time::Instant};
 
 /// A stop with an exit code of its own: `OWNER` when the owner has to decide, `MERGED` once the
 /// PR merged, so it's never shipped again. Any other stop exits with 1: fix it and ship again.
@@ -103,17 +104,23 @@ pub fn change(
                 &["push", "-q", "--force-with-lease", "-u", "origin", name],
             )?;
             // The queue runs every check again on the squash commit: here, only the rule
-            // checks, unless the checks on GitHub passed on this very commit.
-            match branch_run(runner, &head) {
-                Some(run) if run["conclusion"] == "success" => say(&format!(
+            // checks, beside it, unless the checks on GitHub passed on this very commit.
+            let passed = matches!(
+                branch_run(runner, &head),
+                Some(run) if run["conclusion"] == "success"
+            );
+            if passed {
+                say(&format!(
                     "The checks passed on {} on GitHub already.",
                     &head[..head.len().min(7)]
-                )),
-                _ => check::rules(&change.path)?,
+                ));
             }
             let number = pr::run(ws, name, None, &body, runner)?;
             let queued = Instant::now();
-            let merge = run(number, runner, pause, say)?;
+            let merge = std::thread::scope(|scope| {
+                let mut local = (!passed).then(|| scope.spawn(|| check::rules(&change.path)));
+                run(number, &mut local, runner, pause, say)
+            })?;
             say(&format!(
                 "Merged #{number} {title} as {} after {} in the queue.",
                 merge.get(..8).unwrap_or(&merge),
@@ -165,6 +172,8 @@ pub(crate) const ATTEMPTS: u32 = looks(100);
 const REQUIRED: &str = "platform";
 const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid} mergeQueueEntry{state position} commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:50){nodes{__typename ...on CheckRun{name conclusion}}}}}}} timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{...on RemovedFromMergeQueueEvent{reason}}}}}}";
 const ENQUEUE: &str = "mutation($id:ID!,$head:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head}){mergeQueueEntry{position}}}";
+const DEQUEUE: &str =
+    "mutation($id:ID!){dequeuePullRequest(input:{id:$id}){mergeQueueEntry{position}}}";
 
 fn graphql(runner: &dyn Runner, query: &str, variables: &[String]) -> Result<Value> {
     let query = format!("query={query}");
@@ -377,10 +386,12 @@ fn short(head: &Value) -> &str {
     head.as_str().map_or("", |head| &head[..head.len().min(7)])
 }
 
-/// Queue `number` and wait for the merge; returns the squash commit. `pause` waits between
+/// Queue `number` and wait for the merge; returns the squash commit. The rule checks here,
+/// `local`, run beside it, and their failure takes it out of the queue. `pause` waits between
 /// looks and `say` reports each change of progress once.
 pub fn run(
     number: u64,
+    local: &mut Option<ScopedJoinHandle<Result<()>>>,
     runner: &dyn Runner,
     pause: &dyn Fn(u64),
     say: &mut dyn FnMut(&str),
@@ -425,6 +436,24 @@ pub fn run(
                 return Err(stop(OWNER, format!("#{number} was closed without merging")));
             }
             _ => {}
+        }
+        // The queue runs the rule checks too, so their failure here would fail its run: the
+        // entry goes, rather than wait for that.
+        if local.as_ref().is_some_and(ScopedJoinHandle::is_finished)
+            && let Err(error) = crate::ci::joined(local.take())
+        {
+            let id = format!("id={}", pr["id"].as_str().unwrap_or(""));
+            let out = (queued.is_some() || pr["mergeQueueEntry"].is_object())
+                && graphql(runner, DEQUEUE, &[id]).is_ok();
+            return Err(format!(
+                "{error} Fix it, commit and ship it again{}.",
+                if out {
+                    format!("; #{number} was taken out of the merge queue")
+                } else {
+                    String::new()
+                }
+            )
+            .into());
         }
         if pr["isDraft"] == true {
             return Err(stop(
@@ -615,6 +644,7 @@ mod tests {
         rest: RefCell<BTreeMap<String, VecDeque<Value>>>,
         logs: RefCell<BTreeMap<String, &'static str>>,
         cancelled: RefCell<Vec<String>>,
+        dequeued: RefCell<Vec<String>>,
     }
     impl Runner for GitHub {
         fn command(&self, args: &[&str], _cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
@@ -642,6 +672,10 @@ mod tests {
                 return Ok(serde_json::to_vec(&reply)?);
             }
             assert_eq!(&args[2..4], ["graphql", "-f"]);
+            if args[4].contains("dequeuePullRequest") {
+                self.dequeued.borrow_mut().push(args[6].into());
+                return Ok(br#"{"data":{"dequeuePullRequest":{"mergeQueueEntry":null}}}"#.to_vec());
+            }
             if args[4].contains("enqueuePullRequest") {
                 assert_eq!(args[5..8], ["-f", "id=PR_1", "-f"]);
                 if let Some(error) = self.refusals.borrow_mut().pop_front() {
@@ -706,17 +740,28 @@ mod tests {
         value
     }
     fn ship(github: &GitHub) -> (Result<String>, Vec<String>, usize) {
+        checked(github, None)
+    }
+    /// Ships with the rule checks here beside the queue, ended already with `rules`.
+    fn checked(github: &GitHub, rules: Option<Result<()>>) -> (Result<String>, Vec<String>, usize) {
         let pauses = RefCell::new(0);
         let mut said = vec![];
-        let result = run(
-            7,
-            github,
-            &|seconds| {
-                assert_eq!(seconds, PAUSE);
-                *pauses.borrow_mut() += 1;
-            },
-            &mut |text| said.push(text.to_owned()),
-        );
+        let result = std::thread::scope(|scope| {
+            let mut local = rules.map(|rules| scope.spawn(|| rules));
+            while local.as_ref().is_some_and(|local| !local.is_finished()) {
+                std::thread::yield_now();
+            }
+            run(
+                7,
+                &mut local,
+                github,
+                &|seconds| {
+                    assert_eq!(seconds, PAUSE);
+                    *pauses.borrow_mut() += 1;
+                },
+                &mut |text| said.push(text.to_owned()),
+            )
+        });
         (result, said, pauses.into_inner())
     }
     const RUNS: &str = "actions/workflows/checks.yml/runs?event=merge_group&per_page=30";
@@ -1152,6 +1197,33 @@ mod tests {
             ship(&github).0.unwrap_err().to_string(),
             "Pull request is not mergeable"
         );
+    }
+
+    #[test]
+    fn the_rule_checks_failing_here_take_it_out_of_the_queue() {
+        let failed = || -> Option<Result<()>> { Some(Err("The rule checks failed.".into())) };
+        let github = github(vec![in_queue(OLD)]);
+        let (result, said, _) = checked(&github, failed());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "The rule checks failed. Fix it, commit and ship it again; #7 was taken out of the \
+             merge queue."
+        );
+        assert_eq!(*github.dequeued.borrow(), ["id=PR_1"]);
+        assert!(said.is_empty());
+        // Still waiting for its admission check, it is never queued.
+        let github = self::github(vec![unadmitted(OLD)]);
+        assert_eq!(
+            checked(&github, failed()).0.unwrap_err().to_string(),
+            "The rule checks failed. Fix it, commit and ship it again."
+        );
+        assert!(github.queued.borrow().is_empty() && github.dequeued.borrow().is_empty());
+        // Passing, they change nothing, and a merge stands whatever they found.
+        let github = self::github(vec![open(OLD), in_queue(OLD), merged(OLD)]);
+        assert_eq!(checked(&github, Some(Ok(()))).0.unwrap(), "3333333");
+        let github = self::github(vec![merged(OLD)]);
+        assert_eq!(checked(&github, failed()).0.unwrap(), "3333333");
+        assert!(github.dequeued.borrow().is_empty());
     }
 
     #[test]

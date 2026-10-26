@@ -1,5 +1,6 @@
 import type { SettingsField, SettingsValue } from '../../../../core/settings/api/index.js';
 import { choice } from './choice.js';
+import { days } from './days.js';
 import type { FieldKind, FieldProps } from './kind.js';
 import { many } from './many.js';
 import { number } from './number.js';
@@ -18,6 +19,7 @@ const kinds: { [K in SettingsField['kind']]: FieldKind<K> } = {
   many,
   number,
   text,
+  days,
   time,
   timezone,
 };

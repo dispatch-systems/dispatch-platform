@@ -58,15 +58,17 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
         let Some(plan) = *plans.borrow_and_update() else {
             return;
         };
-        let Some(unstopped) = task
-            .query(|db, reader, dsp| db.unstopped_days(reader, dsp))
+        let Some((unstopped, ended)) = task
+            .query(|db, reader, dsp| {
+                Ok((db.unstopped_days(reader, dsp)?, db.last_ended(reader, dsp)?))
+            })
             .await
         else {
             task.retry(&mut plans).await;
             continue;
         };
         let at = now();
-        match plan.step(at, after, &unstopped) {
+        match plan.step(at, after, &unstopped, ended) {
             Step::Wait(at) => {
                 let wait = Duration::from_millis((at - now()).max(0) as u64);
                 task.waiting();
@@ -147,7 +149,7 @@ impl Task {
         held: &mut (dyn Any + Send),
         plans: &mut watch::Receiver<Option<Plan>>,
     ) -> bool {
-        let every = Duration::from_millis(plan.every as u64);
+        let every = plan.schedule.every();
         let reading = self.reading(plan, &day);
         let waited = now();
         // A read that can't start within its interval missed its slot, as when the server
@@ -208,9 +210,22 @@ impl Task {
         self.reader.kept(reading, read).await
     }
 
-    /// Stops `date`, answering whether it did.
+    /// Stops `date`, answering whether it did: its stop begun first, so the day reads no more
+    /// though its hook fails part of the way, as after it emptied what the day kept.
     async fn stop(&self, plan: &Plan, date: NaiveDate) -> bool {
         let day = plan.day(date);
+        let began = now();
+        if let Err(error) = self
+            .write(move |db, reader, dsp| db.begin_stop(reader, dsp, date, began))
+            .await
+        {
+            self.log(
+                "warn",
+                "live.stop_failed",
+                json!({"day":date.to_string(),"error":error.code}),
+            );
+            return false;
+        }
         let stopped = self.reader.stopped(&self.reading(plan, &day)).await;
         let at = now();
         let stopped = match stopped {

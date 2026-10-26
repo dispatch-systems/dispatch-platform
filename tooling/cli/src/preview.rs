@@ -166,12 +166,37 @@ fn state(name: &str, runner: &dyn Runner) -> Result<String> {
         }))
 }
 
-/// Where the link opens: a page, in a DSP, on a tab of the page.
+/// Where the link opens: a page, in a DSP or on the platform owner's own pages, on a tab of the
+/// page.
 pub struct Open<'a> {
     pub page: Option<&'a str>,
-    /// The DSP, by its id or a unique part of its name.
+    /// The DSP, by its id or a unique part of its name: the fixture's own unless named.
     pub dsp: Option<&'a str>,
+    /// The platform owner's own pages, outside any DSP, in place of a DSP's.
+    pub platform: bool,
     pub tab: Option<&'a str>,
+}
+impl Open<'_> {
+    /// Refuses what can't be opened together.
+    pub fn check(&self) -> Result<()> {
+        require(
+            self.tab.is_none() || self.page.is_some(),
+            "--tab is a tab of a page: name the page with --page too.",
+        )?;
+        require(
+            self.dsp.is_none() || !self.platform,
+            "Choose --dsp or --platform.",
+        )
+    }
+    /// The id of the DSP it opens, of those a session lists: the one it names, else the first,
+    /// which is the fixture's own, as the owner's list puts it first.
+    pub fn dsp_id(&self, dsps: &[serde_json::Value]) -> Result<String> {
+        let dsp = match self.dsp {
+            Some(wanted) => crate::api::dsp(dsps, wanted)?,
+            None => dsps.first().ok_or("The preview has no DSP to open.")?,
+        };
+        Ok(dsp["id"].as_str().ok_or("A DSP without an id")?.to_owned())
+    }
 }
 /// The link's fragment, as the app reads its address: `#<page>`, or a DSP's page
 /// `#dsp/<id>/<page>`, with `?tab=<tab>` for a tab of it.
@@ -240,10 +265,7 @@ pub fn run(
     runner: &dyn Runner,
 ) -> Result<()> {
     Change::existing(ws, name)?;
-    require(
-        open.tab.is_none() || open.page.is_some(),
-        "--tab is a tab of a page: name the page with --page too.",
-    )?;
+    open.check()?;
     let systemctl = |verb: &str| {
         runner
             .command(&["systemctl", "--user", verb, &unit(name)], None, 120)
@@ -283,14 +305,10 @@ pub fn run(
         std::thread::sleep(Duration::from_secs(2));
     };
     // The DSP by its id, from the DSPs the owner the link signs in sees.
-    let dsp = match open.dsp {
-        Some(wanted) => Some(
-            crate::api::dsp(&crate::api::dsps(ws, name, runner)?, wanted)?["id"]
-                .as_str()
-                .ok_or("A DSP without an id")?
-                .to_owned(),
-        ),
-        None => None,
+    let dsp = if open.platform {
+        None
+    } else {
+        Some(open.dsp_id(&crate::api::dsps(ws, name, runner)?)?)
     };
     let fragment = fragment(open.page, dsp.as_deref(), open.tab);
     println!("{name}'s preview, on {host}:{port}, signs in by itself:");

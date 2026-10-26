@@ -29,7 +29,8 @@
     ["documents.use", "Use Documents"],
     ["slack.manage", "Manage Slack"],
     ["vans.collect", "Collect Vans"],
-    ["live_route_data.manage", "Manage Live Route Data"]
+    ["live_route_data.manage", "Manage Live Route Data"],
+    ["phones.manage", "Manage Phones"]
   ],
   "implied": [
     ["timecard.manage", "timecard.view"],

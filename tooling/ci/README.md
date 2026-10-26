@@ -46,13 +46,14 @@ invalid merge commit.
 
 `dispatchdev` (`tooling/cli/`) holds what runs on this machine, and `dispatchdev help` lists
 it. A change goes from `start` (its worktree, branch and scratch folder, once the changes whose
-PRs merged are removed, and with `--preview` its preview's build) through `preview` (its link),
-`api` (signed-in calls to the preview), `check` and `ci`, `review` when one is asked for (each
-pass's brief, for a reviewer started through T3 with the model `review.rs` names) and `pr` to
-`ship`, which merges it, removes what it made and waits for Dev; `finish` does the last two for
-a change `ship` didn't see through, or drops one with `--abandon`. `status` shows the
-workspace, and `status --json` writes it as JSON. `dispatchdev build` builds the package's two
-executables, the backend and the support worker, in one Cargo pass,
+PRs merged are removed, and with `--preview` its preview's build) through `preview` (its link,
+into the fixture's DSP unless told otherwise), `api` (signed-in calls to the preview), `shot` (a
+PNG of a page of it, signed in once for each account), `check` and `ci`, `review` when one is
+asked for (each pass's brief, for a reviewer started through T3 with the model `review.rs`
+names) and `pr` to `ship`, which merges it, removes what it made and waits for Dev; `finish`
+does the last two for a change `ship` didn't see through, or drops one with `--abandon`.
+`status` shows the workspace, and `status --json` writes it as JSON. `dispatchdev build`
+builds the package's two executables, the backend and the support worker, in one Cargo pass,
 through a cache keyed by their exact inputs and the compiler's fingerprint.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
 API tests, one at a time, a line each. Each run builds in a folder of its own under
@@ -87,13 +88,14 @@ feature alone, and `verify --removability` does when the branch is pushed as it 
 runs the check in a copy of the checkout, built in a folder of its own.
 `dispatchdev ship <name>`, or the PR's number, takes a change to Dev. It checks what takes
 seconds first: the PR's body in the scratch folder's `pr-body.md`, whose first line is the
-title, that the branch merges cleanly into `main`, and the push. It then runs the rule checks,
-unless the checks on GitHub passed on that very commit, since the queue runs every check again,
-and opens or updates the PR. It reads the PR from GitHub's API every 10 seconds, adds it to the
-merge queue once
-its admission check passed and GitHub knows it merges cleanly, and waits until GitHub merges
-it. A newer push is queued in its turn. A head whose branch run failed isn't queued, and a
-branch run still going is cancelled when the PR is, since the queue runs the checks again. It
+title, that the branch merges cleanly into `main`, and the push. It then opens or updates the
+PR, reads it from GitHub's API every 10 seconds, adds it to the merge queue once its admission
+check passed and GitHub knows it merges cleanly, and waits until GitHub merges it. The rule
+checks run here meanwhile, unless the checks on GitHub passed on that very commit: the queue
+runs them again, so their failure here takes the PR out of the queue rather than wait for its
+run to fail. A newer push is queued in its turn. A head whose branch run failed isn't queued,
+and a branch run still going is cancelled when the PR is, since the queue runs the checks
+again. It
 stops with the reason when the PR conflicts with `main`, is a draft, closes, leaves the queue
 unmerged, with GitHub's reason and the failed jobs of its own queue run, or has not merged
 after 90 minutes. Once merged, it removes what the change made, as `finish` does, and waits
