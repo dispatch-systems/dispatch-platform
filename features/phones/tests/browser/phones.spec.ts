@@ -27,7 +27,7 @@ test('Add phone shows the code that pairs the next phone, and a rename asks befo
   await page.keyboard.press('Escape');
 
   // A name changed and not saved is never just closed.
-  await card.getByRole('button', { name: 'Actions for Dispatch' }).click();
+  await card.getByLabel('Actions for Dispatch').click();
   await page.getByRole('button', { name: 'Rename', exact: true }).click();
   const rename = page.getByRole('dialog', { name: 'Rename phone' });
   await rename.getByLabel('Name').fill('Station 2');
