@@ -33,7 +33,9 @@ Only its SHA-256 is kept. The phone reads it with the DSP's address from the QR 
 (`dispatch-phone:pair?site=<address>&code=<code>`) and trades it, with its own number, model and
 the app's version, for a key: 32 random bytes in hexadecimal, of which only the SHA-256 is kept.
 The first phone is named Dispatch, the next Phone 2 and so on, until renamed. A phone removed
-keeps its texts; its key works no more, and its next call is refused as `phones_removed`.
+keeps its texts; its key works no more, and its next call is refused as `phones_removed`. The
+texts Dispatch queued that still wait on it fail as it's removed, with `phones_removed` as their
+error, which every feature reading texts hears of.
 
 ## The phones' address
 

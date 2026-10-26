@@ -1,6 +1,6 @@
 //! The DSP's phones, each by the SHA-256 of the key it was given, and the code that pairs the next
 //! one, by its own: pairing, checking in, renaming and removing, and the demo's stand-in phone.
-use super::texts::{Reported, TextStore};
+use super::texts::{self, Reported, TextStore};
 use dispatch_core::{
     Error, Result,
     db::{Store, n, s},
@@ -78,6 +78,8 @@ pub trait DeviceStore {
     /// Notes that the phone checked in.
     fn phones_seen(&self, dsp: &str, device: &str, at: i64) -> Result<()>;
     fn phones_rename(&self, dsp: &str, id: &str, name: &str) -> Result<Device>;
+    /// Removes the phone: its key works no more, and the texts still waiting on it fail, as no
+    /// phone would send them.
     fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<Device>;
     /// Keeps the code that pairs the next phone, in place of any not used yet.
     fn phones_new_pairing(&self, dsp: &str, by: &str, code_sha256: &str, at: i64) -> Result<()>;
@@ -154,10 +156,14 @@ impl DeviceStore for Store {
         let device = self
             .phones_device(dsp, id)?
             .ok_or_else(|| Error::new("phones_not_found", 404))?;
-        self.dsp(dsp)?.exec(
-            "UPDATE phones_devices SET removed_at=? WHERE id=?",
-            params![at, id],
-        )?;
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            db.exec(
+                "UPDATE phones_devices SET removed_at=? WHERE id=?",
+                params![at, id],
+            )?;
+            texts::orphaned(&db, id, at)
+        })?;
         Ok(device)
     }
     fn phones_new_pairing(&self, dsp: &str, by: &str, code_sha256: &str, at: i64) -> Result<()> {

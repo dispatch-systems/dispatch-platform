@@ -31,6 +31,8 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 /// The most characters an ID texting gives may have.
 pub const ID_MOST: usize = 64;
+/// Why a text Dispatch queued failed when its phone was removed before it went: its `error`.
+pub const PHONE_REMOVED: &str = "phones_removed";
 /// The most characters a number may be written with, spaces and punctuation among its digits.
 pub const NUMBER_MOST: usize = 32;
 
@@ -161,7 +163,8 @@ pub struct Text {
     /// How one Dispatch sent went; none for one the phone reported.
     pub status: Option<Status>,
     pub status_at: Option<i64>,
-    /// Why it failed, as the phone said.
+    /// Why it failed: as the phone said, or `PHONE_REMOVED` for one whose phone was removed
+    /// before it went.
     pub error: Option<String>,
     pub files: Vec<File>,
     /// Its latest change, after every one before it.

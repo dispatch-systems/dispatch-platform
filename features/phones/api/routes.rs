@@ -7,18 +7,20 @@ use super::{
 };
 use crate::backend::{
     LIMITS, live, pairing,
-    storage::{Device, DeviceStore, PAIRING_MS},
+    storage::{DOMAIN, Device, DeviceStore, PAIRING_MS},
 };
 use dispatch_core::{
-    Error, Result,
+    Error, Result, State,
+    accounts::Context,
     db::{self, Store},
     ensure,
     foundation::validate as v,
     server::http::{
         input::{Input, Reply},
-        route::{Dsp, Member, Public, Route, async_get, async_post, read, upload, write},
+        route::{Dsp, Grant, Member, Public, Route, async_get, async_post, read, upload, write},
     },
 };
+use std::sync::Arc;
 
 /// Managing the DSP's phones, as managing all its connections includes.
 const MANAGE: Dsp = Dsp("connections.manage|phones.manage");
@@ -30,7 +32,7 @@ pub fn routes() -> Vec<Route> {
         read("/api/dsp/phones", MANAGE, listed),
         write("/api/dsp/phones/pairing", MANAGE, new_pairing),
         write("/api/dsp/phones/{id}/rename", MANAGE, rename),
-        write("/api/dsp/phones/{id}/remove", MANAGE, remove),
+        async_post("/api/dsp/phones/{id}/remove", MANAGE, remove),
         async_post("/api/phones/pair", Public, phone::pair),
         async_get("/api/phones/outbox", Phone, phone::outbox),
         async_post("/api/phones/texts", Phone, phone::texts),
@@ -47,7 +49,7 @@ pub fn routes() -> Vec<Route> {
 
 /// Refuses the card's calls while Phones is off for the DSP, as managing all its connections
 /// still lets a member in.
-fn on(c: &Member) -> Result<()> {
+fn on(c: &Context) -> Result<()> {
     ensure(c.has("phones"), "not_found", 404)
 }
 /// One of Phones' IDs, `phone_` and 32 hexadecimal digits.
@@ -120,14 +122,25 @@ fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     }
     Reply::of(&row(&device, db::now()))
 }
-/// Removes the phone: its key works no more, and its texts stay.
-fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    on(c)?;
+/// Removes the phone: its key works no more, its texts stay, and those still waiting on it fail,
+/// which every feature reading texts hears of.
+async fn remove(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    on(&c)?;
     v::fields(&input.body, &[])?;
-    let id = phone_id(input.param("id"))?;
-    let device = db.phones_remove(c.dsp_id(), id, db::now())?;
-    c.audit(db, "phones.removed", &device.logged())?;
+    let id = phone_id(input.param("id"))?.to_owned();
+    let dsp = c.dsp.id.clone();
+    state
+        .run_scoped(dsp.clone(), DOMAIN, move |db| {
+            let c = access.revalidate(db, &c)?;
+            on(&c)?;
+            let device = db.phones_remove(&c.dsp.id, &id, db::now())?;
+            c.audit(db, "phones.removed", &device.logged())
+        })
+        .await?;
     // A phone waiting on its outbox hears at once that it was removed.
-    live::queued(c.state, c.dsp_id());
+    live::queued(&state, &dsp);
+    live::changed(&state, &dsp).await;
     Ok(Reply::ok())
 }

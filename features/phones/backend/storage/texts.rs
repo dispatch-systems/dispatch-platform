@@ -12,7 +12,9 @@ use dispatch_core::{
     ensure,
     foundation::crypto,
 };
-use dispatch_phones_contract::{Changes, Direction, File, Origin, Outgoing, Status, Text, normal};
+use dispatch_phones_contract::{
+    Changes, Direction, File, Origin, Outgoing, PHONE_REMOVED, Status, Text, normal,
+};
 use rusqlite::params;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -298,6 +300,23 @@ impl TextStore for Store {
             Ok(())
         })
     }
+}
+
+/// Fails the texts Dispatch queued that still wait on the phone `device`, which was removed: each
+/// a change readers find. Inside the write that removed it.
+pub(super) fn orphaned(db: &Db, device: &str, at: i64) -> Result<()> {
+    let waiting = db.all(
+        "SELECT id FROM phones_texts WHERE device_id=? AND origin='dispatch' AND status='waiting'",
+        [device],
+    )?;
+    for text in &waiting {
+        let change = next_change(db)?;
+        db.exec(
+            "UPDATE phones_texts SET status='failed', status_at=?, error=?, change=? WHERE id=?",
+            params![at, PHONE_REMOVED, change, s(text, "id")],
+        )?;
+    }
+    Ok(())
 }
 
 /// Texts from their rows, each with its files.

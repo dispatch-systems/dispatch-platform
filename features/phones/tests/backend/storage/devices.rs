@@ -1,8 +1,12 @@
 //! The DSP's phones, against a real store in a temporary directory: pairing by a code, once, while
-//! it lasts, and a removed phone's key working no more.
+//! it lasts, and a removed phone's key working no more, nor its texts still waiting.
 use super::*;
-use crate::backend::support::{CODE, paired, store};
+use crate::backend::{
+    storage::{StatusReport, TextStore},
+    support::{CODE, outgoing, paired, store},
+};
 use dispatch_core::testing;
+use dispatch_phones_contract::{PHONE_REMOVED, Status};
 
 #[test]
 fn a_code_pairs_one_phone_once_while_it_lasts() {
@@ -37,4 +41,48 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
     db.phones_remove(&dsp, &second.id, 22_000).unwrap();
     assert_eq!(db.phones_device_by_key(&dsp, "key-2").unwrap(), None);
     assert!(db.phones_key_removed(&dsp, "key-2").unwrap());
+}
+
+#[test]
+fn a_phone_removed_fails_the_texts_still_waiting_on_it() {
+    let (_root, db, dsp) = store();
+    let owner = testing::a_user(&db);
+    let phone = paired(&db, &dsp, "key", "2065550100");
+    let waiting = db
+        .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 3_000)
+        .unwrap();
+    let sent = db
+        .phones_send(&dsp, &outgoing("4255550198", vec![], &owner), 3_000)
+        .unwrap();
+    let (_, attempt) = db
+        .phones_outbox(&dsp, &phone.id)
+        .unwrap()
+        .into_iter()
+        .find(|(text, _)| text.id == sent.id)
+        .expect("it waits for the phone");
+    let report = StatusReport {
+        id: sent.id.clone(),
+        attempt,
+        status: Status::Sent,
+        at: 4_000,
+        error: None,
+    };
+    assert!(db.phones_status(&dsp, &phone.id, &report).unwrap());
+    let read = db.phones_changes(&dsp, 0).unwrap().next;
+    db.phones_remove(&dsp, &phone.id, 5_000).unwrap();
+    // The one waiting fails, a change its readers find; the one sent stays sent.
+    let changed = db.phones_changes(&dsp, read).unwrap();
+    let failed: Vec<_> = changed
+        .texts
+        .iter()
+        .map(|text| (text.id.as_str(), text.status, text.error.as_deref()))
+        .collect();
+    assert_eq!(
+        failed,
+        [(
+            waiting.id.as_str(),
+            Some(Status::Failed),
+            Some(PHONE_REMOVED)
+        )]
+    );
 }
