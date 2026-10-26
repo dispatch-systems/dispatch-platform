@@ -1,4 +1,5 @@
 import { List, Table } from 'lucide-react';
+import './view-toggle.css';
 
 // How Today's Routes shows: a list beside the conversation open, or a board across the page.
 

@@ -1,6 +1,7 @@
 import { Smartphone } from 'lucide-react';
 import type { Pace, Today } from '../../api/index.js';
 import { lastFour, paceText } from '../format.js';
+import './route-facts.css';
 
 // Pieces of a driver's route today, as Today's Routes, a work conversation's head and the profile
 // show them: the route's code, a work phone by its last digits, how many stops are done of how

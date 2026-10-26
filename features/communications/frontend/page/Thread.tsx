@@ -22,6 +22,7 @@ import { Face, Party, SenderFace } from './Face.js';
 import { More } from './More.js';
 import type { OpensProfile } from './parts.js';
 import { RouteCode, WorkPhone } from './RouteFacts.js';
+import './workdays.css';
 
 // A conversation's messages, in the order written, under the day each was written: the
 // member's on the left beside their photo, which opens their profile, the DSP's on the right

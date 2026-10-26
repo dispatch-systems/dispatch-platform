@@ -1,0 +1,84 @@
+/* A route's facts, as the list, the board, the profile and a conversation's head show them: its
+   code, the work phone held, a bar of the stops done and their count, and its pace. */
+/* What a route all done sits on. */
+.communications {
+  --done-surface: color-mix(in srgb, var(--success) 14%, var(--background));
+}
+
+.route-code {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: calc(var(--small-size) - 0.5px);
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  line-height: 1.6;
+}
+.work-phone {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.work-phone svg {
+  width: calc(var(--small-size) - 0.5px);
+  height: calc(var(--small-size) - 0.5px);
+}
+.stops-bar {
+  position: relative;
+  flex: 0 1 56px;
+  min-width: 28px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--muted);
+}
+.stops-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--primary);
+}
+.stops-bar.behind i {
+  background: var(--warning);
+}
+.stops-bar.at_risk i {
+  background: var(--late);
+}
+.stops-bar.done i {
+  background: var(--success);
+}
+.stops {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pace {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: calc(var(--small-size) - 1px);
+  font-weight: 650;
+  line-height: 1.55;
+}
+.pace.behind {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+.pace.at_risk {
+  background: var(--late-surface);
+  color: var(--late);
+}
+.pace.done {
+  background: var(--done-surface);
+  color: var(--success);
+}
+
+/* A driver's route in their conversation's head. */
+.thread-head .who .about {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

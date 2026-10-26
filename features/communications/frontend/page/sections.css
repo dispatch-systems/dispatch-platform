@@ -1,0 +1,34 @@
+/* Today's Routes goes by Routes on a phone, and in a list too narrow for all three sections. */
+.pane-list {
+  container: list / inline-size;
+}
+/* Each section as wide as it needs, sharing what's left; three, a little closer together. */
+:is(.pane-list, .board-tools) .sections .restored-tabs {
+  grid-auto-columns: auto;
+}
+.sections .restored-tabs button {
+  white-space: nowrap;
+}
+.pane-list .sections[data-count='3'] .restored-tabs button {
+  gap: 4px;
+  padding: 0 4px;
+}
+.sections .short {
+  display: none;
+}
+@container communications (width < 680px) {
+  .sections .long {
+    display: none;
+  }
+  .sections .short {
+    display: inline;
+  }
+}
+@container list (width < 420px) {
+  .sections[data-count='3'] .long {
+    display: none;
+  }
+  .sections[data-count='3'] .short {
+    display: inline;
+  }
+}

@@ -8,6 +8,7 @@ import { clock } from '../format.js';
 import { Face } from './Face.js';
 import { RouteCode } from './RouteFacts.js';
 import { useDismiss } from './useDismiss.js';
+import './pick-driver.css';
 
 // Pick driver, for a work phone nobody held: one of today's drivers, found by name or route, each
 // with their route and wave, under its head's right end. Picked, the phone's texts of today are

@@ -1,0 +1,44 @@
+/* Whom a conversation is with's others, as chips under its head. */
+.elsewhere-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px var(--pad);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+button.elsewhere {
+  position: relative;
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: calc(var(--field-height) - 6px);
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--field-height) / 2);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: calc(var(--small-size) + 0.5px);
+  font-weight: 600;
+}
+button.elsewhere[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: var(--selection);
+  color: var(--primary);
+  cursor: default;
+}
+button.elsewhere svg {
+  width: calc(var(--small-size) + 1px);
+  height: calc(var(--small-size) + 1px);
+}
+button.elsewhere .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+@container communications (width < 680px) {
+  .elsewhere-chips {
+    padding: 8px 12px;
+  }
+}

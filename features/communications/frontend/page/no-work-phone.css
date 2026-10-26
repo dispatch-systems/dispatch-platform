@@ -1,0 +1,22 @@
+/* In place of the box to write in, a driver holding no work phone: their other conversations. */
+.no-work-phone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--composer-height);
+  padding: 6px 8px 6px 16px;
+  border: 1px dashed var(--input);
+  border-radius: calc(var(--composer-height) / 2);
+  color: var(--muted-foreground);
+  font-size: var(--ui-size);
+}
+.no-work-phone > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+.no-work-phone > span svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
+}

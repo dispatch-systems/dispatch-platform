@@ -1,0 +1,37 @@
+/* Search, and in Today's Routes beside it, the list or the board. */
+.pane-list .tools-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pane-list .tools-row .search {
+  flex: 1;
+  min-width: 0;
+}
+.view-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--muted);
+}
+.view-toggle button {
+  justify-content: center;
+  width: calc(var(--field-height) - 2px);
+  min-height: calc(var(--field-height) - 6px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.view-toggle button[aria-pressed='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px var(--shadow-color);
+}
+.view-toggle svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
+}

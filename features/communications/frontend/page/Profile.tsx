@@ -27,6 +27,7 @@ import { Panel } from './Panel.js';
 import { roleText } from './parts.js';
 import { PaceMark, Stops } from './RouteFacts.js';
 import { WorkspaceMark } from './WorkspaceMark.js';
+import './profile.css';
 
 // The profile beside a conversation: whom it's with, a member or a driver, their route today and
 // how to reach them, over the conversation until its X, Escape, or a press anywhere else closes

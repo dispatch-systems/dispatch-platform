@@ -1,0 +1,65 @@
+/* A driver's work conversation: each workday begins with a line across it, today's marked, and
+   the earlier days' messages dimmed; texting from another work phone that day is marked where
+   it began. */
+.day-messages {
+  display: flex;
+  flex-direction: column;
+}
+.day-messages.past .msg-group {
+  opacity: 0.62;
+}
+.workday {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 6px;
+}
+.workday::before,
+.workday::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.workday.today::before,
+.workday.today::after {
+  background: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.workday-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: calc(var(--small-size) + 0.5px);
+  white-space: nowrap;
+}
+.workday-tag b {
+  color: var(--foreground);
+  font-weight: 650;
+}
+.workday.today .workday-tag b {
+  color: var(--primary);
+}
+.switched {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 2px;
+  padding: 2px 10px;
+  border-radius: 11px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 500;
+}
+.switched svg {
+  width: var(--small-size);
+  height: var(--small-size);
+}
+
+@container communications (width < 680px) {
+  .workday-tag > span:not(.route-code, .work-phone) {
+    display: none;
+  }
+}

@@ -7,6 +7,7 @@ import { ConversationRow } from './ConversationList.js';
 import { Face } from './Face.js';
 import { ListRow } from './ListRow.js';
 import { PaceMark, RouteCode, Stops, WorkPhone } from './RouteFacts.js';
+import './routes-list.css';
 
 // Today's Routes in the list: its groups, Waiting, each wave, no wave and no driver, each row the
 // driver with their route, work phone, stops and pace under what was last written, or a work phone

@@ -1,6 +1,7 @@
 import { WifiOff } from 'lucide-react';
 import type { DispatchPhone } from '../../api/index.js';
 import { waited } from '../format.js';
+import './phones-offline.css';
 
 // A chip for each of the DSP's dispatch phones that isn't online, with how long since it was last
 // seen: by its name when the DSP has several. Nothing while every phone is online.

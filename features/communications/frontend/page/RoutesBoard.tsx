@@ -6,6 +6,7 @@ import { Face, Party, SenderFace } from './Face.js';
 import { NoRoutes, headingText } from './RoutesList.js';
 import { PaceMark, RouteCode, Stops, WorkPhone } from './RouteFacts.js';
 import { Wait, typingNote } from './parts.js';
+import './routes-board.css';
 
 // Today's Routes as a board across the page, nothing open: its groups as the list's, each driver a
 // line of their route, wave, van, work phone, stops and pace, and what was last written, with how

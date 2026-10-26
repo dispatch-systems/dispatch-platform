@@ -1,0 +1,103 @@
+/* The board: Today's Routes across the page, under the heading's line and out to the window's
+   edges, as the list and the conversation are. */
+.routes-board {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 calc(-1 * var(--page-gutter)) calc(-1 * var(--page-bottom));
+  border-top: 1px solid var(--border);
+}
+.board-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap) var(--pad);
+}
+.board-tools .sections {
+  width: min(100%, calc(var(--list-width) + 80px));
+}
+.board-tools .view-toggle {
+  margin-left: auto;
+}
+.board-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.routes-board table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(var(--text-size) - 0.5px);
+}
+.routes-board th,
+.routes-board td {
+  padding: calc(var(--gap) * 0.75) var(--gap);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.routes-board thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+}
+.routes-board :is(th, td):first-child {
+  padding-left: var(--pad);
+}
+.routes-board .board-group th {
+  padding-top: calc(var(--gap) * 1.2);
+  padding-bottom: 6px;
+  border-bottom: 0;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 650;
+}
+.routes-board tbody tr:not(.board-group) {
+  cursor: pointer;
+}
+.routes-board tbody tr:not(.board-group):hover td {
+  background: var(--accent);
+}
+.routes-board tr.waits td {
+  background: color-mix(in srgb, var(--warning-surface) 55%, transparent);
+}
+.board-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+  font-weight: 500;
+}
+.routes-board .board-stops > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.routes-board .board-stops .stops-bar {
+  flex: 0 0 90px;
+}
+.routes-board .board-last {
+  max-width: 360px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+}
+.routes-board .board-last .face {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.routes-board .board-when {
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  text-align: right;
+}
