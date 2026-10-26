@@ -5,7 +5,7 @@
 //! before its first live read. A Slack or number's conversation waits as its messages say,
 //! whichever day.
 use super::{
-    midnight,
+    began,
     storage::{ConversationKind, TextConversation, TextStore},
     zone,
 };
@@ -22,7 +22,7 @@ pub struct LiveDay {
     pub source: String,
     /// YYYY-MM-DD in the DSP's own time.
     pub day: String,
-    /// When it began, at midnight where the DSP is, in milliseconds.
+    /// When it began where the DSP is (`began`), in milliseconds.
     pub from: i64,
 }
 impl LiveDay {
@@ -34,9 +34,9 @@ impl LiveDay {
         let Some(day) = reader.live_day(db, dsp)? else {
             return Ok(None);
         };
-        let began = NaiveDate::parse_from_str(&day, "%Y-%m-%d")
+        let date = NaiveDate::parse_from_str(&day, "%Y-%m-%d")
             .map_err(|_| Error::new("invalid_date", 400))?;
-        let from = midnight(zone(db, dsp)?, began);
+        let from = began(zone(db, dsp)?, date)?;
         Ok(Some(Self {
             reader,
             source: reader.source().as_str().to_owned(),

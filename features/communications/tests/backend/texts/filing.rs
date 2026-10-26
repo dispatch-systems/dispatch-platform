@@ -41,6 +41,17 @@ async fn block(
         .unwrap();
     (after.blocked, after.state)
 }
+/// Moves the DSP to `zone`, as its owner might on Settings.
+async fn moved(state: &Arc<State>, dsp: &str, zone: Tz) {
+    let dsp = dsp.to_owned();
+    state
+        .run(move |db| {
+            let name = db.find_dsp(&dsp)?.name;
+            db.keep_dsp_profile(&dsp, &name, zone.name(), None, None)
+        })
+        .await
+        .unwrap();
+}
 /// Whose a driver's conversation is, by their ID of the stand-in's source.
 fn driver(id: &str) -> Option<(String, String)> {
     Some((DRIVERS.as_str().to_owned(), id.to_owned()))
@@ -236,36 +247,46 @@ async fn a_saved_days_texts_go_to_whoever_held_the_work_phone_once_its_holds_are
 {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
-    let yesterday = day.pred_opt().unwrap();
-    // Yesterday's text, relayed late, comes before yesterday is saved: no hold says whose it is.
-    let late = texted(
-        &state,
-        &dsp,
-        "+12065550101",
-        "Dropped the keys at the station",
-        at(zone, yesterday, 18, 0),
-    )
-    .await;
-    assert_eq!(
-        filed(&state, &dsp, &late).await.kind,
-        ConversationKind::Number
-    );
+    // Yesterday where the DSP is; and a day long gone in Beirut, whose clocks went from midnight
+    // to 01:00 that day, written in the hour after.
+    let beirut: Tz = "Asia/Beirut".parse().unwrap();
+    let skipped = NaiveDate::from_ymd_opt(2026, 3, 29).unwrap();
+    for (zone, day, phone, (hour, minute)) in [
+        (zone, day.pred_opt().unwrap(), "2065550101", (18, 0)),
+        (beirut, skipped, "2065550102", (1, 30)),
+    ] {
+        moved(&state, &dsp, zone).await;
+        // The day's text, relayed late, comes before the day is saved: no hold says whose it is.
+        let late = texted(
+            &state,
+            &dsp,
+            &format!("+1{phone}"),
+            "Dropped the keys at the station",
+            at(zone, day, hour, minute),
+        )
+        .await;
+        assert_eq!(
+            filed(&state, &dsp, &late).await.kind,
+            ConversationKind::Number
+        );
 
-    // Saved with Casey holding the phone since 7:00: it's theirs.
-    let saved = hold("casey", "2065550101", at(zone, yesterday, 7, 0), None);
-    held(
-        &state,
-        &dsp,
-        None,
-        Vec::new(),
-        vec![(yesterday.to_string(), saved)],
-    )
-    .await;
-    let filed = filed(&state, &dsp, &late).await;
-    assert_eq!(
-        (filed.kind, filed.driver),
-        (ConversationKind::Work, driver("casey"))
-    );
+        // Saved with Casey holding the phone since 7:00: it's theirs.
+        let saved = hold("casey", phone, at(zone, day, 7, 0), None);
+        held(
+            &state,
+            &dsp,
+            None,
+            Vec::new(),
+            vec![(day.to_string(), saved)],
+        )
+        .await;
+        let filed = filed(&state, &dsp, &late).await;
+        assert_eq!(
+            (filed.kind, filed.driver),
+            (ConversationKind::Work, driver("casey")),
+            "{day}"
+        );
+    }
 }
 
 #[tokio::test]

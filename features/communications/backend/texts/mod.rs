@@ -34,10 +34,13 @@ pub(crate) mod todays_routes;
 pub(crate) mod workdays;
 
 use crate::api::types::DispatchPhone;
-use chrono::{NaiveDate, NaiveTime, TimeZone};
+use chrono::{Duration, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use dispatch_core::{Error, Result, db::Store};
 use dispatch_phones_contract::{self as texting, Texting};
+
+/// The minutes in a day: how far past its midnight a day may begin, as one clocks skip whole.
+const DAY_MINUTES: i64 = 24 * 60;
 
 /// Whether the DSP texts: something offers it `texting`.
 pub fn offered(db: &Store, dsp: &str) -> Result<bool> {
@@ -70,11 +73,16 @@ pub fn zone(db: &Store, dsp: &str) -> Result<Tz> {
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))
 }
-/// When `day` began in `zone`, at its midnight, in milliseconds.
-pub fn midnight(zone: Tz, day: NaiveDate) -> i64 {
+/// When `day` began in `zone`, in milliseconds: its first instant, at midnight, or where clocks
+/// went forward over midnight, at the first minute they showed after; a day they skipped whole
+/// began as the next did.
+pub fn began(zone: Tz, day: NaiveDate) -> Result<i64> {
     let midnight = day.and_time(NaiveTime::MIN);
-    zone.from_local_datetime(&midnight)
-        .earliest()
-        .unwrap_or_else(|| zone.from_utc_datetime(&midnight))
-        .timestamp_millis()
+    (0..=DAY_MINUTES)
+        .find_map(|minute| {
+            zone.from_local_datetime(&(midnight + Duration::minutes(minute)))
+                .earliest()
+        })
+        .map(|began| began.timestamp_millis())
+        .ok_or_else(|| Error::new("invalid_date", 400))
 }

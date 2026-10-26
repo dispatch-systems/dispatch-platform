@@ -19,7 +19,7 @@
 //! work phone today, whose phone may have changed; an earlier day's while Routes keeps holds of
 //! it, as a day it emptied unsaved keeps its texts where its holds had them.
 use super::{
-    midnight,
+    began,
     numbers::ten_digits,
     storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
     zone,
@@ -51,7 +51,7 @@ use std::{
 const PAGE: usize = 100;
 /// Two days, in milliseconds: how far back today's texts, and the work conversations they may
 /// wait in, are looked for, further than a day can be long; an earlier day's are looked for
-/// from its midnight, when that's further.
+/// from when it began, when that's further.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
 /// Every minute, each DSP's texts changed since they were last filed.
@@ -186,7 +186,7 @@ fn refiled_by(
     day: NaiveDate,
 ) -> Result<BTreeSet<String>> {
     let zone = filer.zone;
-    let from = (now() - TWO_DAYS_MS).min(midnight(zone, day));
+    let from = (now() - TWO_DAYS_MS).min(began(zone, day)?);
     let moves = db
         .communications_texts_from(dsp, from)?
         .into_iter()
