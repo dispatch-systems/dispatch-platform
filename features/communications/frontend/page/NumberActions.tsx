@@ -1,11 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { Copy, Ellipsis, Phone, PhoneOff, UserPlus } from 'lucide-react';
 import type { Conversation } from '../../api/index.js';
 import { blockNumber, saveContact } from '../../api/client.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Modal, Popover } from '../../../../core/shell/frontend/ui/index.js';
-import { useDismiss } from './useDismiss.js';
 
 // What someone at the DSP does with the number a conversation texts: save a name for it, shared
 // with everyone at the DSP, while Driver Match knows no one by it; copy it; block or unblock it.
@@ -74,32 +73,34 @@ function SaveContact({
   const [name, setName] = useState<string>();
   const [confirming, setConfirming] = useState(false);
   const changed = name !== undefined && name.trim() !== saved;
-  const closed = useCallback(() => {
+  const closed = () => {
     setName(undefined);
     setConfirming(false);
-  }, []);
-  const leave = useCallback(() => (changed ? setConfirming(true) : closed()), [changed, closed]);
+  };
+  const leave = () => (changed ? setConfirming(true) : closed());
   const save = useAction(async () => {
     show(await saveContact(conversation.id, name!.trim()));
     closed();
   });
-  const naming = name !== undefined;
-  const { box: editor, button } = useDismiss(naming && !confirming, leave);
   // Its words, which on a phone only its mark shows.
   const label = conversation.contact ? 'Edit contact' : 'Save contact';
   const saveable = Boolean(name?.trim()) && !save.busy;
   return (
-    <div ref={editor} className="save-contact">
-      <button
-        ref={button}
-        aria-label={label}
-        aria-expanded={naming}
-        onClick={() => (naming ? leave() : setName(saved))}
+    <>
+      <Popover
+        className="save-contact"
+        panelClassName="contact-panel"
+        label={label}
+        trigger={
+          <>
+            <UserPlus size={15} />
+            <span>{label}</span>
+          </>
+        }
+        open={name !== undefined}
+        onRequestOpen={() => setName(saved)}
+        onRequestClose={leave}
       >
-        <UserPlus size={15} />
-        <span>{label}</span>
-      </button>
-      {naming && (
         <form
           className="contact-form"
           onSubmit={(event) => {
@@ -125,7 +126,7 @@ function SaveContact({
             </button>
           </div>
         </form>
-      )}
+      </Popover>
       {confirming && (
         <Modal title="Save changes?" dismissible={false} onClose={() => {}}>
           <div className="form-actions">
@@ -145,6 +146,6 @@ function SaveContact({
           </div>
         </Modal>
       )}
-    </div>
+    </>
   );
 }

@@ -1,13 +1,12 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import type { Conversation, RouteDriver } from '../../api/index.js';
 import { pickDriver } from '../../api/client.js';
-import { SearchInput } from '../../../../core/shell/frontend/ui/index.js';
+import { Popover, SearchInput } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { clock } from '../format.js';
 import { Face } from './Face.js';
 import { RouteCode } from './RouteFacts.js';
-import { useDismiss } from './useDismiss.js';
 import './pick-driver.css';
 
 // Pick driver, for a work phone nobody held: one of today's drivers, found by name or route, each
@@ -30,11 +29,9 @@ export function PickDriver({
 }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
-  const close = useCallback(() => setOpen(false), []);
-  const { box, button } = useDismiss(open, close);
   const pick = useAction(async (driver: RouteDriver) => {
     picked(await pickDriver(conversation.id, driver.driverId));
-    close();
+    setOpen(false);
   });
   const wanted = typed.trim().toLocaleLowerCase();
   const found = drivers.filter((driver) =>
@@ -43,47 +40,42 @@ export function PickDriver({
     ),
   );
   return (
-    <div ref={box} className="pick-driver">
-      <button
-        ref={button}
-        aria-label="Pick driver"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <UserPlus size={15} />
-        <span>Pick driver</span>
-      </button>
-      {open && (
-        <div className="pick-driver-panel" role="dialog" aria-label="Pick driver">
-          <SearchInput
-            label="Search drivers"
-            placeholder="Search"
-            value={typed}
-            onChange={setTyped}
-          />
-          <h3>Today's Routes</h3>
-          {found.length === 0 ? (
-            <p className="list-empty">No matches</p>
-          ) : (
-            <ul>
-              {found.map((driver) => (
-                <li key={driver.driverId}>
-                  <button disabled={pick.busy} onClick={() => void pick.run(driver)}>
-                    <Face {...driver.person} size="contact" />
-                    <span>
-                      <strong>{driver.person.name}</strong>
-                      <small>
-                        {driver.today.route && <RouteCode code={driver.today.route} />}
-                        {driver.today.waveAt !== null && clock(driver.today.waveAt, timeZone)}
-                      </small>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+    <Popover
+      className="pick-driver"
+      panelClassName="pick-driver-panel"
+      label="Pick driver"
+      trigger={
+        <>
+          <UserPlus size={15} />
+          <span>Pick driver</span>
+        </>
+      }
+      open={open}
+      onRequestOpen={() => setOpen(true)}
+      onRequestClose={() => setOpen(false)}
+    >
+      <SearchInput label="Search drivers" placeholder="Search" value={typed} onChange={setTyped} />
+      <h3>Today's Routes</h3>
+      {found.length === 0 ? (
+        <p className="list-empty">No matches</p>
+      ) : (
+        <ul>
+          {found.map((driver) => (
+            <li key={driver.driverId}>
+              <button disabled={pick.busy} onClick={() => void pick.run(driver)}>
+                <Face {...driver.person} size="contact" />
+                <span>
+                  <strong>{driver.person.name}</strong>
+                  <small>
+                    {driver.today.route && <RouteCode code={driver.today.route} />}
+                    {driver.today.waveAt !== null && clock(driver.today.waveAt, timeZone)}
+                  </small>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </Popover>
   );
 }
