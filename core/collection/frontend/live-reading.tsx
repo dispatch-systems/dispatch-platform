@@ -54,7 +54,7 @@ export function LiveReading({
         </dd>
       </dl>
       {lastError && (
-        <dl>
+        <dl className="live-reading-error">
           <dt>Last error</dt>
           <dd>
             {errorLabel(lastError.code) ?? lastError.code}
