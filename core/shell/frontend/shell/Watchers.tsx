@@ -45,7 +45,7 @@ function Running({ watcher, access }: { watcher: Watcher; access: Watching }) {
 }
 
 /** Leaves nothing of a watcher that failed as it ran, logging it by `id`. */
-class Apart extends Component<{ id: string; children: ReactNode }, { failed: boolean }> {
+class WatcherBoundary extends Component<{ id: string; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
@@ -61,8 +61,8 @@ class Apart extends Component<{ id: string; children: ReactNode }, { failed: boo
 /** What the DSP's features keep running for the person on every page, each drawing nothing. */
 export function Watchers(access: Watching) {
   return watchers(access).map((watcher) => (
-    <Apart key={watcher.id} id={watcher.id}>
+    <WatcherBoundary key={watcher.id} id={watcher.id}>
       <Running watcher={watcher} access={access} />
-    </Apart>
+    </WatcherBoundary>
   ));
 }
