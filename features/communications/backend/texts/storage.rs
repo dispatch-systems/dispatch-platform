@@ -168,7 +168,8 @@ pub trait TextStore {
     fn communications_numbers(&self, dsp: &str) -> Result<Vec<TextConversation>>;
     /// The latest text of each conversation `ids` names.
     fn latest_communications_texts(&self, dsp: &str, ids: &[String]) -> Result<Vec<Text>>;
-    /// The latest text the other party wrote in each conversation `ids` names.
+    /// The latest text the other party wrote in each conversation `ids` names, but one that came
+    /// while their number was blocked.
     fn latest_communications_texts_in(&self, dsp: &str, ids: &[String]) -> Result<Vec<Text>>;
     /// The conversation's texts before `before`, when written and the ID, the latest `most`, in
     /// the order written.
@@ -293,7 +294,7 @@ impl TextStore for Store {
             "SELECT t.* FROM communications_texts t \
              WHERE t.conversation_id IN (SELECT value FROM json_each(?)) AND t.id=(\
              SELECT id FROM communications_texts WHERE conversation_id=t.conversation_id \
-             AND direction='in' ORDER BY at DESC,id DESC LIMIT 1)",
+             AND direction='in' AND blocked=0 ORDER BY at DESC,id DESC LIMIT 1)",
             [serde_json::to_string(ids)?],
         )
     }

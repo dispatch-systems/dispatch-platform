@@ -66,6 +66,22 @@ async fn filed(state: &Arc<State>, dsp: &str, id: &str) -> TextConversation {
         .await
         .unwrap()
 }
+/// Blocks the number of the conversation `id`, as the member `me`, or unblocks it: whether it's
+/// blocked now, and its state.
+async fn block(
+    state: &Arc<State>,
+    dsp: &str,
+    id: &str,
+    blocked: bool,
+) -> (bool, ConversationState) {
+    let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
+    let by = blocked.then_some("me");
+    let after = state
+        .run(move |db| contacts::block(db, &shared, &dsp, &id, by))
+        .await
+        .unwrap();
+    (after.blocked, after.state)
+}
 /// Whose a driver's conversation is, by their ID of the stand-in's source.
 fn driver(id: &str) -> Option<(String, String)> {
     Some((DRIVERS.as_str().to_owned(), id.to_owned()))
@@ -261,20 +277,15 @@ async fn a_blocked_numbers_conversation_leaves_the_list_and_never_waits_on_what_
         .run(move |db| db.mark_communications_text_done(&at, &done, "me"))
         .await
         .unwrap();
-    let block = |by: Option<&'static str>| {
-        let (shared, at, id) = (state.clone(), dsp.clone(), id.clone());
-        state.run(move |db| contacts::block(db, &shared, &at, &id, by))
-    };
-    assert!(block(Some("me")).await.unwrap().blocked);
+    assert!(block(&state, &dsp, &id, true).await.0);
     texted(&state, &dsp, spam, "Last chance", now() + minute).await;
     let shown = listed(&state, &dsp).await;
     assert_eq!((shown.waiting, shown.conversations.len()), (0, 0));
 
     // Unblocked, it's listed again, done: what came while it was blocked doesn't wait. What
     // comes now does.
-    let unblocked = block(None).await.unwrap();
     assert_eq!(
-        (unblocked.blocked, unblocked.state),
+        block(&state, &dsp, &id, false).await,
         (false, ConversationState::Done)
     );
     let shown = listed(&state, &dsp).await;
@@ -289,4 +300,36 @@ async fn a_blocked_numbers_conversation_leaves_the_list_and_never_waits_on_what_
         .await
         .unwrap();
     assert_eq!(waits.waiting_since, Some(written));
+}
+
+#[tokio::test]
+async fn what_a_number_sent_while_blocked_never_alerts_once_it_is_unblocked() {
+    let (_root, state, dsp) = started();
+    let minute = 60_000;
+    let number = "+14255550123";
+    let asked = texted(
+        &state,
+        &dsp,
+        number,
+        "Can I swap Saturday?",
+        now() - 3 * minute,
+    )
+    .await;
+    let id = filed(&state, &dsp, &asked).await.id;
+    block(&state, &dsp, &id, true).await;
+    texted(&state, &dsp, number, "Never mind", now() - minute).await;
+    block(&state, &dsp, &id, false).await;
+
+    // Unblocked, it waits on what it sent before, and alerts with that.
+    let (shared, at) = (state.clone(), dsp.clone());
+    let waiting = state
+        .read(move |db| conversations::waiting(db, &shared, &at))
+        .await
+        .unwrap();
+    let latest: Vec<_> = waiting
+        .latest
+        .iter()
+        .map(|each| (each.conversation_id.as_str(), each.message.text.as_str()))
+        .collect();
+    assert_eq!(latest, [(id.as_str(), "Can I swap Saturday?")]);
 }
