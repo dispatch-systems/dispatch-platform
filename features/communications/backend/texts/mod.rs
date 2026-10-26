@@ -34,6 +34,7 @@ pub(crate) mod todays_routes;
 pub(crate) mod workdays;
 
 use crate::api::types::DispatchPhone;
+use chrono::{NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use dispatch_core::{Error, Result, db::Store};
 use dispatch_phones_contract::{self as texting, Texting};
@@ -68,4 +69,12 @@ pub fn zone(db: &Store, dsp: &str) -> Result<Tz> {
         .timezone
         .parse()
         .map_err(|_| Error::new("invalid_timezone", 400))
+}
+/// When `day` began in `zone`, at its midnight, in milliseconds.
+pub fn midnight(zone: Tz, day: NaiveDate) -> i64 {
+    let midnight = day.and_time(NaiveTime::MIN);
+    zone.from_local_datetime(&midnight)
+        .earliest()
+        .unwrap_or_else(|| zone.from_utc_datetime(&midnight))
+        .timestamp_millis()
 }

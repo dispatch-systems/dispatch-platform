@@ -5,11 +5,12 @@
 //! before its first live read. A Slack or number's conversation waits as its messages say,
 //! whichever day.
 use super::{
+    midnight,
     storage::{ConversationKind, TextConversation, TextStore},
     zone,
 };
 use crate::backend::storage::ConversationState;
-use chrono::{NaiveDate, NaiveTime, TimeZone};
+use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::Store};
 use dispatch_routes_contract::{self as routes, LiveRouteData, WorkPhone};
 use std::collections::HashMap;
@@ -33,15 +34,9 @@ impl LiveDay {
         let Some(day) = reader.live_day(db, dsp)? else {
             return Ok(None);
         };
-        let midnight = NaiveDate::parse_from_str(&day, "%Y-%m-%d")
-            .map_err(|_| Error::new("invalid_date", 400))?
-            .and_time(NaiveTime::MIN);
-        let zone = zone(db, dsp)?;
-        let from = zone
-            .from_local_datetime(&midnight)
-            .earliest()
-            .unwrap_or_else(|| zone.from_utc_datetime(&midnight))
-            .timestamp_millis();
+        let began = NaiveDate::parse_from_str(&day, "%Y-%m-%d")
+            .map_err(|_| Error::new("invalid_date", 400))?;
+        let from = midnight(zone(db, dsp)?, began);
         Ok(Some(Self {
             reader,
             source: reader.source().as_str().to_owned(),
