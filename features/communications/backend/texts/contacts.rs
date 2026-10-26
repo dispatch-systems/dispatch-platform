@@ -5,7 +5,7 @@
 //! conversations; digits typed, by their number. A number's conversation is opened to text it
 //! first, and its number saved under a name, shared at the DSP, or blocked, or unblocked.
 use super::{
-    numbers::{Numbers, normal},
+    numbers::Numbers,
     offered, offering,
     reading::{like, numbered, one},
     storage::TextStore,
@@ -15,6 +15,7 @@ use crate::{
     backend::{conversations::People, live},
 };
 use dispatch_core::{Error, Result, State, db::Store, foundation::names};
+use dispatch_phones_contract as texting;
 use std::collections::{HashMap, HashSet};
 
 /// How many are listed with nothing typed, at most.
@@ -57,7 +58,12 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         .everyone()
         .iter()
         .filter(|person| !person.role.left())
-        .filter_map(|person| person.phones.iter().find_map(|phone| normal(phone)));
+        .filter_map(|person| {
+            person
+                .phones
+                .iter()
+                .find_map(|phone| texting::normal(phone))
+        });
     for number in theirs.chain(numbers.contacts().map(str::to_owned)) {
         if !numbers.blocked(&number) && seen.insert(number.clone()) {
             listed.push(number);
@@ -93,7 +99,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
 /// The number `raw`'s conversation, opened with no text if it's new, for someone at the DSP to
 /// text first.
 pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversation> {
-    let number = normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
+    let number = texting::normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
     offering(db, dsp)?;
     let opened = db.open_communications_number(dsp, &number)?;
     one(db, state, dsp, &opened.id)

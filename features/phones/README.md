@@ -70,7 +70,8 @@ number, else the one seen last), with pictures its sender added for it, refused 
 `phones_none`, `phones_not_found` or `phones_file_not_found`; trying a failed one again, as a new attempt, while its phone is still paired; adding
 a picture for a text not sent yet, its adder's alone until it's sent; and a text's picture or
 file to answer a page with. Numbers are kept one way: `+1` and ten digits in North America, `+`
-and the digits with a country code, a short code's digits alone. It publishes `TextsChanged`
+and the digits with a country code, a short code's digits alone; the contract's `normal` writes
+any number so, for a feature to match its own to texts'. It publishes `TextsChanged`
 (`phones.texts_changed`) once texts or how they went are kept.
 
 ## Data and upkeep

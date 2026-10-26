@@ -1,4 +1,4 @@
-//! Phone numbers: one number written one way, as `texting` keeps them (`normal`); how one reads
+//! Phone numbers, each written one way as `texting` writes them (its `normal`): how one reads
 //! (`shown`); the ten digits Routes keeps a work phone by (`ten_digits`); and what the DSP keeps
 //! of the numbers that text it, and what its phones are called, to read its texts by (`Numbers`).
 use super::storage::TextStore;
@@ -47,31 +47,6 @@ impl Numbers {
     /// What the DSP's phone `id` is called, while it's paired.
     pub fn phone(&self, id: &str) -> Option<&str> {
         self.phones.get(id).map(String::as_str)
-    }
-}
-
-/// `raw` written as `texting` keeps numbers, so one number is always written one way: `+1` and ten
-/// digits in North America, `+` and its digits with a country code, a short code's digits alone;
-/// none for what isn't a number.
-pub fn normal(raw: &str) -> Option<String> {
-    let raw = raw.trim();
-    if raw.is_empty()
-        || raw.len() > 32
-        || !raw
-            .chars()
-            .all(|c| c.is_ascii_digit() || " +-().".contains(c))
-    {
-        return None;
-    }
-    let plus = raw.starts_with('+');
-    let bare = raw.chars().all(|c| c.is_ascii_digit());
-    let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
-    match digits.len() {
-        10 if !plus => Some(format!("+1{digits}")),
-        11 if digits.starts_with('1') => Some(format!("+{digits}")),
-        8..=15 if plus => Some(format!("+{digits}")),
-        3..=7 if bare => Some(digits),
-        _ => None,
     }
 }
 

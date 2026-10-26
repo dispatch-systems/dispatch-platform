@@ -348,8 +348,9 @@ who needs no permission of theirs:
 - **`directory`** (Driver Match): who the member is, by their Slack ID, and the first phone
   number and email address their sources have for them (Driver Profiles' roster, Slack's
   profile); and who texts from a number, by any of their phone numbers.
-- **`texting`** (Phones): the DSP's phones and their texts, sending and sending again; and it
-  hears `phones.texts_changed`.
+- **`texting`** (Phones): the DSP's phones and their texts, sending and sending again, and its
+  `normal`, which writes a number typed or a person's as texts' are; and it hears
+  `phones.texts_changed`.
 - **`live_route_data`** (Routes): the live day and its holds on the work phones; and from
   `driver_routes`, a saved day's holds and whether a number was ever a work phone. It hears
   `routes.work_phones_changed`.
