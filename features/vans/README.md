@@ -41,5 +41,5 @@ is collected, on demand and by its rules, from Settings' Collectors page.
   none before the first, and for the VINs asked, in their order, the name the DSP gives each van,
   its status, whether the fleet still lists it and when it last did. A VIN is matched in
   capitals, without the spaces around it. It leaves out a VIN it never listed, and refuses an
-  empty VIN, one over 128 characters or more than 100 VINs with `invalid_input`. It never offers
-  the row as Amazon sent it or the company.
+  empty VIN, one over 128 characters or more than 100 VINs (`MOST_VINS`) with `invalid_input`. It
+  never offers the row as Amazon sent it or the company.

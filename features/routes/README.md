@@ -128,8 +128,8 @@ it is live route data, in a database of its own, `routelive`.
   read replaces it. A driver without a route didn't drive only on a complete day: one read while
   under way may be read before dispatch. Never addresses, locations or order IDs, nor a phone
   number but a work phone's. IDs are matched exactly, and none reads the days alone. It refuses a day that isn't YYYY-MM-DD
-  (`invalid_date`); and `from` after `to`, more than 366 days, more than 16 IDs, or an ID that's
-  empty or over 128 characters (`invalid_input`). And `live_route_data` (`LiveRouteData`), while
+  (`invalid_date`); and `from` after `to`, more than 366 days (`MOST_DAYS`), more than 16 IDs
+  (`MOST_IDS`), or an ID that's empty or over 128 characters (`invalid_input`). And `live_route_data` (`LiveRouteData`), while
   it's on: today as live route data holds it, read the same way, without the days collected:
   the live day, every driver's routes, or those of up to 16 IDs, each a route they're assigned to
   and haven't started too, as planned; the work phone each driver holds now, since when; and

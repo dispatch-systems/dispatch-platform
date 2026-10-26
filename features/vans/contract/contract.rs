@@ -4,13 +4,16 @@
 //! `amazon_fleet`.
 use dispatch_core::{Result, db::Store};
 
+/// The most VINs one read of the fleet names.
+pub const MOST_VINS: usize = 100;
+
 /// Reads what Amazon's fleet says of a DSP's vans, as Vans keeps it.
 pub trait AmazonFleet: Send + Sync {
     /// When the fleet was last collected, RFC 3339 in UTC, or none before the first collection.
     fn collected(&self, db: &Store, dsp: &str) -> Result<Option<String>>;
     /// The vans a fleet has listed under `vins`, in their order, leaving out a VIN no fleet has
     /// listed. A VIN is matched in capitals, without the spaces around it. Vans refuses an empty
-    /// VIN, one over 128 characters, or more than 100 with `invalid_input`.
+    /// VIN, one over 128 characters, or more than `MOST_VINS` with `invalid_input`.
     fn vans(&self, db: &Store, dsp: &str, vins: &[String]) -> Result<Vec<Van>>;
 }
 
