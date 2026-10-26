@@ -6,6 +6,7 @@
 use crate::api::types::Message;
 use crate::backend::{conversations, storage::CommunicationsStore};
 use crate::integrations::messages::incoming;
+use axum::body::Body;
 use dispatch_core::{
     Error, Result, State,
     accounts::{Context, SessionLifetime},
@@ -234,6 +235,8 @@ struct Known {
     change: i64,
     sent: Vec<Outgoing>,
     failing: bool,
+    /// Whether Communications is switched off for the DSP while the phone reads the next file.
+    off_while_reading: bool,
 }
 static KNOWN: Mutex<BTreeMap<String, Known>> = Mutex::new(BTreeMap::new());
 fn known<T>(dsp: &str, read: impl FnOnce(&Known) -> T) -> T {
@@ -303,6 +306,11 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
 pub fn failing(dsp: &str, failing: bool) {
     phone(dsp, |phone| phone.failing = failing);
 }
+/// Has Communications switched off for the DSP while its phone reads the next file asked of it,
+/// as the platform owner might while a member waits on it.
+pub fn off_while_reading(dsp: &str) {
+    phone(dsp, |phone| phone.off_while_reading = true);
+}
 /// What Dispatch sent from the DSP's phone, in order.
 pub fn sent(dsp: &str) -> Vec<Outgoing> {
     phone(dsp, |phone| phone.sent.clone())
@@ -313,7 +321,7 @@ fn phone<T>(dsp: &str, change: impl FnOnce(&mut Known) -> T) -> T {
     let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
     change(known.entry(dsp.to_owned()).or_default())
 }
-/// Switches the stand-in `feature`, `driving` or `fleet`, on or off for the DSP.
+/// Switches `feature`, a stand-in as `driving` or `fleet`, or Communications, on or off for the DSP.
 pub async fn switch(state: &Arc<State>, dsp: &str, feature: &'static str, on: bool) {
     let dsp = dsp.to_owned();
     state
@@ -409,7 +417,7 @@ impl LiveRouteData for Standing {
     }
 }
 /// One phone, Dispatch, (206) 555-0100. What Dispatch sends from it is delivered at once, or fails
-/// once a test says it does; tried again, it waits on the phone.
+/// once a test says it does; tried again, it waits on the phone. Any file asked of it is a photo.
 impl Texting for Standing {
     fn phones(&self, _: &Store, _: &str) -> Result<Vec<Phone>> {
         Ok(vec![Phone {
@@ -502,14 +510,21 @@ impl Texting for Standing {
     fn largest(&self) -> u64 {
         0
     }
+    /// Any file asked of it, a photo.
     fn file<'a>(
         &'a self,
-        _: &'a Arc<State>,
-        _: &'a str,
+        state: &'a Arc<State>,
+        dsp: &'a str,
         _: &'a str,
         _: &'a str,
     ) -> Answer<'a, Option<Reply>> {
-        Box::pin(async { Ok(None) })
+        Box::pin(async move {
+            if phone(dsp, |phone| std::mem::take(&mut phone.off_while_reading)) {
+                switch(state, dsp, "communications", false).await;
+            }
+            let photo = Reply::download("image/jpeg", "photo.jpg", Some(3), Body::from("jpg"));
+            Ok(Some(photo))
+        })
     }
 }
 /// `routes`, with each day they're on read while under way.

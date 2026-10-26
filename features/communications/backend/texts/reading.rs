@@ -15,8 +15,14 @@ use crate::backend::{
     search,
     storage::Direction,
 };
-use dispatch_core::{Error, Result, State, db::Store};
-use std::collections::HashMap;
+use dispatch_core::{
+    Error, Result, State,
+    accounts::Context,
+    db::Store,
+    server::http::{input::Reply, route::Dsp},
+};
+use dispatch_phones_contract as texting;
+use std::{collections::HashMap, sync::Arc};
 
 /// A text's place among its conversation's, as a message's `ts`: when it was written, thirteen
 /// digits, and its ID.
@@ -261,6 +267,23 @@ pub fn message(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Message
     Ok(messages(&people, &numbers, vec![kept]).remove(0))
 }
 
+/// A text's picture or file, `id`, as what offers the DSP texting keeps it, for the member `c`,
+/// whose access is checked again once it's read: it may have ended while it was.
+pub async fn file(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
+    let dsp = c.dsp.id.clone();
+    let texting = state
+        .read(move |db| texting::for_dsp(db, &dsp))
+        .await?
+        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+    let file = texting
+        .file(state, &c.dsp.id, id, &c.auth.user.id)
+        .await?
+        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+    let asked = c.clone();
+    state.read(move |db| access.revalidate(db, &asked)).await?;
+    Ok(file)
+}
+
 /// The DSP's conversation by text `id`.
 fn found(db: &Store, dsp: &str, id: &str) -> Result<TextConversation> {
     db.communications_text_conversation(dsp, id)?
@@ -275,3 +298,7 @@ pub fn numbered(db: &Store, dsp: &str, id: &str) -> Result<String> {
         _ => Err(Error::new("invalid_input", 400)),
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/texts/reading.rs"]
+mod tests;

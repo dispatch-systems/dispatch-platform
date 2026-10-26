@@ -434,15 +434,7 @@ async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &[])?;
     let wanted = id(input.param("id"), "file")?;
-    let dsp = c.dsp.id.clone();
-    let texting = state
-        .read(move |db| dispatch_phones_contract::for_dsp(db, &dsp))
-        .await?
-        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
-    texting
-        .file(&state, &c.dsp.id, &wanted, &c.auth.user.id)
-        .await?
-        .ok_or_else(|| Error::new("communications_file_not_found", 404))
+    texts::reading::file(&state, &c, access, &wanted).await
 }
 /// The `photos` added for a message: their IDs.
 fn photos(body: &Value) -> Result<Vec<String>> {
