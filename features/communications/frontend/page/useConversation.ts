@@ -3,24 +3,15 @@ import type { Conversation, ConversationMessages, Message } from '../../api/inde
 import { getConversation } from '../../api/client.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
+import { fresh, joined } from '../messages.js';
 import type { Changed } from './useInbox.js';
-
-/** Slack's IDs of messages, `<seconds>.<microseconds>`, in the order they were written. */
-const byTs = (a: Message, b: Message) =>
-  a.ts.padStart(24, '0') < b.ts.padStart(24, '0') ? -1 : a.ts === b.ts ? 0 : 1;
-/** `kept` with `read`, each message once, as it is now, in the order written. */
-function joined(kept: readonly Message[], read: readonly Message[]) {
-  const byId = new Map(kept.map((message) => [message.id, message]));
-  for (const message of read) byId.set(message.id, message);
-  return [...byId.values()].sort(byTs);
-}
 
 type Opened = { id: string; conversation: Conversation; messages: Message[]; more: boolean };
 
 /**
  * The open conversation and its messages: the latest when it opens, again each time an update
- * changes it, and older ones as they're asked for, fifty at a time. `gone` once it's no longer
- * there.
+ * changes it, each read as it is now, and older ones as they're asked for, fifty at a time. `gone`
+ * once it's no longer there.
  */
 export function useConversation(id: string | undefined, changed: Changed) {
   const [opened, setOpened] = useState<Opened>();
@@ -36,6 +27,9 @@ export function useConversation(id: string | undefined, changed: Changed) {
   // left, as is one of a conversation no longer open.
   const wanted = useRef<string | undefined>(undefined);
   const reads = useRef({ asked: 0, shown: 0 });
+  // Each message the page sent, by the read asked last as it showed: one asked before then may
+  // not hold it yet.
+  const sent = useRef(new Map<string, number>());
 
   useEffect(() => {
     wanted.current = id;
@@ -53,12 +47,8 @@ export function useConversation(id: string | undefined, changed: Changed) {
         if (wanted.current !== id || turn < reads.current.shown) return;
         reads.current.shown = turn;
         const before = kept.current?.id === id ? kept.current : undefined;
-        keep({
-          id,
-          conversation: latest.conversation,
-          messages: joined(before?.messages ?? [], latest.messages),
-          more: before ? before.more : latest.more,
-        });
+        const unread = (message: Message) => (sent.current.get(message.id) ?? 0) >= turn;
+        keep({ id, conversation: latest.conversation, ...fresh(before, latest, unread) });
         setError('');
       },
       (cause) => {
@@ -87,10 +77,15 @@ export function useConversation(id: string | undefined, changed: Changed) {
   }, [keep, older]);
   /** Shows the conversation as one of the page's own writes left it, and a message it sent. */
   const show = useCallback(
-    (conversation: Conversation, sent?: Message) => {
+    (conversation: Conversation, message?: Message) => {
       const now = kept.current;
       if (now?.id !== conversation.id) return;
-      keep({ ...now, conversation, messages: sent ? joined(now.messages, [sent]) : now.messages });
+      if (message) sent.current.set(message.id, reads.current.asked);
+      keep({
+        ...now,
+        conversation,
+        messages: message ? joined(now.messages, [message]) : now.messages,
+      });
     },
     [keep],
   );
