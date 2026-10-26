@@ -88,6 +88,15 @@ pub struct Kept {
     pub files: Vec<String>,
 }
 
+/// What a phone says of an attempt at a text Dispatch sent.
+pub struct StatusReport {
+    pub id: String,
+    pub attempt: i64,
+    pub status: Status,
+    pub at: i64,
+    pub error: Option<String>,
+}
+
 /// A picture or file as kept, with where its bytes are.
 pub struct StoredFile {
     pub file: File,
@@ -121,22 +130,23 @@ pub trait PhonesStore {
     /// Keeps the texts a phone reports, each once by its own ID of it.
     fn phones_report(&self, dsp: &str, device: &str, texts: Vec<Reported>) -> Result<Vec<Kept>>;
     /// Keeps the bytes of a file a phone reported, by their SHA-256: refused as
-    /// `phones_file_not_found` for one not of its own texts.
-    fn phones_file_arrived(&self, dsp: &str, device: &str, id: &str, sha256: &str) -> Result<()>;
-    /// The texts Dispatch sent that wait for the phone, oldest first.
-    fn phones_outbox(&self, dsp: &str, device: &str) -> Result<Vec<Text>>;
-    /// Notes how a text Dispatch sent from the phone went: a status only moves on, waiting to
-    /// sent to delivered, waiting or sent to failed, and to delivered from any other, as a
-    /// delivery report proves it got there. Answers whether it moved.
-    fn phones_status(
+    /// `phones_file_not_found` for one not of its own texts. Answers the SHA-256 it kept before,
+    /// for bytes sent again.
+    fn phones_file_arrived(
         &self,
         dsp: &str,
         device: &str,
         id: &str,
-        status: Status,
-        at: i64,
-        error: Option<&str>,
-    ) -> Result<bool>;
+        sha256: &str,
+    ) -> Result<Option<String>>;
+    /// The texts Dispatch sent that wait for the phone, oldest first, each with its attempt.
+    fn phones_outbox(&self, dsp: &str, device: &str) -> Result<Vec<(Text, i64)>>;
+    /// Notes how the attempt `report.attempt` at a text Dispatch sent from the phone went: a
+    /// status only moves on, waiting to sent to delivered, waiting or sent to failed, and to
+    /// delivered from any other, as a delivery report proves it got there. Sent or failed counts
+    /// only for the latest attempt, so a late report of an earlier one never cancels the text
+    /// tried again. Answers whether it moved.
+    fn phones_status(&self, dsp: &str, device: &str, report: &StatusReport) -> Result<bool>;
     fn phones_changes(&self, dsp: &str, after: i64, most: usize) -> Result<Changes>;
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text>;
@@ -354,12 +364,19 @@ impl PhonesStore for Store {
             Ok(kept)
         })
     }
-    fn phones_file_arrived(&self, dsp: &str, device: &str, id: &str, sha256: &str) -> Result<()> {
+    fn phones_file_arrived(
+        &self,
+        dsp: &str,
+        device: &str,
+        id: &str,
+        sha256: &str,
+    ) -> Result<Option<String>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let file = db
                 .one(
-                    "SELECT f.text_id FROM phones_files f JOIN phones_texts t ON t.id=f.text_id \
+                    "SELECT f.text_id,f.sha256 FROM phones_files f \
+                     JOIN phones_texts t ON t.id=f.text_id \
                      WHERE f.id=? AND t.device_id=? AND t.origin='phone'",
                     params![id, device],
                 )?
@@ -373,42 +390,40 @@ impl PhonesStore for Store {
                 "UPDATE phones_texts SET change=? WHERE id=?",
                 params![change, s(&file, "text_id")],
             )?;
-            Ok(())
+            Ok(file["sha256"]
+                .as_str()
+                .map(str::to_owned)
+                .filter(|before| before != sha256))
         })
     }
-    fn phones_outbox(&self, dsp: &str, device: &str) -> Result<Vec<Text>> {
+    fn phones_outbox(&self, dsp: &str, device: &str) -> Result<Vec<(Text, i64)>> {
         let db = self.dsp(dsp)?;
         let rows = db.all(
             "SELECT * FROM phones_texts WHERE device_id=? AND origin='dispatch' \
              AND status='waiting' ORDER BY at,rowid LIMIT ?",
             params![device, MOST_TEXTS as i64],
         )?;
-        texts(&db, rows)
+        let attempts: Vec<i64> = rows.iter().map(|row| n(row, "attempt")).collect();
+        Ok(texts(&db, rows)?.into_iter().zip(attempts).collect())
     }
-    fn phones_status(
-        &self,
-        dsp: &str,
-        device: &str,
-        id: &str,
-        status: Status,
-        at: i64,
-        error: Option<&str>,
-    ) -> Result<bool> {
+    fn phones_status(&self, dsp: &str, device: &str, report: &StatusReport) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let found = db.one(
-                "SELECT status FROM phones_texts WHERE id=? AND device_id=? AND origin='dispatch'",
-                params![id, device],
+                "SELECT status,attempt FROM phones_texts \
+                 WHERE id=? AND device_id=? AND origin='dispatch'",
+                params![report.id, device],
             )?;
             let Some(found) = found else {
                 return Ok(false);
             };
             let from = parse_status(s(&found, "status"));
-            let moves = match status {
+            let latest = found["attempt"].as_i64() == Some(report.attempt);
+            let moves = match report.status {
                 Status::Waiting => false,
-                Status::Sent => from == Some(Status::Waiting),
-                Status::Failed => matches!(from, Some(Status::Waiting | Status::Sent)),
-                // A delivery report proves it got there, even after the phone said it failed.
+                Status::Sent => latest && from == Some(Status::Waiting),
+                Status::Failed => latest && matches!(from, Some(Status::Waiting | Status::Sent)),
+                // A delivery report proves it got there, whichever attempt it was.
                 Status::Delivered => from != Some(Status::Delivered),
             };
             if !moves {
@@ -418,11 +433,14 @@ impl PhonesStore for Store {
             db.exec(
                 "UPDATE phones_texts SET status=?, status_at=?, error=?, change=? WHERE id=?",
                 params![
-                    status_text(status),
-                    at,
-                    error.filter(|_| status == Status::Failed),
+                    status_text(report.status),
+                    report.at,
+                    report
+                        .error
+                        .as_deref()
+                        .filter(|_| report.status == Status::Failed),
                     change,
-                    id
+                    report.id
                 ],
             )?;
             Ok(true)
@@ -430,15 +448,20 @@ impl PhonesStore for Store {
     }
     fn phones_changes(&self, dsp: &str, after: i64, most: usize) -> Result<Changes> {
         let db = self.dsp(dsp)?;
+        let most = most.clamp(1, MOST_TEXTS);
         let rows = db.all(
             "SELECT * FROM phones_texts WHERE change>? ORDER BY change LIMIT ?",
-            params![after, most.min(MOST_TEXTS) as i64],
+            params![after, most as i64],
         )?;
-        let last = n(
-            &db.one("SELECT last FROM phones_change WHERE id=1", [])?
-                .unwrap_or_default(),
-            "last",
-        );
+        // A full page goes on from its own last change; else every change there is was read.
+        let last = match rows.last() {
+            Some(row) if rows.len() == most => n(row, "change"),
+            _ => n(
+                &db.one("SELECT last FROM phones_change WHERE id=1", [])?
+                    .unwrap_or_default(),
+                "last",
+            ),
+        };
         Ok(Changes {
             texts: texts(&db, rows)?,
             last,
@@ -475,8 +498,8 @@ impl PhonesStore for Store {
             let change = next_change(&db)?;
             db.exec(
                 "INSERT INTO phones_texts \
-                 (id,device_id,direction,origin,number,body,at,sent_by,status,status_at,change) \
-                 VALUES (?,?,'out','dispatch',?,?,?,?,'waiting',?,?)",
+                 (id,device_id,direction,origin,number,body,at,sent_by,status,status_at,attempt,\
+                 change) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?5,?7)",
                 params![
                     id,
                     s(&device, "id"),
@@ -484,7 +507,6 @@ impl PhonesStore for Store {
                     outgoing.body,
                     at,
                     outgoing.by,
-                    at,
                     change
                 ],
             )?;
@@ -505,9 +527,11 @@ impl PhonesStore for Store {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let change = next_change(&db)?;
+            // A new attempt, from the phone it went from, while that phone is still paired.
             let changed = db.exec(
-                "UPDATE phones_texts SET status='waiting', status_at=?, error=NULL, change=? \
-                 WHERE id=? AND origin='dispatch' AND status='failed'",
+                "UPDATE phones_texts SET status='waiting', status_at=?1, attempt=?1, error=NULL, \
+                 change=?2 WHERE id=?3 AND origin='dispatch' AND status='failed' \
+                 AND device_id IN (SELECT id FROM phones_devices WHERE removed_at IS NULL)",
                 params![at, change, id],
             )?;
             ensure(changed == 1, "phones_text_not_found", 404)

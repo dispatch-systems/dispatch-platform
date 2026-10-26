@@ -71,11 +71,19 @@ test('A phone pairs once with a code, then calls with its key at its DSP alone',
     401,
   );
 
+  const switches = `/api/platform/dsps/${north.id}/features`;
+  assert.equal((await owner.post(switches, { feature: 'phones', enabled: false })).status, 200);
+  await owner.select(north.id);
+  assert.equal((await owner.get('/api/dsp/phones')).status, 404);
+  assert.equal((await owner.post('/api/dsp/phones/pairing')).status, 404);
+  assert.equal((await owner.post(switches, { feature: 'phones', enabled: true })).status, 200);
+  await owner.select(north.id);
+
   const removed = await owner.post(`/api/dsp/phones/${paired.value.phone.id}/remove`);
   assert.equal(removed.status, 200, removed.body);
   const after = await f.request(
     '/api/phones/statuses',
-    { statuses: [{ id: 'text_x', status: 'sent', at: 1 }] },
+    { statuses: [{ id: 'text_x', attempt: 1, status: 'sent', at: 1 }] },
     { ...at, ...key },
   );
   assert.equal(after.status, 401);

@@ -44,20 +44,16 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         };
         for dsp in dsps {
             let at = dsp.clone();
-            let loose = state
-                .run_scoped(dsp.clone(), DOMAIN, move |db| {
-                    db.phones_tidy(&at, db::now() - UNSENT_MS)
+            let tidied = state
+                .run_scoped(dsp, DOMAIN, move |db| {
+                    for sha256 in db.phones_tidy(&at, db::now() - UNSENT_MS)? {
+                        files::forget(db, &at, &sha256)?;
+                    }
+                    Ok(())
                 })
                 .await;
-            match loose {
-                Ok(loose) => {
-                    for sha256 in loose {
-                        if let Err(error) = files::discard(&state, &dsp, &sha256).await {
-                            failed(&error);
-                        }
-                    }
-                }
-                Err(error) => failed(&error),
+            if let Err(error) = tidied {
+                failed(&error);
             }
         }
     })

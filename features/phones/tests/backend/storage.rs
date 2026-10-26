@@ -141,8 +141,16 @@ fn how_a_text_went_only_moves_on() {
     let (_root, db, dsp) = store();
     let phone = paired(&db, &dsp, "key", "2065550100");
     let owner = testing::a_user(&db);
+    let report = |id: &str, attempt: i64, status| StatusReport {
+        id: id.into(),
+        attempt,
+        status,
+        at: 9_000,
+        error: Some("no signal".into()),
+    };
+    // Each text is sent at 8,000, its first attempt.
     let status = |id: &str, status| {
-        db.phones_status(&dsp, &phone.id, id, status, 9_000, Some("no signal"))
+        db.phones_status(&dsp, &phone.id, &report(id, 8_000, status))
             .unwrap()
     };
     let text = db
@@ -174,25 +182,35 @@ fn how_a_text_went_only_moves_on() {
     );
     let failed = db.phones_text(&dsp, &failing.id).unwrap().unwrap();
     assert_eq!(failed.error.as_deref(), Some("no signal"));
-    // Tried again, it waits for the phone once more.
+    // Tried again, it waits for the phone once more, as a new attempt.
     let retried = db.phones_retry(&dsp, &failing.id, 10_000).unwrap();
     assert_eq!(
         (retried.status, retried.error),
         (Some(Status::Waiting), None)
     );
-    assert_eq!(db.phones_outbox(&dsp, &phone.id).unwrap()[0].id, failing.id);
+    let (waiting, attempt) = db.phones_outbox(&dsp, &phone.id).unwrap().remove(0);
+    assert_eq!(
+        (waiting.id.as_str(), attempt),
+        (failing.id.as_str(), 10_000)
+    );
+    // The phone repeating the first attempt's failure leaves the new attempt waiting.
+    assert!(!status(&failing.id, Status::Failed));
+    assert_eq!(db.phones_outbox(&dsp, &phone.id).unwrap().len(), 1);
     assert!(
         status(&failing.id, Status::Delivered),
-        "a delivery report counts after a failure"
+        "a delivery report counts, whichever attempt"
     );
     // A phone says nothing of another's texts.
     let other = db
         .phones_send(&dsp, &outgoing("4255550198", vec![], &owner), 8_000)
         .unwrap();
-    assert!(
-        !db.phones_status(&dsp, "phone_other", &other.id, Status::Sent, 9_000, None)
-            .unwrap()
-    );
+    let foreign = report(&other.id, 8_000, Status::Sent);
+    assert!(!db.phones_status(&dsp, "phone_other", &foreign).unwrap());
+    // A text whose phone was removed isn't tried again: no phone would send it.
+    assert!(status(&other.id, Status::Failed));
+    db.phones_remove(&dsp, &phone.id, 11_000).unwrap();
+    let orphan = db.phones_retry(&dsp, &other.id, 12_000);
+    assert_eq!(orphan.unwrap_err().code.as_str(), "phones_text_not_found");
 }
 
 #[test]
@@ -293,4 +311,33 @@ fn pictures_never_sent_and_codes_expired_are_let_go() {
     assert!(db.phones_file(&dsp, &recent.id).unwrap().is_some());
     assert!(!db.phones_bytes_kept(&dsp, "sha-unsent").unwrap());
     assert!(db.phones_bytes_kept(&dsp, "sha-sent").unwrap());
+}
+
+#[test]
+fn readers_page_through_every_change_in_order() {
+    let (_root, db, dsp) = store();
+    let phone = paired(&db, &dsp, "key", "2065550100");
+    for batch in 0..3 {
+        let texts = (0..MOST_TEXTS)
+            .map(|index| reported(&format!("{batch}-{index}"), "+14255550199", 1_000, 0))
+            .collect();
+        db.phones_report(&dsp, &phone.id, texts).unwrap();
+    }
+    db.phones_report(
+        &dsp,
+        &phone.id,
+        vec![reported("last", "+14255550199", 2_000, 0)],
+    )
+    .unwrap();
+    let (mut after, mut read) = (0, Vec::new());
+    loop {
+        let page = db.phones_changes(&dsp, after, MOST_TEXTS).unwrap();
+        if page.texts.is_empty() {
+            break;
+        }
+        read.extend(page.texts.iter().map(|text| text.change));
+        after = page.last;
+    }
+    assert_eq!(read.len(), 3 * MOST_TEXTS + 1, "none missed between pages");
+    assert!(read.windows(2).all(|pair| pair[0] < pair[1]));
 }

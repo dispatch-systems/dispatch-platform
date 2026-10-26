@@ -17,6 +17,8 @@ export const feature: FrontendFeature = {
       section: 'dsp',
       order: 100,
       visible: (view) => can(view, 'connections.manage') || can(view, 'phones.manage'),
+      // Managing the DSP's phones alone shows it, as managing all its connections does.
+      others: (view) => can(view, 'phones.manage'),
       reads: [phonesUrl],
       load: loadCard,
       render: ({ view }) => view && createElement(PhonesCard, { view }),

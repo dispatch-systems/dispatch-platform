@@ -1,5 +1,8 @@
 //! The bytes of the pictures and files texts carry, kept in the DSP's own data
-//! (`data/phones/files/`) by their SHA-256, so two texts with one picture keep it once.
+//! (`data/phones/files/`) by their SHA-256, so two texts with one picture keep it once. Bytes
+//! arrive beside the folder's files, then take their place, and are let go, only under the
+//! platform's write lock, with the files that keep them: so letting go never removes the bytes of
+//! a file kept a moment before.
 use super::storage::PhonesStore;
 use dispatch_core::{
     Error, Result, State,
@@ -20,8 +23,28 @@ fn folder(db: &Store, dsp: &str) -> Result<PathBuf> {
     let owner = db::private_dir(&db.area(dsp, "data")?.join("phones"))?;
     db::private_dir(&owner.join("files"))
 }
-/// Keeps `bytes`, as they arrive, among the DSP's files: their SHA-256 and their size.
-pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<(String, i64)> {
+/// Bytes that arrived, beside the DSP's files until they take their place.
+pub struct Arrived {
+    pub sha256: String,
+    pub size: i64,
+    arriving: PathBuf,
+}
+impl Arrived {
+    /// Puts the bytes in their place among the DSP's files: inside the write that keeps the file
+    /// they're for.
+    pub fn place(&self, db: &Store, dsp: &str) -> Result<()> {
+        std::fs::rename(&self.arriving, folder(db, dsp)?.join(&self.sha256))?;
+        Ok(())
+    }
+}
+impl Drop for Arrived {
+    /// Bytes that never took their place are let go.
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.arriving);
+    }
+}
+/// Receives `bytes`, as they arrive, beside the DSP's files.
+pub async fn receive(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<Arrived> {
     let at = dsp.to_owned();
     let folder = state.read(move |db| folder(db, &at)).await?;
     let arriving = folder.join(format!(".{}", crypto::id("arriving")?));
@@ -49,23 +72,22 @@ pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<(Strin
         let _ = tokio::fs::remove_file(&arriving).await;
         return Err(error);
     }
-    let sha256 = crypto::hex(&hash.finalize());
-    tokio::fs::rename(&arriving, folder.join(&sha256)).await?;
-    Ok((sha256, size))
+    Ok(Arrived {
+        sha256: crypto::hex(&hash.finalize()),
+        size,
+        arriving,
+    })
 }
-/// Lets go of the DSP's bytes kept by `sha256`, unless a file is still kept by them.
-pub async fn discard(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<()> {
-    let (at, kept) = (dsp.to_owned(), sha256.to_owned());
-    let (folder, kept) = state
-        .read(move |db| Ok((folder(db, &at)?, db.phones_bytes_kept(&at, &kept)?)))
-        .await?;
-    if !kept {
-        match tokio::fs::remove_file(folder.join(sha256)).await {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
-            _ => {}
-        }
+/// Lets go of the DSP's bytes kept by `sha256`, unless a file is still kept by them: inside the
+/// write that let go of the file.
+pub fn forget(db: &Store, dsp: &str, sha256: &str) -> Result<()> {
+    if db.phones_bytes_kept(dsp, sha256)? {
+        return Ok(());
     }
-    Ok(())
+    match std::fs::remove_file(folder(db, dsp)?.join(sha256)) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(()),
+    }
 }
 /// The DSP's bytes kept by `sha256`, streamed, as a download of `name` and `mime`.
 pub async fn answer(

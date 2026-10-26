@@ -4,7 +4,10 @@
 //! these: a request carrying a cookie, or at another address than a DSP's, is refused.
 use crate::backend::{
     files, live, numbers, pairing,
-    storage::{DOMAIN, Device, Kept, MOST_TEXTS, Pairing, PhonesStore, Reported, ReportedFile},
+    storage::{
+        DOMAIN, Device, Kept, MOST_TEXTS, Pairing, PhonesStore, Reported, ReportedFile,
+        StatusReport,
+    },
 };
 use dispatch_core::accounts::api::types::Dsp;
 use dispatch_core::{
@@ -195,9 +198,9 @@ struct OutgoingFile {
     size: i64,
 }
 impl Outgoing {
-    fn of(text: Text) -> Self {
+    fn of((text, attempt): (Text, i64)) -> Self {
         Self {
-            attempt: text.status_at.unwrap_or(text.at),
+            attempt,
             id: text.id,
             number: text.number,
             body: text.body,
@@ -339,22 +342,28 @@ pub(super) async fn file_in(
     v::fields(&input.query, &[])?;
     let asked = input.clone();
     let caller = state.read(move |db| access.authorize(db, &asked)).await?;
-    let (sha256, _) = files::keep(&state, &caller.dsp, bytes).await?;
-    let (asked, id, kept) = (input.clone(), input.param("id").to_owned(), sha256.clone());
-    let arrived = state
+    let arrived = files::receive(&state, &caller.dsp, bytes).await?;
+    let (asked, id) = (input.clone(), input.param("id").to_owned());
+    state
         .run_scoped(caller.dsp.clone(), DOMAIN, move |db| {
             let caller = access.authorize(db, &asked)?;
-            db.phones_file_arrived(&caller.dsp, &caller.device.id, &id, &kept)
+            arrived.place(db, &caller.dsp)?;
+            match db.phones_file_arrived(&caller.dsp, &caller.device.id, &id, &arrived.sha256) {
+                Ok(before) => {
+                    before.map_or(Ok(()), |before| files::forget(db, &caller.dsp, &before))
+                }
+                Err(error) => {
+                    files::forget(db, &caller.dsp, &arrived.sha256)?;
+                    Err(error)
+                }
+            }
         })
-        .await;
-    if let Err(error) = arrived {
-        files::discard(&state, &caller.dsp, &sha256).await?;
-        return Err(error);
-    }
+        .await?;
     live::changed(&state, &caller.dsp).await;
     Ok(Reply::ok())
 }
-/// The bytes of a picture of a text Dispatch has for the phone to send.
+/// The bytes of a picture of a text Dispatch has for the phone to send: asked again, once the
+/// download is ready, whether the phone still may.
 pub(super) async fn file_out(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     let (asked, id) = (input.clone(), input.param("id").to_owned());
@@ -369,7 +378,10 @@ pub(super) async fn file_out(state: Arc<State>, input: Input, access: Phone) -> 
     let sha256 = file
         .sha256
         .ok_or_else(|| Error::new("phones_file_not_found", 404))?;
-    files::answer(&state, &dsp, &sha256, &file.file.name, &file.file.mime).await
+    let reply = files::answer(&state, &dsp, &sha256, &file.file.name, &file.file.mime).await?;
+    let asked = input.clone();
+    state.read(move |db| access.authorize(db, &asked)).await?;
+    Ok(reply)
 }
 
 /// Notes how the texts Dispatch had for the phone went.
@@ -381,21 +393,22 @@ pub(super) async fn statuses(state: Arc<State>, input: Input, access: Phone) -> 
         .ok_or_else(|| Error::new("invalid_input", 400))?
         .iter()
         .map(|status| {
-            v::fields(status, &["id", "status", "at", "error"])?;
+            v::fields(status, &["id", "attempt", "status", "at", "error"])?;
             let error = match &status["error"] {
                 Value::Null => None,
                 _ => Some(v::text(status, "error", 0, 500)?.to_owned()),
             };
-            Ok((
-                v::text(status, "id", 1, 64)?.to_owned(),
-                match v::choice(status, "status", &["sent", "delivered", "failed"])? {
+            Ok(StatusReport {
+                id: v::text(status, "id", 1, 64)?.to_owned(),
+                attempt: v::integer(status, "attempt", 0, i64::MAX)?,
+                status: match v::choice(status, "status", &["sent", "delivered", "failed"])? {
                     "sent" => Status::Sent,
                     "delivered" => Status::Delivered,
                     _ => Status::Failed,
                 },
-                v::integer(status, "at", 0, i64::MAX)?,
+                at: v::integer(status, "at", 0, i64::MAX)?,
                 error,
-            ))
+            })
         })
         .collect::<Result<Vec<_>>>()?;
     let caller = checked_in(&state, &input, access).await?;
@@ -404,15 +417,8 @@ pub(super) async fn statuses(state: Arc<State>, input: Input, access: Phone) -> 
         .run_scoped(caller.dsp, DOMAIN, move |db| {
             let caller = access.authorize(db, &asked)?;
             let mut moved = false;
-            for (id, status, at, error) in &statuses {
-                moved |= db.phones_status(
-                    &caller.dsp,
-                    &caller.device.id,
-                    id,
-                    *status,
-                    *at,
-                    error.as_deref(),
-                )?;
+            for report in &statuses {
+                moved |= db.phones_status(&caller.dsp, &caller.device.id, report)?;
             }
             Ok(moved)
         })

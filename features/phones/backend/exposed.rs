@@ -2,7 +2,7 @@
 //! (`dispatch_phones_contract`).
 use super::{
     files, live,
-    storage::{DOMAIN, PhonesStore, ReportedFile},
+    storage::{DOMAIN, PhonesStore, ReportedFile, StatusReport},
 };
 use dispatch_core::{
     Result, State,
@@ -44,8 +44,16 @@ impl Texting for Exposed {
                     let text = db.phones_send(&at, &outgoing, now)?;
                     // The demo's stand-in phone, which no app holds, says it delivered at once.
                     if db.phones_stand_in(&at, &text.phone)? {
-                        db.phones_status(&at, &text.phone, &text.id, Status::Sent, now, None)?;
-                        db.phones_status(&at, &text.phone, &text.id, Status::Delivered, now, None)?;
+                        for status in [Status::Sent, Status::Delivered] {
+                            let report = StatusReport {
+                                id: text.id.clone(),
+                                attempt: now,
+                                status,
+                                at: now,
+                                error: None,
+                            };
+                            db.phones_status(&at, &text.phone, &report)?;
+                        }
                         return db
                             .phones_text(&at, &text.id)
                             .map(|delivered| delivered.unwrap_or(text));
@@ -79,22 +87,24 @@ impl Texting for Exposed {
         bytes: Upload,
     ) -> Answer<'a, File> {
         Box::pin(async move {
-            let (sha256, size) = files::keep(state, dsp, bytes).await?;
-            let (at, kept) = (dsp.to_owned(), sha256.clone());
+            let arrived = files::receive(state, dsp, bytes).await?;
+            let at = dsp.to_owned();
             let file = ReportedFile {
                 name: added.name,
                 mime: added.mime,
-                size,
+                size: arrived.size,
             };
-            let stored = state
+            state
                 .run_scoped(dsp, DOMAIN, move |db| {
-                    db.phones_add_file(&at, &added.by, &file, &kept, db::now())
+                    arrived.place(db, &at)?;
+                    let kept =
+                        db.phones_add_file(&at, &added.by, &file, &arrived.sha256, db::now());
+                    if kept.is_err() {
+                        files::forget(db, &at, &arrived.sha256)?;
+                    }
+                    kept
                 })
-                .await;
-            if stored.is_err() {
-                files::discard(state, dsp, &sha256).await?;
-            }
-            stored
+                .await
         })
     }
     fn largest(&self) -> u64 {

@@ -18,7 +18,9 @@ itself.
 On Settings' DSP Connections, for those who manage the DSP's phones or all its connections
 (`connectionPieces`, `dsp`): each phone, by its number, with its name, model and the app's version, Online once it
 checked in in the last two minutes, else Offline and for how long, read again every 30 seconds;
-Rename and Remove in its menu. With none, No phone. **Add phone** shows the code that pairs the
+Rename and Remove in its menu; a name changed and not saved asks to save it before the
+dialog closes. The card's routes are refused (`not_found`) while Phones is off, though managing
+all the DSP's connections still lets a member in. With none, No phone. **Add phone** shows the code that pairs the
 next phone, as a QR code its app reads and as its eight letters, and how long it lasts; one
 expired gives way to a new one with New code; the dialog closes once a new phone appears, read
 every three seconds while it's open. A code needs the DSP's own address, for the phone to
@@ -51,9 +53,12 @@ reaches), and counts as checking in.
   each and of its files, whose bytes come next.
 - `POST /api/phones/files/{id}`: a reported file's bytes, up to 20 MB.
 - `GET /api/phones/files/{id}`: a picture of a text Dispatch has for the phone.
-- `POST /api/phones/statuses`: how up to 100 of Dispatch's texts went, `sent`, `delivered` or
-  `failed` with its `error`. A status only moves on: waiting to sent to delivered, waiting or
-  sent to failed, and to delivered from any other, as a delivery report proves it got there.
+- `POST /api/phones/statuses`: how up to 100 attempts at Dispatch's texts went, each by its
+  text's `id` and the `attempt` the outbox gave, `sent`, `delivered` or `failed` with its
+  `error`. A status only moves on: waiting to sent to delivered, waiting or sent to failed, and
+  to delivered from any other, as a delivery report proves it got there. Sent or failed counts
+  only for the latest attempt, so a late report of an earlier one never cancels a text tried
+  again.
 
 ## Texting, what it exposes
 
@@ -62,7 +67,7 @@ removed left out, each with whether it's online; the texts changed after a point
 first, with their files, and the last change, so a reader reads on from where it left off;
 sending a text from one of the DSP's phones (the one named, else the one that last texted that
 number, else the one seen last), with pictures its sender added for it, refused as
-`phones_none`, `phones_not_found` or `phones_file_not_found`; trying a failed one again; adding
+`phones_none`, `phones_not_found` or `phones_file_not_found`; trying a failed one again, as a new attempt, while its phone is still paired; adding
 a picture for a text not sent yet, its adder's alone until it's sent; and a text's picture or
 file to answer a page with. Numbers are kept one way: `+1` and ten digits in North America, `+`
 and the digits with a country code, a short code's digits alone. It publishes `TextsChanged`
@@ -75,7 +80,9 @@ and the digits with a country code, a short code's digits alone. It publishes `T
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, and
   its latest change), `phones_files` (each text's pictures and files, and those added for one
   not sent yet) and `phones_change` (the last change given); the files' bytes in the DSP's data,
-  `data/phones/files/`, by their SHA-256, which backups keep. Kept until the DSP is deleted.
+  `data/phones/files/`, by their SHA-256, which backups keep. Bytes arrive beside them, and take
+  their place, and are let go, only under the platform's write lock with the files that keep
+  them. Kept until the DSP is deleted.
 - **Upkeep:** hourly, letting go of pictures added and never sent within a day, and of codes
   expired.
 - **Demo:** a development or preview DSP has a stand-in phone, `(206) 555-0100`, which no app

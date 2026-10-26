@@ -43,6 +43,11 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
+/// Refuses the card's calls while Phones is off for the DSP, as managing all its connections
+/// still lets a member in.
+fn on(c: &Member) -> Result<()> {
+    ensure(c.has("phones"), "not_found", 404)
+}
 /// One of Phones' IDs, `phone_` and 32 hexadecimal digits.
 fn phone_id(value: &str) -> Result<&str> {
     ensure(db::identifier(value, "phone_"), "invalid_input", 400)?;
@@ -62,6 +67,7 @@ fn row(device: &Device, now: i64) -> PhoneRow {
 
 /// The DSP's phones.
 fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    on(c)?;
     v::fields(&input.query, &[])?;
     let now = db::now();
     Reply::of(&Phones {
@@ -75,6 +81,7 @@ fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// A new code to pair the next phone, in place of any shown before: refused as
 /// `phones_address_required` while the DSP has no address of its own for the phone to reach.
 fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    on(c)?;
     v::fields(&input.body, &[])?;
     let site = c
         .dsp
@@ -94,6 +101,7 @@ fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 /// Gives the phone a new name.
 fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    on(c)?;
     v::fields(&input.body, &["name"])?;
     let id = phone_id(input.param("id"))?;
     let name = v::name(&input.body, "name", 60)?;
@@ -112,6 +120,7 @@ fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 /// Removes the phone: its key works no more, and its texts stay.
 fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    on(c)?;
     v::fields(&input.body, &[])?;
     let id = phone_id(input.param("id"))?;
     let device = db.phones_remove(c.dsp_id(), id, db::now())?;
