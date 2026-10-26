@@ -32,5 +32,6 @@ test('Add phone shows the code that pairs the next phone, and a rename asks befo
   const rename = page.getByRole('dialog', { name: 'Rename phone' });
   await rename.getByLabel('Name').fill('Station 2');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Save changes?' })).toBeVisible();
+  const asking = page.getByRole('dialog', { name: 'Save changes?' });
+  await expect(asking.getByRole('button')).toHaveText(['Discard changes', 'Save changes']);
 });

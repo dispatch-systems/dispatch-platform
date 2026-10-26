@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS phones_pairings (
 -- Each text: one the phone reports (`origin` phone: received, or sent from the phone's own
 -- messaging app), by the phone's own ID of it (`client_id`), or one sent from Dispatch (`origin`
 -- dispatch), by whom (`sent_by`), waiting for the phone until it says how it went (`status`), of
--- its latest attempt (`attempt`, when it was queued or tried again): a report of an earlier one
--- that it was sent or failed is left alone.
+-- its latest attempt (`attempt`, the change that queued it or tried it again): a report of an
+-- earlier one that it was sent or failed is left alone.
 -- `number` is the other party's. `change` orders every change to a text, and to its files, for
 -- those reading them.
 CREATE TABLE IF NOT EXISTS phones_texts (

@@ -141,6 +141,12 @@ fn how_a_text_went_only_moves_on() {
     let (_root, db, dsp) = store();
     let phone = paired(&db, &dsp, "key", "2065550100");
     let owner = testing::a_user(&db);
+    // The attempt the phone was given for a text waiting for it.
+    let attempt_of = |id: &str| {
+        let outbox = db.phones_outbox(&dsp, &phone.id).unwrap();
+        let found = outbox.into_iter().find(|(text, _)| text.id == id);
+        found.expect("the text waits for the phone").1
+    };
     let report = |id: &str, attempt: i64, status| StatusReport {
         id: id.into(),
         attempt,
@@ -148,25 +154,27 @@ fn how_a_text_went_only_moves_on() {
         at: 9_000,
         error: Some("no signal".into()),
     };
-    // Each text is sent at 8,000, its first attempt.
-    let status = |id: &str, status| {
-        db.phones_status(&dsp, &phone.id, &report(id, 8_000, status))
+    let status = |id: &str, attempt: i64, status| {
+        db.phones_status(&dsp, &phone.id, &report(id, attempt, status))
             .unwrap()
     };
     let text = db
         .phones_send(&dsp, &outgoing("(425) 555-0199", vec![], &owner), 8_000)
         .unwrap();
     assert_eq!(text.status, Some(Status::Waiting));
-    assert_eq!(db.phones_outbox(&dsp, &phone.id).unwrap().len(), 1);
-    assert!(status(&text.id, Status::Sent));
+    let first = attempt_of(&text.id);
+    assert!(status(&text.id, first, Status::Sent));
     assert!(
         db.phones_outbox(&dsp, &phone.id).unwrap().is_empty(),
         "sent leaves the outbox"
     );
-    assert!(!status(&text.id, Status::Sent), "nothing moves twice");
-    assert!(status(&text.id, Status::Delivered));
     assert!(
-        !status(&text.id, Status::Failed),
+        !status(&text.id, first, Status::Sent),
+        "nothing moves twice"
+    );
+    assert!(status(&text.id, first, Status::Delivered));
+    assert!(
+        !status(&text.id, first, Status::Failed),
         "delivered stays delivered"
     );
     let kept = db.phones_text(&dsp, &text.id).unwrap().unwrap();
@@ -175,39 +183,38 @@ fn how_a_text_went_only_moves_on() {
     let failing = db
         .phones_send(&dsp, &outgoing("4255550199", vec![], &owner), 8_000)
         .unwrap();
-    assert!(status(&failing.id, Status::Failed));
+    let before = attempt_of(&failing.id);
+    assert!(status(&failing.id, before, Status::Failed));
     assert!(
-        !status(&failing.id, Status::Sent),
+        !status(&failing.id, before, Status::Sent),
         "a failure isn't undone by sent"
     );
     let failed = db.phones_text(&dsp, &failing.id).unwrap().unwrap();
     assert_eq!(failed.error.as_deref(), Some("no signal"));
-    // Tried again, it waits for the phone once more, as a new attempt.
-    let retried = db.phones_retry(&dsp, &failing.id, 10_000).unwrap();
+    // Tried again in the same millisecond, it waits for the phone as a new attempt.
+    let retried = db.phones_retry(&dsp, &failing.id, 8_000).unwrap();
     assert_eq!(
         (retried.status, retried.error),
         (Some(Status::Waiting), None)
     );
-    let (waiting, attempt) = db.phones_outbox(&dsp, &phone.id).unwrap().remove(0);
-    assert_eq!(
-        (waiting.id.as_str(), attempt),
-        (failing.id.as_str(), 10_000)
-    );
+    let again = attempt_of(&failing.id);
+    assert_ne!(again, before);
     // The phone repeating the first attempt's failure leaves the new attempt waiting.
-    assert!(!status(&failing.id, Status::Failed));
+    assert!(!status(&failing.id, before, Status::Failed));
     assert_eq!(db.phones_outbox(&dsp, &phone.id).unwrap().len(), 1);
     assert!(
-        status(&failing.id, Status::Delivered),
+        status(&failing.id, before, Status::Delivered),
         "a delivery report counts, whichever attempt"
     );
     // A phone says nothing of another's texts.
     let other = db
         .phones_send(&dsp, &outgoing("4255550198", vec![], &owner), 8_000)
         .unwrap();
-    let foreign = report(&other.id, 8_000, Status::Sent);
+    let theirs = attempt_of(&other.id);
+    let foreign = report(&other.id, theirs, Status::Sent);
     assert!(!db.phones_status(&dsp, "phone_other", &foreign).unwrap());
     // A text whose phone was removed isn't tried again: no phone would send it.
-    assert!(status(&other.id, Status::Failed));
+    assert!(status(&other.id, theirs, Status::Failed));
     db.phones_remove(&dsp, &phone.id, 11_000).unwrap();
     let orphan = db.phones_retry(&dsp, &other.id, 12_000);
     assert_eq!(orphan.unwrap_err().code.as_str(), "phones_text_not_found");

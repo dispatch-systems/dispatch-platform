@@ -5,7 +5,8 @@ use super::{
     storage::{DOMAIN, PhonesStore},
 };
 use dispatch_core::{
-    Error, State, db,
+    Error, Result, State,
+    db::{self, Store},
     foundation::observability,
     manifest::{Maintenance, Upkeep},
 };
@@ -46,10 +47,7 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
             let at = dsp.clone();
             let tidied = state
                 .run_scoped(dsp, DOMAIN, move |db| {
-                    for sha256 in db.phones_tidy(&at, db::now() - UNSENT_MS)? {
-                        files::forget(db, &at, &sha256)?;
-                    }
-                    Ok(())
+                    let_go(db, &at, db::now() - UNSENT_MS)
                 })
                 .await;
             if let Err(error) = tidied {
@@ -58,3 +56,17 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         }
     })
 }
+/// Lets go of the DSP's pictures added before `before` and never sent, and their bytes, each on
+/// its own: bytes that can't be let go are logged, and the rest still go.
+pub(super) fn let_go(db: &Store, dsp: &str, before: i64) -> Result<()> {
+    for sha256 in db.phones_tidy(dsp, before)? {
+        if let Err(error) = files::forget(db, dsp, &sha256) {
+            failed(&error);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "../tests/backend/tidy.rs"]
+mod tests;

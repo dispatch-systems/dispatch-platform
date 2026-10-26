@@ -18,8 +18,8 @@ itself.
 On Settings' DSP Connections, for those who manage the DSP's phones or all its connections
 (`connectionPieces`, `dsp`): each phone, by its number, with its name, model and the app's version, Online once it
 checked in in the last two minutes, else Offline and for how long, read again every 30 seconds;
-Rename and Remove in its menu; a name changed and not saved asks to save it before the
-dialog closes. The card's routes are refused (`not_found`) while Phones is off, though managing
+Rename and Remove in its menu; a name changed and not saved asks "Save changes?", with only
+Save and Discard, before the dialog closes; closing the browser tab drops it silently. The card's routes are refused (`not_found`) while Phones is off, though managing
 all the DSP's connections still lets a member in. With none, No phone. **Add phone** shows the code that pairs the
 next phone, as a QR code its app reads and as its eight letters, and how long it lasts; one
 expired gives way to a new one with New code; the dialog closes once a new phone appears, read

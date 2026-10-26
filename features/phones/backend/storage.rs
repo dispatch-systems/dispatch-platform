@@ -173,6 +173,8 @@ pub trait PhonesStore {
     /// A picture of a text Dispatch has for the phone `device` to send.
     fn phones_outgoing_file(&self, dsp: &str, device: &str, id: &str)
     -> Result<Option<StoredFile>>;
+    /// Has the demo's stand-in phone say the text it was given delivered, at once.
+    fn phones_stand_in_delivered(&self, dsp: &str, id: &str, at: i64) -> Result<()>;
     /// Whether the phone is a stand-in, the demo's, which no app holds.
     fn phones_stand_in(&self, dsp: &str, device: &str) -> Result<bool>;
     /// Pairs a stand-in phone, `number`, as the demo's, with texts it received.
@@ -499,7 +501,7 @@ impl PhonesStore for Store {
             db.exec(
                 "INSERT INTO phones_texts \
                  (id,device_id,direction,origin,number,body,at,sent_by,status,status_at,attempt,\
-                 change) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?5,?7)",
+                 change) VALUES (?1,?2,'out','dispatch',?3,?4,?5,?6,'waiting',?5,?7,?7)",
                 params![
                     id,
                     s(&device, "id"),
@@ -529,7 +531,7 @@ impl PhonesStore for Store {
             let change = next_change(&db)?;
             // A new attempt, from the phone it went from, while that phone is still paired.
             let changed = db.exec(
-                "UPDATE phones_texts SET status='waiting', status_at=?1, attempt=?1, error=NULL, \
+                "UPDATE phones_texts SET status='waiting', status_at=?1, attempt=?2, error=NULL, \
                  change=?2 WHERE id=?3 AND origin='dispatch' AND status='failed' \
                  AND device_id IN (SELECT id FROM phones_devices WHERE removed_at IS NULL)",
                 params![at, change, id],
@@ -629,6 +631,18 @@ impl PhonesStore for Store {
             return Ok(None);
         }
         self.phones_file(dsp, id)
+    }
+    fn phones_stand_in_delivered(&self, dsp: &str, id: &str, at: i64) -> Result<()> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let change = next_change(&db)?;
+            db.exec(
+                "UPDATE phones_texts SET status='delivered', status_at=?, change=? \
+                 WHERE id=? AND device_id IN (SELECT id FROM phones_devices WHERE stand_in=1)",
+                params![at, change, id],
+            )?;
+            Ok(())
+        })
     }
     fn phones_stand_in(&self, dsp: &str, device: &str) -> Result<bool> {
         Ok(self.dsp(dsp)?.count(

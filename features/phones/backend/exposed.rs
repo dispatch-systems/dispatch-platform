@@ -2,16 +2,14 @@
 //! (`dispatch_phones_contract`).
 use super::{
     files, live,
-    storage::{DOMAIN, PhonesStore, ReportedFile, StatusReport},
+    storage::{DOMAIN, PhonesStore, ReportedFile},
 };
 use dispatch_core::{
     Result, State,
     db::{self, Store},
     server::http::{input::Reply, upload::Upload},
 };
-use dispatch_phones_contract::{
-    Added, Answer, Changes, File, Outgoing, Phone, Status, Text, Texting,
-};
+use dispatch_phones_contract::{Added, Answer, Changes, File, Outgoing, Phone, Text, Texting};
 use std::sync::Arc;
 
 /// Phones' Texting, as its contract says.
@@ -44,16 +42,7 @@ impl Texting for Exposed {
                     let text = db.phones_send(&at, &outgoing, now)?;
                     // The demo's stand-in phone, which no app holds, says it delivered at once.
                     if db.phones_stand_in(&at, &text.phone)? {
-                        for status in [Status::Sent, Status::Delivered] {
-                            let report = StatusReport {
-                                id: text.id.clone(),
-                                attempt: now,
-                                status,
-                                at: now,
-                                error: None,
-                            };
-                            db.phones_status(&at, &text.phone, &report)?;
-                        }
+                        db.phones_stand_in_delivered(&at, &text.id, now)?;
                         return db
                             .phones_text(&at, &text.id)
                             .map(|delivered| delivered.unwrap_or(text));
