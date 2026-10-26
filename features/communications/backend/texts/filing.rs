@@ -16,9 +16,8 @@
 //! so a day's texts are filed again each time Routes says its holds changed
 //! (`WorkPhonesChanged`): today's, the pages waiting on changes hearing of the work
 //! conversations waiting, which wait only on the live day, and of those of the drivers holding a
-//! work phone today, whose phone may have changed; an earlier day's once historical route data
-//! keeps it, by its saved holds even when there are none, as a day live route data was emptied of
-//! unsaved keeps its texts where its holds had them.
+//! work phone today, whose phone may have changed; an earlier day's while Routes keeps holds of
+//! it, as a day it emptied unsaved keeps its texts where its holds had them.
 use super::{
     began,
     numbers::ten_digits,
@@ -146,8 +145,8 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
 /// Files every text of `day`, YYYY-MM-DD in the DSP's time, again, where it belongs now, then wakes
 /// the pages waiting on what changed. Today's, noting changed the work conversations waiting, as
 /// the live day may have begun or ended, and those of the drivers holding a work phone today, held
-/// or texted in or not, as the phone they hold may have changed. An earlier day's only once
-/// historical route data keeps it (`kept`).
+/// or texted in or not, as the phone they hold may have changed. An earlier day's only while Routes
+/// keeps holds of it.
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
     let day =
         NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
@@ -161,7 +160,7 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
                 db.changed_communications_work(&at, now() - TWO_DAYS_MS, &holding)?;
                 return Ok(true);
             }
-            if !filer.kept(&day.to_string())? {
+            if filer.holds(&day.to_string())?.is_empty() {
                 return Ok(false);
             }
             Ok(!refiled_by(db, &at, &mut filer, day)?.is_empty())
@@ -336,17 +335,6 @@ impl<'a> Filer<'a> {
             self.holds.insert(day.to_owned(), read);
         }
         Ok(&self.holds[day])
-    }
-    /// Whether historical route data keeps `day`, as once Routes saved it, its holds none or more:
-    /// a day live route data was emptied of unsaved, it doesn't.
-    fn kept(&self, day: &str) -> Result<bool> {
-        let Some(routes) = self.routes else {
-            return Ok(false);
-        };
-        Ok(!routes
-            .routes(self.db, self.dsp, &[], day, day)?
-            .days
-            .is_empty())
     }
     /// The drivers holding a work phone today, the DSP's day, each by the source of their ID and
     /// the ID.

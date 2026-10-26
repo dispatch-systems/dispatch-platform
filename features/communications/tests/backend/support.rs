@@ -256,7 +256,7 @@ pub async fn conversation_with(
 /// who people are (`directory`, always), their routes (`driver_routes`, while `driving` is on),
 /// today's as read live (`live_route_data`, while `live` is on), the DSP's vans (`amazon_fleet`,
 /// while `fleet` is on) and its dispatch phone (`texting`, while `phoning` is on). Each answers
-/// what a test says of its DSP, with `know`, `held`, `saved` and `texted`, and nothing else.
+/// what a test says of its DSP, with `know`, `held` and `texted`, and nothing else.
 pub struct Standing;
 static STANDING: Standing = Standing;
 static NAMING: Feature = Feature {
@@ -325,8 +325,8 @@ struct Known {
     live_day: Option<String>,
     live_routes: Vec<RouteDay>,
     live: Vec<WorkPhoneHold>,
-    /// Each day saved into historical route data, with its holds, none or more.
-    saved: BTreeMap<String, Vec<WorkPhoneHold>>,
+    /// Each saved day's holds.
+    saved: Vec<(String, WorkPhoneHold)>,
     /// The phone's texts, the last change given, what Dispatch sent from it, and whether what
     /// it sends next fails.
     texts: Vec<Text>,
@@ -376,31 +376,17 @@ pub async fn held(
         let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
         let known = known.entry(dsp.to_owned()).or_default();
         let before = known.live_day.take();
-        (known.live_day, known.live) = (live_day.map(str::to_owned), live);
-        known.saved.clear();
-        for (day, hold) in saved {
-            known.saved.entry(day).or_default().push(hold);
-        }
+        (known.live_day, known.live, known.saved) = (live_day.map(str::to_owned), live, saved);
+        let saved = known.saved.iter().map(|(day, _)| day.clone());
         before
             .into_iter()
             .chain(known.live_day.clone())
-            .chain(known.saved.keys().cloned())
+            .chain(saved)
             .collect()
     };
     for day in changed {
         events::publish(state, dsp, WorkPhonesChanged { day }).await;
     }
-}
-/// Has the stand-ins answer `holds`, none or more, as the day `day`'s saved ones, in place of any
-/// it had, then says they changed, as Routes does once it saves a day.
-pub async fn saved(state: &Arc<State>, dsp: &str, day: &str, holds: Vec<WorkPhoneHold>) {
-    {
-        let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
-        let known = known.entry(dsp.to_owned()).or_default();
-        known.saved.insert(day.to_owned(), holds);
-    }
-    let day = day.to_owned();
-    events::publish(state, dsp, WorkPhonesChanged { day }).await;
 }
 /// Has live route data's stand-in answer `routes` as the live day's, as a live read leaves them,
 /// which Routes says nothing of.
@@ -528,54 +514,45 @@ impl DriverRoutes for Standing {
     fn collected(&self, _: &Store, _: &str) -> Result<Option<Collected>> {
         Ok(None)
     }
-    /// The routes it knows driven by `ids` from `from` to `to`, and their days and the days saved
-    /// among them; refused across more days than Routes reads.
+    /// The routes it knows driven by `ids` from `from` to `to`, and their days; refused across
+    /// more days than Routes reads.
     fn routes(&self, _: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Driven> {
         let day = |day: &str| NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
         if (day(to) - day(from)).num_days() >= MOST_DAYS {
             return Err(Error::new("invalid_input", 400));
         }
-        let within = |day: &str| (from..=to).contains(&day);
-        let (routes, saved) = known(dsp, |known| {
-            let routes: Vec<RouteDay> = known
+        let routes: Vec<RouteDay> = known(dsp, |known| {
+            known
                 .routes
                 .iter()
-                .filter(|route| ids.contains(&route.driver_id) && within(&route.day))
+                .filter(|route| ids.contains(&route.driver_id))
+                .filter(|route| (from..=to).contains(&route.day.as_str()))
                 .cloned()
-                .collect();
-            let saved: Vec<String> = known
-                .saved
-                .keys()
-                .filter(|day| within(day))
-                .cloned()
-                .collect();
-            (routes, saved)
+                .collect()
         });
-        Ok(driven(routes, saved))
+        Ok(driven(routes))
     }
-    /// Every route it knows driven on `day`, and the day, once saved.
+    /// Every route it knows driven on `day`.
     fn day(&self, _: &Store, dsp: &str, day: &str) -> Result<Driven> {
-        let (routes, saved) = known(dsp, |known| {
-            let routes: Vec<RouteDay> = known
+        let routes = known(dsp, |known| {
+            known
                 .routes
                 .iter()
                 .filter(|route| route.day == day)
                 .cloned()
-                .collect();
-            let saved: Vec<String> = known
-                .saved
-                .keys()
-                .filter(|saved| *saved == day)
-                .cloned()
-                .collect();
-            (routes, saved)
+                .collect()
         });
-        Ok(driven(routes, saved))
+        Ok(driven(routes))
     }
     /// The holds it knows of a saved day.
     fn work_phone_holds(&self, _: &Store, dsp: &str, day: &str) -> Result<Vec<WorkPhoneHold>> {
         Ok(known(dsp, |known| {
-            known.saved.get(day).cloned().unwrap_or_default()
+            known
+                .saved
+                .iter()
+                .filter(|(saved, _)| saved == day)
+                .map(|(_, hold)| hold.clone())
+                .collect()
         }))
     }
     /// Whether any hold it knows, live or saved, is on `phone`.
@@ -584,7 +561,7 @@ impl DriverRoutes for Standing {
             known
                 .live
                 .iter()
-                .chain(known.saved.values().flatten())
+                .chain(known.saved.iter().map(|(_, hold)| hold))
                 .any(|hold| hold.phone == phone)
         }))
     }
@@ -598,15 +575,14 @@ impl LiveRouteData for Standing {
     }
     /// The live day's routes, while it holds one.
     fn day(&self, _: &Store, dsp: &str) -> Result<Driven> {
-        let routes = known(dsp, |known| {
+        Ok(driven(known(dsp, |known| {
             known
                 .live_routes
                 .iter()
                 .filter(|_| known.live_day.is_some())
                 .cloned()
                 .collect()
-        });
-        Ok(driven(routes, Vec::new()))
+        })))
     }
     /// The live day's routes driven by `ids`.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Driven> {
@@ -801,12 +777,8 @@ async fn read_bytes(state: &Arc<State>, dsp: &str) {
     }
 }
 /// `routes`, with each day they're on read while under way.
-fn driven(routes: Vec<RouteDay>, saved: Vec<String>) -> Driven {
-    let days: BTreeSet<String> = routes
-        .iter()
-        .map(|route| route.day.clone())
-        .chain(saved)
-        .collect();
+fn driven(routes: Vec<RouteDay>) -> Driven {
+    let days: BTreeSet<String> = routes.iter().map(|route| route.day.clone()).collect();
     Driven {
         days: days
             .into_iter()

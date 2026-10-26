@@ -1,13 +1,13 @@
 //! Filing texts: a number's in its own conversation, with whoever Driver Match has it for, else
 //! the name the DSP saved for it, else the number; a work phone's under the driver who held it as
 //! each was written, by today's holds or a saved day's, and a day's again as who held it settles,
-//! both ways, once Routes keeps the day, by its saved holds though none; a blocked number's out of
-//! the list, never waiting on what it sent while blocked.
+//! both ways, while Routes keeps the day's holds; a blocked number's out of the list, never
+//! waiting on what it sent while blocked.
 use super::*;
 use crate::backend::{
     conversations,
     storage::CommunicationsStore,
-    support::{self, DRIVERS, at, filed, held, hold, route, routed, saved, started, texted, today},
+    support::{self, DRIVERS, at, filed, held, hold, route, routed, started, texted, today},
     texts::{
         contacts, reply,
         storage::{ConversationKind, TextStore},
@@ -290,8 +290,7 @@ async fn a_saved_days_texts_go_to_whoever_held_the_work_phone_once_its_holds_are
 }
 
 #[tokio::test]
-async fn a_days_texts_stay_with_whoever_held_the_work_phone_once_emptied_unsaved_and_follow_its_saved_holds()
- {
+async fn a_days_texts_stay_with_whoever_held_the_work_phone_once_routes_empties_it_unsaved() {
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let yesterday = day.pred_opt().unwrap();
@@ -313,11 +312,6 @@ async fn a_days_texts_stay_with_whoever_held_the_work_phone_once_emptied_unsaved
     // Emptied unsaved, as the next day's first read leaves it: still theirs.
     held(&state, &dsp, None, Vec::new(), Vec::new()).await;
     assert_eq!(filed(&state, &dsp, &text).await.driver, driver("avery"));
-
-    // Saved after all, with no holds, as once Avery's was withdrawn: no longer theirs.
-    saved(&state, &dsp, &yesterday.to_string(), Vec::new()).await;
-    let filed = filed(&state, &dsp, &text).await;
-    assert_eq!((filed.kind, filed.driver), (ConversationKind::Number, None));
 }
 
 #[tokio::test]
