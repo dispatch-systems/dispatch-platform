@@ -13,8 +13,15 @@ use dispatch_core::{
         route::{Grant, Public},
     },
 };
+use dispatch_phones_contract::NUMBER_MOST;
 use serde::Serialize;
 use std::sync::Arc;
+
+/// The most characters a code may be typed with, spaces or dashes among its letters.
+const TYPED_MOST: usize = 16;
+/// The most characters a phone's model may be, and the app's version.
+const MODEL_MOST: usize = 100;
+const VERSION_MOST: usize = 40;
 
 /// What pairing answers the phone with: its key, which it keeps and sends with every call, and
 /// what it's called.
@@ -37,11 +44,11 @@ struct PairedDsp {
 /// version, then its key. What it sends is checked before the database is asked for.
 pub(in crate::api) async fn pair(state: Arc<State>, input: Input, access: Public) -> Result<Reply> {
     v::fields(&input.body, &["code", "number", "model", "version"])?;
-    let code = pairing::kept(v::text(&input.body, "code", 8, 16)?)
+    let code = pairing::kept(v::text(&input.body, "code", pairing::LENGTH, TYPED_MOST)?)
         .ok_or_else(|| Error::new("phones_pairing_invalid", 401))?;
-    let number = v::text(&input.body, "number", 0, 32)?.to_owned();
-    let model = v::name(&input.body, "model", 100)?;
-    let version = v::name(&input.body, "version", 40)?;
+    let number = v::text(&input.body, "number", 0, NUMBER_MOST)?.to_owned();
+    let model = v::name(&input.body, "model", MODEL_MOST)?;
+    let version = v::name(&input.body, "version", VERSION_MOST)?;
     let asked = input.clone();
     let dsp = state
         .read(move |db| {

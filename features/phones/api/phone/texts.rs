@@ -13,10 +13,16 @@ use dispatch_core::{
         route::Grant,
     },
 };
-use dispatch_phones_contract::{Direction, normal};
+use dispatch_phones_contract::{Direction, NUMBER_MOST, normal};
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
+
+/// The most characters the phone's own ID of a text may be.
+const CLIENT_ID_MOST: usize = 128;
+/// The most characters a reported file's name may be, and its kind.
+const NAME_MOST: usize = 200;
+const MIME_MOST: usize = 100;
 
 /// What reporting answers with: for each text, by the phone's ID of it, Dispatch's, and its
 /// files' in the order reported, whose bytes the phone sends next.
@@ -81,8 +87,8 @@ fn reported(text: &Value) -> Result<Reported> {
             .map(|file| {
                 v::fields(file, &["name", "mime", "size"])?;
                 Ok(ReportedFile {
-                    name: v::name(file, "name", 200)?,
-                    mime: v::text(file, "mime", 1, 100)?.to_owned(),
+                    name: v::name(file, "name", NAME_MOST)?,
+                    mime: v::text(file, "mime", 1, MIME_MOST)?.to_owned(),
                     size: v::integer(file, "size", 0, LIMITS.largest as i64)?,
                 })
             })
@@ -90,12 +96,12 @@ fn reported(text: &Value) -> Result<Reported> {
         _ => return Err(Error::new("invalid_input", 400)),
     };
     Ok(Reported {
-        client_id: v::text(text, "clientId", 1, 128)?.to_owned(),
+        client_id: v::text(text, "clientId", 1, CLIENT_ID_MOST)?.to_owned(),
         direction: match v::choice(text, "direction", &["in", "out"])? {
             "in" => Direction::In,
             _ => Direction::Out,
         },
-        number: normal(v::text(text, "number", 1, 32)?)
+        number: normal(v::text(text, "number", 1, NUMBER_MOST)?)
             .ok_or_else(|| Error::new("invalid_input", 400))?,
         body: v::text(text, "body", 0, LIMITS.body)?.to_owned(),
         at: v::integer(text, "at", 0, i64::MAX)?,

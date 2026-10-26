@@ -1,6 +1,9 @@
 //! Who a phone's call comes from: a paired phone, by the key it was given, at its DSP's own
 //! address, while the DSP is active and Phones is on there.
-use crate::backend::storage::{DOMAIN, Device, DeviceStore};
+use crate::backend::{
+    pairing::KEY_BYTES,
+    storage::{DOMAIN, Device, DeviceStore},
+};
 use dispatch_core::accounts::api::types::Dsp;
 use dispatch_core::{
     Error, Result, State,
@@ -38,7 +41,7 @@ impl Grant for Phone {
             .unwrap_or("");
         ensure(
             input.headers.get_all("authorization").iter().count() == 1
-                && bearer.len() == 64
+                && bearer.len() == 2 * KEY_BYTES
                 && bearer.bytes().all(|b| b.is_ascii_hexdigit()),
             "sign_in_required",
             401,

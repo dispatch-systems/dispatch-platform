@@ -22,6 +22,8 @@ use dispatch_core::{
 
 /// Managing the DSP's phones, as managing all its connections includes.
 const MANAGE: Dsp = Dsp("connections.manage|phones.manage");
+/// The most characters a phone's name may be.
+const NAME_MOST: usize = 60;
 
 pub fn routes() -> Vec<Route> {
     vec![
@@ -104,7 +106,7 @@ fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     on(c)?;
     v::fields(&input.body, &["name"])?;
     let id = phone_id(input.param("id"))?;
-    let name = v::name(&input.body, "name", 60)?;
+    let name = v::name(&input.body, "name", NAME_MOST)?;
     let before = db
         .phones_device(c.dsp_id(), id)?
         .ok_or_else(|| Error::new("phones_not_found", 404))?;

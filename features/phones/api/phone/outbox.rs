@@ -12,13 +12,15 @@ use dispatch_core::{
         route::Grant,
     },
 };
-use dispatch_phones_contract::{Status, Text};
+use dispatch_phones_contract::{ID_MOST, Status, Text};
 use serde::Serialize;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 
 /// How long a phone waiting on its outbox waits before it's answered with nothing.
 const WAIT: Duration = Duration::from_secs(20);
+/// The most characters a phone may say of why a text failed.
+const ERROR_MOST: usize = 500;
 
 /// The texts Dispatch has for the phone, each to send from its number to `number`, with its
 /// pictures to fetch first. A text tried again comes again with a later `attempt`.
@@ -131,10 +133,10 @@ fn reported(status: &Value) -> Result<StatusReport> {
     v::fields(status, &["id", "attempt", "status", "at", "error"])?;
     let error = match &status["error"] {
         Value::Null => None,
-        _ => Some(v::text(status, "error", 0, 500)?.to_owned()),
+        _ => Some(v::text(status, "error", 0, ERROR_MOST)?.to_owned()),
     };
     Ok(StatusReport {
-        id: v::text(status, "id", 1, 64)?.to_owned(),
+        id: v::text(status, "id", 1, ID_MOST)?.to_owned(),
         attempt: v::integer(status, "attempt", 0, i64::MAX)?,
         status: match v::choice(status, "status", &["sent", "delivered", "failed"])? {
             "sent" => Status::Sent,

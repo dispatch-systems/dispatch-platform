@@ -31,6 +31,8 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 /// The most characters an ID texting gives may have.
 pub const ID_MOST: usize = 64;
+/// The most characters a number may be written with, spaces and punctuation among its digits.
+pub const NUMBER_MOST: usize = 32;
 
 /// What its asynchronous answers are: work done outside the database, as keeping bytes is.
 pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -239,7 +241,7 @@ impl Event for TextsChanged {
 /// isn't a number. Each text's `number` is written so, and `Outgoing`'s `to` is read so.
 pub fn normal(raw: &str) -> Option<String> {
     let raw = raw.trim();
-    if raw.is_empty() || raw.len() > 32 {
+    if raw.is_empty() || raw.len() > NUMBER_MOST {
         return None;
     }
     let plus = raw.starts_with('+');
