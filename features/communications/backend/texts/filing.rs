@@ -11,11 +11,15 @@
 //! signed in; written once nobody held it, the work phone's own. A work phone nobody held that
 //! day is still one (`was_work_phone`). Where someone at the DSP picked a driver for the phone
 //! that day (`picking`), a text no hold covers is that driver's, before the day's first holder.
-//! Any other number's texts are its own. Who held which phone settles as the day goes on, so
-//! today's texts are filed again each time it changes (`WorkPhonesChanged`), and the pages
-//! waiting on changes hear of the work conversations waiting, which wait only on the live day, and
-//! of those of the drivers holding a work phone today, whose phone may have changed.
+//! Any other number's texts are its own. Who held which phone settles as the day goes on, and a
+//! day's holds may reach historical route data after its texts, as a text a phone relayed late;
+//! so a day's texts are filed again each time Routes says its holds changed
+//! (`WorkPhonesChanged`): today's, the pages waiting on changes hearing of the work
+//! conversations waiting, which wait only on the live day, and of those of the drivers holding a
+//! work phone today, whose phone may have changed; an earlier day's while Routes keeps holds of
+//! it, as a day it emptied unsaved keeps its texts where its holds had them.
 use super::{
+    midnight,
     numbers::ten_digits,
     storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
     zone,
@@ -24,6 +28,7 @@ use crate::backend::{
     live,
     storage::{DOMAIN, Direction},
 };
+use chrono::NaiveDate;
 use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result, State,
@@ -45,7 +50,8 @@ use std::{
 /// How many texts are read from Phones at a time: as many as it gives.
 const PAGE: usize = 100;
 /// Two days, in milliseconds: how far back today's texts, and the work conversations they may
-/// wait in, are looked for, further than a day can be long.
+/// wait in, are looked for, further than a day can be long; an earlier day's are looked for
+/// from its midnight, when that's further.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
 /// Every minute, each DSP's texts changed since they were last filed.
@@ -62,11 +68,10 @@ pub fn heard(state: Arc<State>, dsp: String, _: TextsChanged) -> Upkeep {
         }
     })
 }
-/// Routes says who holds the DSP's work phones changed: files today's texts again, as the live day
-/// may have begun or ended.
-pub fn refile(state: Arc<State>, dsp: String, _: WorkPhonesChanged) -> Upkeep {
+/// Routes says who held the DSP's work phones on a day changed: files that day's texts again.
+pub fn refile(state: Arc<State>, dsp: String, changed: WorkPhonesChanged) -> Upkeep {
     Box::pin(async move {
-        if let Err(error) = refile_today(&state, &dsp).await {
+        if let Err(error) = refile_day(&state, &dsp, &changed.day).await {
             failed("communications_texts_refile_failed", &error);
         }
     })
@@ -138,38 +143,57 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
     }
 }
 
-/// Files every text of today, the DSP's day, again, where it belongs now, and notes changed the
-/// work conversations waiting, as the live day may have begun or ended, and those of the drivers
-/// holding a work phone today, held or texted in or not, as the phone they hold may have changed;
-/// then wakes the pages waiting on them.
-pub async fn refile_today(state: &Arc<State>, dsp: &str) -> Result<()> {
+/// Files every text of `day`, YYYY-MM-DD in the DSP's time, again, where it belongs now, then wakes
+/// the pages waiting on what changed. Today's, noting changed the work conversations waiting, as
+/// the live day may have begun or ended, and those of the drivers holding a work phone today, held
+/// or texted in or not, as the phone they hold may have changed. An earlier day's only while Routes
+/// keeps holds of it.
+pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
+    let day =
+        NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
     let at = dsp.to_owned();
-    state
+    let changed = state
         .run_scoped(dsp, DOMAIN, move |db| {
             let mut filer = Filer::new(db, &at)?;
-            refiled_by(db, &at, &mut filer)?;
-            let holding = filer.holding_today()?;
-            db.changed_communications_work(&at, now() - TWO_DAYS_MS, &holding)
+            if day == clock::today(filer.zone) {
+                refiled_by(db, &at, &mut filer, day)?;
+                let holding = filer.holding_today()?;
+                db.changed_communications_work(&at, now() - TWO_DAYS_MS, &holding)?;
+                return Ok(true);
+            }
+            if filer.holds(&day.to_string())?.is_empty() {
+                return Ok(false);
+            }
+            Ok(!refiled_by(db, &at, &mut filer, day)?.is_empty())
         })
         .await?;
-    live::changed(state, dsp);
+    if changed {
+        live::changed(state, dsp);
+    }
     Ok(())
 }
 /// Files every text of today, the DSP's day, again, where it belongs now.
 pub fn refiled(db: &Store, dsp: &str) -> Result<()> {
-    refiled_by(db, dsp, &mut Filer::new(db, dsp)?)
+    let mut filer = Filer::new(db, dsp)?;
+    let today = clock::today(filer.zone);
+    refiled_by(db, dsp, &mut filer, today).map(drop)
 }
-/// Files every text of today, the DSP's day, again, where `filer` says it belongs now.
-fn refiled_by(db: &Store, dsp: &str, filer: &mut Filer) -> Result<()> {
+/// Files every text of `day` again, where `filer` says it belongs now: the conversations changed.
+fn refiled_by(
+    db: &Store,
+    dsp: &str,
+    filer: &mut Filer,
+    day: NaiveDate,
+) -> Result<BTreeSet<String>> {
     let zone = filer.zone;
-    let today = clock::today(zone);
+    let from = (now() - TWO_DAYS_MS).min(midnight(zone, day));
     let moves = db
-        .communications_texts_from(dsp, now() - TWO_DAYS_MS)?
+        .communications_texts_from(dsp, from)?
         .into_iter()
-        .filter(|text| clock::day(zone, text.at) == today)
+        .filter(|text| clock::day(zone, text.at) == day)
         .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
         .collect::<Result<Vec<_>>>()?;
-    db.refile_communications_texts(dsp, &moves).map(drop)
+    db.refile_communications_texts(dsp, &moves)
 }
 
 /// `text` as Communications keeps it, filed as `filed`.

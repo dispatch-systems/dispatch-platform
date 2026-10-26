@@ -362,7 +362,9 @@ pub fn know(state: &State, dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>
     state.changed(Some(dsp));
 }
 /// Has the stand-ins answer who held the DSP's work phones: live route data's holds of its live
-/// day `live_day`, if it holds one, and each saved day's; then says they changed, as Routes does.
+/// day `live_day`, if it holds one, and each saved day's; then says, as Routes does, of which days
+/// they changed: the live day it held before, as emptying it does, the one it holds now, and each
+/// saved one.
 pub async fn held(
     state: &Arc<State>,
     dsp: &str,
@@ -370,12 +372,21 @@ pub async fn held(
     live: Vec<WorkPhoneHold>,
     saved: Vec<(String, WorkPhoneHold)>,
 ) {
-    {
+    let changed: BTreeSet<String> = {
         let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
         let known = known.entry(dsp.to_owned()).or_default();
+        let before = known.live_day.take();
         (known.live_day, known.live, known.saved) = (live_day.map(str::to_owned), live, saved);
+        let saved = known.saved.iter().map(|(day, _)| day.clone());
+        before
+            .into_iter()
+            .chain(known.live_day.clone())
+            .chain(saved)
+            .collect()
+    };
+    for day in changed {
+        events::publish(state, dsp, WorkPhonesChanged { day }).await;
     }
-    events::publish(state, dsp, WorkPhonesChanged).await;
 }
 /// Has live route data's stand-in answer `routes` as the live day's, as a live read leaves them,
 /// which Routes says nothing of.

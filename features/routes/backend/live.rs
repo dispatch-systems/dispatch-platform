@@ -110,7 +110,7 @@ fn key(day: &str, collected: i64) -> String {
 /// who holds which work phone is settled from it. A day other than the one live route data holds,
 /// or another scope, starts it afresh. A read collected no later than the one it holds changes
 /// nothing. It tells Driver Match of a driver live route data didn't name (`people.changed`), then
-/// every feature that hears it of a hold claimed, moved, handed over or withdrawn
+/// every feature that hears it of a hold claimed, moved, handed over or withdrawn on the read's day
 /// (`routes.work_phones_changed`).
 ///
 /// It refuses, changing nothing, a day other than today where the DSP is
@@ -128,9 +128,10 @@ pub async fn keep_live(
 ) -> Result<LiveKept> {
     let d = dsp.to_owned();
     let on = move |db: &Store| ensure(db.feature_enabled(&d, COLLECTION)?, "routes_off", 409);
+    let read_day = capture.scope.date.clone();
     // Like a job's work, a read has no one to try it again.
     State::patiently(async {
-        let (d, day, check) = (dsp.to_owned(), capture.scope.date.clone(), on.clone());
+        let (d, day, check) = (dsp.to_owned(), read_day.clone(), on.clone());
         let request = state
             .read(move |db| {
                 check(db)?;
@@ -154,7 +155,7 @@ pub async fn keep_live(
             events::publish(state, dsp, PeopleChanged).await;
         }
         if kept.phone_events > 0 {
-            events::publish(state, dsp, WorkPhonesChanged).await;
+            events::publish(state, dsp, WorkPhonesChanged { day: read_day }).await;
         }
         Ok(kept)
     })
@@ -321,21 +322,28 @@ fn empty(db: &Db) -> Result<()> {
 
 /// Empties live route data, as a new day starts or a saved one stops, and gives back the
 /// file's space, its log's with it; then tells every feature that hears it that its holds on the
-/// work phones are gone (`routes.work_phones_changed`), each time, so a call made again after
-/// one that couldn't give the space back tells them too. Refuses while Routes is off for the DSP
-/// (`routes_off`).
+/// work phones of the day it held are gone (`routes.work_phones_changed`), each time, so a call
+/// made again after one that couldn't give the space back tells them too, of today where the DSP
+/// is, as it holds no day by then. Refuses while Routes is off for the DSP (`routes_off`).
 pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
     let d = dsp.to_owned();
-    State::patiently(state.run_scoped(dsp, DOMAIN, move |db| {
+    let day = State::patiently(state.run_scoped(dsp, DOMAIN, move |db| {
         ensure(db.feature_enabled(&d, COLLECTION)?, "routes_off", 409)?;
         let live = db.routes_live_db(&d)?;
-        live.transaction(|| empty(&live))?;
+        let held = live.transaction(|| {
+            let held = live.one("SELECT day FROM route_publications", [])?;
+            empty(&live)?;
+            Ok(held.map(|row| s(&row, "day").to_owned()))
+        })?;
         live.0
             .execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")?;
-        Ok(())
+        match held {
+            Some(day) => Ok(day),
+            None => Ok(routes_today(db, &d)?.to_string()),
+        }
     }))
     .await?;
-    events::publish(state, dsp, WorkPhonesChanged).await;
+    events::publish(state, dsp, WorkPhonesChanged { day }).await;
     Ok(())
 }
 

@@ -104,7 +104,7 @@ pub const FEATURE: Feature = Feature {
         backend::groups::send::MAINTENANCE,
         backend::texts::filing::MAINTENANCE,
     ],
-    // Filing each text as it comes, and today's again as who held the work phones settles.
+    // Filing each text as it comes, and a day's again as who held its work phones settles.
     on: &[
         dispatch_core::on!(TextsChanged, backend::texts::filing::heard),
         dispatch_core::on!(WorkPhonesChanged, backend::texts::filing::refile),

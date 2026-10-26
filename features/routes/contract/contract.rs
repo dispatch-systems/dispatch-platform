@@ -6,7 +6,7 @@
 //! outside what's collected is unknown. Routes exposes it as `driver_routes`, from historical
 //! route data; and today as live reads leave it, with the work phone each driver holds now, as
 //! `live_route_data` (`LiveRouteData`). Who held which work phone, today and on a saved day, is
-//! in both, and `WorkPhonesChanged` says when it changed.
+//! in both, and `WorkPhonesChanged` says when it changed, and of which day.
 use dispatch_core::{
     Result,
     db::Store,
@@ -177,12 +177,15 @@ pub struct WorkPhoneHold {
     pub until: Option<i64>,
 }
 
-/// Who holds the DSP's work phones changed, once it's kept: a live read claimed, moved, handed
-/// over or withdrew a hold; live route data was emptied; or a day was saved into historical
-/// route data with its holds. Published after `people.changed`
-/// when both are, so the drivers it names are among the DSP's people.
+/// Who held the DSP's work phones on a day changed, once it's kept: a live read claimed, moved,
+/// handed over or withdrew a hold; live route data was emptied of the day; or the day was saved
+/// into historical route data with its holds. Published after `people.changed` when both are, so
+/// the drivers it names are among the DSP's people.
 #[derive(Clone, Debug)]
-pub struct WorkPhonesChanged;
+pub struct WorkPhonesChanged {
+    /// The day whose holds changed, YYYY-MM-DD in the DSP's own time.
+    pub day: String,
+}
 impl Event for WorkPhonesChanged {
     const NAME: &'static str = "routes.work_phones_changed";
 }

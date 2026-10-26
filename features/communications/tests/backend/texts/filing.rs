@@ -1,7 +1,8 @@
 //! Filing texts: a number's in its own conversation, with whoever Driver Match has it for, else
 //! the name the DSP saved for it, else the number; a work phone's under the driver who held it as
-//! each was written, by today's holds or a saved day's, and today's again as who held it settles,
-//! both ways; a blocked number's out of the list, never waiting on what it sent while blocked.
+//! each was written, by today's holds or a saved day's, and a day's again as who held it settles,
+//! both ways, while Routes keeps the day's holds; a blocked number's out of the list, never
+//! waiting on what it sent while blocked.
 use super::*;
 use crate::backend::{
     conversations,
@@ -228,6 +229,68 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
     }
     let listed = listed(&state, &dsp).await;
     assert!(listed.conversations.iter().all(|each| each.id != number.id));
+}
+
+#[tokio::test]
+async fn a_saved_days_texts_go_to_whoever_held_the_work_phone_once_its_holds_are_saved_after_them()
+{
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    // Yesterday's text, relayed late, comes before yesterday is saved: no hold says whose it is.
+    let late = texted(
+        &state,
+        &dsp,
+        "+12065550101",
+        "Dropped the keys at the station",
+        at(zone, yesterday, 18, 0),
+    )
+    .await;
+    assert_eq!(
+        filed(&state, &dsp, &late).await.kind,
+        ConversationKind::Number
+    );
+
+    // Saved with Casey holding the phone since 7:00: it's theirs.
+    let saved = hold("casey", "2065550101", at(zone, yesterday, 7, 0), None);
+    held(
+        &state,
+        &dsp,
+        None,
+        Vec::new(),
+        vec![(yesterday.to_string(), saved)],
+    )
+    .await;
+    let filed = filed(&state, &dsp, &late).await;
+    assert_eq!(
+        (filed.kind, filed.driver),
+        (ConversationKind::Work, driver("casey"))
+    );
+}
+
+#[tokio::test]
+async fn a_days_texts_stay_with_whoever_held_the_work_phone_once_routes_empties_it_unsaved() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    // Yesterday, while live route data held it, Avery held 0101 and texted from it.
+    let since = at(zone, yesterday, 7, 0);
+    let avery = vec![hold("avery", "2065550101", since, None)];
+    held(
+        &state,
+        &dsp,
+        Some(&yesterday.to_string()),
+        avery,
+        Vec::new(),
+    )
+    .await;
+    let written = at(zone, yesterday, 16, 0);
+    let text = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
+    assert_eq!(filed(&state, &dsp, &text).await.driver, driver("avery"));
+
+    // Emptied unsaved, as the next day's first read leaves it: still theirs.
+    held(&state, &dsp, None, Vec::new(), Vec::new()).await;
+    assert_eq!(filed(&state, &dsp, &text).await.driver, driver("avery"));
 }
 
 #[tokio::test]

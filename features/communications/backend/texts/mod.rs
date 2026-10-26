@@ -6,8 +6,8 @@
 //!
 //! - `storage`: conversations by text, each text filed in one, how far Phones' changes were read,
 //!   and the names and blocks the DSP keeps for numbers.
-//! - `filing`: filing each text Phones relays in its conversation, and today's again as who held
-//!   the work phones settles.
+//! - `filing`: filing each text Phones relays in its conversation, and a day's again as who held
+//!   its work phones settles.
 //! - `numbers`: one number written one way, how one reads, and what the DSP keeps of them.
 //! - `reading`: the conversations and their texts, as the page reads them.
 //! - `reply`: answering by text, and sending again one that failed.

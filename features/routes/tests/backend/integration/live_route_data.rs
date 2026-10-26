@@ -48,26 +48,26 @@ fn changed(dsp: &str) -> usize {
     let heard = CHANGED.lock().unwrap_or_else(|poison| poison.into_inner());
     heard.iter().filter(|at| *at == dsp).count()
 }
-/// Each time the stand-in heard who holds a DSP's work phones changed, the DSP and what it read
-/// then: how many holds live route data has, and historical route data keeps of today.
-static PHONES: Mutex<Vec<(String, usize, usize)>> = Mutex::new(Vec::new());
-fn phones_changed(state: Arc<State>, dsp: String, _: WorkPhonesChanged) -> Upkeep {
+/// Each time the stand-in heard who held a DSP's work phones on a day changed, the DSP, the day,
+/// and what it read then: how many holds live route data has, and historical route data keeps of
+/// the day.
+static PHONES: Mutex<Vec<(String, String, usize, usize)>> = Mutex::new(Vec::new());
+fn phones_changed(state: Arc<State>, dsp: String, changed: WorkPhonesChanged) -> Upkeep {
     Box::pin(async move {
-        let d = dsp.clone();
-        let read = state.read(move |db| {
-            let today = today(db, &d).to_string();
-            Ok((live_holds(db, &d).len(), saved_holds(db, &d, &today).len()))
-        });
+        let (d, day) = (dsp.clone(), changed.day.clone());
+        let read =
+            state.read(move |db| Ok((live_holds(db, &d).len(), saved_holds(db, &d, &day).len())));
         let (live, saved) = read.await.unwrap();
         let mut heard = PHONES.lock().unwrap_or_else(|poison| poison.into_inner());
-        heard.push((dsp, live, saved));
+        heard.push((dsp, changed.day, live, saved));
     })
 }
-/// What the stand-in read each time it heard who holds the DSP's work phones changed.
-fn phones_heard(dsp: &str) -> Vec<(usize, usize)> {
+/// The day and what the stand-in read each time it heard who held the DSP's work phones changed.
+fn phones_heard(dsp: &str) -> Vec<(String, usize, usize)> {
     let heard = PHONES.lock().unwrap_or_else(|poison| poison.into_inner());
     let of = heard.iter().filter(|(at, ..)| at == dsp);
-    of.map(|(_, live, saved)| (*live, *saved)).collect()
+    of.map(|(_, day, live, saved)| (day.clone(), *live, *saved))
+        .collect()
 }
 
 /// A DSP with a station and Cortex connected, Routes on, with its server's state.
@@ -644,19 +644,24 @@ async fn a_number_once_held_as_a_work_phone_is_one_live_or_saved() {
 }
 
 #[tokio::test]
-async fn features_hear_who_holds_a_work_phone_changed_once_its_kept() {
+async fn features_hear_who_holds_a_work_phone_changed_once_its_kept_and_of_which_day() {
     let (_root, db, dsp, state) = ready();
-    let mut day = Day::new(&today(&db, &dsp).to_string());
+    let today = today(&db, &dsp).to_string();
+    let mut day = Day::new(&today);
+    let heard = |live, saved| (today.clone(), live, saved);
     // Each driver claims their phone.
     keep_live(&state, &dsp, day.read(1)).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0)]);
+    assert_eq!(phones_heard(&dsp), [heard(2, 0)]);
     // A read moving no phone, its switch shown once, isn't heard; the next confirms it.
     day.phone(0, P3);
     keep_live(&state, &dsp, day.read(2)).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0)]);
+    assert_eq!(phones_heard(&dsp), [heard(2, 0)]);
     keep_live(&state, &dsp, day.read(3)).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0), (3, 0)]);
+    assert_eq!(phones_heard(&dsp), [heard(2, 0), heard(3, 0)]);
     // Saved with its holds, then emptied at the stop.
     save_and_clear_live(&state, &dsp).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0), (3, 0), (3, 3), (0, 3)]);
+    assert_eq!(
+        phones_heard(&dsp),
+        [heard(2, 0), heard(3, 0), heard(3, 3), heard(0, 3)]
+    );
 }
