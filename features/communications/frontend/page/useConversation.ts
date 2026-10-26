@@ -64,10 +64,13 @@ export function useConversation(id: string | undefined, changed: Changed) {
     const shown = kept.current;
     if (!shown?.more || older || !shown.messages[0]) return;
     setOlder(true);
+    // A read of the latest shown before the page comes may have filed some of its messages in
+    // another conversation: the page is then from before, and is read again while it's in view.
+    const since = reads.current.shown;
     try {
       const page = await getConversation(shown.id, shown.messages[0]);
       const now = kept.current;
-      if (now?.id === shown.id)
+      if (now?.id === shown.id && reads.current.shown === since)
         keep({ ...now, messages: joined(now.messages, page.messages), more: page.more });
     } catch (cause) {
       setError(messageOf(cause));
