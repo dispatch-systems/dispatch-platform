@@ -63,7 +63,7 @@ export function alertMember(access: () => Watching) {
   return lead(`dispatch-communications-alerts:${dsp}:${user}`, (ends) => {
     /** What the member chose, as this turn reads it again: not as a read begun before it has. */
     let chosen: Promise<SettingsAnswer> | undefined;
-    const look = () => {
+    const look = async () => {
       if (!chosen) {
         dataCache.invalidate((key) => key === settingsRead);
         const reading = dataCache.read(settingsRead, getSettings);
@@ -73,20 +73,17 @@ export function alertMember(access: () => Watching) {
         });
         chosen = reading;
       }
-      void Promise.all([chosen, dataCache.read(waitingUrl, getWaiting)])
+      try {
+        const [, waiting] = await Promise.all([chosen, dataCache.read(waitingUrl, getWaiting)]);
         // Then as they chose last, as the tab holds it, else as read again once let go.
-        .then(([, waiting]) =>
-          Promise.all([readSettings() ?? dataCache.read(settingsRead, getSettings), waiting]),
-        )
-        .then(
-          ([settings, waiting]) => {
-            if (!ends.aborted) heard(waiting, settings);
-          },
-          () => undefined,
-        );
+        const settings = readSettings() ?? (await dataCache.read(settingsRead, getSettings));
+        if (!ends.aborted) heard(waiting, settings);
+      } catch {
+        // Not read, what waits is looked at again at the next look.
+      }
     };
-    look();
-    const looking = setInterval(look, LOOK_MS);
+    void look();
+    const looking = setInterval(() => void look(), LOOK_MS);
     ends.addEventListener('abort', () => clearInterval(looking));
   });
 }
