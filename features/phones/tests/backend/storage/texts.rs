@@ -42,7 +42,7 @@ fn a_text_reported_twice_is_kept_once() {
     );
     assert!(text.files.iter().all(|file| !file.kept), "bytes come after");
     // Its picture's bytes arrive: the text changes again, after the other.
-    db.phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha")
+    db.phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha", 100)
         .unwrap();
     let later = db.phones_changes(&dsp, changes.next).unwrap();
     assert_eq!(later.texts.len(), 1);
@@ -58,7 +58,7 @@ fn a_text_reported_twice_is_kept_once() {
     let other = db
         .phones_pair(&dsp, "other", "key-2", &pairing, 7_000)
         .unwrap();
-    let foreign = db.phones_file_arrived(&dsp, &other.id, &first[0].files[1], "sha");
+    let foreign = db.phones_file_arrived(&dsp, &other.id, &first[0].files[1], "sha", 100);
     assert_eq!(foreign.unwrap_err().code.as_str(), "phones_file_not_found");
 }
 

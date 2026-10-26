@@ -77,7 +77,7 @@ pub async fn receive(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<Arr
     })
 }
 /// Keeps `arrived` as the bytes of the file `id` of a text the phone `device` reported, in place of
-/// any before them: refused as `phones_file_not_found` for one of no text of its own, its bytes
+/// any before them, its size what arrived: refused as `phones_file_not_found` for one of no text of its own, its bytes
 /// let go. Inside the write that authorized the phone.
 pub fn keep_reported(
     db: &Store,
@@ -87,7 +87,7 @@ pub fn keep_reported(
     arrived: &Arrived,
 ) -> Result<()> {
     arrived.place(db, dsp)?;
-    match db.phones_file_arrived(dsp, device, id, &arrived.sha256) {
+    match db.phones_file_arrived(dsp, device, id, &arrived.sha256, arrived.size) {
         Ok(before) => before.map_or(Ok(()), |before| forget(db, dsp, &before)),
         Err(error) => {
             forget(db, dsp, &arrived.sha256)?;
@@ -149,3 +149,7 @@ pub async fn answer(
     let body = axum::body::Body::from_stream(chunks);
     Ok(Reply::download(mime, name, length, body))
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/files.rs"]
+mod tests;

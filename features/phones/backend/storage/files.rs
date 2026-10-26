@@ -28,15 +28,16 @@ pub struct StoredFile {
 
 /// What Phones keeps of the texts' pictures and files.
 pub trait FileStore {
-    /// Keeps the bytes of a file a phone reported, by their SHA-256: refused as
-    /// `phones_file_not_found` for one not of its own texts. Answers the SHA-256 it kept before,
-    /// for bytes sent again.
+    /// Keeps the bytes of a file a phone reported, by their SHA-256, and their size as they
+    /// arrived, whatever the report said: refused as `phones_file_not_found` for one not of its
+    /// own texts. Answers the SHA-256 it kept before, for bytes sent again.
     fn phones_file_arrived(
         &self,
         dsp: &str,
         device: &str,
         id: &str,
         sha256: &str,
+        size: i64,
     ) -> Result<Option<String>>;
     /// Keeps a picture someone added for a text not sent yet.
     fn phones_add_file(
@@ -67,6 +68,7 @@ impl FileStore for Store {
         device: &str,
         id: &str,
         sha256: &str,
+        size: i64,
     ) -> Result<Option<String>> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
@@ -79,8 +81,8 @@ impl FileStore for Store {
                 )?
                 .ok_or_else(|| Error::new("phones_file_not_found", 404))?;
             db.exec(
-                "UPDATE phones_files SET sha256=? WHERE id=?",
-                params![sha256, id],
+                "UPDATE phones_files SET sha256=?, size=? WHERE id=?",
+                params![sha256, size, id],
             )?;
             let change = next_change(&db)?;
             db.exec(
