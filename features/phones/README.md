@@ -22,14 +22,16 @@ Rename and Remove in its menu; a name changed and not saved asks "Save changes?"
 Save and Discard, before the dialog closes; closing the browser tab drops it silently. The card's routes are refused (`not_found`) while Phones is off, though managing
 all the DSP's connections still lets a member in. With none, No phone. **Add phone** shows the code that pairs the
 next phone, as a QR code its app reads and as its eight letters, and how long it lasts; one
-expired gives way to a new one with New code; the dialog closes once a new phone appears, read
-every three seconds while it's open. A code needs the DSP's own address, for the phone to
-reach: without one, `phones_address_required`.
+expired, or replaced by a newer one as another session makes, gives way to a new one with New
+code; the dialog closes once its own code paired a phone, asked after every three seconds while
+it lasts. A code needs the DSP's own address, for the phone to reach: without one,
+`phones_address_required`.
 
 ## Pairing
 
 A code is eight letters of 32 (no 0, O, 1 or I), made by someone who manages the DSP's phones, working once, for ten minutes, one at a time: a new one replaces any not used yet.
-Only its SHA-256 is kept. The phone reads it with the DSP's address from the QR code
+Only its SHA-256 is kept, with an ID of its own, by which the card asks how it stands
+(`GET /api/dsp/phones/pairing/{id}`): waiting, paired, replaced or expired. The phone reads it with the DSP's address from the QR code
 (`dispatch-phone:pair?site=<address>&code=<code>`) and trades it, with its own number, model and
 the app's version, for a key: 32 random bytes in hexadecimal, of which only the SHA-256 is kept.
 The first phone is named Dispatch, the next Phone 2 and so on, until renamed. A phone removed

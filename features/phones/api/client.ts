@@ -1,9 +1,12 @@
 import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import type { PhonePairing } from './generated/PhonePairing.js';
+import type { PhonePairingStatus } from './generated/PhonePairingStatus.js';
 import type { PhoneRow } from './generated/PhoneRow.js';
 import type { Phones } from './generated/Phones.js';
 
+export type { PairingStatus } from './generated/PairingStatus.js';
 export type { PhonePairing } from './generated/PhonePairing.js';
+export type { PhonePairingStatus } from './generated/PhonePairingStatus.js';
 export type { PhoneRow } from './generated/PhoneRow.js';
 export type { Phones } from './generated/Phones.js';
 
@@ -25,6 +28,9 @@ export const phonesUrl = '/api/dsp/phones';
 export const usePhones = (poll: number) => useData<Phones>(phonesUrl, poll);
 /** A new code that pairs the next phone, in place of any shown before. */
 export const newPairing = () => call<PhonePairing>('/api/dsp/phones/pairing', {});
+/** How the code `id` stands, read again every `poll` milliseconds; nothing without one. */
+export const usePairing = (id: string | undefined, poll: number) =>
+  useData<PhonePairingStatus>(id ? `/api/dsp/phones/pairing/${encodeURIComponent(id)}` : '', poll);
 export const renamePhone = (id: string, name: string) =>
   call<PhoneRow>(`/api/dsp/phones/${encodeURIComponent(id)}/rename`, { name });
 /** Removes the phone: its key works no more, and its texts stay. */

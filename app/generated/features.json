@@ -652,6 +652,7 @@
       "routes": [
         "GET /api/dsp/phones",
         "POST /api/dsp/phones/pairing",
+        "GET /api/dsp/phones/pairing/{id}",
         "POST /api/dsp/phones/{id}/rename",
         "POST /api/dsp/phones/{id}/remove",
         "POST /api/phones/pair",

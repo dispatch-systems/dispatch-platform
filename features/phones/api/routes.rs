@@ -3,7 +3,7 @@
 //! phones' behind the key each was given, at the DSP's own address (`phone/`).
 use super::{
     phone::{self, Phone},
-    types::{PhonePairing, PhoneRow, Phones},
+    types::{PhonePairing, PhonePairingStatus, PhoneRow, Phones},
 };
 use crate::backend::{
     LIMITS, live, pairing,
@@ -31,6 +31,7 @@ pub fn routes() -> Vec<Route> {
     vec![
         read("/api/dsp/phones", MANAGE, listed),
         write("/api/dsp/phones/pairing", MANAGE, new_pairing),
+        read("/api/dsp/phones/pairing/{id}", MANAGE, pairing_status),
         write("/api/dsp/phones/{id}/rename", MANAGE, rename),
         async_post("/api/dsp/phones/{id}/remove", MANAGE, remove),
         async_post("/api/phones/pair", Public, phone::pair),
@@ -52,9 +53,9 @@ pub fn routes() -> Vec<Route> {
 fn on(c: &Context) -> Result<()> {
     ensure(c.has("phones"), "not_found", 404)
 }
-/// One of Phones' IDs, `phone_` and 32 hexadecimal digits.
-fn phone_id(value: &str) -> Result<&str> {
-    ensure(db::identifier(value, "phone_"), "invalid_input", 400)?;
+/// One of Phones' IDs: `prefix` and 32 hexadecimal digits.
+fn id_of<'a>(value: &'a str, prefix: &str) -> Result<&'a str> {
+    ensure(db::identifier(value, prefix), "invalid_input", 400)?;
     Ok(value)
 }
 fn row(device: &Device, now: i64) -> PhoneRow {
@@ -96,18 +97,29 @@ fn new_pairing(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     let code = pairing::new_code()?;
     let kept = pairing::kept(&code).ok_or_else(|| Error::new("phones_pairing_unavailable", 503))?;
     let at = db::now();
-    db.phones_new_pairing(c.dsp_id(), c.actor(), &kept, at)?;
+    let id = db.phones_new_pairing(c.dsp_id(), c.actor(), &kept, at)?;
     Reply::of(&PhonePairing {
+        id,
         picture: pairing::picture(&pairing::link(&site, &code))?,
         code,
         expires_at: at + PAIRING_MS,
+    })
+}
+/// How the code `id` the card shows stands: waiting for a phone, paired one, replaced by a newer
+/// code, or expired.
+fn pairing_status(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    on(c)?;
+    v::fields(&input.query, &[])?;
+    let id = id_of(input.param("id"), "pairing_")?;
+    Reply::of(&PhonePairingStatus {
+        status: db.phones_pairing(c.dsp_id(), id, db::now())?,
     })
 }
 /// Gives the phone a new name.
 fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     on(c)?;
     v::fields(&input.body, &["name"])?;
-    let id = phone_id(input.param("id"))?;
+    let id = id_of(input.param("id"), "phone_")?;
     let name = v::name(&input.body, "name", NAME_MOST)?;
     let before = db
         .phones_device(c.dsp_id(), id)?
@@ -129,7 +141,7 @@ async fn remove(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     on(&c)?;
     v::fields(&input.body, &[])?;
-    let id = phone_id(input.param("id"))?.to_owned();
+    let id = id_of(input.param("id"), "phone_")?.to_owned();
     let dsp = c.dsp.id.clone();
     state
         .run_scoped(dsp.clone(), DOMAIN, move |db| {

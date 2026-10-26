@@ -23,20 +23,30 @@ fn a_code_pairs_one_phone_once_while_it_lasts() {
     // Used once, the code pairs nothing more.
     let again = db.phones_pair(&dsp, CODE, "key-2", &pairing, 3_000);
     assert_eq!(again.unwrap_err().code.as_str(), "phones_pairing_invalid");
-    // A new code replaces one not used yet, and expires.
+    // A new code replaces one not used yet, and expires, as each says it stands.
     let owner = testing::a_user(&db);
-    db.phones_new_pairing(&dsp, &owner, "old", 10_000).unwrap();
-    db.phones_new_pairing(&dsp, &owner, "new", 10_000).unwrap();
-    let old = db.phones_pair(&dsp, "old", "key-2", &pairing, 11_000);
-    assert_eq!(old.unwrap_err().code.as_str(), "phones_pairing_invalid");
+    let old = db.phones_new_pairing(&dsp, &owner, "old", 10_000).unwrap();
+    let new = db.phones_new_pairing(&dsp, &owner, "new", 10_000).unwrap();
+    let status = |id: &str, at: i64| db.phones_pairing(&dsp, id, at).unwrap();
+    assert_eq!(status(&old, 11_000), PairingStatus::Replaced);
+    assert_eq!(status(&new, 11_000), PairingStatus::Waiting);
+    let replaced = db.phones_pair(&dsp, "old", "key-2", &pairing, 11_000);
+    assert_eq!(
+        replaced.unwrap_err().code.as_str(),
+        "phones_pairing_invalid"
+    );
     let late = db.phones_pair(&dsp, "new", "key-2", &pairing, 10_000 + PAIRING_MS);
     assert_eq!(late.unwrap_err().code.as_str(), "phones_pairing_invalid");
-    db.phones_new_pairing(&dsp, &owner, "third", 20_000)
+    assert_eq!(status(&new, 10_000 + PAIRING_MS), PairingStatus::Expired);
+    let third = db
+        .phones_new_pairing(&dsp, &owner, "third", 20_000)
         .unwrap();
     let second = db
         .phones_pair(&dsp, "third", "key-2", &pairing, 21_000)
         .unwrap();
     assert_eq!(second.name, "Phone 2");
+    assert_eq!(status(&third, 21_000), PairingStatus::Paired);
+    assert_eq!(status("pairing_unknown", 21_000), PairingStatus::Expired);
     // Removed, a phone's key works no more.
     db.phones_remove(&dsp, &second.id, 22_000).unwrap();
     assert_eq!(db.phones_device_by_key(&dsp, "key-2").unwrap(), None);

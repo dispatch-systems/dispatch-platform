@@ -5,6 +5,7 @@ mod devices;
 mod files;
 mod texts;
 
+pub(crate) use devices::add_pairing_ids;
 pub use devices::{Device, DeviceStore, PAIRING_MS, Pairing};
 pub use files::{FileStore, ReportedFile};
 pub use texts::{Kept, MOST_TEXTS, Reported, StatusReport, TextStore};

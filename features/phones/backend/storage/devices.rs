@@ -1,9 +1,10 @@
 //! The DSP's phones, each by the SHA-256 of the key it was given, and the code that pairs the next
 //! one, by its own: pairing, checking in, renaming and removing, and the demo's stand-in phone.
 use super::texts::{self, Reported, TextStore};
+use crate::api::types::PairingStatus;
 use dispatch_core::{
     Error, Result,
-    db::{Store, n, s},
+    db::{Db, Store, migrations::add_column, n, s},
     ensure,
     foundation::crypto,
 };
@@ -16,6 +17,20 @@ use serde_json::Value;
 pub const ONLINE_MS: i64 = 2 * 60 * 1000;
 /// How long a pairing code works.
 pub const PAIRING_MS: i64 = 10 * 60 * 1000;
+
+/// Phones' migration 2: each pairing code by an ID of its own, which the card that shows it asks
+/// after, and when a newer code replaced it before it paired (`replaced_at`), kept until it
+/// expires so that card hears it no longer works. Codes made before have no ID, and expire within
+/// ten minutes.
+pub(crate) fn add_pairing_ids(db: &Db) -> Result<()> {
+    add_column(db, "phones_pairings", "id", "TEXT")?;
+    add_column(db, "phones_pairings", "replaced_at", "INTEGER")?;
+    db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS phones_pairings_id ON phones_pairings (id)",
+        [],
+    )?;
+    Ok(())
+}
 
 /// One of the DSP's phones, as kept.
 #[derive(Clone, Debug, PartialEq)]
@@ -81,10 +96,13 @@ pub trait DeviceStore {
     /// Removes the phone: its key works no more, and the texts still waiting on it fail, as no
     /// phone would send them.
     fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<Device>;
-    /// Keeps the code that pairs the next phone, in place of any not used yet.
-    fn phones_new_pairing(&self, dsp: &str, by: &str, code_sha256: &str, at: i64) -> Result<()>;
+    /// Keeps the code that pairs the next phone, replacing any not used yet: its ID.
+    fn phones_new_pairing(&self, dsp: &str, by: &str, code_sha256: &str, at: i64)
+    -> Result<String>;
+    /// How the code `id` stands at `at`.
+    fn phones_pairing(&self, dsp: &str, id: &str, at: i64) -> Result<PairingStatus>;
     /// Pairs a phone by the code `code_sha256`, giving it the key `key_sha256`: refused as
-    /// `phones_pairing_invalid` for a code used, expired or unknown.
+    /// `phones_pairing_invalid` for a code used, replaced, expired or unknown.
     fn phones_pair(
         &self,
         dsp: &str,
@@ -166,16 +184,40 @@ impl DeviceStore for Store {
         })?;
         Ok(device)
     }
-    fn phones_new_pairing(&self, dsp: &str, by: &str, code_sha256: &str, at: i64) -> Result<()> {
+    fn phones_new_pairing(
+        &self,
+        dsp: &str,
+        by: &str,
+        code_sha256: &str,
+        at: i64,
+    ) -> Result<String> {
+        let id = crypto::id("pairing")?;
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            db.exec("DELETE FROM phones_pairings WHERE used_at IS NULL", [])?;
             db.exec(
-                "INSERT INTO phones_pairings (code_sha256,created_by,created_at,expires_at) \
-                 VALUES (?,?,?,?)",
-                params![code_sha256, by, at, at + PAIRING_MS],
+                "UPDATE phones_pairings SET replaced_at=? \
+                 WHERE used_at IS NULL AND replaced_at IS NULL",
+                [at],
+            )?;
+            db.exec(
+                "INSERT INTO phones_pairings (id,code_sha256,created_by,created_at,expires_at) \
+                 VALUES (?,?,?,?,?)",
+                params![id, code_sha256, by, at, at + PAIRING_MS],
             )?;
             Ok(())
+        })?;
+        Ok(id)
+    }
+    fn phones_pairing(&self, dsp: &str, id: &str, at: i64) -> Result<PairingStatus> {
+        let found = self.dsp(dsp)?.one(
+            "SELECT used_at,replaced_at,expires_at FROM phones_pairings WHERE id=?",
+            [id],
+        )?;
+        Ok(match found {
+            Some(code) if code["used_at"].is_i64() => PairingStatus::Paired,
+            Some(code) if code["replaced_at"].is_i64() => PairingStatus::Replaced,
+            Some(code) if n(&code, "expires_at") > at => PairingStatus::Waiting,
+            _ => PairingStatus::Expired,
         })
     }
     fn phones_pair(
@@ -192,8 +234,8 @@ impl DeviceStore for Store {
         db.transaction(|| {
             let code = db
                 .one(
-                    "SELECT created_by FROM phones_pairings \
-                     WHERE code_sha256=? AND used_at IS NULL AND expires_at>?",
+                    "SELECT created_by FROM phones_pairings WHERE code_sha256=? \
+                     AND used_at IS NULL AND replaced_at IS NULL AND expires_at>?",
                     params![code_sha256, at],
                 )?
                 .ok_or_else(|| Error::new("phones_pairing_invalid", 401))?;
