@@ -111,6 +111,8 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     assert!(uncollected.days.is_empty() && uncollected.routes.is_empty());
     let refused = offered.day(&db, &dsp, "2026-9-25").unwrap_err();
     assert_eq!(refused.code, "invalid_date");
+    let refused = offered.work_phone_holds(&db, &dsp, "2026-9-25");
+    assert_eq!(refused.unwrap_err().code, "invalid_date");
 
     // Each refusal changes one thing from a read that's answered.
     let year = offered.routes(&db, &dsp, &driver, &day(365), &day(0));
@@ -224,6 +226,18 @@ fn route_data_is_read_through_the_indexes_made_for_each_read() {
             "{table}: {steps:?}"
         );
     }
+    // Whether a number was ever a work phone reaches only its holds, whatever the days kept.
+    let plan = historical
+        .all(
+            &format!("EXPLAIN QUERY PLAN {}", phones::EVER_HELD),
+            ["5550000000"],
+        )
+        .unwrap();
+    let steps: Vec<_> = plan.iter().map(|step| s(step, "detail")).collect();
+    assert_eq!(
+        steps,
+        ["SEARCH work_phones USING COVERING INDEX work_phones_phone (phone=?)"]
+    );
 }
 
 #[tokio::test]
@@ -350,6 +364,7 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
         offered.routes(&db, &dsp, &ids(&["driver-1"])).unwrap()
     ));
     assert!(offered.work_phones(&db, &dsp).unwrap().is_empty());
+    assert!(offered.work_phone_holds(&db, &dsp).unwrap().is_empty());
 
     let owner = testing::a_user(&db);
     db.set_feature(&dsp, "routes", false, &owner).unwrap();

@@ -11,6 +11,7 @@ use dispatch_core::{
         events::{self, PeopleChanged},
     },
 };
+use dispatch_routes_contract::WorkPhonesChanged;
 use std::sync::Arc;
 
 /// What keeping a live read counted, for its record: the itineraries it listed, the rows it
@@ -108,7 +109,9 @@ fn key(day: &str, collected: i64) -> String {
 /// deleted and one unchanged is left unwritten; the drivers its route list assigns are named; and
 /// who holds which work phone is settled from it. A day other than the one live route data holds,
 /// or another scope, starts it afresh. A read collected no later than the one it holds changes
-/// nothing. It tells Driver Match of a driver live route data didn't name (`people.changed`).
+/// nothing. It tells Driver Match of a driver live route data didn't name (`people.changed`), then
+/// every feature that hears it of a hold claimed, moved, handed over or withdrawn
+/// (`routes.work_phones_changed`).
 ///
 /// It refuses, changing nothing, a day other than today where the DSP is
 /// (`routes_day_not_available`); a DSP without a station (`routes_station_required`); a read that
@@ -149,6 +152,9 @@ pub async fn keep_live(
             .await?;
         if named {
             events::publish(state, dsp, PeopleChanged).await;
+        }
+        if kept.phone_events > 0 {
+            events::publish(state, dsp, WorkPhonesChanged).await;
         }
         Ok(kept)
     })
@@ -314,7 +320,10 @@ fn empty(db: &Db) -> Result<()> {
 }
 
 /// Empties live route data, as a new day starts or a saved one stops, and gives back the
-/// file's space, its log's with it. Refuses while Routes is off for the DSP (`routes_off`).
+/// file's space, its log's with it; then tells every feature that hears it that its holds on the
+/// work phones are gone (`routes.work_phones_changed`), each time, so a call made again after
+/// one that couldn't give the space back tells them too. Refuses while Routes is off for the DSP
+/// (`routes_off`).
 pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
     let d = dsp.to_owned();
     State::patiently(state.run_scoped(dsp, DOMAIN, move |db| {
@@ -325,7 +334,9 @@ pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
             .execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")?;
         Ok(())
     }))
-    .await
+    .await?;
+    events::publish(state, dsp, WorkPhonesChanged).await;
+    Ok(())
 }
 
 /// Saves the last whole read live route data holds into historical route data as one of its
@@ -334,7 +345,8 @@ pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
 /// restart, saves nothing twice. It is a final read only if it was read once its day had ended
 /// where the DSP is, a snapshot otherwise, as the platform has a day's reads. Live route data
 /// keeps it. Answers whether it is the day's read now, or none when live route data holds no
-/// day. It refuses as `save_day` does, and while Routes is off for the DSP (`routes_off`).
+/// day; features hear of a day saved as `save_day` tells them. It refuses as `save_day` does,
+/// and while Routes is off for the DSP (`routes_off`).
 pub async fn save_live_day(state: &Arc<State>, dsp: &str) -> Result<Option<bool>> {
     let d = dsp.to_owned();
     let held = state
@@ -355,20 +367,7 @@ pub async fn save_live_day(state: &Arc<State>, dsp: &str) -> Result<Option<bool>
                 Ok(()) => Mode::Final,
                 Err(_) => Mode::Snapshot,
             };
-            let phones = live
-                .all(
-                    "SELECT transporter_id,phone,since,until FROM work_phones WHERE day=? \
-                     ORDER BY since,transporter_id",
-                    [&capture.scope.date],
-                )?
-                .iter()
-                .map(|hold| WorkPhone {
-                    transporter_id: s(hold, "transporter_id").into(),
-                    phone: s(hold, "phone").into(),
-                    since: hold["since"].as_i64().unwrap_or(0),
-                    until: hold["until"].as_i64(),
-                })
-                .collect();
+            let phones = phones::holds(&live, &capture.scope.date)?;
             Ok(Some((s(&row, "job_id").to_owned(), capture, phones)))
         })
         .await?;
@@ -382,7 +381,8 @@ pub async fn save_live_day(state: &Arc<State>, dsp: &str) -> Result<Option<bool>
 /// (`save_live_day`), then empties live route data (`clear_live`): once the day is saved, as the
 /// day's read or one collected no later than it has, or once it holds no day, as after an
 /// earlier call emptied it but couldn't give its file's space back. Answers as `save_live_day`
-/// does. A save refused leaves live route data as it was.
+/// does; features hear of the save and of the emptying, each once it's done. A save refused
+/// leaves live route data as it was.
 pub async fn save_and_clear_live(state: &Arc<State>, dsp: &str) -> Result<Option<bool>> {
     let saved = save_live_day(state, dsp).await?;
     clear_live(state, dsp).await?;

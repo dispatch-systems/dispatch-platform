@@ -149,6 +149,13 @@ pub const FEATURE: Feature = Feature {
                         "migrations/routedata/0008_drop_tasks_driver_day.sql"
                     )),
                 },
+                Migration {
+                    id: 9,
+                    name: "work_phones_phone",
+                    apply: Sql(include_str!(
+                        "migrations/routedata/0009_work_phones_phone.sql"
+                    )),
+                },
             ],
         },
         Migrations {

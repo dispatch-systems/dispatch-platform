@@ -18,7 +18,9 @@ use dispatch_core::{
     server::http::route::Dsp,
     testing,
 };
-use dispatch_routes_contract::{Collected, CollectedDay, Driven, DriverRoutes, RouteDay};
+use dispatch_routes_contract::{
+    Collected, CollectedDay, Driven, DriverRoutes, RouteDay, WorkPhoneHold,
+};
 use dispatch_slack::{kit::Bot, testing as slack};
 use dispatch_vans_contract::{AmazonFleet, Van};
 use serde_json::json;
@@ -265,6 +267,13 @@ impl DriverRoutes for Standing {
                 .collect()
         });
         Ok(driven(routes))
+    }
+    /// It knows no work phones.
+    fn work_phone_holds(&self, _: &Store, _: &str, _: &str) -> Result<Vec<WorkPhoneHold>> {
+        Ok(Vec::new())
+    }
+    fn was_work_phone(&self, _: &Store, _: &str, _: &str) -> Result<bool> {
+        Ok(false)
     }
 }
 /// `routes`, with each day they're on read while under way.
