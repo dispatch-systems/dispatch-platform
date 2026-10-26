@@ -35,7 +35,7 @@ pub struct Communications {
 }
 
 /// `GET /api/dsp/communications/waiting`: how many conversations wait on an answer, for the
-/// sidebar, and since when each has.
+/// sidebar, since when each has, and what each waits on, which alerts the member to a new message.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -50,6 +50,25 @@ pub struct CommunicationsWaiting {
     /// Since when each waits, the longest waiting first.
     #[cfg_attr(feature = "ts", ts(type = "Array<number>"))]
     pub since: Vec<i64>,
+    /// The latest message from whom each is with, the longest waiting first: a message not there
+    /// before is a new one.
+    pub latest: Vec<WaitingMessage>,
+}
+/// The latest message from whom a waiting conversation is with: its ID, the group it's listed
+/// under, if any, who they are, and what they wrote.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitingMessage {
+    pub conversation_id: String,
+    pub group_id: Option<String>,
+    /// Their name, as the conversation's.
+    pub from: String,
+    pub message: Message,
 }
 
 /// One of the DSP's Slack workspaces, where its members write to the app.

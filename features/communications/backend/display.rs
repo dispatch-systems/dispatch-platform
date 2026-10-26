@@ -1,7 +1,7 @@
 //! How Communications looks to each member, their own in Settings, on its Display page: the
 //! fields Settings keeps for them (`MessageDisplay` reads them), a desktop's and then a phone's
 //! own of the choices that apply on one, which Communications' own component draws with a preview
-//! of the page, and the page reads as it draws.
+//! of the page, and the page reads as it draws; and how a new message alerts them.
 use crate::api::display::{
     BubbleShape, EmployeeColor, LineSpacing, ListPreview, ListRows, ListWidth, MessageLayout,
     MessageStyle, ProfileOpens, Spacing, TeamColor, TeamSide, Times,
@@ -160,6 +160,9 @@ pub const DISPLAY: Section = section(
         toggle("profile_slide", "Slide in", true),
         toggle("keep_profile_open", "Keep profile open", false),
         toggle("enter_sends", "Enter sends", true),
+        // How a new message from an employee alerts them, on any screen, while Dispatch is open.
+        toggle("sound", "Sound", true),
+        toggle("notifications", "Notifications", false),
         // A phone's own, of the choices that apply on one.
         number("phone_text_size", "Text size on a phone", 12, 20, Some(14)).unit("px"),
         choice(
@@ -250,6 +253,7 @@ pub const DISPLAY: Section = section(
     "layout",
     "messages",
     "phone",
+    "alerts",
 ]);
 
 #[cfg(test)]

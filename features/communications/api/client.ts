@@ -56,6 +56,9 @@ export const getCommunications = (signal: AbortSignal, team?: string) =>
 export const waitingUrl = `${communicationsUrl}/waiting`;
 export const useCommunicationsWaiting = (poll: number) =>
   useCachedData<CommunicationsWaiting>(waitingUrl, poll);
+/** How many conversations wait, and the latest message each waits on. */
+export const getWaiting = (signal: AbortSignal) =>
+  api<CommunicationsWaiting>(waitingUrl, undefined, signal);
 /** What changed since `after`, and who is typing, once either differs from what the page has. */
 export const getCommunicationsUpdates = (after: number, typing: number, signal: AbortSignal) =>
   api<CommunicationsUpdates>(

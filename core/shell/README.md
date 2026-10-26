@@ -6,7 +6,7 @@ and `runtime/` alone, as `app/tests/rules/dashboard-structure.test.ts` checks.
 
 | Folder     | Holds                                                                                                                                       |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shell/`   | The frame itself: the sidebar, the account menu and the page that draws the open route.                                                     |
+| `shell/`   | The frame itself: the sidebar, the account menu, the page that draws the open route, and what runs on every DSP page (`Watchers.tsx`).      |
 | `ui/`      | The UI kit: tables, tabs, dialogs, fields and the pieces every page is made of, exported from `ui/index.ts`.                                |
 | `lib/`     | Pure logic: dates and formats, CSV, the response cache, backoff, the performance policy.                                                    |
 | `runtime/` | What a page runs on: the API client (`api.ts`), the data cache and prefetch, the session, navigation, permissions, feedback, and the slots. |
@@ -16,7 +16,8 @@ and `runtime/` alone, as `app/tests/rules/dashboard-structure.test.ts` checks.
 
 `runtime/slots.ts` gathers what every owner's `frontend/feature.ts` declares, from one module
 per slot under `runtime/slots/`: `pages`, `settings`, `connections`, `integrations`,
-`page-tabs`, `account`, `api` and `platform`, each declaring what an owner puts in the slot,
+`page-tabs`, `account`, `api`, `collected`, `platform` and `watchers`, each declaring what an
+owner puts in the slot,
 adding its field to `FrontendFeature` by declaration merging, and exporting what a host reads
 it with. `installed.ts` holds the manifests the app installs before the first render, and the
 three helpers every slot reads them with: `present`, what the owners put in a slot that the

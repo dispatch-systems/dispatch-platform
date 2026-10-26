@@ -140,7 +140,7 @@ fn overview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
-    Reply::of(&conversations::waiting(db, c.dsp_id())?)
+    Reply::of(&conversations::waiting(db, c.state, c.dsp_id())?)
 }
 /// The workspace `team` a list is of, if it's of one.
 fn team(query: &Value) -> Result<Option<String>> {

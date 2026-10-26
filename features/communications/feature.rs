@@ -16,7 +16,7 @@ pub use api::types::{
     ConversationState, Conversations, Correspondent, Direction, FileStatus, Group, GroupChoice,
     GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages, GroupPeople,
     GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGroup, Profile,
-    ProfileToday, Reachable, Sender, Typing, Writing,
+    ProfileToday, Reachable, Sender, Typing, WaitingMessage, Writing,
 };
 
 use dispatch_core::db::{
@@ -92,6 +92,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         cfg,
         Communications,
         CommunicationsWaiting,
+        WaitingMessage,
         CommunicationsWorkspace,
         Conversation,
         ConversationState,

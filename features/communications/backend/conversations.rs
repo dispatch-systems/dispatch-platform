@@ -17,7 +17,7 @@ use crate::{
     api::types::{
         Communications, CommunicationsUpdates, CommunicationsWaiting, CommunicationsWorkspace,
         Conversation, ConversationMessages, Conversations, Correspondent, Group, Message,
-        MessageFile, MessageGroup, Sender, Typing,
+        MessageFile, MessageGroup, Sender, Typing, WaitingMessage,
     },
     integrations::messages::{self, ID},
 };
@@ -406,10 +406,35 @@ pub fn updates(
         next,
     ))
 }
-/// How many conversations wait, and since when each has.
-pub fn waiting(db: &Store, dsp: &str) -> Result<CommunicationsWaiting> {
-    let since: Vec<i64> = db
-        .waiting_communications(dsp)?
+/// How many conversations wait, since when each has, and the latest message from whom each is
+/// with.
+pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWaiting> {
+    let waiting = db.waiting_communications(dsp)?;
+    let ids: Vec<String> = waiting.iter().map(|each| each.id.clone()).collect();
+    let written = db.latest_communications_written(dsp, &ids)?;
+    let of: Vec<String> = written
+        .iter()
+        .map(|each| each.conversation.clone())
+        .collect();
+    let people = People::read(db, state, dsp)?;
+    let mut written: HashMap<String, Message> = of
+        .into_iter()
+        .zip(messages(db, &people, dsp, written)?)
+        .collect();
+    let latest = waiting
+        .iter()
+        .filter_map(|conversation| {
+            Some(WaitingMessage {
+                message: written.remove(&conversation.id)?,
+                conversation_id: conversation.id.clone(),
+                group_id: conversation.group.clone(),
+                from: people
+                    .correspondent(&conversation.team, &conversation.user, &conversation.name)
+                    .name,
+            })
+        })
+        .collect();
+    let since: Vec<i64> = waiting
         .into_iter()
         .filter_map(|conversation| conversation.waiting_since)
         .collect();
@@ -417,6 +442,7 @@ pub fn waiting(db: &Store, dsp: &str) -> Result<CommunicationsWaiting> {
         revision: db.communications_revision(dsp)?,
         count: since.len(),
         since,
+        latest,
     })
 }
 /// What the page calls a workspace: its name in Dispatch, else its name in Slack.
@@ -454,3 +480,7 @@ pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>>
         })
         .collect())
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/conversations.rs"]
+mod tests;

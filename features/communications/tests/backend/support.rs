@@ -5,10 +5,11 @@
 //! has approved all the app asks for.
 use crate::api::types::Message;
 use crate::backend::{conversations, storage::CommunicationsStore};
+use crate::integrations::messages::incoming;
 use dispatch_core::{
     Result, State,
     accounts::{Context, SessionLifetime},
-    db::Store,
+    db::{Store, now},
     foundation::config::Site,
     manifest::{
         Feature, feature, mandatory, optional,
@@ -20,6 +21,7 @@ use dispatch_core::{
 use dispatch_routes_contract::{Collected, CollectedDay, Driven, DriverRoutes, RouteDay};
 use dispatch_slack::{kit::Bot, testing as slack};
 use dispatch_vans_contract::{AmazonFleet, Van};
+use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
@@ -105,6 +107,12 @@ pub async fn member(
         })
         .await
         .unwrap()
+}
+/// The workspace `team`'s member `user` writing `text` to the app, as Slack tells of it.
+pub async fn writes(state: &Arc<State>, dsp: &str, team: &str, user: &str, text: &str) {
+    let event = json!({"type": "message", "channel_type": "im", "channel": format!("D{}", &user[1..]),
+        "user": user, "text": text, "ts": incoming::ts(now())});
+    incoming::heard(state, dsp, team, &event).await.unwrap();
 }
 /// The texts of the conversation's messages, in the order written.
 pub async fn texts(state: &Arc<State>, dsp: &str, conversation: &str) -> Vec<String> {

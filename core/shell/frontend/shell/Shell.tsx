@@ -28,6 +28,7 @@ import {
   type SidebarProps,
 } from '../runtime/slots.js';
 import { SidebarPanels } from './SidebarPanels.js';
+import { Watchers } from './Watchers.js';
 // Only a platform owner viewing a DSP sees it, so it loads then.
 const DspViewBanner = lazy(() =>
   import('./DspViewBanner.js').then((module) => ({ default: module.DspViewBanner })),
@@ -436,6 +437,8 @@ export function Shell({
           {openedAction.render({ session, view, onClose: () => setAccountAction(undefined) })}
         </Suspense>
       )}
+      {/* What runs on every page of the DSP open, anew for another. */}
+      {view && <Watchers key={view.dsp.id} session={session} view={view} />}
     </div>
   );
 }

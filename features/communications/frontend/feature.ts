@@ -51,6 +51,14 @@ export const feature: FrontendFeature = {
       prefetch: () => ['/api/dsp/settings'],
     },
   ],
+  // Alerts the member to new messages on every page, as they chose in Message display.
+  watchers: [
+    {
+      id: 'communications.alerts',
+      visible: ({ view }) => can(view, 'communications.use'),
+      load: () => import('./alerts/MessageAlerts.js').then((module) => module.MessageAlerts),
+    },
+  ],
   // Its switch's icon on the DSPs page.
   platformSlots: () => import('./platform-slots.js'),
   connectionIntegrations: [messages],
