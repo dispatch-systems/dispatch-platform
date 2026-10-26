@@ -159,7 +159,6 @@ pub async fn upload(
     )?;
     let dsp = c.dsp.id.clone();
     let texting = state.read(move |db| offering(db, &dsp)).await?;
-    ensure(photo.length <= texting.largest(), "upload_too_large", 413)?;
     let added = Added {
         by: c.auth.user.id.clone(),
         name: name.to_owned(),

@@ -28,7 +28,7 @@ use dispatch_core::{
     server::http::{
         input::{Input, Reply, optional_text},
         route::{Dsp, Grant, Member, Route, async_get, async_post, protocol, read, upload, write},
-        upload::Upload,
+        upload::{UPLOAD_LIMIT, Upload},
     },
 };
 use dispatch_phones_contract as texting;
@@ -95,10 +95,11 @@ pub fn routes() -> Vec<Route> {
         ),
         read("/api/dsp/communications/texts/contacts", USE, text_contacts),
         async_get("/api/dsp/communications/texts/files/{id}", USE, text_file),
+        // As large as any upload: texting refuses a picture past its own limits.
         upload(
             "/api/dsp/communications/texts/uploads",
             USE,
-            reply::PHOTO_MOST,
+            UPLOAD_LIMIT,
             add_text_photo,
         ),
         read("/api/dsp/communications/routes", USE, todays_routes),

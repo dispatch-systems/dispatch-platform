@@ -15,9 +15,6 @@ use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// The most one picture or file may be: as much as a phone sends in one text and more.
-pub const LARGEST: u64 = 20 * 1024 * 1024;
-
 /// The folder the DSP's files are kept in.
 fn folder(db: &Store, dsp: &str) -> Result<PathBuf> {
     let owner = db::private_dir(&db.area(dsp, "data")?.join("phones"))?;

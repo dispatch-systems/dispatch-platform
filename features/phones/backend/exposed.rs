@@ -1,16 +1,17 @@
 //! What Phones exposes to every other feature: `texting`, through its contract
 //! (`dispatch_phones_contract`).
 use super::{
-    files, live,
+    LIMITS, files, live,
     storage::{DOMAIN, DeviceStore, FileStore, ReportedFile, TextStore},
 };
 use dispatch_core::{
     Result, State,
     db::{self, Store},
+    ensure,
     server::http::{input::Reply, upload::Upload},
 };
 use dispatch_phones_contract::{
-    Added, Answer, Changes, Condition, File, Outgoing, Phone, Text, Texting,
+    Added, Answer, Changes, Condition, File, Limits, Outgoing, Phone, Text, Texting,
 };
 use std::sync::Arc;
 
@@ -87,6 +88,7 @@ impl Texting for Exposed {
         bytes: Upload,
     ) -> Answer<'a, File> {
         Box::pin(async move {
+            ensure(bytes.length <= LIMITS.largest, "upload_too_large", 413)?;
             let arrived = files::receive(state, dsp, bytes).await?;
             let at = dsp.to_owned();
             let file = ReportedFile {
@@ -126,8 +128,8 @@ impl Texting for Exposed {
                 .await
         })
     }
-    fn largest(&self) -> u64 {
-        files::LARGEST
+    fn limits(&self) -> Limits {
+        LIMITS
     }
     fn file<'a>(
         &'a self,

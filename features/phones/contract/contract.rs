@@ -53,7 +53,7 @@ pub trait Texting: Send + Sync {
         condition: Condition,
     ) -> Answer<'a, Text>;
     /// Keeps a picture for a text not sent yet, `by`'s alone until it's sent: its bytes as
-    /// they arrive, up to `largest()`.
+    /// they arrive, refused before any past `limits().largest`.
     fn add_file<'a>(
         &'a self,
         state: &'a Arc<State>,
@@ -71,8 +71,8 @@ pub trait Texting: Send + Sync {
         id: &'a str,
         by: &'a str,
     ) -> Answer<'a, ()>;
-    /// The most a picture may be, in bytes.
-    fn largest(&self) -> u64;
+    /// What one text may carry, as `send` and `add_file` refuse more.
+    fn limits(&self) -> Limits;
     /// A text's picture or file as kept, to answer a page with; none for one not the DSP's,
     /// one whose bytes haven't come yet, and one added for a text not sent yet but by `viewer`.
     fn file<'a>(
@@ -109,6 +109,17 @@ pub struct Changes {
     pub next: i64,
     /// Whether more changes remain after `next`, to read on for at once.
     pub more: bool,
+}
+
+/// What one text may carry: `send` refuses more, and `add_file` a picture past `largest`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    /// The most characters its body may have.
+    pub body: usize,
+    /// The most pictures or files it may carry.
+    pub files: usize,
+    /// The most bytes each may be.
+    pub largest: u64,
 }
 
 /// A text, as a phone reported it or Dispatch sent it.
@@ -181,8 +192,9 @@ pub struct Outgoing {
     pub phone: Option<String>,
     /// The number to send it to.
     pub to: String,
+    /// What it says, at most `limits().body` characters: empty only with a picture.
     pub body: String,
-    /// Pictures `by` added for it.
+    /// Pictures `by` added for it, at most `limits().files`.
     pub files: Vec<String>,
     /// Who at the DSP sends it.
     pub by: String,

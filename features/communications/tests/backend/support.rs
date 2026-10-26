@@ -26,8 +26,8 @@ use dispatch_core::{
     testing,
 };
 use dispatch_phones_contract::{
-    Added, Answer, Changes, Condition, Direction, File, Origin, Outgoing, Phone, Status, Text,
-    Texting, TextsChanged,
+    Added, Answer, Changes, Condition, Direction, File, Limits, Origin, Outgoing, Phone, Status,
+    Text, Texting, TextsChanged,
 };
 use dispatch_routes_contract::{
     Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, RouteDay, WorkPhone,
@@ -479,8 +479,12 @@ const STAND_IN: &str = "phone_stand_in";
 fn given(kind: &str) -> String {
     format!("{kind}-{}", crypto::hex(&crypto::random::<6>().unwrap()))
 }
-/// The most a picture the stand-in keeps may be, in bytes.
-const LARGEST: u64 = 1024 * 1024;
+/// What one text the stand-in sends may carry.
+const LIMITS: Limits = Limits {
+    body: 1_000,
+    files: 3,
+    largest: 1024 * 1024,
+};
 /// The most texts the stand-in phone gives at once: a page smaller than Phones', so what reads it
 /// reads on as it says.
 const PAGE: usize = 2;
@@ -755,8 +759,8 @@ impl Texting for Standing {
             Ok(())
         })
     }
-    fn largest(&self) -> u64 {
-        LARGEST
+    fn limits(&self) -> Limits {
+        LIMITS
     }
     /// Any file asked of it, a photo.
     fn file<'a>(

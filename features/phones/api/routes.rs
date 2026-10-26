@@ -6,7 +6,7 @@ use super::{
     types::{PhonePairing, PhoneRow, Phones},
 };
 use crate::backend::{
-    files, live, pairing,
+    LIMITS, live, pairing,
     storage::{Device, DeviceStore, PAIRING_MS},
 };
 use dispatch_core::{
@@ -35,7 +35,7 @@ pub fn routes() -> Vec<Route> {
         upload(
             "/api/phones/files/{id}",
             Phone,
-            files::LARGEST,
+            LIMITS.largest,
             phone::file_in,
         ),
         async_get("/api/phones/files/{id}", Phone, phone::file_out),

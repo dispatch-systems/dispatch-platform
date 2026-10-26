@@ -5,6 +5,7 @@ use super::{
     files::{ReportedFile, file_of},
     next_change,
 };
+use crate::backend::LIMITS;
 use dispatch_core::{
     Error, Result,
     db::{Db, Store, n, s},
@@ -60,6 +61,9 @@ pub trait TextStore {
     /// The texts changed after `after`, as they are now: `MOST_TEXTS` at most.
     fn phones_changes(&self, dsp: &str, after: i64) -> Result<Changes>;
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
+    /// Queues `outgoing` from the phone it names, else the one that last texted its number, else
+    /// the one seen last: refused as `invalid_input` for a number that isn't one, or a text with
+    /// nothing in it or past `LIMITS`.
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text>;
     fn phones_retry(&self, dsp: &str, id: &str, at: i64) -> Result<Text>;
     /// Has the demo's stand-in phone say the text it was given delivered, at once.
@@ -209,6 +213,13 @@ impl TextStore for Store {
     }
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text> {
         let to = normal(&outgoing.to).ok_or_else(|| Error::new("invalid_input", 400))?;
+        ensure(
+            (!outgoing.body.trim().is_empty() || !outgoing.files.is_empty())
+                && outgoing.body.chars().count() <= LIMITS.body
+                && outgoing.files.len() <= LIMITS.files,
+            "invalid_input",
+            400,
+        )?;
         let id = crypto::id("text")?;
         let db = self.dsp(dsp)?;
         db.transaction(|| {

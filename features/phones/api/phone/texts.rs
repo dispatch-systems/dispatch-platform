@@ -2,7 +2,7 @@
 //! kept once by its own ID of it.
 use super::access::{Phone, checked_in};
 use crate::backend::{
-    files, live,
+    LIMITS, live,
     storage::{DOMAIN, Kept, MOST_TEXTS, Reported, ReportedFile, TextStore},
 };
 use dispatch_core::{
@@ -76,14 +76,14 @@ fn reported(text: &Value) -> Result<Reported> {
     )?;
     let files = match &text["files"] {
         Value::Null => Vec::new(),
-        Value::Array(files) if files.len() <= 10 => files
+        Value::Array(files) if files.len() <= LIMITS.files => files
             .iter()
             .map(|file| {
                 v::fields(file, &["name", "mime", "size"])?;
                 Ok(ReportedFile {
                     name: v::name(file, "name", 200)?,
                     mime: v::text(file, "mime", 1, 100)?.to_owned(),
-                    size: v::integer(file, "size", 0, files::LARGEST as i64)?,
+                    size: v::integer(file, "size", 0, LIMITS.largest as i64)?,
                 })
             })
             .collect::<Result<_>>()?,
@@ -97,7 +97,7 @@ fn reported(text: &Value) -> Result<Reported> {
         },
         number: normal(v::text(text, "number", 1, 32)?)
             .ok_or_else(|| Error::new("invalid_input", 400))?,
-        body: v::text(text, "body", 0, 10_000)?.to_owned(),
+        body: v::text(text, "body", 0, LIMITS.body)?.to_owned(),
         at: v::integer(text, "at", 0, i64::MAX)?,
         files,
     })

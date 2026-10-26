@@ -145,7 +145,7 @@ async fn add(
 ) -> String {
     let length = bytes.len() as u64;
     let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(bytes))]);
-    let upload = Upload::streamed(length, texting.largest(), chunks)
+    let upload = Upload::streamed(length, texting.limits().largest, chunks)
         .await
         .unwrap();
     let added = Added {
@@ -231,4 +231,51 @@ async fn texting_lets_go_of_a_picture_only_its_adder_has_not_sent() {
     assert!(!shown(twin).await);
     assert!(shown(sent).await);
     assert_eq!(bytes_kept(), 1);
+}
+
+#[tokio::test]
+async fn texting_refuses_a_text_or_a_picture_past_its_limits_before_keeping_it() {
+    testing::install(&[], &[&crate::FEATURE]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    let owner = testing::a_user(&db);
+    crate::backend::demo::demo(&db, &dsp, "America/Los_Angeles").unwrap();
+    let texting = for_dsp(&db, &dsp).unwrap().expect("Phones is on");
+    let limits = texting.limits();
+    let folder = kept(&db, &dsp);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    // A picture past its limit is refused before any of it is kept, however large its upload
+    // allowed.
+    let length = limits.largest + 1;
+    let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from(vec![
+        0;
+        length as usize
+    ]))]);
+    let upload = Upload::streamed(length, u64::MAX, chunks).await.unwrap();
+    let added = Added {
+        by: owner.clone(),
+        name: "door.png".into(),
+        mime: "image/png".into(),
+    };
+    let refused = texting.add_file(&state, &dsp, added, upload).await;
+    assert_eq!(refused.unwrap_err().code.as_str(), "upload_too_large");
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
+    // A text with nothing in it, too long, or with too many pictures is never queued.
+    let text = |body: String, files: Vec<String>| Outgoing {
+        phone: None,
+        to: "(425) 555-0199".into(),
+        body,
+        files,
+        by: owner.clone(),
+    };
+    let many = (0..=limits.files).map(|n| format!("file_{n}")).collect();
+    for (outgoing, why) in [
+        (text(" ".into(), Vec::new()), "nothing in it"),
+        (text("a".repeat(limits.body + 1), Vec::new()), "too long"),
+        (text("The side door".into(), many), "too many pictures"),
+    ] {
+        let refused = texting.send(&state, &dsp, outgoing, always()).await;
+        assert_eq!(refused.unwrap_err().code.as_str(), "invalid_input", "{why}");
+    }
 }
