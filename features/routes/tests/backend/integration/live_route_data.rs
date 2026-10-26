@@ -2,7 +2,8 @@
 //! staged whole into historical route data does; what a read that isn't whole changes, which is
 //! nothing; work phones settled across a restart, and who held them read as other features read
 //! it; the day saved into historical route data and live route data emptied; and Driver Match
-//! told of the drivers it names, and other features of who holds a work phone. Made-up days only.
+//! told of the drivers it names, and other features of who holds a work phone, and on which day.
+//! Made-up days only.
 use dispatch_core::{
     State,
     db::{Db, Store, s},
@@ -13,7 +14,9 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::{LiveKept, RoutesStore, clear_live, save_and_clear_live, save_live_day};
+use dispatch_routes::{
+    LiveKept, RoutesStore, WorkPhone, clear_live, save_and_clear_live, save_day, save_live_day,
+};
 use dispatch_routes_contract::{WorkPhoneHold, WorkPhonesChanged};
 use serde_json::{Map, Value, json};
 use std::{
@@ -24,6 +27,10 @@ use std::{
 const P1: &str = "5550100001";
 const P2: &str = "5550100002";
 const P3: &str = "5550100003";
+/// As far west and as far east as a day goes, 26 hours apart: a day read in the west is over in the
+/// east.
+const WEST: &str = "Etc/GMT+12";
+const EAST: &str = "Etc/GMT-14";
 
 /// A feature hearing of the people the DSP's data names changing, and of who holds its work
 /// phones, on for a test's DSP as every feature is: Driver Match, and texting, as Routes tells
@@ -48,26 +55,26 @@ fn changed(dsp: &str) -> usize {
     let heard = CHANGED.lock().unwrap_or_else(|poison| poison.into_inner());
     heard.iter().filter(|at| *at == dsp).count()
 }
-/// Each time the stand-in heard who holds a DSP's work phones changed, the DSP and what it read
-/// then: how many holds live route data has, and historical route data keeps of today.
-static PHONES: Mutex<Vec<(String, usize, usize)>> = Mutex::new(Vec::new());
-fn phones_changed(state: Arc<State>, dsp: String, _: WorkPhonesChanged) -> Upkeep {
+/// Each time the stand-in heard who held a DSP's work phones on a day changed, the DSP, the day,
+/// and what it read then: how many holds live route data has, and historical route data keeps of
+/// the day.
+static PHONES: Mutex<Vec<(String, String, usize, usize)>> = Mutex::new(Vec::new());
+fn phones_changed(state: Arc<State>, dsp: String, changed: WorkPhonesChanged) -> Upkeep {
     Box::pin(async move {
-        let d = dsp.clone();
-        let read = state.read(move |db| {
-            let today = today(db, &d).to_string();
-            Ok((live_holds(db, &d).len(), saved_holds(db, &d, &today).len()))
-        });
+        let (d, day) = (dsp.clone(), changed.day.clone());
+        let read =
+            state.read(move |db| Ok((live_holds(db, &d).len(), saved_holds(db, &d, &day).len())));
         let (live, saved) = read.await.unwrap();
         let mut heard = PHONES.lock().unwrap_or_else(|poison| poison.into_inner());
-        heard.push((dsp, live, saved));
+        heard.push((dsp, changed.day, live, saved));
     })
 }
-/// What the stand-in read each time it heard who holds the DSP's work phones changed.
-fn phones_heard(dsp: &str) -> Vec<(usize, usize)> {
+/// The day and what the stand-in read each time it heard who held the DSP's work phones changed.
+fn phones_heard(dsp: &str) -> Vec<(String, usize, usize)> {
     let heard = PHONES.lock().unwrap_or_else(|poison| poison.into_inner());
     let of = heard.iter().filter(|(at, ..)| at == dsp);
-    of.map(|(_, live, saved)| (*live, *saved)).collect()
+    of.map(|(_, day, live, saved)| (day.clone(), *live, *saved))
+        .collect()
 }
 
 /// A DSP with a station and Cortex connected, Routes on, with its server's state.
@@ -98,6 +105,11 @@ async fn keep_live(
         .await?
         .expect("Cortex is connected");
     dispatch_routes::keep_live(state, dsp, read, revision).await
+}
+/// Moves the DSP to `zone`, as its owner might on Settings.
+fn moved(db: &Store, dsp: &str, zone: &str) {
+    let name = db.find_dsp(dsp).unwrap().name;
+    db.keep_dsp_profile(dsp, &name, zone, None, None).unwrap();
 }
 /// Today where the DSP is.
 fn today(db: &Store, dsp: &str) -> chrono::NaiveDate {
@@ -644,19 +656,60 @@ async fn a_number_once_held_as_a_work_phone_is_one_live_or_saved() {
 }
 
 #[tokio::test]
-async fn features_hear_who_holds_a_work_phone_changed_once_its_kept() {
+async fn features_hear_who_holds_a_work_phone_changed_once_its_kept_and_of_which_day() {
     let (_root, db, dsp, state) = ready();
-    let mut day = Day::new(&today(&db, &dsp).to_string());
+    // Read in the west, so that once the DSP moves east, the day live route data holds is over.
+    moved(&db, &dsp, WEST);
+    let west_day = today(&db, &dsp);
+    let mut day = Day::new(&west_day.to_string());
+    day.lists.scope.timezone = WEST.into();
+    let heard = |day: chrono::NaiveDate, live, saved| (day.to_string(), live, saved);
     // Each driver claims their phone.
     keep_live(&state, &dsp, day.read(1)).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0)]);
+    assert_eq!(phones_heard(&dsp), [heard(west_day, 2, 0)]);
     // A read moving no phone, its switch shown once, isn't heard; the next confirms it.
     day.phone(0, P3);
     keep_live(&state, &dsp, day.read(2)).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0)]);
+    assert_eq!(phones_heard(&dsp), [heard(west_day, 2, 0)]);
     keep_live(&state, &dsp, day.read(3)).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0), (3, 0)]);
+    assert_eq!(
+        phones_heard(&dsp),
+        [heard(west_day, 2, 0), heard(west_day, 3, 0)]
+    );
     // Saved with its holds, then emptied at the stop.
     save_and_clear_live(&state, &dsp).await.unwrap();
-    assert_eq!(phones_heard(&dsp), [(2, 0), (3, 0), (3, 3), (0, 3)]);
+    assert_eq!(
+        phones_heard(&dsp)[2..],
+        [heard(west_day, 3, 3), heard(west_day, 0, 3)]
+    );
+
+    // The day before, read once it ended and saved with its holds: of that day.
+    let before = west_day - chrono::Duration::days(1);
+    let mut read = Day::new(&before.to_string()).read(1);
+    (read.scope.timezone, read.mode) = (WEST.into(), Mode::Final);
+    let phones = vec![WorkPhone {
+        transporter_id: "driver-1".into(),
+        phone: P1.into(),
+        since: read.started_at,
+        until: None,
+    }];
+    let saved = save_day(&state, &dsp, "before", read, phones);
+    assert!(saved.await.unwrap());
+    assert_eq!(phones_heard(&dsp)[4..], [heard(before, 0, 1)]);
+
+    // Read live again, then emptied once the day is over where the DSP is, as the next day's first
+    // read empties it: of the day it held. Emptied again, holding none: of today there.
+    keep_live(&state, &dsp, day.read(4)).await.unwrap();
+    moved(&db, &dsp, EAST);
+    let east_day = today(&db, &dsp);
+    clear_live(&state, &dsp).await.unwrap();
+    clear_live(&state, &dsp).await.unwrap();
+    assert_eq!(
+        phones_heard(&dsp)[5..],
+        [
+            heard(west_day, 2, 3),
+            heard(west_day, 0, 3),
+            heard(east_day, 0, 0)
+        ]
+    );
 }

@@ -245,7 +245,8 @@ impl Capture {
     }
 }
 
-/// What fixture mode collects: a small, complete day with two drivers.
+/// What fixture mode collects: a small, complete day with two drivers, each out on a work phone of
+/// their own, so a live read of it settles a hold on each.
 pub fn fixture(request: &Request) -> Result<Capture> {
     fixture_in(request, &fixture_scope(request))
 }
@@ -280,19 +281,20 @@ pub(super) fn fixture_in(request: &Request, scope: &Scope) -> Result<Capture> {
         .timestamp_millis();
     let hour = 3_600_000;
     let drivers = [
-        ("driver-1", "Fixture", "Driver", "CX101"),
-        ("driver-2", "Second", "Driver", "CX102"),
+        ("driver-1", "Fixture", "Driver", "CX101", "12065550190"),
+        ("driver-2", "Second", "Driver", "CX102", "12065550191"),
     ];
     let summaries: Vec<Value> = drivers
         .iter()
         .enumerate()
-        .map(|(i, (transporter, _, _, route))| {
+        .map(|(i, (transporter, _, _, route, _))| {
             json!({"itineraryId":format!("itinerary-{}", i + 1),"transporterId":transporter,
                 "companyId":scope.provider,"routeCode":route,"routeCodes":[route],"vinNumber":"1FTFIXTURE00000",
                 "executionStatus":"COMPLETE","progressStatus":"ON_TIME","serviceTypeName":"Standard Parcel",
                 "plannedDepartureTime":midnight,"itineraryStartTime":midnight + 10 * 60_000,
                 "waveStartTime":midnight - 20 * 60_000,"sessionEndTime":midnight + 8 * hour,
                 "projectedCompletionTime":midnight + 8 * hour,"lastStopExecutionTime":midnight + 7 * hour,
+                "lastDriverEventTime":midnight + 7 * hour,
                 "blockDurationInMinutes":600,"totalLocations":2,"completedLocations":2,"totalPackages":3,
                 "packageSummary":{"DELIVERED":3 - i as i64,"REMAINING":0,"UNDELIVERABLE":i as i64},
                 "stopsImpacted":0,"packagesImpacted":i as i64,"totalBreaksDurationSecs":1800,"overtimeDurationSecs":0,
@@ -305,15 +307,15 @@ pub(super) fn fixture_in(request: &Request, scope: &Scope) -> Result<Capture> {
         .collect();
     let transporters: Vec<Value> = drivers
         .iter()
-        .map(|(transporter, first, last, _)| {
+        .map(|(transporter, first, last, _, phone)| {
             json!({"transporterId":transporter,"firstName":first,"lastName":last,"initials":"FD",
-                "workPhoneNumber":"15550000000","personType":["DELIVERY_ASSOCIATE"],"lastLocation":null})
+                "workPhoneNumber":phone,"personType":["DELIVERY_ASSOCIATE"],"lastLocation":null})
         })
         .collect();
     let companies = json!([{"companyId":scope.provider,"companyName":"Fixture Logistics","companyShortCode":"FXTR","id":scope.provider}]);
     let summaries_body = json!({"itinerarySummaries":summaries,"transporters":transporters,"companies":companies,
         "transporterPackageSummaries":[],"workHourAnomalies":[],"backendTime":started_at});
-    let route_summaries = json!({"rmsRouteSummaries":drivers.iter().enumerate().map(|(i, (transporter, _, _, route))| {
+    let route_summaries = json!({"rmsRouteSummaries":drivers.iter().enumerate().map(|(i, (transporter, _, _, route, _))| {
             json!({"routeId":format!("{}", 1000 + i),"rmsRouteId":format!("rms-{}", i + 1),"routeCode":route,
                 "serviceAreaId":scope.service_area_id,"companyId":scope.provider,"serviceTypeName":"Standard Parcel",
                 "routeStatus":"COMPLETE","progressStatus":"ON_TIME","plannedDepartureTime":midnight,
@@ -344,7 +346,7 @@ pub(super) fn fixture_in(request: &Request, scope: &Scope) -> Result<Capture> {
     let itineraries = drivers
         .iter()
         .enumerate()
-        .map(|(i, (transporter, _, _, route))| {
+        .map(|(i, (transporter, _, _, route, _))| {
             let id = format!("itinerary-{}", i + 1);
             let base = 10 * i;
             let stops = json!([

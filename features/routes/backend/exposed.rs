@@ -10,15 +10,12 @@ use dispatch_core::{
     manifest::people::Source,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, MOST_IDS, RouteDay, Undelivered,
-    WorkPhone, WorkPhoneHold,
+    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, MOST_DAYS, MOST_IDS, RouteDay,
+    Undelivered, WorkPhone, WorkPhoneHold,
 };
 use rusqlite::params;
 use serde_json::Value;
 use std::collections::HashMap;
-
-/// The most days one read covers.
-const LONGEST: i64 = 366;
 
 /// The days of a range with an active publication at the station, and whether each is final.
 const DAYS: &str = "SELECT day,min(mode='final') complete FROM route_publications \
@@ -113,7 +110,7 @@ impl DriverRoutes for Exposed {
         from: &str,
         to: &str,
     ) -> Result<Driven> {
-        validate::days(from, to, LONGEST)?;
+        validate::days(from, to, MOST_DAYS)?;
         validate::ids(ids, MOST_IDS)?;
         let station = db.profile(dsp)?.station_code;
         driven(&*db.routes_db(dsp)?, &station, Some(ids), from, to, false)

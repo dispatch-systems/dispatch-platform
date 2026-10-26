@@ -30,11 +30,11 @@ use dispatch_phones_contract::{
     Texting, TextsChanged,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, RouteDay, WorkPhone,
+    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, MOST_DAYS, RouteDay, WorkPhone,
     WorkPhoneHold, WorkPhonesChanged,
 };
 use dispatch_slack::{kit::Bot, testing as slack};
-use dispatch_vans_contract::{AmazonFleet, Van};
+use dispatch_vans_contract::{AmazonFleet, MOST_VINS, Van};
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -315,11 +315,6 @@ pub const DRIVERS: Source = Source::new(&SourceInfo {
     label: "Drivers",
     order: 90,
 });
-/// The most days one read of drivers' routes reaches, and VINs one read of the fleet names, as
-/// Routes and Vans refuse more.
-const ROUTES_DAYS_MOST: i64 = 366;
-const FLEET_VINS_MOST: usize = 100;
-
 /// What the stand-ins know of a DSP.
 #[derive(Default)]
 struct Known {
@@ -367,7 +362,9 @@ pub fn know(state: &State, dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>
     state.changed(Some(dsp));
 }
 /// Has the stand-ins answer who held the DSP's work phones: live route data's holds of its live
-/// day `live_day`, if it holds one, and each saved day's; then says they changed, as Routes does.
+/// day `live_day`, if it holds one, and each saved day's; then says, as Routes does, of which days
+/// they changed: the live day it held before, as emptying it does, the one it holds now, and each
+/// saved one.
 pub async fn held(
     state: &Arc<State>,
     dsp: &str,
@@ -375,12 +372,21 @@ pub async fn held(
     live: Vec<WorkPhoneHold>,
     saved: Vec<(String, WorkPhoneHold)>,
 ) {
-    {
+    let changed: BTreeSet<String> = {
         let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
         let known = known.entry(dsp.to_owned()).or_default();
+        let before = known.live_day.take();
         (known.live_day, known.live, known.saved) = (live_day.map(str::to_owned), live, saved);
+        let saved = known.saved.iter().map(|(day, _)| day.clone());
+        before
+            .into_iter()
+            .chain(known.live_day.clone())
+            .chain(saved)
+            .collect()
+    };
+    for day in changed {
+        events::publish(state, dsp, WorkPhonesChanged { day }).await;
     }
-    events::publish(state, dsp, WorkPhonesChanged).await;
 }
 /// Has live route data's stand-in answer `routes` as the live day's, as a live read leaves them,
 /// which Routes says nothing of.
@@ -512,7 +518,7 @@ impl DriverRoutes for Standing {
     /// more days than Routes reads.
     fn routes(&self, _: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Driven> {
         let day = |day: &str| NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
-        if (day(to) - day(from)).num_days() >= ROUTES_DAYS_MOST {
+        if (day(to) - day(from)).num_days() >= MOST_DAYS {
             return Err(Error::new("invalid_input", 400));
         }
         let routes: Vec<RouteDay> = known(dsp, |known| {
@@ -790,7 +796,7 @@ impl AmazonFleet for Standing {
     }
     /// The vans it knows under `vins`; refused for more than Vans reads.
     fn vans(&self, _: &Store, dsp: &str, vins: &[String]) -> Result<Vec<Van>> {
-        if vins.len() > FLEET_VINS_MOST {
+        if vins.len() > MOST_VINS {
             return Err(Error::new("invalid_input", 400));
         }
         Ok(known(dsp, |known| {

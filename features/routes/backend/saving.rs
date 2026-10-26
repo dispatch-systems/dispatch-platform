@@ -68,8 +68,8 @@ impl Drop for Saving {
 /// `finished_at`) later than the one the day has, replacing it whole, down to the day's work
 /// phones, which become `phones`; an earlier read changes nothing and is swept. Once it's the
 /// day's read it tells Driver Match of its drivers (`people.changed`), then every feature that
-/// hears it of the day's holds (`routes.work_phones_changed`). Answers whether it is the day's
-/// read now.
+/// hears it of the day's holds (`routes.work_phones_changed`, naming the day). Answers whether it
+/// is the day's read now.
 ///
 /// `key` is the read's own, unique among the DSP's reads: a token of up to 128 characters,
 /// such as the saving feature's name and the read's time. A key already the day's read
@@ -92,12 +92,13 @@ pub async fn save_day(
     let _saving = Saving::start(dsp, key)?;
     let d = dsp.to_owned();
     let on = move |db: &Store| ensure(db.feature_enabled(&d, COLLECTION)?, "routes_off", 409);
+    let saved_day = capture.scope.date.clone();
     // Like a job's work, a save has no one to try it again.
     State::patiently(async {
         let (d, k, day, check) = (
             dsp.to_owned(),
             key.to_owned(),
-            capture.scope.date.clone(),
+            saved_day.clone(),
             on.clone(),
         );
         let mode = capture.mode;
@@ -134,7 +135,7 @@ pub async fn save_day(
         if current {
             // Drivers the standard collection hasn't read are told apart at once.
             events::publish(state, dsp, PeopleChanged).await;
-            events::publish(state, dsp, WorkPhonesChanged).await;
+            events::publish(state, dsp, WorkPhonesChanged { day: saved_day }).await;
         }
         Ok(current)
     })

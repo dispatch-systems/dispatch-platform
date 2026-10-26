@@ -6,7 +6,7 @@
 //! outside what's collected is unknown. Routes exposes it as `driver_routes`, from historical
 //! route data; and today as live reads leave it, with the work phone each driver holds now, as
 //! `live_route_data` (`LiveRouteData`). Who held which work phone, today and on a saved day, is
-//! in both, and `WorkPhonesChanged` says when it changed.
+//! in both, and `WorkPhonesChanged` says when it changed, and of which day.
 use dispatch_core::{
     Result,
     db::Store,
@@ -15,6 +15,8 @@ use dispatch_core::{
 
 /// The most IDs one read of a driver's routes names.
 pub const MOST_IDS: usize = 16;
+/// The most days one read of a driver's routes covers, its first and last among them.
+pub const MOST_DAYS: i64 = 366;
 
 /// Reads the routes a DSP's drivers drove, as Routes keeps them for the DSP's station.
 pub trait DriverRoutes: Send + Sync {
@@ -25,8 +27,8 @@ pub trait DriverRoutes: Send + Sync {
     /// What the driver holding `ids` drove from `from` to `to`, YYYY-MM-DD in the DSP's own
     /// time, and which of those days were collected; no IDs answer the days alone. An ID is
     /// matched exactly. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`; and
-    /// with `invalid_input`, `from` after `to`, more than 366 days, more than `MOST_IDS` IDs, or
-    /// an ID that's empty or over 128 characters.
+    /// with `invalid_input`, `from` after `to`, more than `MOST_DAYS` days, more than `MOST_IDS`
+    /// IDs, or an ID that's empty or over 128 characters.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str)
     -> Result<Driven>;
     /// What every driver drove on `day`, YYYY-MM-DD in the DSP's own time, each itinerary by
@@ -175,12 +177,15 @@ pub struct WorkPhoneHold {
     pub until: Option<i64>,
 }
 
-/// Who holds the DSP's work phones changed, once it's kept: a live read claimed, moved, handed
-/// over or withdrew a hold; live route data was emptied; or a day was saved into historical
-/// route data with its holds. Published after `people.changed`
-/// when both are, so the drivers it names are among the DSP's people.
+/// Who held the DSP's work phones on a day changed, once it's kept: a live read claimed, moved,
+/// handed over or withdrew a hold; live route data was emptied of the day; or the day was saved
+/// into historical route data with its holds. Published after `people.changed` when both are, so
+/// the drivers it names are among the DSP's people.
 #[derive(Clone, Debug)]
-pub struct WorkPhonesChanged;
+pub struct WorkPhonesChanged {
+    /// The day whose holds changed, YYYY-MM-DD in the DSP's own time.
+    pub day: String,
+}
 impl Event for WorkPhonesChanged {
     const NAME: &'static str = "routes.work_phones_changed";
 }

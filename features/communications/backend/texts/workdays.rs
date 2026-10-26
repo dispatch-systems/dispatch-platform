@@ -5,12 +5,8 @@ use super::{live_day::LiveDay, storage::Text, zone};
 use crate::{api::types::Workday, backend::today};
 use chrono::NaiveDate;
 use dispatch_core::{Result, db::Store, foundation::clock};
-use dispatch_routes_contract::{self as routes, RouteDay};
+use dispatch_routes_contract::{self as routes, MOST_DAYS, RouteDay};
 use std::collections::BTreeSet;
-
-/// How many days one read of a driver's routes reaches, its first and last among them: Routes
-/// reads a year at most.
-const ROUTES_DAYS_MOST: i64 = 366;
 
 /// The days `texts` were written on, each with the route and van the driver `id` of the source
 /// `source` drove that day, as far as Routes knows.
@@ -68,7 +64,7 @@ fn reaches(days: &BTreeSet<NaiveDate>) -> Vec<(NaiveDate, NaiveDate)> {
     let mut reaches: Vec<(NaiveDate, NaiveDate)> = Vec::new();
     for &day in days {
         match reaches.last_mut() {
-            Some((from, to)) if (day - *from).num_days() < ROUTES_DAYS_MOST => *to = day,
+            Some((from, to)) if (day - *from).num_days() < MOST_DAYS => *to = day,
             _ => reaches.push((day, day)),
         }
     }
