@@ -331,6 +331,8 @@ pub struct Elsewhere {
     pub waiting: bool,
     /// For a work one, the work phone they hold now, if any; for a number's, the number.
     pub number: Option<String>,
+    /// For a work one, their ID of the source naming who held the DSP's work phones.
+    pub driver_id: Option<String>,
     /// For a Slack one, the workspace and their ID in it.
     pub team_id: Option<String>,
     pub user_id: Option<String>,

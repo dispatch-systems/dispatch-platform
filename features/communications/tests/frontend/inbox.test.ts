@@ -32,6 +32,7 @@ const conversation = (
   kind: 'slack',
   teamId: 'T0FIXTURE1',
   number: null,
+  driverId: null,
   contact: false,
   blocked: false,
   with: { userId: `U${id}`, name: id, code: null, role: null, title: null, photo: null },
@@ -81,6 +82,8 @@ test('each section’s list keeps the server’s order as it changes, and leaves
     moreTexts: true,
     workspaces: [],
     texting: true,
+    routes: false,
+    phones: [],
     typing: { version: 0, writing: [] },
   };
   const next = updated(inbox, {
@@ -90,6 +93,8 @@ test('each section’s list keeps the server’s order as it changes, and leaves
     typing: { version: 0, writing: [] },
     workspaces: [],
     texting: true,
+    routes: false,
+    phones: [],
     conversations: [
       // Waiting longest, it comes first.
       conversation('e', 60, 50),

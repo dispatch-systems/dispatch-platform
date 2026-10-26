@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { Check, Users } from 'lucide-react';
+import { useCallback, type ReactNode } from 'react';
+import { Users } from 'lucide-react';
 import type { Communications, Conversation, Group, Writing } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
@@ -8,6 +8,7 @@ import { listingOf, moreIn, rows as listed, sectionOf, type Row, type Section } 
 import { Party, SenderFace } from './Face.js';
 import type { Draft } from './GroupDraft.js';
 import { GroupFaces } from './GroupFaces.js';
+import { ListRow } from './ListRow.js';
 import { More } from './More.js';
 import { Name, Wait, typingNote } from './parts.js';
 import { useFound } from './useFound.js';
@@ -19,7 +20,7 @@ import { useFound } from './useFound.js';
 // open at the top while the list doesn't show it, as one New message or Contacts opened before it
 // holds a message.
 
-type Listing = {
+export type Listing = {
   /** What's open: a conversation or a group, by its ID. */
   open?: string;
   typing: readonly Writing[];
@@ -156,10 +157,9 @@ export function ConversationList({
 
 /**
  * A conversation in the list: who it's with, when they last wrote, and what was written last, or
- * who at the DSP is writing in it. One waiting shows how long it has, and a check that marks it
- * done without a reply while it's pointed at.
+ * who at the DSP is writing in it; while it waits, how long it has, and Done.
  */
-function ConversationRow({
+export function ConversationRow({
   conversation,
   open,
   typing,
@@ -167,56 +167,56 @@ function ConversationRow({
   now,
   select,
   done,
-}: Listing & { conversation: Conversation }) {
-  const { with: person, last } = conversation;
+  below,
+}: Pick<Listing, 'open' | 'typing' | 'timeZone' | 'now' | 'select' | 'done'> & {
+  conversation: Conversation;
+  /** What else the row shows, under what was written last. */
+  below?: ReactNode;
+}) {
+  const { with: person } = conversation;
   const waits = conversation.state === 'waiting';
-  const writing = typing.filter((writer) => writer.conversationId === conversation.id);
-  const selected = open === conversation.id;
   return (
-    <li className={`convo${selected ? ' selected' : ''}${waits ? ' waits' : ''}`}>
-      <button
-        className="convo-open"
-        aria-current={selected || undefined}
-        onClick={() => select(conversation.id)}
-      >
-        <Party conversation={conversation} size="list" />
-        <span className="convo-body">
-          <span className="line1">
-            <strong>
-              <Name name={person.name} matched={conversation.matched} />
-            </strong>
-            {conversation.lastAt !== null && (
-              <time>{listTime(conversation.lastAt, timeZone, now)}</time>
-            )}
-          </span>
-          <span className="line2">
-            {writing.length ? (
-              <span className="preview typing-note">{typingNote(writing)}</span>
-            ) : (
-              <>
-                {last?.sender && <SenderFace sender={last.sender} size="sender" />}
-                <span className="preview">{last ? preview(last) : ''}</span>
-              </>
-            )}
-            {waits && conversation.waitingSince !== null && (
-              <Wait since={conversation.waitingSince} now={now} />
-            )}
-          </span>
-        </span>
-      </button>
-      {waits && (
-        <button className="convo-done" aria-label="Done" onClick={() => done(conversation)}>
-          <Check size={16} />
-        </button>
-      )}
-    </li>
+    <ListRow
+      selected={open === conversation.id}
+      waits={waits}
+      face={<Party conversation={conversation} size="list" />}
+      name={<Name name={person.name} matched={conversation.matched} />}
+      time={conversation.lastAt !== null && listTime(conversation.lastAt, timeZone, now)}
+      wait={
+        waits &&
+        conversation.waitingSince !== null && <Wait since={conversation.waitingSince} now={now} />
+      }
+      line={<Written conversation={conversation} typing={typing} />}
+      below={below}
+      open={() => select(conversation.id)}
+      done={() => done(conversation)}
+    />
+  );
+}
+/** What was written last in a conversation, under who at the DSP wrote it, or who is writing in it
+ * now. */
+function Written({
+  conversation,
+  typing,
+}: {
+  conversation: Conversation;
+  typing: readonly Writing[];
+}) {
+  const writing = typing.filter((writer) => writer.conversationId === conversation.id);
+  if (writing.length) return <span className="preview typing-note">{typingNote(writing)}</span>;
+  const { last } = conversation;
+  return (
+    <>
+      {last?.sender && <SenderFace sender={last.sender} size="sender" />}
+      <span className="preview">{last ? preview(last) : ''}</span>
+    </>
   );
 }
 
 /**
  * A group in the list: two of its people, its name and how many it went to, when it was last
  * written in, and what was, with its writer's first name. While anything under it waits, how
- * long the longest has, and a check that marks all of it done while it's pointed at.
+ * long the longest has, and a check that marks all of it done.
  */
 function GroupRow({
   group,
@@ -227,38 +227,29 @@ function GroupRow({
   doneGroup,
 }: Listing & { group: Group }) {
   const waits = group.state === 'waiting';
-  const selected = open === group.id;
   const last = group.last;
   const writer = last?.sender?.name ?? last?.from?.name ?? '';
   return (
-    <li className={`convo group${selected ? ' selected' : ''}${waits ? ' waits' : ''}`}>
-      <button
-        className="convo-open"
-        aria-current={selected || undefined}
-        onClick={() => openGroup(group.id)}
-      >
-        <GroupFaces faces={group.faces} size="list" />
-        <span className="convo-body">
-          <span className="line1">
-            <strong>
-              {group.name}
-              <span className="people"> · {group.people}</span>
-            </strong>
-            <time>{listTime(group.lastAt, timeZone, now)}</time>
-          </span>
-          <span className="line2">
-            <span className="preview">
-              {last ? `${writer.split(' ')[0] ?? writer}: ${preview(last)}` : ''}
-            </span>
-            {waits && group.waitingSince !== null && <Wait since={group.waitingSince} now={now} />}
-          </span>
+    <ListRow
+      className="group"
+      selected={open === group.id}
+      waits={waits}
+      face={<GroupFaces faces={group.faces} size="list" />}
+      name={
+        <>
+          {group.name}
+          <span className="people"> · {group.people}</span>
+        </>
+      }
+      time={listTime(group.lastAt, timeZone, now)}
+      wait={waits && group.waitingSince !== null && <Wait since={group.waitingSince} now={now} />}
+      line={
+        <span className="preview">
+          {last ? `${writer.split(' ')[0] ?? writer}: ${preview(last)}` : ''}
         </span>
-      </button>
-      {waits && (
-        <button className="convo-done" aria-label="Done" onClick={() => doneGroup(group)}>
-          <Check size={16} />
-        </button>
-      )}
-    </li>
+      }
+      open={() => openGroup(group.id)}
+      done={() => doneGroup(group)}
+    />
   );
 }

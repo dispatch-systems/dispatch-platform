@@ -8,8 +8,9 @@ import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Shown } from '../display/display.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 
-// Writing a message, in a conversation or to a group: up to 3,000 characters, and, but by text,
-// up to ten photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added. Enter sends,
+// Writing a message, in a conversation or to a group: up to 3,000 characters, and up to ten
+// photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added, by text to the DSP's
+// phones, which send them with it. Enter sends,
 // Shift+Enter starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with
 // it sends. While someone writes in a conversation, their teammates see they are, said again every
 // few seconds. A text says the number it goes to by its last digits, when the name doesn't.
@@ -35,6 +36,7 @@ export function Composer({
   writable,
   ready: whom = true,
   photos: attaching = true,
+  texted = false,
   to,
   send: deliver,
   typing,
@@ -45,6 +47,8 @@ export function Composer({
   writable: boolean;
   /** Whether photos can be added to it. */
   photos?: boolean;
+  /** Whether it goes by text, its photos kept by the DSP's phones. */
+  texted?: boolean;
   /** The last digits of the number a text goes to, when the name doesn't say it. */
   to?: string;
   /** Whether what's written can go, as once there's someone to send it to. */
@@ -106,7 +110,7 @@ export function Composer({
     }));
     setPhotos((now) => [...now, ...adding]);
     for (const photo of adding)
-      addPhoto(photo.file, undefined, photo.controller.signal).then(
+      addPhoto(photo.file, texted, photo.controller.signal).then(
         (uploaded) =>
           setPhotos((now) =>
             now.map((each) => (each.key === photo.key ? { ...each, uploaded } : each)),

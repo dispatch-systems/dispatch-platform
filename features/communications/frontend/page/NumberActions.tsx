@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Copy, Ellipsis, Phone, PhoneOff, UserPlus } from 'lucide-react';
 import type { Conversation } from '../../api/index.js';
 import { blockNumber, saveContact } from '../../api/client.js';
 import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Modal, Popover } from '../../../../core/shell/frontend/ui/index.js';
+import { useDismiss } from './useDismiss.js';
 
 // What someone at the DSP does with the number a conversation texts: save a name for it, shared
 // with everyone at the DSP, while Driver Match knows no one by it; copy it; block or unblock it.
@@ -84,21 +85,7 @@ function SaveContact({
     closed();
   });
   const naming = name !== undefined;
-  useEffect(() => {
-    if (!naming || confirming) return;
-    const outside = (event: PointerEvent) => {
-      if (!editor.current?.contains(event.target as Node)) leave();
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') leave();
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', escape);
-    };
-  }, [naming, confirming, leave]);
+  useDismiss(editor, naming && !confirming, leave);
   // Its words, which on a phone only its mark shows.
   const label = conversation.contact ? 'Edit contact' : 'Save contact';
   const saveable = Boolean(name?.trim()) && !save.busy;

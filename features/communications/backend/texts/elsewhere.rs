@@ -50,11 +50,14 @@ fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
         Some(live) => live.held_by(db, dsp, ids)?,
         None => None,
     };
-    if conversation.is_none() && holding.is_none() {
-        return Ok(None);
-    }
+    let driver_id = match (&conversation, &holding) {
+        (Some(each), _) => each.driver.as_ref().map(|(_, id)| id.clone()),
+        (None, Some(held)) => Some(held.driver_id.clone()),
+        (None, None) => return Ok(None),
+    };
     Ok(Some(Elsewhere {
         number: holding.map(|held| work_number(&held.phone)),
+        driver_id,
         ..found(ConversationKind::Work, conversation)
     }))
 }
@@ -108,6 +111,7 @@ fn slack(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
             .is_some_and(|each| each.state == ConversationState::Waiting),
         conversation_id: conversation.map(|each| each.id),
         number: None,
+        driver_id: None,
         team_id: Some(team),
         user_id: Some(user),
     }))
@@ -126,6 +130,7 @@ fn found(kind: ConversationKind, conversation: Option<TextConversation>) -> Else
             .is_some_and(|each| each.state == ConversationState::Waiting),
         conversation_id: conversation.map(|each| each.id),
         number: None,
+        driver_id: None,
         team_id: None,
         user_id: None,
     }

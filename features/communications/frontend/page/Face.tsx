@@ -32,8 +32,8 @@ export function Face({
 }
 
 /** What a phone in a person's place marks: a number no one is known by, the DSP's own phone, which
- * sent a text from its own messaging app, or a number blocked. */
-const marks = { number: Phone, own: Smartphone, blocked: PhoneOff };
+ * sent a text from its own messaging app, a work phone nobody held, or a number blocked. */
+const marks = { number: Phone, own: Smartphone, work: Smartphone, blocked: PhoneOff };
 
 /** A phone in a person's place, as large as where it's shown, marking what it is (`mark`). */
 export function PhoneFace({ size, mark = 'number' }: { size: Size; mark?: keyof typeof marks }) {
@@ -45,9 +45,12 @@ export function PhoneFace({ size, mark = 'number' }: { size: Size; mark?: keyof 
   );
 }
 
-/** Whom a conversation is with, as large as where they're shown: by their number alone, a phone. */
+/** Whom a conversation is with, as large as where they're shown: by their number alone, or a work
+ * phone nobody held, a phone. */
 export function Party({ conversation, size }: { conversation: Conversation; size: Size }) {
   const { with: person } = conversation;
+  if (conversation.kind === 'work' && !conversation.driverId)
+    return <PhoneFace size={size} mark="work" />;
   return conversation.kind === 'number' && !person.code && !conversation.contact ? (
     <PhoneFace size={size} />
   ) : (

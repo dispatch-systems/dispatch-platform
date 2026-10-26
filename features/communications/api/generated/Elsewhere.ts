@@ -11,6 +11,10 @@ export type Elsewhere = { kind: ConversationKind, conversationId: string | null,
  */
 number: string | null,
 /**
+ * For a work one, their ID of the source naming who held the DSP's work phones.
+ */
+driverId: string | null,
+/**
  * For a Slack one, the workspace and their ID in it.
  */
 teamId: string | null, userId: string | null, };

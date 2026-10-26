@@ -1,8 +1,18 @@
 import { Fragment, useContext, useLayoutEffect, useRef } from 'react';
-import { CircleAlert, FileText, RotateCw, Users } from 'lucide-react';
-import type { Conversation, Message, MessageFile, Writing } from '../../api/index.js';
+import { ArrowLeftRight, CircleAlert, FileText, RotateCw, Users } from 'lucide-react';
+import type { Conversation, Message, MessageFile, Workday, Writing } from '../../api/index.js';
 import { fileUrl } from '../../api/client.js';
-import { clock, dayLabel, fileStatus, isPhoto, size, textStatus } from '../format.js';
+import {
+  clock,
+  dayLabel,
+  dayOf,
+  fileStatus,
+  isPhoto,
+  lastFour,
+  size,
+  textStatus,
+  workdayLabel,
+} from '../format.js';
 import { runs } from '../messages.js';
 import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
@@ -11,6 +21,7 @@ import { Shown } from '../display/display.js';
 import { Face, Party, SenderFace } from './Face.js';
 import { More } from './More.js';
 import type { OpensProfile } from './parts.js';
+import { RouteCode, WorkPhone } from './RouteFacts.js';
 
 // A conversation's messages, in the order written, under the day each was written: the
 // member's on the left beside their photo, which opens their profile, the DSP's on the right
@@ -18,7 +29,9 @@ import type { OpensProfile } from './parts.js';
 // which opens it; and below, those at the DSP writing in it now. Each run's time is under it, or
 // each message's, as the member chose (`Shown`); plain, every run is under its writer's name and
 // time instead. A text the DSP sent says how it went under it, the run's last, or one that
-// failed, with Retry.
+// failed, with Retry. A driver's work conversation begins each workday with a line across it, with
+// the route and van they drove and the work phone they texted on, earlier days dimmed, and marks
+// where they texted from another work phone that day.
 
 export function Thread({
   conversation,
@@ -31,6 +44,7 @@ export function Thread({
   profile,
   openGroup,
   retry,
+  workdays,
 }: {
   conversation: Conversation;
   messages: readonly Message[];
@@ -45,6 +59,8 @@ export function Thread({
   openGroup: (id: string) => void;
   /** Sends again a text the DSP sent that failed. */
   retry?: (message: Message) => void;
+  /** For a driver's work conversation, each workday's route and van. */
+  workdays?: readonly Workday[];
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   // Where it was before the latest change: at the latest message, or how far up, which older
@@ -74,66 +90,89 @@ export function Thread({
   const texted = conversation.kind !== 'slack';
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
+  const today = dayOf(now, timeZone);
   return (
     <div className="thread" ref={scroller} onScroll={scrolled}>
       {more && <More read={readOlder} />}
       <div className="thread-messages">
         {runs(messages, timeZone).map(({ day, at, runs }) => (
-          <Fragment key={day}>
-            <div className="day">{dayLabel(at, timeZone, now)}</div>
-            {runs.map(({ key, messages: written }) => {
+          <div
+            key={day}
+            className={workdays && day !== today ? 'day-messages past' : 'day-messages'}
+          >
+            {workdays ? (
+              <WorkdayLine
+                label={workdayLabel(day, timeZone, now)}
+                workday={workdays.find((each) => each.day === day)}
+                phone={runs[0]?.messages[0]?.number ?? null}
+                today={day === today}
+              />
+            ) : (
+              <div className="day">{dayLabel(at, timeZone, now)}</div>
+            )}
+            {runs.map(({ key, messages: written }, at) => {
               const first = written[0]!;
               const sender = first.sender;
+              const before = runs[at - 1]?.messages[0]?.number;
+              const switched = workdays && before && first.number && first.number !== before;
               return (
-                <div key={key} className={`msg-group ${first.direction}`}>
-                  {sender ? (
-                    <SenderFace sender={sender} size="message" />
-                  ) : texted ? (
-                    <Party conversation={conversation} size="message" />
-                  ) : (
-                    // Left out of Tab's order: who it's with, above, opens it from the keyboard.
-                    <button
-                      className="face-button"
-                      tabIndex={-1}
-                      aria-label={person.name}
-                      {...profile}
-                    >
-                      <Face {...person} size="message" />
-                    </button>
+                <Fragment key={key}>
+                  {switched && (
+                    <div className="switched">
+                      <ArrowLeftRight aria-hidden="true" />
+                      Switched to {lastFour(first.number!)}
+                    </div>
                   )}
-                  <div className="stack">
-                    {(sender || plain) && (
-                      <div className="sender">
-                        <span className="sender-name">{sender?.name ?? person.name}</span>
-                        {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
-                        {first.group && (
-                          <button className="to-group" onClick={() => openGroup(first.group!.id)}>
-                            <Users size={11} aria-hidden="true" />
-                            {first.group.name}
-                          </button>
-                        )}
-                      </div>
+                  <div className={`msg-group ${first.direction}`}>
+                    {sender ? (
+                      <SenderFace sender={sender} size="message" />
+                    ) : texted ? (
+                      <Party conversation={conversation} size="message" />
+                    ) : (
+                      // Left out of Tab's order: who it's with, above, opens it from the keyboard.
+                      <button
+                        className="face-button"
+                        tabIndex={-1}
+                        aria-label={person.name}
+                        {...profile}
+                      >
+                        <Face {...person} size="message" />
+                      </button>
                     )}
-                    {written.map((message, at) => {
-                      const last = at === written.length - 1;
-                      return (
-                        <Fragment key={message.id}>
-                          <Written message={message} texted={texted} />
-                          <Meta
-                            message={message}
-                            time={!plain && (last || times === 'each_message')}
-                            status={last || message.status === 'failed'}
-                            timeZone={timeZone}
-                            retry={retry}
-                          />
-                        </Fragment>
-                      );
-                    })}
+                    <div className="stack">
+                      {(sender || plain) && (
+                        <div className="sender">
+                          <span className="sender-name">{sender?.name ?? person.name}</span>
+                          {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
+                          {first.group && (
+                            <button className="to-group" onClick={() => openGroup(first.group!.id)}>
+                              <Users size={11} aria-hidden="true" />
+                              {first.group.name}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {written.map((message, at) => {
+                        const last = at === written.length - 1;
+                        return (
+                          <Fragment key={message.id}>
+                            <Written message={message} texted={texted} />
+                            <Meta
+                              message={message}
+                              time={!plain && (last || times === 'each_message')}
+                              status={last || message.status === 'failed'}
+                              timeZone={timeZone}
+                              retry={retry}
+                            />
+                          </Fragment>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                </Fragment>
               );
             })}
-          </Fragment>
+          </div>
         ))}
         {writing.map((writer) => (
           <div key={writer.userId} className="msg-group out">
@@ -151,6 +190,31 @@ export function Thread({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** The line across a driver's work conversation that begins a workday: the day, the route and van
+ * they drove, and the work phone its first text went through; today's marked. */
+function WorkdayLine({
+  label,
+  workday,
+  phone,
+  today,
+}: {
+  label: string;
+  workday?: Workday;
+  phone: string | null;
+  today: boolean;
+}) {
+  return (
+    <div className={today ? 'workday today' : 'workday'}>
+      <span className="workday-tag">
+        <b>{label}</b>
+        {workday?.route && <RouteCode code={workday.route} />}
+        {workday?.van && <span>Van {workday.van}</span>}
+        {phone && <WorkPhone number={phone} />}
+      </span>
     </div>
   );
 }

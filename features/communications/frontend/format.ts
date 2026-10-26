@@ -1,4 +1,4 @@
-import type { FileStatus, Message, TextStatus } from '../api/index.js';
+import type { FileStatus, Message, Pace, TextStatus } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
 import { phoneText } from '../../../core/shell/frontend/lib/format.js';
@@ -44,6 +44,22 @@ export function dayLabel(at: number, timeZone: string, now = Date.now()) {
 }
 /** The day `at` falls on, to tell messages of one day from the next. */
 export const dayOf = (at: number, timeZone: string) => localDate(timeZone, new Date(at));
+/** The workday `day`, YYYY-MM-DD, as the line that begins it reads: "Today · Sun, Oct 25",
+ * "Yesterday · Sat, Oct 24", "Fri, Oct 23", with its year outside this one. */
+export function workdayLabel(day: string, timeZone: string, now = Date.now()) {
+  const today = localDate(timeZone, new Date(now));
+  const [year = 0, month = 1, date = 1] = day.split('-').map(Number);
+  const shown = dateFormatter('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(day.slice(0, 4) === today.slice(0, 4) ? {} : { year: 'numeric' }),
+    timeZone: 'UTC',
+  }).format(Date.UTC(year, month - 1, date));
+  if (day === today) return `Today · ${shown}`;
+  if (day === shiftDate(today, -1)) return `Yesterday · ${shown}`;
+  return shown;
+}
 
 /** How long someone has waited on an answer, and how late that is: amber from 15 minutes, red from 30. */
 export function waited(since: number, now = Date.now()) {
@@ -71,6 +87,14 @@ export const textStatus: Record<TextStatus, string> = {
   delivered: 'Delivered',
   failed: 'Not sent',
 };
+/** How a route keeps up, as it reads; on time, it's left unsaid. */
+export const paceText: Record<Pace, string> = {
+  behind: 'Behind',
+  at_risk: 'At risk',
+  done: 'Done',
+};
+/** A number's last four digits, which a work phone goes by. */
+export const lastFour = (number: string) => number.replace(/\D/g, '').slice(-4);
 /** A number as it reads beside a name, while the name doesn't say it already: none when it does. */
 export function numberBeside(name: string, number: string) {
   const shown = phoneText(number);
