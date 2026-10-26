@@ -4,7 +4,8 @@ import type { Group } from "./Group";
 
 /**
  * `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
- * to it, the closest first, or the answered ones before `before`, in every workspace or one.
+ * to it, the closest first, or the answered ones before `before`, in every workspace or one, or
+ * of the numbers that text the DSP (`kind=number`).
  */
 export type Conversations = { conversations: Array<Conversation>,
 /**

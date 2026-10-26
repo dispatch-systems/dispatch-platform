@@ -1,6 +1,5 @@
 //! Phones' storage, in each DSP's own database: its phones, the code that pairs the next one,
 //! and every text and picture they relay. Only this crate writes SQL against its tables.
-use super::numbers;
 use dispatch_core::{
     Error, Result,
     db::{self, Db, Store, n, s},
@@ -8,7 +7,9 @@ use dispatch_core::{
     foundation::crypto,
     server::cache::DataDomain,
 };
-use dispatch_phones_contract::{Changes, Direction, File, Origin, Outgoing, Phone, Status, Text};
+use dispatch_phones_contract::{
+    Changes, Direction, File, Origin, Outgoing, Phone, Status, Text, normal,
+};
 use rusqlite::params;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -260,7 +261,7 @@ impl PhonesStore for Store {
     ) -> Result<Device> {
         let db = self.dsp(dsp)?;
         let id = crypto::id("phone")?;
-        let number = numbers::normal(pairing.number).unwrap_or_default();
+        let number = normal(pairing.number).unwrap_or_default();
         db.transaction(|| {
             let code = db
                 .one(
@@ -475,7 +476,7 @@ impl PhonesStore for Store {
         Ok(texts(&db, rows)?.pop())
     }
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text> {
-        let to = numbers::normal(&outgoing.to).ok_or_else(|| Error::new("invalid_input", 400))?;
+        let to = normal(&outgoing.to).ok_or_else(|| Error::new("invalid_input", 400))?;
         let id = crypto::id("text")?;
         let db = self.dsp(dsp)?;
         db.transaction(|| {

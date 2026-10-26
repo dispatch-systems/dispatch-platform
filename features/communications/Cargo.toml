@@ -21,6 +21,7 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 axum = { workspace = true }
 chrono-tz = { workspace = true }
 dispatch-core = { path = "../../core" }
+dispatch-phones-contract = { path = "../phones/contract" }
 dispatch-routes-contract = { path = "../routes/contract" }
 dispatch-slack = { path = "../slack" }
 dispatch-vans-contract = { path = "../vans/contract" }
@@ -34,6 +35,8 @@ tokio = { workspace = true }
 ts-rs = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Times of the DSP's own day, as texts and work phones' holds are written.
+chrono = { workspace = true }
 dispatch-core = { path = "../../core", features = ["testing"] }
 dispatch-slack = { path = "../slack", features = ["testing"] }
 # A clock the tests move, through sending's pace between posts.

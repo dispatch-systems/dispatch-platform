@@ -1,25 +1,31 @@
 //! What every Communications backend test installs, and how one starts. A test binary holds one
 //! registry, so each installs the same: Slack, Communications, and stand-ins for what other
-//! features expose that it reads. A test starts with a platform with one DSP, every feature on
-//! for it, and one of its fixture workspaces connected, its members read: the workspace's admin
-//! has approved all the app asks for.
+//! features expose that it reads, a dispatch phone among them. A test starts with a platform with
+//! one DSP, every feature on for it, and one of its fixture workspaces connected, its members
+//! read: the workspace's admin has approved all the app asks for.
 use crate::api::types::Message;
 use crate::backend::{conversations, storage::CommunicationsStore};
 use crate::integrations::messages::incoming;
+use axum::body::Body;
 use dispatch_core::{
-    Result, State,
+    Error, Result, State,
     accounts::{Context, SessionLifetime},
     db::{Store, now},
-    foundation::config::Site,
+    foundation::{config::Site, crypto},
     manifest::{
-        Feature, feature, mandatory, optional,
+        Feature, events, feature, mandatory, optional,
         people::{Directory, Everyone, Person, Photo, Source, SourceInfo},
     },
-    server::http::route::Dsp,
+    server::http::{input::Reply, route::Dsp, upload::Upload},
     testing,
 };
+use dispatch_phones_contract::{
+    Added, Answer, Changes, Direction, File, Origin, Outgoing, Phone, Status, Text, Texting,
+    TextsChanged,
+};
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, RouteDay, WorkPhoneHold,
+    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, RouteDay, WorkPhone,
+    WorkPhoneHold, WorkPhonesChanged,
 };
 use dispatch_slack::{kit::Bot, testing as slack};
 use dispatch_vans_contract::{AmazonFleet, Van};
@@ -53,7 +59,9 @@ pub fn install() {
             &crate::FEATURE,
             &NAMING,
             &DRIVING,
+            &LIVE,
             &FLEET,
+            &PHONING,
         ],
     );
 }
@@ -147,9 +155,10 @@ pub async fn conversation_with(
 }
 
 /// Stand-ins for what other features expose that Communications reads, which it may not name:
-/// who people are (`directory`, always), their routes (`driver_routes`, while `driving` is on)
-/// and the DSP's vans (`amazon_fleet`, while `fleet` is on). Each answers what a test says of
-/// its DSP with `know`, and nothing else.
+/// who people are (`directory`, always), their routes (`driver_routes`, while `driving` is on),
+/// today's as read live (`live_route_data`, while `live` is on), the DSP's vans (`amazon_fleet`,
+/// while `fleet` is on) and its dispatch phone (`texting`, while `phoning` is on). Each answers
+/// what a test says of its DSP, with `know`, `held` and `texted`, and nothing else.
 pub struct Standing;
 static STANDING: Standing = Standing;
 static NAMING: Feature = Feature {
@@ -171,6 +180,26 @@ static DRIVING: Feature = Feature {
         "Drivers' routes, as a test says.",
     )],
     ..feature("driving")
+};
+static LIVE: Feature = Feature {
+    switch: optional("live", "Live", &[]),
+    exposes: &[dispatch_core::expose!(
+        dyn LiveRouteData,
+        &STANDING,
+        "live_route_data",
+        "Today's routes as read live, as a test says.",
+    )],
+    ..feature("live")
+};
+static PHONING: Feature = Feature {
+    switch: optional("phoning", "Phoning", &[]),
+    exposes: &[dispatch_core::expose!(
+        dyn Texting,
+        &STANDING,
+        "texting",
+        "A dispatch phone's texts, as a test says.",
+    )],
+    ..feature("phoning")
 };
 static FLEET: Feature = Feature {
     switch: optional("fleet", "Fleet", &[]),
@@ -195,6 +224,19 @@ struct Known {
     people: Vec<Person>,
     routes: Vec<RouteDay>,
     vans: Vec<Van>,
+    /// The day live route data holds, and its holds on the work phones.
+    live_day: Option<String>,
+    live: Vec<WorkPhoneHold>,
+    /// Each saved day's holds.
+    saved: Vec<(String, WorkPhoneHold)>,
+    /// The phone's texts, the last change given, what Dispatch sent from it, and whether what
+    /// it sends next fails.
+    texts: Vec<Text>,
+    change: i64,
+    sent: Vec<Outgoing>,
+    failing: bool,
+    /// Whether Communications is switched off for the DSP while the phone reads the next file.
+    off_while_reading: bool,
 }
 static KNOWN: Mutex<BTreeMap<String, Known>> = Mutex::new(BTreeMap::new());
 fn known<T>(dsp: &str, read: impl FnOnce(&Known) -> T) -> T {
@@ -205,17 +247,81 @@ fn known<T>(dsp: &str, read: impl FnOnce(&Known) -> T) -> T {
 /// letting go of the DSP's cached reads, as who everyone is, so the next reads them anew.
 pub fn know(state: &State, dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>, vans: Vec<Van>) {
     let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
-    known.insert(
-        dsp.to_owned(),
-        Known {
-            people,
-            routes,
-            vans,
-        },
-    );
+    let known = known.entry(dsp.to_owned()).or_default();
+    (known.people, known.routes, known.vans) = (people, routes, vans);
     state.changed(Some(dsp));
 }
-/// Switches the stand-in `feature`, `driving` or `fleet`, on or off for the DSP.
+/// Has the stand-ins answer who held the DSP's work phones: live route data's holds of its live
+/// day `live_day`, if it holds one, and each saved day's; then says they changed, as Routes does.
+pub async fn held(
+    state: &Arc<State>,
+    dsp: &str,
+    live_day: Option<&str>,
+    live: Vec<WorkPhoneHold>,
+    saved: Vec<(String, WorkPhoneHold)>,
+) {
+    {
+        let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
+        let known = known.entry(dsp.to_owned()).or_default();
+        (known.live_day, known.live, known.saved) = (live_day.map(str::to_owned), live, saved);
+    }
+    events::publish(state, dsp, WorkPhonesChanged).await;
+}
+/// A hold on the work phone `phone`, ten digits, by the driver `driver`, from `since` until
+/// `until`.
+pub fn hold(driver: &str, phone: &str, since: i64, until: Option<i64>) -> WorkPhoneHold {
+    WorkPhoneHold {
+        driver_id: driver.to_owned(),
+        phone: phone.to_owned(),
+        since,
+        until,
+    }
+}
+/// The DSP's phone receives `body` from `number`, written at `at`, and says so, as Phones does.
+pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at: i64) -> String {
+    let id = phone(dsp, |phone| {
+        phone.change += 1;
+        let text = Text {
+            id: crypto::id("text").unwrap(),
+            phone: STAND_IN.to_owned(),
+            direction: Direction::In,
+            origin: Origin::Phone,
+            number: number.to_owned(),
+            body: body.to_owned(),
+            at,
+            sent_by: None,
+            status: None,
+            status_at: None,
+            error: None,
+            files: Vec::new(),
+            change: phone.change,
+        };
+        phone.texts.push(text.clone());
+        text.id
+    });
+    events::publish(state, dsp, TextsChanged).await;
+    id
+}
+/// Has what the DSP's phone sends next fail, or go.
+pub fn failing(dsp: &str, failing: bool) {
+    phone(dsp, |phone| phone.failing = failing);
+}
+/// Has Communications switched off for the DSP while its phone reads the next file asked of it,
+/// as the platform owner might while a member waits on it.
+pub fn off_while_reading(dsp: &str) {
+    phone(dsp, |phone| phone.off_while_reading = true);
+}
+/// What Dispatch sent from the DSP's phone, in order.
+pub fn sent(dsp: &str) -> Vec<Outgoing> {
+    phone(dsp, |phone| phone.sent.clone())
+}
+/// The stand-in phone's ID.
+const STAND_IN: &str = "phone_stand_in";
+fn phone<T>(dsp: &str, change: impl FnOnce(&mut Known) -> T) -> T {
+    let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
+    change(known.entry(dsp.to_owned()).or_default())
+}
+/// Switches `feature`, a stand-in as `driving` or `fleet`, or Communications, on or off for the DSP.
 pub async fn switch(state: &Arc<State>, dsp: &str, feature: &'static str, on: bool) {
     let dsp = dsp.to_owned();
     state
@@ -268,12 +374,157 @@ impl DriverRoutes for Standing {
         });
         Ok(driven(routes))
     }
-    /// It knows no work phones.
-    fn work_phone_holds(&self, _: &Store, _: &str, _: &str) -> Result<Vec<WorkPhoneHold>> {
+    /// The holds it knows of a saved day.
+    fn work_phone_holds(&self, _: &Store, dsp: &str, day: &str) -> Result<Vec<WorkPhoneHold>> {
+        Ok(known(dsp, |known| {
+            known
+                .saved
+                .iter()
+                .filter(|(saved, _)| saved == day)
+                .map(|(_, hold)| hold.clone())
+                .collect()
+        }))
+    }
+    /// Whether any hold it knows, live or saved, is on `phone`.
+    fn was_work_phone(&self, _: &Store, dsp: &str, phone: &str) -> Result<bool> {
+        Ok(known(dsp, |known| {
+            known
+                .live
+                .iter()
+                .chain(known.saved.iter().map(|(_, hold)| hold))
+                .any(|hold| hold.phone == phone)
+        }))
+    }
+}
+impl LiveRouteData for Standing {
+    fn source(&self) -> Source {
+        DRIVERS
+    }
+    fn live_day(&self, _: &Store, dsp: &str) -> Result<Option<String>> {
+        Ok(known(dsp, |known| known.live_day.clone()))
+    }
+    fn day(&self, _: &Store, _: &str) -> Result<Driven> {
+        Ok(driven(Vec::new()))
+    }
+    fn routes(&self, _: &Store, _: &str, _: &[String]) -> Result<Driven> {
+        Ok(driven(Vec::new()))
+    }
+    fn work_phones(&self, _: &Store, _: &str) -> Result<Vec<WorkPhone>> {
         Ok(Vec::new())
     }
-    fn was_work_phone(&self, _: &Store, _: &str, _: &str) -> Result<bool> {
-        Ok(false)
+    fn work_phone_holds(&self, _: &Store, dsp: &str) -> Result<Vec<WorkPhoneHold>> {
+        Ok(known(dsp, |known| known.live.clone()))
+    }
+}
+/// One phone, Dispatch, (206) 555-0100. What Dispatch sends from it is delivered at once, or fails
+/// once a test says it does; tried again, it waits on the phone. Any file asked of it is a photo.
+impl Texting for Standing {
+    fn phones(&self, _: &Store, _: &str) -> Result<Vec<Phone>> {
+        Ok(vec![Phone {
+            id: STAND_IN.to_owned(),
+            name: "Dispatch".to_owned(),
+            number: "+12065550100".to_owned(),
+            online: true,
+            last_seen_at: Some(now()),
+        }])
+    }
+    fn changes(&self, _: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes> {
+        Ok(phone(dsp, |phone| {
+            let mut texts: Vec<Text> = phone
+                .texts
+                .iter()
+                .filter(|text| text.change > after)
+                .cloned()
+                .collect();
+            texts.sort_by_key(|text| text.change);
+            texts.truncate(most);
+            let last = match texts.last() {
+                Some(text) if texts.len() == most => text.change,
+                _ => phone.change,
+            };
+            Changes { texts, last }
+        }))
+    }
+    fn send<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        outgoing: Outgoing,
+    ) -> Answer<'a, Text> {
+        Box::pin(async move {
+            let text = phone(dsp, |phone| {
+                phone.change += 1;
+                let text = Text {
+                    id: crypto::id("text")?,
+                    phone: STAND_IN.to_owned(),
+                    direction: Direction::Out,
+                    origin: Origin::Dispatch,
+                    number: outgoing.to.clone(),
+                    body: outgoing.body.clone(),
+                    at: now(),
+                    sent_by: Some(outgoing.by.clone()),
+                    status: Some(if phone.failing {
+                        Status::Failed
+                    } else {
+                        Status::Delivered
+                    }),
+                    status_at: Some(now()),
+                    error: phone.failing.then(|| "No service".to_owned()),
+                    files: Vec::new(),
+                    change: phone.change,
+                };
+                phone.texts.push(text.clone());
+                phone.sent.push(outgoing);
+                Ok::<_, Error>(text)
+            })?;
+            events::publish(state, dsp, TextsChanged).await;
+            Ok(text)
+        })
+    }
+    fn retry<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str, id: &'a str) -> Answer<'a, Text> {
+        Box::pin(async move {
+            let text = phone(dsp, |phone| {
+                phone.change += 1;
+                let change = phone.change;
+                let text = phone
+                    .texts
+                    .iter_mut()
+                    .find(|text| text.id == id && text.status == Some(Status::Failed))
+                    .ok_or_else(|| Error::new("phones_text_not_found", 404))?;
+                (text.status, text.error, text.change) = (Some(Status::Waiting), None, change);
+                Ok::<_, Error>(text.clone())
+            })?;
+            events::publish(state, dsp, TextsChanged).await;
+            Ok(text)
+        })
+    }
+    fn add_file<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        _: &'a str,
+        _: Added,
+        _: Upload,
+    ) -> Answer<'a, File> {
+        Box::pin(async { Err(Error::new("phones_file_not_found", 404)) })
+    }
+    fn largest(&self) -> u64 {
+        0
+    }
+    /// Any file asked of it, a photo.
+    fn file<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        _: &'a str,
+        _: &'a str,
+    ) -> Answer<'a, Option<Reply>> {
+        Box::pin(async move {
+            if phone(dsp, |phone| std::mem::take(&mut phone.off_while_reading)) {
+                switch(state, dsp, "communications", false).await;
+            }
+            let photo = Reply::download("image/jpeg", "photo.jpg", Some(3), Body::from("jpg"));
+            Ok(Some(photo))
+        })
     }
 }
 /// `routes`, with each day they're on read while under way.

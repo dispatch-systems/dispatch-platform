@@ -12,11 +12,14 @@ import { backoff } from '../../../../core/shell/frontend/lib/backoff.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import {
   lastAnswered,
+  listingOf,
+  moreIn,
   shownWorkspace,
   updated,
   withConversation,
   withGroup,
   withOlder,
+  type Section,
 } from '../inbox.js';
 
 /** What changed in the latest update: the conversations and groups, or every one after reading
@@ -138,22 +141,26 @@ export function useInbox(chosen?: string) {
     [change],
   );
   const [reading, setReading] = useState(false);
-  /** Reads the answered conversations and groups older than the last listed. */
-  const readOlder = useCallback(async () => {
-    const listed = current.current;
-    const last = listed && lastAnswered(listed);
-    if (!listed?.more || !last || reading) return;
-    setReading(true);
-    try {
-      const asked = scope.current;
-      const older = await olderConversations(last, asked);
-      // Read while another workspace's list came, it isn't of that list.
-      if (current.current && scope.current === asked) change(withOlder(current.current, older));
-    } catch (cause) {
-      setError(messageOf(cause));
-    } finally {
-      setReading(false);
-    }
-  }, [change, reading]);
+  /** Reads the answered conversations and groups of `section` older than the last listed. */
+  const readOlder = useCallback(
+    async (section: Section) => {
+      const listed = current.current;
+      const last = listed && lastAnswered(listed, section);
+      if (!listed || !moreIn(listed, section) || !last || reading) return;
+      setReading(true);
+      try {
+        const asked = scope.current;
+        const older = await olderConversations(last, listingOf(section, asked));
+        // Read while another workspace's list came, it isn't of that list.
+        if (current.current && scope.current === asked)
+          change(withOlder(current.current, older, section));
+      } catch (cause) {
+        setError(messageOf(cause));
+      } finally {
+        setReading(false);
+      }
+    },
+    [change, reading],
+  );
   return { inbox, team, changed, error, refresh, show, showGroup, readOlder };
 }

@@ -18,6 +18,7 @@ import type {
   GroupPeople,
   Message,
   Profile,
+  TextContacts,
 } from './index.js';
 
 // Communications' endpoints, as its screens call them.
@@ -25,6 +26,10 @@ import type {
 /** What its error codes say. Only its screens make the calls that raise them, so they load with them. */
 const api = wordedApi({
   communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
+  communications_message_not_found: 'This text is no longer here. Refresh the page.',
+  communications_texting_off: 'Texting is off for this DSP.',
+  phones_none: 'No phone is paired to send from.',
+  phones_text_not_found: "This text can't be sent again.",
   communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',
@@ -66,16 +71,19 @@ export const getCommunicationsUpdates = (after: number, typing: number, signal: 
     undefined,
     signal,
   );
-/** Conversations found by a name typed, misspelt or not, in every workspace or `team`'s. */
-export const searchConversations = (typed: string, team?: string) =>
-  api<Conversations>(address(`${communicationsUrl}/conversations`, { q: typed, team }));
-/** The answered conversations and groups, of every workspace or `team`'s, before the last one
- * shown. */
-export const olderConversations = (last: Pick<Conversation, 'id' | 'lastAt'>, team?: string) =>
+/** Where a list's conversations are: Slack's, of every workspace or `team`'s, or the numbers'
+ * texts. */
+export type Listing = { texts: true } | { texts?: false; team?: string };
+const of = (listing: Listing) => (listing.texts ? { kind: 'number' } : { team: listing.team });
+/** Conversations found by a name typed, misspelt or not, or by a number. */
+export const searchConversations = (typed: string, listing: Listing) =>
+  api<Conversations>(address(`${communicationsUrl}/conversations`, { q: typed, ...of(listing) }));
+/** The answered conversations, and groups, before the last one shown. */
+export const olderConversations = (last: Pick<Conversation, 'id' | 'lastAt'>, listing: Listing) =>
   api<Conversations>(
     address(`${communicationsUrl}/conversations`, {
       before: `${last.lastAt ?? 0}:${last.id}`,
-      team,
+      ...of(listing),
     }),
   );
 /** A conversation and its latest messages, or those before `first`. */
@@ -104,6 +112,24 @@ export const markDone = (id: string) =>
 /** Says the member is writing in a conversation, for the next few seconds. */
 export const sayTyping = (id: string) =>
   api<{ ok: true }>(`${communicationsUrl}/conversations/${id}/typing`, {});
+/** Sends again a text that failed. */
+export const retryText = (id: string, message: string) =>
+  api<Message>(`${communicationsUrl}/conversations/${id}/messages/${message}/retry`, {});
+/** Saves a name for the number a conversation texts. */
+export const saveContact = (id: string, name: string) =>
+  api<Conversation>(`${communicationsUrl}/conversations/${id}/contact`, { name });
+/** Blocks the number a conversation texts, or unblocks it. */
+export const blockNumber = (id: string, blocked: boolean) =>
+  api<Conversation>(
+    `${communicationsUrl}/conversations/${id}/${blocked ? 'block' : 'unblock'}`,
+    {},
+  );
+/** Opens the conversation with a number, to text it first. */
+export const textFirst = (number: string) =>
+  api<Conversation>(`${communicationsUrl}/texts/conversations`, { number });
+/** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
+export const getTextContacts = (typed = '') =>
+  api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));
 /** Adds a photo for a message not sent yet. */
 export const addPhoto = (photo: File, progress?: (sent: number) => void, signal?: AbortSignal) =>
   upload<CommunicationsUpload>(
@@ -112,8 +138,9 @@ export const addPhoto = (photo: File, progress?: (sent: number) => void, signal?
     progress,
     signal,
   );
-/** Where a photo or file attached to a message is read from. */
-export const fileUrl = (id: string) => `${communicationsUrl}/files/${id}`;
+/** Where a photo or file attached to a message is read from: a text's, as its phone keeps it. */
+export const fileUrl = (id: string, texted = false) =>
+  `${communicationsUrl}/${texted ? 'texts/files' : 'files'}/${id}`;
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>
   `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;

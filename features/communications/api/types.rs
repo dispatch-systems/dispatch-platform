@@ -4,13 +4,14 @@ pub use crate::backend::{
     files::FileStatus,
     groups::{GroupChoiceKind, GroupPersonState},
     storage::{ConversationState, Direction},
+    texts::storage::{ConversationKind, TextStatus},
 };
 use dispatch_core::manifest::people::{PersonRole, PersonTitle};
 use serde::Serialize;
 
 /// `GET /api/dsp/communications`: the DSP's conversations, those waiting first, the longest
-/// waiting first, then the latest answered, of every workspace or the one asked for, with the
-/// workspaces they're in and who is typing.
+/// waiting first, then the latest answered of its Slack workspaces, every one or the one asked
+/// for, and of its texts, with the workspaces they're in, whether it texts, and who is typing.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -27,10 +28,15 @@ pub struct Communications {
     pub conversations: Vec<Conversation>,
     /// The groups waiting, then those answered among the conversations answered.
     pub groups: Vec<Group>,
-    /// Whether older answered conversations and groups are left to read, with
+    /// Whether older answered Slack conversations and groups are left to read, with
     /// `conversations?before=`, of the same workspaces.
     pub more: bool,
+    /// Whether older answered numbers' conversations are left to read, with
+    /// `conversations?kind=number&before=`.
+    pub more_texts: bool,
     pub workspaces: Vec<CommunicationsWorkspace>,
+    /// Whether the DSP texts: something offers it texting, its dispatch phones.
+    pub texting: bool,
     pub typing: Typing,
 }
 
@@ -97,7 +103,8 @@ pub struct CommunicationsWorkspace {
     pub logo: Option<String>,
 }
 
-/// A conversation with a member of one of the DSP's workspaces.
+/// A conversation: a direct message with a member of one of the DSP's Slack workspaces, or texts
+/// with a number, or with whichever of the DSP's work phones a driver held.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -107,8 +114,15 @@ pub struct CommunicationsWorkspace {
 #[serde(rename_all = "camelCase")]
 pub struct Conversation {
     pub id: String,
-    /// The workspace it's in.
-    pub team_id: String,
+    pub kind: ConversationKind,
+    /// The workspace it's in, for a Slack one.
+    pub team_id: Option<String>,
+    /// The number it texts: a number's own, or the work phone last texted with.
+    pub number: Option<String>,
+    /// Whether its number is one the DSP saved a name for.
+    pub contact: bool,
+    /// Whether its number is blocked: it isn't listed or counted.
+    pub blocked: bool,
     /// Who it's with.
     pub with: Correspondent,
     pub state: ConversationState,
@@ -128,8 +142,8 @@ pub struct Conversation {
     pub group_id: Option<String>,
 }
 
-/// The member a conversation is with: their account in the workspace, and the person Driver
-/// Match knows them as, if it does.
+/// Whom a conversation is with: a member of a workspace by their account there, or someone texting;
+/// and the person Driver Match knows them as, if it does.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -138,9 +152,10 @@ pub struct Conversation {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct Correspondent {
-    /// Their ID in the workspace.
-    pub user_id: String,
-    /// The name Driver Match shows them by, else the one their Slack profile gives them.
+    /// Their ID in the workspace, for a member of one.
+    pub user_id: Option<String>,
+    /// The name Driver Match shows them by, else the one their Slack profile gives them, or
+    /// the name the DSP saved for their number, or their number.
     pub name: String,
     /// Their person's code, which their profile and photo go by.
     pub code: Option<String>,
@@ -150,7 +165,7 @@ pub struct Correspondent {
     pub photo: Option<String>,
 }
 
-/// A message in a conversation.
+/// A message in a conversation, or a text.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -160,7 +175,8 @@ pub struct Correspondent {
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: String,
-    /// Its ID in Slack, which orders a conversation's messages, as `before` reads it.
+    /// Its place among the conversation's messages, as `before` reads it: its ID in Slack, or
+    /// for a text when it was written, thirteen digits, and its ID (`<at>:<id>`).
     pub ts: String,
     pub direction: Direction,
     pub text: String,
@@ -176,6 +192,8 @@ pub struct Message {
     pub files: Vec<MessageFile>,
     /// The group it went to, for one the DSP sent a group.
     pub group: Option<MessageGroup>,
+    /// How a text Dispatch sent went.
+    pub status: Option<TextStatus>,
 }
 /// The group a message went to: its ID and name.
 #[derive(Clone, Debug, Serialize)]
@@ -191,7 +209,8 @@ pub struct MessageGroup {
 }
 
 /// Someone at the DSP who sent a message: by the name it went out under, their account, and
-/// the person Driver Match knows them as, by their email address, if it does.
+/// the person Driver Match knows them as, by their email address, if it does. A text sent from the
+/// phone itself is the phone's, under its name, by no account but the phone's ID.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -200,7 +219,9 @@ pub struct MessageGroup {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct Sender {
-    pub user_id: String,
+    pub user_id: Option<String>,
+    /// The DSP's phone that sent it from its own messaging app, for such a text.
+    pub phone_id: Option<String>,
     pub name: String,
     pub code: Option<String>,
     pub photo: Option<String>,
@@ -224,7 +245,8 @@ pub struct MessageFile {
 }
 
 /// `GET /api/dsp/communications/conversations`: the fifty conversations found by name closest
-/// to it, the closest first, or the answered ones before `before`, in every workspace or one.
+/// to it, the closest first, or the answered ones before `before`, in every workspace or one, or
+/// of the numbers that text the DSP (`kind=number`).
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -329,6 +351,42 @@ pub struct Contact {
     pub matched: Vec<(u32, u32)>,
 }
 
+/// `GET /api/dsp/communications/texts/contacts`: whom the DSP can text, by name, or those like
+/// what was searched, the closest first: everyone Driver Match has a phone number for who hasn't
+/// left, and every number the DSP saved a name for; then the numbers blocked.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct TextContacts {
+    pub contacts: Vec<TextContact>,
+    pub blocked: Vec<TextContact>,
+}
+/// Someone the DSP can text, by their number.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct TextContact {
+    pub number: String,
+    pub person: Correspondent,
+    /// Their number's conversation, if it has one.
+    pub conversation_id: Option<String>,
+    /// Since when it waits on an answer, and when it was last written in, as `Conversation`'s.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub waiting_since: Option<i64>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_at: Option<i64>,
+    /// The letters of their name that matched what was searched, as `Conversation`'s.
+    pub matched: Vec<(u32, u32)>,
+}
+
 /// Who at the DSP is writing in which conversation now, and the version of that, for `updates`.
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -386,6 +444,7 @@ pub struct CommunicationsUpdates {
     pub groups: Vec<Group>,
     pub typing: Typing,
     pub workspaces: Vec<CommunicationsWorkspace>,
+    pub texting: bool,
 }
 
 /// `POST /api/dsp/communications/uploads`: a photo added for a message not sent yet.

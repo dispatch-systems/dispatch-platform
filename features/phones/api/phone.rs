@@ -3,7 +3,7 @@
 //! receives and sends, their pictures' bytes, and how Dispatch's texts went. No browser calls
 //! these: a request carrying a cookie, or at another address than a DSP's, is refused.
 use crate::backend::{
-    files, live, numbers, pairing,
+    files, live, pairing,
     storage::{
         DOMAIN, Device, Kept, MOST_TEXTS, Pairing, PhonesStore, Reported, ReportedFile,
         StatusReport,
@@ -22,7 +22,7 @@ use dispatch_core::{
     },
     tenancy::api::types::DspStatus,
 };
-use dispatch_phones_contract::{Direction, Status, Text};
+use dispatch_phones_contract::{Direction, Status, Text, normal};
 use serde::Serialize;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
@@ -324,7 +324,7 @@ fn reported(text: &Value) -> Result<Reported> {
             "in" => Direction::In,
             _ => Direction::Out,
         },
-        number: numbers::normal(v::text(text, "number", 1, 32)?)
+        number: normal(v::text(text, "number", 1, 32)?)
             .ok_or_else(|| Error::new("invalid_input", 400))?,
         body: v::text(text, "body", 0, 10_000)?.to_owned(),
         at: v::integer(text, "at", 0, i64::MAX)?,

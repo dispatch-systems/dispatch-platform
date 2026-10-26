@@ -56,11 +56,16 @@ export function Preview({
             <div className="chat-frame">
               <ListPane
                 inbox={inbox}
+                sections={['slack']}
+                section="slack"
+                chooseSection={nothing}
                 working={inbox.workspaces}
                 choose={nothing}
                 current={open}
                 readOlder={nothing}
                 pick={() => Promise.resolve()}
+                pickNumber={() => Promise.resolve()}
+                show={nothing}
                 open={open.id}
                 typing={[]}
                 timeZone={timeZone}

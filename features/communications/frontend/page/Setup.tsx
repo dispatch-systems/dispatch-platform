@@ -11,8 +11,8 @@ import { WorkspaceMark } from './WorkspaceMark.js';
 
 // Setting Slack up from Communications, for those who manage the DSP's connections: connecting
 // it, in place of the inbox, while the DSP has no workspace; and updating each workspace that
-// hasn't approved what Communications uses, over the page until it's done. Either comes back
-// here from Slack.
+// hasn't approved what Communications uses, over the page while it shows Slack, until it's done.
+// Either comes back here from Slack.
 
 /** This page, where Slack sends the browser back to finish. */
 const PAGE = 'communications';
@@ -46,22 +46,25 @@ export function ConnectSlack({ busy }: { busy: boolean }) {
 }
 
 /**
- * Over the page alone, with no way to close it, while a workspace needs updating: each one
- * updated here, or its install link copied for whoever can approve apps in that Slack. It goes
- * once the page reads that none does.
+ * Over the page alone while a workspace needs updating, with no way to close it but to another
+ * section the page has (`close`): each one updated here, or its install link copied for whoever
+ * can approve apps in that Slack. It goes once the page reads that none does.
  */
 export function UpdateSlack({
   workspaces,
   busy,
+  close,
 }: {
   workspaces: readonly CommunicationsWorkspace[];
   busy: boolean;
+  /** Leaves it for another section, while there's one. */
+  close?: () => void;
 }) {
   return (
     <Modal
       page
-      dismissible={false}
-      onClose={() => undefined}
+      dismissible={Boolean(close)}
+      onClose={close ?? (() => undefined)}
       title={
         <span className="update-title">
           <span className="update-mark">

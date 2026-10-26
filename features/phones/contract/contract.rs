@@ -170,6 +170,33 @@ impl Event for TextsChanged {
     const NAME: &'static str = "phones.texts_changed";
 }
 
+/// `raw` as texting writes a phone number, so one number is always written one way: `+1` and
+/// ten digits for one in North America, `+` and its digits for one dialed with its country code,
+/// and the digits alone for a short code, as a carrier's or a business's; none for something that
+/// isn't a number. Each text's `number` is written so, and `Outgoing`'s `to` is read so.
+pub fn normal(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.len() > 32 {
+        return None;
+    }
+    let plus = raw.starts_with('+');
+    if !raw
+        .chars()
+        .all(|c| c.is_ascii_digit() || " +-().".contains(c))
+    {
+        return None;
+    }
+    let bare = raw.chars().all(|c| c.is_ascii_digit());
+    let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
+    match digits.len() {
+        10 if !plus => Some(format!("+1{digits}")),
+        11 if digits.starts_with('1') => Some(format!("+{digits}")),
+        8..=15 if plus => Some(format!("+{digits}")),
+        3..=7 if bare => Some(digits),
+        _ => None,
+    }
+}
+
 /// What offers it for the DSP: only while Phones is on there.
 pub fn for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn Texting>> {
     dispatch_core::manifest::exposes::for_dsp::<dyn Texting>(db, dsp)

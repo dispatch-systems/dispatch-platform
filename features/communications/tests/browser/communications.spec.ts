@@ -3,7 +3,19 @@ import { connect, event, fromSlack, install } from '../../../slack/tests/support
 
 // The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
 // mode's Slack sends the browser straight back from installing, to the first of its workspaces
-// no DSP has: Operations, where Jordan Ellis and Morgan Lane are members.
+// no DSP has: Operations, where Jordan Ellis and Morgan Lane are members. These are Slack's, so
+// each starts with Northline not texting, as its demo phone would have it (texting.spec.ts).
+test.beforeEach(async ({ dispatch }) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  const off = await owner.post(`/api/platform/dsps/${north.id}/features`, {
+    feature: 'phones',
+    enabled: false,
+  });
+  expect(off.status, off.body).toBe(200);
+});
 
 test('Communications is on from the start in a workspace just connected', async ({ page }) => {
   await login(page);

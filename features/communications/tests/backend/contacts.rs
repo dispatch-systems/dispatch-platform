@@ -45,7 +45,7 @@ async fn the_active_members_of_the_workspaces_are_contacts_found_by_a_misspelt_n
     );
     let found = listed(&state, &bot.dsp, None, Some("camron hays")).await;
     assert_eq!(found[0].person.name, "Cameron Hayes");
-    assert_eq!(found[0].person.user_id, "U0FIXCAM");
+    assert_eq!(found[0].person.user_id.as_deref(), Some("U0FIXCAM"));
     assert_eq!(found[0].matched, [(0, 3), (4, 7), (8, 11), (12, 13)]);
     // A workspace's are its own members alone.
     assert_eq!(

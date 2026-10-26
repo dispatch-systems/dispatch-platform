@@ -1,5 +1,5 @@
-//! Communications: the DSP's direct messages with the members of its Slack workspaces, read and
-//! answered from Dispatch. Its README says more.
+//! Communications: the DSP's direct messages with the members of its Slack workspaces, and the
+//! texts its dispatch phones relay, read and answered from Dispatch. Its README says more.
 mod api;
 mod backend;
 mod integrations;
@@ -12,11 +12,12 @@ pub use api::display::{
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
-    CommunicationsWorkspace, Contact, Contacts, Conversation, ConversationMessages,
-    ConversationState, Conversations, Correspondent, Direction, FileStatus, Group, GroupChoice,
-    GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages, GroupPeople,
-    GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGroup, Profile,
-    ProfileToday, Reachable, Sender, Typing, WaitingMessage, Writing,
+    CommunicationsWorkspace, Contact, Contacts, Conversation, ConversationKind,
+    ConversationMessages, ConversationState, Conversations, Correspondent, Direction, FileStatus,
+    Group, GroupChoice, GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages,
+    GroupPeople, GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGroup,
+    Profile, ProfileToday, Reachable, Sender, TextContact, TextContacts, TextStatus, Typing,
+    WaitingMessage, Writing,
 };
 
 use dispatch_core::db::{
@@ -24,11 +25,14 @@ use dispatch_core::db::{
     migrations::Apply::{Code, Sql},
 };
 use dispatch_core::manifest::{Feature, feature, optional, perm};
+use dispatch_phones_contract::TextsChanged;
+use dispatch_routes_contract::WorkPhonesChanged;
 
 pub const FEATURE: Feature = Feature {
     place: 95,
     switch: optional("communications", "Communications", &[]),
-    // It works through Slack: what's written to the app in the DSP's workspaces.
+    // It works through Slack: what's written to the app in the DSP's workspaces. Texts come
+    // through whatever offers `texting`, which it needs no dependency for.
     depends_on: &["slack"],
     // Reading the DSP's conversations and answering them, one permission for both.
     permissions: &[perm("communications.use", "Use Communications", 95)],
@@ -48,6 +52,11 @@ pub const FEATURE: Feature = Feature {
             "communications_group_messages",
             "communications_deliveries",
             "communications_group_uploads",
+            "communications_text_conversations",
+            "communications_texts",
+            "communications_texting",
+            "communications_contacts",
+            "communications_blocked",
         ],
     )],
     own_migrations: &[OwnMigrations {
@@ -70,14 +79,26 @@ pub const FEATURE: Feature = Feature {
                 name: "communications_grouped",
                 apply: Code(backend::storage::add_groups),
             },
+            Migration {
+                id: 4,
+                name: "communications_texts",
+                apply: Sql(include_str!("migrations/dsp/0004_communications_texts.sql")),
+            },
         ],
     }],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
-    // what members attach, and sending what's due to go to groups' people, every minute.
+    // what members attach, sending what's due to go to groups' people, and filing texts it
+    // didn't hear of, every minute.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,
         backend::groups::send::MAINTENANCE,
+        backend::texts::filing::MAINTENANCE,
+    ],
+    // Filing each text as it comes, and today's again as who held the work phones settles.
+    on: &[
+        dispatch_core::on!(TextsChanged, backend::texts::filing::heard),
+        dispatch_core::on!(WorkPhonesChanged, backend::texts::filing::refile),
     ],
     // On from the start in every workspace, in place of Slack's answer that DSP Messaging is
     // unavailable.
@@ -95,9 +116,11 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         WaitingMessage,
         CommunicationsWorkspace,
         Conversation,
+        ConversationKind,
         ConversationState,
         Correspondent,
         Message,
+        TextStatus,
         Direction,
         Sender,
         MessageFile,
@@ -106,6 +129,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         ConversationMessages,
         Contacts,
         Contact,
+        TextContacts,
+        TextContact,
         Profile,
         ProfileToday,
         Typing,

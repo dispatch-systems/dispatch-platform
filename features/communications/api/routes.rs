@@ -1,14 +1,15 @@
 //! Communications' endpoints, each registered with its path and access: every one behind
-//! `communications.use`, which covers reading the DSP's conversations and answering them, but
-//! the image of someone's initials, which Slack fetches from the admin's address. The server
-//! checks the session and the permission before a handler runs; those that call Slack wait
-//! outside the database and check again before they write.
+//! `communications.use`, which covers reading the DSP's conversations, Slack's and by text, and
+//! answering them, but the image of someone's initials, which Slack fetches from the admin's
+//! address. The server checks the session and the permission before a handler runs; those that
+//! call Slack or send a text wait outside the database and check again before they write.
 use crate::backend::{
     contacts, conversations,
     files::{self, FileStatus, FileStore},
     groups::{self, choices, send as group_send},
     initials, live, profile, reply,
     storage::CommunicationsStore,
+    texts::{self, storage::TextStore},
 };
 use axum::{
     body::Body,
@@ -63,6 +64,33 @@ pub fn routes() -> Vec<Route> {
             USE,
             typing,
         ),
+        async_post(
+            "/api/dsp/communications/conversations/{id}/messages/{message}/retry",
+            USE,
+            retry,
+        ),
+        write(
+            "/api/dsp/communications/conversations/{id}/contact",
+            USE,
+            save_contact,
+        ),
+        write(
+            "/api/dsp/communications/conversations/{id}/block",
+            USE,
+            block,
+        ),
+        write(
+            "/api/dsp/communications/conversations/{id}/unblock",
+            USE,
+            unblock,
+        ),
+        write(
+            "/api/dsp/communications/texts/conversations",
+            USE,
+            text_first,
+        ),
+        read("/api/dsp/communications/texts/contacts", USE, text_contacts),
+        async_get("/api/dsp/communications/texts/files/{id}", USE, text_file),
         read("/api/dsp/communications/contacts", USE, listed),
         read("/api/dsp/communications/groups/choices", USE, group_choices),
         async_post("/api/dsp/communications/groups", USE, create_group),
@@ -100,6 +128,14 @@ fn id(value: &str, prefix: &str) -> Result<String> {
         .is_some_and(|hex| hex.len() == 32 && hex.bytes().all(|b| b.is_ascii_hexdigit()));
     ensure(valid, "invalid_input", 400)?;
     Ok(value.to_owned())
+}
+/// A conversation's ID, a Slack one's (`cv_…`) or one by text (`tc_…`): the ID, and whether it's
+/// by text.
+fn conversation_id(value: &str) -> Result<(String, bool)> {
+    match id(value, "cv") {
+        Ok(slack) => Ok((slack, false)),
+        Err(_) => Ok((id(value, "tc")?, true)),
+    }
 }
 /// A Slack ID beginning with one of `first`: a workspace's `T…`, a member's `U…` or `W…`.
 fn slack_id(value: &str, first: &[u8]) -> Result<String> {
@@ -148,11 +184,23 @@ fn team(query: &Value) -> Result<Option<String>> {
     (!team.is_empty()).then(|| slack_id(team, b"T")).transpose()
 }
 /// Conversations found by a name typed, `q`, or the answered ones before `before`, in the
-/// workspace `team` or every one.
+/// workspace `team` or every one, or the numbers' (`kind=number`).
 fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.query, &["q", "team", "before"])?;
+    v::fields(&input.query, &["q", "team", "before", "kind"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();
     let team = team(&input.query)?;
+    let texted = match optional_text(&input.query, "kind", 10)? {
+        "" => false,
+        "number" if team.is_none() => true,
+        _ => return Err(Error::new("invalid_input", 400)),
+    };
+    if texted {
+        if !typed.is_empty() {
+            return Reply::of(&texts::reading::search(db, c.state, c.dsp_id(), typed)?);
+        }
+        let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
+        return Reply::of(&texts::reading::older(db, c.state, c.dsp_id(), (at, &id))?);
+    }
     if !typed.is_empty() {
         return Reply::of(&conversations::search(
             db,
@@ -173,7 +221,20 @@ fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["before"])?;
-    let conversation = id(input.param("id"), "cv")?;
+    let (conversation, texted) = conversation_id(input.param("id"))?;
+    if texted {
+        let before = optional_text(&input.query, "before", 80)?;
+        let before = (!before.is_empty())
+            .then(|| texts::reading::before(before))
+            .transpose()?;
+        return Reply::of(&texts::reading::opened(
+            db,
+            c.state,
+            c.dsp_id(),
+            &conversation,
+            before.as_ref().map(|(at, id)| (*at, id.as_str())),
+        )?);
+    }
     let before = optional_text(&input.query, "before", 32)?;
     let valid = before.split_once('.').is_some_and(|(seconds, micros)| {
         [seconds, micros]
@@ -220,7 +281,24 @@ fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
-    let conversation = id(input.param("id"), "cv")?;
+    let (conversation, texted) = conversation_id(input.param("id"))?;
+    if texted {
+        let found = db.communications_text_conversation(c.dsp_id(), &conversation)?;
+        ensure(
+            found.is_some(),
+            "communications_conversation_not_found",
+            404,
+        )?;
+        if db.mark_communications_text_done(c.dsp_id(), &conversation, c.actor())? {
+            live::changed(c.state, c.dsp_id());
+        }
+        return Reply::of(&texts::reading::one(
+            db,
+            c.state,
+            c.dsp_id(),
+            &conversation,
+        )?);
+    }
     let found = db.communications_conversation(c.dsp_id(), &conversation)?;
     ensure(
         found.is_some(),
@@ -273,16 +351,90 @@ async fn open(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let user = slack_id(v::text(&input.body, "userId", 2, 32)?, b"UW")?;
     Reply::of(&reply::open(&state, &c, access, &team, &user).await?)
 }
-/// Sends a message in a conversation: its `text`, and the `photos` added for it.
+/// Sends a message in a conversation: its `text`, and the `photos` added for it; by text, the
+/// text alone.
 async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["text", "photos"])?;
-    let conversation = id(input.param("id"), "cv")?;
+    let (conversation, texted) = conversation_id(input.param("id"))?;
     let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
     let photos = photos(&input.body)?;
-    let message = reply::send(&state, &c, access, &conversation, text, &photos).await?;
+    let message = if texted {
+        ensure(photos.is_empty(), "invalid_input", 400)?;
+        texts::reply::send(&state, &c, access, &conversation, text).await?
+    } else {
+        reply::send(&state, &c, access, &conversation, text, &photos).await?
+    };
     Reply::of_status(&message, 201)
+}
+/// Sends again a text Dispatch sent in a conversation that failed.
+async fn retry(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.body, &[])?;
+    let conversation = id(input.param("id"), "tc")?;
+    let text = id(input.param("message"), "text")?;
+    Reply::of(&texts::reply::retry(&state, &c, access, &conversation, &text).await?)
+}
+/// Saves a `name` for the number of a conversation by text.
+fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["name"])?;
+    let conversation = id(input.param("id"), "tc")?;
+    let name = v::name(&input.body, "name", texts::contacts::NAME_MOST)?;
+    Reply::of(&texts::contacts::save_contact(
+        db,
+        c.state,
+        c.dsp_id(),
+        &conversation,
+        &name,
+        c.actor(),
+    )?)
+}
+/// Blocks the number of a conversation by text.
+fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    let conversation = id(input.param("id"), "tc")?;
+    Reply::of(&texts::contacts::block(
+        db,
+        c.state,
+        c.dsp_id(),
+        &conversation,
+        Some(c.actor()),
+    )?)
+}
+fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &[])?;
+    let conversation = id(input.param("id"), "tc")?;
+    Reply::of(&texts::contacts::block(
+        db,
+        c.state,
+        c.dsp_id(),
+        &conversation,
+        None,
+    )?)
+}
+/// Opens the conversation with a `number`, to text it first.
+fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["number"])?;
+    let number = v::text(&input.body, "number", 3, 32)?;
+    Reply::of(&texts::contacts::open(db, c.state, c.dsp_id(), number)?)
+}
+/// Whom the DSP can text, or those found by a name or number typed, `q`, and the numbers
+/// blocked.
+fn text_contacts(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &["q"])?;
+    let typed = optional_text(&input.query, "q", 100)?.trim();
+    let typed = (!typed.is_empty()).then_some(typed);
+    Reply::of(&texts::contacts::contacts(db, c.state, c.dsp_id(), typed)?)
+}
+/// A text's picture or file, as what offers the DSP texting keeps it.
+async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &[])?;
+    let wanted = id(input.param("id"), "file")?;
+    texts::reading::file(&state, &c, access, &wanted).await
 }
 /// The `photos` added for a message: their IDs.
 fn photos(body: &Value) -> Result<Vec<String>> {
@@ -339,17 +491,18 @@ async fn message_group(state: Arc<State>, input: Input, access: Dsp) -> Result<R
 /// Notes that the member is writing in a conversation, for the next few seconds.
 async fn typing(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let conversation = id(input.param("id"), "cv")?;
+    let (conversation, texted) = conversation_id(input.param("id"))?;
     let of = conversation.clone();
     let c = state
         .read(move |db| {
             let c = access.authorize(db, &asked)?;
-            let found = db.communications_conversation(&c.dsp.id, &of)?;
-            ensure(
-                found.is_some(),
-                "communications_conversation_not_found",
-                404,
-            )?;
+            let found = if texted {
+                db.communications_text_conversation(&c.dsp.id, &of)?
+                    .is_some()
+            } else {
+                db.communications_conversation(&c.dsp.id, &of)?.is_some()
+            };
+            ensure(found, "communications_conversation_not_found", 404)?;
             Ok(c)
         })
         .await?;

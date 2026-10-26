@@ -9,7 +9,14 @@ import type {
   GroupChoice,
   Reachable,
 } from '../../api/index.js';
-import { marked, rows, shownWorkspace, updated, withOlder } from '../../frontend/inbox.js';
+import {
+  marked,
+  rows,
+  shownWorkspace,
+  updated,
+  withOlder,
+  type Section,
+} from '../../frontend/inbox.js';
 import { groupName, recipients, type Pick } from '../../frontend/groups.js';
 import { letter, waited } from '../../frontend/format.js';
 
@@ -22,7 +29,11 @@ const conversation = (
   group: string | null = null,
 ): Conversation => ({
   id,
+  kind: 'slack',
   teamId: 'T0FIXTURE1',
+  number: null,
+  contact: false,
+  blocked: false,
   with: { userId: `U${id}`, name: id, code: null, role: null, title: null, photo: null },
   state: since === null ? 'responded' : 'waiting',
   waitingSince: since,
@@ -43,9 +54,18 @@ const group = (id: string, at: number, since: number | null = null): Group => ({
   lastAt: at,
   last: null,
 });
-const ids = (inbox: Communications) => rows(inbox).map((each) => each.row.id);
+/** A number's conversation by text, as `conversation`'s. */
+const texts = (id: string, at: number, since: number | null = null): Conversation => ({
+  ...conversation(id, at, since),
+  kind: 'number',
+  teamId: null,
+  number: '+14255550199',
+  with: { userId: null, name: id, code: null, role: null, title: null, photo: null },
+});
+const ids = (inbox: Communications, section: Section = 'slack') =>
+  rows(inbox, section).map((each) => each.row.id);
 
-test('the list keeps the server’s order as it changes, and leaves older answered ones to be read in turn', () => {
+test('each section’s list keeps the server’s order as it changes, and leaves its older answered ones to be read in turn', () => {
   const inbox: Communications = {
     revision: 1,
     waiting: 2,
@@ -54,10 +74,13 @@ test('the list keeps the server’s order as it changes, and leaves older answer
       conversation('b', 400, 200),
       conversation('c', 900),
       conversation('d', 500),
+      texts('n0', 600),
     ],
     groups: [group('g1', 800)],
     more: true,
+    moreTexts: true,
     workspaces: [],
+    texting: true,
     typing: { version: 0, writing: [] },
   };
   const next = updated(inbox, {
@@ -66,6 +89,7 @@ test('the list keeps the server’s order as it changes, and leaves older answer
     waiting: 3,
     typing: { version: 0, writing: [] },
     workspaces: [],
+    texting: true,
     conversations: [
       // Waiting longest, it comes first.
       conversation('e', 60, 50),
@@ -86,13 +110,32 @@ test('the list keeps the server’s order as it changes, and leaves older answer
   assert.deepEqual(ids(next), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd']);
   assert.equal(next.revision, 2);
   // Read in turn, older ones come after the last, each once, groups among them.
-  const older = withOlder(next, {
-    conversations: [conversation('d', 500), conversation('f', 100), conversation('h', 50)],
-    groups: [group('g0', 300)],
-    more: false,
-  });
+  const older = withOlder(
+    next,
+    {
+      conversations: [conversation('d', 500), conversation('f', 100), conversation('h', 50)],
+      groups: [group('g0', 300)],
+      more: false,
+    },
+    'slack',
+  );
   assert.deepEqual(ids(older), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd', 'g0', 'f', 'h']);
   assert.equal(older.more, false);
+  // Messaging's go on from its own last answered, whatever Slack's has read.
+  const texted = updated(older, {
+    ...older,
+    reset: false,
+    conversations: [texts('n1', 950, 940), texts('n2', 20)],
+    groups: [],
+  });
+  assert.deepEqual(ids(texted, 'messaging'), ['n1', 'n0']);
+  const read = withOlder(
+    texted,
+    { conversations: [texts('n2', 20)], groups: [], more: false },
+    'messaging',
+  );
+  assert.deepEqual(ids(read, 'messaging'), ['n1', 'n0', 'n2']);
+  assert.deepEqual(ids(read), ids(older));
 });
 
 test('picks go to each person once: groups narrowed by the workspaces picked, someone by name always', () => {

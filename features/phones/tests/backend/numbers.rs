@@ -1,5 +1,5 @@
 //! Each number is kept one way, so a text and its reply meet in one conversation.
-use super::normal;
+use dispatch_phones_contract::normal;
 
 #[test]
 fn writes_each_number_one_way() {

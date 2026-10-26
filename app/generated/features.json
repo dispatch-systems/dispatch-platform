@@ -32,9 +32,19 @@
       "maintenance": [
         3600,
         3600,
+        60,
         60
       ],
-      "on": [],
+      "on": [
+        {
+          "event": "phones.texts_changed",
+          "kind": "dispatch_phones_contract::TextsChanged"
+        },
+        {
+          "event": "routes.work_phones_changed",
+          "kind": "dispatch_routes_contract::WorkPhonesChanged"
+        }
+      ],
       "people": [],
       "routes": [
         "GET /api/dsp/communications",
@@ -47,6 +57,13 @@
         "POST /api/dsp/communications/conversations/{id}/messages",
         "POST /api/dsp/communications/conversations/{id}/done",
         "POST /api/dsp/communications/conversations/{id}/typing",
+        "POST /api/dsp/communications/conversations/{id}/messages/{message}/retry",
+        "POST /api/dsp/communications/conversations/{id}/contact",
+        "POST /api/dsp/communications/conversations/{id}/block",
+        "POST /api/dsp/communications/conversations/{id}/unblock",
+        "POST /api/dsp/communications/texts/conversations",
+        "GET /api/dsp/communications/texts/contacts",
+        "GET /api/dsp/communications/texts/files/{id}",
         "GET /api/dsp/communications/contacts",
         "GET /api/dsp/communications/groups/choices",
         "POST /api/dsp/communications/groups",
@@ -69,7 +86,9 @@
     "mandatory": false,
     "tables": {
       "dsp": [
+        "communications_blocked",
         "communications_changes",
+        "communications_contacts",
         "communications_conversations",
         "communications_deliveries",
         "communications_files",
@@ -77,7 +96,10 @@
         "communications_group_people",
         "communications_group_uploads",
         "communications_groups",
-        "communications_messages"
+        "communications_messages",
+        "communications_text_conversations",
+        "communications_texting",
+        "communications_texts"
       ]
     },
     "subfeatures": []

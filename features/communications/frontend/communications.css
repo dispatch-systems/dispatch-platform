@@ -125,6 +125,20 @@
   color: var(--steel);
   background: var(--steel-surface);
 }
+/* A phone in a person's place: a number no one is known by, or the DSP's own phone. */
+.communications .face-phone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.communications .face-phone svg {
+  width: 46%;
+  height: 46%;
+}
 .communications mark {
   background: none;
   color: var(--primary);
@@ -253,6 +267,16 @@
   background: var(--card);
   color: var(--foreground);
   box-shadow: 0 1px 3px var(--shadow-color);
+}
+/* The sections, as many segments as there are, each with its mark and how many wait. */
+.pane-list .sections .restored-tabs {
+  grid-template-columns: none;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+}
+.pane-list .sections .restored-tabs button {
+  gap: 6px;
+  padding: 0 8px;
 }
 .list-scroll {
   flex: 1;
@@ -438,6 +462,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A number blocked, with Unblock beside it. */
+.contact.blocked .convo-open:hover,
+.contact.blocked:focus-within .convo-open {
+  background: transparent;
+}
+.contact .unblock {
+  min-height: 0;
+  margin-left: auto;
+  padding: 3px 12px;
+  border-radius: 14px;
+  font-size: var(--small-size);
+  font-weight: 600;
+}
 
 /* Which workspace the lists show. */
 .workspace-picker {
@@ -571,6 +608,7 @@
   transition: padding-right var(--profile-slide);
 }
 .thread-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--gap);
@@ -630,6 +668,66 @@
 .thread-head .actions button {
   min-height: calc(var(--field-height) - 2px);
   font-size: var(--ui-size);
+}
+.thread-head .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* What can be done with a number: Save contact, its name asked for under the head's right end,
+   and a menu. */
+.contact-form {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: var(--pad);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(300px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 4px 18px var(--shadow-color);
+}
+.contact-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--ui-size);
+  font-weight: 600;
+}
+.contact-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.number-menu {
+  position: relative;
+}
+.number-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(var(--field-height) - 2px);
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  list-style: none;
+  cursor: pointer;
+}
+.number-menu-button::-webkit-details-marker {
+  display: none;
+}
+.number-menu-button:hover {
+  background: var(--accent);
+}
+.number-menu .account-popover {
+  inset: calc(100% + 6px) 0 auto auto;
+  width: max-content;
+  min-width: 170px;
 }
 .thread-head .actions svg {
   width: calc(var(--ui-size) + 2px);
@@ -800,6 +898,31 @@
 .meta .sending {
   color: var(--primary);
   font-weight: 550;
+}
+/* A text that didn't go, and sending it again. */
+.meta .failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: bottom;
+  color: var(--destructive);
+  font-weight: 550;
+}
+.meta .retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  vertical-align: bottom;
+}
+.bubble.failed {
+  opacity: 0.6;
 }
 /* An answer: who wrote it, which opens their conversation, as Reply does beside it. */
 button.sender {
@@ -1090,6 +1213,24 @@ button.sender {
 }
 .composer textarea:disabled {
   cursor: default;
+}
+/* With no photos to add, the text starts in from the box's edge. */
+.composer .box > textarea:first-child {
+  padding-left: 12px;
+}
+/* The number a text goes to, by its last digits. */
+.texting-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+  white-space: nowrap;
 }
 .communications button.round {
   width: var(--round-size);

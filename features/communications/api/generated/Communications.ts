@@ -6,8 +6,8 @@ import type { Typing } from "./Typing";
 
 /**
  * `GET /api/dsp/communications`: the DSP's conversations, those waiting first, the longest
- * waiting first, then the latest answered, of every workspace or the one asked for, with the
- * workspaces they're in and who is typing.
+ * waiting first, then the latest answered of its Slack workspaces, every one or the one asked
+ * for, and of its texts, with the workspaces they're in, whether it texts, and who is typing.
  */
 export type Communications = {
 /**
@@ -23,7 +23,16 @@ waiting: number, conversations: Array<Conversation>,
  */
 groups: Array<Group>,
 /**
- * Whether older answered conversations and groups are left to read, with
+ * Whether older answered Slack conversations and groups are left to read, with
  * `conversations?before=`, of the same workspaces.
  */
-more: boolean, workspaces: Array<CommunicationsWorkspace>, typing: Typing, };
+more: boolean,
+/**
+ * Whether older answered numbers' conversations are left to read, with
+ * `conversations?kind=number&before=`.
+ */
+moreTexts: boolean, workspaces: Array<CommunicationsWorkspace>,
+/**
+ * Whether the DSP texts: something offers it texting, its dispatch phones.
+ */
+texting: boolean, typing: Typing, };

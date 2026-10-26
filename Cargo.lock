@@ -640,8 +640,10 @@ name = "dispatch-communications"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "chrono",
  "chrono-tz",
  "dispatch-core",
+ "dispatch-phones-contract",
  "dispatch-routes-contract",
  "dispatch-slack",
  "dispatch-vans-contract",

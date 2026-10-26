@@ -29,6 +29,9 @@ test('a direct message reaches Communications live, and its answer and photo go 
   t.after(f.close);
   const owner = await f.client();
   const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  // A DSP that doesn't text: what it counts and lists is Slack's alone.
+  const phones = { feature: 'phones', enabled: false };
+  assert.equal((await owner.post(`/api/platform/dsps/${north.id}/features`, phones)).status, 200);
   await owner.select(north.id);
   assert.equal((await connect(owner, 'T0FIXTURE1')).status, 200);
   const write = (fields: Record<string, unknown>) => fromJordan(f, fields);
@@ -178,4 +181,66 @@ test('Communications answers only those whose role gives them it, and the profil
     [['Jordan Ellis', 'sent']],
   );
   assert.equal((await member.read(route)).groups[0].id, made.value.id);
+});
+
+test('a DSP’s texts are its own: listed by number, answered through its phone as written, and only for those whose role gives them Communications', async (t) => {
+  const f = await fixture();
+  t.after(f.close);
+  const owner = await f.client();
+  const [north, summit] = ['Northline Logistics', 'Summit Delivery'].map((name) =>
+    owner.session.dsps.find((d: { name: string }) => d.name === name),
+  );
+  await owner.select(north.id);
+  // The demo's stand-in phone received three texts: each number's conversation waits.
+  type Listed = { id: string; kind: string; number: string; state: string };
+  let texts: Listed[] = [];
+  await until(async () => {
+    const listed: Listed[] = (await owner.read(route)).conversations;
+    texts = listed.filter((each) => each.kind === 'number');
+    return texts.length === 3;
+  });
+  assert.deepEqual(new Set(texts.map((each) => each.state)), new Set(['waiting']));
+  const asked = texts.find((each) => each.number === '+14255550199')!;
+
+  // Answered, the text goes through the phone as written, which delivers it, under who wrote it.
+  const answer = await owner.post(`${route}/conversations/${asked.id}/messages`, {
+    text: 'Yes, this is dispatch',
+  });
+  assert.equal(answer.status, 201, answer.body);
+  assert.deepEqual(
+    [answer.value.text, answer.value.status, answer.value.sender.name],
+    ['Yes, this is dispatch', 'delivered', 'Platform Owner'],
+  );
+  const opened = await owner.read(`${route}/conversations/${asked.id}`);
+  assert.equal(opened.conversation.state, 'responded');
+  const saved = await owner.post(`${route}/conversations/${asked.id}/contact`, {
+    name: 'New hire',
+  });
+  assert.equal(saved.value.with.name, 'New hire');
+
+  // Another DSP has none of it.
+  await owner.select(summit.id);
+  assert.equal((await owner.get(`${route}/conversations/${asked.id}`)).status, 404);
+  assert.equal((await owner.post(`${route}/conversations/${asked.id}/block`)).status, 404);
+  const { contacts } = await owner.read(`${route}/texts/contacts`);
+  assert.equal(
+    contacts.some((each: { person: { name: string } }) => each.person.name === 'New hire'),
+    false,
+  );
+
+  // No default role holds communications.use, so a member is refused texts too.
+  const member = await f.client(demo.member);
+  await member.select(north.id);
+  const refused = [
+    await member.get(`${route}/texts/contacts`),
+    await member.get(`${route}/conversations/${asked.id}`),
+    await member.post(`${route}/conversations/${asked.id}/messages`, { text: 'Hi' }),
+    await member.post(`${route}/conversations/${asked.id}/contact`, { name: 'Someone' }),
+    await member.post(`${route}/conversations/${asked.id}/block`),
+    await member.post(`${route}/texts/conversations`, { number: '4255550123' }),
+  ];
+  assert.deepEqual(
+    refused.map((each) => each.status),
+    refused.map(() => 403),
+  );
 });

@@ -21,4 +21,4 @@ conversations: Array<Conversation>,
 /**
  * Each group changed, as it is now.
  */
-groups: Array<Group>, typing: Typing, workspaces: Array<CommunicationsWorkspace>, };
+groups: Array<Group>, typing: Typing, workspaces: Array<CommunicationsWorkspace>, texting: boolean, };

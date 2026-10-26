@@ -1,6 +1,7 @@
-import type { FileStatus, Message } from '../api/index.js';
+import type { FileStatus, Message, TextStatus } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
+import { phoneText } from '../../../core/shell/frontend/lib/format.js';
 
 // How the page words times, waits and files, in the DSP's timezone so everyone reads one clock.
 
@@ -63,6 +64,18 @@ export const fileStatus: Record<Exclude<FileStatus, 'kept'>, string> = {
   unavailable: 'Hosted elsewhere',
   failed: "Couldn't download",
 };
+/** How a text Dispatch sent went, as it reads. */
+export const textStatus: Record<TextStatus, string> = {
+  waiting: 'Sending',
+  sent: 'Sent',
+  delivered: 'Delivered',
+  failed: 'Not sent',
+};
+/** A number as it reads beside a name, while the name doesn't say it already: none when it does. */
+export function numberBeside(name: string, number: string) {
+  const shown = phoneText(number);
+  return name === shown ? '' : shown;
+}
 /** "2.4 MB". */
 export function size(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
