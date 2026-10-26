@@ -82,7 +82,7 @@ pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
         .chain(&gone)
         .map(|driver| RouteDriver {
             driver_id: driver.clone(),
-            person: people.driver(&live.source, driver, driver),
+            person: people.routed(live.reader.source(), driver),
             today: today::shown(routes.get(driver), &vans, holding.get(driver)),
             conversation: theirs.remove(driver),
         })

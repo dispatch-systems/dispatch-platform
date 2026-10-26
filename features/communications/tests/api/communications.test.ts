@@ -218,18 +218,37 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   });
   assert.equal(saved.value.with.name, 'New hire');
 
-  // A picture goes with a text through the phone, which keeps it and delivers it.
-  const origin = f.env.DISPATCH_ORIGIN!;
+  // A picture goes with a text through the phone, which keeps it and delivers it. It's sent as
+  // the browser sends it, its own body, at the address the client signs in at, which `fetch`
+  // can't name for a member.
   const png = [137, 80, 78, 71, 13, 10, 26, 10];
   const upload = (headers: Record<string, string>) =>
-    fetch(`${origin}${route}/texts/uploads?name=door.png&type=image%2Fpng`, {
-      method: 'POST',
-      headers: { ...headers, origin, 'content-type': 'application/octet-stream' },
-      body: Uint8Array.from(png),
+    new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const bytes = Buffer.from(png);
+      http
+        .request(
+          `${f.env.DISPATCH_ORIGIN}${route}/texts/uploads?name=door.png&type=image%2Fpng`,
+          {
+            method: 'POST',
+            headers: {
+              origin: f.env.DISPATCH_ORIGIN,
+              ...headers,
+              'content-type': 'application/octet-stream',
+              'content-length': String(bytes.length),
+            },
+          },
+          (response) => {
+            let body = '';
+            response.on('data', (chunk) => (body += chunk));
+            response.on('end', () => resolve({ status: response.statusCode!, body }));
+          },
+        )
+        .on('error', reject)
+        .end(bytes);
     });
   const added = await upload(owner.headers);
-  assert.equal(added.status, 201);
-  const picture = ((await added.json()) as { id: string }).id;
+  assert.equal(added.status, 201, added.body);
+  const picture = (JSON.parse(added.body) as { id: string }).id;
   const pictured = await owner.post(`${route}/conversations/${asked.id}/messages`, {
     text: '',
     photos: [picture],

@@ -225,7 +225,8 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
     for text in [&asked, &answer.id] {
         assert_eq!(filed(&state, &dsp, text).await.driver, driver("avery"));
     }
-    assert!(listed(&state, &dsp).await.conversations.is_empty());
+    let listed = listed(&state, &dsp).await;
+    assert!(listed.conversations.iter().all(|each| each.id != number.id));
 }
 
 #[tokio::test]

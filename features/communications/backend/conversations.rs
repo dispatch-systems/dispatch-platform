@@ -110,6 +110,11 @@ impl People {
     pub fn driver(&self, source: &str, id: &str, name: &str) -> Correspondent {
         with(self.driver_of(source, id), name)
     }
+    /// The driver holding `id` of `source`, as a reader of routes names its drivers, as Driver
+    /// Match knows them, else by that ID.
+    pub fn routed(&self, source: Source, id: &str) -> Correspondent {
+        with(self.everyone.holding(source, id), id)
+    }
     /// A work phone nobody held, `number`, by its last four digits.
     pub fn work_phone(&self, number: &str) -> Correspondent {
         let digits: String = number.chars().filter(char::is_ascii_digit).collect();
