@@ -22,6 +22,8 @@ export function NumberActions({
 }) {
   const [naming, setNaming] = useState(false);
   const named = useCallback(() => setNaming(false), []);
+  // Its words, which on a phone only its mark shows.
+  const saving = conversation.contact ? 'Edit contact' : 'Save contact';
   const copy = useAction(() => toClipboard(conversation.number ?? ''), {
     success: 'Number copied',
   });
@@ -32,9 +34,13 @@ export function NumberActions({
     <>
       {!conversation.with.code && (
         <div className="save-contact">
-          <button aria-expanded={naming} onClick={() => setNaming((open) => !open)}>
+          <button
+            aria-label={saving}
+            aria-expanded={naming}
+            onClick={() => setNaming((open) => !open)}
+          >
             <UserPlus size={15} />
-            <span>{conversation.contact ? 'Edit contact' : 'Save contact'}</span>
+            <span>{saving}</span>
           </button>
           {naming && <ContactForm conversation={conversation} show={show} close={named} />}
         </div>
