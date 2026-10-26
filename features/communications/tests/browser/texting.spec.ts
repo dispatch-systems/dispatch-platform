@@ -2,20 +2,34 @@ import { test, expect, login, openDsp } from '../../../../core/shell/tests/suppo
 import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
 
 // The seeded DSP texts through its demo's stand-in phone, (206) 555-0100, which received three
-// texts and delivers what it's given at once; it has no Slack until a test connects it.
+// texts and delivers what it's given at once; it has no Slack until a test connects it. Routes is
+// on, and Live Route Data, which reads a provider, off: Today's Routes lists nobody.
 
-test('with its phone and no Slack, Communications is Messaging: a number saved as a contact, asked before a name is left unsaved, answered by text, blocked into Contacts and unblocked', async ({
+/** A picture of a single pixel, as a PNG. */
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+test('with its phone and no Slack, Communications opens on Today’s Routes, with no routes before live route data reads today, beside Messaging: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
   page,
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Communications' }).click();
+  const sections = page.getByRole('tablist', { name: 'Sections' });
+  await expect(sections.getByRole('tab', { name: "Today's Routes" })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByText('No routes', { exact: true })).toBeVisible();
+  // Nothing of Slack.
+  await expect(sections.getByRole('tab', { name: /Slack/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Connect Slack' })).toHaveCount(0);
+  await sections.getByRole('tab', { name: /Messaging/ }).click();
   const list = page.getByRole('region', { name: 'Conversations' });
   const stranger = list.getByRole('listitem').filter({ hasText: '(425) 555-0199' });
   await expect(stranger).toContainText('Hi is this dispatch? I start Monday');
-  // Messaging alone: nothing to switch to, and nothing of Slack.
-  await expect(page.getByRole('tablist', { name: 'Sections' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Connect Slack' })).toHaveCount(0);
   await stranger.getByRole('button').first().click();
   const saveContact = page
     .getByRole('region', { name: '(425) 555-0199' })
@@ -40,6 +54,12 @@ test('with its phone and no Slack, Communications is Messaging: a number saved a
   await jamie.getByLabel('Message').fill('See you Monday at 7');
   await jamie.getByLabel('Message').press('Enter');
   await expect(jamie.getByText('Delivered')).toBeVisible();
+  // A picture goes by text too, kept by the phone, and shows as sent.
+  const choosing = page.waitForEvent('filechooser');
+  await jamie.getByRole('button', { name: 'Attach photos' }).click();
+  await (await choosing).setFiles({ name: 'door.png', mimeType: 'image/png', buffer: PIXEL });
+  await jamie.getByRole('button', { name: 'Send' }).click();
+  await expect(jamie.getByRole('link', { name: 'door.png' })).toBeVisible();
 
   // Blocked, it leaves Messages for Contacts' Blocked, until it's unblocked.
   await jamie.getByLabel('More').click();
@@ -91,6 +111,7 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await expect(messaging).toHaveText('Messaging3');
   await expect(slack).toHaveText('Slack1');
   const list = page.getByRole('region', { name: 'Conversations' });
+  await messaging.click();
   await expect(list).toContainText('(425) 555-0199');
   await slack.click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Jordan Ellis' })).toBeVisible();
@@ -145,6 +166,8 @@ test('with Slack needing an update, Messaging still works, and Update Slack cove
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Communications' }).click();
   const update = page.getByRole('dialog', { name: 'Update Slack' });
+  const sections = page.getByRole('tablist', { name: 'Sections' });
+  await sections.getByRole('tab', { name: /Messaging/ }).click();
   const stranger = page
     .getByRole('region', { name: 'Conversations' })
     .getByRole('listitem')
@@ -155,7 +178,6 @@ test('with Slack needing an update, Messaging still works, and Update Slack cove
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
 
   // Slack waits on the update; closed, Messaging shows again.
-  const sections = page.getByRole('tablist', { name: 'Sections' });
   await sections.getByRole('tab', { name: /Slack/ }).click();
   await expect(update.getByRole('listitem')).toHaveText(/Operations/);
   await update.getByRole('button', { name: 'Close dialog' }).click();
