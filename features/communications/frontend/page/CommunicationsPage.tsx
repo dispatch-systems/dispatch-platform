@@ -292,6 +292,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     if (shownIn && shownIn !== section && sections.includes(shownIn)) chooseSection(shownIn);
   }, [shown, shownIn, section, sections, chooseSection]);
   const reading = open || group || drafting;
+  // The DSP's phones offline: in the heading, or on a phone, a line of their own under it.
+  const offline = <PhonesOffline phones={inbox?.phones ?? []} now={now} />;
   return (
     <div
       ref={page}
@@ -302,7 +304,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
       <Shown value={display}>
         <div className="communications-page" inert={updating.length > 0}>
           <Header title="Communications">
-            <PhonesOffline phones={inbox?.phones ?? []} now={now} />
+            {layout !== 'phone' && offline}
             {sections.length > 0 && displaySettings && (
               <button
                 aria-label="Display"
@@ -328,6 +330,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
               </>
             )}
           </Header>
+          {layout === 'phone' && offline}
           <ErrorBox message={error || todays.error} />
           {!inbox ? (
             !error && <Loading />

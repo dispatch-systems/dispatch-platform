@@ -21,20 +21,13 @@ export function WorkPhone({ number }: { number: string }) {
   );
 }
 
-/** How many of a route's stops are done, of how many, while it has any. */
+/** How many of a route's stops are done, of how many, as a bar and in words, while it has any. */
 export function Stops({ today }: { today: Pick<Today, 'stops' | 'stopsDone' | 'pace'> }) {
   if (today.stops === null) return null;
   const done = today.stopsDone ?? 0;
   return (
     <>
-      <span
-        className={today.pace ? `stops-bar ${today.pace}` : 'stops-bar'}
-        role="meter"
-        aria-label="Stops"
-        aria-valuemin={0}
-        aria-valuemax={today.stops}
-        aria-valuenow={done}
-      >
+      <span className={today.pace ? `stops-bar ${today.pace}` : 'stops-bar'} aria-hidden="true">
         <i style={{ width: `${Math.min(100, (100 * done) / today.stops)}%` }} />
       </span>
       <span className="stops">

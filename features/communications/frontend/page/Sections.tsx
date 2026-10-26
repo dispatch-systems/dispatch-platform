@@ -6,8 +6,8 @@ import type { Section } from '../inbox.js';
 
 // The sections of the list, at its top while there are two or more: Today's Routes, the work
 // phones of the drivers on a route today; Messaging, the numbers that text the DSP's phones; and
-// Slack, its workspaces' direct messages, each with how many wait in it. Narrow, Today's Routes
-// goes by Routes.
+// Slack, its workspaces' direct messages, each with how many wait in it. On a phone, or with all
+// three in a narrow list, Today's Routes goes by Routes.
 
 const shown: Record<Section, { label: ReactNode; icon: ReactNode }> = {
   routes: {
@@ -36,7 +36,7 @@ export function Sections({
   choose: (section: Section) => void;
 }) {
   return (
-    <div className="sections">
+    <div className="sections" data-count={sections.length}>
       <Tabs
         label="Sections"
         value={section}

@@ -105,9 +105,9 @@ function BoardRow({
           }}
         >
           {row.kind === 'driver' ? (
-            <Face {...row.driver.person} size="sender" />
+            <Face {...row.driver.person} size="message" />
           ) : (
-            <Party conversation={row.conversation} size="sender" />
+            <Party conversation={row.conversation} size="message" />
           )}
           {name}
         </button>
@@ -116,7 +116,9 @@ function BoardRow({
       <td>{today?.waveAt != null && clock(today.waveAt, timeZone)}</td>
       <td>{today?.van}</td>
       <td>{today?.phone && <WorkPhone number={today.phone} />}</td>
-      <td className="board-stops">{today && <Stops today={today} />}</td>
+      <td className="board-stops">
+        <div>{today && <Stops today={today} />}</div>
+      </td>
       <td>{today && <PaceMark pace={today.pace} />}</td>
       <td className="board-last">
         {writing.length > 0 ? (
