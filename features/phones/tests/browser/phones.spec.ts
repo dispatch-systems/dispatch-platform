@@ -76,7 +76,11 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   making = made();
   await dialog.getByRole('button', { name: 'New code' }).click();
   const own = await making;
-  await page.clock.pauseAt(own.expiresAt - 1_000);
+  // Held still past how often it asks, though well within how long an ask may wait, its next ask
+  // and tick come a whole period on. The time then reads a second before the code expires, with
+  // nothing fired: a jump there would time out the ask held, which is then asked again.
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 4_000);
+  await page.clock.setSystemTime(own.expiresAt - 1_000);
   await answer();
   await pair(own.code, '(206) 555-0188');
   await page.clock.runFor(1_000);
