@@ -49,9 +49,8 @@ use std::{
 
 /// How many texts are read from Phones at a time: as many as it gives.
 const PAGE: usize = 100;
-/// Two days, in milliseconds: how far back today's texts, and the work conversations they may
-/// wait in, are looked for, further than a day can be long; an earlier day's are looked for
-/// from when it began, when that's further.
+/// Two days, in milliseconds: how far back the work conversations today's texts may wait in are
+/// looked for, further than a day can be long.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
 /// Every minute, each DSP's texts changed since they were last filed.
@@ -178,19 +177,21 @@ pub fn refiled(db: &Store, dsp: &str) -> Result<()> {
     let today = clock::today(filer.zone);
     refiled_by(db, dsp, &mut filer, today).map(drop)
 }
-/// Files every text of `day` again, where `filer` says it belongs now: the conversations changed.
+/// Files every text of `day` again, from when it began until the next day did, where `filer` says
+/// it belongs now: the conversations changed.
 fn refiled_by(
     db: &Store,
     dsp: &str,
     filer: &mut Filer,
     day: NaiveDate,
 ) -> Result<BTreeSet<String>> {
-    let zone = filer.zone;
-    let from = (now() - TWO_DAYS_MS).min(began(zone, day)?);
+    let next = day
+        .succ_opt()
+        .ok_or_else(|| Error::new("invalid_date", 400))?;
+    let (from, to) = (began(filer.zone, day)?, began(filer.zone, next)?);
     let moves = db
-        .communications_texts_from(dsp, from)?
+        .communications_texts_between(dsp, from, to)?
         .into_iter()
-        .filter(|text| clock::day(zone, text.at) == day)
         .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
         .collect::<Result<Vec<_>>>()?;
     db.refile_communications_texts(dsp, &moves)

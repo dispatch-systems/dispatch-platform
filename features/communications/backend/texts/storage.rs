@@ -187,8 +187,8 @@ pub trait TextStore {
         most: usize,
     ) -> Result<Vec<Text>>;
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
-    /// Every text written from `from` on, oldest first.
-    fn communications_texts_from(&self, dsp: &str, from: i64) -> Result<Vec<Text>>;
+    /// Every text written from `from` until `to`, oldest first.
+    fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
     /// The last of Phones' changes read: 0 before the first.
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64>;
     /// Keeps each of `texts` where it's filed, moving one kept elsewhere before, and notes that
@@ -405,10 +405,10 @@ impl TextStore for Store {
         self.dsp(dsp)?
             .one_as("SELECT * FROM communications_texts WHERE id=?", [id])
     }
-    fn communications_texts_from(&self, dsp: &str, from: i64) -> Result<Vec<Text>> {
+    fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>> {
         self.dsp(dsp)?.query_as(
-            "SELECT * FROM communications_texts WHERE at>=? ORDER BY at,id",
-            [from],
+            "SELECT * FROM communications_texts WHERE at>=?1 AND at<?2 ORDER BY at,id",
+            [from, to],
         )
     }
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64> {
