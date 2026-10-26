@@ -153,7 +153,11 @@ pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
     }
     let mut waiting = db.waiting_communications_texts(dsp)?;
     waiting.extend(live_day::waiting(db, dsp)?);
-    waiting.sort_by(|a, b| a.waiting_since.cmp(&b.waiting_since).then_with(|| a.id.cmp(&b.id)));
+    waiting.sort_by(|a, b| {
+        a.waiting_since
+            .cmp(&b.waiting_since)
+            .then_with(|| a.id.cmp(&b.id))
+    });
     Ok(waiting)
 }
 

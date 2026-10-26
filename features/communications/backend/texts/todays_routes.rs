@@ -6,8 +6,7 @@
 use super::{
     live_day::LiveDay,
     numbers::Numbers,
-    offered as texts,
-    reading,
+    offered as texts, reading,
     storage::{TextConversation, TextStore},
 };
 use crate::{
@@ -38,7 +37,11 @@ pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
     };
     let routes = today::busiest(live.reader.day(db, dsp)?.routes, today::driver);
     let holding = live.holding(db, dsp)?;
-    let vans = today::vans(db, dsp, routes.values().filter_map(|route| route.vin.as_ref()))?;
+    let vans = today::vans(
+        db,
+        dsp,
+        routes.values().filter_map(|route| route.vin.as_ref()),
+    )?;
     // Their work conversations, and every one written in today: those of drivers gone from the
     // day's list, and of work phones nobody held.
     let ids: Vec<String> = routes.keys().cloned().collect();
@@ -59,7 +62,9 @@ pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
     let (mut theirs, mut phones) = (HashMap::new(), Vec::new());
-    for conversation in reading::conversations(db, &people, &numbers, dsp, kept.into_values().collect())? {
+    for conversation in
+        reading::conversations(db, &people, &numbers, dsp, kept.into_values().collect())?
+    {
         match conversation.driver_id.clone() {
             Some(driver) => {
                 theirs.insert(driver, conversation);

@@ -216,7 +216,13 @@ fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     };
     if let Some(kind) = texted {
         if !typed.is_empty() {
-            return Reply::of(&texts::reading::search(db, c.state, c.dsp_id(), kind, typed)?);
+            return Reply::of(&texts::reading::search(
+                db,
+                c.state,
+                c.dsp_id(),
+                kind,
+                typed,
+            )?);
         }
         let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
         return Reply::of(&texts::reading::older(db, c.state, c.dsp_id(), (at, &id))?);
@@ -277,7 +283,13 @@ fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn profile(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     let (conversation, texted) = conversation_id(input.param("id"))?;
-    Reply::of(&profile::of(db, c.state, c.dsp_id(), &conversation, texted)?)
+    Reply::of(&profile::of(
+        db,
+        c.state,
+        c.dsp_id(),
+        &conversation,
+        texted,
+    )?)
 }
 /// Today's Routes: the drivers on a route today, with their work conversations.
 fn todays_routes(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
@@ -455,7 +467,12 @@ fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     if input.body.get("driverId").is_some() {
         ensure(input.body.get("number").is_none(), "invalid_input", 400)?;
         let driver = v::text(&input.body, "driverId", 1, DRIVER_ID_MOST)?;
-        return Reply::of(&texts::contacts::open_driver(db, c.state, c.dsp_id(), driver)?);
+        return Reply::of(&texts::contacts::open_driver(
+            db,
+            c.state,
+            c.dsp_id(),
+            driver,
+        )?);
     }
     let number = v::text(&input.body, "number", 3, 32)?;
     Reply::of(&texts::contacts::open(db, c.state, c.dsp_id(), number)?)

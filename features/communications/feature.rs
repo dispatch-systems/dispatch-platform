@@ -89,7 +89,9 @@ pub const FEATURE: Feature = Feature {
             Migration {
                 id: 5,
                 name: "communications_picked",
-                apply: Sql(include_str!("migrations/dsp/0005_communications_picked.sql")),
+                apply: Sql(include_str!(
+                    "migrations/dsp/0005_communications_picked.sql"
+                )),
             },
         ],
     }],

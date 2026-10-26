@@ -111,8 +111,8 @@ pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversat
 /// for someone at the DSP to text them first at the work phone they hold.
 pub fn open_driver(db: &Store, state: &State, dsp: &str, driver: &str) -> Result<Conversation> {
     offering(db, dsp)?;
-    let live = LiveDay::read(db, dsp)?
-        .ok_or_else(|| Error::new("communications_routes_over", 409))?;
+    let live =
+        LiveDay::read(db, dsp)?.ok_or_else(|| Error::new("communications_routes_over", 409))?;
     ensure(
         live.drives(db, dsp, driver)?,
         "communications_driver_not_found",

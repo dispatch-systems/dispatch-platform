@@ -23,10 +23,14 @@ use dispatch_slack::kit;
 /// Each of `person`'s conversations of a kind, work, by text and Slack, while there are two or
 /// more.
 pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Vec<Elsewhere>> {
-    let found: Vec<Elsewhere> = [work(db, dsp, person)?, number(db, dsp, person)?, slack(db, dsp, person)?]
-        .into_iter()
-        .flatten()
-        .collect();
+    let found: Vec<Elsewhere> = [
+        work(db, dsp, person)?,
+        number(db, dsp, person)?,
+        slack(db, dsp, person)?,
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     Ok(if found.len() > 1 { found } else { Vec::new() })
 }
 
@@ -78,7 +82,12 @@ fn number(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
     };
     let conversation = latest(db.communications_numbers_of(dsp, &numbers)?);
     Ok(Some(Elsewhere {
-        number: Some(conversation.as_ref().and_then(|each| each.number.clone()).unwrap_or(first)),
+        number: Some(
+            conversation
+                .as_ref()
+                .and_then(|each| each.number.clone())
+                .unwrap_or(first),
+        ),
         ..found(ConversationKind::Number, conversation)
     }))
 }

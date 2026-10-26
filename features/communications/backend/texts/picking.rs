@@ -29,8 +29,8 @@ pub fn pick(
         _ => None,
     }
     .ok_or_else(|| Error::new("invalid_input", 400))?;
-    let live = LiveDay::read(db, dsp)?
-        .ok_or_else(|| Error::new("communications_routes_over", 409))?;
+    let live =
+        LiveDay::read(db, dsp)?.ok_or_else(|| Error::new("communications_routes_over", 409))?;
     ensure(
         live.drives(db, dsp, driver)?,
         "communications_driver_not_found",

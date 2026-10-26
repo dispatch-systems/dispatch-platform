@@ -302,7 +302,11 @@ impl<'a> Filer<'a> {
     /// The drivers picked for work phones on `day`, by their ten digits.
     fn picked(&mut self, day: &str) -> Result<&HashMap<String, Filed>> {
         if !self.picked.contains_key(day) {
-            let picked = self.db.communications_picked(self.dsp, day)?.into_iter().collect();
+            let picked = self
+                .db
+                .communications_picked(self.dsp, day)?
+                .into_iter()
+                .collect();
             self.picked.insert(day.to_owned(), picked);
         }
         Ok(&self.picked[day])

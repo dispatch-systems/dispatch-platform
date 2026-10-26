@@ -26,7 +26,9 @@ pub fn of(db: &Store, dsp: &str, source: &str, id: &str, texts: &[Text]) -> Resu
     if let Some(live) = &live {
         driven.extend(live.reader.routes(db, dsp, &ids)?.routes);
     }
-    if let Some(reader) = routes::for_dsp(db, dsp)?.filter(|reader| reader.source().as_str() == source) {
+    if let Some(reader) =
+        routes::for_dsp(db, dsp)?.filter(|reader| reader.source().as_str() == source)
+    {
         let reach = last
             .checked_sub_days(Days::new(ROUTES_DAYS_MOST - 1))
             .map_or(first, |reach| reach.max(first));
@@ -38,7 +40,11 @@ pub fn of(db: &Store, dsp: &str, source: &str, id: &str, texts: &[Text]) -> Resu
         );
     }
     let mut busiest = today::busiest(driven, |route| route.day.clone());
-    let vans = today::vans(db, dsp, busiest.values().filter_map(|route| route.vin.as_ref()))?;
+    let vans = today::vans(
+        db,
+        dsp,
+        busiest.values().filter_map(|route| route.vin.as_ref()),
+    )?;
     Ok(days
         .into_iter()
         .map(|day| {

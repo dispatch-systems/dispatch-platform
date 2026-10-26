@@ -1,11 +1,11 @@
 //! A work conversation waits only on texts written on the live day: counted while live route data
 //! holds today, from what came before its first read, and done with at the stop, as it empties.
+use crate::ConversationState;
 use crate::backend::{
     conversations,
     support::{at, filed, held, hold, started, texted, today},
     texts::reading,
 };
-use crate::ConversationState;
 use dispatch_core::State;
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ async fn shown(state: &Arc<State>, dsp: &str, id: &str) -> (ConversationState, O
 
 #[tokio::test]
 async fn a_work_conversation_waits_only_on_the_live_day_from_before_its_first_read_until_the_stop()
- {
+{
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let yesterday = day.pred_opt().unwrap();
@@ -41,7 +41,14 @@ async fn a_work_conversation_waits_only_on_the_live_day_from_before_its_first_re
         hold("A1", "2065550101", then(8, 0), None),
     )];
     held(&state, &dsp, None, Vec::new(), saved.clone()).await;
-    let late = texted(&state, &dsp, "+12065550101", "Keys are in the box", then(17, 0)).await;
+    let late = texted(
+        &state,
+        &dsp,
+        "+12065550101",
+        "Keys are in the box",
+        then(17, 0),
+    )
+    .await;
     let avery = filed(&state, &dsp, &late).await.id;
     // Today, before the first live read, they text again at 6:30. Without a live day, nothing
     // waits.

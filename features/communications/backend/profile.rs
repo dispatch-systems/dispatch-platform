@@ -31,11 +31,16 @@ pub fn of(db: &Store, state: &State, dsp: &str, id: &str, texted: bool) -> Resul
             .communications_text_conversation(dsp, id)?
             .filter(|conversation| conversation.kind == ConversationKind::Work)
             .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-        let (source, driver) = conversation.driver.ok_or_else(|| Error::new("invalid_input", 400))?;
+        let (source, driver) = conversation
+            .driver
+            .ok_or_else(|| Error::new("invalid_input", 400))?;
         let person = Source::parse(&source).and_then(|source| everyone.holding(source, &driver));
         let today = match LiveDay::read(db, dsp)? {
             Some(live) if live.source == source => today::of_drivers(db, dsp, &live, &[driver])?,
-            _ => person.map(|person| today::of(db, dsp, person)).transpose()?.flatten(),
+            _ => person
+                .map(|person| today::of(db, dsp, person))
+                .transpose()?
+                .flatten(),
         };
         // Their Slack workspace: the first of the DSP's they're in.
         let team = person.and_then(|person| {
@@ -53,7 +58,10 @@ pub fn of(db: &Store, state: &State, dsp: &str, id: &str, texted: bool) -> Resul
             kit::SOURCE,
             &kit::member_id(&conversation.team, &conversation.user),
         );
-        let today = person.map(|person| today::of(db, dsp, person)).transpose()?.flatten();
+        let today = person
+            .map(|person| today::of(db, dsp, person))
+            .transpose()?
+            .flatten();
         (person, today, Some(conversation.team))
     };
     let slack = team.and_then(|team| {

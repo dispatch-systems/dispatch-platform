@@ -63,9 +63,30 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
     )
     .await;
     // Avery and Casey text; so does 0103, a work phone yesterday that nobody holds today.
-    texted(&state, &dsp, "+12065550101", "Tire light came on", now(9, 12)).await;
-    texted(&state, &dsp, "+12065550104", "Done, heading back", now(9, 30)).await;
-    texted(&state, &dsp, "+12065550103", "Who has the charger?", now(10, 0)).await;
+    texted(
+        &state,
+        &dsp,
+        "+12065550101",
+        "Tire light came on",
+        now(9, 12),
+    )
+    .await;
+    texted(
+        &state,
+        &dsp,
+        "+12065550104",
+        "Done, heading back",
+        now(9, 30),
+    )
+    .await;
+    texted(
+        &state,
+        &dsp,
+        "+12065550103",
+        "Who has the charger?",
+        now(10, 0),
+    )
+    .await;
 
     let shown = listed(&state, &dsp).await;
     assert_eq!(shown.day.as_deref(), Some(today.as_str()));
@@ -79,7 +100,9 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
                 each.today.van.as_deref(),
                 (each.today.stops, each.today.stops_done, each.today.pace),
                 each.today.phone.as_deref(),
-                each.conversation.as_ref().map(|conversation| conversation.state),
+                each.conversation
+                    .as_ref()
+                    .map(|conversation| conversation.state),
             )
         })
         .collect();

@@ -113,7 +113,10 @@ impl People {
     /// A work phone nobody held, `number`, by its last four digits.
     pub fn work_phone(&self, number: &str) -> Correspondent {
         let digits: String = number.chars().filter(char::is_ascii_digit).collect();
-        with(None, &format!("Work phone {}", &digits[digits.len().saturating_sub(4)..]))
+        with(
+            None,
+            &format!("Work phone {}", &digits[digits.len().saturating_sub(4)..]),
+        )
     }
     /// The person the DSP's member `user` is, by their email address, if any: their code and
     /// their photo's version.

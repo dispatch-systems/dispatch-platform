@@ -96,8 +96,9 @@ pub fn slated(
     dsp: &str,
     mut kept: Vec<TextConversation>,
 ) -> Result<Vec<TextConversation>> {
-    let waits =
-        |each: &TextConversation| each.kind == ConversationKind::Work && each.state == ConversationState::Waiting;
+    let waits = |each: &TextConversation| {
+        each.kind == ConversationKind::Work && each.state == ConversationState::Waiting
+    };
     let ids: Vec<String> = kept
         .iter()
         .filter(|each| waits(each))
@@ -128,7 +129,11 @@ pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
         .into_iter()
         .filter(|each| each.state == ConversationState::Waiting)
         .collect();
-    waiting.sort_by(|a, b| a.waiting_since.cmp(&b.waiting_since).then_with(|| a.id.cmp(&b.id)));
+    waiting.sort_by(|a, b| {
+        a.waiting_since
+            .cmp(&b.waiting_since)
+            .then_with(|| a.id.cmp(&b.id))
+    });
     Ok(waiting)
 }
 

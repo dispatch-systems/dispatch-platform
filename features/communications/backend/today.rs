@@ -6,13 +6,7 @@
 //! too has fewer. Each feature is asked only while it's on for the DSP.
 use super::texts::{live_day::LiveDay, numbers::work_number, zone};
 use crate::api::types::Today;
-use dispatch_core::{
-    Result,
-    db::Store,
-    foundation::clock,
-    manifest::people::Person,
-    text_enum,
-};
+use dispatch_core::{Result, db::Store, foundation::clock, manifest::people::Person, text_enum};
 use dispatch_routes_contract::{self as routes, RouteDay, WorkPhone};
 use dispatch_vans_contract as fleet;
 use std::collections::{BTreeMap, HashMap};
@@ -126,12 +120,7 @@ pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
 
 /// The route the driver holding `ids` of the live day's source drives today, and the work phone
 /// they hold now, if they have either.
-pub fn of_drivers(
-    db: &Store,
-    dsp: &str,
-    live: &LiveDay,
-    ids: &[String],
-) -> Result<Option<Today>> {
+pub fn of_drivers(db: &Store, dsp: &str, live: &LiveDay, ids: &[String]) -> Result<Option<Today>> {
     if ids.is_empty() {
         return Ok(None);
     }

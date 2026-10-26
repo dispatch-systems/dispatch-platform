@@ -81,7 +81,11 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
             _ => None,
         },
         (None, ConversationKind::Slack) => None,
-        (None, _) => return conversation.number.ok_or_else(|| Error::new("invalid_input", 400)),
+        (None, _) => {
+            return conversation
+                .number
+                .ok_or_else(|| Error::new("invalid_input", 400));
+        }
     };
     held.map(|held| work_number(&held.phone))
         .ok_or_else(|| Error::new("communications_no_work_phone", 409))
@@ -135,11 +139,7 @@ pub async fn upload(
     )?;
     let dsp = c.dsp.id.clone();
     let texting = state.read(move |db| offering(db, &dsp)).await?;
-    ensure(
-        photo.length <= texting.largest(),
-        "upload_too_large",
-        413,
-    )?;
+    ensure(photo.length <= texting.largest(), "upload_too_large", 413)?;
     let added = Added {
         by: c.auth.user.id.clone(),
         name: name.to_owned(),

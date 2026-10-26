@@ -8,7 +8,12 @@ use std::sync::Arc;
 
 /// Picks the driver `driver` for the work phone of the conversation `id`, as the member `me`.
 async fn picked(state: &Arc<State>, dsp: &str, id: &str, driver: &str) -> Result<Conversation> {
-    let (shared, dsp, id, driver) = (state.clone(), dsp.to_owned(), id.to_owned(), driver.to_owned());
+    let (shared, dsp, id, driver) = (
+        state.clone(),
+        dsp.to_owned(),
+        id.to_owned(),
+        driver.to_owned(),
+    );
     state
         .run(move |db| pick(db, &shared, &dsp, &id, &driver, "me"))
         .await
@@ -24,7 +29,7 @@ async fn whose(state: &Arc<State>, dsp: &str, id: &str) -> Option<String> {
 
 #[tokio::test]
 async fn a_driver_picked_for_a_work_phone_nobody_held_keeps_its_texts_of_today_as_the_holds_settle()
- {
+{
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let yesterday = day.pred_opt().unwrap();
@@ -44,10 +49,27 @@ async fn a_driver_picked_for_a_work_phone_nobody_held_keeps_its_texts_of_today_a
         hold("C1", "2065550103", then(8, 0), None),
     )];
     let blake = hold("B1", "2065550102", now(8, 0), None);
-    held(&state, &dsp, Some(&today), vec![blake.clone()], saved.clone()).await;
-    let asked = texted(&state, &dsp, "+12065550103", "Who has the charger?", now(9, 0)).await;
+    held(
+        &state,
+        &dsp,
+        Some(&today),
+        vec![blake.clone()],
+        saved.clone(),
+    )
+    .await;
+    let asked = texted(
+        &state,
+        &dsp,
+        "+12065550103",
+        "Who has the charger?",
+        now(9, 0),
+    )
+    .await;
     let phone = filed(&state, &dsp, &asked).await;
-    assert_eq!((phone.kind, phone.driver.clone()), (ConversationKind::Work, None));
+    assert_eq!(
+        (phone.kind, phone.driver.clone()),
+        (ConversationKind::Work, None)
+    );
 
     // Picked for it, Avery has its text.
     let avery = picked(&state, &dsp, &phone.id, "A1").await.unwrap();

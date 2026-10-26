@@ -183,7 +183,7 @@ test('Communications answers only those whose role gives them it, and the profil
   assert.equal((await member.read(route)).groups[0].id, made.value.id);
 });
 
-test('a DSP’s texts are its own: listed by number, answered through its phone as written, and only for those whose role gives them Communications', async (t) => {
+test('a DSP’s texts are its own: listed by number, answered through its phone as written with pictures, and with Today’s Routes only for those whose role gives them Communications', async (t) => {
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
@@ -218,10 +218,43 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   });
   assert.equal(saved.value.with.name, 'New hire');
 
+  // A picture goes with a text through the phone, which keeps it and delivers it.
+  const origin = f.env.DISPATCH_ORIGIN!;
+  const png = [137, 80, 78, 71, 13, 10, 26, 10];
+  const upload = (headers: Record<string, string>) =>
+    fetch(`${origin}${route}/texts/uploads?name=door.png&type=image%2Fpng`, {
+      method: 'POST',
+      headers: { ...headers, origin, 'content-type': 'application/octet-stream' },
+      body: Uint8Array.from(png),
+    });
+  const added = await upload(owner.headers);
+  assert.equal(added.status, 201);
+  const picture = ((await added.json()) as { id: string }).id;
+  const pictured = await owner.post(`${route}/conversations/${asked.id}/messages`, {
+    text: '',
+    photos: [picture],
+  });
+  assert.equal(pictured.status, 201, pictured.body);
+  assert.deepEqual(
+    [pictured.value.status, pictured.value.files.map((file: { id: string }) => file.id)],
+    ['delivered', [picture]],
+  );
+  const kept = await f.raw(`${route}/texts/files/${picture}`, undefined, owner.headers);
+  assert.equal(kept.status, 200);
+  assert.deepEqual([...new Uint8Array(await kept.arrayBuffer())], png);
+
+  // Today's Routes lists nobody until live route data reads today, and a number's conversation
+  // has no driver to pick.
+  assert.deepEqual(await owner.read(`${route}/routes`), { day: null, drivers: [], phones: [] });
+  const driver = { driverId: 'driver-1' };
+  assert.equal((await owner.post(`${route}/conversations/${asked.id}/driver`, driver)).status, 400);
+
   // Another DSP has none of it.
   await owner.select(summit.id);
   assert.equal((await owner.get(`${route}/conversations/${asked.id}`)).status, 404);
   assert.equal((await owner.post(`${route}/conversations/${asked.id}/block`)).status, 404);
+  assert.equal((await owner.post(`${route}/conversations/${asked.id}/driver`, driver)).status, 404);
+  assert.equal((await owner.get(`${route}/texts/files/${picture}`)).status, 404);
   const { contacts } = await owner.read(`${route}/texts/contacts`);
   assert.equal(
     contacts.some((each: { person: { name: string } }) => each.person.name === 'New hire'),
@@ -238,6 +271,9 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
     await member.post(`${route}/conversations/${asked.id}/contact`, { name: 'Someone' }),
     await member.post(`${route}/conversations/${asked.id}/block`),
     await member.post(`${route}/texts/conversations`, { number: '4255550123' }),
+    await member.get(`${route}/routes`),
+    await member.post(`${route}/conversations/${asked.id}/driver`, driver),
+    await upload(member.headers),
   ];
   assert.deepEqual(
     refused.map((each) => each.status),
