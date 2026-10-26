@@ -10,12 +10,7 @@ use super::{
 };
 use crate::{
     api::types::{Conversation, Message},
-    backend::{
-        live,
-        reply::checked,
-        sender,
-        storage::DOMAIN,
-    },
+    backend::{live, reply::checked, sender, storage::DOMAIN},
 };
 use dispatch_core::{
     Error, Result, State, accounts::Context, db::Store, ensure, server::http::route::Dsp,

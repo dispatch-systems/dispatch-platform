@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SlidersHorizontal, SquarePen } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
 import type { Contact, Conversation, Group, TextContact } from '../../api/index.js';
@@ -86,9 +86,15 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
   const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(chosen);
   // Messaging while the DSP texts, Slack while it has a workspace.
-  const sections: Section[] = [];
-  if (inbox?.texting) sections.push('messaging');
-  if (inbox?.workspaces.length) sections.push('slack');
+  const texting = Boolean(inbox?.texting);
+  const slacking = Boolean(inbox?.workspaces.length);
+  const sections = useMemo(
+    () =>
+      (['messaging', 'slack'] as const).filter((each) =>
+        each === 'messaging' ? texting : slacking,
+      ),
+    [texting, slacking],
+  );
   const section = sections.find((each) => each === chosenSection) ?? sections[0] ?? 'slack';
   // Slack sends those who connected or updated it from here back here, to finish.
   const returned = useSlackReturn(async (state, code) => {

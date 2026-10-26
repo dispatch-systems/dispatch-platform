@@ -74,13 +74,21 @@ pub fn routes() -> Vec<Route> {
             USE,
             save_contact,
         ),
-        write("/api/dsp/communications/conversations/{id}/block", USE, block),
+        write(
+            "/api/dsp/communications/conversations/{id}/block",
+            USE,
+            block,
+        ),
         write(
             "/api/dsp/communications/conversations/{id}/unblock",
             USE,
             unblock,
         ),
-        write("/api/dsp/communications/texts/conversations", USE, text_first),
+        write(
+            "/api/dsp/communications/texts/conversations",
+            USE,
+            text_first,
+        ),
         read("/api/dsp/communications/texts/contacts", USE, text_contacts),
         async_get("/api/dsp/communications/texts/files/{id}", USE, text_file),
         read("/api/dsp/communications/contacts", USE, listed),

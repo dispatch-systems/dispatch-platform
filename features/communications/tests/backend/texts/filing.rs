@@ -98,9 +98,30 @@ async fn a_numbers_texts_are_with_whom_driver_match_has_it_for_else_the_name_sav
         Vec::new(),
     );
     let minute = 60_000;
-    texted(&state, &dsp, "+12535550177", "Can I swap Saturday?", now() - 3 * minute).await;
-    let lakeside = texted(&state, &dsp, "+14255550134", "Van 208 is ready", now() - 2 * minute).await;
-    texted(&state, &dsp, "+14255550199", "Is this dispatch?", now() - minute).await;
+    texted(
+        &state,
+        &dsp,
+        "+12535550177",
+        "Can I swap Saturday?",
+        now() - 3 * minute,
+    )
+    .await;
+    let lakeside = texted(
+        &state,
+        &dsp,
+        "+14255550134",
+        "Van 208 is ready",
+        now() - 2 * minute,
+    )
+    .await;
+    texted(
+        &state,
+        &dsp,
+        "+14255550199",
+        "Is this dispatch?",
+        now() - minute,
+    )
+    .await;
     let lakeside = filed(&state, &dsp, &lakeside).await.id;
     let (shared, at) = (state.clone(), dsp.clone());
     state
@@ -154,8 +175,14 @@ async fn a_work_phones_texts_are_the_drivers_who_held_it_as_each_was_written_tod
             hold("dana", "2065550103", now(8, 0), Some(now(10, 0))),
         ],
         vec![
-            (yesterday.to_string(), hold("casey", "2065550101", then(7, 0), None)),
-            (yesterday.to_string(), hold("casey", "2065550102", then(7, 0), None)),
+            (
+                yesterday.to_string(),
+                hold("casey", "2065550101", then(7, 0), None),
+            ),
+            (
+                yesterday.to_string(),
+                hold("casey", "2065550102", then(7, 0), None),
+            ),
         ],
     )
     .await;
@@ -190,7 +217,14 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     // Before the day's first live read, a phone no one has held yet texts: it's a number's.
-    let asked = texted(&state, &dsp, "+12065550104", "Which van?", at(zone, day, 6, 30)).await;
+    let asked = texted(
+        &state,
+        &dsp,
+        "+12065550104",
+        "Which van?",
+        at(zone, day, 6, 30),
+    )
+    .await;
     let number = filed(&state, &dsp, &asked).await;
     assert_eq!(number.kind, ConversationKind::Number);
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
@@ -216,7 +250,7 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
 
 #[tokio::test]
 async fn a_blocked_numbers_conversation_leaves_the_list_and_never_waits_on_what_it_sent_while_blocked()
-{
+ {
     let (_root, state, dsp) = started();
     let minute = 60_000;
     let spam = "+18885550142";

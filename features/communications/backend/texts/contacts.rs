@@ -15,12 +15,7 @@ const LISTED: usize = 2000;
 const FOUND: usize = 20;
 
 /// Whom the DSP can text, all of them or those like `typed`, and the numbers blocked.
-pub fn contacts(
-    db: &Store,
-    state: &State,
-    dsp: &str,
-    typed: Option<&str>,
-) -> Result<TextContacts> {
+pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Result<TextContacts> {
     if !offered(db, dsp)? {
         return Ok(TextContacts {
             contacts: Vec::new(),
@@ -32,12 +27,7 @@ pub fn contacts(
     let conversations: HashMap<String, (String, Option<i64>, Option<i64>)> = db
         .communications_numbers(dsp)?
         .into_iter()
-        .filter_map(|each| {
-            Some((
-                each.number?,
-                (each.id, each.waiting_since, each.last_at),
-            ))
-        })
+        .filter_map(|each| Some((each.number?, (each.id, each.waiting_since, each.last_at))))
         .collect();
     let contact = |number: &str, matched: Vec<(u32, u32)>| {
         let conversation = conversations.get(number);

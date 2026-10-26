@@ -230,7 +230,9 @@ function Meta({
           )}
         </>
       ) : (
-        gone && <span className={gone === 'waiting' ? 'sending' : undefined}>{textStatus[gone]}</span>
+        gone && (
+          <span className={gone === 'waiting' ? 'sending' : undefined}>{textStatus[gone]}</span>
+        )
       )}
     </div>
   );

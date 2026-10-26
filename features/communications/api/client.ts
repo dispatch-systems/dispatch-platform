@@ -74,8 +74,7 @@ export const getCommunicationsUpdates = (after: number, typing: number, signal: 
 /** Where a list's conversations are: Slack's, of every workspace or `team`'s, or the numbers'
  * texts. */
 export type Listing = { texts: true } | { texts?: false; team?: string };
-const of = (listing: Listing) =>
-  listing.texts ? { kind: 'number' } : { team: listing.team };
+const of = (listing: Listing) => (listing.texts ? { kind: 'number' } : { team: listing.team });
 /** Conversations found by a name typed, misspelt or not, or by a number. */
 export const searchConversations = (typed: string, listing: Listing) =>
   api<Conversations>(address(`${communicationsUrl}/conversations`, { q: typed, ...of(listing) }));
@@ -121,7 +120,10 @@ export const saveContact = (id: string, name: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/contact`, { name });
 /** Blocks the number a conversation texts, or unblocks it. */
 export const blockNumber = (id: string, blocked: boolean) =>
-  api<Conversation>(`${communicationsUrl}/conversations/${id}/${blocked ? 'block' : 'unblock'}`, {});
+  api<Conversation>(
+    `${communicationsUrl}/conversations/${id}/${blocked ? 'block' : 'unblock'}`,
+    {},
+  );
 /** Opens the conversation with a number, to text it first. */
 export const textFirst = (number: string) =>
   api<Conversation>(`${communicationsUrl}/texts/conversations`, { number });

@@ -218,12 +218,7 @@ pub trait TextStore {
     /// Every number blocked.
     fn communications_blocked(&self, dsp: &str) -> Result<BTreeSet<String>>;
     /// Blocks the number, as the member `by`, or unblocks it.
-    fn block_communications_number(
-        &self,
-        dsp: &str,
-        number: &str,
-        by: Option<&str>,
-    ) -> Result<()>;
+    fn block_communications_number(&self, dsp: &str, number: &str, by: Option<&str>) -> Result<()>;
 }
 
 /// The numbers' conversations that are listed: those of numbers not blocked.
@@ -494,12 +489,7 @@ impl TextStore for Store {
             .query_as("SELECT number FROM communications_blocked", [])?;
         Ok(blocked.into_iter().map(|(number,)| number).collect())
     }
-    fn block_communications_number(
-        &self,
-        dsp: &str,
-        number: &str,
-        by: Option<&str>,
-    ) -> Result<()> {
+    fn block_communications_number(&self, dsp: &str, number: &str, by: Option<&str>) -> Result<()> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             match by {

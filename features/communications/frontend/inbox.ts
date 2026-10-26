@@ -95,7 +95,9 @@ function merged(
       .filter((row) => {
         const among = section(row);
         const after = among && last.get(among);
-        return row.state === 'waiting' || !among || !moreIn(inbox, among) || !after || !above(after, row);
+        return (
+          row.state === 'waiting' || !among || !moreIn(inbox, among) || !after || !above(after, row)
+        );
       })
       .sort(order);
   };

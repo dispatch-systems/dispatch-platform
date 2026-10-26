@@ -125,7 +125,9 @@ export function ConversationPane({
         back={back}
         done={{ busy: done.busy, run: () => void done.run() }}
         actions={
-          conversation?.kind === 'number' && <NumberActions conversation={conversation} show={show} />
+          conversation?.kind === 'number' && (
+            <NumberActions conversation={conversation} show={show} />
+          )
         }
       />
       {profile.drawn && person && !texted && (

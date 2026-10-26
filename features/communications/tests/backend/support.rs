@@ -490,7 +490,13 @@ impl Texting for Standing {
             Ok(text)
         })
     }
-    fn add_file<'a>(&'a self, _: &'a Arc<State>, _: &'a str, _: Added, _: Upload) -> Answer<'a, File> {
+    fn add_file<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        _: &'a str,
+        _: Added,
+        _: Upload,
+    ) -> Answer<'a, File> {
         Box::pin(async { Err(Error::new("phones_file_not_found", 404)) })
     }
     fn largest(&self) -> u64 {

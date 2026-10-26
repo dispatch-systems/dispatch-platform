@@ -36,9 +36,7 @@ export function NumberActions({
             <UserPlus size={15} />
             <span>{conversation.contact ? 'Edit contact' : 'Save contact'}</span>
           </button>
-          {naming && (
-            <ContactForm conversation={conversation} show={show} close={named} />
-          )}
+          {naming && <ContactForm conversation={conversation} show={show} close={named} />}
         </div>
       )}
       <Popover

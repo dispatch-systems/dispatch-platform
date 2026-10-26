@@ -213,7 +213,9 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   );
   const opened = await owner.read(`${route}/conversations/${asked.id}`);
   assert.equal(opened.conversation.state, 'responded');
-  const saved = await owner.post(`${route}/conversations/${asked.id}/contact`, { name: 'New hire' });
+  const saved = await owner.post(`${route}/conversations/${asked.id}/contact`, {
+    name: 'New hire',
+  });
   assert.equal(saved.value.with.name, 'New hire');
 
   // Another DSP has none of it.

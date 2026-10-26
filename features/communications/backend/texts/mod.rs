@@ -145,7 +145,10 @@ pub fn conversations(
                 id: conversation.id,
                 kind: conversation.kind,
                 team_id: None,
-                contact: saved && number.as_deref().is_some_and(|n| numbers.contact(n).is_some()),
+                contact: saved
+                    && number
+                        .as_deref()
+                        .is_some_and(|n| numbers.contact(n).is_some()),
                 blocked: saved && number.as_deref().is_some_and(|n| numbers.blocked(n)),
                 number,
                 with,
@@ -234,12 +237,7 @@ pub fn answered(
 }
 
 /// The answered numbers' conversations before `before`, the time last written in and the ID.
-pub fn older(
-    db: &Store,
-    state: &State,
-    dsp: &str,
-    before: (i64, &str),
-) -> Result<Conversations> {
+pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
     let (conversations, more) = answered(db, &people, &numbers, dsp, Some(before))?;
@@ -250,12 +248,14 @@ pub fn older(
     })
 }
 
+/// A conversation found by what was typed: how like it, and the letters of its name that matched.
+type Found = (f64, Vec<(u32, u32)>, TextConversation);
 /// The numbers' conversations whose name is like `typed`, or whose number holds the digits typed,
 /// the closest first, then the latest, fifty at most; a blocked number's aren't.
 pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
-    let mut found: Vec<(f64, Vec<(u32, u32)>, TextConversation)> = Vec::new();
+    let mut found: Vec<Found> = Vec::new();
     if offered(db, dsp)? {
         for conversation in db.communications_numbers(dsp)? {
             let Some(number) = conversation.number.clone() else {

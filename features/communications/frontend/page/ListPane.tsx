@@ -88,12 +88,7 @@ export function ListPane({
     <section className="pane-list" aria-label={contacts ? 'Contacts' : 'Conversations'}>
       <div className="list-tools">
         {sections.length > 1 && (
-          <Sections
-            sections={sections}
-            section={section}
-            waiting={waits}
-            choose={chooseSection}
-          />
+          <Sections sections={sections} section={section} waiting={waits} choose={chooseSection} />
         )}
         {slack && working.length > 1 && (
           <WorkspacePicker

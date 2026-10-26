@@ -129,7 +129,11 @@ test('each section’s list keeps the server’s order as it changes, and leaves
     groups: [],
   });
   assert.deepEqual(ids(texted, 'messaging'), ['n1', 'n0']);
-  const read = withOlder(texted, { conversations: [texts('n2', 20)], groups: [], more: false }, 'messaging');
+  const read = withOlder(
+    texted,
+    { conversations: [texts('n2', 20)], groups: [], more: false },
+    'messaging',
+  );
   assert.deepEqual(ids(read, 'messaging'), ['n1', 'n0', 'n2']);
   assert.deepEqual(ids(read), ids(older));
 });
