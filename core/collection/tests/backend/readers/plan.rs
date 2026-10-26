@@ -272,3 +272,34 @@ fn a_day_that_ended_reads_no_more_though_its_window_is_moved_to_end_later() {
         Step::Read(tomorrow)
     );
 }
+
+#[test]
+fn it_reads_next_at_the_open_days_next_slot_and_otherwise_at_the_next_days_start() {
+    // 2026-10-20 is a Tuesday.
+    let plan = reading(&[Tue, Thu], "08:00", "21:00", FIVE_MINUTES);
+    let today = date("2026-10-20");
+    assert_eq!(
+        plan.next_read(local("2026-10-20 07:00:00"), i64::MIN, None),
+        local("2026-10-20 08:00:00")
+    );
+    // Open, at the slot after its last read, or now once that has passed.
+    let read = local("2026-10-20 10:00:01");
+    assert_eq!(
+        plan.next_read(local("2026-10-20 10:02:00"), read, None),
+        local("2026-10-20 10:05:00")
+    );
+    let late = local("2026-10-20 10:12:00");
+    assert_eq!(plan.next_read(late, read, None), late);
+    // Past its last slot, at the start of the next day it opens on.
+    let last = local("2026-10-20 20:55:01");
+    assert_eq!(
+        plan.next_read(local("2026-10-20 20:57:00"), last, None),
+        local("2026-10-22 08:00:00")
+    );
+    // A day that ended reads no more, though its window opens again later that day.
+    let afternoon = reading(&[Tue, Thu], "14:00", "18:00", FIVE_MINUTES);
+    assert_eq!(
+        afternoon.next_read(local("2026-10-20 12:00:00"), last, Some(today)),
+        local("2026-10-22 14:00:00")
+    );
+}

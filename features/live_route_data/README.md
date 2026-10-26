@@ -24,7 +24,10 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   no later than its start (`live_route_data_window_invalid`), so a window never runs past midnight
   and each read is a read of today. A DSP that saved its settings before `days` and `every` were
   added reads every day, every five minutes. Core keeps the values and records each change as
-  `settings.changed`; saving wakes the readers.
+  `settings.changed`; saving wakes the readers. The section names its reader (`.reader`), so
+  Settings shows under its heading how the reader reads for the DSP, as core words it: Last read,
+  when and whether it was kept, Next read, and Last error, its code worded where the platform
+  words it; nothing while it reads nothing, as with no station.
 - **Reading** (`backend/reader.rs`, the live reader `live_route_data.routes`): on each of its days,
   every `every` from the window's start until its stop, while Routes is on, the DSP has a station
   and its Cortex connection is enabled; at none else. Each read asks what Routes' `live_request`
@@ -63,6 +66,8 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   later: the next day starts afresh. A restart inside the window goes on with the day as it was,
   emptying nothing.
 - **Records:** each read in the jobs database's `live_reads` (core's), with counts and codes only.
+  A read the browsers' memory turned away is tried once more within its slot, which keeps the
+  retry's record (core's).
   A kept read counts the itineraries listed, the rows changed, the work phones held and the holds
   changed (`listed`, `changed`, `holding`, `phoneEvents`). It also counts `browser` when it opened
   the DSP's browser, what read the day (`routes_native`, `routes_signed` or `routes_signed_moved`,

@@ -25,13 +25,19 @@ whose reader's feature is on and whose schedule is set waits for each slot of it
 interval from its window's start on each day the window opens, reads, hands a whole read to its
 reader to keep, and stops each day it started as its window closes, though that day is no
 longer one it opens on.
-At most `READS_AT_ONCE` reads run at once across the server; a read that can't start within
-its interval misses its slot (`live_reads_busy`), and one whose turn comes once its window has
-closed or its plan has changed doesn't start. Started again, a DSP reads at its next slot after
-its last read, at once only when that read is over an interval old, so a restart reads no
-burst. A task busy for three of its intervals without moving on, in a read, a hook or its turn
-to read, is stopped, letting go of its turn, and started again alone, its memory made anew,
-while its DSP still reads; it's logged as `live.stalled`.
+At most `READS_AT_ONCE` reads run at once across the server, and the stops that save their
+days: a stop waits its turn for as long as that takes. A read waits for its turn, and then runs,
+for its interval at most, and five minutes at most however seldom it reads (`Plan::timeout`): a
+read that can't start within that misses its slot (`live_reads_busy`), one that runs longer is
+cut off (`live_read_timeout`), and one whose turn comes once its window has closed or its plan
+has changed doesn't start. A read the browsers' memory turned away (`browser_memory_busy`) is
+tried once more a minute on, its turn let go meanwhile, while that's before its next slot and
+its window's close: the slot keeps the retry's record alone, and the first is logged as
+`live.read_failed`. Started again, a DSP reads at its next slot after its last read, at once
+only when that read is over an interval old, so a restart reads no burst. A task busy for three
+of those timeouts without moving on, in a read, a hook or its turn to read, is stopped, letting
+go of its turn, and started again alone, its memory made anew, while its DSP still reads; it's
+logged as `live.stalled`.
 
 What it keeps is in the environment's jobs database: `live_reads`, each read's day, when it
 began, how long it took, and whether it was kept, with what it counted, or why not, by its
@@ -41,6 +47,14 @@ from. A DSP's records from
 before the last two weeks go as each of its days' reading starts. Its log has `live.started`
 and `live.stopped` for each day, and `live.read_failed` with a failed read's code, never what
 it read.
+
+How a reader reads for a DSP (`readers::reading`) is its last read, when it began and whether it
+was kept; when it reads next, the open day's next slot while the day hasn't stopped, else the
+start of the next day its window opens on; and its last failed read, when and its code; none
+while it reads nothing for the DSP, as while its feature is off. Settings shows it with the
+section that sets the reader's schedule (`Section::reader`), worded as the Collectors page words
+a collection's runs (`frontend/live-reading.tsx`), from `GET /api/dsp/live-readers/{reader}`,
+under that section's permission.
 
 A hook's browser (`ProviderBrowser`) is opened as a job's is, through the same limits on
 browsers and memory, under the reader's feature's authority: refused while that feature is

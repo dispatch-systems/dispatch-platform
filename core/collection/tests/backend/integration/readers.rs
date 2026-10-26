@@ -1,14 +1,18 @@
 //! The live readers as the server runs them, under a stand-in feature that reads every five
-//! minutes inside the window each DSP saves, on time the test moves: each DSP on its grid from
-//! its window's start, its days started and stopped, its slot kept across a restart, no more
-//! reads at once than the server allows, a stalled DSP started again alone, switching off
-//! mid-window, a switch or a saved window taking effect at once, and the browser a hook opens.
+//! minutes, or as often as a DSP saves, inside the window each DSP saves, on time the test
+//! moves: each DSP on its grid from its window's start, its days started and stopped, its slot
+//! kept across a restart, no more reads or stops at once than the server allows, a read the
+//! browsers' memory turned away tried once more within its slot, waits of five minutes at most
+//! however seldom a DSP reads, a stalled DSP started again alone, switching off mid-window, a
+//! switch or a saved window taking effect at once, the browser a hook opens, and how a DSP's
+//! reading goes as Settings shows it.
 //! A program of its own, as its registry holds the stand-ins, and a program holds one registry.
 use chrono::{DateTime, NaiveDate, Timelike, Weekday::*};
 use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result, State,
     collection::{
+        api::types::LiveReading,
         browser::{self, Collected, Pending, browseros},
         readers::{self, READS_AT_ONCE, Reading},
         registry::{self, Provider},
@@ -16,7 +20,9 @@ use dispatch_core::{
     db::{self, Kind, Migration, Migrations, Store, migrations::Apply},
     manifest::{
         Capability, Collection, Collector, Counts, Feature, LiveReader, Schedule, feature,
-        optional, perm, section, settings::Section, time,
+        optional, perm, section,
+        settings::{Section, number},
+        time,
     },
     settings::{self, Saved},
     testing,
@@ -35,8 +41,13 @@ use tokio::{sync::Semaphore, task::JoinHandle, time::Instant};
 
 const EVERY: Duration = Duration::from_secs(300);
 const MINUTE: Duration = Duration::from_secs(60);
+const HOUR: Duration = Duration::from_secs(60 * 60);
+const SECOND: Duration = Duration::from_secs(1);
+/// How long a read waits for its turn, and runs, at most, however seldom it reads.
+const LONGEST: Duration = Duration::from_secs(5 * 60);
 
-// The stand-in feature: a DSP reads every day, its window its section's two times.
+// The stand-in feature: a DSP reads every day, its window its section's two times, every five
+// minutes unless it saves another interval.
 
 const WINDOW: Section = section(
     "probe.window",
@@ -45,12 +56,15 @@ const WINDOW: Section = section(
     &[
         time("start", "Start", "08:00"),
         time("stop", "Stop", "21:00"),
+        number("every", "Every", 1, 60, Some(5)),
     ],
 );
 #[derive(serde::Deserialize)]
 struct Times {
     start: String,
     stop: String,
+    /// Minutes between reads.
+    every: u64,
 }
 static PROBE: Feature = Feature {
     switch: optional("probe", "Probe", &[]),
@@ -85,6 +99,10 @@ enum Script {
     KeepsBrowsing,
     /// Each stop fails, as one that emptied what its day kept and failed after does.
     FailsToStop,
+    /// Each read finds the browsers' memory busy.
+    MemoryBusy,
+    /// Its next read finds the browsers' memory busy; those after read.
+    MemoryBusyOnce,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum Seen {
@@ -220,7 +238,8 @@ impl LiveReader for Reader {
     fn schedule(&self, db: &Store, dsp: &str) -> Result<Option<Schedule>> {
         let times: Times = settings::read(db, dsp, &WINDOW)?;
         let days = [Mon, Tue, Wed, Thu, Fri, Sat, Sun];
-        Schedule::new(&days, &times.start, &times.stop, EVERY).map(Some)
+        let every = Duration::from_secs(times.every * 60);
+        Schedule::new(&days, &times.start, &times.stop, every).map(Some)
     }
     fn read<'a>(&'a self, reading: &'a Reading, held: &'a mut Held) -> Pending<'a, u64> {
         Box::pin(async move {
@@ -273,6 +292,11 @@ impl LiveReader for Reader {
                     );
                 }
                 Script::Fails => return Err(Error::new("probe_unavailable", 503)),
+                Script::MemoryBusy => return Err(Error::new("browser_memory_busy", 503)),
+                Script::MemoryBusyOnce => {
+                    set_script(&reading.dsp, Script::Reads);
+                    return Err(Error::new("browser_memory_busy", 503));
+                }
                 Script::Reads | Script::Hangs | Script::KeepsBrowsing | Script::FailsToStop => {}
             }
             flight.landed = true;
@@ -481,11 +505,16 @@ impl Server {
             .await
             .unwrap();
     }
-    /// Saves the DSP's window, its two times as the clock shows them where it is.
+    /// Saves the DSP's window, its two times as the clock shows them where it is, to read
+    /// every five minutes.
     async fn window(&self, dsp: &str, start: &str, stop: &str) {
+        self.schedule(dsp, start, stop, EVERY).await;
+    }
+    /// Saves the DSP's window, to read every `every`, a whole number of minutes.
+    async fn schedule(&self, dsp: &str, start: &str, stop: &str, every: Duration) {
         let revision = *self.revisions.lock().unwrap().get(dsp).unwrap_or(&0);
         let (at, owner) = (dsp.to_owned(), self.owner.clone());
-        let values = json!({"start":start,"stop":stop});
+        let values = json!({"start":start,"stop":stop,"every":every.as_secs() / 60});
         let saved = self
             .state
             .run(move |db| settings::save(db, &at, &owner, &WINDOW, &values, revision, true))
@@ -538,6 +567,14 @@ impl Server {
             .await
             .unwrap()
     }
+    /// How the DSP's reading goes, as Settings shows it.
+    async fn reading(&self, dsp: &str) -> Option<LiveReading> {
+        let dsp = dsp.to_owned();
+        self.state
+            .read(move |db| readers::reading(db, &db.find_dsp(&dsp)?, "probe.routes"))
+            .await
+            .unwrap()
+    }
     /// Half a minute after one of the readers' own plans, so what follows within seconds
     /// follows from a wake alone.
     fn between_plans(&self, after: Instant) -> Instant {
@@ -555,6 +592,29 @@ fn near(at: Instant, expected: Instant) -> bool {
         expected - at
     };
     apart <= Duration::from_secs(1)
+}
+/// When each of `reads` was, near each `expected`, as many.
+fn all_near(reads: &[(u64, Instant)], expected: &[Instant]) -> bool {
+    reads.len() == expected.len()
+        && (reads.iter().zip(expected)).all(|((_, at), expected)| near(*at, *expected))
+}
+/// The instant an answer names, on the time the test moves.
+fn instant(at: &str) -> Instant {
+    let at = DateTime::parse_from_rfc3339(at).unwrap().timestamp_millis();
+    let ahead = at - now();
+    let now = Instant::now();
+    if ahead >= 0 {
+        now + Duration::from_millis(ahead as u64)
+    } else {
+        now - Duration::from_millis(-ahead as u64)
+    }
+}
+/// A record of a read that failed with `code`.
+fn failed(code: &str) -> (String, Option<String>) {
+    ("failed".to_owned(), Some(code.to_owned()))
+}
+fn kept() -> (String, Option<String>) {
+    ("kept".to_owned(), None)
 }
 
 #[tokio::test(start_paused = true)]
@@ -714,6 +774,117 @@ async fn no_more_reads_run_at_once_than_the_server_allows() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_days_stop_waits_its_turn_among_the_reads_and_still_happens() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    // Its window closes within two minutes, its day started.
+    let stops = server.dsp(Script::Reads).await;
+    let (closes, close) = server.at(2);
+    server.window(&stops, &opened, &closes).await;
+    server.switch(&stops, true).await;
+    tokio::time::sleep(SECOND).await;
+    assert_eq!(server.records(&stops).await, [kept()]);
+    // Every turn is held by a read that waits on its provider as the window closes.
+    let (stop, _) = server.at(60);
+    for _ in 0..READS_AT_ONCE {
+        let dsp = server.dsp(Script::Gated).await;
+        server.window(&dsp, &opened, &stop).await;
+        server.switch(&dsp, true).await;
+    }
+    until(close + MINUTE).await;
+    let day = server.today();
+    assert!(!server.probe.of(&stops).contains(&Seen::Stopped(day)));
+    // As the reads end, its turn comes, and the day stops.
+    server.probe.gate.add_permits(READS_AT_ONCE);
+    tokio::time::sleep(SECOND).await;
+    assert_eq!(server.probe.of(&stops).last(), Some(&Seen::Stopped(day)));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_the_browsers_memory_turns_away_is_tried_once_more_within_its_slot() {
+    let server = Server::start().await;
+    let (recovers, stays_busy, every_minute) = (
+        server.dsp(Script::MemoryBusyOnce).await,
+        server.dsp(Script::MemoryBusy).await,
+        server.dsp(Script::MemoryBusy).await,
+    );
+    let (start, open) = server.at(5);
+    let (stop, _) = server.at(30);
+    server.window(&recovers, &start, &stop).await;
+    // Its window closes a minute after its second slot.
+    let (closes, _) = server.at(11);
+    server.window(&stays_busy, &start, &closes).await;
+    // Its next slot is a minute after each.
+    let (three_slots, _) = server.at(8);
+    server
+        .schedule(&every_minute, &start, &three_slots, MINUTE)
+        .await;
+    for dsp in [&recovers, &stays_busy, &every_minute] {
+        server.switch(dsp, true).await;
+    }
+    until(open + 2 * EVERY + MINUTE).await;
+
+    // Tried again a minute on, it's kept, and the slot keeps that read's record alone.
+    let slots = [open, open + MINUTE, open + EVERY, open + 2 * EVERY];
+    assert!(all_near(&server.probe.reads(&recovers), &slots));
+    assert_eq!(server.records(&recovers).await, [kept(), kept(), kept()]);
+    // Busy again, the slot keeps the retry's failure; it's tried once only, and not once a
+    // minute on is its window's close.
+    let slots = [open, open + MINUTE, open + EVERY];
+    assert!(all_near(&server.probe.reads(&stays_busy), &slots));
+    let busy = failed("browser_memory_busy");
+    assert_eq!(server.records(&stays_busy).await, [busy.clone(), busy.clone()]);
+    // Nor once a minute on is its next slot.
+    let slots = [open, open + MINUTE, open + 2 * MINUTE];
+    assert!(all_near(&server.probe.reads(&every_minute), &slots));
+    assert_eq!(server.records(&every_minute).await.len(), 3);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_waits_its_turn_and_runs_five_minutes_at_most_however_seldom_it_reads() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(180);
+    // Every turn is held by a DSP reading hourly whose keeping never ends.
+    let mut hung = Vec::new();
+    for _ in 0..READS_AT_ONCE {
+        let dsp = server.dsp(Script::Hangs).await;
+        server.schedule(&dsp, &opened, &stop, HOUR).await;
+        server.switch(&dsp, true).await;
+        hung.push(dsp);
+    }
+    tokio::time::sleep(SECOND).await;
+    let held = Instant::now();
+    let waits = server.dsp(Script::Reads).await;
+    server.schedule(&waits, &opened, &stop, HOUR).await;
+    server.switch(&waits, true).await;
+    // Its turn not come in five minutes, though it reads hourly, it misses its slot.
+    until(held + LONGEST + SECOND).await;
+    assert_eq!(server.records(&waits).await, [failed("live_reads_busy")]);
+    // Three of those on, each hung DSP is started again, and reads on.
+    until(held + 3 * LONGEST + 2 * MINUTE).await;
+    for dsp in &hung {
+        assert!(matches!(
+            server.probe.of(dsp)[..],
+            [
+                Seen::Read(1, _),
+                Seen::Started(_),
+                Seen::Abandoned,
+                Seen::Read(1, _),
+                Seen::Kept(1)
+            ]
+        ));
+    }
+    // A read that never ends is given up on in five minutes too.
+    let hangs = server.dsp(Script::Gated).await;
+    server.schedule(&hangs, &opened, &stop, HOUR).await;
+    server.switch(&hangs, true).await;
+    let read = Instant::now();
+    until(read + LONGEST + SECOND).await;
+    assert_eq!(server.records(&hangs).await, [failed("live_read_timeout")]);
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_dsp_whose_reads_stop_moving_is_started_again_alone() {
     let server = Server::start().await;
     let (stalls, unplugged, reads) = (
@@ -784,9 +955,8 @@ async fn switched_off_mid_window_a_dsp_stops_at_once_and_switched_on_goes_on_wit
     tokio::time::sleep(5 * EVERY).await;
     assert_eq!(server.probe.reads(&dsp).len(), read + 1);
     let records = server.records(&dsp).await;
-    let stopped = ("failed".to_owned(), Some("live_read_stopped".to_owned()));
     assert_eq!(records.len(), read + 1);
-    assert_eq!(records.last(), Some(&stopped));
+    assert_eq!(records.last(), Some(&failed("live_read_stopped")));
 
     // Switched on again, it reads at once, going on with its day.
     set_script(&dsp, Script::Reads);
@@ -931,6 +1101,39 @@ async fn a_dsps_records_go_after_two_weeks_though_none_of_its_reads_was_kept() {
     server.switch(&dsp, true).await;
     until(open + MINUTE).await;
     let records = server.records(&dsp).await;
-    let failed = |code: &str| ("failed".to_owned(), Some(code.to_owned()));
     assert_eq!(records, [failed("kept_on"), failed("probe_unavailable")]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_dsps_reading_shows_its_last_read_its_next_and_its_last_error_while_it_reads() {
+    let server = Server::start().await;
+    let dsp = server.dsp(Script::Fails).await;
+    let ((start, open), (stop, close)) = (server.at(5), server.at(30));
+    server.window(&dsp, &start, &stop).await;
+    // Off, it reads nothing there.
+    assert!(server.reading(&dsp).await.is_none());
+    server.switch(&dsp, true).await;
+    let before = server.reading(&dsp).await.unwrap();
+    assert!(before.last_read.is_none() && before.last_error.is_none());
+    assert!(near(instant(&before.next_read), open));
+
+    // Its first read fails, the next is kept: its next is the slot after.
+    until(open + MINUTE).await;
+    set_script(&dsp, Script::Reads);
+    until(open + EVERY + MINUTE).await;
+    let reading = server.reading(&dsp).await.unwrap();
+    let last = reading.last_read.unwrap();
+    assert!(last.kept && near(instant(&last.at), open + EVERY));
+    let error = reading.last_error.unwrap();
+    assert_eq!(error.code, "probe_unavailable");
+    assert!(near(instant(&error.at), open));
+    assert!(near(instant(&reading.next_read), open + 2 * EVERY));
+
+    // Its day stopped, its next is tomorrow's start.
+    until(close + MINUTE).await;
+    let tomorrow = open + Duration::from_secs(24 * 60 * 60);
+    let after = server.reading(&dsp).await.unwrap();
+    assert!(near(instant(&after.next_read), tomorrow));
+    server.switch(&dsp, false).await;
+    assert!(server.reading(&dsp).await.is_none());
 }
