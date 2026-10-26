@@ -4,8 +4,8 @@ import type { Communications, Conversation, Group, Writing } from '../../api/ind
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { listTime, preview } from '../format.js';
-import { rows as listed, sectionOf, type Row, type Section } from '../inbox.js';
-import { Face, Party, PhoneFace } from './Face.js';
+import { listingOf, moreIn, rows as listed, sectionOf, type Row, type Section } from '../inbox.js';
+import { Party, SenderFace } from './Face.js';
 import type { Draft } from './GroupDraft.js';
 import { GroupFaces } from './GroupFaces.js';
 import { More } from './More.js';
@@ -57,10 +57,7 @@ export function ConversationList({
   readOlder: () => void;
 }) {
   const search = useCallback(
-    () =>
-      searchConversations(typed, section === 'messaging' ? { texts: true } : { team }).then(
-        (found) => found.conversations,
-      ),
+    () => searchConversations(typed, listingOf(section, team)).then((found) => found.conversations),
     [typed, section, team],
   );
   const { found, failed } = useFound(
@@ -97,7 +94,6 @@ export function ConversationList({
     (pinned.kind === 'group'
       ? section === 'slack' && (!team || pinned.row.teamIds.includes(team))
       : sectionOf(pinned.row) === section && (!team || pinned.row.teamId === team));
-  const more = section === 'slack' ? inbox.more : inbox.moreTexts;
   return (
     <>
       {draft && (
@@ -153,7 +149,7 @@ export function ConversationList({
           {list(answered)}
         </>
       )}
-      {more && <More read={readOlder} />}
+      {moreIn(inbox, section) && <More read={readOlder} />}
     </>
   );
 }
@@ -198,17 +194,7 @@ function ConversationRow({
               <span className="preview typing-note">{typingNote(writing)}</span>
             ) : (
               <>
-                {last?.sender &&
-                  (last.sender.userId ? (
-                    <Face
-                      name={last.sender.name}
-                      code={last.sender.code}
-                      photo={last.sender.photo}
-                      size="sender"
-                    />
-                  ) : (
-                    <PhoneFace size="sender" own />
-                  ))}
+                {last?.sender && <SenderFace sender={last.sender} size="sender" />}
                 <span className="preview">{last ? preview(last) : ''}</span>
               </>
             )}

@@ -7,7 +7,7 @@ import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { Shown } from '../display/display.js';
-import { Face, Party, PhoneFace } from './Face.js';
+import { Face, Party, SenderFace } from './Face.js';
 import { More } from './More.js';
 import type { OpensProfile } from './parts.js';
 
@@ -109,16 +109,7 @@ export function Thread({
               return (
                 <div key={key} className={`msg-group ${first.direction}`}>
                   {sender ? (
-                    sender.userId ? (
-                      <Face
-                        name={sender.name}
-                        code={sender.code}
-                        photo={sender.photo}
-                        size="message"
-                      />
-                    ) : (
-                      <PhoneFace size="message" own />
-                    )
+                    <SenderFace sender={sender} size="message" />
                   ) : texted ? (
                     <Party conversation={conversation} size="message" />
                   ) : (

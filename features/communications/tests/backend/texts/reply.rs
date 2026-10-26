@@ -5,7 +5,7 @@ use crate::ConversationState;
 use crate::backend::{
     support::{self, texted},
     texts::{
-        one,
+        reading::one,
         storage::{TextStatus, TextStore},
     },
 };

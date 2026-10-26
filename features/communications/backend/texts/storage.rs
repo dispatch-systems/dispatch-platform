@@ -223,6 +223,8 @@ pub trait TextStore {
 
 /// The numbers' conversations that are listed: those of numbers not blocked.
 const LISTED: &str = "kind='number' AND number NOT IN (SELECT number FROM communications_blocked)";
+/// Where a first page starts, as `before`: after every conversation and text.
+const END: (i64, &str) = (i64::MAX, "\u{10FFFF}");
 
 impl TextStore for Store {
     fn communications_text_conversation(
@@ -261,7 +263,7 @@ impl TextStore for Store {
         before: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<TextConversation>> {
-        let (at, id) = before.unwrap_or((i64::MAX, "\u{10FFFF}"));
+        let (at, id) = before.unwrap_or(END);
         self.dsp(dsp)?.query_as(
             &format!(
                 "SELECT * FROM communications_text_conversations WHERE state<>'waiting' \
@@ -302,7 +304,7 @@ impl TextStore for Store {
         before: Option<(i64, &str)>,
         most: usize,
     ) -> Result<Vec<Text>> {
-        let (at, id) = before.unwrap_or((i64::MAX, "\u{10FFFF}"));
+        let (at, id) = before.unwrap_or(END);
         let mut texts: Vec<Text> = self.dsp(dsp)?.query_as(
             "SELECT * FROM communications_texts WHERE conversation_id=?1 \
              AND (at<?2 OR (at=?2 AND id<?3)) ORDER BY at DESC,id DESC LIMIT ?4",
@@ -338,10 +340,7 @@ impl TextStore for Store {
             let mut touched = BTreeSet::new();
             for text in texts {
                 let conversation = conversation(&db, &text.filed)?;
-                let was: Option<(String,)> = db.one_as(
-                    "SELECT conversation_id FROM communications_texts WHERE id=?",
-                    [&text.id],
-                )?;
+                let was = filed_in(&db, &text.id)?;
                 // A text from a number blocked as it came never makes its conversation wait.
                 let blocked = matches!(text.filed, Filed::Number(_))
                     && db.count(
@@ -370,7 +369,7 @@ impl TextStore for Store {
                         blocked,
                     ],
                 )?;
-                touched.extend(was.map(|(was,)| was));
+                touched.extend(was);
                 touched.insert(conversation);
             }
             db.exec(
@@ -391,12 +390,8 @@ impl TextStore for Store {
                 "UPDATE communications_texts SET sender_name=? WHERE id=?",
                 params![name, id],
             )?;
-            let found: Option<(String,)> = db.one_as(
-                "SELECT conversation_id FROM communications_texts WHERE id=?",
-                [id],
-            )?;
-            match found {
-                Some((conversation,)) => changed_conversation(&db, &conversation),
+            match filed_in(&db, id)? {
+                Some(conversation) => changed_conversation(&db, &conversation),
                 None => Ok(()),
             }
         })
@@ -411,11 +406,7 @@ impl TextStore for Store {
             let mut touched = BTreeSet::new();
             for (text, filed) in moves {
                 let to = conversation(&db, filed)?;
-                let Some((was,)): Option<(String,)> = db.one_as(
-                    "SELECT conversation_id FROM communications_texts WHERE id=?",
-                    [text],
-                )?
-                else {
+                let Some(was) = filed_in(&db, text)? else {
                     continue;
                 };
                 if was == to {
@@ -536,6 +527,15 @@ fn conversation(db: &Db, filed: &Filed) -> Result<String> {
         params![id, kind, source, driver, number],
     )?;
     Ok(id)
+}
+
+/// The conversation the text `id` is kept in, if it's kept.
+fn filed_in(db: &Db, id: &str) -> Result<Option<String>> {
+    let found: Option<(String,)> = db.one_as(
+        "SELECT conversation_id FROM communications_texts WHERE id=?",
+        [id],
+    )?;
+    Ok(found.map(|(conversation,)| conversation))
 }
 
 /// Notes that the number's conversation changed, as a name saved for it or its block, for the

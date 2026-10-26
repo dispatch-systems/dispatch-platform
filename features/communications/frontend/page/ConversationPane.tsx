@@ -3,7 +3,7 @@ import type { CommunicationsWorkspace, Conversation, Message, Writing } from '..
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { phoneNumber } from '../format.js';
+import { numberBeside } from '../format.js';
 import { Composer } from './Composer.js';
 import { ConversationHead } from './ConversationHead.js';
 import { NumberActions } from './NumberActions.js';
@@ -102,9 +102,7 @@ export function ConversationPane({
   const person = conversation?.with;
   // What they do for the DSP, and where; or, by text, their number, while it isn't their name.
   const about = texted
-    ? person?.name === phoneNumber(number)
-      ? ''
-      : phoneNumber(number)
+    ? numberBeside(person?.name ?? '', number)
     : [person && roleText(person), where].filter(Boolean).join(' · ');
   // The profile, and what opened it, which focus goes back to as it closes: the photo by the
   // messages, or who it's with when that photo is gone. A conversation by text has none.

@@ -1,11 +1,10 @@
 import { Fragment, useCallback } from 'react';
-import { PhoneOff } from 'lucide-react';
 import type { Conversation, TextContact } from '../../api/index.js';
 import { blockNumber, getTextContacts } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { letter, listTime, phoneNumber } from '../format.js';
-import { Face } from './Face.js';
+import { letter, listTime, numberBeside, phoneNumber } from '../format.js';
+import { Face, PhoneFace } from './Face.js';
 import { Name, Wait } from './parts.js';
 import { useFound } from './useFound.js';
 
@@ -79,16 +78,14 @@ export function TextContactList({
       <h2 className="list-head">Blocked</h2>
       <ul className="convos">
         {found.blocked.map((contact) => {
-          const number = phoneNumber(contact.number);
+          const number = numberBeside(contact.person.name, contact.number);
           return (
             <li key={contact.number} className="convo contact blocked">
               <span className="convo-open">
-                <span className="face face-contact face-phone" aria-hidden="true">
-                  <PhoneOff />
-                </span>
+                <PhoneFace size="contact" mark="blocked" />
                 <span className="convo-body">
                   <strong>{contact.person.name}</strong>
-                  {contact.person.name !== number && <small>{number}</small>}
+                  {number && <small>{number}</small>}
                 </span>
                 <button
                   className="unblock"

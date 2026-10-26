@@ -196,10 +196,10 @@ fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     };
     if texted {
         if !typed.is_empty() {
-            return Reply::of(&texts::search(db, c.state, c.dsp_id(), typed)?);
+            return Reply::of(&texts::reading::search(db, c.state, c.dsp_id(), typed)?);
         }
         let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
-        return Reply::of(&texts::older(db, c.state, c.dsp_id(), (at, &id))?);
+        return Reply::of(&texts::reading::older(db, c.state, c.dsp_id(), (at, &id))?);
     }
     if !typed.is_empty() {
         return Reply::of(&conversations::search(
@@ -225,9 +225,9 @@ fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     if texted {
         let before = optional_text(&input.query, "before", 80)?;
         let before = (!before.is_empty())
-            .then(|| texts::before(before))
+            .then(|| texts::reading::before(before))
             .transpose()?;
-        return Reply::of(&texts::opened(
+        return Reply::of(&texts::reading::opened(
             db,
             c.state,
             c.dsp_id(),
@@ -292,7 +292,12 @@ fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         if db.mark_communications_text_done(c.dsp_id(), &conversation, c.actor())? {
             live::changed(c.state, c.dsp_id());
         }
-        return Reply::of(&texts::one(db, c.state, c.dsp_id(), &conversation)?);
+        return Reply::of(&texts::reading::one(
+            db,
+            c.state,
+            c.dsp_id(),
+            &conversation,
+        )?);
     }
     let found = db.communications_conversation(c.dsp_id(), &conversation)?;
     ensure(
@@ -376,8 +381,8 @@ async fn retry(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
 fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["name"])?;
     let conversation = id(input.param("id"), "tc")?;
-    let name = v::name(&input.body, "name", texts::reply::NAME_MOST)?;
-    Reply::of(&texts::reply::save_contact(
+    let name = v::name(&input.body, "name", texts::contacts::NAME_MOST)?;
+    Reply::of(&texts::contacts::save_contact(
         db,
         c.state,
         c.dsp_id(),
@@ -390,7 +395,7 @@ fn save_contact(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     let conversation = id(input.param("id"), "tc")?;
-    Reply::of(&texts::reply::block(
+    Reply::of(&texts::contacts::block(
         db,
         c.state,
         c.dsp_id(),
@@ -401,7 +406,7 @@ fn block(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     let conversation = id(input.param("id"), "tc")?;
-    Reply::of(&texts::reply::block(
+    Reply::of(&texts::contacts::block(
         db,
         c.state,
         c.dsp_id(),
@@ -413,7 +418,7 @@ fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["number"])?;
     let number = v::text(&input.body, "number", 3, 32)?;
-    Reply::of(&texts::reply::open(db, c.state, c.dsp_id(), number)?)
+    Reply::of(&texts::contacts::open(db, c.state, c.dsp_id(), number)?)
 }
 /// Whom the DSP can text, or those found by a name or number typed, `q`, and the numbers
 /// blocked.

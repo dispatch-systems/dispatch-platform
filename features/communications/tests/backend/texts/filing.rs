@@ -7,7 +7,7 @@ use crate::backend::{
     conversations,
     support::{self, DRIVERS, held, hold, texted},
     texts::{
-        reply,
+        contacts, reply,
         storage::{ConversationKind, TextConversation, TextStore},
     },
 };
@@ -125,7 +125,7 @@ async fn a_numbers_texts_are_with_whom_driver_match_has_it_for_else_the_name_sav
     let lakeside = filed(&state, &dsp, &lakeside).await.id;
     let (shared, at) = (state.clone(), dsp.clone());
     state
-        .run(move |db| reply::save_contact(db, &shared, &at, &lakeside, "Lakeside Fleet", "me"))
+        .run(move |db| contacts::save_contact(db, &shared, &at, &lakeside, "Lakeside Fleet", "me"))
         .await
         .unwrap();
 
@@ -263,7 +263,7 @@ async fn a_blocked_numbers_conversation_leaves_the_list_and_never_waits_on_what_
         .unwrap();
     let block = |by: Option<&'static str>| {
         let (shared, at, id) = (state.clone(), dsp.clone(), id.clone());
-        state.run(move |db| reply::block(db, &shared, &at, &id, by))
+        state.run(move |db| contacts::block(db, &shared, &at, &id, by))
     };
     assert!(block(Some("me")).await.unwrap().blocked);
     texted(&state, &dsp, spam, "Last chance", now() + minute).await;

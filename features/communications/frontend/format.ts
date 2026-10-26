@@ -75,6 +75,11 @@ export function phoneNumber(number: string) {
   const ten = /^\+1(\d{10})$/.exec(number)?.[1];
   return ten ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : number;
 }
+/** A number as it reads beside a name, while the name doesn't say it already: none when it does. */
+export function numberBeside(name: string, number: string) {
+  const shown = phoneNumber(number);
+  return name === shown ? '' : shown;
+}
 /** "2.4 MB". */
 export function size(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

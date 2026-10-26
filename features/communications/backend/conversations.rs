@@ -15,6 +15,8 @@ use super::{
     storage::{self, CommunicationsStore, Direction},
     texts::{
         self,
+        numbers::{Numbers, shown},
+        reading,
         storage::{ConversationKind, TextStore},
     },
 };
@@ -93,7 +95,7 @@ impl People {
     /// Whoever texts from `number`: the person Driver Match has it for, else by the name the DSP
     /// saved for it, `contact`, else by the number.
     pub fn texting(&self, number: &str, contact: Option<&str>) -> Correspondent {
-        let name = contact.map_or_else(|| texts::shown(number), str::to_owned);
+        let name = contact.map_or_else(|| shown(number), str::to_owned);
         with(self.holding_number(number), &name)
     }
     /// The driver holding `id` of the source `source`, as Driver Match knows them, else by the
@@ -317,20 +319,20 @@ pub fn overview(
     team: Option<&str>,
 ) -> Result<Communications> {
     let people = People::read(db, state, dsp)?;
-    let numbers = texts::Numbers::read(db, dsp)?;
+    let numbers = Numbers::read(db, dsp)?;
     let revision = db.communications_revision(dsp)?;
     let waiting = db.waiting_communications(dsp)?;
-    let texted = texts::waiting(db, dsp)?;
+    let texted = reading::waiting(db, dsp)?;
     let count = waiting.len() + texted.len();
     let waiting_groups = db.waiting_communications_groups(dsp)?;
     let (answered, answered_groups, more) = answered(db, &people, dsp, team, None)?;
-    let (answered_texts, more_texts) = texts::answered(db, &people, &numbers, dsp, None)?;
+    let (answered_texts, more_texts) = reading::answered(db, &people, &numbers, dsp, None)?;
     Ok(Communications {
         revision,
         waiting: count,
         conversations: [
             conversations(db, &people, dsp, waiting)?,
-            texts::conversations(db, &people, &numbers, dsp, texted)?,
+            reading::conversations(db, &people, &numbers, dsp, texted)?,
             answered,
             answered_texts,
         ]
@@ -447,7 +449,7 @@ pub fn updates(
 ) -> Result<(CommunicationsUpdates, Option<i64>)> {
     let (changed, revision) = db.communications_changed_since(dsp, after)?;
     let (mut typing, next) = live::typing(dsp, me);
-    let waiting = db.waiting_communications(dsp)?.len() + texts::waiting(db, dsp)?.len();
+    let waiting = db.waiting_communications(dsp)?.len() + reading::waiting(db, dsp)?.len();
     let ids = changed.as_ref().filter(|ids| !ids.is_empty());
     let (mut conversations, mut changed_groups) = (Vec::new(), Vec::new());
     // Who anyone is, only when there's someone to name.
@@ -463,8 +465,8 @@ pub fn updates(
             changed_groups = groups::listed(db, &people, dsp, kept)?;
             let mut texted = db.communications_text_conversations(dsp, ids)?;
             texted.retain(|each| each.kind == ConversationKind::Number);
-            let numbers = texts::Numbers::read(db, dsp)?;
-            conversations.extend(texts::conversations(db, &people, &numbers, dsp, texted)?);
+            let numbers = Numbers::read(db, dsp)?;
+            conversations.extend(reading::conversations(db, &people, &numbers, dsp, texted)?);
         }
     }
     Ok((
@@ -517,19 +519,22 @@ pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWai
         .filter_map(|conversation| conversation.waiting_since)
         .collect();
     // The numbers' too, as the page lists them.
-    let texted = texts::waiting(db, dsp)?;
+    let texted = reading::waiting(db, dsp)?;
     if !texted.is_empty() {
-        let numbers = texts::Numbers::read(db, dsp)?;
+        let numbers = Numbers::read(db, dsp)?;
         let ids: Vec<String> = texted.iter().map(|each| each.id.clone()).collect();
         let mut written: HashMap<String, Message> = db
             .latest_communications_texts_in(dsp, &ids)?
             .into_iter()
             .map(|text| {
                 let of = text.conversation.clone();
-                (of, texts::messages(&people, &numbers, vec![text]).remove(0))
+                (
+                    of,
+                    reading::messages(&people, &numbers, vec![text]).remove(0),
+                )
             })
             .collect();
-        for listed in texts::conversations(db, &people, &numbers, dsp, texted)? {
+        for listed in reading::conversations(db, &people, &numbers, dsp, texted)? {
             since.extend(listed.waiting_since);
             if let Some(message) = written.remove(&listed.id) {
                 latest.push((

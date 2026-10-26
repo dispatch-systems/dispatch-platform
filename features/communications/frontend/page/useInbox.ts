@@ -12,6 +12,8 @@ import { backoff } from '../../../../core/shell/frontend/lib/backoff.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import {
   lastAnswered,
+  listingOf,
+  moreIn,
   shownWorkspace,
   updated,
   withConversation,
@@ -144,15 +146,11 @@ export function useInbox(chosen?: string) {
     async (section: Section) => {
       const listed = current.current;
       const last = listed && lastAnswered(listed, section);
-      const more = section === 'slack' ? listed?.more : listed?.moreTexts;
-      if (!more || !last || reading) return;
+      if (!listed || !moreIn(listed, section) || !last || reading) return;
       setReading(true);
       try {
         const asked = scope.current;
-        const older = await olderConversations(
-          last,
-          section === 'slack' ? { team: asked } : { texts: true },
-        );
+        const older = await olderConversations(last, listingOf(section, asked));
         // Read while another workspace's list came, it isn't of that list.
         if (current.current && scope.current === asked)
           change(withOlder(current.current, older, section));

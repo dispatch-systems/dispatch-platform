@@ -1,18 +1,28 @@
-//! Whom the DSP can text, as Messaging's Contacts lists them: everyone Driver Match has a phone
-//! number for who hasn't left, by their first, and every number the DSP saved a name for, each
-//! number once, by name, with its conversation if it has one; then the numbers blocked. A name
-//! typed, misspelt or not, finds them as it finds conversations; digits typed, by their number.
-use super::{Numbers, like, normal, offered, storage::TextStore};
-use crate::{
-    api::types::{TextContact, TextContacts},
-    backend::conversations::People,
+//! Whom the DSP can text, and what someone at the DSP does with a number. Messaging's Contacts
+//! lists everyone Driver Match has a phone number for who hasn't left, by their first, and every
+//! number the DSP saved a name for, each number once, by name, with its conversation if it has
+//! one; then the numbers blocked. A name typed, misspelt or not, finds them as it finds
+//! conversations; digits typed, by their number. A number's conversation is opened to text it
+//! first, and its number saved under a name, shared at the DSP, or blocked, or unblocked.
+use super::{
+    numbers::{Numbers, normal},
+    offered, offering,
+    reading::{like, numbered, one},
+    storage::TextStore,
 };
-use dispatch_core::{Result, State, db::Store, foundation::names};
+use crate::{
+    api::types::{Conversation, TextContact, TextContacts},
+    backend::{conversations::People, live},
+};
+use dispatch_core::{Error, Result, State, db::Store, foundation::names};
 use std::collections::{HashMap, HashSet};
 
-/// How many are listed with nothing typed, and found with something, at most.
+/// How many are listed with nothing typed, at most.
 const LISTED: usize = 2000;
+/// How many are found with something typed, at most.
 const FOUND: usize = 20;
+/// The most a contact's name may be, in characters.
+pub const NAME_MOST: usize = 80;
 
 /// Whom the DSP can text, all of them or those like `typed`, and the numbers blocked.
 pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Result<TextContacts> {
@@ -48,7 +58,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         .iter()
         .filter(|person| !person.role.left())
         .filter_map(|person| person.phones.iter().find_map(|phone| normal(phone)));
-    for number in theirs.chain(numbers.contacts.keys().cloned()) {
+    for number in theirs.chain(numbers.contacts().map(str::to_owned)) {
         if !numbers.blocked(&number) && seen.insert(number.clone()) {
             listed.push(number);
         }
@@ -70,8 +80,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
     });
     found.truncate(if typed.is_some() { FOUND } else { LISTED });
     let mut blocked: Vec<TextContact> = numbers
-        .blocked
-        .iter()
+        .all_blocked()
         .map(|number| contact(number, Vec::new()))
         .collect();
     blocked.sort_by(|a, b| names::compare(&a.person.name, &b.person.name));
@@ -79,4 +88,42 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         contacts: found.into_iter().map(|(_, contact)| contact).collect(),
         blocked,
     })
+}
+
+/// The number `raw`'s conversation, opened with no text if it's new, for someone at the DSP to
+/// text first.
+pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversation> {
+    let number = normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
+    offering(db, dsp)?;
+    let opened = db.open_communications_number(dsp, &number)?;
+    one(db, state, dsp, &opened.id)
+}
+
+/// Saves `name` for the number of the conversation `id`, as the member `by`.
+pub fn save_contact(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    id: &str,
+    name: &str,
+    by: &str,
+) -> Result<Conversation> {
+    let number = numbered(db, dsp, id)?;
+    db.save_communications_contact(dsp, &number, name, by)?;
+    live::changed(state, dsp);
+    one(db, state, dsp, id)
+}
+
+/// Blocks the number of the conversation `id`, as the member `by`, or unblocks it with none.
+pub fn block(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    id: &str,
+    by: Option<&str>,
+) -> Result<Conversation> {
+    let number = numbered(db, dsp, id)?;
+    db.block_communications_number(dsp, &number, by)?;
+    live::changed(state, dsp);
+    one(db, state, dsp, id)
 }

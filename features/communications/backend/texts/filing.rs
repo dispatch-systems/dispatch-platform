@@ -12,7 +12,10 @@
 //! day is still one (`was_work_phone`). Any other number's texts are its own. Who held which
 //! phone settles as the day goes on, so today's texts are filed again each time it changes
 //! (`WorkPhonesChanged`).
-use super::storage::{Filed, Incoming, TextFile, TextStatus, TextStore};
+use super::{
+    numbers::ten_digits,
+    storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
+};
 use crate::backend::{
     live,
     storage::{DOMAIN, Direction},
@@ -33,8 +36,9 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 /// How many texts are read from Phones at a time: as many as it gives.
 const PAGE: usize = 100;
-/// How far back today's texts are looked for, in milliseconds: further than a day can be long.
-const TODAY_MS: i64 = 2 * 24 * 60 * 60 * 1000;
+/// Two days, in milliseconds: how far back today's texts are looked for, further than a day can
+/// be long.
+const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
 /// Every minute, each DSP's texts changed since they were last filed.
 pub const MAINTENANCE: Maintenance = Maintenance {
@@ -134,7 +138,7 @@ pub async fn refile_today(state: &Arc<State>, dsp: &str) -> Result<()> {
             let zone = filer.zone;
             let today = clock::today(zone);
             let moves = db
-                .communications_texts_from(&at, now() - TODAY_MS)?
+                .communications_texts_from(&at, now() - TWO_DAYS_MS)?
                 .into_iter()
                 .filter(|text| clock::day(zone, text.at) == today)
                 .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
@@ -293,13 +297,6 @@ impl<'a> Filer<'a> {
         self.work_phones.insert(ten.to_owned(), was);
         Ok(was)
     }
-}
-
-/// A number's ten digits, as Routes keeps a work phone's: only a North American one, `+1` and
-/// ten digits, can be one.
-fn ten_digits(number: &str) -> Option<String> {
-    let ten = number.strip_prefix("+1")?;
-    (ten.len() == 10 && ten.bytes().all(|b| b.is_ascii_digit())).then(|| ten.to_owned())
 }
 
 #[cfg(test)]

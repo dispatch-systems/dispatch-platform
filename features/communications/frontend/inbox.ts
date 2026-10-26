@@ -6,6 +6,7 @@ import type {
   Conversations,
   Group,
 } from '../api/index.js';
+import type { Listing } from '../api/client.js';
 
 // The page's conversations and groups as they change: what the overview read, each update the
 // page waits on, older answered ones as they're read, and what the page's own writes answer with.
@@ -47,9 +48,13 @@ export const waitingIn = (inbox: Communications, section: Section) =>
   inbox.conversations.filter(
     (conversation) => conversation.state === 'waiting' && sectionOf(conversation) === section,
   ).length;
+/** Where the list says whether older answered rows of `section` are left to read. */
+const moreOf = (section: Section) => (section === 'slack' ? 'more' : 'moreTexts');
 /** Whether older answered rows of `section` are left to read. */
-const moreIn = (inbox: Communications, section: Section) =>
-  section === 'slack' ? inbox.more : inbox.moreTexts;
+export const moreIn = (inbox: Communications, section: Section) => inbox[moreOf(section)];
+/** Where `section`'s conversations are read from: in Slack's, of every workspace or `team`'s. */
+export const listingOf = (section: Section, team?: string): Listing =>
+  section === 'slack' ? { team } : { texts: true };
 const sections: readonly Section[] = ['messaging', 'slack'];
 
 /** The workspace `chosen`, while it's one of two or more Communications works in; else none,
@@ -123,7 +128,7 @@ export function withOlder(
   older: Conversations,
   section: Section,
 ): Communications {
-  const more = section === 'slack' ? 'more' : 'moreTexts';
+  const more = moreOf(section);
   return {
     ...inbox,
     [more]: older.more,
