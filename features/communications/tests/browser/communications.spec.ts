@@ -343,7 +343,7 @@ test('an owner messages a group from New message, its answers come back together
   await expect(list.getByRole('heading', { name: /^Waiting/ })).toHaveCount(0);
 });
 
-test('Display opens the member’s own Message display, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation, beside the list in a 1024px window', async ({
+test('Display opens the member’s own Message display, its preview made to fit, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation, beside the list in a 1024px window', async ({
   page,
   dispatch,
 }) => {
@@ -372,6 +372,9 @@ test('Display opens the member’s own Message display, where Enter can start a 
   await page.getByRole('link', { name: 'Communications' }).click();
   await page.getByRole('button', { name: 'Display' }).click();
   await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole('radiogroup', { name: 'Size' }).getByRole('radio', { name: 'Fit' }),
+  ).toBeChecked();
   // Saved as it's changed, the member's own.
   const saved = page.waitForResponse(
     (response) =>

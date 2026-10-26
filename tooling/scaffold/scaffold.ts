@@ -286,6 +286,20 @@ export function peopleSources(root: string) {
 /** The collections a collector reads: one directory each under `collections/`. */
 export const collectionsOf = (root: string, site: string) =>
   directories(root, `collectors/${site}/collections`);
+/**
+ * A collector's collection as its `COLLECTIONS` lists it: the schedule Settings' Collectors page
+ * sets it by, its label, and the count of a run's metrics its runs are compared per.
+ */
+export function collectionOf(root: string, site: string, collection: string) {
+  const source = read(root, `collectors/${site}/collector.rs`);
+  const found = new RegExp(
+    `job_kind:\\s*(?:\\w+::)*${collection}::JOB_KIND,\\s*schedule:\\s*"([^"]+)",\\s*` +
+      `label:\\s*"([^"]+)",[^}]*?\\bcounted:\\s*Counted::(\\w+)`,
+  ).exec(source);
+  if (!found) throw new UsageError(`${site}'s COLLECTIONS lists no ${collection}`);
+  const [, schedule = '', label = '', counted = ''] = found;
+  return { schedule, label, counted: counted.toLowerCase() };
+}
 /** What a collector's connection supplies to the pages that require it. */
 export function capabilitiesOf(root: string, site: string) {
   const source = read(root, `collectors/${site}/collector.rs`);

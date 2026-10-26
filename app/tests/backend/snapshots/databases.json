@@ -42,7 +42,8 @@
       [3, "routes_kind", "de8b5fe1fb72270b"],
       [4, "dvic_kind", "311993998eedd13c"],
       [5, "open_kinds", "13830dde50ae8243"],
-      [6, "live_reads", "df1f39254c9fffb2"]
+      [6, "live_reads", "df1f39254c9fffb2"],
+      [7, "live_days_stopping", "code"]
     ]
   },
   {

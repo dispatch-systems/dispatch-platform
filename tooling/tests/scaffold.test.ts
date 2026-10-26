@@ -421,10 +421,21 @@ test("--keeps writes the keeper of a collector's collection, tested with its fix
     file(plan, 'features/fleet_log/Cargo.toml'),
     /^dispatch-fleet = \{ path = "..\/..\/collectors\/fleet" \}$/m,
   );
+  // What it collects is under the schedule its collector sets, counted as its collector counts.
+  assert.match(file(plan, 'features/fleet_log/frontend/feature.ts'), /collected: \(\) => import/);
+  assert.match(
+    file(plan, 'features/fleet_log/frontend/collected.ts'),
+    /^ {2}fleet_shifts: \{[^]*counted: 'rows'/m,
+  );
   // A database of its own sits beside the collector whose collection it keeps.
   await assert.rejects(
     planFeature(copy, ['fleet_log', '--tables', 'fleet_log']),
     /--tables takes dsp/,
+  );
+  // What it collects is said in its frontend, which a mandatory feature with no screen lacks.
+  await assert.rejects(
+    planFeature(copy, ['fleet_log', '--keeps', 'fleet.shifts', '--mandatory']),
+    /add --page, or leave out --mandatory/,
   );
 });
 

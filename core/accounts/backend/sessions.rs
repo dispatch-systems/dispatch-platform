@@ -1,8 +1,12 @@
 use super::*;
 impl Store {
     /// Counts a password tried for `email` in `dsp`'s directory, or the platform's: an
-    /// account's attempts are its directory's, so the same address elsewhere is untouched.
+    /// account's attempts are its directory's, so the same address elsewhere is untouched. A
+    /// preview counts none (`unlimited_sign_in`).
     pub fn password_attempt(&self, dsp: Option<&str>, email: &str, ip: &str) -> Result<()> {
+        if self.config.unlimited_sign_in {
+            return Ok(());
+        }
         self.throttle_ip(
             "login-ip",
             ip,

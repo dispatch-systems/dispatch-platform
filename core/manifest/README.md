@@ -281,8 +281,10 @@ live_readers: &[&backend::live::READER],
   data; a restart within the window, or a window saved again, doesn't start it again.
 - **A day ends** (`stopped`) once its window has closed, at the DSP's offset past the close:
   once for each day it started, even when the server was down then, and before a later day
-  starts. A hook that fails is asked again: `started` with the next whole read, `stopped` a
-  minute later.
+  starts. A day reads no more once its stop has begun, though its window is moved to end later
+  or `stopped` fails part of the way: its stop is finished first, after a restart too, and its
+  next reads are the next day's. A hook that fails is asked again: `started` with the next
+  whole read, `stopped` a minute later.
 - **A browser** (`Reading::browser(provider)`): a hook that needs one, to sign in or take a
   key from a page, opens the DSP's own for a provider, signed in as a job's is and within the
   server's limits on browsers and memory. It's the reader's alone until it closes, closing
@@ -324,5 +326,5 @@ them is `core/shell/frontend/runtime/slots/`, one module per slot, gathered by `
 | `replies`                | `api`          | How the API client checks the replies of its routes, loaded apart from the first page.                                                                                                                                                                                                                                                            |
 | `errors`                 | `api`          | What its error codes say, for a code something outside its own screens raises.                                                                                                                                                                                                                                                                    |
 | `scheduleIssues`         | `api`          | Why a schedule of its collections waits, by the code it last stopped on.                                                                                                                                                                                                                                                                          |
-| `collected`              | `collected`    | What each collection it keeps collects, by the collection's name: its kinds of record and their fields, each with a made-up value, the count of the latest successful run that counts each kind, what a run reads, does, skips and doesn't keep. Settings' Collectors page shows it under the collection, loading it as it does.                  |
+| `collected`              | `collected`    | What each collection it keeps collects, by the collection's name: its kinds of record and their fields, each with a made-up value, the count of the latest successful run that counts each kind, what a run reads, does, skips and doesn't keep. Settings' Collectors page loads it under the collection; `new feature --keeps` writes one.       |
 | `platformSlots`          | `platform`     | What it puts in the platform owner's slots: its switch's icon, its audit wording, how Diagnostics words its runs, its mail kinds.                                                                                                                                                                                                                 |

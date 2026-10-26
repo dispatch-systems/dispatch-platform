@@ -4,12 +4,24 @@ import { nodeTests, pythonTests, sourceLintCommands, type Command } from './exec
 // Everything a push can fail on without a build: types, formatting, the source-wide rule
 // tests and source-only Python tooling tests. Real compiler and installed-manager checks
 // run in the API job; this command never builds Rust.
-// About half a minute; run it before every push.
+// About a minute; `ci` and `ship` run it before a push. TypeScript and Prettier keep what they
+// found in the worktree's node_modules, so a later run checks again only what changed; CI's
+// checks job runs them afresh.
 const checks: Command[] = [
   { name: 'privacy', command: 'python3', args: ['tooling/security/scan.py'] },
   pythonTests('rules'),
-  { name: 'types', command: 'npx', args: ['tsc', '--noEmit'] },
-  { name: 'format', command: 'npx', args: ['prettier', '--check', '.'] },
+  {
+    name: 'types',
+    command: 'npx',
+    args: [
+      'tsc',
+      '--noEmit',
+      '--incremental',
+      '--tsBuildInfoFile',
+      'node_modules/.cache/dispatch/tsc.tsbuildinfo',
+    ],
+  },
+  { name: 'format', command: 'npx', args: ['prettier', '--check', '--cache', '.'] },
   { name: 'Rust format', command: 'cargo', args: ['fmt', '--check'] },
   ...sourceLintCommands,
   nodeTests('rules'),

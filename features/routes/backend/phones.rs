@@ -1,9 +1,9 @@
 //! Who holds which of the company's work phones, settled from each whole live read: what each
 //! driver's record shows, in the day's list and in their itinerary, made into holds from a claim
-//! until it ends. A phone passes from driver to driver, so a hold is never a sign that two
-//! drivers are one person. Its state is live route data's, `work_phones` and
-//! `work_phones_shown`, settled in the transaction that keeps the read it comes from, so a
-//! restart neither repeats a claim nor loses one.
+//! until its driver switches to another phone or someone else claims it. A phone passes from
+//! driver to driver, so a hold is never a sign that two drivers are one person. Its state is
+//! live route data's, `work_phones` and `work_phones_shown`, settled in the transaction that
+//! keeps the read it comes from, so a restart neither repeats a claim nor loses one.
 use super::*;
 use dispatch_cortex::routes::token;
 use std::collections::{BTreeMap, BTreeSet};
@@ -24,8 +24,8 @@ pub(super) struct Shown {
     pub(super) named: BTreeMap<String, String>,
     pub(super) itineraries: BTreeMap<String, String>,
 }
-/// What settling a read's work phones did: how many holds it claimed, moved, handed over,
-/// ended or withdrew, and how many are held after it.
+/// What settling a read's work phones did: how many holds it claimed, moved, handed over or
+/// withdrew, and how many are held after it.
 pub(super) struct Settled {
     pub(super) events: u64,
     pub(super) holding: u64,
@@ -133,23 +133,6 @@ fn driver(db: &Db, day: &str, id: &str) -> Result<Driver> {
         holds: field(&holds, "phone"),
     })
 }
-/// Ends the hold `driver` has at `at`, if they have one, forgetting what their record showed
-/// when they claimed it, so the same phone shown again is claimed again. Answers whether they
-/// had one.
-fn end(db: &Db, day: &str, at: i64, driver: &str) -> Result<bool> {
-    let held = db.exec(
-        "UPDATE work_phones SET until=? WHERE day=? AND transporter_id=? AND until IS NULL",
-        params![at, day, driver],
-    )? > 0;
-    if held {
-        db.exec(
-            "UPDATE work_phones_shown SET claimed=NULL WHERE transporter_id=?",
-            [driver],
-        )?;
-    }
-    Ok(held)
-}
-
 /// Settles who holds which work phone on `day` after a whole read at `at`, inside the caller's
 /// transaction. A driver claims a phone once signed in, when what their record shows changes to
 /// it, never by showing it again: until they sign in it shows the last phone they had. Signed in
@@ -157,12 +140,11 @@ fn end(db: &Db, day: &str, at: i64, driver: &str) -> Result<bool> {
 /// every driver the list names, dispatched or not; a claim made before that is withdrawn, never
 /// having been a hold. A driver holding a phone switches to another once two reads in a row show
 /// it. A claim of a phone someone else holds is a handover and ends theirs, and their record
-/// still showing it never takes it back. A session Cortex has ended ends its driver's hold,
-/// whatever their record shows then, and forgets what it showed, so the same phone shown once the
-/// session is back is claimed again; a driver gone from the day's list ends theirs the same way,
-/// and a list naming nobody ends none. Claims are settled oldest activity first, so the most
-/// recently active driver holds a phone two records show. Every hold is kept, from its claim
-/// until it ends.
+/// still showing it never takes it back. A hold ends only with a switch or a handover: a driver
+/// keeps the last phone they held once Cortex ends their session or they're gone from the day's
+/// list, until someone else claims it, and goes on holding it if they're back. Claims are settled oldest
+/// activity first, so the most recently active driver holds a phone two records show. Every
+/// hold is kept, from its claim until it ends or the day does.
 pub(super) fn settle(db: &Db, day: &str, at: i64, shown: &Shown) -> Result<Settled> {
     let mut events = 0;
     // The first phone each driver's record shows today: the list's before their itinerary's.
@@ -233,24 +215,6 @@ pub(super) fn settle(db: &Db, day: &str, at: i64, shown: &Shown) -> Result<Settl
             params![phone, id],
         )?;
         events += 1 + handed as u64;
-    }
-    for listed in &shown.listed {
-        if listed.ended && end(db, day, at, &listed.driver)? {
-            events += 1;
-        }
-    }
-    if !shown.listed.is_empty() {
-        let listed: BTreeSet<&str> = shown.listed.iter().map(|l| l.driver.as_str()).collect();
-        let holding = db.all(
-            "SELECT transporter_id FROM work_phones WHERE day=? AND until IS NULL",
-            [day],
-        )?;
-        for row in holding {
-            let id = s(&row, "transporter_id");
-            if !listed.contains(id) && end(db, day, at, id)? {
-                events += 1;
-            }
-        }
     }
     // What this read showed, which the next one's switches are confirmed against.
     let mut last = db.0.prepare_cached(

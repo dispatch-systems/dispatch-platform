@@ -66,15 +66,15 @@ pub fn dsp<'a>(dsps: &'a [Value], wanted: &str) -> Result<&'a Value> {
     }
 }
 
-const OWNER: &str = "owner@dispatch.test";
+pub(crate) const OWNER: &str = "owner@dispatch.test";
 
 /// Where the preview is reached: its address, the `curl` arguments that reach it there, and
 /// the jar its session is kept in. The platform owner's is the admin's; a member's is their
 /// DSP's own, a name under `localhost` that `--resolve` sends to the preview's host.
-struct Site {
-    origin: String,
+pub(crate) struct Site {
+    pub(crate) origin: String,
     reach: Vec<String>,
-    jar: std::path::PathBuf,
+    pub(crate) jar: std::path::PathBuf,
 }
 impl Site {
     fn curl(&self, runner: &dyn Runner, args: &[&str]) -> Result<Answer> {
@@ -131,14 +131,14 @@ impl Site {
 
 /// A running preview, as a call reaches it: its host and port, what its current run logged, and
 /// the change's scratch folder, where sessions are kept.
-struct Running {
-    host: String,
+pub(crate) struct Running {
+    pub(crate) host: String,
     port: u16,
     log: String,
-    scratch: std::path::PathBuf,
+    pub(crate) scratch: std::path::PathBuf,
 }
 impl Running {
-    fn find(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Self> {
+    pub(crate) fn find(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Self> {
         let change = Change::existing(ws, name)?;
         let port = crate::preview::port(name)?.ok_or_else(|| {
             format!("{name} has no preview. Start it with dispatchdev preview {name}.")
@@ -172,41 +172,46 @@ pub fn dsps(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Vec<Value
     Ok(session["dsps"].as_array().cloned().unwrap_or_default())
 }
 
-pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
-    let running = Running::find(ws, name, runner)?;
-    let (host, port, log, scratch) = (&running.host, running.port, &running.log, &running.scratch);
-    let who = call.who.unwrap_or(OWNER);
+/// Where `who` is signed in on the running preview, and their session there, kept from an
+/// earlier call or signed in now: the owner at the admin's address, and anyone else at the
+/// address of the DSP `wanted` names, which the owner's list gives.
+pub(crate) fn sign_in(
+    running: &Running,
+    who: &str,
+    wanted: Option<&str>,
+    runner: &dyn Runner,
+) -> Result<(Site, Value)> {
     require(
         who.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"@.-_+".contains(&b)),
         "An account is an email address.",
     )?;
     let admin = running.admin();
-    // A member signs in at their DSP's own address, which the owner's list names.
-    let (site, session, dsps) = if who == OWNER {
-        let session = admin.session(runner, log, OWNER)?;
-        let dsps = session["dsps"].clone();
-        (admin, session, dsps)
-    } else {
-        let wanted = call
-            .dsp
-            .ok_or("A member signs in at their DSP's address: name the DSP with --dsp.")?;
-        let listed = admin.session(runner, log, OWNER)?["dsps"].clone();
-        let all = listed.as_array().map(Vec::as_slice).unwrap_or(&[]);
-        let code = dsp(all, wanted)?["code"]
-            .as_str()
-            .ok_or("That DSP has no short code, so no address of its own yet.")?
-            .to_owned();
-        let address = format!("{code}.localhost:{port}");
-        let site = Site {
-            origin: format!("http://{address}"),
-            reach: vec!["--resolve".into(), format!("{address}:{host}")],
-            jar: scratch.join(format!("api-{who}.cookies")),
-        };
-        let session = site.session(runner, log, who)?;
-        let dsps = session["dsps"].clone();
-        (site, session, dsps)
+    if who == OWNER {
+        let session = admin.session(runner, &running.log, OWNER)?;
+        return Ok((admin, session));
+    }
+    let wanted =
+        wanted.ok_or("A member signs in at their DSP's address: name the DSP with --dsp.")?;
+    let listed = admin.session(runner, &running.log, OWNER)?["dsps"].clone();
+    let all = listed.as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let code = dsp(all, wanted)?["code"]
+        .as_str()
+        .ok_or("That DSP has no short code, so no address of its own yet.")?
+        .to_owned();
+    let address = format!("{code}.localhost:{}", running.port);
+    let site = Site {
+        origin: format!("http://{address}"),
+        reach: vec!["--resolve".into(), format!("{address}:{}", running.host)],
+        jar: running.scratch.join(format!("api-{who}.cookies")),
     };
+    let session = site.session(runner, &running.log, who)?;
+    Ok((site, session))
+}
+
+pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
+    let running = Running::find(ws, name, runner)?;
+    let (site, session) = sign_in(&running, call.who.unwrap_or(OWNER), call.dsp, runner)?;
     let csrf = session["csrf"]
         .as_str()
         .ok_or("The session has no CSRF token")?;
@@ -217,7 +222,7 @@ pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> R
         format!("x-csrf-token: {csrf}"),
     ];
     if let Some(wanted) = call.dsp {
-        let dsps = dsps.as_array().map(Vec::as_slice).unwrap_or(&[]);
+        let dsps = session["dsps"].as_array().map(Vec::as_slice).unwrap_or(&[]);
         let id = dsp(dsps, wanted)?["id"]
             .as_str()
             .ok_or("A DSP without an id")?;

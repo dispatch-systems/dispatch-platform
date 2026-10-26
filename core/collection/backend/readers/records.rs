@@ -69,6 +69,16 @@ impl Store {
             .filter_map(|(day,)| day.parse().ok())
             .collect())
     }
+    /// The last day `reader` ended for the DSP, its stop begun or done, if one is still
+    /// recorded.
+    pub(super) fn last_ended(&self, reader: &str, dsp: &str) -> Result<Option<NaiveDate>> {
+        let day: Option<(Option<String>,)> = self.jobs.one_as(
+            "SELECT max(day) FROM live_days WHERE reader=? AND dsp_id=? \
+             AND (stopping_at IS NOT NULL OR stopped_at IS NOT NULL)",
+            [reader, dsp],
+        )?;
+        Ok(day.and_then(|(day,)| day?.parse().ok()))
+    }
     /// Whether `reader` started `day` for the DSP, stopped since or not.
     pub(super) fn day_started(&self, reader: &str, dsp: &str, day: NaiveDate) -> Result<bool> {
         Ok(self
@@ -79,13 +89,29 @@ impl Store {
             )?
             .is_some())
     }
-    /// Records that `day` reads for the DSP: started now, or under way again when its
-    /// window opened again after it stopped, to stop again as it ends.
+    /// Records that `day` reads for the DSP: started now, unless it started already. A day
+    /// whose stop began never reads again (`Plan::step`).
     pub(super) fn keep_day(&self, reader: &str, dsp: &str, day: NaiveDate, at: i64) -> Result<()> {
         self.jobs.exec(
             "INSERT INTO live_days(reader,dsp_id,day,started_at) VALUES (?,?,?,?) \
-             ON CONFLICT(reader,dsp_id,day) DO UPDATE SET stopped_at=NULL",
+             ON CONFLICT(reader,dsp_id,day) DO NOTHING",
             params![reader, dsp, day.to_string(), at],
+        )?;
+        Ok(())
+    }
+    /// Records that `day`'s stop began for the DSP, when it first did: from then it reads no
+    /// more, and its stop is asked again until it's done.
+    pub(super) fn begin_stop(
+        &self,
+        reader: &str,
+        dsp: &str,
+        day: NaiveDate,
+        at: i64,
+    ) -> Result<()> {
+        self.jobs.exec(
+            "UPDATE live_days SET stopping_at=? WHERE reader=? AND dsp_id=? AND day=? \
+             AND stopping_at IS NULL",
+            params![at, reader, dsp, day.to_string()],
         )?;
         Ok(())
     }
