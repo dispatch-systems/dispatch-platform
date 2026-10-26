@@ -315,6 +315,10 @@ pub const DRIVERS: Source = Source::new(&SourceInfo {
     label: "Drivers",
     order: 90,
 });
+/// The most days one read of drivers' routes reaches, and VINs one read of the fleet names, as
+/// Routes and Vans refuse more.
+const ROUTES_DAYS_MOST: i64 = 366;
+const FLEET_VINS_MOST: usize = 100;
 
 /// What the stand-ins know of a DSP.
 #[derive(Default)]
@@ -465,8 +469,13 @@ impl DriverRoutes for Standing {
     fn collected(&self, _: &Store, _: &str) -> Result<Option<Collected>> {
         Ok(None)
     }
-    /// The routes it knows driven by `ids` from `from` to `to`, and their days.
+    /// The routes it knows driven by `ids` from `from` to `to`, and their days; refused across
+    /// more days than Routes reads.
     fn routes(&self, _: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Driven> {
+        let day = |day: &str| NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
+        if (day(to) - day(from)).num_days() >= ROUTES_DAYS_MOST {
+            return Err(Error::new("invalid_input", 400));
+        }
         let routes: Vec<RouteDay> = known(dsp, |known| {
             known
                 .routes
@@ -717,7 +726,11 @@ impl AmazonFleet for Standing {
     fn collected(&self, _: &Store, _: &str) -> Result<Option<String>> {
         Ok(None)
     }
+    /// The vans it knows under `vins`; refused for more than Vans reads.
     fn vans(&self, _: &Store, dsp: &str, vins: &[String]) -> Result<Vec<Van>> {
+        if vins.len() > FLEET_VINS_MOST {
+            return Err(Error::new("invalid_input", 400));
+        }
         Ok(known(dsp, |known| {
             known
                 .vans

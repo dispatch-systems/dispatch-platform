@@ -151,3 +151,37 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
         (None, 0, 0)
     );
 }
+
+#[tokio::test]
+async fn todays_routes_names_every_drivers_van_beyond_what_one_read_of_the_fleet_holds() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // A hundred and one drivers, each in a van of their own, named as the driver is.
+    let ids: Vec<String> = (0..101).map(|n| format!("D{n:03}")).collect();
+    let vin = |id: &str| format!("1FTVAN{id}");
+    support::know(
+        &state,
+        &dsp,
+        ids.iter().map(|id| driver(id, id, id)).collect(),
+        Vec::new(),
+        ids.iter().map(|id| van(&vin(id), id)).collect(),
+    );
+    let wave = at(zone, day, 9, 0);
+    routed(
+        &dsp,
+        ids.iter()
+            .map(|id| route(&today, id, "CX01", &vin(id), 10, wave))
+            .collect(),
+    );
+    held(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
+
+    let shown = listed(&state, &dsp).await;
+    assert_eq!(shown.drivers.len(), 101);
+    assert!(
+        shown
+            .drivers
+            .iter()
+            .all(|each| each.today.van.as_deref() == Some(each.person.name.as_str()))
+    );
+}

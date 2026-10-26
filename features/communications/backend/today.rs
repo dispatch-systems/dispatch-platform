@@ -9,7 +9,10 @@ use crate::api::types::Today;
 use dispatch_core::{Result, db::Store, foundation::clock, manifest::people::Person, text_enum};
 use dispatch_routes_contract::{self as routes, RouteDay, WorkPhone};
 use dispatch_vans_contract as fleet;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+
+/// How many VINs one read of the DSP's fleet names: as many as Vans reads at once.
+const VINS_PER_READ: usize = 100;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -58,21 +61,32 @@ pub fn driver(route: &RouteDay) -> String {
     route.driver_id.clone()
 }
 
-/// What the DSP calls each of the vans `vins`, by VIN: none while Vans is off.
+/// What the DSP calls each of the vans `vins`, by VIN, each asked once, as many at a time as Vans
+/// reads: none while Vans is off.
 pub fn vans<'a>(
     db: &Store,
     dsp: &str,
     vins: impl IntoIterator<Item = &'a String>,
 ) -> Result<HashMap<String, String>> {
-    let vins: Vec<String> = vins.into_iter().cloned().collect();
+    let vins: Vec<String> = vins
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .cloned()
+        .collect();
     let Some(fleet) = fleet::for_dsp(db, dsp)?.filter(|_| !vins.is_empty()) else {
         return Ok(HashMap::new());
     };
-    Ok(fleet
-        .vans(db, dsp, &vins)?
-        .into_iter()
-        .filter_map(|van| Some((van.vin, van.name?)))
-        .collect())
+    let mut named = HashMap::new();
+    for read in vins.chunks(VINS_PER_READ) {
+        named.extend(
+            fleet
+                .vans(db, dsp, read)?
+                .into_iter()
+                .filter_map(|van| Some((van.vin, van.name?))),
+        );
+    }
+    Ok(named)
 }
 
 /// Someone's route today, `route`, in the van the DSP calls by `vans`, holding the work phone
