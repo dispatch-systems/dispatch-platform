@@ -100,8 +100,9 @@ reaches), and counts as checking in.
   `data/phones/files/`, by their SHA-256, which backups keep. Bytes arrive beside them, and take
   their place, and are let go, only under the platform's write lock with the files that keep
   them. Kept until the DSP is deleted.
-- **Upkeep:** hourly, letting go of pictures added and never sent within a day, and of codes
-  expired.
+- **Upkeep:** hourly, letting go of pictures added and never sent within a day, of bytes no
+  file keeps, as a removal that failed leaves, and of bytes left arriving an hour, as a restart
+  leaves, each on its own, tried again the next hour should it fail; and of codes expired.
 - **Demo:** a development or preview DSP has a stand-in phone, `(206) 555-0100`, which no app
   holds, with three texts it received; a text Dispatch sends from it is delivered at once.
 - **Log:** `phones.paired`, `phones.renamed` and `phones.removed`, under Connections.

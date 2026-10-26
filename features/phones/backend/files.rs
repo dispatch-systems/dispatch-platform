@@ -2,7 +2,8 @@
 //! (`data/phones/files/`) by their SHA-256, so two texts with one picture keep it once. Bytes
 //! arrive beside the folder's files, then take their place, and are let go, only under the
 //! platform's write lock, with the files that keep them: so letting go never removes the bytes of
-//! a file kept a moment before.
+//! a file kept a moment before. Upkeep lets go of any bytes no file keeps, as a removal that
+//! failed leaves, and of bytes left arriving, as a restart leaves.
 use super::storage::{FileStore, ReportedFile};
 use dispatch_core::{
     Error, Result, State,
@@ -13,63 +14,63 @@ use dispatch_core::{
 use dispatch_phones_contract::{Added, File};
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashSet, path::PathBuf, sync::Arc, time::UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+/// How long bytes may sit arriving, unchanged, before upkeep takes them for abandoned: far longer
+/// than an upload may stall before it's given up, a minute.
+const ABANDONED_MS: i64 = 60 * 60 * 1000;
+/// What the name of bytes arriving begins with, beside those kept by their SHA-256.
+const ARRIVING: &str = ".";
 
 /// The folder the DSP's files are kept in.
 fn folder(db: &Store, dsp: &str) -> Result<PathBuf> {
     let owner = db::private_dir(&db.area(dsp, "data")?.join("phones"))?;
     db::private_dir(&owner.join("files"))
 }
+/// Where bytes arrive, let go of should they never take their place among the DSP's files,
+/// however receiving them ends.
+struct Arriving(PathBuf);
+impl Drop for Arriving {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
 /// Bytes that arrived, beside the DSP's files until they take their place.
 pub struct Arrived {
     pub sha256: String,
     pub size: i64,
-    arriving: PathBuf,
+    arriving: Arriving,
 }
 impl Arrived {
     /// Puts the bytes in their place among the DSP's files: inside the write that keeps the file
     /// they're for.
     fn place(&self, db: &Store, dsp: &str) -> Result<()> {
-        std::fs::rename(&self.arriving, folder(db, dsp)?.join(&self.sha256))?;
+        std::fs::rename(&self.arriving.0, folder(db, dsp)?.join(&self.sha256))?;
         Ok(())
-    }
-}
-impl Drop for Arrived {
-    /// Bytes that never took their place are let go.
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.arriving);
     }
 }
 /// Receives `bytes`, as they arrive, beside the DSP's files.
 pub async fn receive(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<Arrived> {
     let at = dsp.to_owned();
     let folder = state.read(move |db| folder(db, &at)).await?;
-    let arriving = folder.join(format!(".{}", crypto::id("arriving")?));
+    let arriving = Arriving(folder.join(format!("{ARRIVING}{}", crypto::id("arriving")?)));
     let mut written = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
-        .open(&arriving)
+        .open(&arriving.0)
         .await?;
     let mut hash = Sha256::new();
     let mut size = 0i64;
     let mut bytes = Box::pin(bytes.stream());
-    let copied: Result<()> = async {
-        while let Some(chunk) = bytes.next().await {
-            let chunk = chunk.map_err(|_| Error::new("upload_incomplete", 400))?;
-            hash.update(&chunk);
-            size += chunk.len() as i64;
-            written.write_all(&chunk).await?;
-        }
-        written.sync_all().await?;
-        Ok(())
+    while let Some(chunk) = bytes.next().await {
+        let chunk = chunk.map_err(|_| Error::new("upload_incomplete", 400))?;
+        hash.update(&chunk);
+        size += chunk.len() as i64;
+        written.write_all(&chunk).await?;
     }
-    .await;
-    if let Err(error) = copied {
-        let _ = tokio::fs::remove_file(&arriving).await;
-        return Err(error);
-    }
+    written.sync_all().await?;
     Ok(Arrived {
         sha256: crypto::hex(&hash.finalize()),
         size,
@@ -77,8 +78,8 @@ pub async fn receive(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<Arr
     })
 }
 /// Keeps `arrived` as the bytes of the file `id` of a text the phone `device` reported, in place of
-/// any before them, its size what arrived: refused as `phones_file_not_found` for one of no text of its own, its bytes
-/// let go. Inside the write that authorized the phone.
+/// any before them, its size what arrived: refused as `phones_file_not_found` for one of no text
+/// of its own, its bytes let go. Inside the write that authorized the phone.
 pub fn keep_reported(
     db: &Store,
     dsp: &str,
@@ -116,7 +117,37 @@ pub fn forget(db: &Store, dsp: &str, sha256: &str) -> Result<()> {
     if db.phones_bytes_kept(dsp, sha256)? {
         return Ok(());
     }
-    match std::fs::remove_file(folder(db, dsp)?.join(sha256)) {
+    removed(&folder(db, dsp)?.join(sha256))
+}
+/// Lets go of the DSP's bytes no file keeps, and of bytes left arriving `ABANDONED_MS` unchanged,
+/// each on its own: why any couldn't go, to be tried again the next time. Inside a write, so no
+/// bytes take their place meanwhile.
+pub fn reconcile(db: &Store, dsp: &str) -> Result<Vec<Error>> {
+    let kept: HashSet<String> = db.phones_kept_bytes(dsp)?.into_iter().collect();
+    let abandoned = db::now() - ABANDONED_MS;
+    let mut failed = Vec::new();
+    for entry in std::fs::read_dir(folder(db, dsp)?)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let unkept = if name.starts_with(ARRIVING) {
+            changed_at(&entry)? < abandoned
+        } else {
+            !kept.contains(&name)
+        };
+        if unkept && let Err(error) = removed(&entry.path()) {
+            failed.push(error);
+        }
+    }
+    Ok(failed)
+}
+/// When the bytes at `entry` last changed, epoch milliseconds.
+fn changed_at(entry: &std::fs::DirEntry) -> Result<i64> {
+    let at = entry.metadata()?.modified()?.duration_since(UNIX_EPOCH);
+    Ok(at.map_or(0, |at| at.as_millis() as i64))
+}
+/// Removes the bytes at `path`, once they're gone already too.
+fn removed(path: &std::path::Path) -> Result<()> {
+    match std::fs::remove_file(path) {
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
         _ => Ok(()),
     }

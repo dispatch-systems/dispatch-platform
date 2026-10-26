@@ -1,11 +1,13 @@
-//! The bytes texts carry, as they arrive: a reported file's are kept with their own size.
+//! The bytes texts carry, as they arrive: a reported file's are kept with their own size, and
+//! those cut short leave nothing behind.
 use super::*;
 use crate::backend::{
     storage::{DOMAIN, TextStore},
-    support::{paired, reported, store},
+    support::{kept, paired, reported, store},
 };
 use axum::body::Bytes;
-use futures_util::stream;
+use futures_util::{StreamExt, stream};
+use std::task::Poll;
 
 /// `bytes`, as an upload brings them.
 async fn upload(bytes: &'static [u8]) -> Upload {
@@ -45,4 +47,33 @@ async fn a_reported_files_size_is_what_its_bytes_are() {
         .unwrap();
     let file = &changes.texts[0].files[0];
     assert_eq!((file.size, file.kept), (4, true));
+}
+
+#[tokio::test]
+async fn bytes_cut_short_as_they_arrive_leave_nothing_behind() {
+    let (_root, db, dsp) = store();
+    let folder = kept(&db, &dsp);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    // Two of four bytes come, then nothing more: told once the rest are waited on.
+    let (told, waiting) = tokio::sync::oneshot::channel();
+    let mut told = Some(told);
+    let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"do"))]).chain(
+        stream::poll_fn(move |_| {
+            if let Some(told) = told.take() {
+                let _ = told.send(());
+            }
+            Poll::<Option<std::io::Result<Bytes>>>::Pending
+        }),
+    );
+    let upload = Upload::streamed(4, u64::MAX, chunks).await.unwrap();
+    let mut receiving = Box::pin(receive(&state, &dsp, upload));
+    tokio::select! {
+        _ = &mut receiving => panic!("the rest never came"),
+        _ = waiting => {}
+    }
+    // The upload ends there, as a request cancelled does.
+    drop(receiving);
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
 }

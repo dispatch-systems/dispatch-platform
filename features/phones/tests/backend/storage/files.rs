@@ -36,7 +36,7 @@ fn pictures_never_sent_are_let_go() {
     let recent = db
         .phones_add_file(&dsp, &owner, &file("recent.png"), "sha-recent", 5_000)
         .unwrap();
-    assert_eq!(db.phones_tidy_files(&dsp, 2_000).unwrap(), ["sha-unsent"]);
+    db.phones_tidy_files(&dsp, 2_000).unwrap();
     assert!(db.phones_file(&dsp, &unsent.id).unwrap().is_none());
     assert!(db.phones_file(&dsp, &sent.id).unwrap().is_some());
     assert!(db.phones_file(&dsp, &recent.id).unwrap().is_some());

@@ -1,5 +1,5 @@
 //! Phones' upkeep: letting go, hourly, of pictures added for a text and never sent within a day,
-//! and of pairing codes expired.
+//! of bytes no file keeps or left arriving, and of pairing codes expired.
 use super::{
     files,
     storage::{DOMAIN, DeviceStore, FileStore},
@@ -56,14 +56,13 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
         }
     })
 }
-/// Lets go of the DSP's pictures added before `before` and never sent, and their bytes, each on
-/// its own: bytes that can't be let go are logged, and the rest still go. Then of the codes
-/// expired.
+/// Lets go of the DSP's pictures added before `before` and never sent, then of the bytes no file
+/// keeps, each on its own: bytes that can't be let go are logged and tried again next time, and
+/// the rest still go. Then of the codes expired.
 fn let_go(db: &Store, dsp: &str, before: i64) -> Result<()> {
-    for sha256 in db.phones_tidy_files(dsp, before)? {
-        if let Err(error) = files::forget(db, dsp, &sha256) {
-            failed(&error);
-        }
+    db.phones_tidy_files(dsp, before)?;
+    for error in files::reconcile(db, dsp)? {
+        failed(&error);
     }
     db.phones_tidy_pairings(dsp, db::now())
 }

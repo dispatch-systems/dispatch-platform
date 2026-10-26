@@ -52,10 +52,13 @@ pub trait FileStore {
     /// Lets go of the picture `id` that `by` added for a text not sent yet: the SHA-256 of its
     /// bytes, if it was let go.
     fn phones_remove_file(&self, dsp: &str, id: &str, by: &str) -> Result<Option<String>>;
-    /// Lets go of pictures added and never sent before `before`: the SHA-256 of each let go.
-    fn phones_tidy_files(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
+    /// Lets go of pictures added and never sent before `before`, whose bytes upkeep then lets go
+    /// of once no file keeps them.
+    fn phones_tidy_files(&self, dsp: &str, before: i64) -> Result<()>;
     /// Whether any file is kept by `sha256`.
     fn phones_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool>;
+    /// The SHA-256 of every bytes a file keeps.
+    fn phones_kept_bytes(&self, dsp: &str) -> Result<Vec<String>>;
     /// A picture of a text Dispatch has for the phone `device` to send.
     fn phones_outgoing_file(&self, dsp: &str, device: &str, id: &str)
     -> Result<Option<StoredFile>>;
@@ -142,29 +145,29 @@ impl FileStore for Store {
             Ok(added["sha256"].as_str().map(str::to_owned))
         })
     }
-    fn phones_tidy_files(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            let loose: Vec<String> = db
-                .all(
-                    "SELECT sha256 FROM phones_files WHERE text_id IS NULL AND added_at<?",
-                    [before],
-                )?
-                .iter()
-                .filter_map(|row| row["sha256"].as_str().map(str::to_owned))
-                .collect();
-            db.exec(
-                "DELETE FROM phones_files WHERE text_id IS NULL AND added_at<?",
-                [before],
-            )?;
-            Ok(loose)
-        })
+    fn phones_tidy_files(&self, dsp: &str, before: i64) -> Result<()> {
+        self.dsp(dsp)?.exec(
+            "DELETE FROM phones_files WHERE text_id IS NULL AND added_at<?",
+            [before],
+        )?;
+        Ok(())
     }
     fn phones_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool> {
         Ok(self
             .dsp(dsp)?
             .count("SELECT count(*) FROM phones_files WHERE sha256=?", [sha256])?
             > 0)
+    }
+    fn phones_kept_bytes(&self, dsp: &str) -> Result<Vec<String>> {
+        Ok(self
+            .dsp(dsp)?
+            .all(
+                "SELECT DISTINCT sha256 FROM phones_files WHERE sha256 IS NOT NULL",
+                [],
+            )?
+            .iter()
+            .map(|row| s(row, "sha256").to_owned())
+            .collect())
     }
     fn phones_outgoing_file(
         &self,
