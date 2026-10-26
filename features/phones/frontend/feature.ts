@@ -26,9 +26,12 @@ export const feature: FrontendFeature = {
   ],
   // Its switch's icon, and how its events read in the audit log.
   platformSlots: () => import('./platform-slots.js'),
-  // Sending a text through `texting` meets these, on whichever page sends it.
+  // What `texting` refuses with, on whichever page uses it, as its contract lists them.
   errors: {
     phones_none: 'Pair a phone first.',
-    phones_text_not_found: "That text isn't there anymore. Refresh the page.",
+    phones_not_found: "That phone isn't paired anymore. Refresh the page.",
+    phones_off: 'Phones is off for this DSP.',
+    phones_file_not_found: "That picture isn't there anymore.",
+    phones_text_not_found: "That text can't be sent again.",
   },
 };

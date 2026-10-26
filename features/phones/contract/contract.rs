@@ -4,6 +4,22 @@
 //!
 //! Its IDs, of a phone, a text or a file, are opaque: at most `ID_MOST` ASCII letters, digits, `_`
 //! or `-` (`identifier`), meaning nothing but to whoever gave them.
+//!
+//! What it refuses, by code, each worded for members by the frontend of the feature offering it
+//! (Phones' `errors`):
+//! - `phones_none` (409): `send` while the DSP has no phone.
+//! - `phones_not_found` (404): `send` from a phone not the DSP's, or removed.
+//! - `phones_file_not_found` (404): `send` with a picture its sender didn't add, or another text
+//!   took; `file` of one whose bytes are kept no more.
+//! - `phones_text_not_found` (404): `retry` of a text that isn't one Dispatch sent that failed, or
+//!   whose phone was removed.
+//! - `phones_off` (409): `send` or `retry` once texting went off for the DSP after `for_dsp`
+//!   found it.
+//! - `invalid_input` (400): `send` to something that isn't a number, or of a text with nothing in
+//!   it or past `limits()`.
+//! - `upload_too_large` (413) and `upload_incomplete` (400): `add_file` of a picture past
+//!   `limits().largest`, or whose bytes stopped coming.
+//! - Whatever a `Condition` refuses with, as it is.
 use dispatch_core::{
     Result, State,
     db::Store,
@@ -36,10 +52,7 @@ pub trait Texting: Send + Sync {
     fn changes(&self, db: &Store, dsp: &str, after: i64) -> Result<Changes>;
     /// Queues `outgoing` to go from one of the DSP's phones, provided `condition` holds as it's
     /// queued: the text as accepted, with how it stands now, waiting until its phone says how it
-    /// went, which `changes` and `TextsChanged` tell of. Refused as `condition` refuses it, as
-    /// `phones_off` once Phones went off for the DSP, `phones_none` while the DSP has no phone,
-    /// `phones_not_found` for a phone not its own, and `phones_file_not_found` for a picture not
-    /// added by `by`.
+    /// went, which `changes` and `TextsChanged` tell of.
     fn send<'a>(
         &'a self,
         state: &'a Arc<State>,
@@ -49,8 +62,6 @@ pub trait Texting: Send + Sync {
     ) -> Answer<'a, Text>;
     /// Queues again a text Dispatch sent that failed, as a new attempt from the phone it went
     /// from, provided `condition` holds as it's queued: the text, waiting again, as `send`'s is.
-    /// Refused as `condition` refuses it, as `phones_off` once Phones went off for the DSP, and
-    /// as `phones_text_not_found` otherwise.
     fn retry<'a>(
         &'a self,
         state: &'a Arc<State>,

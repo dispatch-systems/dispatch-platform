@@ -81,6 +81,8 @@ reaches), and counts as checking in.
 - **Limits** (`limits`): what one text may carry, a body of 10,000 characters and ten pictures
   of 20 MB each at most, which Phones holds what it's sent, and its phones' reports, to before
   keeping any of it.
+- **Refusals:** each code it refuses with is listed in its contract, and worded by Phones'
+  frontend (`errors`) for whichever page meets it.
 - **Numbers** are kept one way: `+1` and ten digits in North America, `+` and the digits with a
   country code, a short code's digits alone; the contract's `normal` writes any number so, for a
   feature to match its own to texts'. **IDs**, of phones, texts and files, are opaque, at most
