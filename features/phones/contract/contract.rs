@@ -20,7 +20,9 @@ pub const ID_MOST: usize = 64;
 pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /// What must hold for a text to go, checked in the write that queues it, so nothing it reads can
-/// change before the text is queued: its refusal is the answer.
+/// change before the text is queued: its refusal is the answer. The caller owns its member's
+/// authorization, and checks it here, with whatever else must hold of where the text goes;
+/// texting checks its own, that it's still on for the DSP, and its phones, numbers and pictures.
 pub type Condition = Box<dyn FnOnce(&Store) -> Result<()> + Send>;
 
 /// A DSP's texts by phone: those its phones receive and send, and those Dispatch sends from
@@ -32,10 +34,12 @@ pub trait Texting: Send + Sync {
     /// page of them, as many as texting gives at once, saying where to read on and whether more
     /// remain.
     fn changes(&self, db: &Store, dsp: &str, after: i64) -> Result<Changes>;
-    /// Sends `outgoing` from one of the DSP's phones, provided `condition` holds as it's queued,
-    /// waiting for it until it says how it went. Refused as `condition` refuses it, as
-    /// `phones_none` while the DSP has no phone, `phones_not_found` for a phone not its own, and
-    /// `phones_file_not_found` for a picture not added by `by`.
+    /// Queues `outgoing` to go from one of the DSP's phones, provided `condition` holds as it's
+    /// queued: the text as accepted, with how it stands now, waiting until its phone says how it
+    /// went, which `changes` and `TextsChanged` tell of. Refused as `condition` refuses it, as
+    /// `phones_off` once Phones went off for the DSP, `phones_none` while the DSP has no phone,
+    /// `phones_not_found` for a phone not its own, and `phones_file_not_found` for a picture not
+    /// added by `by`.
     fn send<'a>(
         &'a self,
         state: &'a Arc<State>,
@@ -43,8 +47,10 @@ pub trait Texting: Send + Sync {
         outgoing: Outgoing,
         condition: Condition,
     ) -> Answer<'a, Text>;
-    /// Sends again a text Dispatch sent that failed, provided `condition` holds as it's queued.
-    /// Refused as `condition` refuses it, and as `phones_text_not_found` otherwise.
+    /// Queues again a text Dispatch sent that failed, as a new attempt from the phone it went
+    /// from, provided `condition` holds as it's queued: the text, waiting again, as `send`'s is.
+    /// Refused as `condition` refuses it, as `phones_off` once Phones went off for the DSP, and
+    /// as `phones_text_not_found` otherwise.
     fn retry<'a>(
         &'a self,
         state: &'a Arc<State>,
@@ -208,8 +214,8 @@ pub struct Added {
     pub mime: String,
 }
 
-/// The DSP's texts changed: one came, was sent, or how one went changed. Read `changes` from
-/// where you left off.
+/// The DSP's texts changed: one came, was queued or tried again, or how one went changed. Read
+/// `changes` from where you left off.
 #[derive(Clone, Debug)]
 pub struct TextsChanged;
 impl Event for TextsChanged {

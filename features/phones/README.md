@@ -62,24 +62,29 @@ reaches), and counts as checking in.
 
 ## Texting, what it exposes
 
-`texting` (`dispatch-phones-contract`), while it's on for the DSP: the DSP's phones, those
-removed left out, each with whether it's online; a feed of each text as it is now, changed after
-a point, oldest change first, with its files, a page at a time, each saying where to read on and
-whether more remain;
-sending a text from one of the DSP's phones (the one named, else the one that last texted that
-number, else the one seen last), with pictures its sender added for it, refused as
-`phones_none`, `phones_not_found` or `phones_file_not_found`; trying a failed one again, as a new
-attempt, while its phone is still paired; each of the two only while the caller's condition
-holds, checked in the write that queues the text, so nothing it reads changes before it's
-queued; adding a picture for a text not sent yet, its adder's alone until it's sent, and letting
-go of it, as when its adder may no longer send it; a text's picture or file to answer a page
-with; and what one text may carry (`limits`): a body of 10,000 characters and ten pictures of
-20 MB each at most, which it holds what it's sent to, and its phones' reports, before keeping
-any of it. Numbers are kept one way: `+1` and ten digits in North America, `+` and the digits with a
-country code, a short code's digits alone; the contract's `normal` writes
-any number so, for a feature to match its own to texts'. Its IDs, of phones, texts and files, are
-opaque, at most 64 letters, digits, `_` or `-`, as its `identifier` checks one. It publishes `TextsChanged`
-(`phones.texts_changed`) once texts or how they went are kept.
+`texting` (`dispatch-phones-contract`), while it's on for the DSP:
+
+- **Its phones:** the DSP's, those removed left out, each with whether it's online.
+- **Its texts:** a feed of each text as it is now, changed after a point, oldest change first,
+  with its files, a page at a time, each saying where to read on and whether more remain. It
+  publishes `TextsChanged` (`phones.texts_changed`) once texts or how they went are kept.
+- **Sending:** queuing a text to go from one of the DSP's phones (the one named, else the one
+  that last texted that number, else the one seen last), with pictures its sender added for it,
+  answered as it's accepted, waiting until its phone says how it went; and queuing a failed one
+  again, as a new attempt, while its phone is still paired. Each only while the caller's
+  condition holds, checked in the write that queues the text, so nothing it reads changes
+  before it's queued: the caller checks its own member's authorization there, and Phones that
+  it's still on for the DSP.
+- **Pictures:** adding one for a text not sent yet, its adder's alone until it's sent, and
+  letting go of it, as when its adder may no longer send it; and a text's picture or file to
+  answer a page with.
+- **Limits** (`limits`): what one text may carry, a body of 10,000 characters and ten pictures
+  of 20 MB each at most, which Phones holds what it's sent, and its phones' reports, to before
+  keeping any of it.
+- **Numbers** are kept one way: `+1` and ten digits in North America, `+` and the digits with a
+  country code, a short code's digits alone; the contract's `normal` writes any number so, for a
+  feature to match its own to texts'. **IDs**, of phones, texts and files, are opaque, at most
+  64 letters, digits, `_` or `-`, as its `identifier` checks one.
 
 ## Data and upkeep
 

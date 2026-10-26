@@ -19,6 +19,17 @@ use std::sync::Arc;
 pub(crate) struct Exposed;
 pub(crate) static EXPOSED: Exposed = Exposed;
 
+/// Refuses, in the write that queues a text, once Phones went off for the DSP since its caller
+/// found it on; then as its caller's `condition` refuses.
+fn queuable(db: &Store, dsp: &str, condition: Condition) -> Result<()> {
+    ensure(
+        db.feature_enabled(dsp, crate::FEATURE.switch.id)?,
+        "phones_off",
+        409,
+    )?;
+    condition(db)
+}
+
 impl Texting for Exposed {
     fn phones(&self, db: &Store, dsp: &str) -> Result<Vec<Phone>> {
         let now = db::now();
@@ -42,7 +53,7 @@ impl Texting for Exposed {
             let at = dsp.to_owned();
             let text = state
                 .run_scoped(dsp, DOMAIN, move |db| {
-                    condition(db)?;
+                    queuable(db, &at, condition)?;
                     let now = db::now();
                     let text = db.phones_send(&at, &outgoing, now)?;
                     // The demo's stand-in phone, which no app holds, says it delivered at once.
@@ -71,7 +82,7 @@ impl Texting for Exposed {
             let (at, wanted) = (dsp.to_owned(), id.to_owned());
             let text = state
                 .run_scoped(dsp, DOMAIN, move |db| {
-                    condition(db)?;
+                    queuable(db, &at, condition)?;
                     db.phones_retry(&at, &wanted, db::now())
                 })
                 .await?;

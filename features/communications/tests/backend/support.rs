@@ -344,8 +344,9 @@ struct Known {
     /// again.
     held_while_queuing: Option<Holds>,
     /// Whether Communications is switched off for the DSP while the phone next reads a file's
-    /// bytes.
+    /// bytes, or as it next goes to queue a text.
     off_while_reading: bool,
+    off_while_queuing: bool,
 }
 /// Who holds a DSP's work phones, as `held` says it.
 struct Holds {
@@ -445,8 +446,13 @@ pub fn held_while_queuing(
         });
     });
 }
-/// Hands the DSP's work phones over as `held_while_queuing` said, if it did, as its phone goes to
-/// queue a text.
+/// Has Communications switched off for the DSP as its phone next goes to queue a text, sent or
+/// sent again, as the platform owner might while a member's answer is under way.
+pub fn off_while_queuing(dsp: &str) {
+    phone(dsp, |phone| phone.off_while_queuing = true);
+}
+/// Hands the DSP's work phones over as `held_while_queuing` said, and switches Communications off
+/// as `off_while_queuing` did, if they did, as its phone goes to queue a text.
 async fn queuing(state: &Arc<State>, dsp: &str) {
     if let Some(holds) = phone(dsp, |phone| phone.held_while_queuing.take()) {
         let Holds {
@@ -455,6 +461,9 @@ async fn queuing(state: &Arc<State>, dsp: &str) {
             saved,
         } = holds;
         held(state, dsp, live_day.as_deref(), live, saved).await;
+    }
+    if phone(dsp, |phone| std::mem::take(&mut phone.off_while_queuing)) {
+        switch(state, dsp, "communications", false).await;
     }
 }
 /// Has Communications switched off for the DSP while its phone next reads a file's bytes, one

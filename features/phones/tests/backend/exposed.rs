@@ -52,13 +52,27 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
     assert_eq!(changed.texts, [sent]);
 
     let at = dsp.clone();
+    let by = owner.clone();
     state
-        .run(move |db| db.set_feature(&at, "phones", false, &owner))
+        .run(move |db| db.set_feature(&at, "phones", false, &by))
         .await
         .unwrap();
     let at = dsp.clone();
     let offered = state.read(move |db| for_dsp(db, &at)).await.unwrap();
     assert!(offered.is_none());
+    // Switched off after its caller found it, Phones queues nothing more.
+    let late = Outgoing {
+        phone: None,
+        to: "(425) 555-0199".into(),
+        body: "Gate 4411".into(),
+        files: Vec::new(),
+        by: owner,
+    };
+    let refused = texting.send(&state, &dsp, late, always()).await;
+    assert_eq!(refused.unwrap_err().code.as_str(), "phones_off");
+    let (at, phone) = (dsp.clone(), phones[0].id.clone());
+    let queued = state.read(move |db| db.phones_outbox(&at, &phone)).await;
+    assert!(queued.unwrap().is_empty());
 }
 
 #[tokio::test]
