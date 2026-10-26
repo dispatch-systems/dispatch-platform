@@ -58,7 +58,7 @@ test('with its phone and no Slack, Communications is Messaging: a number saved a
   );
 });
 
-test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link to a text opens Messaging', async ({
+test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section', async ({
   page,
   dispatch,
 }) => {
@@ -103,7 +103,23 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   const text = (conversations as { id: string; number: string | null }[]).find(
     (each) => each.number === '+14255550199',
   )!;
-  await page.goto(`/#dsp/${north.id}/communications?open=${text.id}`);
+  const toText = `/#dsp/${north.id}/communications?open=${text.id}`;
+  await page.goto(toText);
+  await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
+  await expect(messaging).toHaveAttribute('aria-selected', 'true');
+
+  // A link to a group opens it in Slack, and one to the text again, Messaging.
+  const group = await owner.post('/api/dsp/communications/groups', {
+    name: 'Morning wave',
+    people: [{ teamId: 'T0FIXTURE1', userId: 'U0FIXJORDAN' }],
+    text: 'Running 20 minutes late',
+    photos: [],
+  });
+  expect(group.status, group.body).toBe(201);
+  await page.goto(`/#dsp/${north.id}/communications?group=${group.value.id}`);
+  await expect(page.getByRole('region', { name: 'Morning wave' })).toBeVisible();
+  await expect(slack).toHaveAttribute('aria-selected', 'true');
+  await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
   await expect(messaging).toHaveAttribute('aria-selected', 'true');
 });

@@ -224,14 +224,16 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     const elsewhere = current ? sectionOf(current) !== next : next !== 'slack';
     if (elsewhere && (current || currentGroup || drafting)) closed();
   };
-  // A conversation opened in another section, as by a link, shows its section, once.
+  // What opens shows its section, once as it opens, as by a link: a group Slack's, a conversation
+  // its own. What was open last is forgotten once nothing is, so it shows its section again.
   const placed = useRef<string>(undefined);
+  const shown = currentGroup ?? current;
+  const shownIn = currentGroup ? 'slack' : current && sectionOf(current);
   useEffect(() => {
-    if (!current || placed.current === current.id) return;
-    placed.current = current.id;
-    const of = sectionOf(current);
-    if (of && of !== section && sections.includes(of)) chooseSection(of);
-  }, [current, section, sections, chooseSection]);
+    if (placed.current === shown?.id) return;
+    placed.current = shown?.id;
+    if (shownIn && shownIn !== section && sections.includes(shownIn)) chooseSection(shownIn);
+  }, [shown, shownIn, section, sections, chooseSection]);
   const reading = open || group || drafting;
   return (
     <div

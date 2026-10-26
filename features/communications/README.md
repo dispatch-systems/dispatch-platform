@@ -60,7 +60,8 @@ DSP Messaging is unavailable. Texts come through whatever offers `texting` ([Tex
   it: **Messaging**, the numbers that text the DSP's phones, while it texts; and **Slack**, its
   workspaces' direct messages and the groups it messaged, while it has a workspace. The one shown
   is remembered in the browser for each member at each DSP, Messaging to start; a conversation
-  opened from a link shows its section. Today's Routes, drivers' work phones, comes later.
+  or group opened, as from a link, shows its section. Today's Routes, drivers' work phones, comes
+  later.
 - **The list:** in Slack, with two or more workspaces where Communications works, which it
   shows, every one or one of them, each by its logo (else the first letters of its name), as the Update
   popup, Copy chat link and the profile's Slack row show it too, with how many of its
