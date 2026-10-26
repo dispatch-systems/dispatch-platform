@@ -27,8 +27,8 @@ pub trait DriverRoutes: Send + Sync {
     /// What the driver holding `ids` drove from `from` to `to`, YYYY-MM-DD in the DSP's own
     /// time, and which of those days were collected; no IDs answer the days alone. An ID is
     /// matched exactly. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`; and
-    /// with `invalid_input`, `from` after `to`, more than `MOST_DAYS` days, more than `MOST_IDS` IDs, or
-    /// an ID that's empty or over 128 characters.
+    /// with `invalid_input`, `from` after `to`, more than `MOST_DAYS` days, more than `MOST_IDS`
+    /// IDs, or an ID that's empty or over 128 characters.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str)
     -> Result<Driven>;
     /// What every driver drove on `day`, YYYY-MM-DD in the DSP's own time, each itinerary by

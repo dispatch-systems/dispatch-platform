@@ -211,13 +211,9 @@ async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_dat
         .post(&owner, "/api/dsp/phones/pairing", json!({}))
         .await;
     assert_eq!(status, 200, "{pairing}");
-    let paired = server
-        .phone(
-            None,
-            "/api/phones/pair",
-            json!({"code":pairing["code"],"number":"(206) 555-0177","model":"Pixel 8a","version":"1.0.0"}),
-        )
-        .await;
+    let phone = json!({"code":pairing["code"],"number":"(206) 555-0177","model":"Pixel 8a",
+        "version":"1.0.0"});
+    let paired = server.phone(None, "/api/phones/pair", phone).await;
     let key = s(&paired, "key").to_owned();
 
     // Routes keeps a live read of today, the Cortex fixture's day as Live Route Data reads it in
