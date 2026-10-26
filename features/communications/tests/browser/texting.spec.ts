@@ -124,11 +124,7 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await page.reload();
   await expect(slack).toHaveAttribute('aria-selected', 'true');
 
-  // A link to a text, as a new one's notification is, opens it in Messaging, though the board
-  // shows Today's Routes.
-  await sections.getByRole('tab', { name: /Today's Routes/ }).click();
-  await page.getByRole('button', { name: 'Board' }).click();
-  await expect(page.getByRole('region', { name: "Today's Routes" })).toBeVisible();
+  // A link to a text, as a new one's notification is, opens it in Messaging.
   const { conversations } = await owner.read('/api/dsp/communications');
   const text = (conversations as { id: string; number: string | null }[]).find(
     (each) => each.number === '+14255550199',
@@ -136,6 +132,19 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   const toText = `/#dsp/${north.id}/communications?open=${text.id}`;
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
+  await expect(messaging).toHaveAttribute('aria-selected', 'true');
+
+  // With the board chosen in Today's Routes (Routes, beside two others), a link to one the list
+  // doesn't show, as a conversation just started, still opens it, in its section.
+  await sections.getByRole('tab', { name: /Routes/ }).click();
+  await page.getByRole('button', { name: 'Board' }).click();
+  await expect(page.getByRole('region', { name: "Today's Routes" })).toBeVisible();
+  const started = await owner.post('/api/dsp/communications/texts/conversations', {
+    number: '2065550123',
+  });
+  expect(started.status, started.body).toBe(200);
+  await page.goto(`/#dsp/${north.id}/communications?open=${started.value.id}`);
+  await expect(page.getByRole('region', { name: '(206) 555-0123' })).toBeVisible();
   await expect(messaging).toHaveAttribute('aria-selected', 'true');
 
   // A link to a group opens it in Slack, and one to the text again, Messaging.
