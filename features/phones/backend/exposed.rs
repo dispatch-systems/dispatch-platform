@@ -2,7 +2,7 @@
 //! (`dispatch_phones_contract`).
 use super::{
     LIMITS, files, live,
-    storage::{DOMAIN, DeviceStore, FileStore, ReportedFile, TextStore},
+    storage::{DOMAIN, DeviceStore, FileStore, TextStore},
 };
 use dispatch_core::{
     Result, State,
@@ -102,20 +102,9 @@ impl Texting for Exposed {
             ensure(bytes.length <= LIMITS.largest, "upload_too_large", 413)?;
             let arrived = files::receive(state, dsp, bytes).await?;
             let at = dsp.to_owned();
-            let file = ReportedFile {
-                name: added.name,
-                mime: added.mime,
-                size: arrived.size,
-            };
             state
                 .run_scoped(dsp, DOMAIN, move |db| {
-                    arrived.place(db, &at)?;
-                    let kept =
-                        db.phones_add_file(&at, &added.by, &file, &arrived.sha256, db::now());
-                    if kept.is_err() {
-                        files::forget(db, &at, &arrived.sha256)?;
-                    }
-                    kept
+                    files::keep_added(db, &at, added, &arrived)
                 })
                 .await
         })

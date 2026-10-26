@@ -31,16 +31,7 @@ pub(in crate::api) async fn file_in(
     state
         .run_scoped(caller.dsp.clone(), DOMAIN, move |db| {
             let caller = access.authorize(db, &asked)?;
-            arrived.place(db, &caller.dsp)?;
-            match db.phones_file_arrived(&caller.dsp, &caller.device.id, &id, &arrived.sha256) {
-                Ok(before) => {
-                    before.map_or(Ok(()), |before| files::forget(db, &caller.dsp, &before))
-                }
-                Err(error) => {
-                    files::forget(db, &caller.dsp, &arrived.sha256)?;
-                    Err(error)
-                }
-            }
+            files::keep_reported(db, &caller.dsp, &caller.device.id, &id, &arrived)
         })
         .await?;
     live::changed(&state, &caller.dsp).await;

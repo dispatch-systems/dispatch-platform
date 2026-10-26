@@ -3,13 +3,14 @@
 //! arrive beside the folder's files, then take their place, and are let go, only under the
 //! platform's write lock, with the files that keep them: so letting go never removes the bytes of
 //! a file kept a moment before.
-use super::storage::FileStore;
+use super::storage::{FileStore, ReportedFile};
 use dispatch_core::{
     Error, Result, State,
     db::{self, Store},
     foundation::crypto,
     server::http::{input::Reply, upload::Upload},
 };
+use dispatch_phones_contract::{Added, File};
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
@@ -29,7 +30,7 @@ pub struct Arrived {
 impl Arrived {
     /// Puts the bytes in their place among the DSP's files: inside the write that keeps the file
     /// they're for.
-    pub fn place(&self, db: &Store, dsp: &str) -> Result<()> {
+    fn place(&self, db: &Store, dsp: &str) -> Result<()> {
         std::fs::rename(&self.arriving, folder(db, dsp)?.join(&self.sha256))?;
         Ok(())
     }
@@ -74,6 +75,40 @@ pub async fn receive(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<Arr
         size,
         arriving,
     })
+}
+/// Keeps `arrived` as the bytes of the file `id` of a text the phone `device` reported, in place of
+/// any before them: refused as `phones_file_not_found` for one of no text of its own, its bytes
+/// let go. Inside the write that authorized the phone.
+pub fn keep_reported(
+    db: &Store,
+    dsp: &str,
+    device: &str,
+    id: &str,
+    arrived: &Arrived,
+) -> Result<()> {
+    arrived.place(db, dsp)?;
+    match db.phones_file_arrived(dsp, device, id, &arrived.sha256) {
+        Ok(before) => before.map_or(Ok(()), |before| forget(db, dsp, &before)),
+        Err(error) => {
+            forget(db, dsp, &arrived.sha256)?;
+            Err(error)
+        }
+    }
+}
+/// Keeps `arrived` as the picture `added` for a text not sent yet: its bytes let go should it not
+/// be kept. Inside a write.
+pub fn keep_added(db: &Store, dsp: &str, added: Added, arrived: &Arrived) -> Result<File> {
+    arrived.place(db, dsp)?;
+    let file = ReportedFile {
+        name: added.name,
+        mime: added.mime,
+        size: arrived.size,
+    };
+    let kept = db.phones_add_file(dsp, &added.by, &file, &arrived.sha256, db::now());
+    if kept.is_err() {
+        forget(db, dsp, &arrived.sha256)?;
+    }
+    kept
 }
 /// Lets go of the DSP's bytes kept by `sha256`, unless a file is still kept by them: inside the
 /// write that let go of the file.
