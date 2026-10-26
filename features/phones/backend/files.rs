@@ -120,34 +120,42 @@ pub fn forget(db: &Store, dsp: &str, sha256: &str) -> Result<()> {
     removed(&folder(db, dsp)?.join(sha256))
 }
 /// Lets go of the DSP's bytes no file keeps, and of bytes left arriving `ABANDONED_MS` unchanged,
-/// each on its own: why any couldn't go, to be tried again the next time. Inside a write, so no
-/// bytes take their place meanwhile.
+/// each on its own: why any couldn't be looked at or go, to be tried again the next time. Inside a
+/// write, so no bytes take their place meanwhile.
 pub fn reconcile(db: &Store, dsp: &str) -> Result<Vec<Error>> {
     let kept: HashSet<String> = db.phones_kept_bytes(dsp)?.into_iter().collect();
     let abandoned = db::now() - ABANDONED_MS;
     let mut failed = Vec::new();
     for entry in std::fs::read_dir(folder(db, dsp)?)? {
-        let entry = entry?;
-        if unkept(&entry, &kept, abandoned)?
-            && let Err(error) = removed(&entry.path())
-        {
+        let tidied = entry.map_err(Error::from).and_then(|entry| {
+            if unkept(&entry, &kept, abandoned)? {
+                removed(&entry.path())
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(error) = tidied {
             failed.push(error);
         }
     }
     Ok(failed)
 }
 /// Whether the bytes at `entry` are to go: no file in `kept` keeps them, or, still arriving, they
-/// last changed before `abandoned`.
+/// last changed before `abandoned`. Bytes gone once listed, as an upload cancelled meanwhile
+/// leaves, went already.
 fn unkept(entry: &std::fs::DirEntry, kept: &HashSet<String>, abandoned: i64) -> Result<bool> {
     let name = entry.file_name().to_string_lossy().into_owned();
-    Ok(if name.starts_with(ARRIVING) {
-        changed_at(entry)? < abandoned
-    } else {
-        !kept.contains(&name)
-    })
+    if !name.starts_with(ARRIVING) {
+        return Ok(!kept.contains(&name));
+    }
+    match changed_at(entry) {
+        Ok(at) => Ok(at < abandoned),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
 }
 /// When the bytes at `entry` last changed, epoch milliseconds.
-fn changed_at(entry: &std::fs::DirEntry) -> Result<i64> {
+fn changed_at(entry: &std::fs::DirEntry) -> std::io::Result<i64> {
     let at = entry.metadata()?.modified()?.duration_since(UNIX_EPOCH);
     Ok(at.map_or(0, |at| at.as_millis() as i64))
 }
