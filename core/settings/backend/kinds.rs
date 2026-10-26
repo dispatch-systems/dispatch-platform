@@ -8,7 +8,24 @@ use crate::{
     ensure,
     manifest::settings::{Field, Kind, Listed, Options},
 };
+use chrono::Weekday;
 use serde_json::Value;
+
+/// The days of the week from Monday, each by the name a days field keeps it by, and its label.
+const WEEK: [(&str, &str); 7] = [
+    ("mon", "Mon"),
+    ("tue", "Tue"),
+    ("wed", "Wed"),
+    ("thu", "Thu"),
+    ("fri", "Fri"),
+    ("sat", "Sat"),
+    ("sun", "Sun"),
+];
+/// A day's place in `WEEK`, by the name a days field keeps it by.
+fn place(day: &Value) -> Option<usize> {
+    WEEK.iter()
+        .position(|(name, _)| Some(*name) == day.as_str())
+}
 
 /// Its value until one is saved.
 pub(crate) fn default(field: &Field) -> Value {
@@ -21,6 +38,11 @@ pub(crate) fn default(field: &Field) -> Value {
         Kind::Pick { default, .. } => default.map_or(Value::Null, Value::from),
         Kind::Many { default, .. } => Value::from(default.to_vec()),
         Kind::Number { default, .. } => default.map_or(Value::Null, Value::from),
+        Kind::Days { default } => Value::from(
+            (default.iter(Weekday::Mon))
+                .map(|day| WEEK[day.num_days_from_monday() as usize].0)
+                .collect::<Vec<_>>(),
+        ),
     }
 }
 
@@ -125,6 +147,7 @@ pub(crate) fn described(
             code,
             locked,
         },
+        Kind::Days { .. } => SettingsKind::Days,
         Kind::Time { .. } => SettingsKind::Time,
         Kind::Timezone { .. } => SettingsKind::Timezone,
     })
@@ -169,6 +192,11 @@ pub(crate) fn checked(
             });
             Value::from(values)
         }
+        (Kind::Days { .. }, Value::Array(days)) => {
+            let mut days = days.clone();
+            days.sort_by_key(place);
+            Value::from(days)
+        }
         _ => given.clone(),
     };
     // What it holds already stays allowed, so that saving others doesn't force it out.
@@ -206,17 +234,23 @@ pub(crate) fn fits(field: &Field, value: &Value) -> bool {
             .as_str()
             .is_some_and(|value| options.iter().any(|(v, _)| *v == value))
     };
+    let once = |values: &[Value]| {
+        (values.iter().enumerate()).all(|(at, value)| !values[..at].contains(value))
+    };
     match field.kind {
         Kind::Toggle { .. } => value.is_boolean(),
         Kind::Choice { options, .. } => fixed(options, value),
         Kind::Pick { none, .. } => value.is_string() || (value.is_null() && none.is_some()),
         Kind::Many { options, .. } => value.as_array().is_some_and(|values| {
-            let once = (values.iter().enumerate()).all(|(at, value)| !values[..at].contains(value));
-            once && match options {
-                Options::Fixed(options) => values.iter().all(|value| fixed(options, value)),
-                Options::Listed(_) => values.iter().all(Value::is_string),
-            }
+            once(values)
+                && match options {
+                    Options::Fixed(options) => values.iter().all(|value| fixed(options, value)),
+                    Options::Listed(_) => values.iter().all(Value::is_string),
+                }
         }),
+        Kind::Days { .. } => value
+            .as_array()
+            .is_some_and(|days| once(days) && days.iter().all(|day| place(day).is_some())),
         Kind::Number { min, max, none, .. } => match value.as_i64() {
             Some(number) => (min..=max).contains(&number),
             None => value.is_null() && none.is_some(),
@@ -239,8 +273,8 @@ pub(crate) fn fits(field: &Field, value: &Value) -> bool {
     }
 }
 
-/// How the log shows `value` of `field`: its option's label, a number with its unit, a
-/// time as a clock reads it; none for nothing set.
+/// How the log shows `value` of `field`: its option's label, a number with its unit, days by
+/// their labels, a time as a clock reads it; none for nothing set.
 pub(crate) fn shown(
     field: &Field,
     value: &Value,
@@ -266,6 +300,12 @@ pub(crate) fn shown(
                 .iter()
                 .filter_map(Value::as_str)
                 .map(label)
+                .collect();
+            (!labels.is_empty()).then(|| labels.join(", "))
+        }
+        Kind::Days { .. } => {
+            let labels: Vec<&str> = (value.as_array()?.iter())
+                .filter_map(|day| Some(WEEK[place(day)?].1))
                 .collect();
             (!labels.is_empty()).then(|| labels.join(", "))
         }

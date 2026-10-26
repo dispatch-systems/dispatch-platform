@@ -25,8 +25,8 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
 - **Fields** are `toggle`, `choice` (fixed options), `pick` (options the feature lists as it's
   read: one indexed query), `many` (several, `.ordered()` when their order is the member's),
   `number` (`.unit`, `.presets`, `.none` for a labelled none), `text` (`.code` for uppercase
-  letters and digits, `.locked` once set; empty only until set, when its default is), `time`
-  and `timezone`. Each field's id is the serde name its feature reads it by; every field reads
+  letters and digits, `.locked` once set; empty only until set, when its default is), `days`
+  (days of the week, kept `mon` to `sun`, read as `Vec<Weekday>`), `time` and `timezone`. Each field's id is the serde name its feature reads it by; every field reads
   as its default until saved, and as its default again if what was kept no longer fits it. When
   a collection runs isn't a field: its keeper says who sets it (`Keeper::schedules`), on the
   Collectors page.

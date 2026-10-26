@@ -21,8 +21,10 @@ Live readers (`backend/readers/`) run what features declare in `live_readers` wi
 server, beside the jobs rather than as them (`manifest/README.md`, "Live readers", says what a
 feature declares). The server plans each served DSP's reading as it starts, each minute, and at
 once when a write switches a feature or saves a DSP's settings; one light task for each DSP
-whose reader's feature is on and whose window is set waits for each slot of its grid, reads,
-hands a whole read to its reader to keep, and stops each day it started once its window ends.
+whose reader's feature is on and whose schedule is set waits for each slot of its grid, every
+interval from its window's start on each day the window opens, reads, hands a whole read to its
+reader to keep, and stops each day it started as its window closes, though that day is no
+longer one it opens on.
 At most `READS_AT_ONCE` reads run at once across the server; a read that can't start within
 its interval misses its slot (`live_reads_busy`), and one whose turn comes once its window has
 closed or its plan has changed doesn't start. Started again, a DSP reads at its next slot after

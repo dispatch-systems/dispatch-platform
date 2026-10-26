@@ -1,5 +1,5 @@
-//! The live reader: today's routes at a DSP's station, read every five minutes inside the window
-//! its settings set, and kept as live route data.
+//! The live reader: today's routes at a DSP's station, read on the days, inside the window and as
+//! often as its settings set, and kept as live route data.
 //!
 //! A read goes natively, with no browser, whenever the DSP's reader holds one a browser handed
 //! back; otherwise, or once that reader fails, it opens the DSP's Cortex browser, reads the day
@@ -16,7 +16,7 @@ use dispatch_core::{
     collection::{browser::Pending, readers::Reading},
     db::Store,
     foundation::observability,
-    manifest::{Counts, LiveReader, Window},
+    manifest::{Counts, LiveReader, Schedule},
 };
 use dispatch_cortex::{
     self as cortex,
@@ -24,7 +24,6 @@ use dispatch_cortex::{
     routes::{self, Browser, Capture, Day, Failure, Native, Request},
 };
 use serde_json::json;
-use std::time::Duration;
 
 /// Native reads in a row that may find Cortex unavailable, each failing without a browser,
 /// before the next opens the browser anyway.
@@ -124,12 +123,9 @@ impl LiveReader for Routes {
     fn id(&self) -> &'static str {
         "live_route_data.routes"
     }
-    fn every(&self) -> Duration {
-        Duration::from_secs(5 * 60)
-    }
-    /// Its settings' window, while Routes keeps the DSP's route data at a station and its
+    /// Its settings' schedule, while Routes keeps the DSP's route data at a station and its
     /// Cortex connection is enabled: none else.
-    fn window(&self, db: &Store, dsp: &str) -> Result<Option<Window>> {
+    fn schedule(&self, db: &Store, dsp: &str) -> Result<Option<Schedule>> {
         let routes = db.feature_enabled(dsp, dispatch_routes::FEATURE.switch.id)?;
         if !routes
             || db.profile(dsp)?.station_code.is_empty()
@@ -137,7 +133,7 @@ impl LiveReader for Routes {
         {
             return Ok(None);
         }
-        settings::collection(db, dsp)?.window().map(Some)
+        settings::collection(db, dsp)?.schedule().map(Some)
     }
     fn read<'a>(&'a self, reading: &'a Reading, held: &'a mut Held) -> Pending<'a, Read> {
         Box::pin(async move {

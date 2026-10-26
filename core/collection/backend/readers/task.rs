@@ -149,7 +149,7 @@ impl Task {
         held: &mut (dyn Any + Send),
         plans: &mut watch::Receiver<Option<Plan>>,
     ) -> bool {
-        let every = Duration::from_millis(plan.every as u64);
+        let every = plan.schedule.every();
         let reading = self.reading(plan, &day);
         let waited = now();
         // A read that can't start within its interval missed its slot, as when the server

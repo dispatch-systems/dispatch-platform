@@ -195,3 +195,29 @@ select {
   background: var(--selection);
   color: var(--primary);
 }
+/* The days of the week, a button each, the chosen ones pressed (DayPicker). */
+.day-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.day-picker button {
+  min-width: 46px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: var(--input);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.day-picker button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--card));
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  color: var(--primary);
+  font-weight: 550;
+}
+.day-picker button[aria-invalid='true'] {
+  border-color: var(--destructive);
+}

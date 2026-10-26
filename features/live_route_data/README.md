@@ -1,7 +1,7 @@
 # Live Route Data
 
-A DSP's routes for today, read from Cortex every five minutes inside a window it sets, and kept as
-live route data through Routes, which keeps them and offers them to other features
+A DSP's routes for today, read from Cortex every few minutes on the days and inside the window it
+sets, and kept as live route data through Routes, which keeps them and offers them to other features
 (`live_route_data`, Routes' `LiveRouteData`). As the window ends, the day is saved into historical
 route data if the DSP chose so, and live route data is emptied once it is. A day left unsaved
 stays in live route data until the next day's first read empties it. It reads within the server
@@ -15,15 +15,18 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   grants it.
 - **Settings:** `live_route_data.collection`, "Collection", on its own page of Settings (Settings,
   Features, Live Route Data: `?tab=live-route-data`), behind `live_route_data.manage`
-  (`backend/settings.rs`). `start` and `stop`, times where the DSP is, from 08:00 until 21:00 by
-  default; and `save_to_history`, a toggle, on by default. A save whose stop is no later than its
-  start is refused (`live_route_data_window_invalid`), so a window never runs past midnight and
-  each read is a read of today. Core keeps the values and records each change as
+  (`backend/settings.rs`). `days`, the days of the week it reads on, every day by default; `start`
+  and `stop`, times where the DSP is, from 08:00 until 21:00 by default; `every`, how often it
+  reads: 5, 10, 15, 30 or 60 minutes, 5 by default; and `save_to_history`, a toggle, on by
+  default. A save with no day is refused (`live_route_data_days_required`), and one whose stop is
+  no later than its start (`live_route_data_window_invalid`), so a window never runs past midnight
+  and each read is a read of today. A DSP that saved its settings before `days` and `every` were
+  added reads every day, every five minutes. Core keeps the values and records each change as
   `settings.changed`; saving wakes the readers.
-- **Reading** (`backend/reader.rs`, the live reader `live_route_data.routes`): every five minutes
-  from the window's start until its stop, at the DSP's own place on that grid, while Routes is on,
-  the DSP has a station and its Cortex connection is enabled; at none else. Each read asks what Routes' `live_request` names, a
-  snapshot of today at the DSP's station:
+- **Reading** (`backend/reader.rs`, the live reader `live_route_data.routes`): on each of its days,
+  every `every` from the window's start until its stop, while Routes is on, the DSP has a station
+  and its Cortex connection is enabled; at none else. Each read asks what Routes' `live_request`
+  names, a snapshot of today at the DSP's station:
   - natively, with no browser, when the reader holds one the DSP's browser handed back, and it
     reads the scope today's request names. A read whole and checked is kept.
   - Otherwise, or when that reader finds no key on the page, has its key refused, finds its

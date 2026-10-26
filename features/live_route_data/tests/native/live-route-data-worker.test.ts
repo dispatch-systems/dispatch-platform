@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { fixture, until } from '../../../../core/shell/tests/support/support.js';
 import { routesSite } from '../../../../collectors/cortex/tests/support/routes-site.js';
 
@@ -88,17 +87,14 @@ test(
       by: [...new Set(site.requests.slice(since.requests).map(({ by }) => by))],
     });
     const now = () => ({ documents: site.documents.length, requests: site.requests.length });
-    // Each DSP reads at its own place after each slot of its grid, as the server places it.
-    const hash = createHash('sha256').update(`live_route_data.routes:${dsp.id}`).digest();
-    const offset = Number(hash.readBigUInt64BE(0) % 300n) * 1000;
     const local = (at: number) => new Date(at + ahead * 3_600_000).toISOString().slice(11, 16);
-    // Starts the window where its next slot comes within the minute after the next quarter.
+    // Starts the window an interval before the minute after the next quarter, its next slot.
     const section = 'live_route_data.collection';
     const readSoon = async () => {
-      const slot = Math.ceil((Date.now() + 15_000 - offset) / MINUTE) * MINUTE + offset;
+      const slot = Math.ceil((Date.now() + 15_000) / MINUTE) * MINUTE;
       const settings = await owner.read('/api/dsp/settings');
       const { revision } = settings.sections.find((s: { id: string }) => s.id === section);
-      const values = { start: local(slot - offset - EVERY), stop: '23:59' };
+      const values = { start: local(slot - EVERY), stop: '23:59' };
       const moved = await owner.post(`/api/dsp/settings/${section}`, { values, revision });
       assert.equal(moved.status, 200, moved.body);
     };
