@@ -230,8 +230,10 @@ sending again one that failed.
   historical route data after its texts, as a text a phone relayed late; so each time a day's
   holds change (`routes.work_phones_changed`, which names the day), every text of that day, both
   ways, is filed again where it belongs now: a text that came before the day's first live read
-  goes to whoever then holds the number. An earlier day's is filed again only while Routes keeps
-  holds of it, so a day it emptied unsaved keeps its texts where its holds had them.
+  goes to whoever then holds the number. An earlier day's is filed again only once historical
+  route data keeps it, by its saved holds even when there are none, so its texts leave a driver
+  whose hold was withdrawn; a day live route data was emptied of unsaved keeps its texts where its
+  holds had them.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   or after Done. A failed answer leaves it waiting. A work conversation waits only on what was
   written on the live day, while live route data holds today: from the first text in on it
