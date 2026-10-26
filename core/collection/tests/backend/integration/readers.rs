@@ -833,7 +833,10 @@ async fn a_read_the_browsers_memory_turns_away_is_tried_once_more_within_its_slo
     let slots = [open, open + MINUTE, open + EVERY];
     assert!(all_near(&server.probe.reads(&stays_busy), &slots));
     let busy = failed("browser_memory_busy");
-    assert_eq!(server.records(&stays_busy).await, [busy.clone(), busy.clone()]);
+    assert_eq!(
+        server.records(&stays_busy).await,
+        [busy.clone(), busy.clone()]
+    );
     // Nor once a minute on is its next slot.
     let slots = [open, open + MINUTE, open + 2 * MINUTE];
     assert!(all_near(&server.probe.reads(&every_minute), &slots));
