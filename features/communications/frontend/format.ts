@@ -1,4 +1,4 @@
-import type { FileStatus, Message } from '../api/index.js';
+import type { FileStatus, Message, TextStatus } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
 
@@ -63,6 +63,18 @@ export const fileStatus: Record<Exclude<FileStatus, 'kept'>, string> = {
   unavailable: 'Hosted elsewhere',
   failed: "Couldn't download",
 };
+/** How a text Dispatch sent went, as it reads. */
+export const textStatus: Record<TextStatus, string> = {
+  waiting: 'Sending',
+  sent: 'Sent',
+  delivered: 'Delivered',
+  failed: 'Not sent',
+};
+/** A phone number as it reads: "(425) 555-0199" for a North American one, else as kept. */
+export function phoneNumber(number: string) {
+  const ten = /^\+1(\d{10})$/.exec(number)?.[1];
+  return ten ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : number;
+}
 /** "2.4 MB". */
 export function size(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

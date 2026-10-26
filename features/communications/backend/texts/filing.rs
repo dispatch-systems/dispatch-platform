@@ -1,0 +1,307 @@
+//! Filing the texts the DSP's dispatch phones relay, as Phones offers them (`texting`): each in
+//! its conversation, read on from the last change filed whenever Phones says texts changed
+//! (`TextsChanged`), and every minute in case a hearing was missed or failed, or Communications
+//! came on after they came.
+//!
+//! A work phone passes from driver to driver, so a text with one is filed under whoever held it
+//! as it was written, by their ID of the source that names who held the DSP's work phones, as
+//! Routes knows it: live route data's holds while its live day is the text's, else that day's
+//! saved holds. Of the number's holds that day, the one covering when it was written; written
+//! before any, the day's first holder, as it came before the day's first live read or before they
+//! signed in; written once nobody held it, the work phone's own. A work phone nobody held that
+//! day is still one (`was_work_phone`). Any other number's texts are its own. Who held which
+//! phone settles as the day goes on, so today's texts are filed again each time it changes
+//! (`WorkPhonesChanged`).
+use super::storage::{Filed, Incoming, TextFile, TextStatus, TextStore};
+use crate::backend::{
+    live,
+    storage::{DOMAIN, Direction},
+};
+use chrono_tz::Tz;
+use dispatch_core::{
+    Error, Result, State,
+    db::{Store, now},
+    foundation::{clock, observability},
+    manifest::{Maintenance, Upkeep},
+};
+use dispatch_phones_contract::{self as texting, Origin, Status, Text, TextsChanged};
+use dispatch_routes_contract::{
+    self as routes, DriverRoutes, LiveRouteData, WorkPhoneHold, WorkPhonesChanged,
+};
+use serde_json::json;
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+/// How many texts are read from Phones at a time: as many as it gives.
+const PAGE: usize = 100;
+/// How far back today's texts are looked for, in milliseconds: further than a day can be long.
+const TODAY_MS: i64 = 2 * 24 * 60 * 60 * 1000;
+
+/// Every minute, each DSP's texts changed since they were last filed.
+pub const MAINTENANCE: Maintenance = Maintenance {
+    every: Duration::from_secs(60),
+    run: pass,
+};
+
+/// Phones says the DSP's texts changed: files them.
+pub fn heard(state: Arc<State>, dsp: String, _: TextsChanged) -> Upkeep {
+    Box::pin(async move {
+        if let Err(error) = read_on(&state, &dsp).await {
+            failed("communications_texts_failed", &error);
+        }
+    })
+}
+/// Routes says who holds the DSP's work phones changed: files today's texts again.
+pub fn refile(state: Arc<State>, dsp: String, _: WorkPhonesChanged) -> Upkeep {
+    Box::pin(async move {
+        if let Err(error) = refile_today(&state, &dsp).await {
+            failed("communications_texts_refile_failed", &error);
+        }
+    })
+}
+
+fn pass(state: Arc<State>, _: bool) -> Upkeep {
+    Box::pin(async move {
+        let texting = state
+            .read(|db| {
+                let mut found = Vec::new();
+                for dsp in db.kept_dsps()? {
+                    if db.feature_enabled(&dsp, "communications")?
+                        && texting::for_dsp(db, &dsp)?.is_some()
+                    {
+                        found.push(dsp);
+                    }
+                }
+                Ok(found)
+            })
+            .await;
+        match texting {
+            Ok(dsps) => {
+                for dsp in dsps {
+                    if let Err(error) = read_on(&state, &dsp).await {
+                        failed("communications_texts_failed", &error);
+                    }
+                }
+            }
+            Err(error) => failed("communications_texts_failed", &error),
+        }
+    })
+}
+
+fn failed(event: &'static str, error: &Error) {
+    observability::event("error", event, json!({"error": error.code}));
+}
+
+/// Files the DSP's texts changed since the last filed, a page at a time, and wakes the pages
+/// waiting on its conversations once any changed.
+pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
+    loop {
+        let at = dsp.to_owned();
+        let (changed, more) = state
+            .run_scoped(dsp, DOMAIN, move |db| {
+                let Some(texting) = texting::for_dsp(db, &at)? else {
+                    return Ok((false, false));
+                };
+                let after = db.communications_texts_read_to(&at)?;
+                let changes = texting.changes(db, &at, after, PAGE)?;
+                if changes.last == after {
+                    return Ok((false, false));
+                }
+                let mut filer = Filer::new(db, &at)?;
+                let incoming = changes
+                    .texts
+                    .iter()
+                    .map(|text| Ok(kept(text, filer.filed(&text.number, text.at)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                let touched = db.file_communications_texts(&at, &incoming, changes.last)?;
+                Ok((!touched.is_empty(), changes.texts.len() == PAGE))
+            })
+            .await?;
+        if changed {
+            live::changed(state, dsp);
+        }
+        if !more {
+            return Ok(());
+        }
+    }
+}
+
+/// Files every text of today, the DSP's day, again, where it belongs now.
+pub async fn refile_today(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    let changed = state
+        .run_scoped(dsp, DOMAIN, move |db| {
+            let mut filer = Filer::new(db, &at)?;
+            let zone = filer.zone;
+            let today = clock::today(zone);
+            let moves = db
+                .communications_texts_from(&at, now() - TODAY_MS)?
+                .into_iter()
+                .filter(|text| clock::day(zone, text.at) == today)
+                .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
+                .collect::<Result<Vec<_>>>()?;
+            Ok(!db.refile_communications_texts(&at, &moves)?.is_empty())
+        })
+        .await?;
+    if changed {
+        live::changed(state, dsp);
+    }
+    Ok(())
+}
+
+/// `text` as Communications keeps it, filed as `filed`.
+fn kept(text: &Text, filed: Filed) -> Incoming {
+    Incoming {
+        id: text.id.clone(),
+        phone: text.phone.clone(),
+        direction: match text.direction {
+            texting::Direction::In => Direction::In,
+            texting::Direction::Out => Direction::Out,
+        },
+        number: text.number.clone(),
+        body: text.body.clone(),
+        at: text.at,
+        sent_by: text.sent_by.clone(),
+        status: (text.origin == Origin::Dispatch)
+            .then_some(text.status)
+            .flatten()
+            .map(|status| match status {
+                Status::Waiting => TextStatus::Waiting,
+                Status::Sent => TextStatus::Sent,
+                Status::Delivered => TextStatus::Delivered,
+                Status::Failed => TextStatus::Failed,
+            }),
+        error: text.error.clone(),
+        files: text
+            .files
+            .iter()
+            .map(|file| TextFile {
+                id: file.id.clone(),
+                name: file.name.clone(),
+                mime: file.mime.clone(),
+                size: file.size,
+                kept: file.kept,
+            })
+            .collect(),
+        filed,
+    }
+}
+
+/// Where the DSP's texts are filed, by who held its work phones on the days they were written,
+/// each day's holds read once.
+struct Filer<'a> {
+    db: &'a Store,
+    dsp: &'a str,
+    zone: Tz,
+    live: Option<&'static dyn LiveRouteData>,
+    live_day: Option<String>,
+    routes: Option<&'static dyn DriverRoutes>,
+    /// Each day's holds, each with the source of the ID that held it.
+    holds: HashMap<String, Vec<(String, WorkPhoneHold)>>,
+    /// Whether each number, by its ten digits, was ever a work phone.
+    work_phones: HashMap<String, bool>,
+}
+impl<'a> Filer<'a> {
+    fn new(db: &'a Store, dsp: &'a str) -> Result<Self> {
+        let zone = db
+            .find_dsp(dsp)?
+            .timezone
+            .parse()
+            .map_err(|_| Error::new("invalid_timezone", 400))?;
+        let live = routes::live_for_dsp(db, dsp)?;
+        let live_day = match live {
+            Some(live) => live.live_day(db, dsp)?,
+            None => None,
+        };
+        Ok(Self {
+            db,
+            dsp,
+            zone,
+            live,
+            live_day,
+            routes: routes::for_dsp(db, dsp)?,
+            holds: HashMap::new(),
+            work_phones: HashMap::new(),
+        })
+    }
+    /// Where a text with `number`, written at `at`, is filed.
+    fn filed(&mut self, number: &str, at: i64) -> Result<Filed> {
+        let Some(ten) = ten_digits(number) else {
+            return Ok(Filed::Number(number.to_owned()));
+        };
+        let day = clock::day(self.zone, at).to_string();
+        let held: Vec<&(String, WorkPhoneHold)> = self
+            .holds(&day)?
+            .iter()
+            .filter(|(_, hold)| hold.phone == ten)
+            .collect();
+        if !held.is_empty() {
+            let covering = held
+                .iter()
+                .find(|(_, hold)| hold.since <= at && hold.until.is_none_or(|until| at < until));
+            let first = held
+                .iter()
+                .min_by_key(|(_, hold)| hold.since)
+                .filter(|(_, hold)| at < hold.since);
+            return Ok(match covering.or(first) {
+                Some((source, hold)) => Filed::Driver {
+                    source: source.clone(),
+                    id: hold.driver_id.clone(),
+                },
+                None => Filed::WorkPhone(number.to_owned()),
+            });
+        }
+        Ok(if self.was_work_phone(&ten)? {
+            Filed::WorkPhone(number.to_owned())
+        } else {
+            Filed::Number(number.to_owned())
+        })
+    }
+    /// Every hold on a work phone on `day`: live route data's while it holds that day, else the
+    /// day's saved ones.
+    fn holds(&mut self, day: &str) -> Result<&[(String, WorkPhoneHold)]> {
+        if !self.holds.contains_key(day) {
+            let read = match (self.live, self.routes) {
+                (Some(live), _) if self.live_day.as_deref() == Some(day) => {
+                    let source = live.source().as_str().to_owned();
+                    live.work_phone_holds(self.db, self.dsp)?
+                        .into_iter()
+                        .map(|hold| (source.clone(), hold))
+                        .collect()
+                }
+                (_, Some(routes)) => {
+                    let source = routes.source().as_str().to_owned();
+                    routes
+                        .work_phone_holds(self.db, self.dsp, day)?
+                        .into_iter()
+                        .map(|hold| (source.clone(), hold))
+                        .collect()
+                }
+                _ => Vec::new(),
+            };
+            self.holds.insert(day.to_owned(), read);
+        }
+        Ok(&self.holds[day])
+    }
+    fn was_work_phone(&mut self, ten: &str) -> Result<bool> {
+        if let Some(&was) = self.work_phones.get(ten) {
+            return Ok(was);
+        }
+        let was = match self.routes {
+            Some(routes) => routes.was_work_phone(self.db, self.dsp, ten)?,
+            None => false,
+        };
+        self.work_phones.insert(ten.to_owned(), was);
+        Ok(was)
+    }
+}
+
+/// A number's ten digits, as Routes keeps a work phone's: only a North American one, `+1` and
+/// ten digits, can be one.
+fn ten_digits(number: &str) -> Option<String> {
+    let ten = number.strip_prefix("+1")?;
+    (ten.len() == 10 && ten.bytes().all(|b| b.is_ascii_digit())).then(|| ten.to_owned())
+}
+
+#[cfg(test)]
+#[path = "../../tests/backend/texts/filing.rs"]
+mod tests;

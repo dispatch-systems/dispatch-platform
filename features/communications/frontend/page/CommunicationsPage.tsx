@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SlidersHorizontal, SquarePen } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
-import type { Contact, Conversation, Group } from '../../api/index.js';
-import { markDone, markGroupDone, openConversation } from '../../api/client.js';
+import type { Contact, Conversation, Group, TextContact } from '../../api/index.js';
+import { markDone, markGroupDone, openConversation, textFirst } from '../../api/client.js';
 import { finishSlack } from '../../../slack/api/client.js';
 import { useSlackReturn } from '../../../slack/frontend/index.js';
 import { ErrorBox, Header, Loading } from '../../../../core/shell/frontend/ui/index.js';
@@ -18,7 +18,7 @@ import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route
 import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { dockAt, pageLook, Shown, useDisplay } from '../display/display.js';
-import { rows, type Row } from '../inbox.js';
+import { rows, sectionOf, type Row, type Section } from '../inbox.js';
 import { ConversationPane } from './ConversationPane.js';
 import { CopyChatLink } from './CopyChatLink.js';
 import { GroupDraft, type Draft } from './GroupDraft.js';
@@ -28,16 +28,18 @@ import { NewMessage } from './NewMessage.js';
 import { ConnectSlack, UpdateSlack } from './Setup.js';
 import { useInbox } from './useInbox.js';
 import { useLayout } from './useLayout.js';
-import { useWorkspaceChoice } from './useWorkspaceChoice.js';
+import { useRemembered } from './useRemembered.js';
 
-// The Communications page: the DSP's conversations with the members of its Slack workspaces, and
-// the groups it messaged, those waiting on an answer first, or everyone it can message, of every
-// workspace or one; and the conversation or group open beside them, or a message to a group being
-// written, all kept up to date as they change. Those who manage the DSP's connections connect
-// Slack here while it isn't, and update it while a workspace hasn't approved what Communications
-// uses. The conversation or group open is kept in the address (`?open=`, `?group=`), and a link
-// to one opens it, the page open or not. It looks as
-// the member chose in Settings' Message display, which Display opens.
+// The Communications page: the DSP's conversations, in sections: Messaging, the numbers that text
+// its phones, while it texts; and Slack, with the members of its Slack workspaces, and the groups
+// it messaged, while it has one. In each, those waiting on an answer first, or everyone it can
+// message, in Slack of every workspace or one; and the conversation or group open beside them, or
+// a message to a group being written, all kept up to date as they change. Those who manage the
+// DSP's connections connect Slack here while it has neither, and update it while a workspace
+// hasn't approved what Communications uses. The section shown is remembered for each member, and
+// the conversation or group open is kept in the address (`?open=`, `?group=`): a link to one
+// opens it, in its section, the page open or not. It looks as the member chose in Settings'
+// Message display, which Display opens.
 
 /** How often the times waited move on. */
 const TICK_MS = 30_000;
@@ -80,8 +82,14 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     if (host) prefetchRouteData(host, view);
   };
   const manages = can(view, 'connections.manage');
-  const [chosen, choose] = useWorkspaceChoice(view.dsp.id, user);
+  const [chosen, choose] = useRemembered('workspace', view.dsp.id, user);
+  const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
   const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(chosen);
+  // Messaging while the DSP texts, Slack while it has a workspace.
+  const sections: Section[] = [];
+  if (inbox?.texting) sections.push('messaging');
+  if (inbox?.workspaces.length) sections.push('slack');
+  const section = sections.find((each) => each === chosenSection) ?? sections[0] ?? 'slack';
   // Slack sends those who connected or updated it from here back here, to finish.
   const returned = useSlackReturn(async (state, code) => {
     try {
@@ -118,7 +126,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const openGroup = useCallback((id: string) => opening({ group: id }), [opening]);
   const closed = useCallback(() => opening({}), [opening]);
   const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
-  const shownRows = inbox ? rows(inbox, team) : [];
+  const listedTeam = section === 'slack' ? team : undefined;
+  const shownRows = inbox ? rows(inbox, section, listedTeam) : [];
   // Side by side, something is always open: the first listed, until another is chosen, and as
   // the page widens to show both.
   const first = shownRows[0];
@@ -155,12 +164,25 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     [select],
   );
   const pick = useCallback(
-    (contact: Contact) => reach(contact.teamId, contact.person.userId, contact.conversationId),
+    (contact: Contact) => reach(contact.teamId, contact.person.userId!, contact.conversationId),
     [reach],
   );
   const reaching = useAction(reach);
+  // Someone to text: their conversation, or one started with their number.
+  const pickNumber = useCallback(
+    async (contact: TextContact) => {
+      let id = contact.conversationId;
+      if (!id) {
+        const started = await textFirst(contact.number);
+        id = started.id;
+        setPinned({ kind: 'conversation', row: started });
+      }
+      select(id);
+    },
+    [select],
+  );
 
-  const connect = manages && inbox?.workspaces.length === 0;
+  const connect = manages && inbox?.workspaces.length === 0 && !inbox.texting;
   const listed = inbox?.conversations.find((conversation) => conversation.id === open);
   const listedGroup = inbox?.groups.find((each) => each.id === group);
   // What's pinned as the list has it, while it holds it, as each update keeps it.
@@ -190,6 +212,20 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
       (currentGroup && !currentGroup.teamIds.includes(team ?? ''));
     if (team && elsewhere && !drafting) closed();
   };
+  // Choosing a section leaves what's open in another, for the first of the one chosen.
+  const showSection = (next: Section) => {
+    chooseSection(next);
+    const elsewhere = current ? sectionOf(current) !== next : next !== 'slack';
+    if (elsewhere && (current || currentGroup || drafting)) closed();
+  };
+  // A conversation opened in another section, as by a link, shows its section, once.
+  const placed = useRef<string>(undefined);
+  useEffect(() => {
+    if (!current || placed.current === current.id) return;
+    placed.current = current.id;
+    const of = sectionOf(current);
+    if (of && of !== section && sections.includes(of)) chooseSection(of);
+  }, [current, section, sections, chooseSection]);
   const reading = open || group || drafting;
   return (
     <div
@@ -201,19 +237,19 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
       <Shown value={display}>
         <div className="communications-page" inert={updating.length > 0}>
           <Header title="Communications">
+            {sections.length > 0 && displaySettings && (
+              <button
+                aria-label="Display"
+                onPointerEnter={warmSettings}
+                onFocus={warmSettings}
+                onClick={() => navigate(displaySettings)}
+              >
+                <SlidersHorizontal size={16} />
+                <span>Display</span>
+              </button>
+            )}
             {working.length > 0 && (
               <>
-                {displaySettings && (
-                  <button
-                    aria-label="Display"
-                    onPointerEnter={warmSettings}
-                    onFocus={warmSettings}
-                    onClick={() => navigate(displaySettings)}
-                  >
-                    <SlidersHorizontal size={16} />
-                    <span>Display</span>
-                  </button>
-                )}
                 <CopyChatLink workspaces={working} />
                 <button
                   className="primary"
@@ -235,14 +271,19 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
             <div className="chat-frame">
               <ListPane
                 inbox={inbox}
+                sections={sections}
+                section={section}
+                chooseSection={showSection}
                 working={working}
-                team={team}
+                team={listedTeam}
                 choose={chooseWorkspace}
                 draft={drafting ? draft : undefined}
                 pinned={unlisted}
                 current={current}
                 readOlder={readOlder}
                 pick={pick}
+                pickNumber={pickNumber}
+                show={show}
                 open={open ?? group}
                 typing={inbox.typing.writing}
                 timeZone={timeZone}
@@ -281,7 +322,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                     if (entry.conversationId) select(entry.conversationId);
                   }}
                   open={(person) =>
-                    void reaching.run(person.teamId, person.person.userId, person.conversationId)
+                    void reaching.run(person.teamId, person.person.userId!, person.conversationId)
                   }
                 />
               ) : open ? (
@@ -290,6 +331,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   id={open}
                   listed={current}
                   workspaces={inbox.workspaces}
+                  texting={inbox.texting}
                   docked={docked}
                   kept={kept}
                   seen={seen}
@@ -316,6 +358,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
             group={() => {
               setComposing(false);
               setDraft({ name: '', people: 0 });
+              chooseSection('slack');
               opening({ drafting: true });
             }}
             close={() => setComposing(false)}

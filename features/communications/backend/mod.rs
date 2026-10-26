@@ -11,6 +11,8 @@
 //!   goes out under, and `initials`, the image of someone's initials when they have no photo.
 //! - `groups`: messaging a group, each in their own direct message, and their answers together.
 //! - `live`: what reaches the page as it happens, and who is writing.
+//! - `texts`: the texts the DSP's dispatch phones relay, each filed in a conversation, and
+//!   answering by text.
 //! - `text`: Slack's markup, as Communications keeps and sends text.
 //! - `display`: how the page looks to each member, their own in Settings.
 pub(crate) mod contacts;
@@ -26,6 +28,7 @@ pub(crate) mod search;
 pub(crate) mod sender;
 pub(crate) mod storage;
 pub(crate) mod text;
+pub(crate) mod texts;
 
 #[cfg(test)]
 #[path = "../tests/backend/support.rs"]

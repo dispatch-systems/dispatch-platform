@@ -3,7 +3,8 @@
 //! files and the group it went to; and the workspaces they're in. Those waiting come first, the
 //! longest waiting first, with the groups waiting, then the latest answered and the groups among
 //! them, of every workspace or one, fifty at a time; a conversation's messages the latest fifty at
-//! a time, in the order written.
+//! a time, in the order written. The numbers' conversations by text come with them, as `texts`
+//! reads them, while the DSP texts.
 use super::{
     files::{File, FileStore},
     groups::{
@@ -12,6 +13,10 @@ use super::{
     },
     live, search,
     storage::{self, CommunicationsStore, Direction},
+    texts::{
+        self,
+        storage::{ConversationKind, TextStore},
+    },
 };
 use crate::{
     api::types::{
@@ -24,10 +29,10 @@ use crate::{
 use dispatch_core::{
     Error, Result, State,
     db::Store,
-    manifest::people::{self, Everyone, Photo},
+    manifest::people::{self, Everyone, Person, Photo, Source},
 };
 use dispatch_slack::kit;
-use std::{collections::HashMap, sync::Arc};
+use std::{cell::OnceCell, collections::HashMap, sync::Arc};
 
 /// How many answered conversations, or messages, are read at a time.
 pub const PAGE: usize = 50;
@@ -37,6 +42,8 @@ pub const PAGE: usize = 50;
 pub struct People {
     everyone: Arc<Everyone>,
     emails: HashMap<String, String>,
+    /// Whose each phone number is, by its last ten digits, as asked for the first time.
+    numbers: OnceCell<HashMap<String, String>>,
 }
 impl People {
     pub fn read(db: &Store, state: &State, dsp: &str) -> Result<Self> {
@@ -47,6 +54,7 @@ impl People {
                 .into_iter()
                 .map(|member| (member.user_id, member.email))
                 .collect(),
+            numbers: OnceCell::new(),
         })
     }
     /// Everyone Driver Match tells apart.
@@ -59,13 +67,40 @@ impl People {
             .everyone
             .holding(kit::SOURCE, &kit::member_id(team, user));
         Correspondent {
-            user_id: user.to_owned(),
-            name: person.map_or_else(|| name.to_owned(), |person| person.name.clone()),
-            code: person.map(|person| person.code.clone()),
-            role: person.map(|person| person.role),
-            title: person.and_then(|person| person.title),
-            photo: person.and_then(|person| person.photo.clone()),
+            user_id: Some(user.to_owned()),
+            ..with(person, name)
         }
+    }
+    /// The person Driver Match has the phone number `number` for, if any: of several, one who
+    /// hasn't left first, then by name.
+    pub fn holding_number(&self, number: &str) -> Option<&Person> {
+        let numbers = self.numbers.get_or_init(|| {
+            let mut numbers = HashMap::new();
+            let (staying, left): (Vec<&Person>, Vec<&Person>) =
+                self.everyone.iter().partition(|person| !person.role.left());
+            for person in staying.into_iter().chain(left) {
+                for phone in &person.phones {
+                    if let Some(dialed) = dialed(phone) {
+                        numbers.entry(dialed).or_insert_with(|| person.code.clone());
+                    }
+                }
+            }
+            numbers
+        });
+        let code = numbers.get(&dialed(number)?)?;
+        self.everyone.person(code)
+    }
+    /// Whoever texts from `number`: the person Driver Match has it for, else by the name the DSP
+    /// saved for it, `contact`, else by the number.
+    pub fn texting(&self, number: &str, contact: Option<&str>) -> Correspondent {
+        let name = contact.map_or_else(|| texts::shown(number), str::to_owned);
+        with(self.holding_number(number), &name)
+    }
+    /// The driver holding `id` of the source `source`, as Driver Match knows them, else by the
+    /// name `name`.
+    pub fn driver(&self, source: &str, id: &str, name: &str) -> Correspondent {
+        let person = Source::parse(source).and_then(|source| self.everyone.holding(source, id));
+        with(person, name)
     }
     /// The person the DSP's member `user` is, by their email address, if any: their code and
     /// their photo's version.
@@ -89,7 +124,7 @@ impl People {
     pub fn sent_by(&self, user: &str, name: &str) -> Sender {
         let (code, photo) = self.member(user);
         Sender {
-            user_id: user.to_owned(),
+            user_id: Some(user.to_owned()),
             name: name.to_owned(),
             code,
             photo,
@@ -102,6 +137,24 @@ impl People {
         }
         typing
     }
+}
+
+/// Whom a conversation is with: `person`, as Driver Match knows them, else by `name`.
+fn with(person: Option<&Person>, name: &str) -> Correspondent {
+    Correspondent {
+        user_id: None,
+        name: person.map_or_else(|| name.to_owned(), |person| person.name.clone()),
+        code: person.map(|person| person.code.clone()),
+        role: person.map(|person| person.role),
+        title: person.and_then(|person| person.title),
+        photo: person.and_then(|person| person.photo.clone()),
+    }
+}
+/// A phone number's last ten digits, as Driver Match tells numbers apart: none with fewer than
+/// seven.
+fn dialed(number: &str) -> Option<String> {
+    let digits: Vec<char> = number.chars().filter(char::is_ascii_digit).collect();
+    (digits.len() >= 7).then(|| digits[digits.len().saturating_sub(10)..].iter().collect())
 }
 
 /// `kept` as its pages read them, each with its latest message.
@@ -130,7 +183,11 @@ pub fn conversations(
             with: people.correspondent(&conversation.team, &conversation.user, &conversation.name),
             last: latest.remove(&conversation.id),
             id: conversation.id,
-            team_id: conversation.team,
+            kind: ConversationKind::Slack,
+            team_id: Some(conversation.team),
+            number: None,
+            contact: false,
+            blocked: false,
             state: conversation.state,
             waiting_since: conversation.waiting_since,
             last_at: conversation.last_at,
@@ -186,6 +243,7 @@ pub fn messages(
             text: message.text,
             at: message.at,
             edited_at: message.edited_at,
+            status: None,
         })
         .collect())
 }
@@ -250,7 +308,7 @@ fn answered(
 
 /// `GET /api/dsp/communications`, for the member `me`: every conversation waiting, as the counts
 /// go by them, and every group waiting; then the latest answered conversations and groups of the
-/// workspace `team`, or every one.
+/// workspace `team`, or every one, and the latest answered numbers' conversations.
 pub fn overview(
     db: &Store,
     state: &State,
@@ -259,22 +317,33 @@ pub fn overview(
     team: Option<&str>,
 ) -> Result<Communications> {
     let people = People::read(db, state, dsp)?;
+    let numbers = texts::Numbers::read(db, dsp)?;
     let revision = db.communications_revision(dsp)?;
     let waiting = db.waiting_communications(dsp)?;
-    let count = waiting.len();
+    let texted = texts::waiting(db, dsp)?;
+    let count = waiting.len() + texted.len();
     let waiting_groups = db.waiting_communications_groups(dsp)?;
     let (answered, answered_groups, more) = answered(db, &people, dsp, team, None)?;
+    let (answered_texts, more_texts) = texts::answered(db, &people, &numbers, dsp, None)?;
     Ok(Communications {
         revision,
         waiting: count,
-        conversations: [conversations(db, &people, dsp, waiting)?, answered].concat(),
+        conversations: [
+            conversations(db, &people, dsp, waiting)?,
+            texts::conversations(db, &people, &numbers, dsp, texted)?,
+            answered,
+            answered_texts,
+        ]
+        .concat(),
         groups: [
             groups::listed(db, &people, dsp, waiting_groups)?,
             answered_groups,
         ]
         .concat(),
         more,
+        more_texts,
         workspaces: workspaces(db, dsp)?,
+        texting: texts::offered(db, dsp)?,
         typing: people.writing(live::typing(dsp, me).0),
     })
 }
@@ -378,7 +447,7 @@ pub fn updates(
 ) -> Result<(CommunicationsUpdates, Option<i64>)> {
     let (changed, revision) = db.communications_changed_since(dsp, after)?;
     let (mut typing, next) = live::typing(dsp, me);
-    let waiting = db.waiting_communications(dsp)?.len();
+    let waiting = db.waiting_communications(dsp)?.len() + texts::waiting(db, dsp)?.len();
     let ids = changed.as_ref().filter(|ids| !ids.is_empty());
     let (mut conversations, mut changed_groups) = (Vec::new(), Vec::new());
     // Who anyone is, only when there's someone to name.
@@ -386,11 +455,16 @@ pub fn updates(
         let people = People::read(db, state, dsp)?;
         typing = people.writing(typing);
         if let Some(ids) = ids {
-            // Each change names a conversation or a group.
+            // Each change names a conversation, a group, or a conversation by text: a number's,
+            // as the page lists them.
             let kept = db.communications_conversations(dsp, ids)?;
             conversations = self::conversations(db, &people, dsp, kept)?;
             let kept = db.communications_groups(dsp, ids)?;
             changed_groups = groups::listed(db, &people, dsp, kept)?;
+            let mut texted = db.communications_text_conversations(dsp, ids)?;
+            texted.retain(|each| each.kind == ConversationKind::Number);
+            let numbers = texts::Numbers::read(db, dsp)?;
+            conversations.extend(texts::conversations(db, &people, &numbers, dsp, texted)?);
         }
     }
     Ok((
@@ -402,12 +476,13 @@ pub fn updates(
             groups: changed_groups,
             typing,
             workspaces: workspaces(db, dsp)?,
+            texting: texts::offered(db, dsp)?,
         },
         next,
     ))
 }
 /// How many conversations wait, since when each has, and the latest message from whom each is
-/// with.
+/// with, the longest waiting first.
 pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWaiting> {
     let waiting = db.waiting_communications(dsp)?;
     let ids: Vec<String> = waiting.iter().map(|each| each.id.clone()).collect();
@@ -421,28 +496,61 @@ pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWai
         .into_iter()
         .zip(messages(db, &people, dsp, written)?)
         .collect();
-    let latest = waiting
+    let mut latest: Vec<(Option<i64>, WaitingMessage)> = waiting
         .iter()
         .filter_map(|conversation| {
-            Some(WaitingMessage {
-                message: written.remove(&conversation.id)?,
-                conversation_id: conversation.id.clone(),
-                group_id: conversation.group.clone(),
-                from: people
-                    .correspondent(&conversation.team, &conversation.user, &conversation.name)
-                    .name,
-            })
+            Some((
+                conversation.waiting_since,
+                WaitingMessage {
+                    message: written.remove(&conversation.id)?,
+                    conversation_id: conversation.id.clone(),
+                    group_id: conversation.group.clone(),
+                    from: people
+                        .correspondent(&conversation.team, &conversation.user, &conversation.name)
+                        .name,
+                },
+            ))
         })
         .collect();
-    let since: Vec<i64> = waiting
+    let mut since: Vec<i64> = waiting
         .into_iter()
         .filter_map(|conversation| conversation.waiting_since)
         .collect();
+    // The numbers' too, as the page lists them.
+    let texted = texts::waiting(db, dsp)?;
+    if !texted.is_empty() {
+        let numbers = texts::Numbers::read(db, dsp)?;
+        let ids: Vec<String> = texted.iter().map(|each| each.id.clone()).collect();
+        let mut written: HashMap<String, Message> = db
+            .latest_communications_texts_in(dsp, &ids)?
+            .into_iter()
+            .map(|text| {
+                let of = text.conversation.clone();
+                (of, texts::messages(&people, &numbers, vec![text]).remove(0))
+            })
+            .collect();
+        for listed in texts::conversations(db, &people, &numbers, dsp, texted)? {
+            since.extend(listed.waiting_since);
+            if let Some(message) = written.remove(&listed.id) {
+                latest.push((
+                    listed.waiting_since,
+                    WaitingMessage {
+                        message,
+                        conversation_id: listed.id,
+                        group_id: None,
+                        from: listed.with.name,
+                    },
+                ));
+            }
+        }
+        since.sort();
+        latest.sort_by_key(|(since, _)| *since);
+    }
     Ok(CommunicationsWaiting {
         revision: db.communications_revision(dsp)?,
         count: since.len(),
         since,
-        latest,
+        latest: latest.into_iter().map(|(_, message)| message).collect(),
     })
 }
 /// What the page calls a workspace: its name in Dispatch, else its name in Slack.

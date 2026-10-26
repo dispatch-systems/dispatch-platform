@@ -87,7 +87,7 @@ export function recipients(picks: readonly Pick[], people: readonly Reachable[])
   }
   for (const pick of picks)
     if (pick.kind === 'person')
-      chosen.set(pick.key, { teamId: pick.contact.teamId, userId: pick.contact.person.userId });
+      chosen.set(pick.key, { teamId: pick.contact.teamId, userId: pick.contact.person.userId! });
   return [...chosen.values()];
 }
 

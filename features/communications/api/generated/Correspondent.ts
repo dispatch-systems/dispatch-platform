@@ -3,16 +3,17 @@ import type { PersonRole } from "../../../../core/manifest/api/generated/PersonR
 import type { PersonTitle } from "../../../../core/manifest/api/generated/PersonTitle";
 
 /**
- * The member a conversation is with: their account in the workspace, and the person Driver
- * Match knows them as, if it does.
+ * Whom a conversation is with: a member of a workspace by their account there, or someone texting;
+ * and the person Driver Match knows them as, if it does.
  */
 export type Correspondent = {
 /**
- * Their ID in the workspace.
+ * Their ID in the workspace, for a member of one.
  */
-userId: string,
+userId: string | null,
 /**
- * The name Driver Match shows them by, else the one their Slack profile gives them.
+ * The name Driver Match shows them by, else the one their Slack profile gives them, or
+ * the name the DSP saved for their number, or their number.
  */
 name: string,
 /**

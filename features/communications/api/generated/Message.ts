@@ -3,13 +3,15 @@ import type { Direction } from "./Direction";
 import type { MessageFile } from "./MessageFile";
 import type { MessageGroup } from "./MessageGroup";
 import type { Sender } from "./Sender";
+import type { TextStatus } from "./TextStatus";
 
 /**
- * A message in a conversation.
+ * A message in a conversation, or a text.
  */
 export type Message = { id: string,
 /**
- * Its ID in Slack, which orders a conversation's messages, as `before` reads it.
+ * Its place among the conversation's messages, as `before` reads it: its ID in Slack, or
+ * for a text when it was written, thirteen digits, and its ID (`<at>:<id>`).
  */
 ts: string, direction: Direction, text: string, at: number,
 /**
@@ -27,4 +29,8 @@ sender: Sender | null, files: Array<MessageFile>,
 /**
  * The group it went to, for one the DSP sent a group.
  */
-group: MessageGroup | null, };
+group: MessageGroup | null,
+/**
+ * How a text Dispatch sent went.
+ */
+status: TextStatus | null, };

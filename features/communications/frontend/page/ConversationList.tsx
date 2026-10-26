@@ -4,19 +4,20 @@ import type { Communications, Conversation, Group, Writing } from '../../api/ind
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { listTime, preview } from '../format.js';
-import { rows as listed, type Row } from '../inbox.js';
-import { Face } from './Face.js';
+import { rows as listed, sectionOf, type Row, type Section } from '../inbox.js';
+import { Face, Party, PhoneFace } from './Face.js';
 import type { Draft } from './GroupDraft.js';
 import { GroupFaces } from './GroupFaces.js';
 import { More } from './More.js';
 import { Name, Wait, typingNote } from './parts.js';
 import { useFound } from './useFound.js';
 
-// Messages: the conversations and groups, of every workspace or the one chosen, those waiting on
-// an answer, then those answered; or the conversations found by a name typed, misspelt or not. A
-// conversation listed under a group is the group's row. The message being written to a group is
-// at the top while it's written, and what's open at the top while the list doesn't show it, as
-// one New message opened before it holds a message.
+// Messages: a section's conversations, and in Slack's the groups, of every workspace or the one
+// chosen, those waiting on an answer, then those answered; or the conversations found by a name
+// typed, misspelt or not, or in Messaging by a number. A conversation listed under a group is the
+// group's row. The message being written to a group is at the top while it's written, and what's
+// open at the top while the list doesn't show it, as one New message or Contacts opened before it
+// holds a message.
 
 type Listing = {
   /** What's open: a conversation or a group, by its ID. */
@@ -32,6 +33,7 @@ type Listing = {
 
 export function ConversationList({
   inbox,
+  section,
   team,
   typed,
   waiting: waitingPeople,
@@ -41,6 +43,7 @@ export function ConversationList({
   ...listing
 }: Listing & {
   inbox: Communications;
+  section: Section;
   /** The workspace chosen, if one is. */
   team?: string;
   /** What's typed in Search, trimmed. */
@@ -54,10 +57,18 @@ export function ConversationList({
   readOlder: () => void;
 }) {
   const search = useCallback(
-    () => searchConversations(typed, team).then((found) => found.conversations),
-    [typed, team],
+    () =>
+      searchConversations(typed, section === 'messaging' ? { texts: true } : { team }).then(
+        (found) => found.conversations,
+      ),
+    [typed, section, team],
   );
-  const { found, failed } = useFound(typed ? search : undefined, team ?? '', inbox.revision, 200);
+  const { found, failed } = useFound(
+    typed ? search : undefined,
+    `${section} ${team ?? ''}`,
+    inbox.revision,
+    200,
+  );
   const list = (rows: readonly Row[]) => (
     <ul className="convos">
       {rows.map((each) =>
@@ -78,13 +89,15 @@ export function ConversationList({
       <Loading />
     );
   }
-  const shown = listed(inbox, team);
+  const shown = listed(inbox, section, team);
   const waiting = shown.filter((each) => each.row.state === 'waiting');
   const answered = shown.filter((each) => each.row.state !== 'waiting');
   const pinnedShown =
     pinned &&
-    (!team ||
-      (pinned.kind === 'group' ? pinned.row.teamIds.includes(team) : pinned.row.teamId === team));
+    (pinned.kind === 'group'
+      ? section === 'slack' && (!team || pinned.row.teamIds.includes(team))
+      : sectionOf(pinned.row) === section && (!team || pinned.row.teamId === team));
+  const more = section === 'slack' ? inbox.more : inbox.moreTexts;
   return (
     <>
       {draft && (
@@ -111,7 +124,7 @@ export function ConversationList({
           <ul className="convos">
             <li className="convo selected">
               <button className="convo-open" onClick={() => listing.select(pinned.row.id)}>
-                <Face {...pinned.row.with} size="list" />
+                <Party conversation={pinned.row} size="list" />
                 <span className="convo-body">
                   <span className="line1">
                     <strong>{pinned.row.with.name}</strong>
@@ -140,7 +153,7 @@ export function ConversationList({
           {list(answered)}
         </>
       )}
-      {inbox.more && <More read={readOlder} />}
+      {more && <More read={readOlder} />}
     </>
   );
 }
@@ -170,7 +183,7 @@ function ConversationRow({
         aria-current={selected || undefined}
         onClick={() => select(conversation.id)}
       >
-        <Face {...person} size="list" />
+        <Party conversation={conversation} size="list" />
         <span className="convo-body">
           <span className="line1">
             <strong>
@@ -185,14 +198,17 @@ function ConversationRow({
               <span className="preview typing-note">{typingNote(writing)}</span>
             ) : (
               <>
-                {last?.sender && (
-                  <Face
-                    name={last.sender.name}
-                    code={last.sender.code}
-                    photo={last.sender.photo}
-                    size="sender"
-                  />
-                )}
+                {last?.sender &&
+                  (last.sender.userId ? (
+                    <Face
+                      name={last.sender.name}
+                      code={last.sender.code}
+                      photo={last.sender.photo}
+                      size="sender"
+                    />
+                  ) : (
+                    <PhoneFace size="sender" own />
+                  ))}
                 <span className="preview">{last ? preview(last) : ''}</span>
               </>
             )}

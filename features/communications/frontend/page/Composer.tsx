@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { ArrowUp, LoaderCircle, Paperclip, X } from 'lucide-react';
+import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
 import type { CommunicationsUpload } from '../../api/index.js';
 import { addPhoto } from '../../api/client.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
@@ -8,11 +8,11 @@ import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Shown } from '../display/display.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 
-// Writing a message, in a conversation or to a group: up to 3,000 characters, and up to ten
-// photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added. Enter sends, Shift+Enter
-// starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with it sends.
-// While someone writes in a conversation, their teammates see they are, said again every few
-// seconds.
+// Writing a message, in a conversation or to a group: up to 3,000 characters, and, but by text,
+// up to ten photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added. Enter sends,
+// Shift+Enter starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with
+// it sends. While someone writes in a conversation, their teammates see they are, said again every
+// few seconds. A text says the number it goes to by its last digits, when the name doesn't.
 
 const TEXT_MOST = 3000;
 const PHOTOS_MOST = 10;
@@ -34,6 +34,8 @@ export function Composer({
   placeholder,
   writable,
   ready: whom = true,
+  photos: attaching = true,
+  to,
   send: deliver,
   typing,
   label,
@@ -41,6 +43,10 @@ export function Composer({
   placeholder: string;
   /** Whether it can be written in: Communications works where it goes now. */
   writable: boolean;
+  /** Whether photos can be added to it. */
+  photos?: boolean;
+  /** The last digits of the number a text goes to, when the name doesn't say it. */
+  to?: string;
   /** Whether what's written can go, as once there's someone to send it to. */
   ready?: boolean;
   /** Sends what's written with the photos added for it, by their IDs. */
@@ -159,26 +165,30 @@ export function Composer({
         </ul>
       )}
       <div className={label && text ? 'box writing' : 'box'}>
-        <button
-          type="button"
-          className="round"
-          aria-label="Attach photos"
-          disabled={!writable || photos.length >= PHOTOS_MOST}
-          onClick={() => picker.current?.click()}
-        >
-          <Paperclip size={18} />
-        </button>
-        <input
-          ref={picker}
-          type="file"
-          accept={PHOTO_KINDS.join(',')}
-          multiple
-          hidden
-          onChange={(event) => {
-            add(event.currentTarget.files);
-            event.currentTarget.value = '';
-          }}
-        />
+        {attaching && (
+          <>
+            <button
+              type="button"
+              className="round"
+              aria-label="Attach photos"
+              disabled={!writable || photos.length >= PHOTOS_MOST}
+              onClick={() => picker.current?.click()}
+            >
+              <Paperclip size={18} />
+            </button>
+            <input
+              ref={picker}
+              type="file"
+              accept={PHOTO_KINDS.join(',')}
+              multiple
+              hidden
+              onChange={(event) => {
+                add(event.currentTarget.files);
+                event.currentTarget.value = '';
+              }}
+            />
+          </>
+        )}
         <textarea
           ref={field}
           rows={1}
@@ -195,6 +205,12 @@ export function Composer({
             if (ready) void send.run();
           }}
         />
+        {to && (
+          <span className="texting-to">
+            <Phone size={12} aria-hidden="true" />
+            {to}
+          </span>
+        )}
         {label ? (
           <button type="submit" className="send-to" disabled={!ready}>
             {label}

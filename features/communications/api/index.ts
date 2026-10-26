@@ -7,6 +7,7 @@ export type { CommunicationsWorkspace } from './generated/CommunicationsWorkspac
 export type { Contact } from './generated/Contact';
 export type { Contacts } from './generated/Contacts';
 export type { Conversation } from './generated/Conversation';
+export type { ConversationKind } from './generated/ConversationKind';
 export type { ConversationMessages } from './generated/ConversationMessages';
 export type { ConversationState } from './generated/ConversationState';
 export type { Conversations } from './generated/Conversations';
@@ -43,6 +44,9 @@ export type { Sender } from './generated/Sender';
 export type { Spacing } from './generated/Spacing';
 export type { TeamColor } from './generated/TeamColor';
 export type { TeamSide } from './generated/TeamSide';
+export type { TextContact } from './generated/TextContact';
+export type { TextContacts } from './generated/TextContacts';
+export type { TextStatus } from './generated/TextStatus';
 export type { Times } from './generated/Times';
 export type { Typing } from './generated/Typing';
 export type { WaitingMessage } from './generated/WaitingMessage';

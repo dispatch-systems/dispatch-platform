@@ -2,6 +2,7 @@
 
 /**
  * Someone at the DSP who sent a message: by the name it went out under, their account, and
- * the person Driver Match knows them as, by their email address, if it does.
+ * the person Driver Match knows them as, by their email address, if it does. A text sent from the
+ * phone itself is the phone's, under its name, by no account.
  */
-export type Sender = { userId: string, name: string, code: string | null, photo: string | null, };
+export type Sender = { userId: string | null, name: string, code: string | null, photo: string | null, };

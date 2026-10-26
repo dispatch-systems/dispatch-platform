@@ -1,21 +1,23 @@
 import { Fragment, useContext, useLayoutEffect, useRef } from 'react';
-import { FileText, Users } from 'lucide-react';
+import { CircleAlert, FileText, RotateCw, Users } from 'lucide-react';
 import type { Conversation, Message, MessageFile, Writing } from '../../api/index.js';
 import { fileUrl } from '../../api/client.js';
-import { clock, dayLabel, dayOf, fileStatus, isPhoto, size } from '../format.js';
+import { clock, dayLabel, dayOf, fileStatus, isPhoto, size, textStatus } from '../format.js';
 import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { Shown } from '../display/display.js';
-import { Face } from './Face.js';
+import { Face, Party, PhoneFace } from './Face.js';
 import { More } from './More.js';
 import type { OpensProfile } from './parts.js';
 
 // A conversation's messages, in the order written, under the day each was written: the
 // member's on the left beside their photo, which opens their profile, the DSP's on the right
-// under the name and photo of whoever sent them, and the group one went to, which opens it; and
-// below, those at the DSP writing in it now. Each run's time is under it, or each message's, as
-// the member chose (`Shown`); plain, every run is under its writer's name and time instead.
+// under the name and photo of whoever sent them, or the phone's own, and the group one went to,
+// which opens it; and below, those at the DSP writing in it now. Each run's time is under it, or
+// each message's, as the member chose (`Shown`); plain, every run is under its writer's name and
+// time instead. A text the DSP sent says how it went under it, the run's last, or one that
+// failed, with Retry.
 
 /** Messages one after another from the same writer, within a few minutes, shown together. */
 type Run = { key: string; writer: string; messages: Message[] };
@@ -50,6 +52,7 @@ export function Thread({
   now,
   profile,
   openGroup,
+  retry,
 }: {
   conversation: Conversation;
   messages: readonly Message[];
@@ -62,6 +65,8 @@ export function Thread({
   profile: Partial<OpensProfile>;
   /** Opens the group a message went to. */
   openGroup: (id: string) => void;
+  /** Sends again a text the DSP sent that failed. */
+  retry?: (message: Message) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   // Where it was before the latest change: at the latest message, or how far up, which older
@@ -88,6 +93,7 @@ export function Thread({
     };
   };
   const person = conversation.with;
+  const texted = conversation.kind !== 'slack';
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
   return (
@@ -103,12 +109,18 @@ export function Thread({
               return (
                 <div key={key} className={`msg-group ${first.direction}`}>
                   {sender ? (
-                    <Face
-                      name={sender.name}
-                      code={sender.code}
-                      photo={sender.photo}
-                      size="message"
-                    />
+                    sender.userId ? (
+                      <Face
+                        name={sender.name}
+                        code={sender.code}
+                        photo={sender.photo}
+                        size="message"
+                      />
+                    ) : (
+                      <PhoneFace size="message" own />
+                    )
+                  ) : texted ? (
+                    <Party conversation={conversation} size="message" />
                   ) : (
                     // Left out of Tab's order: who it's with, above, opens it from the keyboard.
                     <button
@@ -133,21 +145,21 @@ export function Thread({
                         )}
                       </div>
                     )}
-                    {written.map((message) => (
-                      <Fragment key={message.id}>
-                        <Written message={message} />
-                        {!plain && times === 'each_message' && (
-                          <div className="meta">
-                            <span className="at">{clock(message.at, timeZone)}</span>
-                          </div>
-                        )}
-                      </Fragment>
-                    ))}
-                    {!plain && times !== 'each_message' && (
-                      <div className="meta">
-                        <span className="at">{clock(written.at(-1)!.at, timeZone)}</span>
-                      </div>
-                    )}
+                    {written.map((message, at) => {
+                      const last = at === written.length - 1;
+                      return (
+                        <Fragment key={message.id}>
+                          <Written message={message} texted={texted} />
+                          <Meta
+                            message={message}
+                            time={!plain && (last || times === 'each_message')}
+                            status={last || message.status === 'failed'}
+                            timeZone={timeZone}
+                            retry={retry}
+                          />
+                        </Fragment>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -174,23 +186,80 @@ export function Thread({
   );
 }
 
-/** One message: its text, marked if edited in Slack, then its photos and files. */
-export function Written({ message }: { message: Pick<Message, 'text' | 'editedAt' | 'files'> }) {
+/**
+ * Under a message: when it was written, while `time` says to show it, and, while `status` says
+ * to, how a text the DSP sent went: Not sent, with Retry, once it failed.
+ */
+function Meta({
+  message,
+  time,
+  status,
+  timeZone,
+  retry,
+}: {
+  message: Message;
+  time: boolean;
+  status: boolean;
+  timeZone: string;
+  retry?: (message: Message) => void;
+}) {
+  const gone = status ? message.status : null;
+  if (!time && !gone) return null;
+  return (
+    <div className="meta">
+      {time && (
+        <span className="at">
+          {clock(message.at, timeZone)}
+          {gone && ' · '}
+        </span>
+      )}
+      {gone === 'failed' ? (
+        <>
+          <span className="failed">
+            <CircleAlert size={12} aria-hidden="true" />
+            {textStatus.failed}
+          </span>
+          {retry && (
+            <>
+              {' · '}
+              <button className="retry" onClick={() => retry(message)}>
+                <RotateCw size={11} aria-hidden="true" />
+                Retry
+              </button>
+            </>
+          )}
+        </>
+      ) : (
+        gone && <span className={gone === 'waiting' ? 'sending' : undefined}>{textStatus[gone]}</span>
+      )}
+    </div>
+  );
+}
+
+/** One message: its text, marked if edited in Slack, then its photos and files: a text's, as its
+ * phone keeps them (`texted`). */
+export function Written({
+  message,
+  texted = false,
+}: {
+  message: Pick<Message, 'text' | 'editedAt' | 'files'> & Partial<Pick<Message, 'status'>>;
+  texted?: boolean;
+}) {
   const photos = message.files.filter((file) => file.status === 'kept' && isPhoto(file.mime));
   const files = message.files.filter((file) => !photos.includes(file));
   return (
     <>
       {message.text && (
-        <div className="bubble">
+        <div className={message.status === 'failed' ? 'bubble failed' : 'bubble'}>
           {message.text}
           {message.editedAt !== null && <span className="edited">Edited</span>}
         </div>
       )}
       {photos.map((photo) => (
-        <Photo key={photo.id} photo={photo} />
+        <Photo key={photo.id} photo={photo} texted={texted} />
       ))}
       {files.map((file) => (
-        <Attached key={file.id} file={file} />
+        <Attached key={file.id} file={file} texted={texted} />
       ))}
     </>
   );
@@ -200,8 +269,8 @@ export function Written({ message }: { message: Pick<Message, 'text' | 'editedAt
  * A photo, fetched as it nears view, as the page's own calls are, with the DSP's view; it opens
  * at full size in a tab of its own.
  */
-function Photo({ photo }: { photo: MessageFile }) {
-  const [box, src, lost] = usePicture<HTMLAnchorElement>(fileUrl(photo.id));
+function Photo({ photo, texted }: { photo: MessageFile; texted: boolean }) {
+  const [box, src, lost] = usePicture<HTMLAnchorElement>(fileUrl(photo.id, texted));
   return (
     <a ref={box} className="photo" href={src} target="_blank" rel="noreferrer">
       {src && <img src={src} alt={photo.name} onError={lost} />}
@@ -210,8 +279,8 @@ function Photo({ photo }: { photo: MessageFile }) {
 }
 
 /** A file that isn't a photo, or one Dispatch doesn't keep: its name, and its size or why. */
-function Attached({ file }: { file: MessageFile }) {
-  const save = useAction(() => download(fileUrl(file.id)));
+function Attached({ file, texted }: { file: MessageFile; texted: boolean }) {
+  const save = useAction(() => download(fileUrl(file.id, texted)));
   const about = (
     <>
       <FileText size={18} aria-hidden="true" />

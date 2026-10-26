@@ -53,6 +53,7 @@ export function sample(now: number) {
     sender: sender ?? null,
     files: [],
     group: null,
+    status: null,
   });
   const messages = [
     message('m1', 'Morning. Van 208 won’t start, battery’s dead I think', 33),
@@ -69,7 +70,11 @@ export function sample(now: number) {
     waiting: boolean,
   ): Conversation => ({
     id,
+    kind: 'slack',
     teamId: team,
+    number: null,
+    contact: false,
+    blocked: false,
     with: who,
     state: waiting ? 'waiting' : 'responded',
     waitingSince: waiting ? last.at : null,
@@ -124,7 +129,9 @@ export function sample(now: number) {
     conversations,
     groups: [],
     more: false,
+    moreTexts: false,
     workspaces: [workspace],
+    texting: false,
     typing: { version: 0, writing: [] },
   };
   const profile: Profile = {
