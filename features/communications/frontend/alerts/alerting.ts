@@ -73,13 +73,17 @@ export function alertMember(access: () => Watching) {
         });
         chosen = reading;
       }
-      void Promise.all([chosen, dataCache.read(waitingUrl, getWaiting)]).then(
-        // As they chose last, should the tab have read it again since.
-        ([read, waiting]) => {
-          if (!ends.aborted) heard(waiting, readSettings() ?? read);
-        },
-        () => undefined,
-      );
+      void Promise.all([chosen, dataCache.read(waitingUrl, getWaiting)])
+        // Then as they chose last, as the tab holds it, else as read again once let go.
+        .then(([, waiting]) =>
+          Promise.all([readSettings() ?? dataCache.read(settingsRead, getSettings), waiting]),
+        )
+        .then(
+          ([settings, waiting]) => {
+            if (!ends.aborted) heard(waiting, settings);
+          },
+          () => undefined,
+        );
     };
     look();
     const looking = setInterval(look, LOOK_MS);

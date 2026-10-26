@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import type { SettingsAnswer } from '../../../../core/settings/api/index.js';
-import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
+import { cacheLimits, dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { settingsRead, type Watching } from '../../../../core/shell/frontend/runtime/slots.js';
 import { waitingUrl } from '../../api/client.js';
 import type { WaitingMessage } from '../../api/index.js';
@@ -331,4 +331,20 @@ test('a message alerts as the member chose once it is read, not as the tab began
   give({ revision: 0, count: 2, since: [], latest: [...server.waiting, waits('casey', 'm2')] });
   await sees('m2');
   assert.deepEqual(shown, ['casey: Running late']);
+});
+
+test('a tab that lets go of what the member chose reads it again before alerting', async (t) => {
+  const { server, shown, sees, start } = tab(t, 'user_let_go', true);
+  server.settings = chose(true);
+  server.waiting = [waits('jordan', 'm1')];
+  start();
+  await sees('m1');
+  // The member turns notifications off; then the pages they open fill what the tab holds.
+  server.settings = chose(false);
+  dataCache.put(settingsRead, chose(false));
+  for (let page = 0; page < cacheLimits.entries; page++) dataCache.put(`/api/dsp/page/${page}`, {});
+  server.waiting = [...server.waiting, waits('casey', 'm2')];
+  t.mock.timers.tick(30_000);
+  await sees('m2');
+  assert.deepEqual(shown, []);
 });
