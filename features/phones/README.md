@@ -23,9 +23,9 @@ Save and Discard, before the dialog closes; closing the browser tab drops it sil
 all the DSP's connections still lets a member in. With none, No phone. **Add phone** shows the code that pairs the
 next phone, as a QR code its app reads and as its eight letters, and how long it lasts; one
 expired, or replaced by a newer one as another session makes, gives way to a new one with New
-code; the dialog closes once its own code paired a phone, asked after every three seconds while
-it lasts. A code needs the DSP's own address, for the phone to reach: without one,
-`phones_address_required`.
+code; the dialog closes once its own code paired a phone, asked after every three seconds until
+it paired, was replaced or expired, and once more as it runs out. A code needs the DSP's own
+address, for the phone to reach: without one, `phones_address_required`.
 
 ## Pairing
 

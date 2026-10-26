@@ -1,3 +1,4 @@
+import type { Route } from '@playwright/test';
 import {
   test,
   expect,
@@ -5,6 +6,7 @@ import {
   login,
   openDsp,
 } from '../../../../core/shell/tests/support/fixtures.js';
+import type { PhonePairing } from '../../api/client.js';
 
 // The seeded DSP has every feature switched on, its demo's stand-in phone paired, and its owner
 // holds every permission.
@@ -29,7 +31,14 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
     .filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
   const list = card.getByRole('list', { name: 'Phones' });
   await expect(list).toContainText('(206) 555-0100');
+  // The code the dialog makes, as the server answers it.
+  const made = async () =>
+    (await (
+      await page.waitForResponse((response) => response.url().endsWith('/api/dsp/phones/pairing'))
+    ).json()) as PhonePairing;
+  let making = made();
   await card.getByRole('button', { name: 'Add phone' }).click();
+  const first = await making;
   const dialog = page.getByRole('dialog', { name: 'Add phone' });
   const picture = dialog.getByRole('img', { name: /^Pairing code [A-HJ-NP-Z2-9]{8}$/ });
   await expect(picture).toBeVisible();
@@ -51,13 +60,29 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   const theirs = await owner.post('/api/dsp/phones/pairing');
   await pair(theirs.value.code, '(206) 555-0177');
   await page.clock.fastForward(3_000);
-  await dialog.getByRole('button', { name: 'New code' }).click();
 
-  // Its own code pairing a phone closes it, and the card shows that phone.
-  const code = (await picture.getAttribute('alt'))!.replace('Pairing code ', '');
-  await pair(code, '(206) 555-0188');
-  await page.clock.fastForward(3_000);
+  // Its own code pairing a phone closes it, and the card shows that phone, though it paired after
+  // the dialog last asked, a second before the code expires. The dialog's asks after that code
+  // wait here, each answered by the server once let through.
+  const asks: Route[] = [];
+  await page.route('**/api/dsp/phones/pairing/*', (route) =>
+    route.request().url().endsWith(`/${first.id}`) ? route.continue() : void asks.push(route),
+  );
+  const answer = async () => {
+    await expect.poll(() => asks.length, { message: 'the dialog asks after its code' }).toBe(1);
+    const ask = asks.pop()!;
+    await ask.fulfill({ response: await ask.fetch() });
+  };
+  making = made();
+  await dialog.getByRole('button', { name: 'New code' }).click();
+  const own = await making;
+  await page.clock.pauseAt(own.expiresAt - 1_000);
+  await answer();
+  await pair(own.code, '(206) 555-0188');
+  await page.clock.runFor(1_000);
+  await answer();
   await expect(dialog).toBeHidden();
+  await page.clock.resume();
   await expect(list).toContainText('(206) 555-0188');
 
   // A name changed and not saved is never just closed.

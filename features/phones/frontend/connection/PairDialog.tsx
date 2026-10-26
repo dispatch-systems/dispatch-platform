@@ -3,7 +3,8 @@ import { countdown } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading, Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { newPairing, usePairing, type PhonePairing } from '../../api/client.js';
 
-/** How often the dialog asks after its code while it lasts, to close once it paired a phone. */
+/** How often the dialog asks after its code until the server says it paired, was replaced or
+ * expired, to close once it paired a phone. */
 const POLL = 3_000;
 
 // Add phone: the code that pairs the next phone, as a picture its app reads and as its letters,
@@ -25,7 +26,14 @@ export function PairDialog({ onClose }: { onClose: () => void }) {
     return () => clearInterval(ticking);
   }, []);
   const lapsed = pairing !== undefined && now >= pairing.expiresAt;
-  const status = usePairing(pairing?.id, lapsed ? 0 : POLL).data?.status;
+  const [asking, setAsking] = useState(true);
+  const { data, refresh } = usePairing(pairing?.id, asking ? POLL : 0);
+  const status = data?.status;
+  useEffect(() => setAsking(status === undefined || status === 'waiting'), [status]);
+  // Expired here, it asks once more: a phone may have paired since it last asked.
+  useEffect(() => {
+    if (lapsed) refresh();
+  }, [lapsed, refresh]);
   useEffect(() => {
     if (status === 'paired') onClose();
   }, [status, onClose]);
