@@ -105,13 +105,13 @@ DSP Messaging is unavailable. Texts come through whatever offers `texting` ([Tex
   It and New message show only with such a workspace.
 - **Setting Slack up**, for those who also hold `connections.manage`, which connects and updates
   the DSP's workspaces: while the DSP has none, and doesn't text, Connect Slack takes the inbox's
-  place; while a
-  workspace where Communications is on hasn't approved all it uses (`needsUpdate`), Update
-  Slack covers the page, not the sidebar, with no way to close it, each such workspace with
-  Update and Copy link (its own install link, for whoever approves apps in that Slack), until
-  an update brings the workspaces with none needing it, within twenty seconds. Connecting or
-  updating from here comes back here from Slack, which finishes it. Everyone else sees the page
-  as it is, empty without Slack.
+  place; while a workspace where Communications is on hasn't approved all it uses
+  (`needsUpdate`), Update Slack covers the page while it shows Slack, not the sidebar, with no
+  way to close it but to Messaging, while the DSP texts; each such workspace with Update and Copy
+  link (its own install link, for whoever approves apps in that Slack), until an update brings
+  the workspaces with none needing it, within twenty seconds. Connecting or updating from here
+  comes back here from Slack, which finishes it. Everyone else sees the page as it is, empty
+  without Slack.
 
 ## Messaging
 

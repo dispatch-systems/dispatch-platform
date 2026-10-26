@@ -35,11 +35,11 @@ import { useRemembered } from './useRemembered.js';
 // it messaged, while it has one. In each, those waiting on an answer first, or everyone it can
 // message, in Slack of every workspace or one; and the conversation or group open beside them, or
 // a message to a group being written, all kept up to date as they change. Those who manage the
-// DSP's connections connect Slack here while it has neither, and update it while a workspace
-// hasn't approved what Communications uses. The section shown is remembered for each member, and
-// the conversation or group open is kept in the address (`?open=`, `?group=`): a link to one
-// opens it, in its section, the page open or not. It looks as the member chose in Settings'
-// Message display, which Display opens.
+// DSP's connections connect Slack here while it has neither, and, while Slack shows, update it
+// while a workspace hasn't approved what Communications uses. The section shown is remembered for
+// each member, and the conversation or group open is kept in the address (`?open=`, `?group=`): a
+// link to one opens it, in its section, the page open or not. It looks as the member chose in
+// Settings' Message display, which Display opens.
 
 /** How often the times waited move on. */
 const TICK_MS = 30_000;
@@ -142,8 +142,12 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     if (first.kind === 'group') openGroup(first.row.id);
     else select(first.row.id);
   }, [open, group, drafting, first, layout, select, openGroup]);
-  // Each update brings the workspaces as they are, so it goes once Slack is updated.
-  const updating = manages ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
+  // While Slack shows: each update brings the workspaces as they are, so it goes once Slack is
+  // updated.
+  const updating =
+    manages && section === 'slack'
+      ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? [])
+      : [];
   const done = useAction(async (conversation: Conversation) =>
     show(await markDone(conversation.id)),
   );
@@ -358,7 +362,13 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
             </div>
           )}
         </div>
-        {updating.length > 0 && <UpdateSlack workspaces={updating} busy={returned.busy} />}
+        {updating.length > 0 && (
+          <UpdateSlack
+            workspaces={updating}
+            busy={returned.busy}
+            close={texting ? () => showSection('messaging') : undefined}
+          />
+        )}
         {composing && (
           <NewMessage
             workspaces={working}

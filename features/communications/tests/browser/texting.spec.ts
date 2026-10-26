@@ -1,5 +1,5 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
-import { connect, event, fromSlack } from '../../../slack/tests/support/slack.js';
+import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
 
 // The seeded DSP texts through its demo's stand-in phone, (206) 555-0100, which received three
 // texts and delivers what it's given at once; it has no Slack until a test connects it.
@@ -122,4 +122,46 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
   await expect(messaging).toHaveAttribute('aria-selected', 'true');
+});
+
+test('with Slack needing an update, Messaging still works, and Update Slack covers Slack alone until closed', async ({
+  page,
+  dispatch,
+}) => {
+  // Its admin approved the app before it answered direct messages.
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  const started = await owner.post('/api/dsp/slack/connect', { label: '' });
+  const { state } = install(started.value.url);
+  const earlier = 'fixture:T0FIXTURE1:team:read,users:read,users:read.email';
+  expect((await owner.post('/api/dsp/slack/connect/finish', { state, code: earlier })).status).toBe(
+    200,
+  );
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page.getByRole('link', { name: 'Communications' }).click();
+  const update = page.getByRole('dialog', { name: 'Update Slack' });
+  const stranger = page
+    .getByRole('region', { name: 'Conversations' })
+    .getByRole('listitem')
+    .filter({ hasText: '(425) 555-0199' });
+  await expect(stranger).toBeVisible();
+  await expect(update).toHaveCount(0);
+  await stranger.getByRole('button').first().click();
+  await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
+
+  // Slack waits on the update; closed, Messaging shows again.
+  const sections = page.getByRole('tablist', { name: 'Sections' });
+  await sections.getByRole('tab', { name: /Slack/ }).click();
+  await expect(update.getByRole('listitem')).toHaveText(/Operations/);
+  await update.getByRole('button', { name: 'Close dialog' }).click();
+  await expect(update).toHaveCount(0);
+  await expect(sections.getByRole('tab', { name: /Messaging/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 });
