@@ -369,8 +369,9 @@ async fn a_read_that_isnt_whole_or_isnt_of_today_changes_nothing() {
     let yesterday = Day::new(&(today - chrono::Duration::days(1)).to_string()).read(2);
     let mut finished = day.read(2);
     finished.mode = Mode::Final;
+    // East of the DSP's UTC, where its day has always begun, so only the scope refuses it.
     let mut zoned = day.read(2);
-    zoned.scope.timezone = "America/Chicago".into();
+    zoned.scope.timezone = "Asia/Tokyo".into();
     for (read, code, why) in [
         (
             missing,
