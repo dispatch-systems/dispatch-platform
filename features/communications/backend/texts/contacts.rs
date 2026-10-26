@@ -76,7 +76,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         .filter_map(|number| {
             let listed = contact(number, Vec::new());
             let (score, matched) = match typed {
-                Some(typed) => like(typed, &listed.person.name, number)?,
+                Some(typed) => like(typed, &listed.person.name, std::slice::from_ref(number))?,
                 None => (0.0, Vec::new()),
             };
             Some((score, TextContact { matched, ..listed }))

@@ -140,7 +140,8 @@ stay; the next day's drivers fill it as its live reads start.
   at each DSP, and not offered one pane at a time: the same groups as a table across the page,
   each driver a line of route, wave, van, work phone, stops and pace, and the last text with how
   long it has waited or when. Choosing one opens it in the list.
-- **Search** finds work conversations, across days, by a driver's name or a work phone's digits.
+- **Search** finds work conversations, across days, by a driver's name or the digits of any work
+  phone they texted on.
 - **Fresh:** read when it shows, again every minute while the page is in view
   (`ROUTES_READ_MS`), as live reads say nothing as they come, and at once when an update changes
   a work conversation.

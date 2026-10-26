@@ -11,7 +11,7 @@ use dispatch_core::{
 };
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -219,6 +219,9 @@ pub trait TextStore {
     fn communications_work_from(&self, dsp: &str, from: i64) -> Result<Vec<TextConversation>>;
     /// Every work conversation holding a text, in no order.
     fn communications_work(&self, dsp: &str) -> Result<Vec<TextConversation>>;
+    /// The numbers each work conversation's texts were with, by its ID: each work phone a
+    /// driver's was texted on, or a work phone's own.
+    fn communications_work_numbers(&self, dsp: &str) -> Result<HashMap<String, Vec<String>>>;
     /// The work conversations waiting by all their texts, whichever day they were written.
     fn waiting_communications_work(&self, dsp: &str) -> Result<Vec<TextConversation>>;
     /// Of the conversations `ids`, those waiting on texts written from `from` on, each with since
@@ -528,6 +531,19 @@ impl TextStore for Store {
              WHERE kind='work' AND last_at IS NOT NULL",
             [],
         )
+    }
+    fn communications_work_numbers(&self, dsp: &str) -> Result<HashMap<String, Vec<String>>> {
+        let texted: Vec<(String, String)> = self.dsp(dsp)?.query_as(
+            "SELECT DISTINCT t.conversation_id,t.number FROM communications_texts t \
+             JOIN communications_text_conversations c ON c.id=t.conversation_id \
+             WHERE c.kind='work'",
+            [],
+        )?;
+        let mut numbers: HashMap<String, Vec<String>> = HashMap::new();
+        for (conversation, number) in texted {
+            numbers.entry(conversation).or_default().push(number);
+        }
+        Ok(numbers)
     }
     fn waiting_communications_work(&self, dsp: &str) -> Result<Vec<TextConversation>> {
         self.dsp(dsp)?.query_as(

@@ -194,8 +194,8 @@ pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Resul
 /// A conversation found by what was typed: how like it, and the letters of its name that matched.
 type Found = (f64, Vec<(u32, u32)>, TextConversation);
 /// The conversations of `kind`, numbers' or work, whose name is like `typed`, or whose number
-/// holds the digits typed, the closest first, then the latest, fifty at most; a blocked number's
-/// aren't.
+/// holds the digits typed, a work conversation's by any work phone its texts were with, the
+/// closest first, then the latest, fifty at most; a blocked number's aren't.
 pub fn search(
     db: &Store,
     state: &State,
@@ -207,9 +207,12 @@ pub fn search(
     let numbers = Numbers::read(db, dsp)?;
     let mut found: Vec<Found> = Vec::new();
     if offered(db, dsp)? {
-        let kept = match kind {
-            ConversationKind::Work => db.communications_work(dsp)?,
-            _ => db.communications_numbers(dsp)?,
+        let (kept, mut texted_with) = match kind {
+            ConversationKind::Work => (
+                db.communications_work(dsp)?,
+                db.communications_work_numbers(dsp)?,
+            ),
+            _ => (db.communications_numbers(dsp)?, HashMap::new()),
         };
         for conversation in kept {
             let number = conversation.number.clone().unwrap_or_default();
@@ -221,7 +224,10 @@ pub fn search(
                 (None, ConversationKind::Work) => people.work_phone(&number),
                 (None, _) => people.texting(&number, numbers.contact(&number)),
             };
-            if let Some((score, marks)) = like(typed, &named.name, &number) {
+            let with = texted_with
+                .remove(&conversation.id)
+                .unwrap_or_else(|| vec![number]);
+            if let Some((score, marks)) = like(typed, &named.name, &with) {
                 found.push((score, marks, conversation));
             }
         }
@@ -243,16 +249,17 @@ pub fn search(
     })
 }
 
-/// How like `typed` someone named `name` texting from `number` is, and the letters of the name
-/// that matched: digits typed find them by their number, anything else by their name.
-pub fn like(typed: &str, name: &str, number: &str) -> Option<(f64, Vec<(u32, u32)>)> {
+/// How like `typed` someone named `name` texting from `numbers` is, and the letters of the name
+/// that matched: digits typed find them by any of their numbers, anything else by their name.
+pub fn like(typed: &str, name: &str, numbers: &[String]) -> Option<(f64, Vec<(u32, u32)>)> {
     let digits: String = typed.chars().filter(char::is_ascii_digit).collect();
     let dialed = digits.len() >= 3
         && typed
             .chars()
             .all(|c| c.is_ascii_digit() || " +-().".contains(c));
     if dialed {
-        return number.contains(&digits).then(|| (1.0, Vec::new()));
+        let held = numbers.iter().any(|number| number.contains(&digits));
+        return held.then(|| (1.0, Vec::new()));
     }
     search::matched(typed, name)
 }
