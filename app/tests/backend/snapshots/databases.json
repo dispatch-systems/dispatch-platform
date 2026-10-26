@@ -86,7 +86,8 @@
       ["slack", 8, "slack_workspaces_added", "code"],
       ["slack", 9, "slack_install_links_by_workspace", "c02a5b6288a083bc"],
       ["slack", 10, "slack_install_pages", "code"],
-      ["slack", 11, "slack_logos", "b75a1f564d324b29"]
+      ["slack", 11, "slack_logos", "b75a1f564d324b29"],
+      ["phones", 1, "phones", "d5e4a32a62e1bb6d"]
     ]
   },
   {

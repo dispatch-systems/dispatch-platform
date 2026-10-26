@@ -32,6 +32,7 @@ default = [
     "dvic",
     "home",
     "live_route_data",
+    "phones",
     "routes",
     "settings",
     "slack",
@@ -49,6 +50,7 @@ driver_profiles = ["dep:dispatch-driver-profiles"]
 dvic = ["dep:dispatch-dvic", "dispatch-mcp/dvic"]
 home = ["dep:dispatch-home"]
 live_route_data = ["dep:dispatch-live-route-data", "routes"]
+phones = ["dep:dispatch-phones"]
 routes = ["dep:dispatch-routes"]
 settings = ["dep:dispatch-settings"]
 slack = ["dep:dispatch-slack"]
@@ -77,6 +79,7 @@ dispatch-driver-profiles = { path = "../../features/driver_profiles", optional =
 dispatch-dvic = { path = "../../features/dvic", optional = true }
 dispatch-home = { path = "../../features/home", optional = true }
 dispatch-live-route-data = { path = "../../features/live_route_data", optional = true }
+dispatch-phones = { path = "../../features/phones", optional = true }
 dispatch-routes = { path = "../../features/routes", optional = true }
 dispatch-settings = { path = "../../features/settings", optional = true }
 dispatch-slack = { path = "../../features/slack", optional = true }
@@ -104,6 +107,7 @@ dispatch-daily-performance = { path = "../../features/daily_performance", featur
 dispatch-documents = { path = "../../features/documents", features = ["ts"] }
 dispatch-driver-match = { path = "../../features/driver_match", features = ["ts"] }
 dispatch-dvic = { path = "../../features/dvic", features = ["ts"] }
+dispatch-phones = { path = "../../features/phones", features = ["ts"] }
 dispatch-routes = { path = "../../features/routes", features = ["ts"] }
 dispatch-slack = { path = "../../features/slack", features = ["ts"] }
 dispatch-timecard = { path = "../../features/timecard", features = ["ts"] }
