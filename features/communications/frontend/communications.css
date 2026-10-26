@@ -269,16 +269,6 @@
   color: var(--foreground);
   box-shadow: 0 1px 3px var(--shadow-color);
 }
-/* The sections, as many segments as there are, each with its mark and how many wait. */
-:is(.pane-list, .board-tools) .sections .restored-tabs {
-  grid-template-columns: none;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
-}
-:is(.pane-list, .board-tools) .sections .restored-tabs button {
-  gap: 6px;
-  padding: 0 8px;
-}
 .list-scroll {
   flex: 1;
   min-height: 0;
