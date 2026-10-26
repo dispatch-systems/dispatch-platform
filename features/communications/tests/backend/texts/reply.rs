@@ -112,13 +112,17 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
         hold("A1", "2065550202", handoff, None),
         hold("B2", "2065550101", handoff, None),
     ];
-    held(&state, &dsp, Some(&today), holds, Vec::new()).await;
+    held(&state, &dsp, Some(&today), holds.clone(), Vec::new()).await;
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_work_phone_changed"
     );
-    // At the stop Avery holds none.
-    held(&state, &dsp, None, Vec::new(), Vec::new()).await;
+    // At the stop the day's holds are saved, and Avery holds none.
+    let saved = holds
+        .into_iter()
+        .map(|hold| (today.clone(), hold))
+        .collect();
+    held(&state, &dsp, None, Vec::new(), saved).await;
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_no_work_phone"
