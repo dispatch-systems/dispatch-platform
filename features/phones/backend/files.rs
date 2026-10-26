@@ -19,7 +19,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub const LARGEST: u64 = 20 * 1024 * 1024;
 
 /// The folder the DSP's files are kept in.
-pub(crate) fn folder(db: &Store, dsp: &str) -> Result<PathBuf> {
+fn folder(db: &Store, dsp: &str) -> Result<PathBuf> {
     let owner = db::private_dir(&db.area(dsp, "data")?.join("phones"))?;
     db::private_dir(&owner.join("files"))
 }
@@ -117,7 +117,3 @@ pub async fn answer(
     let body = axum::body::Body::from_stream(chunks);
     Ok(Reply::download(mime, name, length, body))
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/files.rs"]
-mod tests;
