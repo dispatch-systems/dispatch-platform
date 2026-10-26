@@ -153,7 +153,7 @@ pub struct Text {
     pub direction: Direction,
     /// Whether the phone reported it or Dispatch sent it.
     pub origin: Origin,
-    /// The other party's number: `+` and its digits for one in North America.
+    /// The other party's number, as `normal` writes it.
     pub number: String,
     pub body: String,
     /// When it was written, epoch milliseconds.
