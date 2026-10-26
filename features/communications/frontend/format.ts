@@ -1,6 +1,7 @@
 import type { FileStatus, Message, TextStatus } from '../api/index.js';
 import { dateFormatter } from '../../../core/shell/frontend/lib/date-format.js';
 import { localDate, shiftDate } from '../../../core/shell/frontend/lib/day.js';
+import { phoneText } from '../../../core/shell/frontend/lib/format.js';
 
 // How the page words times, waits and files, in the DSP's timezone so everyone reads one clock.
 
@@ -70,14 +71,9 @@ export const textStatus: Record<TextStatus, string> = {
   delivered: 'Delivered',
   failed: 'Not sent',
 };
-/** A phone number as it reads: "(425) 555-0199" for a North American one, else as kept. */
-export function phoneNumber(number: string) {
-  const ten = /^\+1(\d{10})$/.exec(number)?.[1];
-  return ten ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : number;
-}
 /** A number as it reads beside a name, while the name doesn't say it already: none when it does. */
 export function numberBeside(name: string, number: string) {
-  const shown = phoneNumber(number);
+  const shown = phoneText(number);
   return name === shown ? '' : shown;
 }
 /** "2.4 MB". */

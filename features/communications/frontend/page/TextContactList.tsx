@@ -3,7 +3,8 @@ import type { Conversation, TextContact } from '../../api/index.js';
 import { blockNumber, getTextContacts } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { letter, listTime, numberBeside, phoneNumber } from '../format.js';
+import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
+import { letter, listTime, numberBeside } from '../format.js';
 import { Face, PhoneFace } from './Face.js';
 import { Name, Wait } from './parts.js';
 import { useFound } from './useFound.js';
@@ -62,7 +63,7 @@ export function TextContactList({
             <strong>
               <Name name={person.name} matched={contact.matched} />
             </strong>
-            <small>{phoneNumber(contact.number)}</small>
+            <small>{phoneText(contact.number)}</small>
           </span>
           {contact.waitingSince !== null ? (
             <Wait since={contact.waitingSince} now={now} />
