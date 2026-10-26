@@ -61,18 +61,22 @@ export function alertMember(access: () => Watching) {
     }
   };
   return lead(`dispatch-communications-alerts:${dsp}:${user}`, (ends) => {
-    /** Whether this turn has read what the member chose. */
-    let read = false;
+    /** What the member chose, as this turn reads it again: not as a read begun before it has. */
+    let chosen: Promise<SettingsAnswer> | undefined;
     const look = () => {
-      const held = read ? readSettings() : undefined;
-      void Promise.all([
-        held ?? dataCache.read(settingsRead, getSettings, !read),
-        dataCache.read(waitingUrl, getWaiting),
-      ]).then(
-        ([settings, waiting]) => {
-          if (ends.aborted) return;
-          read = true;
-          heard(waiting, settings);
+      if (!chosen) {
+        dataCache.invalidate((key) => key === settingsRead);
+        const reading = dataCache.read(settingsRead, getSettings);
+        // Failed, it's read again at the next look.
+        reading.catch(() => {
+          if (chosen === reading) chosen = undefined;
+        });
+        chosen = reading;
+      }
+      void Promise.all([chosen, dataCache.read(waitingUrl, getWaiting)]).then(
+        // As they chose last, should the tab have read it again since.
+        ([read, waiting]) => {
+          if (!ends.aborted) heard(waiting, readSettings() ?? read);
         },
         () => undefined,
       );

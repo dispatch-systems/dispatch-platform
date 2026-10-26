@@ -9,13 +9,13 @@ import { readyOnUse } from './chime.js';
 // chose in Message display: a chime, the browser's notification, or both (`alertMember`).
 
 export function MessageAlerts(access: Watching) {
-  // Read as the tab opens and comes back into view, and as the member saves them here.
+  // Read as the tab opens and comes back into view, and as the member saves them here; till then,
+  // as in a tab opened out of view, the defaults, as each turn reads them itself before alerting.
   const { data: settings } = useCachedData<SettingsAnswer>(settingsRead, -1);
   const { sound, notifications } = choices(settings);
   const latest = useRef(access);
   latest.current = access;
-  // Nothing alerts before what the member chose is read.
-  const on = settings !== undefined && (sound || notifications);
+  const on = sound || notifications;
   const dsp = access.view.dsp.id;
   const user = access.session.user.id;
   useEffect(() => (sound ? readyOnUse() : undefined), [sound]);

@@ -96,6 +96,57 @@ const chose = (notifications: boolean) =>
 const turns = () => new Promise((resolve) => setImmediate(resolve));
 
 /**
+ * Web Locks as a browser has them, for the one lock the member's tabs take turns with, which
+ * Node 22 lacks: held by one tab at a time, the others waiting in line unless they give up their
+ * place; a tab stealing it takes it at once, the one holding it losing it.
+ */
+function lockManager() {
+  let holding: object | undefined;
+  const line: (() => void)[] = [];
+  const lost = (reject: (error: unknown) => void) => () =>
+    reject(new DOMException('The lock was taken', 'AbortError'));
+  let losing = () => {};
+  return {
+    request(
+      _name: string,
+      options: { steal?: boolean; signal?: AbortSignal },
+      held: () => unknown,
+    ) {
+      return new Promise((resolve, reject) => {
+        const grant = () => {
+          const holder = {};
+          holding = holder;
+          losing = lost(reject);
+          queueMicrotask(() => {
+            if (holding !== holder) return;
+            void Promise.resolve(held())
+              .finally(() => {
+                if (holding !== holder) return;
+                holding = undefined;
+                line.shift()?.();
+              })
+              .then(resolve, reject);
+          });
+        };
+        if (options.steal) {
+          if (holding) losing();
+          grant();
+        } else if (!holding) grant();
+        else {
+          line.push(grant);
+          options.signal?.addEventListener('abort', () => {
+            const place = line.indexOf(grant);
+            if (place < 0) return;
+            line.splice(place, 1);
+            reject(new DOMException('Its place was given up', 'AbortError'));
+          });
+        }
+      });
+    },
+  };
+}
+
+/**
  * A tab of `user`'s at a DSP, in front of them if `focused`, in a browser the test holds: its
  * clock, which the test moves; the server, answering Settings and what waits as `server` says,
  * or holding back the next answer to `url` till the test gives it (`hold`); the notifications it
@@ -146,17 +197,23 @@ function tab(t: TestContext, user: string, focused: boolean) {
     },
   };
   Object.assign(globalThis, browser);
+  const node = Object.getOwnPropertyDescriptor(globalThis, 'navigator')!;
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { locks: lockManager() },
+    configurable: true,
+  });
   // What the test opened, closed the last first, before the browser goes.
   const opened: (() => void)[] = [];
   t.after(() => {
     for (const close of opened.reverse()) close();
     for (const each of Object.keys(browser)) delete (globalThis as Record<string, unknown>)[each];
+    Object.defineProperty(globalThis, 'navigator', node);
     dataCache.clear();
   });
   const access = { view: { dsp: { id: dsp } }, session: { user: { id: user } } } as Watching;
   /** The member's tabs saw `ids` waiting, just now. */
   const saw = (...ids: string[]) => keepSeen(dsp, user, { at: Date.now(), ids });
-  /** Until the tab alerting has seen the message `id`. */
+  /** Until the tab alerting has seen the message `id`, if it hasn't yet. */
   const sees = (id: string) =>
     new Promise<void>((seen) => {
       const looked = () => {
@@ -165,6 +222,7 @@ function tab(t: TestContext, user: string, focused: boolean) {
         seen();
       };
       window.addEventListener('seen', looked);
+      looked();
     });
   const other = (focused: boolean) =>
     new Promise<() => void>((taken) => {
@@ -178,7 +236,7 @@ function tab(t: TestContext, user: string, focused: boolean) {
           }),
       );
     });
-  /** The tab starts alerting the member, as it does once it has read what they chose. */
+  /** The tab starts alerting the member. */
   const start = () => opened.push(alertMember(() => access));
   return { server, hold, shown, saw, sees, other, start };
 }
@@ -201,6 +259,25 @@ test('a tab taking its turn alerts as the member last chose, in whichever tab th
   t.mock.timers.tick(30_000);
   await sees('m3');
   assert.deepEqual(shown, ['sam: Running late']);
+});
+
+test("a turn reads what the member chose itself, not as a read begun in the tab's turn before has it", async (t) => {
+  const { server, hold, shown, saw, sees, other, start } = tab(t, 'user_rereads', true);
+  server.settings = chose(true);
+  server.waiting = [waits('jordan', 'm1'), waits('casey', 'm2')];
+  saw('m1');
+  const asked = hold(settingsRead);
+  start();
+  const give = await asked;
+  // Before it's read, the member focuses another tab, turns notifications off there, and closes
+  // it; what this tab was reading comes after.
+  const close = await other(true);
+  server.settings = chose(false);
+  close();
+  await turns();
+  give(chose(true));
+  await sees('m2');
+  assert.deepEqual(shown, []);
 });
 
 test('what a tab reads for a turn that ended alerts no one', async (t) => {
@@ -237,6 +314,21 @@ test('what waits as a tab starts alerting alerts as the member chose, once that 
   const give = await asked;
   await turns();
   give(chose(true));
+  await sees('m2');
+  assert.deepEqual(shown, ['casey: Running late']);
+});
+
+test('a message alerts as the member chose once it is read, not as the tab began reading it', async (t) => {
+  const { server, hold, shown, sees, start } = tab(t, 'user_rechose', true);
+  server.waiting = [waits('jordan', 'm1')];
+  start();
+  await sees('m1');
+  // Half a minute on, it reads what waits again; meanwhile the member turns notifications on.
+  const asked = hold(waitingUrl);
+  t.mock.timers.tick(30_000);
+  const give = await asked;
+  dataCache.put(settingsRead, chose(true));
+  give({ revision: 0, count: 2, since: [], latest: [...server.waiting, waits('casey', 'm2')] });
   await sees('m2');
   assert.deepEqual(shown, ['casey: Running late']);
 });
