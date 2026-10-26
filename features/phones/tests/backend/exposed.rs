@@ -157,11 +157,16 @@ async fn texting_lets_go_of_a_picture_only_its_adder_has_not_sent() {
     crate::backend::demo::demo(&db, &dsp, "America/Los_Angeles").unwrap();
     let texting = for_dsp(&db, &dsp).unwrap().expect("Phones is on");
     let folder = kept(&db, &dsp);
+    let other = db.new_dsp("Other DSP", "UTC", &owner, false).unwrap().id;
     let config = db.config.clone();
     drop(db);
     let state = State::new(config).unwrap();
     let sent = add(texting, &state, &dsp, &owner, b"door").await;
+    // Two pictures of the same bytes, which are kept once.
     let unsent = add(texting, &state, &dsp, &owner, b"dock").await;
+    let twin = add(texting, &state, &dsp, &owner, b"dock").await;
+    let bytes_kept = || std::fs::read_dir(&folder).unwrap().count();
+    assert_eq!(bytes_kept(), 2);
     let outgoing = Outgoing {
         phone: None,
         to: "(425) 555-0199".into(),
@@ -181,7 +186,7 @@ async fn texting_lets_go_of_a_picture_only_its_adder_has_not_sent() {
         }
     };
 
-    // Another's to let go of, or sent, it stays.
+    // Another's to let go of, sent, or named through another DSP, it stays.
     texting
         .remove_file(&state, &dsp, &unsent, "usr_other")
         .await
@@ -190,13 +195,26 @@ async fn texting_lets_go_of_a_picture_only_its_adder_has_not_sent() {
         .remove_file(&state, &dsp, &sent, &owner)
         .await
         .unwrap();
+    texting
+        .remove_file(&state, &other, &unsent, &owner)
+        .await
+        .unwrap();
     assert!(shown(unsent.clone()).await && shown(sent.clone()).await);
-    // Its adder's and not sent, it goes, with its bytes; the sent one's stay.
+    assert_eq!(bytes_kept(), 2);
+    // Its adder's and not sent, it goes, its bytes kept while its twin keeps them, and gone with
+    // the last; the sent one's stay.
     texting
         .remove_file(&state, &dsp, &unsent, &owner)
         .await
         .unwrap();
     assert!(!shown(unsent).await);
+    assert!(shown(twin.clone()).await);
+    assert_eq!(bytes_kept(), 2);
+    texting
+        .remove_file(&state, &dsp, &twin, &owner)
+        .await
+        .unwrap();
+    assert!(!shown(twin).await);
     assert!(shown(sent).await);
-    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 1);
+    assert_eq!(bytes_kept(), 1);
 }
