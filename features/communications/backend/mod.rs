@@ -6,7 +6,8 @@
 //!   Slack.
 //! - `conversations`: the conversations as the page reads them, with who each is with;
 //!   `contacts`, whom the DSP can message; `search`, finding people by a name typed; `profile`,
-//!   what else is known of whom a conversation is with: their route today and how to reach them.
+//!   what else is known of whom a conversation is with: their route today (`today`) and how to
+//!   reach them.
 //! - `reply`: answering, and messaging someone first; `sender`, the name and photo an answer
 //!   goes out under, and `initials`, the image of someone's initials when they have no photo.
 //! - `groups`: messaging a group, each in their own direct message, and their answers together.
@@ -29,6 +30,7 @@ pub(crate) mod sender;
 pub(crate) mod storage;
 pub(crate) mod text;
 pub(crate) mod texts;
+pub(crate) mod today;
 
 #[cfg(test)]
 #[path = "../tests/backend/support.rs"]

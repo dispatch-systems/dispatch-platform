@@ -4,17 +4,23 @@
 //! one DSP, every feature on for it, and one of its fixture workspaces connected, its members
 //! read: the workspace's admin has approved all the app asks for.
 use crate::api::types::Message;
-use crate::backend::{conversations, storage::CommunicationsStore};
+use crate::backend::{
+    conversations,
+    storage::CommunicationsStore,
+    texts::storage::{TextConversation, TextStore},
+};
 use crate::integrations::messages::incoming;
 use axum::body::Body;
+use chrono::{NaiveDate, TimeZone};
+use chrono_tz::Tz;
 use dispatch_core::{
     Error, Result, State,
     accounts::{Context, SessionLifetime},
     db::{Store, now},
-    foundation::{config::Site, crypto},
+    foundation::{clock, config::Site, crypto},
     manifest::{
         Feature, events, feature, mandatory, optional,
-        people::{Directory, Everyone, Person, Photo, Source, SourceInfo},
+        people::{Directory, Everyone, Person, PersonRole, Photo, Source, SourceInfo},
     },
     server::http::{input::Reply, route::Dsp, upload::Upload},
     testing,
@@ -49,6 +55,98 @@ const APPROVED: &[&str] = &[
     "files:write",
     "im:read",
 ];
+
+/// A platform with one DSP, every feature on for it, and its server's state.
+pub fn started() -> (impl Drop, Arc<State>, String) {
+    install();
+    let (root, store, dsp) = testing::bootstrapped();
+    let config = store.config.clone();
+    drop(store);
+    (root, State::new(config).unwrap(), dsp)
+}
+/// The DSP's own timezone, and its day today.
+pub async fn today(state: &Arc<State>, dsp: &str) -> (Tz, NaiveDate) {
+    let dsp = dsp.to_owned();
+    let zone: Tz = state
+        .read(move |db| Ok(db.find_dsp(&dsp)?.timezone))
+        .await
+        .unwrap()
+        .parse()
+        .unwrap();
+    (zone, clock::today(zone))
+}
+/// `hour`:`minute` on `day` in `zone`, in milliseconds.
+pub fn at(zone: Tz, day: NaiveDate, hour: u32, minute: u32) -> i64 {
+    zone.from_local_datetime(&day.and_hms_opt(hour, minute, 0).unwrap())
+        .earliest()
+        .unwrap()
+        .timestamp_millis()
+}
+/// The conversation the text `id` is filed in.
+pub async fn filed(state: &Arc<State>, dsp: &str, id: &str) -> TextConversation {
+    let (dsp, id) = (dsp.to_owned(), id.to_owned());
+    state
+        .read(move |db| {
+            let text = db.communications_text(&dsp, &id)?.unwrap();
+            Ok(db
+                .communications_text_conversation(&dsp, &text.conversation)?
+                .unwrap())
+        })
+        .await
+        .unwrap()
+}
+/// The route `code` the driver `driver` drove on `day` in the van `vin`, with `stops` stops, half
+/// of them done, its wave starting at `wave`.
+pub fn route(day: &str, driver: &str, code: &str, vin: &str, stops: i64, wave: i64) -> RouteDay {
+    RouteDay {
+        day: day.into(),
+        driver_id: driver.into(),
+        route_code: Some(code.into()),
+        status: None,
+        progress: None,
+        vin: Some(vin.into()),
+        wave_start_at: Some(wave),
+        planned_departure_at: None,
+        departed_at: None,
+        first_delivery_at: None,
+        last_delivery_at: None,
+        session_end_at: None,
+        stops,
+        stops_completed: stops / 2,
+        delivered: 0,
+        not_delivered: 0,
+        removed: 0,
+        breaks_secs: None,
+        overtime_secs: None,
+        undelivered: Vec::new(),
+    }
+}
+
+/// A driver Driver Match knows by their ID `id` of the stand-in drivers' source.
+pub fn driver(code: &str, name: &str, id: &str) -> Person {
+    Person {
+        code: code.into(),
+        name: name.into(),
+        names: vec![name.into()],
+        role: PersonRole::Driver,
+        title: None,
+        ids: BTreeMap::from([(DRIVERS, vec![id.into()])]),
+        emails: Vec::new(),
+        phones: Vec::new(),
+        confirmed: true,
+        photo: None,
+    }
+}
+/// The van `vin`, named `name`.
+pub fn van(vin: &str, name: &str) -> Van {
+    Van {
+        vin: vin.into(),
+        name: Some(name.into()),
+        status: "ACTIVE".into(),
+        listed: true,
+        last_listed: "2026-10-20T04:30:00Z".into(),
+    }
+}
 
 /// Installs Slack, Communications and the stand-ins.
 pub fn install() {
@@ -224,8 +322,9 @@ struct Known {
     people: Vec<Person>,
     routes: Vec<RouteDay>,
     vans: Vec<Van>,
-    /// The day live route data holds, and its holds on the work phones.
+    /// The day live route data holds, its routes, and its holds on the work phones.
     live_day: Option<String>,
+    live_routes: Vec<RouteDay>,
     live: Vec<WorkPhoneHold>,
     /// Each saved day's holds.
     saved: Vec<(String, WorkPhoneHold)>,
@@ -266,6 +365,12 @@ pub async fn held(
         (known.live_day, known.live, known.saved) = (live_day.map(str::to_owned), live, saved);
     }
     events::publish(state, dsp, WorkPhonesChanged).await;
+}
+/// Has live route data's stand-in answer `routes` as the live day's, as a live read leaves them,
+/// which Routes says nothing of.
+pub fn routed(dsp: &str, routes: Vec<RouteDay>) {
+    let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
+    known.entry(dsp.to_owned()).or_default().live_routes = routes;
 }
 /// A hold on the work phone `phone`, ten digits, by the driver `driver`, from `since` until
 /// `until`.
@@ -403,14 +508,37 @@ impl LiveRouteData for Standing {
     fn live_day(&self, _: &Store, dsp: &str) -> Result<Option<String>> {
         Ok(known(dsp, |known| known.live_day.clone()))
     }
-    fn day(&self, _: &Store, _: &str) -> Result<Driven> {
-        Ok(driven(Vec::new()))
+    /// The live day's routes, while it holds one.
+    fn day(&self, _: &Store, dsp: &str) -> Result<Driven> {
+        Ok(driven(known(dsp, |known| {
+            known
+                .live_routes
+                .iter()
+                .filter(|_| known.live_day.is_some())
+                .cloned()
+                .collect()
+        })))
     }
-    fn routes(&self, _: &Store, _: &str, _: &[String]) -> Result<Driven> {
-        Ok(driven(Vec::new()))
+    /// The live day's routes driven by `ids`.
+    fn routes(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Driven> {
+        let mut day = LiveRouteData::day(self, db, dsp)?;
+        day.routes.retain(|route| ids.contains(&route.driver_id));
+        Ok(day)
     }
-    fn work_phones(&self, _: &Store, _: &str) -> Result<Vec<WorkPhone>> {
-        Ok(Vec::new())
+    /// The work phones the live day's holds that haven't ended hold.
+    fn work_phones(&self, _: &Store, dsp: &str) -> Result<Vec<WorkPhone>> {
+        Ok(known(dsp, |known| {
+            known
+                .live
+                .iter()
+                .filter(|hold| hold.until.is_none())
+                .map(|hold| WorkPhone {
+                    driver_id: hold.driver_id.clone(),
+                    phone: hold.phone.clone(),
+                    since: hold.since,
+                })
+                .collect()
+        }))
     }
     fn work_phone_holds(&self, _: &Store, dsp: &str) -> Result<Vec<WorkPhoneHold>> {
         Ok(known(dsp, |known| known.live.clone()))

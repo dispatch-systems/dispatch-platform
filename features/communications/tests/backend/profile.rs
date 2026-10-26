@@ -1,12 +1,10 @@
 //! The profile beside a conversation: the member's route on the DSP's own day today, with what
 //! the DSP calls its van, and how to reach them, each only while the feature that knows it is on.
 use super::*;
-use crate::backend::support::{self, DRIVERS};
+use crate::backend::support::{self, DRIVERS, route, van};
 use crate::integrations::messages::incoming;
-use dispatch_core::{db::now, manifest::people::PersonRole};
-use dispatch_routes_contract::RouteDay;
+use dispatch_core::{db::now, foundation::clock, manifest::people::PersonRole};
 use dispatch_slack::kit::{self, Bot};
-use dispatch_vans_contract::Van;
 use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -40,10 +38,7 @@ async fn days(state: &Arc<State>, dsp: &str) -> (String, String) {
 async fn profile(state: &Arc<State>, dsp: &str, id: &str) -> Profile {
     let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
     state
-        .read(move |db| {
-            let zone = db.find_dsp(&dsp)?.timezone;
-            of(db, &shared, &dsp, &zone, &id)
-        })
+        .read(move |db| of(db, &shared, &dsp, &id, false))
         .await
         .unwrap()
 }
@@ -65,43 +60,6 @@ fn jordan() -> Person {
         photo: None,
     }
 }
-/// The route `code` the driver `driver` drove on `day` in the van `vin`, with `stops` stops, its
-/// wave starting at `wave`.
-fn route(day: &str, driver: &str, code: &str, vin: &str, stops: i64, wave: i64) -> RouteDay {
-    RouteDay {
-        day: day.into(),
-        driver_id: driver.into(),
-        route_code: Some(code.into()),
-        status: None,
-        progress: None,
-        vin: Some(vin.into()),
-        wave_start_at: Some(wave),
-        planned_departure_at: None,
-        departed_at: None,
-        first_delivery_at: None,
-        last_delivery_at: None,
-        session_end_at: None,
-        stops,
-        stops_completed: stops / 2,
-        delivered: 0,
-        not_delivered: 0,
-        removed: 0,
-        breaks_secs: None,
-        overtime_secs: None,
-        undelivered: Vec::new(),
-    }
-}
-/// The van `vin`, named `name`.
-fn van(vin: &str, name: &str) -> Van {
-    Van {
-        vin: vin.into(),
-        name: Some(name.into()),
-        status: "ACTIVE".into(),
-        listed: true,
-        last_listed: "2026-10-20T04:30:00Z".into(),
-    }
-}
-
 #[tokio::test]
 async fn the_profile_shows_the_route_driven_today_and_how_to_reach_the_member() {
     let (_root, state, bot) = support::connected(TEAM).await;

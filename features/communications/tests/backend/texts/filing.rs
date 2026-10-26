@@ -5,64 +5,21 @@
 use super::*;
 use crate::backend::{
     conversations,
-    support::{self, DRIVERS, held, hold, texted},
+    support::{self, DRIVERS, at, filed, held, hold, started, texted, today},
     texts::{
         contacts, reply,
-        storage::{ConversationKind, TextConversation, TextStore},
+        storage::{ConversationKind, TextStore},
     },
 };
 use crate::{Communications, ConversationState};
-use chrono::{NaiveDate, TimeZone};
-use dispatch_core::{
-    manifest::people::{Person, PersonRole},
-    testing,
-};
+use dispatch_core::manifest::people::{Person, PersonRole};
 use std::collections::BTreeMap;
 
-/// A platform with one DSP, every feature on for it, and its server's state.
-fn started() -> (impl Drop, Arc<State>, String) {
-    support::install();
-    let (root, store, dsp) = testing::bootstrapped();
-    let config = store.config.clone();
-    drop(store);
-    (root, State::new(config).unwrap(), dsp)
-}
-/// The DSP's own timezone, and its day today.
-async fn today(state: &Arc<State>, dsp: &str) -> (Tz, NaiveDate) {
-    let dsp = dsp.to_owned();
-    let zone: Tz = state
-        .read(move |db| Ok(db.find_dsp(&dsp)?.timezone))
-        .await
-        .unwrap()
-        .parse()
-        .unwrap();
-    (zone, clock::today(zone))
-}
-/// `hour`:`minute` on `day` in `zone`, in milliseconds.
-fn at(zone: Tz, day: NaiveDate, hour: u32, minute: u32) -> i64 {
-    zone.from_local_datetime(&day.and_hms_opt(hour, minute, 0).unwrap())
-        .earliest()
-        .unwrap()
-        .timestamp_millis()
-}
 /// The page's list as the member `me` reads it.
 async fn listed(state: &Arc<State>, dsp: &str) -> Communications {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     state
         .read(move |db| conversations::overview(db, &shared, &dsp, "me", None))
-        .await
-        .unwrap()
-}
-/// The conversation the text `id` is filed in.
-async fn filed(state: &Arc<State>, dsp: &str, id: &str) -> TextConversation {
-    let (dsp, id) = (dsp.to_owned(), id.to_owned());
-    state
-        .read(move |db| {
-            let text = db.communications_text(&dsp, &id)?.unwrap();
-            Ok(db
-                .communications_text_conversation(&dsp, &text.conversation)?
-                .unwrap())
-        })
         .await
         .unwrap()
 }
@@ -223,9 +180,16 @@ async fn a_work_phones_texts_are_the_drivers_who_held_it_as_each_was_written_tod
             (ConversationKind::Work, None, Some(phone))
         );
     }
-    // Messaging lists none of them, nor counts them.
+    // Messaging lists none of them: they're Today's Routes', those waiting on the live day
+    // counted, and yesterday's Casey's not.
     let listed = listed(&state, &dsp).await;
-    assert_eq!((listed.waiting, listed.conversations.len()), (0, 0));
+    assert!(
+        listed
+            .conversations
+            .iter()
+            .all(|each| each.kind == ConversationKind::Work)
+    );
+    assert_eq!(listed.waiting, 4);
 }
 
 #[tokio::test]
@@ -244,7 +208,7 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
     let number = filed(&state, &dsp, &asked).await;
     assert_eq!(number.kind, ConversationKind::Number);
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = reply::send(&state, &c, support::USE, &number.id, "Van 214")
+    let answer = reply::send(&state, &c, support::USE, &number.id, "Van 214", &[])
         .await
         .unwrap();
 

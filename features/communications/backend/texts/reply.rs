@@ -1,46 +1,58 @@
-//! Answering by text, and sending again one that failed. An answer goes as written, with nothing
-//! added, so the other party sees only the DSP's number: through `texting`, from the phone that
-//! last texted that number, else the one seen last; and is kept as Phones then tells of it, with
-//! how it went, under the full name of whoever wrote it, as a Slack answer is. One that failed is
-//! sent again with Retry. Only a number's conversation is answered here: a driver's work phones
-//! come with Today's Routes. The member's access is checked again before a text goes.
+//! Answering by text, with pictures, and sending again one that failed. An answer goes as
+//! written, with nothing added, so the other party sees only the DSP's number: through `texting`,
+//! from the phone that last texted that number, else the one seen last; and is kept as Phones then
+//! tells of it, with how it went, under the full name of whoever wrote it, as a Slack answer is.
+//! A number's conversation, and a work phone's nobody held, answer their number; a driver's, the
+//! work phone they hold now, as live route data says, and none while they hold none. Its pictures
+//! are kept by `texting` as they're added, its adder's alone until they go with it. One that
+//! failed is sent again with Retry. The member's access is checked again before a text goes.
 use super::{
-    filing, offering,
-    reading::{message, numbered},
-    storage::TextStore,
+    filing,
+    live_day::LiveDay,
+    numbers::work_number,
+    offering,
+    reading::message,
+    storage::{ConversationKind, TextStore},
 };
 use crate::{
-    api::types::Message,
-    backend::{live, reply::checked, sender, storage::DOMAIN},
+    api::types::{CommunicationsUpload, Message},
+    backend::{
+        live,
+        reply::{PHOTO_KINDS, checked},
+        sender,
+        storage::DOMAIN,
+    },
 };
-use dispatch_core::{Result, State, accounts::Context, ensure, server::http::route::Dsp};
-use dispatch_phones_contract::Outgoing;
+use dispatch_core::{
+    Error, Result, State, accounts::Context, db::Store, ensure, server::http::route::Dsp,
+    server::http::upload::Upload,
+};
+use dispatch_phones_contract::{Added, Outgoing};
 use std::sync::Arc;
 
-/// Sends what the member `c` wrote in the number's conversation `id`, by text: the text, as kept.
+/// Sends what the member `c` wrote in the conversation by text `id`, with the pictures `photos`
+/// they added for it: the text, as kept.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
     access: Dsp,
     id: &str,
     written: &str,
+    photos: &[String],
 ) -> Result<Message> {
-    let body = checked(written, &[])?.to_owned();
+    let body = checked(written, photos)?.to_owned();
     let (dsp, at) = (c.dsp.id.clone(), id.to_owned());
-    let (number, texting) = state
-        .read(move |db| {
-            let number = numbered(db, &dsp, &at)?;
-            Ok((number, offering(db, &dsp)?))
-        })
+    let (to, texting) = state
+        .read(move |db| Ok((recipient(db, &dsp, &at)?, offering(db, &dsp)?)))
         .await?;
     // Checked again before it goes: once Phones has it, it's sent.
     let asked = c.clone();
     let c = state.read(move |db| access.revalidate(db, &asked)).await?;
     let outgoing = Outgoing {
         phone: None,
-        to: number,
+        to,
         body,
-        files: Vec::new(),
+        files: photos.to_vec(),
         by: c.auth.user.id.clone(),
     };
     let sent = texting.send(state, &c.dsp.id, outgoing).await?;
@@ -53,6 +65,26 @@ pub async fn send(
             message(db, &shared, &dsp, &sent.id)
         })
         .await
+}
+
+/// Where a text written in the conversation `id` goes: a number's own number, or a work phone's
+/// nobody held; for a driver's, the work phone they hold now, refused while they hold none.
+fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
+    let conversation = db
+        .communications_text_conversation(dsp, id)?
+        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+    let held = match (&conversation.driver, conversation.kind) {
+        (Some((source, driver)), _) => match LiveDay::read(db, dsp)? {
+            Some(live) if live.source == *source => {
+                live.held_by(db, dsp, std::slice::from_ref(driver))?
+            }
+            _ => None,
+        },
+        (None, ConversationKind::Slack) => None,
+        (None, _) => return conversation.number.ok_or_else(|| Error::new("invalid_input", 400)),
+    };
+    held.map(|held| work_number(&held.phone))
+        .ok_or_else(|| Error::new("communications_no_work_phone", 409))
 }
 
 /// Sends again the text `text`, which Dispatch sent in the conversation `id` and failed: the
@@ -84,6 +116,42 @@ pub async fn retry(
     state
         .read(move |db| message(db, &shared, &dsp, &sent.id))
         .await
+}
+
+/// Keeps a picture the member `c` adds for a text not sent yet, named `name`, of the kind `mime`,
+/// through `texting`: as the page reads it. One that isn't a photo a text carries is refused, by
+/// its kind.
+pub async fn upload(
+    state: &Arc<State>,
+    c: &Context,
+    name: &str,
+    mime: &str,
+    photo: Upload,
+) -> Result<CommunicationsUpload> {
+    ensure(
+        PHOTO_KINDS.iter().any(|(kind, _)| *kind == mime),
+        "communications_photo_kind",
+        415,
+    )?;
+    let dsp = c.dsp.id.clone();
+    let texting = state.read(move |db| offering(db, &dsp)).await?;
+    ensure(
+        photo.length <= texting.largest(),
+        "upload_too_large",
+        413,
+    )?;
+    let added = Added {
+        by: c.auth.user.id.clone(),
+        name: name.to_owned(),
+        mime: mime.to_owned(),
+    };
+    let kept = texting.add_file(state, &c.dsp.id, added, photo).await?;
+    Ok(CommunicationsUpload {
+        id: kept.id,
+        name: kept.name,
+        mime: kept.mime,
+        size: kept.size,
+    })
 }
 
 #[cfg(test)]

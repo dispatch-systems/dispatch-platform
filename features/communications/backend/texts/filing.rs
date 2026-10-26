@@ -9,12 +9,15 @@
 //! saved holds. Of the number's holds that day, the one covering when it was written; written
 //! before any, the day's first holder, as it came before the day's first live read or before they
 //! signed in; written once nobody held it, the work phone's own. A work phone nobody held that
-//! day is still one (`was_work_phone`). Any other number's texts are its own. Who held which
-//! phone settles as the day goes on, so today's texts are filed again each time it changes
-//! (`WorkPhonesChanged`).
+//! day is still one (`was_work_phone`). Where someone at the DSP picked a driver for the phone
+//! that day (`picking`), a text no hold covers is that driver's, before the day's first holder.
+//! Any other number's texts are its own. Who held which phone settles as the day goes on, so
+//! today's texts are filed again each time it changes (`WorkPhonesChanged`), and the pages
+//! waiting on changes hear of the work conversations waiting, which wait only on the live day.
 use super::{
     numbers::ten_digits,
     storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
+    zone,
 };
 use crate::backend::{
     live,
@@ -54,7 +57,8 @@ pub fn heard(state: Arc<State>, dsp: String, _: TextsChanged) -> Upkeep {
         }
     })
 }
-/// Routes says who holds the DSP's work phones changed: files today's texts again.
+/// Routes says who holds the DSP's work phones changed: files today's texts again, as the live day
+/// may have begun or ended.
 pub fn refile(state: Arc<State>, dsp: String, _: WorkPhonesChanged) -> Upkeep {
     Box::pin(async move {
         if let Err(error) = refile_today(&state, &dsp).await {
@@ -129,27 +133,31 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
     }
 }
 
-/// Files every text of today, the DSP's day, again, where it belongs now.
+/// Files every text of today, the DSP's day, again, where it belongs now, and notes the work
+/// conversations waiting changed, then wakes the pages waiting on them.
 pub async fn refile_today(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
-    let changed = state
+    state
         .run_scoped(dsp, DOMAIN, move |db| {
-            let mut filer = Filer::new(db, &at)?;
-            let zone = filer.zone;
-            let today = clock::today(zone);
-            let moves = db
-                .communications_texts_from(&at, now() - TWO_DAYS_MS)?
-                .into_iter()
-                .filter(|text| clock::day(zone, text.at) == today)
-                .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
-                .collect::<Result<Vec<_>>>()?;
-            Ok(!db.refile_communications_texts(&at, &moves)?.is_empty())
+            refiled(db, &at)?;
+            db.changed_communications_work(&at)
         })
         .await?;
-    if changed {
-        live::changed(state, dsp);
-    }
+    live::changed(state, dsp);
     Ok(())
+}
+/// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
+pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
+    let mut filer = Filer::new(db, dsp)?;
+    let zone = filer.zone;
+    let today = clock::today(zone);
+    let moves = db
+        .communications_texts_from(dsp, now() - TWO_DAYS_MS)?
+        .into_iter()
+        .filter(|text| clock::day(zone, text.at) == today)
+        .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(!db.refile_communications_texts(dsp, &moves)?.is_empty())
 }
 
 /// `text` as Communications keeps it, filed as `filed`.
@@ -201,16 +209,14 @@ struct Filer<'a> {
     routes: Option<&'static dyn DriverRoutes>,
     /// Each day's holds, each with the source of the ID that held it.
     holds: HashMap<String, Vec<(String, WorkPhoneHold)>>,
+    /// Each day's picks: the driver picked for each work phone, by its ten digits.
+    picked: HashMap<String, HashMap<String, Filed>>,
     /// Whether each number, by its ten digits, was ever a work phone.
     work_phones: HashMap<String, bool>,
 }
 impl<'a> Filer<'a> {
     fn new(db: &'a Store, dsp: &'a str) -> Result<Self> {
-        let zone = db
-            .find_dsp(dsp)?
-            .timezone
-            .parse()
-            .map_err(|_| Error::new("invalid_timezone", 400))?;
+        let zone = zone(db, dsp)?;
         let live = routes::live_for_dsp(db, dsp)?;
         let live_day = match live {
             Some(live) => live.live_day(db, dsp)?,
@@ -224,40 +230,47 @@ impl<'a> Filer<'a> {
             live_day,
             routes: routes::for_dsp(db, dsp)?,
             holds: HashMap::new(),
+            picked: HashMap::new(),
             work_phones: HashMap::new(),
         })
     }
-    /// Where a text with `number`, written at `at`, is filed.
+    /// Where a text with `number`, written at `at`, is filed: under the driver whose hold covers
+    /// it, else the driver picked for the phone that day, else the day's first holder when it came
+    /// before any hold; else under the work phone, or the number, as itself.
     fn filed(&mut self, number: &str, at: i64) -> Result<Filed> {
         let Some(ten) = ten_digits(number) else {
             return Ok(Filed::Number(number.to_owned()));
         };
         let day = clock::day(self.zone, at).to_string();
-        let held: Vec<&(String, WorkPhoneHold)> = self
+        let held: Vec<(String, WorkPhoneHold)> = self
             .holds(&day)?
             .iter()
             .filter(|(_, hold)| hold.phone == ten)
+            .cloned()
             .collect();
-        if !held.is_empty() {
-            let covering = held
-                .iter()
-                .find(|(_, hold)| hold.since <= at && hold.until.is_none_or(|until| at < until));
-            let first = held
-                .iter()
-                .min_by_key(|(_, hold)| hold.since)
-                .filter(|(_, hold)| at < hold.since);
-            return Ok(match covering.or(first) {
-                Some((source, hold)) => Filed::Driver {
-                    source: source.clone(),
-                    id: hold.driver_id.clone(),
-                },
-                None => Filed::WorkPhone(number.to_owned()),
-            });
+        let driver = |(source, hold): &(String, WorkPhoneHold)| Filed::Driver {
+            source: source.clone(),
+            id: hold.driver_id.clone(),
+        };
+        let covering = held
+            .iter()
+            .find(|(_, hold)| hold.since <= at && hold.until.is_none_or(|until| at < until));
+        if let Some(covering) = covering {
+            return Ok(driver(covering));
         }
-        Ok(if self.was_work_phone(&ten)? {
-            Filed::WorkPhone(number.to_owned())
-        } else {
-            Filed::Number(number.to_owned())
+        if let Some(picked) = self.picked(&day)?.get(&ten) {
+            return Ok(picked.clone());
+        }
+        let first = held
+            .iter()
+            .min_by_key(|(_, hold)| hold.since)
+            .filter(|(_, hold)| at < hold.since);
+        Ok(match first {
+            Some(first) => driver(first),
+            None if !held.is_empty() || self.was_work_phone(&ten)? => {
+                Filed::WorkPhone(number.to_owned())
+            }
+            None => Filed::Number(number.to_owned()),
         })
     }
     /// Every hold on a work phone on `day`: live route data's while it holds that day, else the
@@ -285,6 +298,14 @@ impl<'a> Filer<'a> {
             self.holds.insert(day.to_owned(), read);
         }
         Ok(&self.holds[day])
+    }
+    /// The drivers picked for work phones on `day`, by their ten digits.
+    fn picked(&mut self, day: &str) -> Result<&HashMap<String, Filed>> {
+        if !self.picked.contains_key(day) {
+            let picked = self.db.communications_picked(self.dsp, day)?.into_iter().collect();
+            self.picked.insert(day.to_owned(), picked);
+        }
+        Ok(&self.picked[day])
     }
     fn was_work_phone(&mut self, ten: &str) -> Result<bool> {
         if let Some(&was) = self.work_phones.get(ten) {

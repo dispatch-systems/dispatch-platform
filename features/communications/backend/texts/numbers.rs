@@ -1,6 +1,7 @@
 //! Phone numbers, each written one way as `texting` writes them (its `normal`): how one reads
-//! (`shown`); the ten digits Routes keeps a work phone by (`ten_digits`); and what the DSP keeps
-//! of the numbers that text it, and what its phones are called, to read its texts by (`Numbers`).
+//! (`shown`); the ten digits Routes keeps a work phone by (`ten_digits`), and back
+//! (`work_number`); and what the DSP keeps of the numbers that text it, and what its phones are
+//! called, to read its texts by (`Numbers`).
 use super::storage::TextStore;
 use dispatch_core::{Result, db::Store};
 use dispatch_phones_contract as texting;
@@ -56,6 +57,11 @@ pub fn shown(number: &str) -> String {
         Some(ten) => format!("({}) {}-{}", &ten[..3], &ten[3..6], &ten[6..]),
         None => number.to_owned(),
     }
+}
+
+/// A work phone's number as texts write it, from its ten digits as Routes keeps it.
+pub fn work_number(ten: &str) -> String {
+    format!("+1{ten}")
 }
 
 /// A number's ten digits, as Routes keeps a work phone's: only a North American one, `+1` and

@@ -9,15 +9,11 @@ use crate::backend::{
         storage::{TextStatus, TextStore},
     },
 };
-use dispatch_core::{db::now, testing};
+use dispatch_core::db::now;
 
 #[tokio::test]
 async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
-    support::install();
-    let (_root, store, dsp) = testing::bootstrapped();
-    let config = store.config.clone();
-    drop(store);
-    let state = State::new(config).unwrap();
+    let (_root, state, dsp) = support::started();
     let asked = texted(
         &state,
         &dsp,
@@ -45,6 +41,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
         support::USE,
         &conversation,
         "Perfect, thank you!",
+        &[],
     )
     .await
     .unwrap();

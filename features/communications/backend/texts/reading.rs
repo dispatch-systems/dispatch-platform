@@ -1,10 +1,15 @@
 //! Reading the DSP's conversations by text as the page reads them, beside the Slack ones: those
 //! waiting, the answered a page at a time, those found by a name or a number's digits, and a
-//! conversation with its texts, each under whoever wrote it.
+//! conversation with its texts, each under whoever wrote it. A work conversation waits only on
+//! the live day (`live_day`); a driver's comes with their route today, each workday's route, and
+//! their conversations of other kinds.
 use super::{
+    elsewhere,
+    live_day::{self, LiveDay},
     numbers::Numbers,
     offered,
     storage::{ConversationKind, Text, TextConversation, TextStore},
+    workdays,
 };
 use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
@@ -14,7 +19,9 @@ use crate::backend::{
     files::FileStatus,
     search,
     storage::Direction,
+    today,
 };
+use dispatch_core::manifest::people::Person;
 use dispatch_core::{
     Error, Result, State,
     accounts::Context,
@@ -40,7 +47,8 @@ pub fn before(value: &str) -> Result<(i64, String)> {
         .ok_or_else(|| Error::new("invalid_input", 400))
 }
 
-/// `kept` as the page reads them, each with its latest text.
+/// `kept` as the page reads them, each with its latest text: a work conversation as of the live
+/// day.
 pub fn conversations(
     db: &Store,
     people: &People,
@@ -48,6 +56,7 @@ pub fn conversations(
     dsp: &str,
     kept: Vec<TextConversation>,
 ) -> Result<Vec<Conversation>> {
+    let kept = live_day::slated(db, dsp, kept)?;
     let ids: Vec<String> = kept.iter().map(|each| each.id.clone()).collect();
     let mut latest: HashMap<String, Text> = db
         .latest_communications_texts(dsp, &ids)?
@@ -62,12 +71,11 @@ pub fn conversations(
                 .number
                 .clone()
                 .or_else(|| last.as_ref().map(|text| text.number.clone()));
-            let with = match &conversation.driver {
-                Some((source, id)) => people.driver(source, id, id),
-                None => {
-                    let number = number.as_deref().unwrap_or_default();
-                    people.texting(number, numbers.contact(number))
-                }
+            let number_or_none = number.as_deref().unwrap_or_default();
+            let with = match (&conversation.driver, conversation.kind) {
+                (Some((source, id)), _) => people.driver(source, id, id),
+                (None, ConversationKind::Work) => people.work_phone(number_or_none),
+                (None, _) => people.texting(number_or_none, numbers.contact(number_or_none)),
             };
             // A number's own conversation is saved as a contact, or blocked, as its number is.
             let own = number
@@ -76,6 +84,7 @@ pub fn conversations(
             Conversation {
                 id: conversation.id,
                 kind: conversation.kind,
+                driver_id: conversation.driver.map(|(_, id)| id),
                 team_id: None,
                 contact: own.is_some_and(|number| numbers.contact(number).is_some()),
                 blocked: own.is_some_and(|number| numbers.blocked(number)),
@@ -131,17 +140,21 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
             in_thread: false,
             group: None,
             status: text.status,
+            number: Some(text.number),
         })
         .collect()
 }
 
-/// The numbers' conversations waiting, while the DSP texts, the longest waiting first: a
-/// blocked number's aren't.
+/// The conversations by text waiting, while the DSP texts, the longest waiting first: the
+/// numbers', but a blocked number's, and the work conversations waiting on the live day.
 pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
     if !offered(db, dsp)? {
         return Ok(Vec::new());
     }
-    db.waiting_communications_texts(dsp)
+    let mut waiting = db.waiting_communications_texts(dsp)?;
+    waiting.extend(live_day::waiting(db, dsp)?);
+    waiting.sort_by(|a, b| a.waiting_since.cmp(&b.waiting_since).then_with(|| a.id.cmp(&b.id)));
+    Ok(waiting)
 }
 
 /// The numbers' conversations answered, while the DSP texts, before `before`, a page of them,
@@ -176,21 +189,34 @@ pub fn older(db: &Store, state: &State, dsp: &str, before: (i64, &str)) -> Resul
 
 /// A conversation found by what was typed: how like it, and the letters of its name that matched.
 type Found = (f64, Vec<(u32, u32)>, TextConversation);
-/// The numbers' conversations whose name is like `typed`, or whose number holds the digits typed,
-/// the closest first, then the latest, fifty at most; a blocked number's aren't.
-pub fn search(db: &Store, state: &State, dsp: &str, typed: &str) -> Result<Conversations> {
+/// The conversations of `kind`, numbers' or work, whose name is like `typed`, or whose number
+/// holds the digits typed, the closest first, then the latest, fifty at most; a blocked number's
+/// aren't.
+pub fn search(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    kind: ConversationKind,
+    typed: &str,
+) -> Result<Conversations> {
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
     let mut found: Vec<Found> = Vec::new();
     if offered(db, dsp)? {
-        for conversation in db.communications_numbers(dsp)? {
-            let Some(number) = conversation.number.clone() else {
-                continue;
-            };
+        let kept = match kind {
+            ConversationKind::Work => db.communications_work(dsp)?,
+            _ => db.communications_numbers(dsp)?,
+        };
+        for conversation in kept {
+            let number = conversation.number.clone().unwrap_or_default();
             if conversation.last_at.is_none() || numbers.blocked(&number) {
                 continue;
             }
-            let named = people.texting(&number, numbers.contact(&number));
+            let named = match (&conversation.driver, kind) {
+                (Some((source, id)), _) => people.driver(source, id, id),
+                (None, ConversationKind::Work) => people.work_phone(&number),
+                (None, _) => people.texting(&number, numbers.contact(&number)),
+            };
             if let Some((score, marks)) = like(typed, &named.name, &number) {
                 found.push((score, marks, conversation));
             }
@@ -227,7 +253,8 @@ pub fn like(typed: &str, name: &str, number: &str) -> Option<(f64, Vec<(u32, u32
     search::matched(typed, name)
 }
 
-/// The conversation `id` and its latest texts, or those before `before`.
+/// The conversation `id` and its latest texts, or those before `before`; a driver's with their
+/// route today and each workday's; and whom it's with's conversations of each kind.
 pub fn opened(
     db: &Store,
     state: &State,
@@ -243,11 +270,39 @@ pub fn opened(
     if more {
         read.remove(0);
     }
+    let (today, workdays) = match &kept.driver {
+        Some((source, driver)) => {
+            let today = match LiveDay::read(db, dsp)? {
+                Some(live) if live.source == *source => {
+                    today::of_drivers(db, dsp, &live, std::slice::from_ref(driver))?
+                }
+                _ => None,
+            };
+            (today, workdays::of(db, dsp, source, driver, &read)?)
+        }
+        None => (None, Vec::new()),
+    };
+    let elsewhere = match whose(&people, &kept) {
+        Some(person) => elsewhere::of(db, dsp, person)?,
+        None => Vec::new(),
+    };
     Ok(ConversationMessages {
         conversation: conversations(db, &people, &numbers, dsp, vec![kept])?.remove(0),
         messages: messages(&people, &numbers, read),
         more,
+        today,
+        elsewhere,
+        workdays,
     })
+}
+/// Whom the conversation `kept` is with, as Driver Match knows them: the driver, or whoever it
+/// has the number for.
+fn whose<'a>(people: &'a People, kept: &TextConversation) -> Option<&'a Person> {
+    match (&kept.driver, kept.kind, &kept.number) {
+        (Some((source, id)), _, _) => people.driver_of(source, id),
+        (None, ConversationKind::Number, Some(number)) => people.holding_number(number),
+        _ => None,
+    }
 }
 
 /// The conversation `id` as the page reads it.
