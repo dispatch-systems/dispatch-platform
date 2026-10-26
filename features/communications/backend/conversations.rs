@@ -3,8 +3,8 @@
 //! files and the group it went to; and the workspaces they're in. Those waiting come first, the
 //! longest waiting first, with the groups waiting, then the latest answered and the groups among
 //! them, of every workspace or one, fifty at a time; a conversation's messages the latest fifty at
-//! a time, in the order written. The numbers' conversations by text come with them, as `texts`
-//! reads them, while the DSP texts.
+//! a time, in the order written. The conversations by text come with them, as `texts` reads them,
+//! while the DSP texts.
 use super::{
     files::{File, FileStore},
     groups::{
@@ -14,10 +14,11 @@ use super::{
     live, search,
     storage::{self, CommunicationsStore, Direction},
     texts::{
-        self,
+        self, elsewhere,
         numbers::{Numbers, shown},
         reading,
         storage::{ConversationKind, TextStore},
+        todays_routes,
     },
 };
 use crate::{
@@ -63,14 +64,16 @@ impl People {
     pub fn everyone(&self) -> &Everyone {
         &self.everyone
     }
+    /// The workspace `team`'s member `user`, as Driver Match knows them, if it does.
+    pub fn member_of(&self, team: &str, user: &str) -> Option<&Person> {
+        self.everyone
+            .holding(kit::SOURCE, &kit::member_id(team, user))
+    }
     /// The workspace `team`'s member `user`, whose Slack profile last named them `name`.
     pub fn correspondent(&self, team: &str, user: &str, name: &str) -> Correspondent {
-        let person = self
-            .everyone
-            .holding(kit::SOURCE, &kit::member_id(team, user));
         Correspondent {
             user_id: Some(user.to_owned()),
-            ..with(person, name)
+            ..with(self.member_of(team, user), name)
         }
     }
     /// The person Driver Match has the phone number `number` for, if any: of several, one who
@@ -98,11 +101,27 @@ impl People {
         let name = contact.map_or_else(|| shown(number), str::to_owned);
         with(self.holding_number(number), &name)
     }
+    /// The driver holding `id` of the source `source`, as Driver Match knows them, if it does.
+    pub fn driver_of(&self, source: &str, id: &str) -> Option<&Person> {
+        Source::parse(source).and_then(|source| self.everyone.holding(source, id))
+    }
     /// The driver holding `id` of the source `source`, as Driver Match knows them, else by the
     /// name `name`.
     pub fn driver(&self, source: &str, id: &str, name: &str) -> Correspondent {
-        let person = Source::parse(source).and_then(|source| self.everyone.holding(source, id));
-        with(person, name)
+        with(self.driver_of(source, id), name)
+    }
+    /// The driver holding `id` of `source`, as a reader of routes names its drivers, as Driver
+    /// Match knows them, else by that ID.
+    pub fn routed(&self, source: Source, id: &str) -> Correspondent {
+        with(self.everyone.holding(source, id), id)
+    }
+    /// A work phone nobody held, `number`, by its last four digits.
+    pub fn work_phone(&self, number: &str) -> Correspondent {
+        let digits: String = number.chars().filter(char::is_ascii_digit).collect();
+        with(
+            None,
+            &format!("Work phone {}", &digits[digits.len().saturating_sub(4)..]),
+        )
     }
     /// The person the DSP's member `user` is, by their email address, if any: their code and
     /// their photo's version.
@@ -189,6 +208,7 @@ pub fn conversations(
             kind: ConversationKind::Slack,
             team_id: Some(conversation.team),
             number: None,
+            driver_id: None,
             contact: false,
             blocked: false,
             state: conversation.state,
@@ -247,6 +267,7 @@ pub fn messages(
             at: message.at,
             edited_at: message.edited_at,
             status: None,
+            number: None,
         })
         .collect())
 }
@@ -347,6 +368,8 @@ pub fn overview(
         more_texts,
         workspaces: workspaces(db, dsp)?,
         texting: texts::offered(db, dsp)?,
+        routes: todays_routes::offered(db, dsp)?,
+        phones: texts::phones(db, dsp)?,
         typing: people.writing(live::typing(dsp, me).0),
     })
 }
@@ -408,7 +431,7 @@ pub fn search(
     })
 }
 /// The conversation `id` and its latest messages, or those before the one Slack knows as
-/// `before`.
+/// `before`, with whom it's with's conversations of each kind.
 pub fn opened(
     db: &Store,
     state: &State,
@@ -425,10 +448,17 @@ pub fn opened(
     if more {
         read.remove(0);
     }
+    let elsewhere = match people.member_of(&kept.team, &kept.user) {
+        Some(person) => elsewhere::of(db, dsp, person)?,
+        None => Vec::new(),
+    };
     Ok(ConversationMessages {
         conversation: conversations(db, &people, dsp, vec![kept])?.remove(0),
         messages: messages(db, &people, dsp, read)?,
         more,
+        today: None,
+        elsewhere,
+        workdays: Vec::new(),
     })
 }
 /// The conversation `id` as its pages read it.
@@ -458,14 +488,12 @@ pub fn updates(
         let people = People::read(db, state, dsp)?;
         typing = people.writing(typing);
         if let Some(ids) = ids {
-            // Each change names a conversation, a group, or a conversation by text: a number's,
-            // as the page lists them.
+            // Each change names a conversation, a group, or a conversation by text.
             let kept = db.communications_conversations(dsp, ids)?;
             conversations = self::conversations(db, &people, dsp, kept)?;
             let kept = db.communications_groups(dsp, ids)?;
             changed_groups = groups::listed(db, &people, dsp, kept)?;
-            let mut texted = db.communications_text_conversations(dsp, ids)?;
-            texted.retain(|each| each.kind == ConversationKind::Number);
+            let texted = db.communications_text_conversations(dsp, ids)?;
             let numbers = Numbers::read(db, dsp)?;
             conversations.extend(reading::conversations(db, &people, &numbers, dsp, texted)?);
         }
@@ -480,6 +508,8 @@ pub fn updates(
             typing,
             workspaces: workspaces(db, dsp)?,
             texting: texts::offered(db, dsp)?,
+            routes: todays_routes::offered(db, dsp)?,
+            phones: texts::phones(db, dsp)?,
         },
         next,
     ))

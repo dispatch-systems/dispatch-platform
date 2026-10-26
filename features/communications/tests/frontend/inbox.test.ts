@@ -5,11 +5,13 @@ import type {
   CommunicationsWorkspace,
   Contact,
   Conversation,
+  Elsewhere,
   Group,
   GroupChoice,
   Reachable,
 } from '../../api/index.js';
 import {
+  elsewhereNow,
   marked,
   rows,
   shownWorkspace,
@@ -32,6 +34,7 @@ const conversation = (
   kind: 'slack',
   teamId: 'T0FIXTURE1',
   number: null,
+  driverId: null,
   contact: false,
   blocked: false,
   with: { userId: `U${id}`, name: id, code: null, role: null, title: null, photo: null },
@@ -65,7 +68,7 @@ const texts = (id: string, at: number, since: number | null = null): Conversatio
 const ids = (inbox: Communications, section: Section = 'slack') =>
   rows(inbox, section).map((each) => each.row.id);
 
-test('each section’s list keeps the server’s order as it changes, and leaves its older answered ones to be read in turn', () => {
+test('each section’s list keeps the server’s order as it changes, with the phones and Today’s Routes as each update brings them, and leaves its older answered ones to be read in turn', () => {
   const inbox: Communications = {
     revision: 1,
     waiting: 2,
@@ -81,8 +84,12 @@ test('each section’s list keeps the server’s order as it changes, and leaves
     moreTexts: true,
     workspaces: [],
     texting: true,
+    routes: false,
+    phones: [],
     typing: { version: 0, writing: [] },
   };
+  // The phone went offline, and live route data began.
+  const offline = { id: 'phone', name: 'Dispatch', online: false, lastSeenAt: 900 };
   const next = updated(inbox, {
     revision: 2,
     reset: false,
@@ -90,6 +97,8 @@ test('each section’s list keeps the server’s order as it changes, and leaves
     typing: { version: 0, writing: [] },
     workspaces: [],
     texting: true,
+    routes: true,
+    phones: [offline],
     conversations: [
       // Waiting longest, it comes first.
       conversation('e', 60, 50),
@@ -108,7 +117,7 @@ test('each section’s list keeps the server’s order as it changes, and leaves
     groups: [group('g2', 80, 70)],
   });
   assert.deepEqual(ids(next), ['e', 'g2', 'a', 'c', 'g1', 'b', 'd']);
-  assert.equal(next.revision, 2);
+  assert.deepEqual([next.revision, next.routes, next.phones], [2, true, [offline]]);
   // Read in turn, older ones come after the last, each once, groups among them.
   const older = withOlder(
     next,
@@ -136,6 +145,39 @@ test('each section’s list keeps the server’s order as it changes, and leaves
   );
   assert.deepEqual(ids(read, 'messaging'), ['n1', 'n0', 'n2']);
   assert.deepEqual(ids(read), ids(older));
+});
+
+test('a conversation’s chips follow the list as it changes: a dot while each other waits, one started since by whom it’s with', () => {
+  const chip = (kind: Elsewhere['kind'], conversationId: string | null): Elsewhere => ({
+    kind,
+    conversationId,
+    waiting: false,
+    number: kind === 'number' ? '+14255550199' : null,
+    driverId: null,
+    teamId: kind === 'slack' ? 'T0FIXTURE1' : null,
+    userId: kind === 'slack' ? 'Us1' : null,
+  });
+  // As read with the work conversation open: their Messaging one answered, no Slack one yet.
+  const read = [chip('work', 'w1'), chip('number', 'n1'), chip('slack', null)];
+  const waits = (listed: Conversation[]) =>
+    elsewhereNow(read, listed).map((each) => [each.conversationId, each.waiting]);
+  assert.deepEqual(waits([]), [
+    ['w1', false],
+    ['n1', false],
+    [null, false],
+  ]);
+  // A text comes in Messaging, and they write first in Slack.
+  assert.deepEqual(waits([texts('n1', 600, 590), conversation('s1', 700, 650)]), [
+    ['w1', false],
+    ['n1', true],
+    ['s1', true],
+  ]);
+  // Both answered elsewhere, neither waits.
+  assert.deepEqual(waits([texts('n1', 800), conversation('s1', 900)]), [
+    ['w1', false],
+    ['n1', false],
+    ['s1', false],
+  ]);
 });
 
 test('picks go to each person once: groups narrowed by the workspaces picked, someone by name always', () => {

@@ -1,25 +1,48 @@
 import { useId, type ReactNode } from 'react';
-import { Clock, Hash, Mail, MapPin, Phone, Route, Truck, type LucideIcon } from 'lucide-react';
-import type { CommunicationsWorkspace, Correspondent, Profile } from '../../api/index.js';
+import {
+  Clock,
+  Gauge,
+  Hash,
+  Mail,
+  MapPin,
+  Phone,
+  Route,
+  Smartphone,
+  Truck,
+  type LucideIcon,
+} from 'lucide-react';
+import type {
+  CommunicationsWorkspace,
+  Correspondent,
+  Elsewhere,
+  Profile,
+} from '../../api/index.js';
 import { useProfile } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
-import { clock } from '../format.js';
+import { clock, lastFour } from '../format.js';
+import { ElsewhereChip } from './Elsewhere.js';
 import { Face } from './Face.js';
 import { Panel } from './Panel.js';
 import { roleText } from './parts.js';
+import { PaceMark, Stops } from './RouteFacts.js';
 import { WorkspaceMark } from './WorkspaceMark.js';
+import './profile.css';
 
-// The profile beside a conversation: the member it's with, their route today and how to reach
-// them, over the conversation until its X, Escape, or a press anywhere else closes it; or, on a
-// wide page (`docked`), a column of its own beside it, covering nothing, until its X or Escape
-// does. What nobody knows of them is left out, as is a section left with nothing.
+// The profile beside a conversation: whom it's with, a member or a driver, their route today and
+// how to reach them, over the conversation until its X, Escape, or a press anywhere else closes
+// it; or, on a wide page (`docked`), a column of its own beside it, covering nothing, until its X
+// or Escape does. A driver's, by their work conversation, goes to each of their conversations, and
+// shows how far their route has come and the work phone they hold. What nobody knows of them is
+// left out, as is a section left with nothing.
 
 export function Profile({
   id,
   conversation,
   person,
   workspace,
+  elsewhere,
+  go,
   timeZone,
   docked,
   leaving,
@@ -33,6 +56,9 @@ export function Profile({
   person: Correspondent;
   /** The workspace the conversation is in, for its mark. */
   workspace?: CommunicationsWorkspace;
+  /** For a driver's, each of their conversations, and going to one. */
+  elsewhere: readonly Elsewhere[];
+  go: (elsewhere: Elsewhere) => void;
   timeZone: string;
   /** Whether it's a column of its own beside the conversation. */
   docked: boolean;
@@ -65,6 +91,20 @@ export function Profile({
         error={error}
         workspace={workspace}
         timeZone={timeZone}
+        ways={
+          elsewhere.length > 0 && (
+            <div className="profile-ways">
+              {elsewhere.map((each) => (
+                <ElsewhereChip
+                  key={each.kind}
+                  elsewhere={each}
+                  current={each.conversationId === conversation}
+                  go={go}
+                />
+              ))}
+            </div>
+          )
+        }
       />
     </Panel>
   );
@@ -78,6 +118,7 @@ export function ProfileShown({
   error,
   workspace,
   timeZone,
+  ways,
 }: {
   /** The ID its name goes by, which names the panel. */
   title: string;
@@ -87,6 +128,8 @@ export function ProfileShown({
   error: string;
   workspace?: CommunicationsWorkspace;
   timeZone: string;
+  /** Each of their conversations, to go to, in place of Call. */
+  ways?: ReactNode;
 }) {
   const today = profile?.today;
   const role = roleText(person);
@@ -99,14 +142,15 @@ export function ProfileShown({
           {role && <small>{role}</small>}
         </div>
       </div>
-      {profile?.phone && (
-        <div className="profile-buttons">
-          <a className="profile-button" href={`tel:${profile.phone.replace(/[^\d+]/g, '')}`}>
-            <Phone size={15} aria-hidden="true" />
-            Call
-          </a>
-        </div>
-      )}
+      {ways ||
+        (profile?.phone && (
+          <div className="profile-buttons">
+            <a className="profile-button" href={`tel:${profile.phone.replace(/[^\d+]/g, '')}`}>
+              <Phone size={15} aria-hidden="true" />
+              Call
+            </a>
+          </div>
+        ))}
       <ErrorBox message={error} />
       {!profile && !error && <Loading />}
       {today && (
@@ -116,7 +160,30 @@ export function ProfileShown({
             [Route, 'Route', today.route],
             [Truck, 'Van', today.van],
             [Clock, 'Wave', today.waveAt === null ? null : clock(today.waveAt, timeZone)],
-            [MapPin, 'Stops', today.stops],
+            [
+              MapPin,
+              'Stops',
+              today.stops === null ? null : today.stopsDone === null ? (
+                today.stops
+              ) : (
+                <span className="profile-stops">
+                  <Stops today={today} />
+                </span>
+              ),
+            ],
+            [Gauge, 'Pace', today.pace && <PaceMark pace={today.pace} />],
+            [
+              Smartphone,
+              'Work phone',
+              today.phone && (
+                <span className="profile-phone">
+                  {lastFour(today.phone)}
+                  {today.phoneSince !== null && (
+                    <small>Since {clock(today.phoneSince, timeZone)}</small>
+                  )}
+                </span>
+              ),
+            ],
           ]}
         />
       )}
@@ -147,7 +214,7 @@ export function ProfileShown({
 
 /** A section of what's known, each by its icon and label; one not known (null) is left out. */
 function Facts({ title, facts }: { title: string; facts: [LucideIcon, string, ReactNode][] }) {
-  const known = facts.filter(([, , value]) => value !== null);
+  const known = facts.filter(([, , value]) => value !== null && value !== false);
   if (known.length === 0) return null;
   return (
     <section>

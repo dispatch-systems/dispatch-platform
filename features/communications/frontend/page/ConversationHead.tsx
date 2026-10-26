@@ -20,8 +20,8 @@ export function ConversationHead({
   actions,
 }: {
   conversation?: Conversation;
-  /** What they do for the DSP, and where. */
-  about: string;
+  /** What they do for the DSP, and where; or their route today. */
+  about: ReactNode;
   now: number;
   /** Who it's with, as a button, which focus goes back to as the profile closes. */
   who?: Ref<HTMLButtonElement>;

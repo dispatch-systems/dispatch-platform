@@ -2,19 +2,21 @@
 //! lists everyone Driver Match has a phone number for who hasn't left, by their first, and every
 //! number the DSP saved a name for, each number once, by name, with its conversation if it has
 //! one; then the numbers blocked. A name typed, misspelt or not, finds them as it finds
-//! conversations; digits typed, by their number. A number's conversation is opened to text it
-//! first, and its number saved under a name, shared at the DSP, or blocked, or unblocked.
+//! conversations; digits typed, by their number. A number's conversation, or one of today's
+//! drivers', is opened to text it first, and a number saved under a name, shared at the DSP, or
+//! blocked, or unblocked.
 use super::{
+    live_day::LiveDay,
     numbers::Numbers,
     offered, offering,
     reading::{like, numbered, one},
-    storage::TextStore,
+    storage::{Filed, TextStore},
 };
 use crate::{
     api::types::{Conversation, TextContact, TextContacts},
     backend::{conversations::People, live},
 };
-use dispatch_core::{Error, Result, State, db::Store, foundation::names};
+use dispatch_core::{Error, Result, State, db::Store, ensure, foundation::names};
 use dispatch_phones_contract as texting;
 use std::collections::{HashMap, HashSet};
 
@@ -74,7 +76,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         .filter_map(|number| {
             let listed = contact(number, Vec::new());
             let (score, matched) = match typed {
-                Some(typed) => like(typed, &listed.person.name, number)?,
+                Some(typed) => like(typed, &listed.person.name, std::slice::from_ref(number))?,
                 None => (0.0, Vec::new()),
             };
             Some((score, TextContact { matched, ..listed }))
@@ -101,7 +103,28 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
 pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversation> {
     let number = texting::normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
     offering(db, dsp)?;
-    let opened = db.open_communications_number(dsp, &number)?;
+    let opened = db.open_communications_text(dsp, &Filed::Number(number))?;
+    one(db, state, dsp, &opened.id)
+}
+
+/// The work conversation of `driver`, one of today's drivers, opened with no text if it's new,
+/// for someone at the DSP to text them first at the work phone they hold.
+pub fn open_driver(db: &Store, state: &State, dsp: &str, driver: &str) -> Result<Conversation> {
+    offering(db, dsp)?;
+    let live =
+        LiveDay::read(db, dsp)?.ok_or_else(|| Error::new("communications_routes_over", 409))?;
+    ensure(
+        live.drives(db, dsp, driver)?,
+        "communications_driver_not_found",
+        404,
+    )?;
+    let opened = db.open_communications_text(
+        dsp,
+        &Filed::Driver {
+            source: live.source,
+            id: driver.to_owned(),
+        },
+    )?;
     one(db, state, dsp, &opened.id)
 }
 

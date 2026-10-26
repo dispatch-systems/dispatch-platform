@@ -55,6 +55,7 @@ export function sample(now: number) {
     files: [],
     group: null,
     status: null,
+    number: null,
   });
   const messages = [
     message('m1', 'Morning. Van 208 won’t start, battery’s dead I think', 33),
@@ -74,6 +75,7 @@ export function sample(now: number) {
     kind: 'slack',
     teamId: team,
     number: null,
+    driverId: null,
     contact: false,
     blocked: false,
     with: who,
@@ -133,10 +135,21 @@ export function sample(now: number) {
     moreTexts: false,
     workspaces: [workspace],
     texting: false,
+    routes: false,
+    phones: [],
     typing: { version: 0, writing: [] },
   };
   const profile: Profile = {
-    today: { route: 'CX14', van: 'EDV 214', waveAt: ago(-70), stops: 168 },
+    today: {
+      route: 'CX14',
+      van: 'EDV 214',
+      waveAt: ago(-70),
+      stops: 168,
+      stopsDone: null,
+      pace: null,
+      phone: null,
+      phoneSince: null,
+    },
     phone: '+12065550148',
     email: 'jamal.w@example.com',
     slack: workspace.name,

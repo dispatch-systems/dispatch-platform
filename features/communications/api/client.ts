@@ -19,6 +19,7 @@ import type {
   Message,
   Profile,
   TextContacts,
+  TodaysRoutes,
 } from './index.js';
 
 // Communications' endpoints, as its screens call them.
@@ -28,7 +29,12 @@ const api = wordedApi({
   communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
   communications_message_not_found: 'This text is no longer here. Refresh the page.',
   communications_texting_off: 'Texting is off for this DSP.',
+  communications_no_work_phone: 'This driver has no work phone now.',
+  communications_work_phone_changed: 'This driver has another work phone now.',
+  communications_routes_over: "Today's routes are over.",
+  communications_driver_not_found: "This driver isn't on today's routes.",
   phones_none: 'No phone is paired to send from.',
+  phones_file_not_found: 'A picture is no longer attached. Add it again.',
   phones_text_not_found: "This text can't be sent again.",
   communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
@@ -71,10 +77,10 @@ export const getCommunicationsUpdates = (after: number, typing: number, signal: 
     undefined,
     signal,
   );
-/** Where a list's conversations are: Slack's, of every workspace or `team`'s, or the numbers'
- * texts. */
-export type Listing = { texts: true } | { texts?: false; team?: string };
-const of = (listing: Listing) => (listing.texts ? { kind: 'number' } : { team: listing.team });
+/** Where a list's conversations are: Slack's, of every workspace or `team`'s, or by text, the
+ * numbers' or the work phones'. */
+export type Listing = { kind: 'number' | 'work' } | { kind?: undefined; team?: string };
+const of = (listing: Listing) => (listing.kind ? { kind: listing.kind } : { team: listing.team });
 /** Conversations found by a name typed, misspelt or not, or by a number. */
 export const searchConversations = (typed: string, listing: Listing) =>
   api<Conversations>(address(`${communicationsUrl}/conversations`, { q: typed, ...of(listing) }));
@@ -127,15 +133,24 @@ export const blockNumber = (id: string, blocked: boolean) =>
 /** Opens the conversation with a number, to text it first. */
 export const textFirst = (number: string) =>
   api<Conversation>(`${communicationsUrl}/texts/conversations`, { number });
+/** Opens the work conversation of one of today's drivers, to text them first. */
+export const textDriver = (driverId: string) =>
+  api<Conversation>(`${communicationsUrl}/texts/conversations`, { driverId });
+/** Today's Routes: the drivers on a route today, and the work phones nobody held. */
+export const getTodaysRoutes = (signal?: AbortSignal) =>
+  api<TodaysRoutes>(`${communicationsUrl}/routes`, undefined, signal);
+/** Files a work phone nobody held under one of today's drivers: their conversation. */
+export const pickDriver = (id: string, driverId: string) =>
+  api<Conversation>(`${communicationsUrl}/conversations/${id}/driver`, { driverId });
 /** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
 export const getTextContacts = (typed = '') =>
   api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));
-/** Adds a photo for a message not sent yet. */
-export const addPhoto = (photo: File, progress?: (sent: number) => void, signal?: AbortSignal) =>
+/** Adds a photo for a message not sent yet: by text, through the DSP's phones (`texted`). */
+export const addPhoto = (photo: File, texted: boolean, signal?: AbortSignal) =>
   upload<CommunicationsUpload>(
-    `${communicationsUrl}/uploads?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
+    `${communicationsUrl}/${texted ? 'texts/uploads' : 'uploads'}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
     photo,
-    progress,
+    undefined,
     signal,
   );
 /** Where a photo or file attached to a message is read from: a text's, as its phone keeps it. */

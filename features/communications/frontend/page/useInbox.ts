@@ -146,7 +146,7 @@ export function useInbox(chosen?: string) {
     async (section: Section) => {
       const listed = current.current;
       const last = listed && lastAnswered(listed, section);
-      if (!listed || !moreIn(listed, section) || !last || reading) return;
+      if (section === 'routes' || !listed || !moreIn(listed, section) || !last || reading) return;
       setReading(true);
       try {
         const asked = scope.current;

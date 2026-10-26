@@ -4,6 +4,7 @@ import type {
   CommunicationsWorkspace,
   Conversation,
   Conversations,
+  Elsewhere,
   Group,
 } from '../api/index.js';
 import type { Listing } from '../api/client.js';
@@ -13,15 +14,18 @@ import type { Listing } from '../api/client.js';
 // Those waiting come first, the longest waiting first, then those answered, the latest first: the
 // order the server reads them in, so reading older ones goes on where each section's list stops.
 // A conversation listed under a group is the group's row, not one of its own. Each is listed in a
-// section: a number's texts in Messaging, a Slack direct message and the groups in Slack; a
-// blocked number's in none.
+// section: a work phone's texts in Today's Routes, which lists them by its own read
+// (`todays-routes.ts`); a number's texts in Messaging; a Slack direct message and the groups in
+// Slack; a blocked number's in none.
 
-/** A section of the list. */
-export type Section = 'messaging' | 'slack';
+/** A section of the list, in the order the switch shows them. */
+export const sections = ['routes', 'messaging', 'slack'] as const;
+export type Section = (typeof sections)[number];
 /** The section a conversation is listed in, if any. */
 export function sectionOf(conversation: Conversation): Section | undefined {
   if (conversation.kind === 'slack') return 'slack';
-  if (conversation.kind === 'number' && !conversation.blocked) return 'messaging';
+  if (conversation.kind === 'work') return 'routes';
+  if (!conversation.blocked) return 'messaging';
   return undefined;
 }
 
@@ -43,19 +47,25 @@ export const order = (a: Listed, b: Listed) => (a.id === b.id ? 0 : above(a, b) 
 /** Whether a conversation is a row of its own in `section`: not listed under a group. */
 const rowIn = (section: Section) => (conversation: Conversation) =>
   conversation.groupId === null && sectionOf(conversation) === section;
-/** How many conversations wait in `section`, those under a group too. */
-export const waitingIn = (inbox: Communications, section: Section) =>
-  inbox.conversations.filter(
-    (conversation) => conversation.state === 'waiting' && sectionOf(conversation) === section,
-  ).length;
-/** Where the list says whether older answered rows of `section` are left to read. */
-const moreOf = (section: Section) => (section === 'slack' ? 'more' : 'moreTexts');
+/** How many conversations wait in each section, those under a group too. */
+export function waitingIn(inbox: Communications): Record<Section, number> {
+  const waiting = { routes: 0, messaging: 0, slack: 0 };
+  for (const conversation of inbox.conversations) {
+    const section = sectionOf(conversation);
+    if (conversation.state === 'waiting' && section) waiting[section]++;
+  }
+  return waiting;
+}
+/** Where the list says whether older answered rows of a section that pages are left to read:
+ * Today's Routes is read whole. */
+const moreOf = (section: Exclude<Section, 'routes'>) =>
+  section === 'slack' ? 'more' : 'moreTexts';
 /** Whether older answered rows of `section` are left to read. */
-export const moreIn = (inbox: Communications, section: Section) => inbox[moreOf(section)];
+export const moreIn = (inbox: Communications, section: Section) =>
+  section !== 'routes' && inbox[moreOf(section)];
 /** Where `section`'s conversations are read from: in Slack's, of every workspace or `team`'s. */
 export const listingOf = (section: Section, team?: string): Listing =>
-  section === 'slack' ? { team } : { texts: true };
-const sections: readonly Section[] = ['messaging', 'slack'];
+  section === 'slack' ? { team } : { kind: section === 'routes' ? 'work' : 'number' };
 
 /** The workspace `chosen`, while it's one of two or more Communications works in; else none,
  * for every one. */
@@ -112,21 +122,17 @@ function merged(
   };
 }
 
-/** The list after an update the page waited on; one that resets is read afresh instead. */
-export const updated = (inbox: Communications, update: CommunicationsUpdates): Communications => ({
-  ...inbox,
-  revision: update.revision,
-  waiting: update.waiting,
-  typing: update.typing,
-  workspaces: update.workspaces,
-  texting: update.texting,
-  ...merged(inbox, update.conversations, update.groups),
-});
+/** The list after an update the page waited on, with all else it brings as it is now, as the
+ * phones and whether Today's Routes is offered; one that resets is read afresh instead. */
+export function updated(inbox: Communications, update: CommunicationsUpdates): Communications {
+  const { reset: _reset, conversations, groups, ...now } = update;
+  return { ...inbox, ...now, ...merged(inbox, conversations, groups) };
+}
 /** The list with the older answered conversations and groups of `section` read after its last. */
 export function withOlder(
   inbox: Communications,
   older: Conversations,
-  section: Section,
+  section: Exclude<Section, 'routes'>,
 ): Communications {
   const more = moreOf(section);
   return {
@@ -145,6 +151,31 @@ export const withGroup = (inbox: Communications, group: Group): Communications =
   ...inbox,
   ...merged(inbox, [], [group]),
 });
+
+/** Whether `conversation` is the one `elsewhere` stands for: by its ID, or for one not started as
+ * it was read, by the driver, the number or the Slack account it's with. */
+function standsFor(elsewhere: Elsewhere, conversation: Conversation) {
+  if (elsewhere.conversationId !== null) return conversation.id === elsewhere.conversationId;
+  if (conversation.kind !== elsewhere.kind) return false;
+  if (elsewhere.kind === 'work') return conversation.driverId === elsewhere.driverId;
+  if (elsewhere.kind === 'number') return conversation.number === elsewhere.number;
+  return conversation.teamId === elsewhere.teamId && conversation.with.userId === elsewhere.userId;
+}
+/** Whom a conversation is with's conversations of each kind, as the list has them now, which each
+ * update keeps: one waits while the list holds it waiting, as it holds every one that does, and one
+ * started since they were read is theirs. */
+export const elsewhereNow = (
+  elsewhere: readonly Elsewhere[],
+  conversations: readonly Conversation[],
+): Elsewhere[] =>
+  elsewhere.map((each) => {
+    const listed = conversations.find((conversation) => standsFor(each, conversation));
+    return {
+      ...each,
+      conversationId: listed?.id ?? each.conversationId,
+      waiting: listed?.state === 'waiting',
+    };
+  });
 
 /** The rows of `section`'s list, of every workspace or `team`'s: each conversation of its own, and
  * in Slack's each group with someone in that workspace, in order. */

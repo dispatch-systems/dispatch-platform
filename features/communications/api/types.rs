@@ -5,6 +5,7 @@ pub use crate::backend::{
     groups::{GroupChoiceKind, GroupPersonState},
     storage::{ConversationState, Direction},
     texts::storage::{ConversationKind, TextStatus},
+    today::Pace,
 };
 use dispatch_core::manifest::people::{PersonRole, PersonTitle};
 use serde::Serialize;
@@ -37,7 +38,29 @@ pub struct Communications {
     pub workspaces: Vec<CommunicationsWorkspace>,
     /// Whether the DSP texts: something offers it texting, its dispatch phones.
     pub texting: bool,
+    /// Whether Today's Routes is offered: the DSP texts and has live route data.
+    pub routes: bool,
+    /// The DSP's dispatch phones, while it texts.
+    pub phones: Vec<DispatchPhone>,
     pub typing: Typing,
+}
+
+/// One of the DSP's dispatch phones, and whether it's online.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchPhone {
+    pub id: String,
+    pub name: String,
+    /// Whether it has checked in lately.
+    pub online: bool,
+    /// When it last checked in; none before it ever has.
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub last_seen_at: Option<i64>,
 }
 
 /// `GET /api/dsp/communications/waiting`: how many conversations wait on an answer, for the
@@ -117,8 +140,12 @@ pub struct Conversation {
     pub kind: ConversationKind,
     /// The workspace it's in, for a Slack one.
     pub team_id: Option<String>,
-    /// The number it texts: a number's own, or the work phone last texted with.
+    /// The number it texts: a number's own, a work phone's nobody held, or for a driver's, the
+    /// work phone last texted with.
     pub number: Option<String>,
+    /// For a driver's work conversation, their ID of the source naming who held the DSP's work
+    /// phones.
+    pub driver_id: Option<String>,
     /// Whether its number is one the DSP saved a name for.
     pub contact: bool,
     /// Whether its number is blocked: it isn't listed or counted.
@@ -194,6 +221,9 @@ pub struct Message {
     pub group: Option<MessageGroup>,
     /// How a text Dispatch sent went.
     pub status: Option<TextStatus>,
+    /// The other party's number, for a text: in a driver's conversation, the work phone it went
+    /// through.
+    pub number: Option<String>,
 }
 /// The group a message went to: its ID and name.
 #[derive(Clone, Debug, Serialize)]
@@ -276,6 +306,83 @@ pub struct ConversationMessages {
     pub messages: Vec<Message>,
     /// Whether older messages are left to read.
     pub more: bool,
+    /// For a driver's work conversation, their route today and the work phone they hold now, as
+    /// live route data holds them, while it holds today.
+    pub today: Option<Today>,
+    /// Whom it's with's conversation of each kind, this one too, while they have two or more:
+    /// work, by text from their number, and Slack.
+    pub elsewhere: Vec<Elsewhere>,
+    /// For a driver's work conversation, the route and van of each day its messages were written.
+    pub workdays: Vec<Workday>,
+}
+
+/// One of a person's conversations of a kind, which the page goes to: its ID once they have one,
+/// whether it waits, and what starts one: the number to text, or their account in a workspace.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct Elsewhere {
+    pub kind: ConversationKind,
+    pub conversation_id: Option<String>,
+    pub waiting: bool,
+    /// For a work one, the work phone they hold now, if any; for a number's, the number.
+    pub number: Option<String>,
+    /// For a work one, their ID of the source naming who held the DSP's work phones.
+    pub driver_id: Option<String>,
+    /// For a Slack one, the workspace and their ID in it.
+    pub team_id: Option<String>,
+    pub user_id: Option<String>,
+}
+
+/// A day a driver texted on a work phone: its day, YYYY-MM-DD in the DSP's own time, and the
+/// route and van they drove, as Routes knows them.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct Workday {
+    pub day: String,
+    pub route: Option<String>,
+    pub van: Option<String>,
+}
+
+/// `GET /api/dsp/communications/routes`: Today's Routes, while live route data holds today: each
+/// driver on a route today, by name, with their route and work conversation; and each work phone
+/// nobody held that texted today, as itself.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct TodaysRoutes {
+    /// The live day, YYYY-MM-DD; none once live route data holds no read of today.
+    pub day: Option<String>,
+    pub drivers: Vec<RouteDriver>,
+    pub phones: Vec<Conversation>,
+}
+/// A driver on a route today: who, by their ID of the source naming its drivers, their route as
+/// live route data last read it, and their work conversation, if they have one.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteDriver {
+    pub driver_id: String,
+    pub person: Correspondent,
+    pub today: Today,
+    pub conversation: Option<Conversation>,
 }
 
 /// `GET /api/dsp/communications/conversations/{id}/profile`: what the profile beside a
@@ -290,30 +397,39 @@ pub struct ConversationMessages {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
-    /// Their route on the DSP's own day today, as Routes has read it so far.
-    pub today: Option<ProfileToday>,
+    /// Their route on the DSP's own day today: as live route data last read it while it holds
+    /// today, else as Routes has read it so far.
+    pub today: Option<Today>,
     /// Their phone number and email address, the first Driver Match has from their sources.
     pub phone: Option<String>,
     pub email: Option<String>,
     /// The name of the workspace the conversation is in, while the DSP has it.
     pub slack: Option<String>,
 }
-/// Someone's route today: its code, what the DSP calls its van, when its wave starts, and how
-/// many stops it has in all.
-#[derive(Clone, Debug, Serialize)]
+/// Someone's route today: its code, what the DSP calls its van, when its wave starts, how many
+/// stops it has in all and how many are done, and how it keeps up; and the work phone they hold
+/// now, while live route data holds today, and since when.
+#[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
     feature = "ts",
     ts(export_to = "features/communications/api/generated/")
 )]
 #[serde(rename_all = "camelCase")]
-pub struct ProfileToday {
+pub struct Today {
     pub route: Option<String>,
     pub van: Option<String>,
     #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub wave_at: Option<i64>,
     #[cfg_attr(feature = "ts", ts(type = "number | null"))]
     pub stops: Option<i64>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub stops_done: Option<i64>,
+    pub pace: Option<Pace>,
+    /// As texts write it.
+    pub phone: Option<String>,
+    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
+    pub phone_since: Option<i64>,
 }
 
 /// `GET /api/dsp/communications/contacts`: the members of the DSP's workspaces, or of one of
@@ -445,9 +561,12 @@ pub struct CommunicationsUpdates {
     pub typing: Typing,
     pub workspaces: Vec<CommunicationsWorkspace>,
     pub texting: bool,
+    pub routes: bool,
+    pub phones: Vec<DispatchPhone>,
 }
 
-/// `POST /api/dsp/communications/uploads`: a photo added for a message not sent yet.
+/// `POST /api/dsp/communications/uploads`, or `…/texts/uploads` for a text: a photo added for a
+/// message not sent yet.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(

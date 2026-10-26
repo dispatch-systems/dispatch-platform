@@ -33,4 +33,9 @@ group: MessageGroup | null,
 /**
  * How a text Dispatch sent went.
  */
-status: TextStatus | null, };
+status: TextStatus | null,
+/**
+ * The other party's number, for a text: in a driver's conversation, the work phone it went
+ * through.
+ */
+number: string | null, };

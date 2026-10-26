@@ -13,6 +13,10 @@ use std::{future::Future, pin::Pin, sync::Arc};
 /// What its asynchronous answers are: work done outside the database, as keeping bytes is.
 pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
+/// What must hold for a text to go, checked in the write that queues it, so nothing it reads can
+/// change before the text is queued: its refusal is the answer.
+pub type Condition = Box<dyn FnOnce(&Store) -> Result<()> + Send>;
+
 /// A DSP's texts by phone: those its phones receive and send, and those Dispatch sends from
 /// them.
 pub trait Texting: Send + Sync {
@@ -21,18 +25,26 @@ pub trait Texting: Send + Sync {
     /// The texts changed after `after`, a text's `change`, oldest change first, at most `most`;
     /// and the last change there is, which reading on from finds nothing missed.
     fn changes(&self, db: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes>;
-    /// Sends `outgoing` from one of the DSP's phones, waiting for it until it says how it
-    /// went. Refused as `phones_none` while the DSP has no phone, `phones_not_found` for a
-    /// phone not its own, and `phones_file_not_found` for a picture not added by `by`.
+    /// Sends `outgoing` from one of the DSP's phones, provided `condition` holds as it's queued,
+    /// waiting for it until it says how it went. Refused as `condition` refuses it, as
+    /// `phones_none` while the DSP has no phone, `phones_not_found` for a phone not its own, and
+    /// `phones_file_not_found` for a picture not added by `by`.
     fn send<'a>(
         &'a self,
         state: &'a Arc<State>,
         dsp: &'a str,
         outgoing: Outgoing,
+        condition: Condition,
     ) -> Answer<'a, Text>;
-    /// Sends again a text Dispatch sent that failed. Refused as `phones_text_not_found`
-    /// otherwise.
-    fn retry<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str, id: &'a str) -> Answer<'a, Text>;
+    /// Sends again a text Dispatch sent that failed, provided `condition` holds as it's queued.
+    /// Refused as `condition` refuses it, and as `phones_text_not_found` otherwise.
+    fn retry<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        condition: Condition,
+    ) -> Answer<'a, Text>;
     /// Keeps a picture for a text not sent yet, `by`'s alone until it's sent: its bytes as
     /// they arrive, up to `largest()`.
     fn add_file<'a>(
@@ -42,6 +54,16 @@ pub trait Texting: Send + Sync {
         added: Added,
         bytes: Upload,
     ) -> Answer<'a, File>;
+    /// Lets go of a picture `by` added for a text not sent yet, and its bytes once no other file
+    /// keeps them, as when `by` may no longer send it; nothing for one sent, another's, or one
+    /// not the DSP's.
+    fn remove_file<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a str,
+    ) -> Answer<'a, ()>;
     /// The most a picture may be, in bytes.
     fn largest(&self) -> u64;
     /// A text's picture or file as kept, to answer a page with; none for one not the DSP's,

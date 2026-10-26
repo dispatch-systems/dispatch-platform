@@ -45,11 +45,13 @@ export function fresh(
 }
 
 /** Who wrote a message, to tell runs apart: whom it's with; or someone at the DSP, by their
- * account, or the phone a text was sent from on its own messaging app, and the group it went to. */
+ * account, or the phone a text was sent from on its own messaging app, and the group it went to;
+ * and for a text, the other party's number, as a driver's work phone changes. */
 const writer = (message: Message) =>
-  message.direction === 'in'
+  (message.direction === 'in'
     ? 'in'
-    : `out:${message.sender?.userId ?? ''}:${message.sender?.phoneId ?? ''}:${message.group?.id ?? ''}`;
+    : `out:${message.sender?.userId ?? ''}:${message.sender?.phoneId ?? ''}:${message.group?.id ?? ''}`) +
+  `:${message.number ?? ''}`;
 
 /** The messages under each day they were written, in runs by writer. */
 export function runs(messages: readonly Message[], timeZone: string) {

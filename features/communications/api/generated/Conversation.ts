@@ -14,9 +14,15 @@ export type Conversation = { id: string, kind: ConversationKind,
  */
 teamId: string | null,
 /**
- * The number it texts: a number's own, or the work phone last texted with.
+ * The number it texts: a number's own, a work phone's nobody held, or for a driver's, the
+ * work phone last texted with.
  */
 number: string | null,
+/**
+ * For a driver's work conversation, their ID of the source naming who held the DSP's work
+ * phones.
+ */
+driverId: string | null,
 /**
  * Whether its number is one the DSP saved a name for.
  */

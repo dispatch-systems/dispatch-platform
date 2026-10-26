@@ -1,6 +1,6 @@
 //! Communications' endpoints, each registered with its path and access: every one behind
-//! `communications.use`, which covers reading the DSP's conversations, Slack's and by text, and
-//! answering them, but the image of someone's initials, which Slack fetches from the admin's
+//! `communications.use`, which covers reading the DSP's conversations, Slack's and by text, Today's
+//! Routes, and answering them, but the image of someone's initials, which Slack fetches from the admin's
 //! address. The server checks the session and the permission before a handler runs; those that
 //! call Slack or send a text wait outside the database and check again before they write.
 use crate::backend::{
@@ -9,7 +9,10 @@ use crate::backend::{
     groups::{self, choices, send as group_send},
     initials, live, profile, reply,
     storage::CommunicationsStore,
-    texts::{self, storage::TextStore},
+    texts::{
+        self,
+        storage::{ConversationKind, TextStore},
+    },
 };
 use axum::{
     body::Body,
@@ -91,6 +94,18 @@ pub fn routes() -> Vec<Route> {
         ),
         read("/api/dsp/communications/texts/contacts", USE, text_contacts),
         async_get("/api/dsp/communications/texts/files/{id}", USE, text_file),
+        upload(
+            "/api/dsp/communications/texts/uploads",
+            USE,
+            reply::PHOTO_MOST,
+            add_text_photo,
+        ),
+        read("/api/dsp/communications/routes", USE, todays_routes),
+        write(
+            "/api/dsp/communications/conversations/{id}/driver",
+            USE,
+            pick_driver,
+        ),
         read("/api/dsp/communications/contacts", USE, listed),
         read("/api/dsp/communications/groups/choices", USE, group_choices),
         async_post("/api/dsp/communications/groups", USE, create_group),
@@ -119,6 +134,9 @@ pub fn routes() -> Vec<Route> {
         }),
     ]
 }
+
+/// The most a driver's ID may be, in characters, as Routes reads them.
+const DRIVER_ID_MOST: usize = 128;
 
 /// One of Communications' IDs, `<prefix>_` and 32 hexadecimal digits.
 fn id(value: &str, prefix: &str) -> Result<String> {
@@ -184,19 +202,27 @@ fn team(query: &Value) -> Result<Option<String>> {
     (!team.is_empty()).then(|| slack_id(team, b"T")).transpose()
 }
 /// Conversations found by a name typed, `q`, or the answered ones before `before`, in the
-/// workspace `team` or every one, or the numbers' (`kind=number`).
+/// workspace `team` or every one, or the numbers' (`kind=number`); or work conversations found by
+/// a name or digits typed (`kind=work`).
 fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["q", "team", "before", "kind"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();
     let team = team(&input.query)?;
     let texted = match optional_text(&input.query, "kind", 10)? {
-        "" => false,
-        "number" if team.is_none() => true,
+        "" => None,
+        "number" if team.is_none() => Some(ConversationKind::Number),
+        "work" if team.is_none() && !typed.is_empty() => Some(ConversationKind::Work),
         _ => return Err(Error::new("invalid_input", 400)),
     };
-    if texted {
+    if let Some(kind) = texted {
         if !typed.is_empty() {
-            return Reply::of(&texts::reading::search(db, c.state, c.dsp_id(), typed)?);
+            return Reply::of(&texts::reading::search(
+                db,
+                c.state,
+                c.dsp_id(),
+                kind,
+                typed,
+            )?);
         }
         let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
         return Reply::of(&texts::reading::older(db, c.state, c.dsp_id(), (at, &id))?);
@@ -251,17 +277,38 @@ fn conversation(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         before,
     )?)
 }
-/// What the profile beside a conversation shows of the member it's with: behind
-/// `communications.use` alone, as it reads what other features know of them for the page.
+/// What the profile beside a conversation shows of whom it's with, a member of a workspace or a
+/// driver: behind `communications.use` alone, as it reads what other features know of them for
+/// the page.
 fn profile(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
-    let conversation = id(input.param("id"), "cv")?;
+    let (conversation, texted) = conversation_id(input.param("id"))?;
     Reply::of(&profile::of(
         db,
         c.state,
         c.dsp_id(),
-        &c.dsp.timezone,
         &conversation,
+        texted,
+    )?)
+}
+/// Today's Routes: the drivers on a route today, with their work conversations.
+fn todays_routes(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.query, &[])?;
+    Reply::of(&texts::todays_routes::read(db, c.state, c.dsp_id())?)
+}
+/// Files the work phone of a conversation, one nobody held, under one of today's drivers,
+/// `driverId`, for today.
+fn pick_driver(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
+    v::fields(&input.body, &["driverId"])?;
+    let conversation = id(input.param("id"), "tc")?;
+    let driver = v::text(&input.body, "driverId", 1, DRIVER_ID_MOST)?;
+    Reply::of(&texts::picking::pick(
+        db,
+        c.state,
+        c.dsp_id(),
+        &conversation,
+        driver,
+        c.actor(),
     )?)
 }
 /// Whom the DSP can message, in the workspace `team` or every one, or those found by a name
@@ -361,8 +408,7 @@ async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
     let photos = photos(&input.body)?;
     let message = if texted {
-        ensure(photos.is_empty(), "invalid_input", 400)?;
-        texts::reply::send(&state, &c, access, &conversation, text).await?
+        texts::reply::send(&state, &c, access, &conversation, text, &photos).await?
     } else {
         reply::send(&state, &c, access, &conversation, text, &photos).await?
     };
@@ -414,9 +460,20 @@ fn unblock(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         None,
     )?)
 }
-/// Opens the conversation with a `number`, to text it first.
+/// Opens the conversation with a `number`, or one of today's drivers, `driverId`, to text them
+/// first.
 fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
-    v::fields(&input.body, &["number"])?;
+    v::fields(&input.body, &["number", "driverId"])?;
+    if input.body.get("driverId").is_some() {
+        ensure(input.body.get("number").is_none(), "invalid_input", 400)?;
+        let driver = v::text(&input.body, "driverId", 1, DRIVER_ID_MOST)?;
+        return Reply::of(&texts::contacts::open_driver(
+            db,
+            c.state,
+            c.dsp_id(),
+            driver,
+        )?);
+    }
     let number = v::text(&input.body, "number", 3, 32)?;
     Reply::of(&texts::contacts::open(db, c.state, c.dsp_id(), number)?)
 }
@@ -518,6 +575,22 @@ async fn add_photo(state: Arc<State>, input: Input, access: Dsp, photo: Upload) 
     let name = v::name(&input.query, "name", 200)?;
     let kind = v::text(&input.query, "type", 1, 100)?;
     let added = reply::upload(&state, &c, access, &name, kind, photo).await?;
+    Reply::of_status(&added, 201)
+}
+/// Keeps a picture added for a text not sent yet, through what offers the DSP texting: its
+/// `name` and `type` in the query.
+async fn add_text_photo(
+    state: Arc<State>,
+    input: Input,
+    access: Dsp,
+    photo: Upload,
+) -> Result<Reply> {
+    let asked = input.clone();
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    v::fields(&input.query, &["name", "type"])?;
+    let name = v::name(&input.query, "name", 200)?;
+    let kind = v::text(&input.query, "type", 1, 100)?;
+    let added = texts::reply::upload(&state, &c, access, &name, kind, photo).await?;
     Reply::of_status(&added, 201)
 }
 /// A workspace's logo, as Slack keeps a copy of it. Its address carries its version, `v`, so the

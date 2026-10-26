@@ -10,6 +10,7 @@ GET /api/dsp/communications/files/{id} Dsp("communications.use") Async
 GET /api/dsp/communications/groups/choices Dsp("communications.use") Read
 GET /api/dsp/communications/groups/{id} Dsp("communications.use") Read
 GET /api/dsp/communications/groups/{id}/people Dsp("communications.use") Read
+GET /api/dsp/communications/routes Dsp("communications.use") Read
 GET /api/dsp/communications/texts/contacts Dsp("communications.use") Read
 GET /api/dsp/communications/texts/files/{id} Dsp("communications.use") Async
 GET /api/dsp/communications/updates Dsp("communications.use") Async
@@ -20,6 +21,7 @@ POST /api/dsp/communications/conversations Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/block Dsp("communications.use") Write
 POST /api/dsp/communications/conversations/{id}/contact Dsp("communications.use") Write
 POST /api/dsp/communications/conversations/{id}/done Dsp("communications.use") Write
+POST /api/dsp/communications/conversations/{id}/driver Dsp("communications.use") Write
 POST /api/dsp/communications/conversations/{id}/messages Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/messages/{message}/retry Dsp("communications.use") Async
 POST /api/dsp/communications/conversations/{id}/typing Dsp("communications.use") Async
@@ -28,4 +30,5 @@ POST /api/dsp/communications/groups Dsp("communications.use") Async
 POST /api/dsp/communications/groups/{id}/done Dsp("communications.use") Write
 POST /api/dsp/communications/groups/{id}/messages Dsp("communications.use") Async
 POST /api/dsp/communications/texts/conversations Dsp("communications.use") Write
+POST /api/dsp/communications/texts/uploads Dsp("communications.use") Upload
 POST /api/dsp/communications/uploads Dsp("communications.use") Upload

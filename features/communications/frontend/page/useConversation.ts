@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Conversation, ConversationMessages, Message } from '../../api/index.js';
+import type { Conversation, ConversationMessages, Message, Workday } from '../../api/index.js';
 import { getConversation } from '../../api/client.js';
 import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { fresh, joined } from '../messages.js';
 import type { Changed } from './useInbox.js';
 
-type Opened = { id: string; conversation: Conversation; messages: Message[]; more: boolean };
+type Opened = Omit<ConversationMessages, 'messages'> & { id: string; messages: Message[] };
+
+/** `kept` workdays with those `read`, each day once, as last read. */
+const withDays = (kept: readonly Workday[], read: readonly Workday[]) => [
+  ...kept.filter((day) => !read.some((each) => each.day === day.day)),
+  ...read,
+];
 
 /**
  * The open conversation and its messages: the latest when it opens, again each time an update
@@ -48,7 +54,12 @@ export function useConversation(id: string | undefined, changed: Changed) {
         reads.current.shown = turn;
         const before = kept.current?.id === id ? kept.current : undefined;
         const unread = (message: Message) => (sent.current.get(message.id) ?? 0) >= turn;
-        keep({ id, conversation: latest.conversation, ...fresh(before, latest, unread) });
+        keep({
+          ...latest,
+          id,
+          workdays: withDays(before?.workdays ?? [], latest.workdays),
+          ...fresh(before, latest, unread),
+        });
         setError('');
       },
       (cause) => {
@@ -71,7 +82,12 @@ export function useConversation(id: string | undefined, changed: Changed) {
       const page = await getConversation(shown.id, shown.messages[0]);
       const now = kept.current;
       if (now?.id === shown.id && reads.current.shown === since)
-        keep({ ...now, messages: joined(now.messages, page.messages), more: page.more });
+        keep({
+          ...now,
+          messages: joined(now.messages, page.messages),
+          more: page.more,
+          workdays: withDays(now.workdays, page.workdays),
+        });
     } catch (cause) {
       setError(messageOf(cause));
     } finally {

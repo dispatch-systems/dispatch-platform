@@ -9,18 +9,22 @@ import type {
   Writing,
 } from '../../api/index.js';
 import { waitingIn, type Row, type Section } from '../inbox.js';
+import type { RouteGroup, RouteRow } from '../todays-routes.js';
 import { SearchInput, Tabs } from '../../../../core/shell/frontend/ui/index.js';
 import { ContactList } from './ContactList.js';
 import { ConversationList } from './ConversationList.js';
 import type { Draft } from './GroupDraft.js';
+import { RoutesList } from './RoutesList.js';
 import { Sections } from './Sections.js';
 import { TextContactList } from './TextContactList.js';
+import { ViewToggle, type RoutesView } from './ViewToggle.js';
 import { WorkspacePicker } from './WorkspacePicker.js';
 
 // The list beside the conversation: its sections, while there are two or more; in Slack's,
 // which workspace it shows, with two or more where Communications works; Search; and Messages,
 // the conversations, or Contacts, everyone the DSP can message or text, whichever Search
-// searches.
+// searches. In Today's Routes, Search finds drivers' work conversations, and the list or the board
+// is chosen beside it.
 
 export function ListPane({
   inbox,
@@ -37,9 +41,19 @@ export function ListPane({
   pick,
   pickNumber,
   show,
+  routes,
   ...listing
 }: {
   inbox: Communications;
+  /** Today's Routes, in its groups, and choosing a row of it; and its view, while the board can
+   * show. */
+  routes: {
+    groups: readonly RouteGroup[];
+    choose: (row: RouteRow) => void;
+    /** The driver whose conversation is open, if it's a driver's. */
+    driver?: string | null;
+    view?: { shown: RoutesView; choose: (view: RoutesView) => void };
+  };
   /** The list's sections, and the one shown. */
   sections: readonly Section[];
   section: Section;
@@ -72,12 +86,14 @@ export function ListPane({
   done: (conversation: Conversation) => void;
   doneGroup: (group: Group) => void;
 }) {
-  const [contacts, setContacts] = useState(false);
+  const [contacting, setContacts] = useState(false);
   const [typed, setTyped] = useState('');
   const name = typed.trim();
+  const routing = section === 'routes';
+  const contacts = contacting && !routing;
   // How many wait, in each section and in each workspace: every conversation waiting is listed,
   // those under a group too.
-  const waits = { messaging: waitingIn(inbox, 'messaging'), slack: waitingIn(inbox, 'slack') };
+  const waits = waitingIn(inbox);
   const inWorkspace = new Map<string, number>();
   for (const conversation of inbox.conversations)
     if (conversation.state === 'waiting' && conversation.teamId)
@@ -98,30 +114,48 @@ export function ListPane({
             choose={choose}
           />
         )}
-        <SearchInput
-          label={contacts ? 'Search contacts' : 'Search'}
-          placeholder={contacts ? 'Search contacts' : 'Search'}
-          value={typed}
-          onChange={setTyped}
-        />
-        <Tabs
-          label="Show"
-          value={contacts ? 'contacts' : 'messages'}
-          onChange={(value) => setContacts(value === 'contacts')}
-          items={[
-            [
-              'messages',
-              <>
-                Messages
-                {waiting > 0 && <span className="count">{waiting}</span>}
-              </>,
-            ],
-            ['contacts', 'Contacts'],
-          ]}
-        />
+        <div className="tools-row">
+          <SearchInput
+            label={contacts ? 'Search contacts' : 'Search'}
+            placeholder={contacts ? 'Search contacts' : 'Search'}
+            value={typed}
+            onChange={setTyped}
+          />
+          {routing && routes.view && (
+            <ViewToggle view={routes.view.shown} choose={routes.view.choose} />
+          )}
+        </div>
+        {!routing && (
+          <Tabs
+            label="Show"
+            value={contacts ? 'contacts' : 'messages'}
+            onChange={(value) => setContacts(value === 'contacts')}
+            items={[
+              [
+                'messages',
+                <>
+                  Messages
+                  {waiting > 0 && <span className="count">{waiting}</span>}
+                </>,
+              ],
+              ['contacts', 'Contacts'],
+            ]}
+          />
+        )}
       </div>
       <div className="list-scroll">
-        {contacts && slack ? (
+        {routing && !name ? (
+          <RoutesList
+            groups={routes.groups}
+            open={listing.open}
+            openDriver={routes.driver}
+            typing={listing.typing}
+            timeZone={listing.timeZone}
+            now={listing.now}
+            choose={routes.choose}
+            done={listing.done}
+          />
+        ) : contacts && slack ? (
           <ContactList
             team={team}
             typed={name}

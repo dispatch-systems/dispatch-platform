@@ -1,0 +1,64 @@
+/* Pick driver: one of today's drivers, under the head's right end. */
+.pick-driver {
+  position: relative;
+}
+.pick-driver-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(420px, 60vh);
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 4px 18px var(--shadow-color);
+}
+.pick-driver-panel h3 {
+  padding: 2px 6px 0;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+}
+.pick-driver-panel ul {
+  overflow-y: auto;
+  list-style: none;
+}
+.pick-driver-panel li button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.pick-driver-panel li button:hover {
+  background: var(--accent);
+}
+/* Within the head's actions, whose buttons' words a phone hides, a driver's name stays. */
+.thread-head .pick-driver-panel li button > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pick-driver-panel strong {
+  font-size: var(--ui-size);
+  font-weight: 500;
+}
+.pick-driver-panel small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+}

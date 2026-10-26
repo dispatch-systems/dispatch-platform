@@ -5,64 +5,22 @@
 use super::*;
 use crate::backend::{
     conversations,
-    support::{self, DRIVERS, held, hold, texted},
+    storage::CommunicationsStore,
+    support::{self, DRIVERS, at, filed, held, hold, route, routed, started, texted, today},
     texts::{
         contacts, reply,
-        storage::{ConversationKind, TextConversation, TextStore},
+        storage::{ConversationKind, TextStore},
     },
 };
 use crate::{Communications, ConversationState};
-use chrono::{NaiveDate, TimeZone};
-use dispatch_core::{
-    manifest::people::{Person, PersonRole},
-    testing,
-};
+use dispatch_core::manifest::people::{Person, PersonRole};
 use std::collections::BTreeMap;
 
-/// A platform with one DSP, every feature on for it, and its server's state.
-fn started() -> (impl Drop, Arc<State>, String) {
-    support::install();
-    let (root, store, dsp) = testing::bootstrapped();
-    let config = store.config.clone();
-    drop(store);
-    (root, State::new(config).unwrap(), dsp)
-}
-/// The DSP's own timezone, and its day today.
-async fn today(state: &Arc<State>, dsp: &str) -> (Tz, NaiveDate) {
-    let dsp = dsp.to_owned();
-    let zone: Tz = state
-        .read(move |db| Ok(db.find_dsp(&dsp)?.timezone))
-        .await
-        .unwrap()
-        .parse()
-        .unwrap();
-    (zone, clock::today(zone))
-}
-/// `hour`:`minute` on `day` in `zone`, in milliseconds.
-fn at(zone: Tz, day: NaiveDate, hour: u32, minute: u32) -> i64 {
-    zone.from_local_datetime(&day.and_hms_opt(hour, minute, 0).unwrap())
-        .earliest()
-        .unwrap()
-        .timestamp_millis()
-}
 /// The page's list as the member `me` reads it.
 async fn listed(state: &Arc<State>, dsp: &str) -> Communications {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     state
         .read(move |db| conversations::overview(db, &shared, &dsp, "me", None))
-        .await
-        .unwrap()
-}
-/// The conversation the text `id` is filed in.
-async fn filed(state: &Arc<State>, dsp: &str, id: &str) -> TextConversation {
-    let (dsp, id) = (dsp.to_owned(), id.to_owned());
-    state
-        .read(move |db| {
-            let text = db.communications_text(&dsp, &id)?.unwrap();
-            Ok(db
-                .communications_text_conversation(&dsp, &text.conversation)?
-                .unwrap())
-        })
         .await
         .unwrap()
 }
@@ -223,9 +181,16 @@ async fn a_work_phones_texts_are_the_drivers_who_held_it_as_each_was_written_tod
             (ConversationKind::Work, None, Some(phone))
         );
     }
-    // Messaging lists none of them, nor counts them.
+    // Messaging lists none of them: they're Today's Routes', those waiting on the live day
+    // counted, and yesterday's Casey's not.
     let listed = listed(&state, &dsp).await;
-    assert_eq!((listed.waiting, listed.conversations.len()), (0, 0));
+    assert!(
+        listed
+            .conversations
+            .iter()
+            .all(|each| each.kind == ConversationKind::Work)
+    );
+    assert_eq!(listed.waiting, 4);
 }
 
 #[tokio::test]
@@ -244,7 +209,7 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
     let number = filed(&state, &dsp, &asked).await;
     assert_eq!(number.kind, ConversationKind::Number);
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let answer = reply::send(&state, &c, support::USE, &number.id, "Van 214")
+    let answer = reply::send(&state, &c, support::USE, &number.id, "Van 214", &[])
         .await
         .unwrap();
 
@@ -261,7 +226,8 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
     for text in [&asked, &answer.id] {
         assert_eq!(filed(&state, &dsp, text).await.driver, driver("avery"));
     }
-    assert!(listed(&state, &dsp).await.conversations.is_empty());
+    let listed = listed(&state, &dsp).await;
+    assert!(listed.conversations.iter().all(|each| each.id != number.id));
 }
 
 #[tokio::test]
@@ -332,4 +298,51 @@ async fn what_a_number_sent_while_blocked_never_alerts_once_it_is_unblocked() {
         .map(|each| (each.conversation_id.as_str(), each.message.text.as_str()))
         .collect();
     assert_eq!(latest, [(id.as_str(), "Can I swap Saturday?")]);
+}
+
+#[tokio::test]
+async fn a_drivers_work_conversation_changes_as_they_take_and_return_a_work_phone_with_no_text() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery drives CX14 today, holding no work phone, and their conversation is opened, empty.
+    routed(
+        &dsp,
+        vec![route(
+            &today,
+            "A1",
+            "CX14",
+            "1FTVAN214",
+            120,
+            at(zone, day, 9, 20),
+        )],
+    );
+    held(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
+    let (shared, at_dsp) = (state.clone(), dsp.clone());
+    let avery = state
+        .run(move |db| contacts::open_driver(db, &shared, &at_dsp, "A1"))
+        .await
+        .unwrap()
+        .id;
+    // Whether each change of who holds the work phones is heard by a page with it open.
+    let heard = |holds| {
+        let (state, dsp, avery, today) = (state.clone(), dsp.clone(), avery.clone(), today.clone());
+        async move {
+            let at = dsp.clone();
+            let before = state
+                .read(move |db| db.communications_revision(&at))
+                .await
+                .unwrap();
+            held(&state, &dsp, Some(&today), holds, Vec::new()).await;
+            let (changed, _) = state
+                .read(move |db| db.communications_changed_since(&dsp, before))
+                .await
+                .unwrap();
+            changed.unwrap().contains(&avery)
+        }
+    };
+
+    let (taken, returned) = (at(zone, day, 7, 0), at(zone, day, 7, 30));
+    assert!(heard(vec![hold("A1", "2065550101", taken, None)]).await);
+    assert!(heard(vec![hold("A1", "2065550101", taken, Some(returned))]).await);
 }

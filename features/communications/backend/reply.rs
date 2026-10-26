@@ -32,8 +32,8 @@ pub const PHOTOS_MOST: usize = 10;
 pub const PHOTO_MOST: u64 = 20 * 1024 * 1024;
 /// How long a message's photos are claimed for it while it goes to Slack, in milliseconds.
 const SENDING_MS: i64 = 10 * 60 * 1000;
-/// The kinds of photo Slack shows in a message, each with how its bytes begin.
-const PHOTO_KINDS: &[(&str, &[u8])] = &[
+/// The kinds of photo a message carries, by text too, each with how its bytes begin.
+pub const PHOTO_KINDS: &[(&str, &[u8])] = &[
     ("image/png", b"\x89PNG"),
     ("image/jpeg", b"\xff\xd8\xff"),
     ("image/gif", b"GIF8"),

@@ -1,0 +1,27 @@
+/* The DSP's phones offline, in the page's heading, or on a phone under it, sized as the member
+   chose, as the page's fields are. */
+.phones-offline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.communications-page > .phones-offline {
+  margin: -4px 0 12px;
+}
+.phone-offline {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: calc(var(--field-height) - 2px);
+  padding: 0 12px;
+  border-radius: calc(var(--field-height) / 2);
+  background: var(--late-surface);
+  color: var(--late);
+  font-size: calc(var(--small-size) + 1px);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.phone-offline svg {
+  width: calc(var(--ui-size) + 1px);
+  height: calc(var(--ui-size) + 1px);
+}

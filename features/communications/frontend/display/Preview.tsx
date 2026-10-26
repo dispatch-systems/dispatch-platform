@@ -56,6 +56,7 @@ export function Preview({
             <div className="chat-frame">
               <ListPane
                 inbox={inbox}
+                routes={{ groups: [], choose: nothing }}
                 sections={['slack']}
                 section="slack"
                 chooseSection={nothing}

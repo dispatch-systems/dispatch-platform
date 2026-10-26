@@ -9,7 +9,9 @@ use dispatch_core::{
     db::{self, Store},
     server::http::{input::Reply, upload::Upload},
 };
-use dispatch_phones_contract::{Added, Answer, Changes, File, Outgoing, Phone, Text, Texting};
+use dispatch_phones_contract::{
+    Added, Answer, Changes, Condition, File, Outgoing, Phone, Text, Texting,
+};
 use std::sync::Arc;
 
 /// Phones' Texting, as its contract says.
@@ -33,11 +35,13 @@ impl Texting for Exposed {
         state: &'a Arc<State>,
         dsp: &'a str,
         outgoing: Outgoing,
+        condition: Condition,
     ) -> Answer<'a, Text> {
         Box::pin(async move {
             let at = dsp.to_owned();
             let text = state
                 .run_scoped(dsp, DOMAIN, move |db| {
+                    condition(db)?;
                     let now = db::now();
                     let text = db.phones_send(&at, &outgoing, now)?;
                     // The demo's stand-in phone, which no app holds, says it delivered at once.
@@ -55,11 +59,18 @@ impl Texting for Exposed {
             Ok(text)
         })
     }
-    fn retry<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str, id: &'a str) -> Answer<'a, Text> {
+    fn retry<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        condition: Condition,
+    ) -> Answer<'a, Text> {
         Box::pin(async move {
             let (at, wanted) = (dsp.to_owned(), id.to_owned());
             let text = state
                 .run_scoped(dsp, DOMAIN, move |db| {
+                    condition(db)?;
                     db.phones_retry(&at, &wanted, db::now())
                 })
                 .await?;
@@ -92,6 +103,25 @@ impl Texting for Exposed {
                         files::forget(db, &at, &arrived.sha256)?;
                     }
                     kept
+                })
+                .await
+        })
+    }
+    fn remove_file<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a str,
+    ) -> Answer<'a, ()> {
+        Box::pin(async move {
+            let (at, id, by) = (dsp.to_owned(), id.to_owned(), by.to_owned());
+            state
+                .run_scoped(dsp, DOMAIN, move |db| {
+                    match db.phones_remove_file(&at, &id, &by)? {
+                        Some(sha256) => files::forget(db, &at, &sha256),
+                        None => Ok(()),
+                    }
                 })
                 .await
         })

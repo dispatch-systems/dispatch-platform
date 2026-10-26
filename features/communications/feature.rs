@@ -13,11 +13,12 @@ pub use api::display::{
 pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
     CommunicationsWorkspace, Contact, Contacts, Conversation, ConversationKind,
-    ConversationMessages, ConversationState, Conversations, Correspondent, Direction, FileStatus,
-    Group, GroupChoice, GroupChoiceKind, GroupChoices, GroupEntry, GroupMember, GroupMessages,
-    GroupPeople, GroupPerson, GroupPersonState, GroupProgress, Message, MessageFile, MessageGroup,
-    Profile, ProfileToday, Reachable, Sender, TextContact, TextContacts, TextStatus, Typing,
-    WaitingMessage, Writing,
+    ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
+    DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
+    GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
+    GroupProgress, Message, MessageFile, MessageGroup, Pace, Profile, Reachable, RouteDriver,
+    Sender, TextContact, TextContacts, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
+    Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -57,6 +58,7 @@ pub const FEATURE: Feature = Feature {
             "communications_texting",
             "communications_contacts",
             "communications_blocked",
+            "communications_picked",
         ],
     )],
     own_migrations: &[OwnMigrations {
@@ -83,6 +85,13 @@ pub const FEATURE: Feature = Feature {
                 id: 4,
                 name: "communications_texts",
                 apply: Sql(include_str!("migrations/dsp/0004_communications_texts.sql")),
+            },
+            Migration {
+                id: 5,
+                name: "communications_picked",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0005_communications_picked.sql"
+                )),
             },
         ],
     }],
@@ -112,6 +121,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     dispatch_core::typescript!(
         cfg,
         Communications,
+        DispatchPhone,
         CommunicationsWaiting,
         WaitingMessage,
         CommunicationsWorkspace,
@@ -127,12 +137,17 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         FileStatus,
         Conversations,
         ConversationMessages,
+        Elsewhere,
+        Workday,
+        TodaysRoutes,
+        RouteDriver,
         Contacts,
         Contact,
         TextContacts,
         TextContact,
         Profile,
-        ProfileToday,
+        Today,
+        Pace,
         Typing,
         Writing,
         CommunicationsUpdates,

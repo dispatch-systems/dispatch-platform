@@ -1,40 +1,75 @@
-//! The profile beside a conversation: what's known of the member it's with, besides the name,
-//! role and photo the conversation has. Their route today, the DSP's own day, as Routes has read
-//! it (`driver_routes`), with what the DSP calls its van as Vans has it (`amazon_fleet`); and how
-//! to reach them: their phone number and email address as Driver Match has them (`directory`),
-//! and the workspace the conversation is in. Each feature is asked only while it's on for the
-//! DSP, and what none knows is left out.
-use super::{conversations, storage::CommunicationsStore};
-use crate::api::types::{Profile, ProfileToday};
+//! The profile beside a conversation: what's known of whom it's with, besides the name, role and
+//! photo the conversation has. Their route today and the work phone they hold now (`today`); and
+//! how to reach them: their phone number and email address as Driver Match has them
+//! (`directory`), and their Slack workspace: a Slack conversation's own, or for a driver's work
+//! conversation, the first of the DSP's workspaces they're in. Each feature is asked only while
+//! it's on for the DSP, and what none knows is left out. A number's conversation has none.
+use super::{
+    conversations,
+    storage::CommunicationsStore,
+    texts::{
+        live_day::LiveDay,
+        storage::{ConversationKind, TextStore},
+    },
+    today,
+};
+use crate::api::types::Profile;
 use dispatch_core::{
     Error, Result, State,
     db::Store,
-    foundation::clock,
-    manifest::people::{self, Person},
+    manifest::people::{self, Person, Source},
 };
-use dispatch_routes_contract as routes;
 use dispatch_slack::kit;
-use dispatch_vans_contract as fleet;
 
-/// The profile of the member the conversation `id` is with, today being the day it is in
-/// `zone`, the DSP's timezone.
-pub fn of(db: &Store, state: &State, dsp: &str, zone: &str, id: &str) -> Result<Profile> {
-    let conversation = db
-        .communications_conversation(dsp, id)?
-        .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+/// The profile of whom the conversation `id` is with: a Slack conversation, or by text
+/// (`texted`) a driver's work conversation.
+pub fn of(db: &Store, state: &State, dsp: &str, id: &str, texted: bool) -> Result<Profile> {
     let everyone = people::everyone(db, state, dsp)?;
-    let person = everyone.holding(
-        kit::SOURCE,
-        &kit::member_id(&conversation.team, &conversation.user),
-    );
-    let today = match person {
-        Some(person) => today(db, dsp, zone, person)?,
-        None => None,
+    let workspaces = kit::workspaces(db, dsp)?;
+    let (person, today, team) = if texted {
+        let conversation = db
+            .communications_text_conversation(dsp, id)?
+            .filter(|conversation| conversation.kind == ConversationKind::Work)
+            .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+        let (source, driver) = conversation
+            .driver
+            .ok_or_else(|| Error::new("invalid_input", 400))?;
+        let person = Source::parse(&source).and_then(|source| everyone.holding(source, &driver));
+        let today = match LiveDay::read(db, dsp)? {
+            Some(live) if live.source == source => today::of_drivers(db, dsp, &live, &[driver])?,
+            _ => person
+                .map(|person| today::of(db, dsp, person))
+                .transpose()?
+                .flatten(),
+        };
+        // Their Slack workspace: the first of the DSP's they're in.
+        let team = person.and_then(|person| {
+            workspaces
+                .iter()
+                .find(|workspace| slack_member(person, &workspace.team))
+                .map(|workspace| workspace.team.clone())
+        });
+        (person, today, team)
+    } else {
+        let conversation = db
+            .communications_conversation(dsp, id)?
+            .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
+        let person = everyone.holding(
+            kit::SOURCE,
+            &kit::member_id(&conversation.team, &conversation.user),
+        );
+        let today = person
+            .map(|person| today::of(db, dsp, person))
+            .transpose()?
+            .flatten();
+        (person, today, Some(conversation.team))
     };
-    let slack = kit::workspaces(db, dsp)?
-        .iter()
-        .find(|workspace| workspace.team == conversation.team)
-        .map(conversations::named);
+    let slack = team.and_then(|team| {
+        workspaces
+            .iter()
+            .find(|workspace| workspace.team == team)
+            .map(conversations::named)
+    });
     Ok(Profile {
         today,
         phone: person.and_then(|person| person.phones.first().cloned()),
@@ -43,47 +78,12 @@ pub fn of(db: &Store, state: &State, dsp: &str, zone: &str, id: &str) -> Result<
     })
 }
 
-/// The route `person` has today, if Routes has read one.
-fn today(db: &Store, dsp: &str, zone: &str, person: &Person) -> Result<Option<ProfileToday>> {
-    let Some(reader) = routes::for_dsp(db, dsp)? else {
-        return Ok(None);
-    };
-    let ids: Vec<String> = person
-        .ids_of(reader.source())
+/// Whether `person` is a member of the workspace `team`, as Driver Match knows them.
+fn slack_member(person: &Person, team: &str) -> bool {
+    person
+        .ids_of(kit::SOURCE)
         .iter()
-        .take(routes::MOST_IDS)
-        .cloned()
-        .collect();
-    if ids.is_empty() {
-        return Ok(None);
-    }
-    let zone: chrono_tz::Tz = zone
-        .parse()
-        .map_err(|_| Error::new("invalid_timezone", 400))?;
-    let day = clock::today(zone).to_string();
-    // Their own route, beside any they rescued, which has fewer stops.
-    let driven = reader.routes(db, dsp, &ids, &day, &day)?.routes;
-    let Some(route) = driven.into_iter().max_by_key(|route| route.stops) else {
-        return Ok(None);
-    };
-    let van = match route.vin {
-        Some(vin) => match fleet::for_dsp(db, dsp)? {
-            Some(fleet) => fleet.vans(db, dsp, &[vin])?.into_iter().next(),
-            None => None,
-        },
-        None => None,
-    };
-    let today = ProfileToday {
-        route: route.route_code,
-        van: van.and_then(|van| van.name),
-        wave_at: route.wave_start_at,
-        stops: (route.stops > 0).then_some(route.stops),
-    };
-    let known = today.route.is_some()
-        || today.van.is_some()
-        || today.wave_at.is_some()
-        || today.stops.is_some();
-    Ok(known.then_some(today))
+        .any(|id| id.split_once(':').is_some_and(|(of, _)| of == team))
 }
 
 #[cfg(test)]
