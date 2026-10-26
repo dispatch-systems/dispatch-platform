@@ -16,7 +16,7 @@ export type InFront = { conversation?: string; group?: string };
  * Dispatch closed.
  */
 export const SEEN_MS = 3 * 60_000;
-/** How many messages are remembered: those waiting, then the latest of the rest. */
+/** How many messages no longer waiting are remembered, the latest; those waiting all are. */
 const MOST = 500;
 
 /**
@@ -42,10 +42,8 @@ export function arrived(
   );
   // Those no longer waiting are remembered too, the latest of them, so a tab reading an older
   // copy than the last to look forgets none that alerted already.
-  return {
-    fresh,
-    seen: { at: now, ids: [...seen.ids.filter((id) => !waiting.has(id)), ...ids].slice(-MOST) },
-  };
+  const gone = seen.ids.filter((id) => !waiting.has(id)).slice(-MOST);
+  return { fresh, seen: { at: now, ids: [...gone, ...ids] } };
 }
 
 /** Where the member's tabs at the DSP keep what they saw. */

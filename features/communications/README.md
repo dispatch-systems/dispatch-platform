@@ -257,6 +257,8 @@ not; nothing reaches a browser closed, as nothing is pushed.
 - **Once:** one of the member's tabs at the DSP alerts them, the one they last focused (Web Locks),
   the others in line for when it closes. It looks every five seconds at what waits, as the tab
   read it in the last half minute, else read again, so a message alerts within about 35 seconds.
+  Taking its turn, a tab reads what the member chose again before it looks, as they may have
+  changed it in another tab; what it reads once another tab has the turn alerts no one.
 - **Not in front of them:** never for the conversation open on the page, or the group it's listed
   under, while the window is in view and focused.
 - **Sound** plays once the member has clicked or pressed a key in the page, as browsers ask: the

@@ -5,10 +5,16 @@
 // message from alerting twice.
 
 /**
- * Has this tab take its turn alerting under `name`, `leading` told as it starts and stops, until
- * the answer is called.
+ * Has this tab take its turns alerting under `name`, each told to `turn` as it starts, with a
+ * signal aborted as it ends, until the answer is called.
  */
-export function lead(name: string, leading: (leads: boolean) => void) {
+export function lead(name: string, turn: (ends: AbortSignal) => void) {
+  let current: AbortController | undefined;
+  const leading = (leads: boolean) => {
+    current?.abort();
+    current = leads ? new AbortController() : undefined;
+    if (current) turn(current.signal);
+  };
   if (!('locks' in navigator)) {
     leading(true);
     return () => leading(false);
