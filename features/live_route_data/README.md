@@ -9,8 +9,10 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
 
 - **Switch:** `live_route_data`, off for every DSP until the platform owner switches it on. It needs
   a route source (Cortex), which switches on with it. A development or preview DSP's demo leaves it
-  off, as it reads a provider: switch it on to try it. It depends on Routes, which keeps what it
-  reads, and on Cortex, which it reads.
+  off, as it reads a provider: switch it on to try it, with a station and Cortex connected. In
+  fixture mode each read is Cortex's fixture day, its two drivers each on a work phone of their
+  own, so Routes settles a hold on each. It depends on Routes, which keeps what it reads, and on
+  Cortex, which it reads.
 - **Permissions:** `live_route_data.manage`, for its settings. Only owners hold it until a role
   grants it.
 - **Settings:** `live_route_data.collection`, "Collection", on its own page of Settings (Settings,
