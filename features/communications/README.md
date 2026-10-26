@@ -246,11 +246,11 @@ sending again one that failed.
   nobody held, answer their number; a driver's, the work phone they hold now, as live route data
   says, refused while they hold none (`communications_no_work_phone`). Kept as Phones tells of
   it, named with the writer's full name. Retry sends again one Dispatch sent that failed, while
-  its phone is still paired and it goes where a text written now would: in a driver's, refused
-  while they hold no work phone (`communications_no_work_phone`) or hold another
+  its phone is still paired. Either goes only where a text written now would: in a driver's,
+  refused while they hold no work phone (`communications_no_work_phone`) or hold another
   (`communications_work_phone_changed`), as the one it went to may be another driver's since;
-  checked as Phones queues it (`texting.retry`'s condition), so a handoff or the stop can't come
-  between.
+  checked as Phones queues it (`texting.send`'s and `texting.retry`'s condition), so a handoff or
+  the stop can't come between.
 
 ## Messaging a group
 

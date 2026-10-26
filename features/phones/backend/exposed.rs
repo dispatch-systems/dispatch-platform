@@ -35,11 +35,13 @@ impl Texting for Exposed {
         state: &'a Arc<State>,
         dsp: &'a str,
         outgoing: Outgoing,
+        condition: Condition,
     ) -> Answer<'a, Text> {
         Box::pin(async move {
             let at = dsp.to_owned();
             let text = state
                 .run_scoped(dsp, DOMAIN, move |db| {
+                    condition(db)?;
                     let now = db::now();
                     let text = db.phones_send(&at, &outgoing, now)?;
                     // The demo's stand-in phone, which no app holds, says it delivered at once.

@@ -25,14 +25,16 @@ pub trait Texting: Send + Sync {
     /// The texts changed after `after`, a text's `change`, oldest change first, at most `most`;
     /// and the last change there is, which reading on from finds nothing missed.
     fn changes(&self, db: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes>;
-    /// Sends `outgoing` from one of the DSP's phones, waiting for it until it says how it
-    /// went. Refused as `phones_none` while the DSP has no phone, `phones_not_found` for a
-    /// phone not its own, and `phones_file_not_found` for a picture not added by `by`.
+    /// Sends `outgoing` from one of the DSP's phones, provided `condition` holds as it's queued,
+    /// waiting for it until it says how it went. Refused as `condition` refuses it, as
+    /// `phones_none` while the DSP has no phone, `phones_not_found` for a phone not its own, and
+    /// `phones_file_not_found` for a picture not added by `by`.
     fn send<'a>(
         &'a self,
         state: &'a Arc<State>,
         dsp: &'a str,
         outgoing: Outgoing,
+        condition: Condition,
     ) -> Answer<'a, Text>;
     /// Sends again a text Dispatch sent that failed, provided `condition` holds as it's queued.
     /// Refused as `condition` refuses it, and as `phones_text_not_found` otherwise.

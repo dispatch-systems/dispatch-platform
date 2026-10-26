@@ -5,9 +5,9 @@
 //! A number's conversation, and a work phone's nobody held, answer their number; a driver's, the
 //! work phone they hold now, as live route data says, and none while they hold none. Its pictures
 //! are kept by `texting` as they're added, its adder's alone until they go with it, and let go of
-//! should the adder's access end while their bytes come. One that failed is sent again with Retry,
-//! while it would go where a text written now goes, as `texting` queues it. The member's access is
-//! checked again before a text goes.
+//! should the adder's access end while their bytes come. One that failed is sent again with Retry.
+//! Either goes only where a text written now goes, checked as `texting` queues it, so no handoff or
+//! stop comes between; and the member's access is checked again before it goes.
 use super::{
     filing,
     live_day::LiveDay,
@@ -33,7 +33,7 @@ use dispatch_phones_contract::{Added, Outgoing};
 use std::sync::Arc;
 
 /// Sends what the member `c` wrote in the conversation by text `id`, with the pictures `photos`
-/// they added for it: the text, as kept.
+/// they added for it, while it goes where a text written there now goes: the text, as kept.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
@@ -50,6 +50,8 @@ pub async fn send(
     // Checked again before it goes: once Phones has it, it's sent.
     let asked = c.clone();
     let c = state.read(move |db| access.revalidate(db, &asked)).await?;
+    let (dsp, at, number) = (c.dsp.id.clone(), id.to_owned(), to.clone());
+    let condition = Box::new(move |db: &Store| goes_to(db, &dsp, &at, &number));
     let outgoing = Outgoing {
         phone: None,
         to,
@@ -57,7 +59,7 @@ pub async fn send(
         files: photos.to_vec(),
         by: c.auth.user.id.clone(),
     };
-    let sent = texting.send(state, &c.dsp.id, outgoing).await?;
+    let sent = texting.send(state, &c.dsp.id, outgoing, condition).await?;
     live::stopped(state, &c.dsp.id, id, &c.auth.user.id);
     filing::read_on(state, &c.dsp.id).await?;
     let (shared, dsp, name) = (state.clone(), c.dsp.id.clone(), sender::name(&c.auth.user));
@@ -93,6 +95,16 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
         .ok_or_else(|| Error::new("communications_no_work_phone", 409))
 }
 
+/// Refuses a text to `number` unless it's where a text written in the conversation `id` goes
+/// now: not a work phone its driver no longer holds, which may be another's since.
+fn goes_to(db: &Store, dsp: &str, id: &str, number: &str) -> Result<()> {
+    ensure(
+        recipient(db, dsp, id)? == number,
+        "communications_work_phone_changed",
+        409,
+    )
+}
+
 /// Refuses the text `text` unless it's the conversation `id`'s and goes where a text written there
 /// now would.
 fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
@@ -100,11 +112,7 @@ fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
         .communications_text(dsp, text)?
         .filter(|text| text.conversation == id)
         .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
-    ensure(
-        recipient(db, dsp, id)? == text.number,
-        "communications_work_phone_changed",
-        409,
-    )
+    goes_to(db, dsp, id, &text.number)
 }
 
 /// Sends again the text `text`, which Dispatch sent in the conversation `id` and failed, while it

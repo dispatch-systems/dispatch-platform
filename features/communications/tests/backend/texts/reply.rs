@@ -1,7 +1,7 @@
 //! Answering by text: what's written goes as written, from the DSP's phone, under whoever wrote
-//! it on the page; one that fails leaves the conversation waiting, and Retry sends it again, but
-//! never to a work phone the driver no longer holds, even as it changes hands while Retry is under
-//! way. A picture added for one is let go of once its adder's access ended while it came.
+//! it on the page; one that fails leaves the conversation waiting, and Retry sends it again. Neither
+//! goes to a work phone the driver no longer holds, even as it changes hands while it's under way.
+//! A picture added for one is let go of once its adder's access ended while it came.
 use super::*;
 use crate::ConversationState;
 use crate::backend::{
@@ -115,7 +115,7 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
             hold("B2", "2065550101", handoff, until),
         ]
     };
-    support::held_while_retrying(&dsp, Some(&today), handed(None), Vec::new());
+    support::held_while_queuing(&dsp, Some(&today), handed(None), Vec::new());
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_work_phone_changed"
@@ -129,7 +129,7 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
         .into_iter()
         .map(|hold| (today.clone(), hold))
         .collect();
-    support::held_while_retrying(&dsp, None, Vec::new(), saved);
+    support::held_while_queuing(&dsp, None, Vec::new(), saved);
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_no_work_phone"
@@ -145,6 +145,34 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
         (conversation.clone(), Some(TextStatus::Failed)),
         "still Avery's, and never sent again"
     );
+}
+
+#[tokio::test]
+async fn an_answer_never_goes_to_a_work_phone_handed_on_as_it_goes() {
+    let (_root, state, dsp) = support::started();
+    let (zone, day) = today(&state, &dsp).await;
+    let (midnight, today) = (at(zone, day, 0, 0), day.to_string());
+    // Avery holds 0101 and texts.
+    let avery = vec![hold("A1", "2065550101", midnight, None)];
+    held(&state, &dsp, Some(&today), avery, Vec::new()).await;
+    let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+
+    // As the answer goes, Avery hands 0101 to Blake and takes 0202: it would reach Blake.
+    let handoff = now();
+    let handed = vec![
+        hold("A1", "2065550101", midnight, Some(handoff)),
+        hold("A1", "2065550202", handoff, None),
+        hold("B2", "2065550101", handoff, None),
+    ];
+    support::held_while_queuing(&dsp, Some(&today), handed, Vec::new());
+    let refused = send(&state, &c, support::USE, &conversation, "Van 214", &[]).await;
+    assert_eq!(
+        refused.unwrap_err().code,
+        "communications_work_phone_changed"
+    );
+    assert!(support::sent(&dsp).is_empty(), "nothing went to Blake");
 }
 
 #[tokio::test]

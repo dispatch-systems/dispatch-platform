@@ -340,8 +340,9 @@ struct Known {
     failing: bool,
     /// The pictures added for a text not sent yet, each by its ID with who added it.
     added: Vec<(String, String)>,
-    /// Who holds the work phones once the phone next goes to send a text again.
-    held_while_retrying: Option<Holds>,
+    /// Who holds the work phones once the phone next goes to queue a text, to send or to send
+    /// again.
+    held_while_queuing: Option<Holds>,
     /// Whether Communications is switched off for the DSP while the phone next reads a file's
     /// bytes.
     off_while_reading: bool,
@@ -426,9 +427,10 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
 pub fn failing(dsp: &str, failing: bool) {
     phone(dsp, |phone| phone.failing = failing);
 }
-/// Has the DSP's work phones change hands, as `held` says, as its phone next goes to send a text
-/// again, before it queues it: as a live read or the stop may land while Retry is under way.
-pub fn held_while_retrying(
+/// Has the DSP's work phones change hands, as `held` says, as its phone next goes to queue a text,
+/// sent or sent again, before it does: as a live read or the stop may land while an answer or
+/// Retry is under way.
+pub fn held_while_queuing(
     dsp: &str,
     live_day: Option<&str>,
     live: Vec<WorkPhoneHold>,
@@ -436,12 +438,24 @@ pub fn held_while_retrying(
 ) {
     let live_day = live_day.map(str::to_owned);
     phone(dsp, |phone| {
-        phone.held_while_retrying = Some(Holds {
+        phone.held_while_queuing = Some(Holds {
             live_day,
             live,
             saved,
         });
     });
+}
+/// Hands the DSP's work phones over as `held_while_queuing` said, if it did, as its phone goes to
+/// queue a text.
+async fn queuing(state: &Arc<State>, dsp: &str) {
+    if let Some(holds) = phone(dsp, |phone| phone.held_while_queuing.take()) {
+        let Holds {
+            live_day,
+            live,
+            saved,
+        } = holds;
+        held(state, dsp, live_day.as_deref(), live, saved).await;
+    }
 }
 /// Has Communications switched off for the DSP while its phone next reads a file's bytes, one
 /// asked of it or added for a text, as the platform owner might while a member waits on it.
@@ -625,33 +639,41 @@ impl Texting for Standing {
         state: &'a Arc<State>,
         dsp: &'a str,
         outgoing: Outgoing,
+        condition: Condition,
     ) -> Answer<'a, Text> {
         Box::pin(async move {
-            let text = phone(dsp, |phone| {
-                phone.change += 1;
-                let text = Text {
-                    id: crypto::id("text")?,
-                    phone: STAND_IN.to_owned(),
-                    direction: Direction::Out,
-                    origin: Origin::Dispatch,
-                    number: outgoing.to.clone(),
-                    body: outgoing.body.clone(),
-                    at: now(),
-                    sent_by: Some(outgoing.by.clone()),
-                    status: Some(if phone.failing {
-                        Status::Failed
-                    } else {
-                        Status::Delivered
-                    }),
-                    status_at: Some(now()),
-                    error: phone.failing.then(|| "No service".to_owned()),
-                    files: Vec::new(),
-                    change: phone.change,
-                };
-                phone.texts.push(text.clone());
-                phone.sent.push(outgoing);
-                Ok::<_, Error>(text)
-            })?;
+            queuing(state, dsp).await;
+            let at = dsp.to_owned();
+            let text = state
+                .run(move |db| {
+                    condition(db)?;
+                    phone(&at, |phone| {
+                        phone.change += 1;
+                        let text = Text {
+                            id: crypto::id("text")?,
+                            phone: STAND_IN.to_owned(),
+                            direction: Direction::Out,
+                            origin: Origin::Dispatch,
+                            number: outgoing.to.clone(),
+                            body: outgoing.body.clone(),
+                            at: now(),
+                            sent_by: Some(outgoing.by.clone()),
+                            status: Some(if phone.failing {
+                                Status::Failed
+                            } else {
+                                Status::Delivered
+                            }),
+                            status_at: Some(now()),
+                            error: phone.failing.then(|| "No service".to_owned()),
+                            files: Vec::new(),
+                            change: phone.change,
+                        };
+                        phone.texts.push(text.clone());
+                        phone.sent.push(outgoing);
+                        Ok::<_, Error>(text)
+                    })
+                })
+                .await?;
             events::publish(state, dsp, TextsChanged).await;
             Ok(text)
         })
@@ -664,16 +686,7 @@ impl Texting for Standing {
         condition: Condition,
     ) -> Answer<'a, Text> {
         Box::pin(async move {
-            if let Some(holds) = phone(dsp, |phone| phone.held_while_retrying.take()) {
-                held(
-                    state,
-                    dsp,
-                    holds.live_day.as_deref(),
-                    holds.live,
-                    holds.saved,
-                )
-                .await;
-            }
+            queuing(state, dsp).await;
             let (at, wanted) = (dsp.to_owned(), id.to_owned());
             let text = state
                 .run(move |db| {
