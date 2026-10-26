@@ -139,7 +139,9 @@ stay; the next day's drivers fill it as its live reads start.
 - **The board:** beside Search, the list or the board, remembered in the browser for each member
   at each DSP, and not offered one pane at a time: the same groups as a table across the page,
   each driver a line of route, wave, van, work phone, stops and pace, and the last text with how
-  long it has waited or when. Choosing one opens it in the list.
+  long it has waited or when. It shows while nothing is open: one chosen there, or opened by a
+  link or a chip, opens in the list, and the board comes back once nothing is; choosing the board
+  leaves what's open.
 - **Search** finds work conversations, across days, by a driver's name or the digits of any work
   phone they texted on.
 - **Fresh:** read when it shows, again every minute while the page is in view
@@ -156,7 +158,8 @@ stay; the next day's drivers fill it as its live reads start.
   chips to their other conversations.
 - **A work phone nobody held:** No driver under its name, and **Pick driver**: one of today's
   drivers, found by name or route, each with their route and wave; picked, the phone's texts of
-  today are theirs ([Texts](#texts)), and their conversation opens.
+  today are theirs ([Texts](#texts)), and their conversation opens. Escape closes it, focus going
+  back to Pick driver.
 - **The profile** of a driver, from their name or photo: the ways to reach them, as the chips;
   Today: route, van, wave, stops with their bar, pace, and the work phone with since when;
   Contact: their phone number, email address and Slack workspace.
@@ -167,7 +170,8 @@ A person's conversation of each kind, which the page goes between: their work co
 driver who held the DSP's work phones; the one by text with their own number, the latest written
 in of Driver Match's numbers for them, else the first; and their Slack one, in a workspace where
 Communications works, the latest written in, else their first account there. Shown, as chips,
-on each of them while they have two or more.
+on each of them while they have two or more, each waiting as the page's list has it, so its dot
+follows each update, and one started since is found by whom it's with.
 
 ## Messaging
 
@@ -186,7 +190,8 @@ who may or may not work for the DSP.
 - **A conversation:** who it's with, their number while it isn't their name, and while it waits
   how long and Done; **Save contact** (Edit contact once saved), while Driver Match knows no one
   by the number: a name, up to 80 characters, shared by everyone at the DSP, never left changed
-  and unsaved without Save changes? asking to save or discard it; its menu, **Copy
+  and unsaved without Save changes? asking to save or discard it, and closed by Escape with focus
+  back on its button; its menu, **Copy
   number** and **Block** or **Unblock**. A number blocked leaves Messages and the counts, and
   what it sends while blocked never makes it wait, then or once unblocked; its texts are still
   kept. Its texts as Slack's messages show, the other party's by their face or a phone; the DSP's
