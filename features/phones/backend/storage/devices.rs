@@ -43,6 +43,14 @@ impl Device {
     pub fn online(&self, now: i64) -> bool {
         self.last_seen_at.is_some_and(|at| now - at <= ONLINE_MS)
     }
+    /// How the phone reads in the activity log: its name, and its number once it said it.
+    pub fn logged(&self) -> String {
+        if self.number.is_empty() {
+            self.name.clone()
+        } else {
+            format!("{} ({})", self.name, self.number)
+        }
+    }
     pub fn phone(&self, now: i64) -> Phone {
         Phone {
             id: self.id.clone(),

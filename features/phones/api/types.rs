@@ -1,6 +1,6 @@
 //! What Phones' endpoints for the dashboard answer with. Each type is written to TypeScript in
 //! `generated/`, which `client.ts` imports. What its phones are answered with is theirs alone,
-//! in `phone.rs`.
+//! in `phone/`.
 use serde::Serialize;
 
 /// `GET /api/dsp/phones`: the DSP's phones, those removed left out, in the order paired.

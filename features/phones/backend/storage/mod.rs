@@ -5,8 +5,8 @@ mod devices;
 mod files;
 mod texts;
 
-pub use devices::{Device, DeviceStore, ONLINE_MS, PAIRING_MS, Pairing};
-pub use files::{FileStore, ReportedFile, StoredFile};
+pub use devices::{Device, DeviceStore, PAIRING_MS, Pairing};
+pub use files::{FileStore, ReportedFile};
 pub use texts::{Kept, MOST_TEXTS, Reported, StatusReport, TextStore};
 
 use dispatch_core::{

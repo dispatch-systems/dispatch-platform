@@ -1,6 +1,6 @@
 //! Phones' endpoints, each registered with its path and access: the Phones card's behind
 //! `phones.manage` (Manage Phones) or `connections.manage` (Manage DSP Connections), and its
-//! phones' behind the key each was given, at the DSP's own address (`phone.rs`).
+//! phones' behind the key each was given, at the DSP's own address (`phone/`).
 use super::{
     phone::{self, Phone},
     types::{PhonePairing, PhoneRow, Phones},
@@ -124,7 +124,7 @@ fn remove(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &[])?;
     let id = phone_id(input.param("id"))?;
     let device = db.phones_remove(c.dsp_id(), id, db::now())?;
-    c.audit(db, "phones.removed", &phone::shown(&device))?;
+    c.audit(db, "phones.removed", &device.logged())?;
     // A phone waiting on its outbox hears at once that it was removed.
     live::queued(c.state, c.dsp_id());
     Ok(Reply::ok())
