@@ -26,8 +26,8 @@ use dispatch_core::{
     testing,
 };
 use dispatch_phones_contract::{
-    Added, Answer, Changes, Direction, File, Origin, Outgoing, Phone, Status, Text, Texting,
-    TextsChanged,
+    Added, Answer, Changes, Condition, Direction, File, Origin, Outgoing, Phone, Status, Text,
+    Texting, TextsChanged,
 };
 use dispatch_routes_contract::{
     Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, RouteDay, WorkPhone,
@@ -340,9 +340,17 @@ struct Known {
     failing: bool,
     /// The pictures added for a text not sent yet, each by its ID with who added it.
     added: Vec<(String, String)>,
+    /// Who holds the work phones once the phone next goes to send a text again.
+    held_while_retrying: Option<Holds>,
     /// Whether Communications is switched off for the DSP while the phone next reads a file's
     /// bytes.
     off_while_reading: bool,
+}
+/// Who holds a DSP's work phones, as `held` says it.
+struct Holds {
+    live_day: Option<String>,
+    live: Vec<WorkPhoneHold>,
+    saved: Vec<(String, WorkPhoneHold)>,
 }
 static KNOWN: Mutex<BTreeMap<String, Known>> = Mutex::new(BTreeMap::new());
 fn known<T>(dsp: &str, read: impl FnOnce(&Known) -> T) -> T {
@@ -417,6 +425,23 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
 /// Has what the DSP's phone sends next fail, or go.
 pub fn failing(dsp: &str, failing: bool) {
     phone(dsp, |phone| phone.failing = failing);
+}
+/// Has the DSP's work phones change hands, as `held` says, as its phone next goes to send a text
+/// again, before it queues it: as a live read or the stop may land while Retry is under way.
+pub fn held_while_retrying(
+    dsp: &str,
+    live_day: Option<&str>,
+    live: Vec<WorkPhoneHold>,
+    saved: Vec<(String, WorkPhoneHold)>,
+) {
+    let live_day = live_day.map(str::to_owned);
+    phone(dsp, |phone| {
+        phone.held_while_retrying = Some(Holds {
+            live_day,
+            live,
+            saved,
+        });
+    });
 }
 /// Has Communications switched off for the DSP while its phone next reads a file's bytes, one
 /// asked of it or added for a text, as the platform owner might while a member waits on it.
@@ -565,8 +590,9 @@ impl LiveRouteData for Standing {
     }
 }
 /// One phone, Dispatch, (206) 555-0100. What Dispatch sends from it is delivered at once, or fails
-/// once a test says it does; tried again, it waits on the phone. It keeps each picture added for a
-/// text as its adder's, and any file asked of it is a photo.
+/// once a test says it does; tried again, as its condition allows in the write that queues it, it
+/// waits on the phone. It keeps each picture added for a text as its adder's, and any file asked
+/// of it is a photo.
 impl Texting for Standing {
     fn phones(&self, _: &Store, _: &str) -> Result<Vec<Phone>> {
         Ok(vec![Phone {
@@ -630,19 +656,42 @@ impl Texting for Standing {
             Ok(text)
         })
     }
-    fn retry<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str, id: &'a str) -> Answer<'a, Text> {
+    fn retry<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        condition: Condition,
+    ) -> Answer<'a, Text> {
         Box::pin(async move {
-            let text = phone(dsp, |phone| {
-                phone.change += 1;
-                let change = phone.change;
-                let text = phone
-                    .texts
-                    .iter_mut()
-                    .find(|text| text.id == id && text.status == Some(Status::Failed))
-                    .ok_or_else(|| Error::new("phones_text_not_found", 404))?;
-                (text.status, text.error, text.change) = (Some(Status::Waiting), None, change);
-                Ok::<_, Error>(text.clone())
-            })?;
+            if let Some(holds) = phone(dsp, |phone| phone.held_while_retrying.take()) {
+                held(
+                    state,
+                    dsp,
+                    holds.live_day.as_deref(),
+                    holds.live,
+                    holds.saved,
+                )
+                .await;
+            }
+            let (at, wanted) = (dsp.to_owned(), id.to_owned());
+            let text = state
+                .run(move |db| {
+                    condition(db)?;
+                    phone(&at, |phone| {
+                        phone.change += 1;
+                        let change = phone.change;
+                        let text = phone
+                            .texts
+                            .iter_mut()
+                            .find(|text| text.id == wanted && text.status == Some(Status::Failed))
+                            .ok_or_else(|| Error::new("phones_text_not_found", 404))?;
+                        (text.status, text.error, text.change) =
+                            (Some(Status::Waiting), None, change);
+                        Ok(text.clone())
+                    })
+                })
+                .await?;
             events::publish(state, dsp, TextsChanged).await;
             Ok(text)
         })

@@ -6,8 +6,8 @@
 //! work phone they hold now, as live route data says, and none while they hold none. Its pictures
 //! are kept by `texting` as they're added, its adder's alone until they go with it, and let go of
 //! should the adder's access end while their bytes come. One that failed is sent again with Retry,
-//! while it would go where a text written now goes. The member's access is checked again before a
-//! text goes.
+//! while it would go where a text written now goes, as `texting` queues it. The member's access is
+//! checked again before a text goes.
 use super::{
     filing,
     live_day::LiveDay,
@@ -93,9 +93,24 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
         .ok_or_else(|| Error::new("communications_no_work_phone", 409))
 }
 
+/// Refuses the text `text` unless it's the conversation `id`'s and goes where a text written there
+/// now would.
+fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
+    let text = db
+        .communications_text(dsp, text)?
+        .filter(|text| text.conversation == id)
+        .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
+    ensure(
+        recipient(db, dsp, id)? == text.number,
+        "communications_work_phone_changed",
+        409,
+    )
+}
+
 /// Sends again the text `text`, which Dispatch sent in the conversation `id` and failed, while it
 /// goes where a text written now would: not to a work phone the driver no longer holds, which may
-/// be another's since. The text, as kept.
+/// be another's since. Checked as `texting` queues it, so no handoff or stop comes between. The
+/// text, as kept.
 pub async fn retry(
     state: &Arc<State>,
     c: &Context,
@@ -103,24 +118,13 @@ pub async fn retry(
     id: &str,
     text: &str,
 ) -> Result<Message> {
-    let (dsp, at, wanted) = (c.dsp.id.clone(), id.to_owned(), text.to_owned());
-    let texting = state
-        .read(move |db| {
-            let text = db
-                .communications_text(&dsp, &wanted)?
-                .filter(|text| text.conversation == at)
-                .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
-            ensure(
-                recipient(db, &dsp, &at)? == text.number,
-                "communications_work_phone_changed",
-                409,
-            )?;
-            offering(db, &dsp)
-        })
-        .await?;
+    let dsp = c.dsp.id.clone();
+    let texting = state.read(move |db| offering(db, &dsp)).await?;
     let asked = c.clone();
     let c = state.read(move |db| access.revalidate(db, &asked)).await?;
-    let sent = texting.retry(state, &c.dsp.id, text).await?;
+    let (dsp, at, wanted) = (c.dsp.id.clone(), id.to_owned(), text.to_owned());
+    let condition = Box::new(move |db: &Store| goes_now(db, &dsp, &at, &wanted));
+    let sent = texting.retry(state, &c.dsp.id, text, condition).await?;
     filing::read_on(state, &c.dsp.id).await?;
     let (shared, dsp) = (state.clone(), c.dsp.id.clone());
     state

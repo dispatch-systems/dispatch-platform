@@ -13,6 +13,10 @@ use std::{future::Future, pin::Pin, sync::Arc};
 /// What its asynchronous answers are: work done outside the database, as keeping bytes is.
 pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
+/// What must hold for a text to go, checked in the write that queues it, so nothing it reads can
+/// change before the text is queued: its refusal is the answer.
+pub type Condition = Box<dyn FnOnce(&Store) -> Result<()> + Send>;
+
 /// A DSP's texts by phone: those its phones receive and send, and those Dispatch sends from
 /// them.
 pub trait Texting: Send + Sync {
@@ -30,9 +34,15 @@ pub trait Texting: Send + Sync {
         dsp: &'a str,
         outgoing: Outgoing,
     ) -> Answer<'a, Text>;
-    /// Sends again a text Dispatch sent that failed. Refused as `phones_text_not_found`
-    /// otherwise.
-    fn retry<'a>(&'a self, state: &'a Arc<State>, dsp: &'a str, id: &'a str) -> Answer<'a, Text>;
+    /// Sends again a text Dispatch sent that failed, provided `condition` holds as it's queued.
+    /// Refused as `condition` refuses it, and as `phones_text_not_found` otherwise.
+    fn retry<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        condition: Condition,
+    ) -> Answer<'a, Text>;
     /// Keeps a picture for a text not sent yet, `by`'s alone until it's sent: its bytes as
     /// they arrive, up to `largest()`.
     fn add_file<'a>(

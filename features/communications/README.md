@@ -248,7 +248,9 @@ sending again one that failed.
   it, named with the writer's full name. Retry sends again one Dispatch sent that failed, while
   its phone is still paired and it goes where a text written now would: in a driver's, refused
   while they hold no work phone (`communications_no_work_phone`) or hold another
-  (`communications_work_phone_changed`), as the one it went to may be another driver's since.
+  (`communications_work_phone_changed`), as the one it went to may be another driver's since;
+  checked as Phones queues it (`texting.retry`'s condition), so a handoff or the stop can't come
+  between.
 
 ## Messaging a group
 

@@ -1,10 +1,12 @@
 //! What Phones exposes, as a feature using it finds it: only while it's on for the DSP, with
-//! the DSP's phones and the texts they relay, sending one from them, and the pictures added for
-//! one, let go of while not sent.
+//! the DSP's phones and the texts they relay, sending one from them, sending one that failed again
+//! as its caller's condition allows, and the pictures added for one, let go of while not sent.
+use crate::backend::storage::{PhonesStore, StatusReport};
 use axum::body::Bytes;
 use dispatch_core::{
-    State,
+    Error, State,
     db::{self, Store},
+    ensure,
     server::http::upload::Upload,
     testing,
 };
@@ -57,6 +59,64 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
     let at = dsp.clone();
     let offered = state.read(move |db| for_dsp(db, &at)).await.unwrap();
     assert!(offered.is_none());
+}
+
+#[tokio::test]
+async fn texting_sends_a_failed_text_again_only_as_its_condition_allows_in_the_write_queuing_it() {
+    testing::install(&[], &[&crate::FEATURE]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    let owner = testing::a_user(&db);
+    crate::backend::demo::demo(&db, &dsp, "America/Los_Angeles").unwrap();
+    let texting = for_dsp(&db, &dsp).unwrap().expect("Phones is on");
+    // A text Dispatch sent, which the phone says failed.
+    let outgoing = Outgoing {
+        phone: None,
+        to: "(425) 555-0199".into(),
+        body: "Van 214".into(),
+        files: Vec::new(),
+        by: owner,
+    };
+    let failed = db.phones_send(&dsp, &outgoing, 1_000).unwrap();
+    let (_, attempt) = db
+        .phones_outbox(&dsp, &failed.phone)
+        .unwrap()
+        .into_iter()
+        .find(|(text, _)| text.id == failed.id)
+        .expect("it waits for the phone");
+    let report = StatusReport {
+        id: failed.id.clone(),
+        attempt,
+        status: Status::Failed,
+        at: 2_000,
+        error: Some("No service".into()),
+    };
+    assert!(db.phones_status(&dsp, &failed.phone, &report).unwrap());
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+
+    // Refused by its condition, it stays failed.
+    let refused = Box::new(|_: &Store| Err(Error::new("condition_refused", 409)));
+    let answer = texting.retry(&state, &dsp, &failed.id, refused).await;
+    assert_eq!(answer.unwrap_err().code.as_str(), "condition_refused");
+    let (at, id) = (dsp.clone(), failed.id.clone());
+    let kept = state.read(move |db| db.phones_text(&at, &id)).await;
+    assert_eq!(kept.unwrap().unwrap().status, Some(Status::Failed));
+    // Allowed, it waits on the phone again; its condition held the platform's lock alone, so no
+    // other write came between it and the text queued.
+    let shared = state.clone();
+    let alone = Box::new(move |_: &Store| {
+        ensure(
+            shared.transition.try_read().is_err(),
+            "condition_shared",
+            500,
+        )
+    });
+    let retried = texting
+        .retry(&state, &dsp, &failed.id, alone)
+        .await
+        .unwrap();
+    assert_eq!(retried.status, Some(Status::Waiting));
 }
 
 /// Where the DSP's pictures' bytes are kept, made private as the feature makes it.
