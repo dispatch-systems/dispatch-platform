@@ -38,6 +38,7 @@ test('Live Route Data words the schedule its page of Settings refuses, and keeps
   await stop.fill('07:00');
   await save.click();
   await expect(section.getByRole('alert')).toHaveText('Stop must be after start.');
+  expect((await kept()).stop).toBe('21:00');
   await stop.fill('21:00');
   // Every day is chosen until the DSP chooses otherwise; with none, it would never read.
   const days = section.getByRole('group', { name: 'Days', exact: true }).getByRole('button');
