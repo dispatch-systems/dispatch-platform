@@ -130,6 +130,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   });
   const [opened, setOpened] = useState<Opened>(addressed);
   const { conversation: open, group, drafting } = opened;
+  const reading = open || group || drafting;
   const [pinned, setPinned] = useState<Row>();
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState<Draft>({ name: '', people: 0 });
@@ -155,13 +156,20 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const select = useCallback((id?: string) => opening({ conversation: id }), [opening]);
   const openGroup = useCallback((id: string) => opening({ group: id }), [opening]);
   const closed = useCallback(() => opening({}), [opening]);
+  // Choosing the board leaves what's open for it.
+  const chooseRoutesView = (next: RoutesView) => {
+    chooseView(next);
+    if (next === 'board') closed();
+  };
   const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
   const listedTeam = section === 'slack' ? team : undefined;
   const shownRows = inbox ? rows(inbox, section, listedTeam) : [];
-  // Today's Routes as a board across the page, as the member chose, but one pane at a time.
+  // Today's Routes as a board across the page, as the member chose, but one pane at a time, and
+  // while nothing is open: what opens, from a row, a link or a chip, shows in the list, and the
+  // board comes back once nothing is.
   const routesView: RoutesView = chosenView === 'board' ? 'board' : 'list';
   const boardable = layout !== undefined && layout !== 'phone';
-  const board = section === 'routes' && routesView === 'board' && boardable;
+  const board = section === 'routes' && routesView === 'board' && boardable && !reading;
   // Side by side, something is always open: the first listed with a conversation, until another
   // is chosen, and as the page widens to show both; on the board, nothing.
   const first =
@@ -228,12 +236,11 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     [openText],
   );
   // A row of Today's Routes: its conversation, or one started with the driver, in the list.
-  const routeChosen = useAction((row: RouteRow) => {
-    if (board) chooseView('list');
-    return openText(row.conversation?.id ?? null, () =>
+  const routeChosen = useAction((row: RouteRow) =>
+    openText(row.conversation?.id ?? null, () =>
       textDriver(row.kind === 'driver' ? row.driver.driverId : ''),
-    );
-  });
+    ),
+  );
   // Whom a conversation is with's conversation of another kind: as it is, or once started.
   const going = useAction((elsewhere: Elsewhere) =>
     elsewhere.kind === 'slack'
@@ -291,7 +298,6 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     placed.current = shown?.id;
     if (shownIn && shownIn !== section && sections.includes(shownIn)) chooseSection(shownIn);
   }, [shown, shownIn, section, sections, chooseSection]);
-  const reading = open || group || drafting;
   // The DSP's phones offline: in the heading, or on a phone, a line of their own under it.
   const offline = <PhonesOffline phones={inbox?.phones ?? []} now={now} />;
   return (
@@ -348,7 +354,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                       choose={showSection}
                     />
                   )}
-                  <ViewToggle view={routesView} choose={chooseView} />
+                  <ViewToggle view="board" choose={chooseRoutesView} />
                 </>
               }
               groups={routeList}
@@ -365,7 +371,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   groups: routeList,
                   choose: (row) => void routeChosen.run(row),
                   driver: current?.driverId,
-                  view: boardable ? { shown: routesView, choose: chooseView } : undefined,
+                  view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,
                 }}
                 sections={sections}
                 section={section}
@@ -426,6 +432,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   key={open}
                   id={open}
                   listed={current}
+                  conversations={inbox.conversations}
                   workspaces={inbox.workspaces}
                   texting={inbox.texting}
                   docked={docked}

@@ -4,6 +4,7 @@ import type {
   CommunicationsWorkspace,
   Conversation,
   Conversations,
+  Elsewhere,
   Group,
 } from '../api/index.js';
 import type { Listing } from '../api/client.js';
@@ -121,16 +122,12 @@ function merged(
   };
 }
 
-/** The list after an update the page waited on; one that resets is read afresh instead. */
-export const updated = (inbox: Communications, update: CommunicationsUpdates): Communications => ({
-  ...inbox,
-  revision: update.revision,
-  waiting: update.waiting,
-  typing: update.typing,
-  workspaces: update.workspaces,
-  texting: update.texting,
-  ...merged(inbox, update.conversations, update.groups),
-});
+/** The list after an update the page waited on, with all else it brings as it is now, as the
+ * phones and whether Today's Routes is offered; one that resets is read afresh instead. */
+export function updated(inbox: Communications, update: CommunicationsUpdates): Communications {
+  const { reset: _reset, conversations, groups, ...now } = update;
+  return { ...inbox, ...now, ...merged(inbox, conversations, groups) };
+}
 /** The list with the older answered conversations and groups of `section` read after its last. */
 export function withOlder(
   inbox: Communications,
@@ -154,6 +151,31 @@ export const withGroup = (inbox: Communications, group: Group): Communications =
   ...inbox,
   ...merged(inbox, [], [group]),
 });
+
+/** Whether `conversation` is the one `elsewhere` stands for: by its ID, or for one not started as
+ * it was read, by the driver, the number or the Slack account it's with. */
+function standsFor(elsewhere: Elsewhere, conversation: Conversation) {
+  if (elsewhere.conversationId !== null) return conversation.id === elsewhere.conversationId;
+  if (conversation.kind !== elsewhere.kind) return false;
+  if (elsewhere.kind === 'work') return conversation.driverId === elsewhere.driverId;
+  if (elsewhere.kind === 'number') return conversation.number === elsewhere.number;
+  return conversation.teamId === elsewhere.teamId && conversation.with.userId === elsewhere.userId;
+}
+/** Whom a conversation is with's conversations of each kind, as the list has them now, which each
+ * update keeps: one waits while the list holds it waiting, as it holds every one that does, and one
+ * started since they were read is theirs. */
+export const elsewhereNow = (
+  elsewhere: readonly Elsewhere[],
+  conversations: readonly Conversation[],
+): Elsewhere[] =>
+  elsewhere.map((each) => {
+    const listed = conversations.find((conversation) => standsFor(each, conversation));
+    return {
+      ...each,
+      conversationId: listed?.id ?? each.conversationId,
+      waiting: listed?.state === 'waiting',
+    };
+  });
 
 /** The rows of `section`'s list, of every workspace or `team`'s: each conversation of its own, and
  * in Slack's each group with someone in that workspace, in order. */

@@ -12,6 +12,7 @@ import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { lastFour, numberBeside } from '../format.js';
+import { elsewhereNow } from '../inbox.js';
 import { Composer } from './Composer.js';
 import { ConversationHead } from './ConversationHead.js';
 import { ElsewhereChips } from './Elsewhere.js';
@@ -38,6 +39,7 @@ import type { Changed } from './useInbox.js';
 export function ConversationPane({
   id,
   listed,
+  conversations,
   workspaces,
   texting,
   docked,
@@ -57,6 +59,8 @@ export function ConversationPane({
   id: string;
   /** The conversation as the list has it, which the page's own writes and each update keep. */
   listed?: Conversation;
+  /** The list's conversations, kept so, which its chips follow. */
+  conversations: readonly Conversation[];
   /** The DSP's workspaces, as each update brings them. */
   workspaces: readonly CommunicationsWorkspace[];
   /** Whether the DSP texts. */
@@ -96,7 +100,7 @@ export function ConversationPane({
   const driver = conversation?.kind === 'work' && conversation.driverId !== null;
   const workPhone = conversation?.kind === 'work' && !driver;
   const today = opened?.today ?? null;
-  const elsewhere = opened?.elsewhere ?? [];
+  const elsewhere = elsewhereNow(opened?.elsewhere ?? [], conversations);
   const number = (driver ? today?.phone : conversation?.number) ?? '';
   const working = workspaces.filter((workspace) => workspace.on);
   // A driver's goes to the work phone they hold now.

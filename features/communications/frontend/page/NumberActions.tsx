@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Copy, Ellipsis, Phone, PhoneOff, UserPlus } from 'lucide-react';
 import type { Conversation } from '../../api/index.js';
 import { blockNumber, saveContact } from '../../api/client.js';
@@ -58,9 +58,9 @@ export function NumberActions({
 
 /**
  * Save contact, or Edit contact once a name is saved, and the name to save under it, which closes
- * on Cancel, Escape, a press anywhere else or the button again. A name changed and not saved is
- * never just closed: it asks "Save changes?" with only Save and Discard first, as the role sheet
- * does.
+ * on Cancel, Escape (focus going back to the button), a press anywhere else or the button again.
+ * A name changed and not saved is never just closed: it asks "Save changes?" with only Save and
+ * Discard first, as the role sheet does.
  */
 function SaveContact({
   conversation,
@@ -73,7 +73,6 @@ function SaveContact({
   // The name being written, while it is.
   const [name, setName] = useState<string>();
   const [confirming, setConfirming] = useState(false);
-  const editor = useRef<HTMLDivElement>(null);
   const changed = name !== undefined && name.trim() !== saved;
   const closed = useCallback(() => {
     setName(undefined);
@@ -85,13 +84,14 @@ function SaveContact({
     closed();
   });
   const naming = name !== undefined;
-  useDismiss(editor, naming && !confirming, leave);
+  const { box: editor, button } = useDismiss(naming && !confirming, leave);
   // Its words, which on a phone only its mark shows.
   const label = conversation.contact ? 'Edit contact' : 'Save contact';
   const saveable = Boolean(name?.trim()) && !save.busy;
   return (
     <div ref={editor} className="save-contact">
       <button
+        ref={button}
         aria-label={label}
         aria-expanded={naming}
         onClick={() => (naming ? leave() : setName(saved))}

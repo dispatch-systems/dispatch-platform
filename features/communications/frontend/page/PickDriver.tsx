@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import type { Conversation, RouteDriver } from '../../api/index.js';
 import { pickDriver } from '../../api/client.js';
@@ -11,8 +11,8 @@ import { useDismiss } from './useDismiss.js';
 
 // Pick driver, for a work phone nobody held: one of today's drivers, found by name or route, each
 // with their route and wave, under its head's right end. Picked, the phone's texts of today are
-// theirs, and their conversation opens. It closes on Escape, a press anywhere else, or the button
-// again.
+// theirs, and their conversation opens. It closes on Escape, focus going back to the button, a
+// press anywhere else, or the button again.
 
 export function PickDriver({
   conversation,
@@ -29,9 +29,8 @@ export function PickDriver({
 }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
-  const box = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
-  useDismiss(box, open, close);
+  const { box, button } = useDismiss(open, close);
   const pick = useAction(async (driver: RouteDriver) => {
     picked(await pickDriver(conversation.id, driver.driverId));
     close();
@@ -44,7 +43,12 @@ export function PickDriver({
   );
   return (
     <div ref={box} className="pick-driver">
-      <button aria-label="Pick driver" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button
+        ref={button}
+        aria-label="Pick driver"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         <UserPlus size={15} />
         <span>Pick driver</span>
       </button>

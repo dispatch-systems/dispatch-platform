@@ -36,6 +36,11 @@ test('with its phone and no Slack, Communications opens on Today’s Routes, wit
     .getByRole('button', { name: 'Save contact' });
   const name = page.getByLabel('Name', { exact: true });
   const asking = page.getByRole('dialog', { name: 'Save changes?' });
+  // Left by the keyboard with nothing written, focus goes back to what opened it.
+  await saveContact.click();
+  await page.keyboard.press('Escape');
+  await expect(name).toHaveCount(0);
+  await expect(saveContact).toBeFocused();
   // A name written and left asks first: discarded, it's gone; saved, it's the contact's.
   await saveContact.click();
   await name.fill('Jamie Ortiz');
@@ -78,7 +83,7 @@ test('with its phone and no Slack, Communications opens on Today’s Routes, wit
   );
 });
 
-test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section', async ({
+test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section, the board chosen or not', async ({
   page,
   dispatch,
 }) => {
@@ -119,7 +124,11 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await page.reload();
   await expect(slack).toHaveAttribute('aria-selected', 'true');
 
-  // A link to a text, as a new one's notification is, opens it in Messaging.
+  // A link to a text, as a new one's notification is, opens it in Messaging, though the board
+  // shows Today's Routes.
+  await sections.getByRole('tab', { name: /Today's Routes/ }).click();
+  await page.getByRole('button', { name: 'Board' }).click();
+  await expect(page.getByRole('region', { name: "Today's Routes" })).toBeVisible();
   const { conversations } = await owner.read('/api/dsp/communications');
   const text = (conversations as { id: string; number: string | null }[]).find(
     (each) => each.number === '+14255550199',
