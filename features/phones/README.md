@@ -75,7 +75,8 @@ queued; adding a picture for a text not sent yet, its adder's alone until it's s
 go of it, as when its adder may no longer send it; and a text's picture or file to answer a page
 with. Numbers are kept one way: `+1` and ten digits in North America, `+` and the digits with a
 country code, a short code's digits alone; the contract's `normal` writes
-any number so, for a feature to match its own to texts'. It publishes `TextsChanged`
+any number so, for a feature to match its own to texts'. Its IDs, of phones, texts and files, are
+opaque, at most 64 letters, digits, `_` or `-`, as its `identifier` checks one. It publishes `TextsChanged`
 (`phones.texts_changed`) once texts or how they went are kept.
 
 ## Data and upkeep

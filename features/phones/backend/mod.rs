@@ -16,3 +16,7 @@ pub(crate) mod support;
 #[cfg(test)]
 #[path = "../tests/backend/numbers.rs"]
 mod numbers;
+/// What an ID is, as its contract says (`dispatch_phones_contract::identifier`).
+#[cfg(test)]
+#[path = "../tests/backend/identifiers.rs"]
+mod identifiers;

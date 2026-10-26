@@ -1,6 +1,9 @@
 //! Texting, as any feature uses it without depending on Phones: the texts and pictures a DSP's
 //! dispatch phones relay, and sending one from the DSP's own number. Phones exposes it as
 //! `texting`. Every call names the DSP and works only inside what Phones keeps for it.
+//!
+//! Its IDs, of a phone, a text or a file, are opaque: at most `ID_MOST` ASCII letters, digits, `_`
+//! or `-` (`identifier`), meaning nothing but to whoever gave them.
 use dispatch_core::{
     Result, State,
     db::Store,
@@ -9,6 +12,9 @@ use dispatch_core::{
 };
 use serde::Serialize;
 use std::{future::Future, pin::Pin, sync::Arc};
+
+/// The most characters an ID texting gives may have.
+pub const ID_MOST: usize = 64;
 
 /// What its asynchronous answers are: work done outside the database, as keeping bytes is.
 pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -223,6 +229,16 @@ pub fn normal(raw: &str) -> Option<String> {
         3..=7 if bare => Some(digits),
         _ => None,
     }
+}
+
+/// Whether `id` may be an ID texting gives a phone, a text or a file: 1 to `ID_MOST` ASCII
+/// letters, digits, `_` or `-`. It says nothing more of it: only whoever gave it knows what it
+/// names.
+pub fn identifier(id: &str) -> bool {
+    (1..=ID_MOST).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 /// What offers it for the DSP: only while Phones is on there.

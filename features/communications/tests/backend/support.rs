@@ -403,7 +403,7 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
     let id = phone(dsp, |phone| {
         phone.change += 1;
         let text = Text {
-            id: crypto::id("text").unwrap(),
+            id: given("sms"),
             phone: STAND_IN.to_owned(),
             direction: Direction::In,
             origin: Origin::Phone,
@@ -474,6 +474,11 @@ pub fn sent(dsp: &str) -> Vec<Outgoing> {
 }
 /// The stand-in phone's ID.
 const STAND_IN: &str = "phone_stand_in";
+/// An ID the stand-in gives a text or a picture: opaque, as texting's contract says, and unlike
+/// any Phones gives, as another offerer's may be.
+fn given(kind: &str) -> String {
+    format!("{kind}-{}", crypto::hex(&crypto::random::<6>().unwrap()))
+}
 /// The most a picture the stand-in keeps may be, in bytes.
 const LARGEST: u64 = 1024 * 1024;
 /// The most texts the stand-in phone gives at once: a page smaller than Phones', so what reads it
@@ -655,7 +660,7 @@ impl Texting for Standing {
                     phone(&at, |phone| {
                         phone.change += 1;
                         let text = Text {
-                            id: crypto::id("text")?,
+                            id: given("sms"),
                             phone: STAND_IN.to_owned(),
                             direction: Direction::Out,
                             origin: Origin::Dispatch,
@@ -724,7 +729,7 @@ impl Texting for Standing {
         Box::pin(async move {
             read_bytes(state, dsp).await;
             let file = File {
-                id: crypto::id("file")?,
+                id: given("mms"),
                 name: added.name,
                 mime: added.mime,
                 size: bytes.length as i64,

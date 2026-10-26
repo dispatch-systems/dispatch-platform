@@ -31,6 +31,7 @@ use dispatch_core::{
         upload::Upload,
     },
 };
+use dispatch_phones_contract as texting;
 use serde_json::Value;
 use std::{sync::Arc, time::Duration};
 
@@ -145,6 +146,11 @@ fn id(value: &str, prefix: &str) -> Result<String> {
         .and_then(|rest| rest.strip_prefix('_'))
         .is_some_and(|hex| hex.len() == 32 && hex.bytes().all(|b| b.is_ascii_hexdigit()));
     ensure(valid, "invalid_input", 400)?;
+    Ok(value.to_owned())
+}
+/// An ID texting gave a text or a picture, as its contract says one is: opaque.
+fn texting_id(value: &str) -> Result<String> {
+    ensure(texting::identifier(value), "invalid_input", 400)?;
     Ok(value.to_owned())
 }
 /// A conversation's ID, a Slack one's (`cv_…`) or one by text (`tc_…`): the ID, and whether it's
@@ -406,10 +412,11 @@ async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     v::fields(&input.body, &["text", "photos"])?;
     let (conversation, texted) = conversation_id(input.param("id"))?;
     let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
-    let photos = photos(&input.body)?;
     let message = if texted {
+        let photos = photos(&input.body, texting_id)?;
         texts::reply::send(&state, &c, access, &conversation, text, &photos).await?
     } else {
+        let photos = photos(&input.body, file_id)?;
         reply::send(&state, &c, access, &conversation, text, &photos).await?
     };
     Reply::of_status(&message, 201)
@@ -420,7 +427,7 @@ async fn retry(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &[])?;
     let conversation = id(input.param("id"), "tc")?;
-    let text = id(input.param("message"), "text")?;
+    let text = texting_id(input.param("message"))?;
     Reply::of(&texts::reply::retry(&state, &c, access, &conversation, &text).await?)
 }
 /// Saves a `name` for the number of a conversation by text.
@@ -490,20 +497,24 @@ async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.query, &[])?;
-    let wanted = id(input.param("id"), "file")?;
+    let wanted = texting_id(input.param("id"))?;
     texts::reading::file(&state, &c, access, &wanted).await
 }
-/// The `photos` added for a message: their IDs.
-fn photos(body: &Value) -> Result<Vec<String>> {
+/// The `photos` added for a message: their IDs, each as `checked` checks one.
+fn photos(body: &Value, checked: fn(&str) -> Result<String>) -> Result<Vec<String>> {
     match body.get("photos") {
         None => Ok(Vec::new()),
         Some(photos) => photos
             .as_array()
             .ok_or_else(|| Error::new("invalid_input", 400))?
             .iter()
-            .map(|photo| id(photo.as_str().unwrap_or_default(), "file"))
+            .map(|photo| checked(photo.as_str().unwrap_or_default()))
             .collect(),
     }
+}
+/// One of the photos Communications keeps for a message, by its ID.
+fn file_id(value: &str) -> Result<String> {
+    id(value, "file")
 }
 /// Messages a group: its `name`, its `people`, each `teamId` and `userId`, and the `text` and the
 /// `photos` added for it.
@@ -528,7 +539,7 @@ async fn create_group(state: Arc<State>, input: Input, access: Dsp) -> Result<Re
         })
         .collect::<Result<Vec<_>>>()?;
     let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
-    let photos = photos(&input.body)?;
+    let photos = photos(&input.body, file_id)?;
     let group = group_send::create(&state, &c, access, name, &people, text, &photos).await?;
     group_send::send_soon(&state, &c.dsp.id);
     Reply::of_status(&group, 201)
@@ -540,7 +551,7 @@ async fn message_group(state: Arc<State>, input: Input, access: Dsp) -> Result<R
     v::fields(&input.body, &["text", "photos"])?;
     let group = id(input.param("id"), "grp")?;
     let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
-    let photos = photos(&input.body)?;
+    let photos = photos(&input.body, file_id)?;
     let entry = group_send::again(&state, &c, access, &group, text, &photos).await?;
     group_send::send_soon(&state, &c.dsp.id);
     Reply::of_status(&entry, 201)
