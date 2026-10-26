@@ -128,17 +128,23 @@ pub fn reconcile(db: &Store, dsp: &str) -> Result<Vec<Error>> {
     let mut failed = Vec::new();
     for entry in std::fs::read_dir(folder(db, dsp)?)? {
         let entry = entry?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let unkept = if name.starts_with(ARRIVING) {
-            changed_at(&entry)? < abandoned
-        } else {
-            !kept.contains(&name)
-        };
-        if unkept && let Err(error) = removed(&entry.path()) {
+        if unkept(&entry, &kept, abandoned)?
+            && let Err(error) = removed(&entry.path())
+        {
             failed.push(error);
         }
     }
     Ok(failed)
+}
+/// Whether the bytes at `entry` are to go: no file in `kept` keeps them, or, still arriving, they
+/// last changed before `abandoned`.
+fn unkept(entry: &std::fs::DirEntry, kept: &HashSet<String>, abandoned: i64) -> Result<bool> {
+    let name = entry.file_name().to_string_lossy().into_owned();
+    Ok(if name.starts_with(ARRIVING) {
+        changed_at(entry)? < abandoned
+    } else {
+        !kept.contains(&name)
+    })
 }
 /// When the bytes at `entry` last changed, epoch milliseconds.
 fn changed_at(entry: &std::fs::DirEntry) -> Result<i64> {
