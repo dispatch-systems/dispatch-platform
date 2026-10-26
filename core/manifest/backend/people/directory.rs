@@ -8,6 +8,12 @@ use crate::{Result, db::Store, foundation::names, text_enum};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+/// The fewest digits a phone number has: one with fewer is no one's.
+const FEWEST_PHONE_DIGITS: usize = 7;
+/// How many of a phone number's last digits tell it apart from another: any before them are its
+/// country code.
+const PHONE_DIGITS_COMPARED: usize = 10;
+
 /// Who everyone is, as the feature that tells people apart answers.
 pub trait Directory: Sync {
     /// Everyone the DSP's features name, read afresh: `people::everyone` keeps it.
@@ -186,8 +192,8 @@ impl Everyone {
             .get(&(source, id.to_owned()))
             .map(|&at| &self.people[at])
     }
-    /// Whoever has the phone number `number`, by name: two numbers are one by their last ten
-    /// digits, and one of fewer than seven digits is no one's.
+    /// Whoever has the phone number `number`, by name: two numbers are one by their last
+    /// `PHONE_DIGITS_COMPARED` digits, and one of fewer than `FEWEST_PHONE_DIGITS` is no one's.
     pub fn by_phone(&self, number: &str) -> Vec<&Person> {
         dialed(number).map_or_else(Vec::new, |number| self.dialing(&number))
     }
@@ -241,11 +247,15 @@ impl Everyone {
         if exact.len() == 1 { exact } else { named }
     }
 }
-/// A phone number as two are told apart: its last ten digits, without its country code or
-/// punctuation; none with fewer than seven.
+/// A phone number as two are told apart: its last `PHONE_DIGITS_COMPARED` digits, without its
+/// country code or punctuation; none with fewer than `FEWEST_PHONE_DIGITS`.
 fn dialed(phone: &str) -> Option<String> {
     let all: Vec<char> = phone.chars().filter(char::is_ascii_digit).collect();
-    (all.len() >= 7).then(|| all[all.len().saturating_sub(10)..].iter().collect())
+    (all.len() >= FEWEST_PHONE_DIGITS).then(|| {
+        all[all.len().saturating_sub(PHONE_DIGITS_COMPARED)..]
+            .iter()
+            .collect()
+    })
 }
 
 #[cfg(test)]
