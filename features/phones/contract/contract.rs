@@ -22,9 +22,10 @@ pub type Condition = Box<dyn FnOnce(&Store) -> Result<()> + Send>;
 pub trait Texting: Send + Sync {
     /// The DSP's phones, those removed left out.
     fn phones(&self, db: &Store, dsp: &str) -> Result<Vec<Phone>>;
-    /// The texts changed after `after`, a text's `change`, oldest change first, at most `most`;
-    /// and the last change there is, which reading on from finds nothing missed.
-    fn changes(&self, db: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes>;
+    /// Each text changed after `after`, a text's `change`, as it is now, oldest change first: a
+    /// page of them, as many as texting gives at once, saying where to read on and whether more
+    /// remain.
+    fn changes(&self, db: &Store, dsp: &str, after: i64) -> Result<Changes>;
     /// Sends `outgoing` from one of the DSP's phones, provided `condition` holds as it's queued,
     /// waiting for it until it says how it went. Refused as `condition` refuses it, as
     /// `phones_none` while the DSP has no phone, `phones_not_found` for a phone not its own, and
@@ -91,12 +92,17 @@ pub struct Phone {
     pub last_seen_at: Option<i64>,
 }
 
-/// Texts changed after where a reader left off.
+/// A page of the feed of each text as it is now: those changed after where a reader left off,
+/// each once, oldest change first. A text changes as it comes, as Dispatch queues it or tries it
+/// again, as how it went changes, and as its files' bytes arrive; the feed keeps no history of
+/// the changes themselves.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Changes {
     pub texts: Vec<Text>,
-    /// The last change there is: where reading on starts.
-    pub last: i64,
+    /// Where reading on starts: after every change this page read.
+    pub next: i64,
+    /// Whether more changes remain after `next`, to read on for at once.
+    pub more: bool,
 }
 
 /// A text, as a phone reported it or Dispatch sent it.

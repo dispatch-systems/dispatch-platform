@@ -21,7 +21,7 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
     let phones = texting.phones(&db, &dsp).unwrap();
     assert_eq!(phones.len(), 1);
     assert!(phones[0].online);
-    let received = texting.changes(&db, &dsp, 0, 100).unwrap();
+    let received = texting.changes(&db, &dsp, 0).unwrap();
     assert_eq!(received.texts.len(), 3);
     let config = db.config.clone();
     drop(db);
@@ -44,9 +44,9 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
         Some(Status::Delivered),
         "the demo's stand-in delivers at once"
     );
-    let (at, after) = (dsp.clone(), received.last);
+    let (at, after) = (dsp.clone(), received.next);
     let changed = state
-        .read(move |db| texting.changes(db, &at, after, 100))
+        .read(move |db| texting.changes(db, &at, after))
         .await
         .unwrap();
     assert_eq!(changed.texts, [sent]);

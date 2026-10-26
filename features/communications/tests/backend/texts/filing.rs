@@ -6,7 +6,9 @@ use super::*;
 use crate::backend::{
     conversations,
     storage::CommunicationsStore,
-    support::{self, DRIVERS, at, filed, held, hold, route, routed, started, texted, today},
+    support::{
+        self, DRIVERS, at, filed, held, hold, route, routed, started, switch, texted, today,
+    },
     texts::{
         contacts, reply,
         storage::{ConversationKind, TextStore},
@@ -345,4 +347,44 @@ async fn a_drivers_work_conversation_changes_as_they_take_and_return_a_work_phon
     let (taken, returned) = (at(zone, day, 7, 0), at(zone, day, 7, 30));
     assert!(heard(vec![hold("A1", "2065550101", taken, None)]).await);
     assert!(heard(vec![hold("A1", "2065550101", taken, Some(returned))]).await);
+}
+
+#[tokio::test]
+async fn texts_that_came_while_communications_was_off_are_each_filed_once_it_reads_on() {
+    let (_root, state, dsp) = started();
+    switch(&state, &dsp, "communications", false).await;
+    let mut came = Vec::new();
+    for (ago, number) in [
+        (3, "+14255550134"),
+        (2, "+14255550135"),
+        (1, "+14255550136"),
+    ] {
+        came.push(
+            texted(
+                &state,
+                &dsp,
+                number,
+                "Van 208 is ready",
+                now() - ago * 60_000,
+            )
+            .await,
+        );
+    }
+    switch(&state, &dsp, "communications", true).await;
+    // Texting gives them a page at a time, smaller than any Communications would ask for.
+    read_on(&state, &dsp).await.unwrap();
+    let at = dsp.clone();
+    let unfiled = state
+        .read(move |db| {
+            let mut unfiled = Vec::new();
+            for id in came {
+                if db.communications_text(&at, &id)?.is_none() {
+                    unfiled.push(id);
+                }
+            }
+            Ok(unfiled)
+        })
+        .await
+        .unwrap();
+    assert!(unfiled.is_empty(), "read on while more remain: {unfiled:?}");
 }

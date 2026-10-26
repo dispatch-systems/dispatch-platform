@@ -16,7 +16,8 @@ use rusqlite::params;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// The most texts one call reads or reports.
+/// The most texts one call reads or reports: a page of changes, a phone's outbox, or what a phone
+/// reports at once.
 pub const MOST_TEXTS: usize = 100;
 
 /// A text as the phone reports it, by its own ID of it.
@@ -56,7 +57,8 @@ pub trait TextStore {
     /// only for the latest attempt, so a late report of an earlier one never cancels the text
     /// tried again. Answers whether it moved.
     fn phones_status(&self, dsp: &str, device: &str, report: &StatusReport) -> Result<bool>;
-    fn phones_changes(&self, dsp: &str, after: i64, most: usize) -> Result<Changes>;
+    /// The texts changed after `after`, as they are now: `MOST_TEXTS` at most.
+    fn phones_changes(&self, dsp: &str, after: i64) -> Result<Changes>;
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text>;
     fn phones_retry(&self, dsp: &str, id: &str, at: i64) -> Result<Text>;
@@ -177,16 +179,17 @@ impl TextStore for Store {
             Ok(true)
         })
     }
-    fn phones_changes(&self, dsp: &str, after: i64, most: usize) -> Result<Changes> {
+    fn phones_changes(&self, dsp: &str, after: i64) -> Result<Changes> {
         let db = self.dsp(dsp)?;
-        let most = most.clamp(1, MOST_TEXTS);
-        let rows = db.all(
+        let mut rows = db.all(
             "SELECT * FROM phones_texts WHERE change>? ORDER BY change LIMIT ?",
-            params![after, most as i64],
+            params![after, MOST_TEXTS as i64 + 1],
         )?;
-        // A full page goes on from its own last change; else every change there is was read.
-        let last = match rows.last() {
-            Some(row) if rows.len() == most => n(row, "change"),
+        let more = rows.len() > MOST_TEXTS;
+        rows.truncate(MOST_TEXTS);
+        // With more to come, reading on starts after this page; else after every change given.
+        let next = match rows.last() {
+            Some(row) if more => n(row, "change"),
             _ => n(
                 &db.one("SELECT last FROM phones_change WHERE id=1", [])?
                     .unwrap_or_default(),
@@ -195,7 +198,8 @@ impl TextStore for Store {
         };
         Ok(Changes {
             texts: texts(&db, rows)?,
-            last,
+            next,
+            more,
         })
     }
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>> {

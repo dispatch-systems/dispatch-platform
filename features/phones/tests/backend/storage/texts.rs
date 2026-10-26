@@ -32,7 +32,7 @@ fn a_text_reported_twice_is_kept_once() {
     assert_eq!(again[0].id, first[0].id);
     assert_eq!(again[0].files, first[0].files);
     assert_eq!(first[0].files.len(), 2);
-    let changes = db.phones_changes(&dsp, 0, 100).unwrap();
+    let changes = db.phones_changes(&dsp, 0).unwrap();
     let ids: Vec<_> = changes.texts.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(ids, [first[0].id.as_str(), again[1].id.as_str()]);
     let text = &changes.texts[0];
@@ -44,7 +44,7 @@ fn a_text_reported_twice_is_kept_once() {
     // Its picture's bytes arrive: the text changes again, after the other.
     db.phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha")
         .unwrap();
-    let later = db.phones_changes(&dsp, changes.last, 100).unwrap();
+    let later = db.phones_changes(&dsp, changes.next).unwrap();
     assert_eq!(later.texts.len(), 1);
     assert!(later.texts[0].files[0].kept);
     // Another phone can't send bytes for it.
@@ -226,15 +226,19 @@ fn readers_page_through_every_change_in_order() {
         vec![reported("last", "+14255550199", 2_000, 0)],
     )
     .unwrap();
-    let (mut after, mut read) = (0, Vec::new());
+    // Read on while more remain, as each page says.
+    let (mut after, mut read, mut pages) = (0, Vec::new(), 0);
     loop {
-        let page = db.phones_changes(&dsp, after, MOST_TEXTS).unwrap();
-        if page.texts.is_empty() {
+        let page = db.phones_changes(&dsp, after).unwrap();
+        read.extend(page.texts.iter().map(|text| text.change));
+        (after, pages) = (page.next, pages + 1);
+        if !page.more {
             break;
         }
-        read.extend(page.texts.iter().map(|text| text.change));
-        after = page.last;
     }
     assert_eq!(read.len(), 3 * MOST_TEXTS + 1, "none missed between pages");
+    assert_eq!(pages, 4, "the last page says none remain");
     assert!(read.windows(2).all(|pair| pair[0] < pair[1]));
+    let after_all = db.phones_changes(&dsp, after).unwrap();
+    assert!(after_all.texts.is_empty() && !after_all.more);
 }

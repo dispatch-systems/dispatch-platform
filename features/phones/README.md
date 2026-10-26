@@ -63,8 +63,9 @@ reaches), and counts as checking in.
 ## Texting, what it exposes
 
 `texting` (`dispatch-phones-contract`), while it's on for the DSP: the DSP's phones, those
-removed left out, each with whether it's online; the texts changed after a point, oldest change
-first, with their files, and the last change, so a reader reads on from where it left off;
+removed left out, each with whether it's online; a feed of each text as it is now, changed after
+a point, oldest change first, with its files, a page at a time, each saying where to read on and
+whether more remain;
 sending a text from one of the DSP's phones (the one named, else the one that last texted that
 number, else the one seen last), with pictures its sender added for it, refused as
 `phones_none`, `phones_not_found` or `phones_file_not_found`; trying a failed one again, as a new

@@ -27,8 +27,8 @@ impl Texting for Exposed {
             .map(|device| device.phone(now))
             .collect())
     }
-    fn changes(&self, db: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes> {
-        db.phones_changes(dsp, after, most)
+    fn changes(&self, db: &Store, dsp: &str, after: i64) -> Result<Changes> {
+        db.phones_changes(dsp, after)
     }
     fn send<'a>(
         &'a self,

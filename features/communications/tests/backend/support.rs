@@ -476,6 +476,9 @@ pub fn sent(dsp: &str) -> Vec<Outgoing> {
 const STAND_IN: &str = "phone_stand_in";
 /// The most a picture the stand-in keeps may be, in bytes.
 const LARGEST: u64 = 1024 * 1024;
+/// The most texts the stand-in phone gives at once: a page smaller than Phones', so what reads it
+/// reads on as it says.
+const PAGE: usize = 2;
 fn phone<T>(dsp: &str, change: impl FnOnce(&mut Known) -> T) -> T {
     let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
     change(known.entry(dsp.to_owned()).or_default())
@@ -617,7 +620,8 @@ impl Texting for Standing {
             last_seen_at: Some(now()),
         }])
     }
-    fn changes(&self, _: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes> {
+    /// A page of `PAGE` at most, as it pages.
+    fn changes(&self, _: &Store, dsp: &str, after: i64) -> Result<Changes> {
         Ok(phone(dsp, |phone| {
             let mut texts: Vec<Text> = phone
                 .texts
@@ -626,12 +630,13 @@ impl Texting for Standing {
                 .cloned()
                 .collect();
             texts.sort_by_key(|text| text.change);
-            texts.truncate(most);
-            let last = match texts.last() {
-                Some(text) if texts.len() == most => text.change,
+            let more = texts.len() > PAGE;
+            texts.truncate(PAGE);
+            let next = match texts.last() {
+                Some(text) if more => text.change,
                 _ => phone.change,
             };
-            Changes { texts, last }
+            Changes { texts, next, more }
         }))
     }
     fn send<'a>(
