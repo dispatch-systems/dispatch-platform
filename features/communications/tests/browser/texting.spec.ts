@@ -4,7 +4,7 @@ import { connect, event, fromSlack } from '../../../slack/tests/support/slack.js
 // The seeded DSP texts through its demo's stand-in phone, (206) 555-0100, which received three
 // texts and delivers what it's given at once; it has no Slack until a test connects it.
 
-test('with its phone and no Slack, Communications is Messaging: a number saved as a contact, answered by text, blocked into Contacts and unblocked', async ({
+test('with its phone and no Slack, Communications is Messaging: a number saved as a contact, asked before a name is left unsaved, answered by text, blocked into Contacts and unblocked', async ({
   page,
 }) => {
   await login(page);
@@ -17,12 +17,22 @@ test('with its phone and no Slack, Communications is Messaging: a number saved a
   await expect(page.getByRole('tablist', { name: 'Sections' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Connect Slack' })).toHaveCount(0);
   await stranger.getByRole('button').first().click();
-  await page
+  const saveContact = page
     .getByRole('region', { name: '(425) 555-0199' })
-    .getByRole('button', { name: 'Save contact' })
-    .click();
-  await page.getByLabel('Name', { exact: true }).fill('Jamie Ortiz');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+    .getByRole('button', { name: 'Save contact' });
+  const name = page.getByLabel('Name', { exact: true });
+  const asking = page.getByRole('dialog', { name: 'Save changes?' });
+  // A name written and left asks first: discarded, it's gone; saved, it's the contact's.
+  await saveContact.click();
+  await name.fill('Jamie Ortiz');
+  await page.keyboard.press('Escape');
+  await asking.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(name).toHaveCount(0);
+  await expect(stranger).toBeVisible();
+  await saveContact.click();
+  await name.fill('Jamie Ortiz');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await asking.getByRole('button', { name: 'Save changes' }).click();
   await expect(list.getByRole('listitem').filter({ hasText: 'Jamie Ortiz' })).toBeVisible();
 
   // Answered by text, it goes from the DSP's phone, which delivers it.

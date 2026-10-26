@@ -128,7 +128,8 @@ who may or may not work for the DSP.
   found by a name or digits typed. Then **Blocked**, each number blocked with Unblock.
 - **A conversation:** who it's with, their number while it isn't their name, and while it waits
   how long and Done; **Save contact** (Edit contact once saved), while Driver Match knows no one
-  by the number: a name, up to 80 characters, shared by everyone at the DSP; its menu, **Copy
+  by the number: a name, up to 80 characters, shared by everyone at the DSP, never left changed
+  and unsaved without Save changes? asking to save or discard it; its menu, **Copy
   number** and **Block** or **Unblock**. A number blocked leaves Messages and the counts, and
   what it sends while blocked never makes it wait, then or once unblocked; its texts are still
   kept. Its texts as Slack's messages show, the other party's by their face or a phone; the DSP's
