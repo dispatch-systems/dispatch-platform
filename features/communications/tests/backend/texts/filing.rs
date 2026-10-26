@@ -5,7 +5,8 @@
 use super::*;
 use crate::backend::{
     conversations,
-    support::{self, DRIVERS, at, filed, held, hold, started, texted, today},
+    storage::CommunicationsStore,
+    support::{self, DRIVERS, at, filed, held, hold, route, routed, started, texted, today},
     texts::{
         contacts, reply,
         storage::{ConversationKind, TextStore},
@@ -297,4 +298,51 @@ async fn what_a_number_sent_while_blocked_never_alerts_once_it_is_unblocked() {
         .map(|each| (each.conversation_id.as_str(), each.message.text.as_str()))
         .collect();
     assert_eq!(latest, [(id.as_str(), "Can I swap Saturday?")]);
+}
+
+#[tokio::test]
+async fn a_drivers_work_conversation_changes_as_they_take_and_return_a_work_phone_with_no_text() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery drives CX14 today, holding no work phone, and their conversation is opened, empty.
+    routed(
+        &dsp,
+        vec![route(
+            &today,
+            "A1",
+            "CX14",
+            "1FTVAN214",
+            120,
+            at(zone, day, 9, 20),
+        )],
+    );
+    held(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
+    let (shared, at_dsp) = (state.clone(), dsp.clone());
+    let avery = state
+        .run(move |db| contacts::open_driver(db, &shared, &at_dsp, "A1"))
+        .await
+        .unwrap()
+        .id;
+    // Whether each change of who holds the work phones is heard by a page with it open.
+    let heard = |holds| {
+        let (state, dsp, avery, today) = (state.clone(), dsp.clone(), avery.clone(), today.clone());
+        async move {
+            let at = dsp.clone();
+            let before = state
+                .read(move |db| db.communications_revision(&at))
+                .await
+                .unwrap();
+            held(&state, &dsp, Some(&today), holds, Vec::new()).await;
+            let (changed, _) = state
+                .read(move |db| db.communications_changed_since(&dsp, before))
+                .await
+                .unwrap();
+            changed.unwrap().contains(&avery)
+        }
+    };
+
+    let (taken, returned) = (at(zone, day, 7, 0), at(zone, day, 7, 30));
+    assert!(heard(vec![hold("A1", "2065550101", taken, None)]).await);
+    assert!(heard(vec![hold("A1", "2065550101", taken, Some(returned))]).await);
 }

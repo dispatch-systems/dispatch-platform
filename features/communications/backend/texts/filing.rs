@@ -13,7 +13,8 @@
 //! that day (`picking`), a text no hold covers is that driver's, before the day's first holder.
 //! Any other number's texts are its own. Who held which phone settles as the day goes on, so
 //! today's texts are filed again each time it changes (`WorkPhonesChanged`), and the pages
-//! waiting on changes hear of the work conversations waiting, which wait only on the live day.
+//! waiting on changes hear of the work conversations waiting, which wait only on the live day, and
+//! of those of the drivers holding a work phone today, whose phone may have changed.
 use super::{
     numbers::ten_digits,
     storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
@@ -35,7 +36,11 @@ use dispatch_routes_contract::{
     self as routes, DriverRoutes, LiveRouteData, WorkPhoneHold, WorkPhonesChanged,
 };
 use serde_json::json;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+    time::Duration,
+};
 
 /// How many texts are read from Phones at a time: as many as it gives.
 const PAGE: usize = 100;
@@ -133,22 +138,29 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
     }
 }
 
-/// Files every text of today, the DSP's day, again, where it belongs now, and notes the work
-/// conversations waiting changed, then wakes the pages waiting on them.
+/// Files every text of today, the DSP's day, again, where it belongs now, and notes changed the
+/// work conversations waiting, as the live day may have begun or ended, and those of the drivers
+/// holding a work phone today, held or texted in or not, as the phone they hold may have changed;
+/// then wakes the pages waiting on them.
 pub async fn refile_today(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
     state
         .run_scoped(dsp, DOMAIN, move |db| {
-            refiled(db, &at)?;
-            db.changed_communications_work(&at, now() - TWO_DAYS_MS)
+            let mut filer = Filer::new(db, &at)?;
+            refiled_by(db, &at, &mut filer)?;
+            let holding = filer.holding_today()?;
+            db.changed_communications_work(&at, now() - TWO_DAYS_MS, &holding)
         })
         .await?;
     live::changed(state, dsp);
     Ok(())
 }
-/// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
-pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
-    let mut filer = Filer::new(db, dsp)?;
+/// Files every text of today, the DSP's day, again, where it belongs now.
+pub fn refiled(db: &Store, dsp: &str) -> Result<()> {
+    refiled_by(db, dsp, &mut Filer::new(db, dsp)?)
+}
+/// Files every text of today, the DSP's day, again, where `filer` says it belongs now.
+fn refiled_by(db: &Store, dsp: &str, filer: &mut Filer) -> Result<()> {
     let zone = filer.zone;
     let today = clock::today(zone);
     let moves = db
@@ -157,7 +169,7 @@ pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
         .filter(|text| clock::day(zone, text.at) == today)
         .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
         .collect::<Result<Vec<_>>>()?;
-    Ok(!db.refile_communications_texts(dsp, &moves)?.is_empty())
+    db.refile_communications_texts(dsp, &moves).map(drop)
 }
 
 /// `text` as Communications keeps it, filed as `filed`.
@@ -298,6 +310,17 @@ impl<'a> Filer<'a> {
             self.holds.insert(day.to_owned(), read);
         }
         Ok(&self.holds[day])
+    }
+    /// The drivers holding a work phone today, the DSP's day, each by the source of their ID and
+    /// the ID.
+    fn holding_today(&mut self) -> Result<Vec<(String, String)>> {
+        let today = clock::today(self.zone).to_string();
+        let holding: BTreeSet<(String, String)> = self
+            .holds(&today)?
+            .iter()
+            .map(|(source, hold)| (source.clone(), hold.driver_id.clone()))
+            .collect();
+        Ok(holding.into_iter().collect())
     }
     /// The drivers picked for work phones on `day`, by their ten digits.
     fn picked(&mut self, day: &str) -> Result<&HashMap<String, Filed>> {

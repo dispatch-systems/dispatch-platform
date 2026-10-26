@@ -232,10 +232,16 @@ pub trait TextStore {
         ids: &[String],
         from: i64,
     ) -> Result<Vec<(String, i64)>>;
-    /// Notes that each work conversation waiting by its texts, written in from `from` on, changed,
-    /// for the pages waiting on changes: whether it waits counts only on the live day, which began
-    /// or ended.
-    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()>;
+    /// Notes changed, for the pages waiting on changes, each work conversation waiting by its
+    /// texts written in from `from` on, as whether it waits counts only on the live day, which
+    /// began or ended; and each of the drivers `drivers`', by the source of their ID and the ID,
+    /// texted in or not, as the work phone they hold may have changed.
+    fn changed_communications_work(
+        &self,
+        dsp: &str,
+        from: i64,
+        drivers: &[(String, String)],
+    ) -> Result<()>;
     /// The conversation texts filed so would be in, made with no text if it's new.
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;
     /// Marks the conversation done without an answer, as the member `by`, while it waits:
@@ -567,15 +573,21 @@ impl TextStore for Store {
             params![from, serde_json::to_string(ids)?],
         )
     }
-    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()> {
+    fn changed_communications_work(
+        &self,
+        dsp: &str,
+        from: i64,
+        drivers: &[(String, String)],
+    ) -> Result<()> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
-            let waiting: Vec<(String,)> = db.query_as(
-                "SELECT id FROM communications_text_conversations \
-                 WHERE kind='work' AND state='waiting' AND last_at>=?",
-                [from],
+            let changed: Vec<(String,)> = db.query_as(
+                "SELECT id FROM communications_text_conversations WHERE kind='work' \
+                 AND ((state='waiting' AND last_at>=?1) OR (source,driver_id) IN \
+                 (SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?2)))",
+                params![from, serde_json::to_string(drivers)?],
             )?;
-            for (id,) in waiting {
+            for (id,) in changed {
                 changed_conversation(&db, &id)?;
             }
             Ok(())

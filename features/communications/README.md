@@ -231,7 +231,8 @@ sending again one that failed.
   after its latest answer or Done, though it came before the day's first live read; so at the
   stop, as live route data empties, none waits or counts, and the next day starts afresh. Each
   time who holds the work phones changes, the work conversations waiting by their texts are
-  noted changed, so the pages waiting on changes hear the day begin or end.
+  noted changed, so the pages waiting on changes hear the day begin or end, and so are those of
+  the drivers holding a work phone today, so one open hears its driver take or return one.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, through
   `texting`, from the phone that last texted that number, else the one seen last, with its
   pictures, kept by `texting` as they're added (`add_file`), the adder's alone until they go, and
