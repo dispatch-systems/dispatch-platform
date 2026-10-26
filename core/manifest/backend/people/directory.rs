@@ -120,6 +120,9 @@ pub struct Everyone {
     /// Each ID, with whoever holds it.
     #[serde(skip)]
     held: BTreeMap<(Source, String), usize>,
+    /// Each phone number, as `dialed` writes it, with whoever has it, by name.
+    #[serde(skip)]
+    phones: BTreeMap<String, Vec<usize>>,
 }
 impl Everyone {
     /// Everyone, from each person and each code merged into another, with the code it went to.
@@ -152,10 +155,21 @@ impl Everyone {
                 })
             })
             .collect();
+        let mut phones: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (at, person) in people.iter().enumerate() {
+            for number in person.phones.iter().filter_map(|phone| dialed(phone)) {
+                let having = phones.entry(number).or_default();
+                // Two of one person's numbers may be one number, written two ways.
+                if having.last() != Some(&at) {
+                    having.push(at);
+                }
+            }
+        }
         Self {
             people,
             codes,
             held,
+            phones,
         }
     }
     /// Everyone, by name.
@@ -172,10 +186,21 @@ impl Everyone {
             .get(&(source, id.to_owned()))
             .map(|&at| &self.people[at])
     }
+    /// Whoever has the phone number `number`, by name: two numbers are one by their last ten
+    /// digits, and one of fewer than seven digits is no one's.
+    pub fn by_phone(&self, number: &str) -> Vec<&Person> {
+        dialed(number).map_or_else(Vec::new, |number| self.dialing(&number))
+    }
+    /// Whoever has the number `dialed` wrote, by name.
+    fn dialing(&self, dialed: &str) -> Vec<&Person> {
+        self.phones.get(dialed).map_or_else(Vec::new, |having| {
+            having.iter().map(|&at| &self.people[at]).collect()
+        })
+    }
     /// Whoever `text` names, by name: by one of their IDs, their email address or phone
-    /// number, or else any way their sources write their name, in part or by an initial
-    /// (`names::matches`). A name exactly as someone's sources write it is them alone, beside
-    /// others it is part of. By name.
+    /// number (as `by_phone`), or else any way their sources write their name, in part or by an
+    /// initial (`names::matches`). A name exactly as someone's sources write it is them alone,
+    /// beside others it is part of. By name.
     pub fn find(&self, text: &str) -> Vec<&Person> {
         let text = text.trim();
         let by = |found: &dyn Fn(&Person) -> bool| -> Vec<&Person> {
@@ -202,9 +227,10 @@ impl Everyone {
                     .any(|email| email.eq_ignore_ascii_case(text))
             });
         }
-        let dialed = digits(text);
-        if dialed.len() >= 7 && !text.chars().any(char::is_alphabetic) {
-            return by(&|person| person.phones.iter().any(|phone| digits(phone) == dialed));
+        if !text.chars().any(char::is_alphabetic)
+            && let Some(number) = dialed(text)
+        {
+            return self.dialing(&number);
         }
         let named = by(&|person| person.names.iter().any(|name| names::matches(text, name)));
         let exact: Vec<&Person> = named
@@ -215,10 +241,11 @@ impl Everyone {
         if exact.len() == 1 { exact } else { named }
     }
 }
-/// A phone number's last ten digits, without its country code or punctuation.
-fn digits(phone: &str) -> String {
+/// A phone number as two are told apart: its last ten digits, without its country code or
+/// punctuation; none with fewer than seven.
+fn dialed(phone: &str) -> Option<String> {
     let all: Vec<char> = phone.chars().filter(char::is_ascii_digit).collect();
-    all[all.len().saturating_sub(10)..].iter().collect()
+    (all.len() >= 7).then(|| all[all.len().saturating_sub(10)..].iter().collect())
 }
 
 #[cfg(test)]

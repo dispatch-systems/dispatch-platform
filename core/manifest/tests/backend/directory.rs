@@ -57,7 +57,7 @@ fn a_person_is_found_by_their_code_any_id_contact_or_name() {
                 &["Avery Morganson"],
                 &[],
                 "averyz@example.com",
-                "",
+                "+1 (555) 010-9999",
             ),
         ],
         // A code merged into one since merged goes on to whoever kept their IDs.
@@ -79,6 +79,8 @@ fn a_person_is_found_by_their_code_any_id_contact_or_name() {
     assert_eq!(codes(everyone.find("a1b2c3")), ["AVERYM"]);
     assert_eq!(codes(everyone.find("CAM@example.com")), ["CAMHAY"]);
     assert_eq!(codes(everyone.find("+1 555 010 2030")), ["AVERYM"]);
+    // A number however it's written: everyone who has it, by name.
+    assert_eq!(codes(everyone.by_phone("5550109999")), ["AVERYZ", "CAMHAY"]);
     // Any way their sources write their name, in part.
     assert_eq!(codes(everyone.find("cam h")), ["CAMHAY"]);
     assert_eq!(codes(everyone.find("Avery Morg")), ["AVERYM", "AVERYZ"]);

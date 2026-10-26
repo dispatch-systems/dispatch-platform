@@ -156,6 +156,7 @@ are; and the version of their photo.
 let people = people::everyone(db, c.state, c.dsp_id())?; // everyone, by name
 let person = people.person(code);                        // by code, a merged one too
 let theirs = people.holding(dispatch_paycom::SOURCE, id); // by any source's ID
+let having = people.by_phone("+1 555 010 2030");         // by phone number, its last ten digits
 let found = people.find("cam hayes");                    // by name, ID, email or phone
 ```
 
