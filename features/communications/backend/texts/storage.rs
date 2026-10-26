@@ -229,9 +229,10 @@ pub trait TextStore {
         ids: &[String],
         from: i64,
     ) -> Result<Vec<(String, i64)>>;
-    /// Notes that each work conversation waiting by its texts changed, for the pages waiting on
-    /// changes: whether it waits counts only on the live day, which began or ended.
-    fn changed_communications_work(&self, dsp: &str) -> Result<()>;
+    /// Notes that each work conversation waiting by its texts, written in from `from` on, changed,
+    /// for the pages waiting on changes: whether it waits counts only on the live day, which began
+    /// or ended.
+    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()>;
     /// The conversation texts filed so would be in, made with no text if it's new.
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;
     /// Marks the conversation done without an answer, as the member `by`, while it waits:
@@ -550,13 +551,13 @@ impl TextStore for Store {
             params![from, serde_json::to_string(ids)?],
         )
     }
-    fn changed_communications_work(&self, dsp: &str) -> Result<()> {
+    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let waiting: Vec<(String,)> = db.query_as(
                 "SELECT id FROM communications_text_conversations \
-                 WHERE kind='work' AND state='waiting'",
-                [],
+                 WHERE kind='work' AND state='waiting' AND last_at>=?",
+                [from],
             )?;
             for (id,) in waiting {
                 changed_conversation(&db, &id)?;

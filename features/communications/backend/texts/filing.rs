@@ -39,8 +39,8 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 /// How many texts are read from Phones at a time: as many as it gives.
 const PAGE: usize = 100;
-/// Two days, in milliseconds: how far back today's texts are looked for, further than a day can
-/// be long.
+/// Two days, in milliseconds: how far back today's texts, and the work conversations they may
+/// wait in, are looked for, further than a day can be long.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
 /// Every minute, each DSP's texts changed since they were last filed.
@@ -140,7 +140,7 @@ pub async fn refile_today(state: &Arc<State>, dsp: &str) -> Result<()> {
     state
         .run_scoped(dsp, DOMAIN, move |db| {
             refiled(db, &at)?;
-            db.changed_communications_work(&at)
+            db.changed_communications_work(&at, now() - TWO_DAYS_MS)
         })
         .await?;
     live::changed(state, dsp);
