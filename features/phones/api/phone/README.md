@@ -163,3 +163,8 @@ A call that fails without an answer, or with a `5xx`, is safe to make again: rep
 are idempotent, and a file's bytes replace themselves. The app tries again with a growing pause,
 and gives up on nothing: a text only fails once its phone says so, or once it's removed, when
 every text waiting on it fails with `phones_removed` as its error.
+
+Pairing alone isn't safe to make again. Its code works once, and Dispatch keeps only the SHA-256
+of the key it answers, so a pairing whose answer was lost may have paired a phone whose key was
+lost with it: tried again, the code is refused `phones_pairing_invalid`. The app then pairs with a
+new code, and someone at the DSP removes the phone the lost answer paired, which nothing can use.
