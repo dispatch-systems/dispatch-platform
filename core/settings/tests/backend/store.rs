@@ -6,10 +6,14 @@ use crate::{
     Error, Result,
     db::Store,
     manifest::settings::{
-        Field, Kept, Options, Section, choice, many, number, pick, section, text, time, timezone,
-        toggle,
+        Field, Kept, Options, Section, choice, days, many, number, pick, section, text, time,
+        timezone, toggle,
     },
     testing,
+};
+use chrono::{
+    Weekday::{self, *},
+    WeekdaySet,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -35,6 +39,11 @@ const FIELDS: &[Field] = &[
         Options::Fixed(&[("in", "In"), ("out", "Out"), ("total", "Total")]),
         &["in", "out"],
     ),
+    days(
+        "on",
+        "Collects on",
+        WeekdaySet::from_array([Mon, Tue, Wed, Thu, Fri]),
+    ),
     number("days", "Keep", 30, 3650, None)
         .unit("days")
         .presets(&[(90, "90 days")])
@@ -51,6 +60,7 @@ struct Policy {
     mode: String,
     department: Option<String>,
     columns: Vec<String>,
+    on: Vec<Weekday>,
     days: Option<i64>,
     code: String,
     at: String,
@@ -75,6 +85,7 @@ fn defaults_fill_what_is_unsaved_and_a_save_changes_only_what_it_sends() {
         mode: "final".into(),
         department: None,
         columns: vec!["in".into(), "out".into()],
+        on: vec![Mon, Tue, Wed, Thu, Fri],
         days: None,
         code: String::new(),
         at: "18:00".into(),
@@ -82,8 +93,10 @@ fn defaults_fill_what_is_unsaved_and_a_save_changes_only_what_it_sends() {
     };
     assert_eq!(read::<Policy>(&db, &dsp, &POLICY).unwrap(), defaults);
 
-    // Columns are kept in their options' order, whatever order they're sent in.
-    let first = json!({"days": 90, "columns": ["total", "in"], "code": " nl1 "});
+    // Columns are kept in their options' order, and days in the week's, whatever order they're
+    // sent in.
+    let first =
+        json!({"days": 90, "columns": ["total", "in"], "on": ["sun", "mon"], "code": " nl1 "});
     assert!(matches!(
         saved(&db, &dsp, &owner, first, 0).unwrap(),
         Saved::Saved { revision: 1, .. }
@@ -94,6 +107,7 @@ fn defaults_fill_what_is_unsaved_and_a_save_changes_only_what_it_sends() {
         Policy {
             department: Some("ops".into()),
             columns: vec!["in".into(), "total".into()],
+            on: vec![Mon, Sun],
             days: Some(90),
             code: "NL1".into(),
             ..defaults
@@ -126,6 +140,8 @@ fn a_value_its_field_does_not_hold_is_refused_and_keeps_nothing() {
         json!({"department": "hr"}),
         json!({"columns": ["in", "in"]}),
         json!({"columns": ["late"]}),
+        json!({"on": ["mon", "mon"]}),
+        json!({"on": ["monday"]}),
         json!({"days": 29}),
         json!({"days": 3651}),
         json!({"days": 90.5}),
@@ -213,7 +229,7 @@ fn the_log_shows_each_change_as_its_field_does_and_not_a_members_own() {
     const MINE: Section = section("stand_in.mine", "Mine", "access", FIELDS).member();
     let (_root, db, dsp, owner) = northline();
     let values = json!({"enabled": false, "mode": "snapshot", "department": "ops",
-        "columns": ["in", "out", "total"], "days": 90, "at": "06:30"});
+        "columns": ["in", "out", "total"], "on": ["sat"], "days": 90, "at": "06:30"});
     saved(&db, &dsp, &owner, values, 0).unwrap();
     saved(&db, &dsp, &owner, json!({"days": 120, "columns": []}), 1).unwrap();
     save(&db, &dsp, &owner, &MINE, &json!({"days": 45}), 0, false).unwrap();
@@ -259,6 +275,11 @@ fn the_log_shows_each_change_as_its_field_does_and_not_a_members_own() {
                 json!("Operations")
             ),
             (json!("Columns"), json!("In, Out"), json!("In, Out, Total")),
+            (
+                json!("Collects on"),
+                json!("Mon, Tue, Wed, Thu, Fri"),
+                json!("Sat")
+            ),
             (json!("Keep"), json!("Every day"), json!("90 days")),
             (json!("Collects at"), json!("6:00 PM"), json!("6:30 AM")),
         ]

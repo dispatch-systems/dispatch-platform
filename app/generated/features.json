@@ -590,6 +590,74 @@
     "tables": {},
     "subfeatures": []
   },
+  "phones": {
+    "collectors": [],
+    "depends_on": [],
+    "frontend": true,
+    "keeps": [],
+    "migrations": {},
+    "permissions": [
+      "phones.manage"
+    ],
+    "slots": {
+      "audit": {
+        "areas": [
+          [
+            "phones.",
+            "connections"
+          ]
+        ],
+        "names": false,
+        "subjects": []
+      },
+      "cached": [],
+      "commands": null,
+      "demo": true,
+      "domains": [
+        "phones"
+      ],
+      "integrations": [],
+      "live": [],
+      "maintenance": [
+        3600
+      ],
+      "on": [],
+      "people": [],
+      "routes": [
+        "GET /api/dsp/phones",
+        "POST /api/dsp/phones/pairing",
+        "POST /api/dsp/phones/{id}/rename",
+        "POST /api/dsp/phones/{id}/remove",
+        "POST /api/phones/pair",
+        "GET /api/phones/outbox",
+        "POST /api/phones/texts",
+        "POST /api/phones/files/{id}",
+        "GET /api/phones/files/{id}",
+        "POST /api/phones/statuses"
+      ],
+      "exposes": [
+        {
+          "name": "texting",
+          "contract": "dispatch_phones_contract::Texting",
+          "about": "The texts and pictures a DSP's dispatch phones relay, and sending one from its number."
+        }
+      ],
+      "env": [],
+      "settings": []
+    },
+    "switch": "phones",
+    "mandatory": false,
+    "tables": {
+      "dsp": [
+        "phones_change",
+        "phones_devices",
+        "phones_files",
+        "phones_pairings",
+        "phones_texts"
+      ]
+    },
+    "subfeatures": []
+  },
   "routes": {
     "collectors": [
       "cortex"

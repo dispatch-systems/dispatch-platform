@@ -1,10 +1,10 @@
 import type { ScheduleCollection, ScheduleRule, ScheduleRuleInput } from '../../api/index.js';
+import { WEEKDAYS } from '../../../shell/frontend/lib/calendar.js';
 
 // A collection's schedule rules as the Collectors page shows and edits them: each on chosen days
 // of the week, Monday 0, at set times or every so often between two times, as the server keeps
 // them (`collection/backend/rules.rs`), and the same words.
 
-export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 export const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 /** How often a repeat may run, in minutes: the server's half hour to twelve hours. */
@@ -84,7 +84,7 @@ export function offsets(rule: ScheduleRuleInput): number[] {
 }
 /** When each of `rules` runs on each day of a week, Monday first, in minutes from its start. */
 export function week(rules: ScheduleRuleInput[]): number[][] {
-  return DAYS.map((_, on) => {
+  return WEEKDAYS.map((_, on) => {
     const runs = rules.flatMap((rule) =>
       rule.days.flatMap((day) =>
         offsets(rule)
@@ -121,8 +121,8 @@ export function daysText(days: number[]) {
   if (first === undefined || last === undefined) return '';
   if (on.length === 1) return `${FULL[first]}s`;
   const running = on.every((day, at) => at === 0 || day === on[at - 1]! + 1);
-  if (running && on.length > 2) return `${DAYS[first]}–${DAYS[last]}`;
-  return on.map((day) => DAYS[day]).join(', ');
+  if (running && on.length > 2) return `${WEEKDAYS[first]}–${WEEKDAYS[last]}`;
+  return on.map((day) => WEEKDAYS[day]).join(', ');
 }
 /** How a rule reads: "Weekdays at 6:00 AM and 2:00 PM", or "Every day, every 30 min, 6:00 AM to 9:00 PM". */
 export function ruleText(rule: ScheduleRuleInput | ScheduleRule) {

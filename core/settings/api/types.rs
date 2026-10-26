@@ -127,6 +127,8 @@ pub enum SettingsKind {
         code: bool,
         locked: bool,
     },
+    /// Any of the days of the week, `mon` to `sun`, in their order from Monday.
+    Days,
     /// `HH:MM`.
     Time,
     /// An IANA timezone's name.

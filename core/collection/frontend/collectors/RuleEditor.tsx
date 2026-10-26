@@ -1,8 +1,8 @@
 import { Check, ChevronUp, Pencil, Plus, Trash2, X } from 'lucide-react';
 import type { ScheduleChoice } from '../../api/index.js';
+import { DayPicker } from '../../../shell/frontend/ui/index.js';
 import { Glyph, Mark } from './glyph.js';
 import {
-  DAYS,
   EVERY,
   MAX_TIMES,
   PATTERNS,
@@ -124,29 +124,11 @@ export function RuleEditor({
               </>
             )}
             <span className="collectors-label">Days</span>
-            <div className="collectors-days">
-              {DAYS.map((day, index) => {
-                const on = rule.days.includes(index);
-                return (
-                  <button
-                    type="button"
-                    key={day}
-                    aria-pressed={on}
-                    aria-invalid={!rule.days.length || undefined}
-                    onClick={() =>
-                      change({
-                        ...rule,
-                        days: on
-                          ? rule.days.filter((each) => each !== index)
-                          : [...rule.days, index].sort(),
-                      })
-                    }
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
+            <DayPicker
+              days={rule.days}
+              invalid={!rule.days.length}
+              change={(days) => change({ ...rule, days })}
+            />
             {rule.kind === 'times' ? (
               <Times rule={rule} change={change} />
             ) : (

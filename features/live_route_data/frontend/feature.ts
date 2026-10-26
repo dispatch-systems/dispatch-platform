@@ -12,6 +12,7 @@ export const feature: FrontendFeature = {
   platformSlots: () => import('./platform-slots.js'),
   // Saving its section on Settings meets it, so the manifest words it.
   errors: {
+    live_route_data_days_required: 'Choose at least one day.',
     live_route_data_window_invalid: 'Stop must be after start.',
   },
 };
