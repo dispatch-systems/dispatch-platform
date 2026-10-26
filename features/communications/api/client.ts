@@ -30,6 +30,7 @@ const api = wordedApi({
   communications_message_not_found: 'This text is no longer here. Refresh the page.',
   communications_texting_off: 'Texting is off for this DSP.',
   communications_no_work_phone: 'This driver has no work phone now.',
+  communications_work_phone_changed: 'This driver has another work phone now.',
   communications_routes_over: "Today's routes are over.",
   communications_driver_not_found: "This driver isn't on today's routes.",
   phones_none: 'No phone is paired to send from.',

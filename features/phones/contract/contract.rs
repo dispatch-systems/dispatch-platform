@@ -42,6 +42,16 @@ pub trait Texting: Send + Sync {
         added: Added,
         bytes: Upload,
     ) -> Answer<'a, File>;
+    /// Lets go of a picture `by` added for a text not sent yet, and its bytes once no other file
+    /// keeps them, as when `by` may no longer send it; nothing for one sent, another's, or one
+    /// not the DSP's.
+    fn remove_file<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a str,
+    ) -> Answer<'a, ()>;
     /// The most a picture may be, in bytes.
     fn largest(&self) -> u64;
     /// A text's picture or file as kept, to answer a page with; none for one not the DSP's,

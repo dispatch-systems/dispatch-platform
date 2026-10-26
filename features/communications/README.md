@@ -233,12 +233,15 @@ sending again one that failed.
   noted changed, so the pages waiting on changes hear the day begin or end.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, through
   `texting`, from the phone that last texted that number, else the one seen last, with its
-  pictures, kept by `texting` as they're added (`add_file`), the adder's alone until they go; the
-  member's access is checked again before it goes. A number's conversation, and a work phone's
+  pictures, kept by `texting` as they're added (`add_file`), the adder's alone until they go, and
+  let go of (`remove_file`) should the adder's access end while their bytes come; the member's
+  access is checked again before it goes. A number's conversation, and a work phone's
   nobody held, answer their number; a driver's, the work phone they hold now, as live route data
   says, refused while they hold none (`communications_no_work_phone`). Kept as Phones tells of
   it, named with the writer's full name. Retry sends again one Dispatch sent that failed, while
-  its phone is still paired.
+  its phone is still paired and it goes where a text written now would: in a driver's, refused
+  while they hold no work phone (`communications_no_work_phone`) or hold another
+  (`communications_work_phone_changed`), as the one it went to may be another driver's since.
 
 ## Messaging a group
 

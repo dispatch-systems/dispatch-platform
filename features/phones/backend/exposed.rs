@@ -96,6 +96,25 @@ impl Texting for Exposed {
                 .await
         })
     }
+    fn remove_file<'a>(
+        &'a self,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a str,
+    ) -> Answer<'a, ()> {
+        Box::pin(async move {
+            let (at, id, by) = (dsp.to_owned(), id.to_owned(), by.to_owned());
+            state
+                .run_scoped(dsp, DOMAIN, move |db| {
+                    match db.phones_remove_file(&at, &id, &by)? {
+                        Some(sha256) => files::forget(db, &at, &sha256),
+                        None => Ok(()),
+                    }
+                })
+                .await
+        })
+    }
     fn largest(&self) -> u64 {
         files::LARGEST
     }

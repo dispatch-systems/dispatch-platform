@@ -590,7 +590,7 @@ async fn add_text_photo(
     v::fields(&input.query, &["name", "type"])?;
     let name = v::name(&input.query, "name", 200)?;
     let kind = v::text(&input.query, "type", 1, 100)?;
-    let added = texts::reply::upload(&state, &c, &name, kind, photo).await?;
+    let added = texts::reply::upload(&state, &c, access, &name, kind, photo).await?;
     Reply::of_status(&added, 201)
 }
 /// A workspace's logo, as Slack keeps a copy of it. Its address carries its version, `v`, so the

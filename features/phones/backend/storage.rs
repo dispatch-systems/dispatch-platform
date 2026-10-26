@@ -162,6 +162,9 @@ pub trait PhonesStore {
         at: i64,
     ) -> Result<File>;
     fn phones_file(&self, dsp: &str, id: &str) -> Result<Option<StoredFile>>;
+    /// Lets go of the picture `id` that `by` added for a text not sent yet: the SHA-256 of its
+    /// bytes, if it was let go.
+    fn phones_remove_file(&self, dsp: &str, id: &str, by: &str) -> Result<Option<String>>;
     /// Lets go of pictures added and never sent, and pairing codes expired, before `before`:
     /// the SHA-256 of each picture let go.
     fn phones_tidy(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
@@ -575,6 +578,20 @@ impl PhonesStore for Store {
                 text_id: row["text_id"].as_str().map(str::to_owned),
                 added_by: row["added_by"].as_str().map(str::to_owned),
             }))
+    }
+    fn phones_remove_file(&self, dsp: &str, id: &str, by: &str) -> Result<Option<String>> {
+        let db = self.dsp(dsp)?;
+        db.transaction(|| {
+            let Some(added) = db.one(
+                "SELECT sha256 FROM phones_files WHERE id=? AND added_by=? AND text_id IS NULL",
+                [id, by],
+            )?
+            else {
+                return Ok(None);
+            };
+            db.exec("DELETE FROM phones_files WHERE id=?", [id])?;
+            Ok(added["sha256"].as_str().map(str::to_owned))
+        })
     }
     fn phones_tidy(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
         let db = self.dsp(dsp)?;

@@ -4,8 +4,10 @@
 //! tells of it, with how it went, under the full name of whoever wrote it, as a Slack answer is.
 //! A number's conversation, and a work phone's nobody held, answer their number; a driver's, the
 //! work phone they hold now, as live route data says, and none while they hold none. Its pictures
-//! are kept by `texting` as they're added, its adder's alone until they go with it. One that
-//! failed is sent again with Retry. The member's access is checked again before a text goes.
+//! are kept by `texting` as they're added, its adder's alone until they go with it, and let go of
+//! should the adder's access end while their bytes come. One that failed is sent again with Retry,
+//! while it would go where a text written now goes. The member's access is checked again before a
+//! text goes.
 use super::{
     filing,
     live_day::LiveDay,
@@ -91,8 +93,9 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
         .ok_or_else(|| Error::new("communications_no_work_phone", 409))
 }
 
-/// Sends again the text `text`, which Dispatch sent in the conversation `id` and failed: the
-/// text, as kept.
+/// Sends again the text `text`, which Dispatch sent in the conversation `id` and failed, while it
+/// goes where a text written now would: not to a work phone the driver no longer holds, which may
+/// be another's since. The text, as kept.
 pub async fn retry(
     state: &Arc<State>,
     c: &Context,
@@ -103,11 +106,14 @@ pub async fn retry(
     let (dsp, at, wanted) = (c.dsp.id.clone(), id.to_owned(), text.to_owned());
     let texting = state
         .read(move |db| {
-            let text = db.communications_text(&dsp, &wanted)?;
+            let text = db
+                .communications_text(&dsp, &wanted)?
+                .filter(|text| text.conversation == at)
+                .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
             ensure(
-                text.is_some_and(|text| text.conversation == at),
-                "communications_message_not_found",
-                404,
+                recipient(db, &dsp, &at)? == text.number,
+                "communications_work_phone_changed",
+                409,
             )?;
             offering(db, &dsp)
         })
@@ -124,10 +130,12 @@ pub async fn retry(
 
 /// Keeps a picture the member `c` adds for a text not sent yet, named `name`, of the kind `mime`,
 /// through `texting`: as the page reads it. One that isn't a photo a text carries is refused, by
-/// its kind.
+/// its kind. Their access is checked again once its bytes are in, as Slack's photos' is: one whose
+/// access ended meanwhile keeps none of it.
 pub async fn upload(
     state: &Arc<State>,
     c: &Context,
+    access: Dsp,
     name: &str,
     mime: &str,
     photo: Upload,
@@ -146,6 +154,13 @@ pub async fn upload(
         mime: mime.to_owned(),
     };
     let kept = texting.add_file(state, &c.dsp.id, added, photo).await?;
+    let asked = c.clone();
+    if let Err(refused) = state.read(move |db| access.revalidate(db, &asked)).await {
+        texting
+            .remove_file(state, &c.dsp.id, &kept.id, &c.auth.user.id)
+            .await?;
+        return Err(refused);
+    }
     Ok(CommunicationsUpload {
         id: kept.id,
         name: kept.name,

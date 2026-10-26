@@ -334,7 +334,10 @@ struct Known {
     change: i64,
     sent: Vec<Outgoing>,
     failing: bool,
-    /// Whether Communications is switched off for the DSP while the phone reads the next file.
+    /// The pictures added for a text not sent yet, each by its ID with who added it.
+    added: Vec<(String, String)>,
+    /// Whether Communications is switched off for the DSP while the phone next reads a file's
+    /// bytes.
     off_while_reading: bool,
 }
 static KNOWN: Mutex<BTreeMap<String, Known>> = Mutex::new(BTreeMap::new());
@@ -411,10 +414,16 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
 pub fn failing(dsp: &str, failing: bool) {
     phone(dsp, |phone| phone.failing = failing);
 }
-/// Has Communications switched off for the DSP while its phone reads the next file asked of it,
-/// as the platform owner might while a member waits on it.
+/// Has Communications switched off for the DSP while its phone next reads a file's bytes, one
+/// asked of it or added for a text, as the platform owner might while a member waits on it.
 pub fn off_while_reading(dsp: &str) {
     phone(dsp, |phone| phone.off_while_reading = true);
+}
+/// The pictures the DSP's phone keeps for a text not sent yet, by their IDs.
+pub fn added(dsp: &str) -> Vec<String> {
+    phone(dsp, |phone| {
+        phone.added.iter().map(|(id, _)| id.clone()).collect()
+    })
 }
 /// What Dispatch sent from the DSP's phone, in order.
 pub fn sent(dsp: &str) -> Vec<Outgoing> {
@@ -422,6 +431,8 @@ pub fn sent(dsp: &str) -> Vec<Outgoing> {
 }
 /// The stand-in phone's ID.
 const STAND_IN: &str = "phone_stand_in";
+/// The most a picture the stand-in keeps may be, in bytes.
+const LARGEST: u64 = 1024 * 1024;
 fn phone<T>(dsp: &str, change: impl FnOnce(&mut Known) -> T) -> T {
     let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
     change(known.entry(dsp.to_owned()).or_default())
@@ -545,7 +556,8 @@ impl LiveRouteData for Standing {
     }
 }
 /// One phone, Dispatch, (206) 555-0100. What Dispatch sends from it is delivered at once, or fails
-/// once a test says it does; tried again, it waits on the phone. Any file asked of it is a photo.
+/// once a test says it does; tried again, it waits on the phone. It keeps each picture added for a
+/// text as its adder's, and any file asked of it is a photo.
 impl Texting for Standing {
     fn phones(&self, _: &Store, _: &str) -> Result<Vec<Phone>> {
         Ok(vec![Phone {
@@ -628,15 +640,42 @@ impl Texting for Standing {
     }
     fn add_file<'a>(
         &'a self,
-        _: &'a Arc<State>,
-        _: &'a str,
-        _: Added,
-        _: Upload,
+        state: &'a Arc<State>,
+        dsp: &'a str,
+        added: Added,
+        bytes: Upload,
     ) -> Answer<'a, File> {
-        Box::pin(async { Err(Error::new("phones_file_not_found", 404)) })
+        Box::pin(async move {
+            read_bytes(state, dsp).await;
+            let file = File {
+                id: crypto::id("file")?,
+                name: added.name,
+                mime: added.mime,
+                size: bytes.length as i64,
+                kept: true,
+            };
+            phone(dsp, |phone| phone.added.push((file.id.clone(), added.by)));
+            Ok(file)
+        })
+    }
+    fn remove_file<'a>(
+        &'a self,
+        _: &'a Arc<State>,
+        dsp: &'a str,
+        id: &'a str,
+        by: &'a str,
+    ) -> Answer<'a, ()> {
+        Box::pin(async move {
+            phone(dsp, |phone| {
+                phone
+                    .added
+                    .retain(|(added, adder)| !(added == id && adder == by));
+            });
+            Ok(())
+        })
     }
     fn largest(&self) -> u64 {
-        0
+        LARGEST
     }
     /// Any file asked of it, a photo.
     fn file<'a>(
@@ -647,12 +686,17 @@ impl Texting for Standing {
         _: &'a str,
     ) -> Answer<'a, Option<Reply>> {
         Box::pin(async move {
-            if phone(dsp, |phone| std::mem::take(&mut phone.off_while_reading)) {
-                switch(state, dsp, "communications", false).await;
-            }
+            read_bytes(state, dsp).await;
             let photo = Reply::download("image/jpeg", "photo.jpg", Some(3), Body::from("jpg"));
             Ok(Some(photo))
         })
+    }
+}
+/// The phone reads a file's bytes: Communications goes off for the DSP meanwhile, once a test says
+/// it does.
+async fn read_bytes(state: &Arc<State>, dsp: &str) {
+    if phone(dsp, |phone| std::mem::take(&mut phone.off_while_reading)) {
+        switch(state, dsp, "communications", false).await;
     }
 }
 /// `routes`, with each day they're on read while under way.
