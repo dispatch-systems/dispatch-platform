@@ -127,6 +127,7 @@ impl People {
         let (code, photo) = self.member(user);
         Sender {
             user_id: Some(user.to_owned()),
+            phone_id: None,
             name: name.to_owned(),
             code,
             photo,

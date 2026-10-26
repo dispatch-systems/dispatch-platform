@@ -2,7 +2,8 @@ import { Fragment, useContext, useLayoutEffect, useRef } from 'react';
 import { CircleAlert, FileText, RotateCw, Users } from 'lucide-react';
 import type { Conversation, Message, MessageFile, Writing } from '../../api/index.js';
 import { fileUrl } from '../../api/client.js';
-import { clock, dayLabel, dayOf, fileStatus, isPhoto, size, textStatus } from '../format.js';
+import { clock, dayLabel, fileStatus, isPhoto, size, textStatus } from '../format.js';
+import { runs } from '../messages.js';
 import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
@@ -18,29 +19,6 @@ import type { OpensProfile } from './parts.js';
 // each message's, as the member chose (`Shown`); plain, every run is under its writer's name and
 // time instead. A text the DSP sent says how it went under it, the run's last, or one that
 // failed, with Retry.
-
-/** Messages one after another from the same writer, within a few minutes, shown together. */
-type Run = { key: string; writer: string; messages: Message[] };
-const TOGETHER_MS = 10 * 60_000;
-
-/** The messages under each day they were written, in runs by writer. */
-function runs(messages: readonly Message[], timeZone: string) {
-  const days: { day: string; at: number; runs: Run[] }[] = [];
-  for (const message of messages) {
-    const day = dayOf(message.at, timeZone);
-    if (days.at(-1)?.day !== day) days.push({ day, at: message.at, runs: [] });
-    const current = days.at(-1)!;
-    const writer =
-      message.direction === 'in'
-        ? 'in'
-        : `out:${message.sender?.userId ?? ''}:${message.group?.id ?? ''}`;
-    const run = current.runs.at(-1);
-    if (run?.writer === writer && message.at - run.messages.at(-1)!.at < TOGETHER_MS)
-      run.messages.push(message);
-    else current.runs.push({ key: message.id, writer, messages: [message] });
-  }
-  return days;
-}
 
 export function Thread({
   conversation,

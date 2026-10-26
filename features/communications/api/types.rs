@@ -210,7 +210,7 @@ pub struct MessageGroup {
 
 /// Someone at the DSP who sent a message: by the name it went out under, their account, and
 /// the person Driver Match knows them as, by their email address, if it does. A text sent from the
-/// phone itself is the phone's, under its name, by no account.
+/// phone itself is the phone's, under its name, by no account but the phone's ID.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -220,6 +220,8 @@ pub struct MessageGroup {
 #[serde(rename_all = "camelCase")]
 pub struct Sender {
     pub user_id: Option<String>,
+    /// The DSP's phone that sent it from its own messaging app, for such a text.
+    pub phone_id: Option<String>,
     pub name: String,
     pub code: Option<String>,
     pub photo: Option<String>,

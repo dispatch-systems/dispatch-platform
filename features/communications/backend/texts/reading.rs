@@ -103,6 +103,7 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
                 Some(user) => people.sent_by(user, text.sender_name.as_deref().unwrap_or_default()),
                 None => Sender {
                     user_id: None,
+                    phone_id: Some(text.phone.clone()),
                     name: numbers.phone(&text.phone).unwrap_or("Phone").to_owned(),
                     code: None,
                     photo: None,

@@ -31,6 +31,7 @@ const person = (userId: string, name: string, role: PersonRole): Correspondent =
 });
 const teammate = (userId: string, name: string): Sender => ({
   userId,
+  phoneId: null,
   name,
   code: null,
   photo: null,
