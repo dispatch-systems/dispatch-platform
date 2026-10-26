@@ -36,6 +36,12 @@ impl Plan {
     pub fn every(&self) -> i64 {
         self.schedule.every().as_millis() as i64
     }
+    /// How long a read waits for its turn at most, and then runs at most: its interval, and
+    /// `LONGEST_WAIT` at most, so a read that hangs holds its DSP and its turn no longer than
+    /// that, however seldom it reads.
+    pub fn timeout(&self) -> std::time::Duration {
+        self.schedule.every().min(super::LONGEST_WAIT)
+    }
 
     /// `date`'s window, whether or not it opens that day, as a day started stops at its own
     /// close: from its start that day until its stop, the next day's when the stop is no later
@@ -111,8 +117,7 @@ impl Plan {
         unstopped: &[NaiveDate],
         ended: Option<NaiveDate>,
     ) -> Step {
-        let ended_by = |date: NaiveDate| ended.is_some_and(|last| date <= last);
-        let open = self.open_at(now).filter(|day| !ended_by(day.date));
+        let open = self.open_at(now).filter(|day| !ended_by(ended, day.date));
         let mut until = match open {
             Some(day) => day.close,
             None => self.next(now).open,
@@ -122,7 +127,7 @@ impl Plan {
                 continue;
             }
             // A day's window closes before a later day's opens, so it stops before that reads.
-            let stop = if ended_by(date) {
+            let stop = if ended_by(ended, date) {
                 now
             } else {
                 self.day(date).close
@@ -132,17 +137,39 @@ impl Plan {
             }
             until = until.min(stop);
         }
-        if let Some(day) = open {
-            let due = self.slot_after(&day, after).max(now);
-            if due < day.close {
-                return if due <= now {
-                    Step::Read(day)
-                } else {
-                    Step::Wait(due.min(until))
-                };
-            }
+        if let Some(day) = open
+            && let Some(due) = self.due(&day, now, after)
+        {
+            return if due <= now {
+                Step::Read(day)
+            } else {
+                Step::Wait(due.min(until))
+            };
         }
         Step::Wait(until)
+    }
+
+    /// When it reads next at `now`, having read last at `after` and ended the day `ended` last,
+    /// as `step` reads: the open day's first slot after `after`, now when that has passed, while
+    /// it's before the day's close and the day hasn't ended; otherwise the start of the next day
+    /// it opens on, as a day that ended never reads again.
+    pub fn next_read(&self, now: i64, after: i64, ended: Option<NaiveDate>) -> i64 {
+        let open = self.open_at(now).filter(|day| !ended_by(ended, day.date));
+        if let Some(due) = open.and_then(|day| self.due(&day, now, after)) {
+            return due;
+        }
+        let mut next = self.next(now);
+        while ended_by(ended, next.date) {
+            next = self.next(next.open);
+        }
+        next.open
+    }
+
+    /// When the open `day` reads next at `now`, having read last at `after`: its first slot
+    /// after then, now when that has passed, while that's before its close.
+    fn due(&self, day: &Day, now: i64, after: i64) -> Option<i64> {
+        let due = self.slot_after(day, after).max(now);
+        (due < day.close).then_some(due)
     }
 
     /// Whether its window opens on `date`, where the DSP is.
@@ -171,6 +198,11 @@ impl Plan {
                 |at| at.timestamp_millis(),
             )
     }
+}
+
+/// Whether `date` has ended, `ended` being the last day that did, its stop begun or done.
+fn ended_by(ended: Option<NaiveDate>, date: NaiveDate) -> bool {
+    ended.is_some_and(|last| date <= last)
 }
 
 #[cfg(test)]

@@ -151,6 +151,37 @@ pub struct ScheduleRuns {
     pub runs: Vec<String>,
 }
 
+/// How a live reader reads for the DSP, as Settings shows it with the section that sets when
+/// it reads: its last read and its last failure, from the last two weeks' records, and when it
+/// reads next.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct LiveReading {
+    pub last_read: Option<LiveRead>,
+    pub next_read: String,
+    pub last_error: Option<LiveError>,
+}
+/// A live read: when it began, and whether it was kept.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct LiveRead {
+    pub at: String,
+    pub kept: bool,
+}
+/// A live read that failed: when it began, and its error's code.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export_to = "core/collection/api/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct LiveError {
+    pub at: String,
+    pub code: String,
+}
+
 /// A bounded collection change hint. Missing history falls back to `all`.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

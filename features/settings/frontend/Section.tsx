@@ -5,6 +5,7 @@ import type {
   SettingsValue,
 } from '../../../core/settings/api/index.js';
 import { saveSettings } from '../../../core/settings/api/client.js';
+import { LiveReading } from '../../../core/collection/frontend/live-reading.js';
 import { ApiError } from '../../../core/shell/frontend/runtime/api.js';
 import { useFeedback } from '../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../core/shell/frontend/runtime/useAction.js';
@@ -26,8 +27,9 @@ export const sectionElement = (id: string, reveal?: RefCallback<HTMLElement>) =>
 });
 
 /**
- * A declared section: its heading, a control for each of its fields and Save for those it holds,
- * then those that save themselves. Its edits are its own, so typing in one section redraws no
+ * A declared section: its heading, how the live reader it sets the schedule of reads when it
+ * does, a control for each of its fields and Save for those it holds, then those that save
+ * themselves. Its edits are its own, so typing in one section redraws no
  * other, and the page moves on only once they are saved or discarded. A save that would lose
  * something asks first, in the server's words. Edits begin at the section as it was read when
  * they began: once another session has saved it since, a save of them is refused, though the
@@ -37,6 +39,7 @@ export const sectionElement = (id: string, reveal?: RefCallback<HTMLElement>) =>
 export function Section({
   section,
   whose,
+  timezone,
   refresh,
   reveal,
   named = false,
@@ -44,6 +47,8 @@ export function Section({
   section: SettingsSection;
   /** Whose Settings it is in. */
   whose: string;
+  /** Where the DSP is, as the times it shows are. */
+  timezone: string;
   refresh: () => void;
   /** Points the section out, as a search result opening it does. */
   reveal?: RefCallback<HTMLElement>;
@@ -124,6 +129,9 @@ export function Section({
       <h2 id={heading} className={named ? 'sr-only' : undefined}>
         {section.label}
       </h2>
+      {section.reader && (
+        <LiveReading reader={section.reader} timezone={timezone} revision={section.revision} />
+      )}
       {values.length > 0 && (
         <form
           onSubmit={(event) => {
