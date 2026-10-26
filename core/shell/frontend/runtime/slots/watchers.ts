@@ -6,7 +6,9 @@ import type { Access } from './pages.js';
 
 // The watchers slot: what an owner keeps running on every DSP page for the person, drawing
 // nothing, as something that alerts them wherever they are in the app. The shell mounts each the
-// DSP has and the person passes, whatever page is open, loading its code as it first does.
+// DSP has and the person passes, whatever page is open, loading its code as it first does. Each
+// runs apart (`shell/Watchers.tsx`): one that fails stops alone, and one whose code fails to load
+// is tried again.
 
 /** Whom a watcher runs for: the person, at the DSP open. */
 export type Watching = Access & { view: DspView };
