@@ -17,8 +17,9 @@ use super::{
     model::{ConversationKind, Direction},
     people::People,
     search,
+    sections::{self, MESSAGING, Reading, SLACK, Section, TODAYS_ROUTES},
     storage::{self, CommunicationsStore},
-    texts::{self, numbers::Numbers, reading, storage::TextStore, todays_routes},
+    texts::{self, numbers::Numbers, reading, storage::TextStore},
 };
 use crate::{
     api::types::{
@@ -158,7 +159,7 @@ pub fn attached(
 /// The answered conversations not listed under a group, and the groups nothing under waits in,
 /// as the page reads them: of the workspace `team` or every one, before `before`, a page of them,
 /// and whether there are more.
-fn answered(
+pub fn answered(
     db: &Store,
     people: &People,
     dsp: &str,
@@ -186,9 +187,9 @@ fn answered(
     ))
 }
 
-/// `GET /api/dsp/communications`, for the member `me`: every conversation waiting, as the counts
-/// go by them, and every group waiting; then the latest answered conversations and groups of the
-/// workspace `team`, or every one, and the latest answered numbers' conversations.
+/// `GET /api/dsp/communications`, for the member `me`: each section the DSP has, its
+/// conversations waiting, as the counts go by them, and the groups waiting; then the latest
+/// answered of each, Slack's of the workspace `team`, or every one.
 pub fn overview(
     db: &Store,
     state: &State,
@@ -198,33 +199,41 @@ pub fn overview(
 ) -> Result<Communications> {
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
+    let reading = Reading {
+        db,
+        dsp,
+        people: &people,
+        numbers: &numbers,
+        team,
+    };
     let revision = db.communications_revision(dsp)?;
-    let waiting = db.waiting_communications(dsp)?;
-    let texted = reading::waiting(db, dsp)?;
-    let count = waiting.len() + texted.len();
-    let waiting_groups = db.waiting_communications_groups(dsp)?;
-    let (answered, answered_groups, more) = answered(db, &people, dsp, team, None)?;
-    let (answered_texts, more_texts) = reading::answered(db, &people, &numbers, dsp, None)?;
+    let listed = sections::listed(&reading)?;
+    // Where the page reads each section: whether it has it, and whether older are left to read.
+    let has = |of: &Section| listed.iter().any(|(section, _)| section.id == of.id);
+    let more = |of: &Section| {
+        listed
+            .iter()
+            .any(|(section, listed)| section.id == of.id && listed.more)
+    };
+    let (more_slack, more_texts) = (more(&SLACK), more(&MESSAGING));
+    let (texting, routes) = (has(&MESSAGING), has(&TODAYS_ROUTES));
+    let mut waiting = Vec::new();
+    let (mut answered, mut listed_groups) = (Vec::new(), Vec::new());
+    for (_, listed) in listed {
+        waiting.extend(listed.waiting);
+        answered.extend(listed.answered);
+        listed_groups.extend(listed.groups);
+    }
     Ok(Communications {
         revision,
-        waiting: count,
-        conversations: [
-            conversations(db, &people, dsp, waiting)?,
-            reading::conversations(db, &people, &numbers, dsp, texted)?,
-            answered,
-            answered_texts,
-        ]
-        .concat(),
-        groups: [
-            groups::listed(db, &people, dsp, waiting_groups)?,
-            answered_groups,
-        ]
-        .concat(),
-        more,
+        waiting: waiting.len(),
+        conversations: [waiting, answered].concat(),
+        groups: listed_groups,
+        more: more_slack,
         more_texts,
         workspaces: workspaces(db, dsp)?,
-        texting: texts::offered(db, dsp)?,
-        routes: todays_routes::offered(db, dsp)?,
+        texting,
+        routes,
         phones: texts::phones(db, dsp)?,
         typing: people.writing(live::typing(dsp, me).0),
     })
@@ -347,7 +356,7 @@ pub fn updates(
 ) -> Result<(CommunicationsUpdates, Option<i64>)> {
     let (changed, revision) = db.communications_changed_since(dsp, after)?;
     let (mut typing, next) = live::typing(dsp, me);
-    let waiting = db.waiting_communications(dsp)?.len() + reading::waiting(db, dsp)?.len();
+    let waiting = sections::waiting(db, dsp)?;
     let ids = changed.as_ref().filter(|ids| !ids.is_empty());
     let (mut conversations, mut changed_groups) = (Vec::new(), Vec::new());
     // Who anyone is, only when there's someone to name.
@@ -374,8 +383,8 @@ pub fn updates(
             groups: changed_groups,
             typing,
             workspaces: workspaces(db, dsp)?,
-            texting: texts::offered(db, dsp)?,
-            routes: todays_routes::offered(db, dsp)?,
+            texting: (MESSAGING.offered)(db, dsp)?,
+            routes: (TODAYS_ROUTES.offered)(db, dsp)?,
             phones: texts::phones(db, dsp)?,
         },
         next,

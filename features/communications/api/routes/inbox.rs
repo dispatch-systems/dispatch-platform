@@ -1,8 +1,12 @@
 //! The list: its conversations of every section, those waiting for the sidebar and alerts, what
 //! changes in it as a page waits, and its conversations found by what was typed or read a page at
-//! a time.
+//! a time, each section as `sections` describes it.
 use super::{before, team};
-use crate::backend::{conversations, live, model::ConversationKind, texts};
+use crate::backend::{
+    conversations, live,
+    model::ConversationKind,
+    sections::{self, Asked, Query},
+};
 use dispatch_core::{
     Error, Result, State,
     db::Store,
@@ -33,49 +37,34 @@ pub(super) fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
     Reply::of(&conversations::waiting(db, c.state, c.dsp_id())?)
 }
-/// Conversations found by a name typed, `q`, or the answered ones before `before`, in the
-/// workspace `team` or every one, or the numbers' (`kind=number`); or work conversations found by
-/// a name or digits typed (`kind=work`).
+/// Conversations found by a name typed, `q`, or the answered ones before `before`, of the section
+/// listing `kind`: Slack's by default, of the workspace `team` or every one; the numbers'
+/// (`kind=number`), or the work ones found by a name or digits typed (`kind=work`).
 pub(super) fn found(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["q", "team", "before", "kind"])?;
     let typed = optional_text(&input.query, "q", 100)?.trim();
     let team = team(&input.query)?;
-    let texted = match optional_text(&input.query, "kind", 10)? {
-        "" => None,
-        "number" if team.is_none() => Some(ConversationKind::Number),
-        "work" if team.is_none() && !typed.is_empty() => Some(ConversationKind::Work),
-        _ => return Err(Error::new("invalid_input", 400)),
+    let kind = match optional_text(&input.query, "kind", 10)? {
+        "" => ConversationKind::Slack,
+        // Slack's is found by default, never by name.
+        named => ConversationKind::parse(named)
+            .filter(|kind| *kind != ConversationKind::Slack)
+            .ok_or_else(|| Error::new("invalid_input", 400))?,
     };
-    if let Some(kind) = texted {
-        if !typed.is_empty() {
-            return Reply::of(&texts::reading::search(
-                db,
-                c.state,
-                c.dsp_id(),
-                kind,
-                typed,
-            )?);
-        }
-        let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
-        return Reply::of(&texts::reading::older(db, c.state, c.dsp_id(), (at, &id))?);
-    }
-    if !typed.is_empty() {
-        return Reply::of(&conversations::search(
-            db,
-            c.state,
-            c.dsp_id(),
-            team.as_deref(),
-            typed,
-        )?);
-    }
-    let (at, id) = before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?;
-    Reply::of(&conversations::older(
-        db,
-        c.state,
-        c.dsp_id(),
-        team.as_deref(),
-        (at, &id),
-    )?)
+    // Typed, or else read on from the last listed.
+    let before = match typed {
+        "" => Some(before(&input.query)?.ok_or_else(|| Error::new("invalid_input", 400))?),
+        _ => None,
+    };
+    let asked = match &before {
+        Some((at, id)) => Asked::Before((*at, id)),
+        None => Asked::Typed(typed),
+    };
+    let query = Query {
+        team: team.as_deref(),
+        asked,
+    };
+    Reply::of(&sections::found(db, c.state, c.dsp_id(), kind, &query)?)
 }
 
 /// What a page waiting on changes is answered with: what changed since the change `after`, and

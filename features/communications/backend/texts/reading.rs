@@ -146,13 +146,21 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
         .collect()
 }
 
+/// The numbers' conversations waiting, while the DSP texts, the longest waiting first, but a
+/// blocked number's.
+pub fn waiting_numbers(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
+    if !offered(db, dsp)? {
+        return Ok(Vec::new());
+    }
+    db.waiting_communications_texts(dsp)
+}
 /// The conversations by text waiting, while the DSP texts, the longest waiting first: the
 /// numbers', but a blocked number's, and the work conversations waiting on the live day.
 pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
     if !offered(db, dsp)? {
         return Ok(Vec::new());
     }
-    let mut waiting = db.waiting_communications_texts(dsp)?;
+    let mut waiting = waiting_numbers(db, dsp)?;
     waiting.extend(live_day::waiting(db, dsp)?);
     waiting.sort_by(|a, b| {
         a.waiting_since

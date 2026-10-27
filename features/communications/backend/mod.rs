@@ -9,6 +9,8 @@
 //!   members' from Slack.
 //! - `dispatcher`: one conversation of either transport, by its reference: reading it, its
 //!   profile, sending in it, Done and who's writing.
+//! - `sections`: the page's sections, each listing a kind of conversation: whether the DSP has
+//!   it, what waits in it, what's listed of it and how it's searched.
 //! - `conversations`: the conversations as the page reads them; `people`, who each is with and who
 //!   at the DSP wrote in it, as every kind shows them; `elsewhere`, a person's conversation of each
 //!   kind; `contacts`, whom the DSP can message; `search`, finding people by a name typed;
@@ -39,6 +41,7 @@ pub(crate) mod people;
 pub(crate) mod profile;
 pub(crate) mod reply;
 pub(crate) mod search;
+pub(crate) mod sections;
 pub(crate) mod sender;
 pub(crate) mod storage;
 pub(crate) mod text;
