@@ -118,12 +118,23 @@ fn a_save_still_staging_is_kept_from_the_sweep() {
 }
 /// Queues `day`, stages the fixture's day for that job and publishes it, as the executor does.
 pub(super) fn publish(db: &Store, dsp: &str, day: &str, mode: Mode) {
+    publish_edited(db, dsp, day, mode, |_| {});
+}
+/// Publishes `day` as `publish` does, the fixture's day as `edit` changes it.
+pub(super) fn publish_edited(
+    db: &Store,
+    dsp: &str,
+    day: &str,
+    mode: Mode,
+    edit: impl FnOnce(&mut Capture),
+) {
     let jobs = db
         .enqueue_routes(dsp, None, day, Some(day), mode, 1)
         .unwrap();
     let job = s(&jobs[0], "id").to_owned();
     let request = serde_json::from_str(&db.job_row(&job, Some(dsp)).unwrap().request).unwrap();
-    let capture = fixture(&Request::parse(&request).unwrap().unwrap()).unwrap();
+    let mut capture = fixture(&Request::parse(&request).unwrap().unwrap()).unwrap();
+    edit(&mut capture);
     let staged = db.stage_routes(dsp, &job, capture).unwrap();
     db.publish_routes(dsp, &job, &staged).unwrap();
 }

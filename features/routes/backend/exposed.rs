@@ -1,7 +1,8 @@
 //! What Routes exposes to every other feature and agent tool: each driver's routes, day by day,
 //! read from the rows its own pages read in historical route data; and today in live route data,
-//! with the work phone each driver holds now; and who held which work phone, today and on a saved
-//! day (`dispatch_routes_contract`).
+//! with the work phone each driver holds now; each driver's latest work phone of a day, today and
+//! on a saved day, and whether a number was ever one; and who held which work phone, today and on
+//! a saved day (`dispatch_routes_contract`).
 use super::{RoutesStore, phones, routes_today, work_phones};
 use dispatch_core::{
     Result,
@@ -10,8 +11,8 @@ use dispatch_core::{
     manifest::people::Source,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, MOST_DAYS, MOST_IDS, RouteDay,
-    Undelivered, WorkPhone, WorkPhoneHold,
+    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, LiveRouteData, MOST_DAYS, MOST_IDS,
+    RouteDay, Undelivered, WorkPhone, WorkPhoneHold,
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -120,6 +121,18 @@ impl DriverRoutes for Exposed {
         let station = db.profile(dsp)?.station_code;
         driven(&*db.routes_db(dsp)?, &station, None, day, day, false)
     }
+    fn day_phones(&self, db: &Store, dsp: &str, day: &str) -> Result<DayPhones> {
+        validate::days(day, day, 1)?;
+        let station = db.profile(dsp)?.station_code;
+        work_phones::of_day(&*db.routes_db(dsp)?, &station, day)
+    }
+    fn ever_work_phone(&self, db: &Store, dsp: &str, phone: &str) -> Result<bool> {
+        let Some(phone) = work_phones::digits(phone) else {
+            return Ok(false);
+        };
+        Ok(work_phones::ever(&*db.routes_live_db(dsp)?, &phone)?
+            || work_phones::ever(&*db.routes_db(dsp)?, &phone)?)
+    }
     fn work_phone_holds(&self, db: &Store, dsp: &str, day: &str) -> Result<Vec<WorkPhoneHold>> {
         validate::days(day, day, 1)?;
         holds(&*db.routes_db(dsp)?, day)
@@ -152,6 +165,13 @@ impl LiveRouteData for Live {
     fn routes(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Driven> {
         validate::ids(ids, MOST_IDS)?;
         self.driven(db, dsp, Some(ids))
+    }
+    fn day_phones(&self, db: &Store, dsp: &str) -> Result<DayPhones> {
+        let Some(day) = self.live_day(db, dsp)? else {
+            return Ok(DayPhones::Uncollected);
+        };
+        let station = db.profile(dsp)?.station_code;
+        work_phones::of_day(&*db.routes_live_db(dsp)?, &station, &day)
     }
     fn work_phones(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhone>> {
         let Some(day) = self.live_day(db, dsp)? else {
