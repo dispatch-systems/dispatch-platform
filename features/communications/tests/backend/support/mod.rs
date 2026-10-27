@@ -16,8 +16,8 @@ mod texting;
 
 pub use live::routed;
 pub use texting::{
-    added, failing, held_while_queuing, off_while_queuing, off_while_reading, reported, sent,
-    texted,
+    added, failing, held_while_queuing, off_once_queued, off_while_queuing, off_while_reading,
+    reported, sent, texted,
 };
 
 use crate::api::types::Message;

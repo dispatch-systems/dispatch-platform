@@ -507,7 +507,8 @@ Behind `communications.use`:
   Slack one's added by `…/uploads`, a text's pictures by `…/texts/uploads`, as `limits` says; by
   text, refused as `communications_texting_off` while the DSP doesn't text. Answers the message and the conversation
   it's in now (`conversation`): by text, another once the number changed hands as it went, which
-  the page then opens.
+  the page then opens. The member's access is checked again before it answers: once it ended as
+  the answer went, what went is kept, and the answer refused.
 - `POST …/conversations/{id}/messages/{message}/retry`: sends again a text Dispatch sent that
   failed.
 - `POST …/conversations/{id}/done`, and `…/typing`, which says the member is writing.
