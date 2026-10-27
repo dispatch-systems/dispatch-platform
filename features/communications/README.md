@@ -227,6 +227,10 @@ sending again one that failed.
     day (Pick driver, `communications_picked`), a text no hold covers is that driver's, before
     the day's first holder. Both are listed in Today's Routes.
   - **Any other number's**, Messaging's, by the number.
+  - **While Routes is off** for the DSP, nothing says whether a number is a work phone: a text
+    kept already stays where it was filed, and one that comes is placed under its number until
+    holds can be read. A text is placed as it first comes; how it went, or its pictures coming,
+    never moves it.
 - **Filed again:** who held which phone settles as the day goes, and a day's holds may reach
   historical route data after its texts, as a text a phone relayed late; so each time a day's
   holds change (`routes.work_phones_changed`, which names the day), every text of that day, both

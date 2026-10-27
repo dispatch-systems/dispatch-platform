@@ -63,8 +63,10 @@ pub trait TextStore {
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
     /// The last of Phones' changes read: 0 before the first.
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64>;
-    /// Keeps each of `texts` where it's filed, moving one kept elsewhere before, and notes that
-    /// Phones' changes were read up to `read_to`: the conversations changed.
+    /// Keeps each of `texts`, one new where it's filed, one kept already where it is, as how it
+    /// went or its files changed, and notes that Phones' changes were read up to `read_to`: the
+    /// conversations changed. Where a text is filed is decided again only as its holds settle
+    /// (`refile_communications_texts`).
     fn file_communications_texts(
         &self,
         dsp: &str,
@@ -272,8 +274,10 @@ impl TextStore for Store {
         db.transaction(|| {
             let mut touched = BTreeSet::new();
             for text in texts {
-                let conversation = conversation(&db, &text.filed)?;
-                let was = filed_in(&db, &text.id)?;
+                let conversation = match filed_in(&db, &text.id)? {
+                    Some(kept) => kept,
+                    None => conversation(&db, &text.filed)?,
+                };
                 // A text from a number blocked as it came never makes its conversation wait.
                 let blocked = matches!(text.filed, Filed::Number(_))
                     && db.count(
@@ -284,9 +288,8 @@ impl TextStore for Store {
                     "INSERT INTO communications_texts (id,conversation_id,phone,direction,number,\
                      body,at,sent_by,status,error,files,blocked) \
                      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) \
-                     ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,\
-                     body=excluded.body,status=excluded.status,error=excluded.error,\
-                     files=excluded.files",
+                     ON CONFLICT(id) DO UPDATE SET body=excluded.body,status=excluded.status,\
+                     error=excluded.error,files=excluded.files",
                     params![
                         text.id,
                         conversation,
@@ -302,7 +305,6 @@ impl TextStore for Store {
                         blocked,
                     ],
                 )?;
-                touched.extend(was);
                 touched.insert(conversation);
             }
             db.exec(

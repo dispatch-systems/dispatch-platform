@@ -95,6 +95,18 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
     events::publish(state, dsp, TextsChanged).await;
     id
 }
+/// The DSP's phone says how the text `id` Dispatch sent went, `status`, as Phones does.
+pub async fn reported(state: &Arc<State>, dsp: &str, id: &str, status: Status) {
+    RELAYED.of(dsp, |phone| {
+        phone.change += 1;
+        let change = phone.change;
+        if let Some(text) = phone.texts.iter_mut().find(|text| text.id == id) {
+            (text.status, text.status_at, text.error) = (Some(status), Some(now()), None);
+            text.change = change;
+        }
+    });
+    events::publish(state, dsp, TextsChanged).await;
+}
 /// Has what the DSP's phone sends next fail, or go.
 pub fn failing(dsp: &str, failing: bool) {
     RELAYED.of(dsp, |phone| phone.failing = failing);

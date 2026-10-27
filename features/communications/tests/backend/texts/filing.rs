@@ -1,8 +1,9 @@
 //! Filing texts: a number's in its own conversation, with whoever Driver Match has it for, else
 //! the name the DSP saved for it, else the number; a work phone's under the driver who held it as
 //! each was written, by today's holds or a saved day's, and a day's again as who held it settles,
-//! both ways, while Routes keeps the day's holds; a blocked number's out of the list, never
-//! waiting on what it sent while blocked.
+//! both ways, while Routes keeps the day's holds, and only then: never as how one went changes,
+//! nor while Routes is off; a blocked number's out of the list, never waiting on what it sent while
+//! blocked.
 use super::*;
 use crate::backend::{
     changes::ChangeStore,
@@ -15,6 +16,7 @@ use crate::backend::{
 };
 use crate::{Communications, ConversationState};
 use dispatch_core::manifest::people::{Person, PersonRole};
+use dispatch_phones_contract::Status;
 use std::collections::BTreeMap;
 
 /// The page's list as the member `me` reads it.
@@ -240,6 +242,37 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
     }
     let listed = listed(&state, &dsp).await;
     assert!(listed.conversations.iter().all(|each| each.id != number.id));
+}
+
+#[tokio::test]
+async fn a_drivers_texts_stay_theirs_as_how_one_went_changes_while_routes_is_off() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery holds 0101 and texts; the answer through it fails for want of service.
+    let avery = vec![hold("A1", "2065550101", at(zone, day, 0, 0), None)];
+    held(&state, &dsp, Some(&today), avery.clone(), Vec::new()).await;
+    let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    support::failing(&dsp, true);
+    let answer = reply::send(&state, &c, support::USE, &conversation, "Van 214", &[])
+        .await
+        .unwrap();
+
+    // Routes goes off, and the phone then says the answer went after all: still Avery's.
+    switch(&state, &dsp, "driving", false).await;
+    switch(&state, &dsp, "live", false).await;
+    support::reported(&state, &dsp, &answer.id, Status::Delivered).await;
+    assert_eq!(filed(&state, &dsp, &answer.id).await.driver, driver("A1"));
+    // What Avery texts meanwhile, nothing can tell whose, until Routes is on again and says.
+    let meanwhile = texted(&state, &dsp, "+12065550101", "Thanks", now()).await;
+    switch(&state, &dsp, "driving", true).await;
+    switch(&state, &dsp, "live", true).await;
+    held(&state, &dsp, Some(&today), avery, Vec::new()).await;
+    for text in [&asked, &answer.id, &meanwhile] {
+        assert_eq!(filed(&state, &dsp, text).await.driver, driver("A1"));
+    }
 }
 
 #[tokio::test]

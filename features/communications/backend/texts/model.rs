@@ -111,7 +111,7 @@ pub enum Filed {
     Number(String),
 }
 
-/// A text to keep, as Phones has it now, and where it's filed.
+/// A text to keep, as Phones has it now, and where it's filed, if it's new.
 pub struct Incoming {
     pub id: String,
     pub phone: String,
