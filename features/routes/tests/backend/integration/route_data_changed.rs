@@ -1,6 +1,7 @@
 //! A day's route data changed, as every feature hears it once it's kept (`routes.data_changed`):
-//! after a live read that changed it, live route data emptied, and the day saved, collected or
-//! reprocessed. Made-up days only.
+//! after a live read that changed it, live route data emptied, the day saved, collected or
+//! reprocessed, and its itineraries' work phones extracted from its stored responses, which tells a
+//! day kept before Routes kept them from one without a phone. Made-up days only.
 use dispatch_core::{
     State,
     collection::browser::Collected,
@@ -17,7 +18,7 @@ use dispatch_cortex::{
     routes::{self, Capture, JOB_KIND, Mode, Request},
 };
 use dispatch_routes::RoutesStore;
-use dispatch_routes_contract::RouteDataChanged;
+use dispatch_routes_contract::{DayPhones, DriverPhone, RouteDataChanged};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
@@ -104,6 +105,11 @@ fn collect(db: &Store, dsp: &str, key: &str, capture: Capture) {
     let keeper = registry().keeper(JOB_KIND);
     keeper.publish(db, dsp, &job, collected).unwrap();
 }
+/// The day's work phones, as other features read them.
+fn day_phones(db: &Store, dsp: &str, day: &str) -> DayPhones {
+    let routes = dispatch_routes_contract::for_dsp(db, dsp).unwrap();
+    routes.expect("Routes is on").day_phones(db, dsp, day).unwrap()
+}
 /// Routes' upkeep, as the scheduler offers it every minute.
 async fn upkeep(state: &Arc<State>) {
     (dispatch_routes::FEATURE.maintenance[0].run)(state.clone(), false).await;
@@ -179,4 +185,69 @@ async fn a_collected_or_reprocessed_day_is_heard_of_once_its_collection_succeeds
     db.reprocess_routes(&dsp, None).unwrap();
     upkeep(&state).await;
     assert_eq!(heard(&dsp), [day(2), day(1)]);
+}
+
+#[tokio::test]
+async fn a_day_kept_before_its_work_phones_were_has_them_extracted_from_its_stored_responses() {
+    let (_root, db, dsp, state) = ready();
+    let routes = dispatch_routes_contract::for_dsp(&db, &dsp)
+        .unwrap()
+        .unwrap();
+    let ever = |phone: &str| routes.ever_work_phone(&db, &dsp, phone).unwrap();
+    // Three days collected: two then made as a release before kept their phones left them, the
+    // version just before and an older one; and one whose drivers show no phone.
+    for back in [1, 2] {
+        collect(&db, &dsp, &day(back), read(&day(back), Mode::Final));
+    }
+    let mut phoneless = read(&day(3), Mode::Final);
+    for drivers in [
+        &mut phoneless.summaries["transporters"],
+        &mut phoneless.route_summaries["transporters"],
+    ] {
+        for driver in drivers.as_array_mut().unwrap() {
+            driver.as_object_mut().unwrap().remove("workPhoneNumber");
+        }
+    }
+    for itinerary in &mut phoneless.itineraries {
+        let mut response: serde_json::Value = serde_json::from_str(&itinerary.detail).unwrap();
+        response["transporters"] = json!([]);
+        itinerary.detail = response.to_string();
+    }
+    collect(&db, &dsp, &day(3), phoneless);
+    upkeep(&state).await;
+    heard(&dsp);
+    let historical = db.routes_db(&dsp).unwrap();
+    for (back, version) in [(1, 2), (2, 1)] {
+        let day = day(back);
+        let shaped = "UPDATE route_publications SET adapter_version=? WHERE day=?";
+        historical.exec(shaped, rusqlite::params![version, day]).unwrap();
+        let unkept = "UPDATE itineraries SET work_phone=NULL WHERE day=?";
+        historical.exec(unkept, [&day]).unwrap();
+    }
+    drop(historical);
+    let phones = |back| day_phones(&db, &dsp, &day(back));
+    assert_eq!(phones(1), DayPhones::Unextracted);
+    assert_eq!(phones(2), DayPhones::Unextracted);
+    assert_eq!(phones(3), DayPhones::Read(Vec::new()), "no phone");
+    assert!(!ever("2065550190"));
+
+    // The upkeep extracts the newer's from its stored responses, telling of it once; the older
+    // needs a reprocess, which shapes it whole.
+    upkeep(&state).await;
+    let phone = |driver: &str, phone: &str| DriverPhone {
+        driver_id: driver.into(),
+        phone: phone.into(),
+        shared: false,
+    };
+    assert_eq!(
+        phones(1),
+        DayPhones::Read(vec![
+            phone("driver-1", "2065550190"),
+            phone("driver-2", "2065550191"),
+        ])
+    );
+    assert_eq!(phones(2), DayPhones::Unextracted);
+    assert!(ever("+1 (206) 555-0190"));
+    upkeep(&state).await;
+    assert_eq!(heard(&dsp), [day(1)]);
 }
