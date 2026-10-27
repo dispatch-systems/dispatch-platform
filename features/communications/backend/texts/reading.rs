@@ -15,11 +15,9 @@ use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
 };
 use crate::backend::{
-    compose,
-    conversations::PAGE,
-    elsewhere,
+    compose, elsewhere,
     files::FileStatus,
-    model::{ConversationKind, Direction},
+    model::{ConversationKind, Direction, PAGE},
     people::People,
     search, today,
 };

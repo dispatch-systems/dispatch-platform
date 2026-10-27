@@ -11,7 +11,7 @@ use super::{
         self,
         storage::{Answered, GroupStore},
     },
-    model::{ConversationKind, Direction},
+    model::{ConversationKind, Direction, PAGE},
     people::People,
     search,
     storage::{self, CommunicationsStore},
@@ -26,9 +26,6 @@ use crate::{
 use dispatch_core::{Error, Result, State, db::Store, ensure, manifest::people::Photo};
 use dispatch_slack::kit;
 use std::collections::HashMap;
-
-/// How many answered conversations, or messages, are read at a time.
-pub const PAGE: usize = 50;
 
 /// `kept` as its pages read them, each with its latest message.
 pub fn conversations(

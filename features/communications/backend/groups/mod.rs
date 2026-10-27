@@ -16,6 +16,7 @@ pub(crate) mod storage;
 use super::{
     conversations,
     files::FileStore,
+    model::PAGE,
     people::People,
     storage::{self as kept, CommunicationsStore},
 };
@@ -207,13 +208,12 @@ pub fn opened(
         .communications_group(dsp, id)?
         .ok_or_else(|| Error::new("communications_group_not_found", 404))?;
     let people = People::read(db, state, dsp)?;
-    let (sent, answers) =
-        db.communications_group_entries(dsp, id, before, conversations::PAGE + 1)?;
+    let (sent, answers) = db.communications_group_entries(dsp, id, before, PAGE + 1)?;
     let mut entries: Vec<GroupEntry> = entries(db, &people, dsp, sent, answers)?
         .into_iter()
         .map(|(_, entry)| entry)
         .collect();
-    let more = entries.len() > conversations::PAGE;
+    let more = entries.len() > PAGE;
     if more {
         entries.remove(0);
     }
