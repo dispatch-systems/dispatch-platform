@@ -245,6 +245,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // Today's Routes as the page reads it, which its list and its board show.
   const routes: RoutesShown = {
     groups: routeList,
+    read: { pending: todays.loading, error: todays.error },
     choose: (row) => go(rowTarget(row)),
     driver: current?.driverId,
     view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,
@@ -288,7 +289,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
             )}
           </Header>
           {layout === 'phone' && offline}
-          <ErrorBox message={error || todays.error} />
+          <ErrorBox message={error} />
           {!inbox ? (
             !error && <Loading />
           ) : connect ? (

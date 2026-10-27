@@ -3,16 +3,18 @@ import { ConversationRow } from '../inbox/ConversationRow.js';
 import { Face } from '../shared/Face.js';
 import { ListHead, Rows } from '../shared/List.js';
 import { ListRow } from '../shared/ListRow.js';
-import { headingText, NoRoutes } from './headings.js';
+import { headingText, RoutesState, type RoutesRead } from './headings.js';
 import { rowKey, type RouteGroup, type RouteRow } from './todays-routes.js';
 import { PaceMark, RouteCode, Stops, WorkPhone } from './RouteFacts.js';
 
 // Today's Routes in the list: its groups, Waiting, each wave, no wave and no driver, each row the
 // driver with their route, work phone, stops and pace under what was last written, or a work phone
-// nobody held. Empty, as once live route data holds no day after the stop: No routes.
+// nobody held; while it's first read, loading; its read failing, why; empty, as once live route
+// data holds no day after the stop, No routes.
 
 export function RoutesList({
   groups,
+  read,
   open,
   openDriver,
   typing,
@@ -22,6 +24,7 @@ export function RoutesList({
   done,
 }: {
   groups: readonly RouteGroup[];
+  read: RoutesRead;
   /** What's open: a conversation, by its ID, and the driver it's with, if it's a driver's. */
   open?: string;
   openDriver?: string | null;
@@ -32,10 +35,9 @@ export function RoutesList({
   choose: (row: RouteRow) => void;
   done: (conversation: Conversation) => void;
 }) {
-  if (groups.length === 0) return <NoRoutes />;
   const listing = { open, typing, timeZone, now, done };
   return (
-    <>
+    <RoutesState read={read} empty={groups.length === 0}>
       {groups.map((group) => (
         <section key={group.key} aria-label={headingText(group.heading, timeZone)}>
           <ListHead count={group.rows.length}>{headingText(group.heading, timeZone)}</ListHead>
@@ -67,7 +69,7 @@ export function RoutesList({
           </Rows>
         </section>
       ))}
-    </>
+    </RoutesState>
   );
 }
 

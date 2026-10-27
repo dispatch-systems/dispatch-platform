@@ -13,6 +13,7 @@ import { ContactList } from '../slack/ContactList.js';
 import { TextContactList } from '../texting/TextContactList.js';
 import { RoutesBoard } from '../todays-routes/RoutesBoard.js';
 import { RoutesList } from '../todays-routes/RoutesList.js';
+import type { RoutesRead } from '../todays-routes/headings.js';
 import type { RouteGroup, RouteRow } from '../todays-routes/todays-routes.js';
 import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 
@@ -22,10 +23,11 @@ import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 // and a board across the page, which the member can choose in place of the list. The page owns
 // which section shows, what's open and how the page is laid out.
 
-/** Today's Routes as the page reads it, in its groups, and choosing a row of it; the driver whose
- * conversation is open; and its view, while the board can show. */
+/** Today's Routes as the page reads it, in its groups, and how its read stands; choosing a row of
+ * it; the driver whose conversation is open; and its view, while the board can show. */
 export type RoutesShown = {
   groups: readonly RouteGroup[];
+  read: RoutesRead;
   choose: (row: RouteRow) => void;
   driver?: string | null;
   view?: { shown: RoutesView; choose: (view: RoutesView) => void };
@@ -88,6 +90,7 @@ export const VIEWS: { [S in Section]: SectionView } = {
     rows: ({ routes, open, typing, timeZone, now, done }) => (
       <RoutesList
         groups={routes.groups}
+        read={routes.read}
         open={open}
         openDriver={routes.driver}
         typing={typing}
@@ -105,6 +108,7 @@ export const VIEWS: { [S in Section]: SectionView } = {
       <RoutesBoard
         tools={tools}
         groups={routes.groups}
+        read={routes.read}
         typing={typing}
         timeZone={timeZone}
         now={now}

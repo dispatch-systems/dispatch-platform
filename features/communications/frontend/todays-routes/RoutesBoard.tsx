@@ -4,7 +4,7 @@ import { clock, listTime, preview } from '../shared/format.js';
 import { rowKey, waits, type RouteGroup, type RouteRow } from './todays-routes.js';
 import { Face, SenderFace } from '../shared/Face.js';
 import { PartyFace } from '../conversations/party.js';
-import { headingText, NoRoutes } from './headings.js';
+import { headingText, RoutesState, type RoutesRead } from './headings.js';
 import { PaceMark, RouteCode, Stops, WorkPhone } from './RouteFacts.js';
 import { typingNote } from '../shared/format.js';
 import { Wait } from '../shared/Wait.js';
@@ -17,6 +17,7 @@ import './routes-board.css';
 export function RoutesBoard({
   tools,
   groups,
+  read,
   typing,
   timeZone,
   now,
@@ -25,6 +26,7 @@ export function RoutesBoard({
   /** The sections, Search and the view, above the board. */
   tools: ReactNode;
   groups: readonly RouteGroup[];
+  read: RoutesRead;
   typing: readonly Writing[];
   timeZone: string;
   now: number;
@@ -33,9 +35,7 @@ export function RoutesBoard({
   return (
     <section className="routes-board" aria-label="Today's Routes">
       <div className="board-tools">{tools}</div>
-      {groups.length === 0 ? (
-        <NoRoutes />
-      ) : (
+      <RoutesState read={read} empty={groups.length === 0}>
         <div className="board-scroll">
           <table>
             <thead>
@@ -73,7 +73,7 @@ export function RoutesBoard({
             </tbody>
           </table>
         </div>
-      )}
+      </RoutesState>
     </section>
   );
 }

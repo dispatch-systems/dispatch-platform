@@ -156,8 +156,9 @@ export const textFirst = (number: string) =>
 export const textDriver = (driverId: string) =>
   api<Conversation>(`${communicationsUrl}/texts/conversations`, { driverId });
 /** Today's Routes: the drivers on a route today, and the work phones nobody held. */
+export const todaysRoutesUrl = `${communicationsUrl}/routes`;
 export const getTodaysRoutes = (signal?: AbortSignal) =>
-  api<TodaysRoutes>(`${communicationsUrl}/routes`, undefined, signal);
+  api<TodaysRoutes>(todaysRoutesUrl, undefined, signal);
 /** Files a work phone nobody held under one of today's drivers: their conversation. */
 export const pickDriver = (id: string, driverId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/driver`, { driverId });

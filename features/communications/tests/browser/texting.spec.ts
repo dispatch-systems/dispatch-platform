@@ -83,6 +83,39 @@ test('with its phone and no Slack, Communications opens on Today’s Routes, wit
   );
 });
 
+test('Today’s Routes reads before it says No routes, and a read that fails says so in Today’s Routes alone', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  // Its first read waits until the test lets it go.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/dsp/communications/routes', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.getByRole('link', { name: 'Communications' }).click();
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await expect(list.getByRole('status')).toContainText('Loading');
+  await expect(page.getByText('No routes', { exact: true })).toHaveCount(0);
+  release();
+  await expect(page.getByText('No routes', { exact: true })).toBeVisible();
+
+  // Read again, as it is each time it shows, it fails: Today's Routes says so, Messaging doesn't.
+  await page.unroute('**/api/dsp/communications/routes');
+  await page.route('**/api/dsp/communications/routes', (route) =>
+    route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
+  );
+  const sections = page.getByRole('tablist', { name: 'Sections' });
+  await sections.getByRole('tab', { name: /Messaging/ }).click();
+  await sections.getByRole('tab', { name: "Today's Routes" }).click();
+  await expect(list.getByRole('alert')).toHaveText('Something went wrong.');
+  await sections.getByRole('tab', { name: /Messaging/ }).click();
+  await expect(list).toContainText('(425) 555-0199');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
 test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section, the board chosen or not', async ({
   page,
   dispatch,
