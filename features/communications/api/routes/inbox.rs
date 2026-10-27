@@ -3,7 +3,7 @@
 //! a time, each section as `sections` describes it.
 use super::{before, team};
 use crate::backend::{
-    conversations, live,
+    inbox, live,
     model::ConversationKind,
     sections::{self, Asked, Query},
 };
@@ -25,7 +25,7 @@ const WAIT: Duration = Duration::from_secs(20);
 pub(super) fn overview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &["team"])?;
     let team = team(&input.query)?;
-    Reply::of(&conversations::overview(
+    Reply::of(&inbox::overview(
         db,
         c.state,
         c.dsp_id(),
@@ -35,7 +35,7 @@ pub(super) fn overview(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 }
 pub(super) fn waiting(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.query, &[])?;
-    Reply::of(&conversations::waiting(db, c.state, c.dsp_id())?)
+    Reply::of(&inbox::waiting(db, c.state, c.dsp_id())?)
 }
 /// Conversations found by a name typed, `q`, or the answered ones before `before`, of the section
 /// listing `kind`: Slack's by default, of the workspace `team` or every one; the numbers'
@@ -96,7 +96,7 @@ pub(super) async fn updates(state: Arc<State>, input: Input, access: Dsp) -> Res
         let (answer, next) = state
             .read(move |db| {
                 let c = access.authorize(db, &asked)?;
-                conversations::updates(db, &shared, &c.dsp.id, after, &c.auth.user.id)
+                inbox::updates(db, &shared, &c.dsp.id, after, &c.auth.user.id)
             })
             .await?;
         let now = tokio::time::Instant::now();

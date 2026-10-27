@@ -7,7 +7,7 @@
 use super::*;
 use crate::backend::{
     changes::ChangeStore,
-    conversations,
+    inbox,
     model::ConversationKind,
     support::{
         self, DRIVERS, at, filed, held, hold, route, routed, started, switch, texted, today,
@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 async fn listed(state: &Arc<State>, dsp: &str) -> Communications {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     state
-        .read(move |db| conversations::overview(db, &shared, &dsp, "me", None))
+        .read(move |db| inbox::overview(db, &shared, &dsp, "me", None))
         .await
         .unwrap()
 }
@@ -530,7 +530,7 @@ async fn what_a_number_sent_while_blocked_never_alerts_once_it_is_unblocked() {
     // Unblocked, it waits on what it sent before, and alerts with that.
     let (shared, at) = (state.clone(), dsp.clone());
     let waiting = state
-        .read(move |db| conversations::waiting(db, &shared, &at))
+        .read(move |db| inbox::waiting(db, &shared, &at))
         .await
         .unwrap();
     let latest: Vec<_> = waiting
