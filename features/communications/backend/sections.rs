@@ -107,8 +107,9 @@ pub const SLACK: Section = Section {
         Asked::Before(before) => conversations::older(db, state, dsp, query.team, before),
     },
 };
-/// Every section, in the order the page shows them.
-pub const SECTIONS: &[&Section] = &[&TODAYS_ROUTES, &MESSAGING, &SLACK];
+/// Every section, in the order the overview lists their conversations: Slack's, then by text, as
+/// it always has; the page shows them in an order of its own.
+pub const SECTIONS: &[&Section] = &[&SLACK, &MESSAGING, &TODAYS_ROUTES];
 
 /// What a section's list is read with: the DSP, who everyone is, what it keeps of numbers, and
 /// the workspace a Slack list is of, if one.
