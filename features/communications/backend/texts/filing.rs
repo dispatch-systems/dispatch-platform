@@ -18,9 +18,9 @@
 //! Who held which phone settles as the day goes on, and a day's holds may reach historical route
 //! data after its texts, as a text a phone relayed late; so a day's texts are filed again each
 //! time Routes says its holds changed (`WorkPhonesChanged`): today's, the pages waiting on changes
-//! hearing of the work conversations waiting, which wait only on the live day, and of those of the
-//! drivers holding a work phone today, whose phone may have changed; an earlier day's while Routes
-//! keeps holds of it, as a day it emptied unsaved keeps its texts where its holds had them.
+//! hearing of the work conversations waiting, which wait only on the live day, and of every
+//! driver's, whose phone may have changed or been withdrawn; an earlier day's while Routes keeps
+//! holds of it, as a day it emptied unsaved keeps its texts where its holds had them.
 use super::{
     began,
     model::{Filed, Incoming, TextFile, TextStatus},
@@ -147,9 +147,9 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
 
 /// Files every text of `day`, YYYY-MM-DD in the DSP's time, again, where it belongs now, then wakes
 /// the pages waiting on what changed. Today's, noting changed the work conversations waiting, as
-/// the live day may have begun or ended, and those of the drivers holding a work phone today, held
-/// or texted in or not, as the phone they hold may have changed. An earlier day's only while Routes
-/// keeps holds of it.
+/// the live day may have begun or ended, and every driver's, texted in or not, as the phone they
+/// hold may have changed, or been withdrawn from them. An earlier day's only while Routes keeps
+/// holds of it.
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
     let day =
         NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
@@ -159,8 +159,7 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
             let mut filer = Filer::new(db, &at)?;
             if day == clock::today(filer.zone) {
                 refiled_by(db, &at, &mut filer, day)?;
-                let holding = filer.holding_today()?;
-                db.changed_communications_work(&at, now() - TWO_DAYS_MS, &holding)?;
+                db.changed_communications_work(&at, now() - TWO_DAYS_MS)?;
                 return Ok(true);
             }
             if filer.holds(&day.to_string())?.is_none_or(<[_]>::is_empty) {
@@ -374,18 +373,6 @@ impl<'a> Filer<'a> {
             self.holds.insert(day.to_owned(), read);
         }
         Ok(Some(&self.holds[day]))
-    }
-    /// The drivers holding a work phone today, the DSP's day, each by the source of their ID and
-    /// the ID.
-    fn holding_today(&mut self) -> Result<Vec<(String, String)>> {
-        let today = clock::today(self.zone).to_string();
-        let holding: BTreeSet<(String, String)> = self
-            .holds(&today)?
-            .unwrap_or_default()
-            .iter()
-            .map(|(source, hold)| (source.clone(), hold.driver_id.clone()))
-            .collect();
-        Ok(holding.into_iter().collect())
     }
     /// The drivers picked for work phones on `day`, by their ten digits.
     fn picked(&mut self, day: &str) -> Result<&HashMap<String, Filed>> {

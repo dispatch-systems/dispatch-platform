@@ -508,7 +508,8 @@ async fn what_a_number_sent_while_blocked_never_alerts_once_it_is_unblocked() {
 }
 
 #[tokio::test]
-async fn a_drivers_work_conversation_changes_as_they_take_and_return_a_work_phone_with_no_text() {
+async fn a_drivers_work_conversation_changes_as_they_take_return_or_lose_a_work_phone_with_no_text()
+{
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let today = day.to_string();
@@ -552,6 +553,8 @@ async fn a_drivers_work_conversation_changes_as_they_take_and_return_a_work_phon
     let (taken, returned) = (at(zone, day, 7, 0), at(zone, day, 7, 30));
     assert!(heard(vec![hold("A1", "2065550101", taken, None)]).await);
     assert!(heard(vec![hold("A1", "2065550101", taken, Some(returned))]).await);
+    // Routes withdraws their last hold: they hold none now, which a page with it open hears too.
+    assert!(heard(Vec::new()).await);
 }
 
 #[tokio::test]
