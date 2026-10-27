@@ -241,7 +241,8 @@ sending again one that failed.
   off or a hearing failed, is repaired by the next pass; an earlier day's only as Routes says it
   changed, as Routes doesn't say which days had holds saved.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
-  or after Done. A failed answer leaves it waiting. A work conversation waits only on what was
+  and not covered by a Done. Done marks each text in it covers, which stays handled wherever it's
+  filed again, never handling a text it didn't cover. A failed answer leaves it waiting. A work conversation waits only on what was
   written on the live day, while live route data holds today: from the first text in on it
   after its latest answer or Done, though it came before the day's first live read; so at the
   stop, as live route data empties, none waits or counts, and the next day starts afresh. Each
@@ -547,10 +548,11 @@ Public, on the admin's address: `GET /communications/initials/1/{letters}.png`.
   group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
   `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
   (each a driver's, a work phone's nobody held, or a number's), `communications_texts` (each
-  text filed, by Phones' ID, its pictures as Phones keeps them), `communications_texting` (the
-  last of Phones' changes filed), `communications_contacts` (the names saved for numbers, by
-  whom and when), `communications_blocked` (the numbers blocked, by whom and when) and
-  `communications_picked` (the driver picked for a work phone on a day, by whom and when). Kept
+  text filed, by Phones' ID, its pictures as Phones keeps them, and the Done that covered it),
+  `communications_texting` (the last of Phones' changes filed), `communications_contacts` (the
+  names saved for numbers, by whom and when), `communications_blocked` (the numbers blocked, by
+  whom and when) and `communications_picked` (the driver picked for a work phone on a day, by
+  whom and when). Kept
   until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
   what's due to go to groups' people, filing texts not filed yet, and filing today's again where

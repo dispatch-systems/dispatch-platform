@@ -78,6 +78,7 @@
       ["communications", 3, "communications_grouped", "code"],
       ["communications", 4, "communications_texts", "503f834ef4617484"],
       ["communications", 5, "communications_picked", "148dbda50b8c03f0"],
+      ["communications", 6, "communications_texts_done", "code"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],

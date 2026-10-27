@@ -93,6 +93,11 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0005_communications_picked.sql"
                 )),
             },
+            Migration {
+                id: 6,
+                name: "communications_texts_done",
+                apply: Code(backend::texts::storage::add_text_done),
+            },
         ],
     }],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading

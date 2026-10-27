@@ -10,4 +10,5 @@ mod picks;
 
 pub use contacts::ContactStore;
 pub use messages::TextStore;
+pub(crate) use messages::add_text_done;
 pub use picks::PickStore;

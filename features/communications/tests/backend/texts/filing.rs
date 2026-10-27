@@ -12,7 +12,7 @@ use crate::backend::{
     support::{
         self, DRIVERS, at, filed, held, hold, route, routed, started, switch, texted, today,
     },
-    texts::{contacts, reply, storage::TextStore},
+    texts::{contacts, reading, reply, storage::TextStore},
 };
 use crate::{Communications, ConversationState};
 use dispatch_core::manifest::people::{Person, PersonRole};
@@ -301,6 +301,68 @@ async fn todays_texts_go_to_whoever_holds_the_work_phone_by_the_next_upkeep_thou
     // The next upkeep files it under Avery, with no new text or hold.
     (MAINTENANCE.run)(state.clone(), false).await;
     assert_eq!(filed(&state, &dsp, &asked).await.driver, driver("avery"));
+}
+
+#[tokio::test]
+async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_waits() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery holds 0202 and texts from it at 8:00, unanswered.
+    let on_0202 = hold("A1", "2065550202", at(zone, day, 0, 0), None);
+    held(
+        &state,
+        &dsp,
+        Some(&today),
+        vec![on_0202.clone()],
+        Vec::new(),
+    )
+    .await;
+    texted(
+        &state,
+        &dsp,
+        "+12065550202",
+        "Tire light",
+        at(zone, day, 8, 0),
+    )
+    .await;
+    // From 0101, no work phone yet, a text at 6:30, marked done in its number's conversation.
+    let early = texted(
+        &state,
+        &dsp,
+        "+12065550101",
+        "Which van?",
+        at(zone, day, 6, 30),
+    )
+    .await;
+    let number = filed(&state, &dsp, &early).await.id;
+    let at_dsp = dsp.clone();
+    state
+        .run(move |db| db.mark_communications_text_done(&at_dsp, &number, "me"))
+        .await
+        .unwrap();
+
+    // The holds settle: Avery held 0101 from 7:00 too, so the 6:30 text is theirs, and still done.
+    let on_0101 = hold("A1", "2065550101", at(zone, day, 7, 0), None);
+    held(
+        &state,
+        &dsp,
+        Some(&today),
+        vec![on_0202, on_0101],
+        Vec::new(),
+    )
+    .await;
+    let avery = filed(&state, &dsp, &early).await;
+    assert_eq!(avery.driver, driver("A1"));
+    let (shared, at_dsp) = (state.clone(), dsp.clone());
+    let shown = state
+        .read(move |db| reading::one(db, &shared, &at_dsp, &avery.id))
+        .await
+        .unwrap();
+    assert_eq!(
+        (shown.state, shown.waiting_since),
+        (ConversationState::Waiting, Some(at(zone, day, 8, 0)))
+    );
 }
 
 #[tokio::test]

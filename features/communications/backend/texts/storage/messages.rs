@@ -7,7 +7,7 @@ use crate::backend::{
 };
 use dispatch_core::{
     Error, Result,
-    db::{Db, Store, now},
+    db::{Db, Store, migrations::add_column, now},
     foundation::crypto,
 };
 use rusqlite::params;
@@ -118,8 +118,9 @@ pub trait TextStore {
     ) -> Result<()>;
     /// The conversation texts filed so would be in, made with no text if it's new.
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;
-    /// Marks the conversation done without an answer, as the member `by`, while it waits:
-    /// whether it was waiting.
+    /// Marks the conversation done without an answer, as the member `by`, while it waits, and
+    /// each text in it the Done covers, which stays so wherever it's filed again: whether it was
+    /// waiting.
     fn mark_communications_text_done(&self, dsp: &str, id: &str, by: &str) -> Result<bool>;
 }
 
@@ -131,13 +132,13 @@ macro_rules! last_out {
     };
 }
 /// Since when the conversation `c` waits, on texts written from `?1` on: the first text in, but
-/// one that came while its number was blocked, after the latest text out that didn't fail and
-/// after it was marked done; none when it waits on nothing written from then.
+/// one that came while its number was blocked or one a Done covered, wherever it was filed then,
+/// after the latest text out that didn't fail; none when it waits on nothing written from then.
 macro_rules! waiting_since {
     () => {
         concat!(
             "(SELECT min(t.at) FROM communications_texts t WHERE t.conversation_id=c.id \
-             AND t.direction='in' AND t.blocked=0 AND t.at>=?1 AND t.at>coalesce(c.done_at,-1) \
+             AND t.direction='in' AND t.blocked=0 AND t.at>=?1 AND t.done_at IS NULL \
              AND t.at>coalesce(",
             last_out!(),
             ",-1))"
@@ -454,12 +455,18 @@ impl TextStore for Store {
     fn mark_communications_text_done(&self, dsp: &str, id: &str, by: &str) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
+            let at = now();
             let marked = db.exec(
                 "UPDATE communications_text_conversations SET done_at=?,done_by=? \
                  WHERE id=? AND state='waiting'",
-                params![now(), by, id],
+                params![at, by, id],
             )?;
             if marked > 0 {
+                db.exec(
+                    "UPDATE communications_texts SET done_at=?,done_by=? \
+                     WHERE conversation_id=? AND direction='in' AND done_at IS NULL",
+                    params![at, by, id],
+                )?;
                 settle(&db, id)?;
             }
             Ok(marked > 0)
@@ -506,8 +513,8 @@ fn filed_in(db: &Db, id: &str) -> Result<Option<String>> {
     Ok(found.map(|(conversation,)| conversation))
 }
 
-/// Keeps whether the conversation waits on an answer, and since when, from its texts and when
-/// it was marked done, and notes it changed: by all its texts, whichever day they were written
+/// Keeps whether the conversation waits on an answer, and since when, from its texts and which a
+/// Done covered, done when it was marked so after its latest answer, and notes it changed: by all its texts, whichever day they were written
 /// (`waiting_since`, from the earliest).
 fn settle(db: &Db, conversation: &str) -> Result<()> {
     let (since, done): (Option<i64>, bool) = db
@@ -536,4 +543,23 @@ fn settle(db: &Db, conversation: &str) -> Result<()> {
         params![conversation, state, since],
     )?;
     changed_conversation(db, conversation)
+}
+
+/// Communications' migration 6: Done marks each text it covered (`communications_texts.done_at`,
+/// `done_by`), so it stays handled wherever it's filed again; each text a conversation's Done
+/// covered as it stands, written before it, is marked so.
+pub(crate) fn add_text_done(db: &Db) -> Result<()> {
+    add_column(db, "communications_texts", "done_at", "INTEGER")?;
+    add_column(db, "communications_texts", "done_by", "TEXT")?;
+    db.exec(
+        "UPDATE communications_texts SET \
+         done_at=(SELECT c.done_at FROM communications_text_conversations c \
+         WHERE c.id=communications_texts.conversation_id),\
+         done_by=(SELECT c.done_by FROM communications_text_conversations c \
+         WHERE c.id=communications_texts.conversation_id) \
+         WHERE direction='in' AND done_at IS NULL AND at<=(SELECT c.done_at \
+         FROM communications_text_conversations c WHERE c.id=communications_texts.conversation_id)",
+        [],
+    )?;
+    Ok(())
 }
