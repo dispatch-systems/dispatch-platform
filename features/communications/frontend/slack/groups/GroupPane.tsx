@@ -8,7 +8,7 @@ import type {
 import { markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
 import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
-import { peopleText } from './groups.js';
+import { GROUP_LIMITS, peopleText } from './groups.js';
 import { Composer } from '../../conversations/Composer.js';
 import { GroupFaces } from './GroupFaces.js';
 import { GroupPeople } from './GroupPeople.js';
@@ -127,6 +127,7 @@ export function GroupPane({
       )}
       {group && (
         <Composer
+          limits={GROUP_LIMITS}
           attachments={slackAttachments}
           placeholder={`Message all ${group.people}`}
           writable={writable}

@@ -1,25 +1,23 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
-import type { CommunicationsUpload } from '../../api/index.js';
+import type { CommunicationsUpload, ComposeLimits } from '../../api/index.js';
 import type { Attachments } from '../../api/client.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Shown } from '../display/display.js';
+import { size } from '../shared/format.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
 import './composer.css';
 
-// Writing a message, in a conversation or to a group: up to 3,000 characters, and up to ten
-// photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added, by text to the DSP's
-// phones, which send them with it. Enter sends,
-// Shift+Enter starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with
-// it sends. While someone writes in a conversation, their teammates see they are, said again every
-// few seconds. A text says the number it goes to by its last digits, when the name doesn't.
+// Writing a message, in a conversation or to a group: as much as one may carry, as the API says
+// (`limits`): its text's characters, and its photos, how many, of which kinds and how large, which
+// what refuses one says too. Photos upload as they're added, as the way it goes keeps them
+// (`attachments`): by text, to the DSP's phones, which send them with it. Enter sends, Shift+Enter
+// starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with it sends.
+// While someone writes in a conversation, their teammates see they are, said again every few
+// seconds. A text says the number it goes to by its last digits, when the name doesn't.
 
-const TEXT_MOST = 3000;
-const PHOTOS_MOST = 10;
-const PHOTO_BYTES = 20 * 1024 * 1024;
-const PHOTO_KINDS = ['image/png', 'image/jpeg', 'image/gif'];
 /** How often writing is said again: the server counts it for six seconds. */
 const TYPING_MS = 3000;
 
@@ -36,7 +34,7 @@ export function Composer({
   placeholder,
   writable,
   ready: whom = true,
-  photos: attaching = true,
+  limits,
   attachments,
   to,
   send: deliver,
@@ -46,8 +44,8 @@ export function Composer({
   placeholder: string;
   /** Whether it can be written in: Communications works where it goes now. */
   writable: boolean;
-  /** Whether photos can be added to it. */
-  photos?: boolean;
+  /** What a message may carry; none while that isn't known, when nothing can be written. */
+  limits: ComposeLimits | undefined;
   /** How the photos added are kept, by the way it goes: in Dispatch, or by the DSP's phones. */
   attachments: Attachments;
   /** The last digits of the number a text goes to, when the name doesn't say it. */
@@ -98,11 +96,13 @@ export function Composer({
   };
   const add = (files: FileList | null) => {
     const chosen = [...(files ?? [])];
-    if (chosen.some((file) => !PHOTO_KINDS.includes(file.type)))
-      return fail('Photos must be PNG, JPEG or GIF.');
-    if (chosen.some((file) => file.size > PHOTO_BYTES))
-      return fail('Photos must be 20 MB or smaller.');
-    if (photos.length + chosen.length > PHOTOS_MOST) return fail('Add up to 10 photos.');
+    if (!limits) return;
+    if (chosen.some((file) => !limits.kinds.includes(file.type)))
+      return fail(`Photos must be ${kindsText(limits.kinds)}.`);
+    if (chosen.some((file) => file.size > limits.largest))
+      return fail(`Photos must be ${bytesText(limits.largest)} or smaller.`);
+    if (photos.length + chosen.length > limits.photos)
+      return fail(`Add up to ${limits.photos} photos.`);
     const adding = chosen.map((file) => ({
       key: randomId(),
       file,
@@ -134,8 +134,9 @@ export function Composer({
     said.current = 0;
   });
   const uploading = photos.some((photo) => !photo.uploaded);
+  const open = writable && limits !== undefined;
   const ready =
-    writable && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
+    open && whom && !send.busy && !uploading && (text.trim().length > 0 || photos.length > 0);
   const writing = (value: string) => {
     setText(value);
     if (typing && value.trim() && Date.now() - said.current > TYPING_MS) {
@@ -170,13 +171,13 @@ export function Composer({
         </ul>
       )}
       <div className={label && text ? 'box writing' : 'box'}>
-        {attaching && (
+        {limits && limits.photos > 0 && (
           <>
             <button
               type="button"
               className="round"
               aria-label="Attach photos"
-              disabled={!writable || photos.length >= PHOTOS_MOST}
+              disabled={!open || photos.length >= limits.photos}
               onClick={() => picker.current?.click()}
             >
               <Paperclip size={18} />
@@ -184,7 +185,7 @@ export function Composer({
             <input
               ref={picker}
               type="file"
-              accept={PHOTO_KINDS.join(',')}
+              accept={limits.kinds.join(',')}
               multiple
               hidden
               onChange={(event) => {
@@ -199,9 +200,9 @@ export function Composer({
           rows={1}
           aria-label="Message"
           placeholder={placeholder}
-          maxLength={TEXT_MOST}
+          maxLength={limits?.text}
           value={text}
-          disabled={!writable}
+          disabled={!open}
           onChange={(event) => writing(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
@@ -229,4 +230,15 @@ export function Composer({
       </div>
     </form>
   );
+}
+
+/** The kinds of photo a message carries, as their names read: "PNG, JPEG or GIF". */
+function kindsText(kinds: readonly string[]) {
+  const names = kinds.map((kind) => kind.replace(/^image\//, '').toUpperCase());
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names.join('');
+}
+/** The most bytes a photo may be, as it reads: "20 MB", or with a fraction, "2.5 MB". */
+function bytesText(bytes: number) {
+  const megabytes = bytes / 1024 ** 2;
+  return Number.isInteger(megabytes) ? `${megabytes} MB` : size(bytes);
 }

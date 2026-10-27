@@ -20,6 +20,7 @@ import {
   choiceKey,
   choiceName,
   faces,
+  GROUP_LIMITS,
   groupName,
   keyOf,
   peopleText,
@@ -141,6 +142,7 @@ export function GroupDraft({
         )}
       </div>
       <Composer
+        limits={GROUP_LIMITS}
         attachments={slackAttachments}
         placeholder="Message"
         writable

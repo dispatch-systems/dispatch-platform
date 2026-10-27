@@ -1,6 +1,7 @@
 import type {
   Communications,
   CommunicationsWorkspace,
+  ComposeLimits,
   Conversation,
   Correspondent,
   Message,
@@ -154,5 +155,12 @@ export function sample(now: number) {
     email: 'jamal.w@example.com',
     slack: workspace.name,
   };
-  return { inbox, open, messages, profile, workspace };
+  // What a message in it may carry, as a Slack conversation's read says.
+  const limits: ComposeLimits = {
+    text: 3000,
+    photos: 10,
+    largest: 20 * 1024 * 1024,
+    kinds: ['image/png', 'image/jpeg', 'image/gif'],
+  };
+  return { inbox, open, messages, profile, workspace, limits };
 }

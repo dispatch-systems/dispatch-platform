@@ -35,7 +35,14 @@ export function Preview({
   timeZone: string;
 }) {
   const now = useMemo(() => Date.now(), []);
-  const { inbox, open, messages, profile: known, workspace } = useMemo(() => sample(now), [now]);
+  const {
+    inbox,
+    open,
+    messages,
+    profile: known,
+    workspace,
+    limits,
+  } = useMemo(() => sample(now), [now]);
   const title = useId();
   const page = useRef<HTMLDivElement>(null);
   const docked =
@@ -119,6 +126,7 @@ export function Preview({
                 <Composer
                   placeholder={`Message ${open.with.name.split(' ')[0]}`}
                   writable
+                  limits={limits}
                   attachments={slackAttachments}
                   send={() => Promise.resolve()}
                 />

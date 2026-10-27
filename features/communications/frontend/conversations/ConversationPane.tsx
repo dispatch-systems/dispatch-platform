@@ -214,6 +214,7 @@ export function ConversationPane({
           <Composer
             placeholder={`Message ${party.whom(shown)}`}
             writable={party.writable(shown) && !unreachable}
+            limits={opened?.limits ?? undefined}
             attachments={KINDS[shown.conversation.kind].attachments}
             to={about && number ? lastFour(number) : undefined}
             send={async (text, photos) => sent(await sendMessage(id, text, photos))}
