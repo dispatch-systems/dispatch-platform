@@ -196,6 +196,46 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await expect(messaging).toHaveAttribute('aria-selected', 'true');
 });
 
+test('the section switch keeps its three tabs on one line, each whole, whichever of Settings and Communications opens first', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE1')).status).toBe(200);
+  const communications = `/#dsp/${north.id}/communications`;
+  // Message display draws the page's own parts, so its page loads their stylesheets too.
+  const display = `/#dsp/${north.id}/settings?tab=display`;
+  /** Each of the three section tabs on one line with the others, its label whole. */
+  const inLine = async () => {
+    const tabs = page.getByRole('tablist', { name: 'Sections' }).getByRole('tab');
+    await expect(tabs).toHaveCount(3);
+    const drawn = await tabs.evaluateAll((all) =>
+      all.map((tab) => ({
+        top: Math.round(tab.getBoundingClientRect().top),
+        whole: tab.scrollWidth <= tab.clientWidth,
+      })),
+    );
+    expect(drawn).toEqual(drawn.map(() => ({ top: drawn[0]!.top, whole: true })));
+  };
+
+  await login(page);
+  await page.goto(display);
+  await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
+  await page.goto(communications);
+  await inLine();
+  // Opened afresh, Communications first, then Message display, then back.
+  await page.reload();
+  await inLine();
+  await page.goto(display);
+  await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
+  await page.goto(communications);
+  await inLine();
+});
+
 test('with Slack needing an update, Messaging still works, and Update Slack covers Slack alone until closed', async ({
   page,
   dispatch,
