@@ -1,0 +1,144 @@
+/* A row of the list: whom it's with, when it was last written in, what was written last, and
+   what it shows below that. */
+.convo {
+  position: relative;
+}
+.convo-open {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--gap);
+  width: 100%;
+  min-height: 0;
+  padding: calc(var(--gap) * 0.7) calc(var(--gap) * 0.8);
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.convo-open:hover,
+.convo:focus-within .convo-open {
+  background: var(--accent);
+}
+.convo.selected .convo-open {
+  background: var(--selection);
+}
+.convo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.convo .line1,
+.convo .line2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.convo .line1 {
+  align-items: baseline;
+  justify-content: space-between;
+}
+.convo .line1 strong {
+  overflow: hidden;
+  font-size: var(--name-size);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.convo time {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+}
+.convo .line2 .face {
+  margin-right: -2px;
+}
+.convo .preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: calc(var(--name-size) - 1px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Waiting on an answer, it stands out as an unread one would. */
+.convo.waits .line1 strong {
+  font-weight: 650;
+}
+.convo.waits .preview {
+  color: var(--foreground);
+}
+.convo.waits time {
+  color: var(--primary);
+  font-weight: 550;
+}
+/* What else a row shows, under what was written last, as a driver's route. */
+.convo .line3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  white-space: nowrap;
+}
+/* Pointed at or reached by the keyboard beside the conversation, a waiting one shows the check
+   that marks it done (below). */
+.convo-done {
+  position: absolute;
+  top: 50%;
+  right: 18px;
+  display: none;
+  width: var(--round-size);
+  min-height: var(--round-size);
+  height: var(--round-size);
+  padding: 0;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 0 2px 6px var(--shadow-color);
+  transform: translateY(-50%);
+}
+.convo-done svg {
+  width: 47%;
+  height: 47%;
+}
+@container communications (width >= 680px) {
+  .convo:hover .convo-done,
+  .convo:focus-within .convo-done {
+    display: inline-flex;
+  }
+  .convo.waits:hover time,
+  .convo.waits:hover .wait,
+  .convo.waits:focus-within time,
+  .convo.waits:focus-within .wait {
+    visibility: hidden;
+  }
+}
+
+/* As the member chose in Message display: no photos in the list. */
+.communications[data-hide~='list-photos'] .pane-list .convo-open > :is(.face, .group-faces) {
+  display: none;
+}
+/* The list's rows closer together, and each one's last message on no line or two. */
+.communications[data-list-rows='compact'] .convo-open {
+  padding-block: calc(var(--gap) * 0.35);
+}
+.communications[data-list-preview='none'] .convo .line2 > :is(.preview, .face) {
+  display: none;
+}
+.communications[data-list-preview='none'] .convo .line2 {
+  justify-content: flex-end;
+}
+.communications[data-list-preview='two'] .convo .line2 {
+  align-items: flex-start;
+}
+.communications[data-list-preview='two'] .convo .preview {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

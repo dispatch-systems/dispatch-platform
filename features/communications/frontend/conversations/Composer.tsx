@@ -7,6 +7,7 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { Shown } from '../display/display.js';
 import { randomId } from '../../../../core/shell/frontend/lib/random-id.js';
+import './composer.css';
 
 // Writing a message, in a conversation or to a group: up to 3,000 characters, and up to ten
 // photos, each PNG, JPEG or GIF up to 20 MB, uploaded as they're added, by text to the DSP's

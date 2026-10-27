@@ -4,6 +4,7 @@ import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.j
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
 import { WorkspaceMark } from './WorkspaceMark.js';
+import './copy-chat-link.css';
 
 // Copy chat link: the address that opens the DSP's chat with Dispatch in Slack, for employees
 // to write to it. With one workspace it's copied at once; with several, picked from a menu.

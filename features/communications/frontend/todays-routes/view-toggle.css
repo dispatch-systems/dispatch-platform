@@ -1,13 +1,4 @@
-/* Search, and in Today's Routes beside it, the list or the board. */
-.pane-list .tools-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.pane-list .tools-row .search {
-  flex: 1;
-  min-width: 0;
-}
+/* How Today's Routes shows: the list or the board, as two segments. */
 .view-toggle {
   display: inline-flex;
   flex-shrink: 0;

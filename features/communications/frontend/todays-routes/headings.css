@@ -1,15 +1,3 @@
-/* A driver's route under their row: its code, their work phone, the stops done and its pace. */
-.convo .line3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-size: var(--small-size);
-  white-space: nowrap;
-}
-
 /* Today's Routes with nobody on it, as after the stop. */
 .no-routes {
   display: flex;

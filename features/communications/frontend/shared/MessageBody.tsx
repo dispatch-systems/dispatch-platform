@@ -5,6 +5,7 @@ import { download } from '../../../../core/shell/frontend/runtime/transfer.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { usePicture } from '../../../../core/shell/frontend/runtime/usePicture.js';
 import { fileStatus, isPhoto, size } from './format.js';
+import './message-body.css';
 
 /** One message: its text, marked if edited in Slack, then its photos and files: a text's, as its
  * phone keeps them (`texted`). */

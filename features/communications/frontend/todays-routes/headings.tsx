@@ -1,6 +1,7 @@
 import { Route } from 'lucide-react';
 import { clock } from '../shared/format.js';
 import type { RouteHeading } from './todays-routes.js';
+import './headings.css';
 
 // How Today's Routes names its groups, in the list and on the board, and what it shows with
 // nobody on it.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import './panel.css';
 
 // A panel beside what's open, a conversation's profile or a group's people: over it until its X,
 // Escape, or a press anywhere else closes it; or, on a wide page (`docked`), a column of its own
@@ -23,6 +24,7 @@ export function Panel({
   id: string;
   /** The ID of what names it. */
   labelledBy: string;
+  /** What it holds, beside `panel`. */
   className: string;
   docked: boolean;
   /** Whether it's closed, sliding away. */
@@ -59,7 +61,9 @@ export function Panel({
     <aside
       ref={panel}
       id={id}
-      className={[className, leaving && 'leaving', still && 'still'].filter(Boolean).join(' ')}
+      className={['panel', className, leaving && 'leaving', still && 'still']
+        .filter(Boolean)
+        .join(' ')}
       role="dialog"
       aria-labelledby={labelledBy}
       inert={leaving}

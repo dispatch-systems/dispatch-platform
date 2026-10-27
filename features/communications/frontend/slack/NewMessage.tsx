@@ -5,9 +5,11 @@ import { getContacts } from '../../api/client.js';
 import { Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Face } from '../shared/Face.js';
+import { ListEmpty } from '../shared/List.js';
 import { roleText } from '../shared/format.js';
 import { Name } from '../shared/Name.js';
 import { useFound } from '../shared/useFound.js';
+import './new-message.css';
 
 // New message: whom to write to, found by their name however it's spelt, the closest first,
 // with the letters that matched marked; with nothing typed, Message a group first. The arrow keys
@@ -77,8 +79,8 @@ export function NewMessage({
             }}
           />
         </label>
-        {failed && <p className="list-empty">{failed}</p>}
-        {found && !found.length && name && <p className="list-empty">No matches</p>}
+        {failed && <ListEmpty>{failed}</ListEmpty>}
+        {found && !found.length && name && <ListEmpty>No matches</ListEmpty>}
         <ul id={list} role="listbox" aria-label="People" className="results">
           {grouping && (
             <li

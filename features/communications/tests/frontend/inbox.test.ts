@@ -20,7 +20,7 @@ import {
 import { elsewhereNow } from '../../frontend/conversations/elsewhere.js';
 import { groupName, recipients, type Pick } from '../../frontend/slack/groups/groups.js';
 import { letter, waited } from '../../frontend/shared/format.js';
-import { marked } from '../../frontend/shared/Name.js';
+import { marked } from '../../frontend/shared/marked.js';
 
 /** A conversation, waiting since `since` or answered, its latest message written at `at`, listed
  * under the group `group`, if any. */

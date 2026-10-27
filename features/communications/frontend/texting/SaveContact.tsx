@@ -4,6 +4,7 @@ import type { Conversation } from '../../api/index.js';
 import { saveContact } from '../../api/client.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Modal, Popover } from '../../../../core/shell/frontend/ui/index.js';
+import './save-contact.css';
 
 /** The most a contact's name may be, as the server keeps it. */
 const NAME_MOST = 80;

@@ -1,11 +1,13 @@
-import { Fragment, useContext, useLayoutEffect, useRef } from 'react';
+import { Fragment, useContext } from 'react';
 import { Reply } from 'lucide-react';
 import type { GroupEntry, GroupProgress } from '../../../api/index.js';
 import { clock, dayLabel, dayOf } from '../../shared/format.js';
 import { Shown } from '../../display/display.js';
 import { Face } from '../../shared/Face.js';
-import { More } from '../../shared/More.js';
+import { FaceButton, MessageMeta, MessageRun, SenderLine } from '../../shared/MessageRun.js';
+import { DayLabel, ThreadFrame } from '../../shared/ThreadFrame.js';
 import { MessageBody } from '../../shared/MessageBody.js';
+import './group-thread.css';
 
 // A group's messages, in the order written, under the day each was written: the DSP's on the
 // right under whoever sent each, with how far it has gone; each answer on the left under the name
@@ -58,110 +60,64 @@ export function GroupThread({
   /** Opens the conversation of whoever wrote an answer. */
   reply: (entry: GroupEntry) => void;
 }) {
-  const scroller = useRef<HTMLDivElement>(null);
-  // Where it was before the latest change, as a conversation keeps it.
-  const before = useRef({ first: '', height: 0, top: 0, latest: true });
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (!element) return;
-    const first = entries[0]?.id ?? '';
-    const was = before.current;
-    if (was.first && first !== was.first && !was.latest)
-      element.scrollTop = was.top + element.scrollHeight - was.height;
-    else if (was.latest) element.scrollTop = element.scrollHeight;
-    before.current = { ...was, first, height: element.scrollHeight, top: element.scrollTop };
-  }, [entries]);
-  const scrolled = () => {
-    const element = scroller.current;
-    if (!element) return;
-    before.current = {
-      ...before.current,
-      height: element.scrollHeight,
-      top: element.scrollTop,
-      latest: element.scrollHeight - element.scrollTop - element.clientHeight < 80,
-    };
-  };
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
   return (
-    <div className="thread" ref={scroller} onScroll={scrolled}>
-      {more && <More read={readOlder} />}
-      <div className="thread-messages">
-        {runs(entries, timeZone).map(({ day, at, runs }) => (
-          <Fragment key={day}>
-            <div className="day">{dayLabel(at, timeZone, now)}</div>
-            {runs.map(({ key, entries: written }) => {
-              const first = written[0]!;
-              const last = written.at(-1)!;
-              if (first.sender) {
-                const gone = first.progress && progressText(first.progress);
-                return (
-                  <div key={key} className="msg-group out">
+    <ThreadFrame items={entries} more={more} readOlder={readOlder}>
+      {runs(entries, timeZone).map(({ day, at, runs }) => (
+        <Fragment key={day}>
+          <DayLabel>{dayLabel(at, timeZone, now)}</DayLabel>
+          {runs.map(({ key, entries: written }) => {
+            const first = written[0]!;
+            const last = written.at(-1)!;
+            if (first.sender) {
+              const gone = first.progress && progressText(first.progress);
+              return (
+                <MessageRun
+                  key={key}
+                  direction="out"
+                  face={
                     <Face
                       name={first.sender.name}
                       code={first.sender.code}
                       photo={first.sender.photo}
                       size="message"
                     />
-                    <div className="stack">
-                      <div className="sender">
-                        <span className="sender-name">{first.sender.name}</span>
-                        {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
-                      </div>
-                      <MessageBody message={first} />
-                      {(!plain || gone) && (
-                        <div className="meta">
-                          {!plain && (
-                            <span className="at">
-                              {clock(first.at, timeZone)}
-                              {gone && ' · '}
-                            </span>
-                          )}
-                          {gone && (
-                            <span className={gone.sending ? 'sending' : undefined}>
-                              {gone.text}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-              const from = first.from;
-              const name = from?.name ?? '';
-              return (
-                <div key={key} className="msg-group in answer">
-                  {/* Left out of Tab's order: their name, above the answer, opens it from the keyboard. */}
-                  <button
-                    className="face-button"
-                    tabIndex={-1}
-                    aria-label={name}
-                    onClick={() => reply(first)}
-                  >
-                    {from && <Face {...from} size="message" />}
-                  </button>
-                  <div className="stack">
-                    <button className="sender" onClick={() => reply(first)}>
-                      {name}
-                      {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
-                    </button>
-                    {written.map((entry) => (
-                      <Fragment key={entry.id}>
-                        <MessageBody message={entry} />
-                        {!plain && times === 'each_message' && (
-                          <div className="meta">
-                            <span className="at">{clock(entry.at, timeZone)}</span>
-                          </div>
-                        )}
-                      </Fragment>
-                    ))}
-                    {!plain && times !== 'each_message' && (
-                      <div className="meta">
-                        <span className="at">{clock(last.at, timeZone)}</span>
-                      </div>
+                  }
+                  sender={
+                    <SenderLine name={first.sender.name} at={plain && clock(first.at, timeZone)} />
+                  }
+                >
+                  <MessageBody message={first} />
+                  <MessageMeta time={!plain && clock(first.at, timeZone)}>
+                    {gone && (
+                      <span className={gone.sending ? 'sending' : undefined}>{gone.text}</span>
                     )}
-                  </div>
+                  </MessageMeta>
+                </MessageRun>
+              );
+            }
+            const from = first.from;
+            const name = from?.name ?? '';
+            return (
+              <MessageRun
+                key={key}
+                direction="in"
+                className="answer"
+                // Their name, above the answer, opens it from the keyboard.
+                face={
+                  <FaceButton label={name} onClick={() => reply(first)}>
+                    {from && <Face {...from} size="message" />}
+                  </FaceButton>
+                }
+                sender={
+                  <SenderLine
+                    name={name}
+                    at={plain && clock(first.at, timeZone)}
+                    onClick={() => reply(first)}
+                  />
+                }
+                after={
                   <button
                     className="reply-to"
                     aria-label={`Reply to ${name}`}
@@ -170,12 +126,24 @@ export function GroupThread({
                     <Reply size={13} aria-hidden="true" />
                     Reply
                   </button>
-                </div>
-              );
-            })}
-          </Fragment>
-        ))}
-      </div>
-    </div>
+                }
+              >
+                {written.map((entry) => (
+                  <Fragment key={entry.id}>
+                    <MessageBody message={entry} />
+                    <MessageMeta
+                      time={!plain && times === 'each_message' && clock(entry.at, timeZone)}
+                    />
+                  </Fragment>
+                ))}
+                <MessageMeta
+                  time={!plain && times !== 'each_message' && clock(last.at, timeZone)}
+                />
+              </MessageRun>
+            );
+          })}
+        </Fragment>
+      ))}
+    </ThreadFrame>
   );
 }

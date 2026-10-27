@@ -6,6 +6,7 @@ import { ListRow } from '../shared/ListRow.js';
 import { Name } from '../shared/Name.js';
 import { Wait } from '../shared/Wait.js';
 import type { Listing } from './listing.js';
+import './conversation-row.css';
 
 /**
  * A conversation in the list: who it's with, when they last wrote, and what was written last, or

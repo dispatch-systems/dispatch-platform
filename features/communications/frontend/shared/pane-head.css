@@ -1,0 +1,88 @@
+.thread-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: calc(var(--face-head) + 2 * var(--gap) + 2px);
+  padding: var(--gap) var(--pad);
+  border-bottom: 1px solid var(--border);
+}
+.thread-head .back {
+  display: none;
+  border: 0;
+  background: transparent;
+}
+/* Who it's with, which opens their profile, and shows as chosen while it's open. */
+.thread-head .who {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--gap);
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: -4px auto -4px -6px;
+  padding: 4px 10px 4px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.thread-head .who.open {
+  background: var(--selection);
+}
+.thread-head .who > span {
+  min-width: 0;
+}
+.thread-head .who strong {
+  display: block;
+  overflow: hidden;
+  font-size: var(--title-size);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-head .who small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: calc(var(--small-size) + 1px);
+  white-space: nowrap;
+}
+.thread-head .who .about {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.thread-head .actions button {
+  min-height: calc(var(--field-height) - 2px);
+  font-size: var(--ui-size);
+}
+.thread-head .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.thread-head .actions svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
+}
+
+@container communications (width < 680px) {
+  .thread-head {
+    padding: 10px 12px;
+  }
+  /* Done, its mark alone, leaving who it's with the room. */
+  .thread-head .actions button > span {
+    display: none;
+  }
+  .thread-head .actions button {
+    padding-inline: 10px;
+  }
+  .thread-head .back {
+    display: inline-flex;
+    margin-right: -4px;
+  }
+}

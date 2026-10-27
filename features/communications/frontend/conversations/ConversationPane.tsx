@@ -9,16 +9,18 @@ import type {
   Writing,
 } from '../../api/index.js';
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
-import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
+import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { lastFour, numberBeside } from '../shared/format.js';
 import { asElsewhere, elsewhereNow } from './elsewhere.js';
 import { Composer } from './Composer.js';
-import { ConversationHead } from './ConversationHead.js';
 import { ElsewhereChips } from './Elsewhere.js';
 import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
 import { NumberActions } from '../texting/NumberActions.js';
 import { roleText } from '../shared/format.js';
+import { Party } from '../shared/Face.js';
+import { PaneHead } from '../shared/PaneHead.js';
+import { ThreadPending } from '../shared/ThreadFrame.js';
 import { PickDriver } from '../todays-routes/PickDriver.js';
 import { Profile } from './Profile.js';
 import { RouteToday } from '../todays-routes/RouteFacts.js';
@@ -163,9 +165,12 @@ export function ConversationPane({
       className={profile.open ? 'pane-thread profiled' : 'pane-thread'}
       aria-label={person?.name ?? 'Conversation'}
     >
-      <ConversationHead
-        conversation={conversation}
+      <PaneHead
+        face={conversation && <Party conversation={conversation} size="head" />}
+        name={person?.name}
         about={about}
+        waits={conversation?.state === 'waiting'}
+        waitingSince={conversation?.waitingSince ?? null}
         now={now}
         who={profile.who}
         open={profile.open}
@@ -224,7 +229,7 @@ export function ConversationPane({
           workdays={driver ? opened.workdays : undefined}
         />
       ) : (
-        <div className="thread">{!error && <Loading />}</div>
+        <ThreadPending failed={Boolean(error)} />
       )}
       {conversation &&
         person &&

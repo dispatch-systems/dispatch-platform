@@ -1,5 +1,6 @@
 import type { Correspondent } from '../../../api/index.js';
 import { Face } from '../../shared/Face.js';
+import './group-faces.css';
 
 /** A group, as large as where it's shown (`size`): two of its people, one over the other, where
  * one person's photo would be. */

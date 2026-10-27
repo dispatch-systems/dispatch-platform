@@ -1,0 +1,60 @@
+/* Which workspace the lists show. */
+.workspace-picker {
+  position: relative;
+}
+.workspace-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--field-height);
+  padding: 0 12px 0 calc(var(--field-height) * 0.18);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  font-size: var(--ui-size);
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+.workspace-button::-webkit-details-marker {
+  display: none;
+}
+.workspace-button:hover {
+  background: var(--accent);
+}
+.workspace-picker[open] > .workspace-button {
+  border-color: var(--ring);
+}
+.workspace-button > svg {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.workspace-picker .account-popover {
+  inset: calc(100% + 6px) 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(calc(var(--field-height) * 9), calc(100dvh - 96px));
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px var(--shadow-color);
+}
+.workspace-picker .account-popover button {
+  gap: 10px;
+  min-height: 0;
+  padding: 8px 10px;
+  font-size: var(--ui-size);
+}
+.workspace-picker .account-popover button[aria-current] {
+  background: var(--accent);
+}
+.workspace-picker .account-popover .count {
+  margin-left: auto;
+}
+.workspace-check {
+  color: var(--primary);
+}
+.workspace-picker .account-popover .workspace-name + .workspace-check {
+  margin-left: auto;
+}

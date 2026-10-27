@@ -1,0 +1,30 @@
+/* How long someone has waited: amber from 15 minutes, red from 30. */
+.wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+  font-style: normal;
+}
+.wait svg {
+  width: calc(var(--small-size) - 0.5px);
+  height: calc(var(--small-size) - 0.5px);
+}
+.wait.slow {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+.wait.late {
+  background: var(--late-surface);
+  color: var(--late);
+}
+/* As the member chose in Message display: no times waited in the list. */
+.communications[data-hide~='waiting-time'] .pane-list .wait {
+  display: none;
+}

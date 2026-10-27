@@ -5,6 +5,7 @@ import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { ByInitial, ContactRow } from '../shared/ContactRow.js';
 import { Face } from '../shared/Face.js';
+import { ListEmpty, Rows } from '../shared/List.js';
 import { roleText } from '../shared/format.js';
 import { useFound } from '../shared/useFound.js';
 
@@ -47,7 +48,7 @@ export function ContactList({
   const { found, failed } = useFound(read, list, revision, typed ? 200 : 0);
   const chosen = useAction(pick);
   if (failed || (typed && found?.length === 0))
-    return <p className="list-empty">{failed || 'No matches'}</p>;
+    return <ListEmpty>{failed || 'No matches'}</ListEmpty>;
   if (!found) return <Loading />;
   // With every workspace shown, each says which it's in.
   const named = new Map(workspaces.map((workspace) => [workspace.teamId, workspace.name]));
@@ -69,6 +70,6 @@ export function ContactList({
       }}
     />
   );
-  if (typed) return <ul className="convos">{found.map(row)}</ul>;
+  if (typed) return <Rows>{found.map(row)}</Rows>;
   return <ByInitial contacts={found} nameOf={(contact) => contact.person.name} row={row} />;
 }

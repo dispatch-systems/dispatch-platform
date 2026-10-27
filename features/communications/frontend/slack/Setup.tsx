@@ -8,6 +8,7 @@ import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.j
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { WorkspaceMark } from './WorkspaceMark.js';
+import './setup.css';
 
 // Setting Slack up from Communications, for those who manage the DSP's connections: connecting
 // it, in place of the inbox, while the DSP has no workspace; and updating each workspace that

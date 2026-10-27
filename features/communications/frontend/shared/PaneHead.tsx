@@ -1,17 +1,20 @@
 import type { ReactNode, Ref } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
-import type { Conversation } from '../../api/index.js';
-import { Party } from '../shared/Face.js';
-import type { OpensProfile } from '../shared/usePanel.js';
-import { Wait } from '../shared/Wait.js';
+import type { OpensProfile } from './usePanel.js';
+import { Wait } from './Wait.js';
+import './pane-head.css';
 
-// A conversation's head: the way back to the list, on a phone; who it's with, what they do and
-// where, or their number, and while it waits how long, which opens their profile where they have
-// one; what else can be done with it; and while it waits, Done, on a phone its mark alone.
+// The head of what's open, a conversation or a group: the way back to the list, on a phone; who
+// it's with, by their face and name, what's said of them, and while it waits how long, which opens
+// their profile or its people where there's one; what else can be done with it; and while it
+// waits, Done, on a phone its mark alone.
 
-export function ConversationHead({
-  conversation,
+export function PaneHead({
+  face,
+  name,
   about,
+  waits,
+  waitingSince,
   now,
   who,
   open,
@@ -20,9 +23,15 @@ export function ConversationHead({
   done,
   actions,
 }: {
-  conversation?: Conversation;
-  /** What they do for the DSP, and where; or their route today. */
-  about: ReactNode;
+  /** Whom it's with, by their face; none until it's read. */
+  face?: ReactNode;
+  name?: string;
+  /** What's said of them: what they do and where, their number, or a driver's route today. */
+  about?: ReactNode;
+  /** Whether it waits on an answer, which Done marks it answered without. */
+  waits: boolean;
+  /** Since when it waits, as its wait shows. */
+  waitingSince: number | null;
   now: number;
   /** Who it's with, as a button, which focus goes back to as the profile closes. */
   who?: Ref<HTMLButtonElement>;
@@ -31,28 +40,25 @@ export function ConversationHead({
   /** What opens their profile; none where there's no profile to open. */
   opens?: Partial<OpensProfile>;
   back: () => void;
+  /** Done, while it waits. */
   done: { busy: boolean; run: () => void };
   /** What else can be done with it, before Done. */
   actions?: ReactNode;
 }) {
-  const person = conversation?.with;
-  const waits = conversation?.state === 'waiting';
-  const shown = person && conversation && (
+  const shown = name !== undefined && (
     <>
-      <Party conversation={conversation} size="head" />
+      {face}
       <span>
-        <strong>{person.name}</strong>
-        {(about || conversation.waitingSince !== null) && (
+        <strong>{name}</strong>
+        {(about || waitingSince !== null) && (
           <small>
             {about && (
               <span className="about">
                 {about}
-                {conversation.waitingSince !== null && ' ·'}
+                {waitingSince !== null && ' ·'}
               </span>
             )}
-            {conversation.waitingSince !== null && (
-              <Wait since={conversation.waitingSince} now={now} />
-            )}
+            {waitingSince !== null && <Wait since={waitingSince} now={now} />}
           </small>
         )}
       </span>

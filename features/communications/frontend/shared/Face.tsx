@@ -2,6 +2,7 @@ import { Phone, PhoneOff, Smartphone } from 'lucide-react';
 import type { Conversation, Sender } from '../../api/index.js';
 import { PersonAvatar } from '../../../../core/shell/frontend/runtime/PersonAvatar.js';
 import { tone } from './format.js';
+import './face.css';
 
 /** Where someone is shown, which says how large. */
 type Size = 'list' | 'contact' | 'sender' | 'head' | 'message' | 'profile';

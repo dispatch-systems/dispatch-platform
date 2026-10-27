@@ -1,0 +1,23 @@
+/* A group's row: how many it went to, beside its name. */
+.convo .line1 .people {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+/* The message being written to a group, at the top while it is. */
+.convo.draft .convo-open {
+  align-items: center;
+  cursor: default;
+}
+.draft-face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1.5px dashed var(--input);
+  border-radius: 50%;
+  color: var(--muted-foreground);
+}
+.draft-face svg {
+  width: 45%;
+  height: 45%;
+}

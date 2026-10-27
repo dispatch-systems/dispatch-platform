@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { ArrowLeft, Check } from 'lucide-react';
 import type {
   CommunicationsWorkspace,
   Group,
@@ -7,14 +6,15 @@ import type {
   GroupPerson,
 } from '../../../api/index.js';
 import { markGroupDone, messageGroup } from '../../../api/client.js';
-import { ErrorBox, Loading } from '../../../../../core/shell/frontend/ui/index.js';
+import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { peopleText } from './groups.js';
 import { Composer } from '../../conversations/Composer.js';
 import { GroupFaces } from './GroupFaces.js';
 import { GroupPeople } from './GroupPeople.js';
 import { GroupThread } from './GroupThread.js';
-import { Wait } from '../../shared/Wait.js';
+import { PaneHead } from '../../shared/PaneHead.js';
+import { ThreadPending } from '../../shared/ThreadFrame.js';
 import { useGroup } from './useGroup.js';
 import type { Changed } from '../../inbox/useInbox.js';
 import { usePanel } from '../../shared/usePanel.js';
@@ -84,36 +84,19 @@ export function GroupPane({
       className={people.open ? 'pane-thread profiled' : 'pane-thread'}
       aria-label={group?.name ?? 'Group'}
     >
-      <header className="thread-head">
-        <button className="icon-button back" aria-label="Back" onClick={back}>
-          <ArrowLeft size={18} />
-        </button>
-        {group && (
-          <>
-            <button ref={people.who} className={people.open ? 'who open' : 'who'} {...people.opens}>
-              <GroupFaces faces={group.faces} size="head" />
-              <span>
-                <strong>{group.name}</strong>
-                <small>
-                  <span className="about">
-                    {peopleText(group.people)}
-                    {group.waitingSince !== null && ' ·'}
-                  </span>
-                  {group.waitingSince !== null && <Wait since={group.waitingSince} now={now} />}
-                </small>
-              </span>
-            </button>
-            {group.state === 'waiting' && (
-              <div className="actions">
-                <button disabled={done.busy} onClick={() => void done.run()} aria-label="Done">
-                  <Check size={15} />
-                  <span>Done</span>
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </header>
+      <PaneHead
+        face={group && <GroupFaces faces={group.faces} size="head" />}
+        name={group?.name}
+        about={group && peopleText(group.people)}
+        waits={group?.state === 'waiting'}
+        waitingSince={group?.waitingSince ?? null}
+        now={now}
+        who={people.who}
+        open={people.open}
+        opens={people.opens}
+        back={back}
+        done={{ busy: done.busy, run: () => void done.run() }}
+      />
       {people.drawn && group && (
         <GroupPeople
           id={people.id}
@@ -140,7 +123,7 @@ export function GroupPane({
           reply={reply}
         />
       ) : (
-        <div className="thread">{!error && <Loading />}</div>
+        <ThreadPending failed={Boolean(error)} />
       )}
       {group && (
         <Composer

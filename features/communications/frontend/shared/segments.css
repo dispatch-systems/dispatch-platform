@@ -1,0 +1,29 @@
+/* Tabs as segments of one control, as Messages or Contacts, and the sections, in the list or
+   above Today's Routes' board: each as wide as the others. */
+.segments .restored-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  height: auto;
+  margin: 0;
+  padding: 3px;
+  overflow: visible;
+  border: 0;
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--muted);
+}
+.segments .restored-tabs button {
+  gap: 8px;
+  height: auto;
+  min-height: calc(var(--field-height) - 6px);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  font-size: var(--ui-size);
+  font-weight: 600;
+}
+.segments .restored-tabs button[aria-selected='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px var(--shadow-color);
+}

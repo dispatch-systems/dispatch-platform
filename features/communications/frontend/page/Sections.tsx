@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Phone, Route } from 'lucide-react';
 import { SlackLogo } from '../../../slack/frontend/index.js';
-import { Tabs } from '../../../../core/shell/frontend/ui/index.js';
+import { Count } from '../shared/Count.js';
+import { Segments } from '../shared/Segments.js';
 import type { Section } from '../inbox/inbox.js';
 import './sections.css';
 
@@ -37,20 +38,19 @@ export function Sections({
   choose: (section: Section) => void;
 }) {
   return (
-    <div className="sections" data-count={sections.length}>
-      <Tabs
-        label="Sections"
-        value={section}
-        onChange={(value) => choose(value as Section)}
-        items={sections.map((each) => [
-          each,
-          <>
-            {shown[each].icon}
-            {shown[each].label}
-            {waiting[each] > 0 && <span className="count">{waiting[each]}</span>}
-          </>,
-        ])}
-      />
-    </div>
+    <Segments
+      className="sections"
+      label="Sections"
+      value={section}
+      onChange={(value) => choose(value as Section)}
+      items={sections.map((each) => [
+        each,
+        <>
+          {shown[each].icon}
+          {shown[each].label}
+          <Count waiting={waiting[each]} />
+        </>,
+      ])}
+    />
   );
 }

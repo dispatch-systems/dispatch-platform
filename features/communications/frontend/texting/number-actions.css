@@ -1,0 +1,27 @@
+/* What can be done with a number: its menu. */
+.number-menu {
+  position: relative;
+}
+.number-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(var(--field-height) - 2px);
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  list-style: none;
+  cursor: pointer;
+}
+.number-menu-button::-webkit-details-marker {
+  display: none;
+}
+.number-menu-button:hover {
+  background: var(--accent);
+}
+.number-menu .account-popover {
+  inset: calc(100% + 6px) 0 auto auto;
+  width: max-content;
+  min-width: 170px;
+}

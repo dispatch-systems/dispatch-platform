@@ -1,7 +1,9 @@
 import { Check, ChevronDown } from 'lucide-react';
 import type { CommunicationsWorkspace } from '../../api/index.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
+import { Count } from '../shared/Count.js';
 import { AllWorkspacesMark, WorkspaceMark } from './WorkspaceMark.js';
+import './workspace-picker.css';
 
 // Which workspace the lists show: every one, or one of them, each with how many of its
 // conversations wait on an answer. Only with two or more where Communications works.
@@ -65,7 +67,7 @@ function Choice({
     <button aria-current={current || undefined} onClick={pick}>
       <Mark workspace={workspace} />
       <span className="workspace-name">{workspace?.name ?? ALL}</span>
-      {count > 0 && <span className="count">{count}</span>}
+      <Count waiting={count} />
       {current && <Check className="workspace-check" size={15} aria-hidden="true" />}
     </button>
   );

@@ -1,0 +1,119 @@
+/* A run of messages from one writer: their face beside the messages under their name, the
+   other party's on the left, the DSP's on the right; and under a message, when and how it went. */
+.msg-group {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--gap) * 0.7);
+  margin-top: var(--gap);
+}
+.msg-group.out {
+  flex-direction: row-reverse;
+}
+/* By the last of a run, above its time. */
+.msg-group > .face,
+.msg-group > .face-button {
+  margin-bottom: calc(var(--small-size) * 1.5 + 2px);
+}
+.face-button {
+  flex-shrink: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+.face-button:hover {
+  background: transparent;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  /* As wide as the member chose, in a readable line that grows and shrinks with it. */
+  max-width: min(var(--bubble-width), calc(var(--text-size) * 44 * var(--bubble-share)));
+}
+.msg-group.out .stack {
+  align-items: flex-end;
+}
+.sender {
+  margin: 0 12px 1px;
+  font-size: var(--small-size);
+  font-weight: 600;
+}
+/* The last of a run, by its writer's photo. */
+.msg-group {
+  --tail: min(var(--bubble-radius), calc(var(--text-size) * 0.43));
+}
+.msg-group.in .stack > :nth-last-child(2) {
+  border-bottom-left-radius: var(--tail);
+}
+.msg-group.out .stack > :nth-last-child(2) {
+  border-bottom-right-radius: var(--tail);
+}
+.meta {
+  margin: 2px 12px 0;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  line-height: 1.5;
+}
+.meta .sending {
+  color: var(--primary);
+  font-weight: 550;
+}
+
+/* As the member chose in Message display. */
+/* Your team's messages on the left, as the employees' are. */
+.communications[data-team-side='left'] .msg-group.out {
+  flex-direction: row;
+}
+.communications[data-team-side='left'] .msg-group.out .stack {
+  align-items: flex-start;
+}
+.communications[data-team-side='left'] .msg-group.out .stack > :nth-last-child(2) {
+  border-bottom-right-radius: var(--bubble-radius);
+  border-bottom-left-radius: var(--tail);
+}
+/* What's left out: photos by the messages, your team's names over theirs, photos in the list,
+   how long each has waited. */
+.communications[data-hide~='message-photos'] .msg-group > :is(.face, .face-button) {
+  display: none;
+}
+.communications[data-hide~='team-names']:not([data-style='plain']) .msg-group.out .sender-name {
+  display: none;
+}
+/* Times shown only by the message pointed at or reached; how far a group's message has gone
+   stays. */
+.communications[data-times='on_hover'] .msg-group:not(:hover, :focus-within) :is(.at, .sent-at) {
+  visibility: hidden;
+}
+/* Plain: every message on the left under its writer's name and time, as Slack shows them. */
+.communications[data-style='plain'] .msg-group {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: calc(var(--gap) * 0.9);
+  margin-top: calc(var(--gap) * 1.3);
+}
+.communications[data-style='plain'] .msg-group > :is(.face, .face-button) {
+  margin: 2px 0 0;
+}
+/* Plain, a readable line, as a bubble's is. */
+.communications[data-style='plain'] .stack {
+  align-items: flex-start;
+  gap: 2px;
+  max-width: min(100%, calc(var(--text-size) * 44));
+}
+.communications[data-style='plain'] .sender {
+  margin: 0 0 2px;
+  font-size: var(--text-size);
+}
+.communications[data-style='plain'] .msg-group.out .sender-name {
+  color: color-mix(in srgb, var(--bubble-out) 85%, var(--foreground));
+}
+.sent-at {
+  margin-left: 8px;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 400;
+}

@@ -1,8 +1,9 @@
 import { useId, useMemo, useRef } from 'react';
 import { Composer } from '../conversations/Composer.js';
-import { ConversationHead } from '../conversations/ConversationHead.js';
 import { ListPane } from '../page/ListPane.js';
 import { roleText } from '../shared/format.js';
+import { Party } from '../shared/Face.js';
+import { PaneHead } from '../shared/PaneHead.js';
 import { ProfileShown } from '../conversations/Profile.js';
 import { Thread } from '../conversations/Thread.js';
 import { useLayout } from '../page/useLayout.js';
@@ -80,9 +81,12 @@ export function Preview({
                 className={profile ? 'pane-thread profiled' : 'pane-thread'}
                 aria-label={open.with.name}
               >
-                <ConversationHead
-                  conversation={open}
+                <PaneHead
+                  face={<Party conversation={open} size="head" />}
+                  name={open.with.name}
                   about={about}
+                  waits={open.state === 'waiting'}
+                  waitingSince={open.waitingSince}
                   now={now}
                   open={profile}
                   opens={{}}
@@ -90,7 +94,7 @@ export function Preview({
                   done={{ busy: false, run: nothing }}
                 />
                 {profile && (
-                  <aside className="profile" aria-labelledby={title}>
+                  <aside className="panel profile" aria-labelledby={title}>
                     <ProfileShown
                       title={title}
                       person={open.with}

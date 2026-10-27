@@ -6,6 +6,7 @@ import { Popover, SearchInput } from '../../../../core/shell/frontend/ui/index.j
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { clock } from '../shared/format.js';
 import { Face } from '../shared/Face.js';
+import { ListEmpty } from '../shared/List.js';
 import { RouteCode } from './RouteFacts.js';
 import './pick-driver.css';
 
@@ -57,7 +58,7 @@ export function PickDriver({
       <SearchInput label="Search drivers" placeholder="Search" value={typed} onChange={setTyped} />
       <h3>Today's Routes</h3>
       {found.length === 0 ? (
-        <p className="list-empty">No matches</p>
+        <ListEmpty>No matches</ListEmpty>
       ) : (
         <ul>
           {found.map((driver) => (

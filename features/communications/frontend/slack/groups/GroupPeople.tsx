@@ -8,6 +8,7 @@ import { Face } from '../../shared/Face.js';
 import { GroupFaces } from './GroupFaces.js';
 import { Panel } from '../../shared/Panel.js';
 import { roleText } from '../../shared/format.js';
+import './group-people.css';
 
 // Who a group went to, in the profile's place: the group, who first sent it and when; then each
 // of its people, with what they do and where the group stands with them, each opening their own
@@ -58,7 +59,7 @@ export function GroupPeople({
     <Panel
       id={id}
       labelledBy={title}
-      className="profile people"
+      className="people"
       docked={docked}
       leaving={leaving}
       still={still}

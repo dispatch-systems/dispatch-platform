@@ -1,0 +1,5 @@
+/* Who at the DSP is writing in a conversation, in place of what was written last. */
+.convo .typing-note {
+  color: var(--primary);
+  font-style: italic;
+}

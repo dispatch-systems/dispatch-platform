@@ -1,7 +1,11 @@
 import { Fragment, type ReactNode } from 'react';
 import { letter, listTime } from './format.js';
+import { ListHead, Rows } from './List.js';
 import { Name } from './Name.js';
 import { Wait } from './Wait.js';
+import './contact-row.css';
+// A contact's row is a row of the list, drawn as ListRow's are.
+import './list-row.css';
 
 // Someone in a list of contacts, Slack's or Messaging's: their face, their name with the letters
 // that matched what was searched marked, a line about them, and how long they've waited or when
@@ -73,8 +77,8 @@ export function ByInitial<T>({
     <>
       {letters.map(({ letter: first, contacts: under }, at) => (
         <Fragment key={`${at}:${first}`}>
-          <h2 className="list-head">{first}</h2>
-          <ul className="convos">{under.map(row)}</ul>
+          <ListHead>{first}</ListHead>
+          <Rows>{under.map(row)}</Rows>
         </Fragment>
       ))}
     </>

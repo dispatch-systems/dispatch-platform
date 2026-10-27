@@ -27,6 +27,7 @@ import { roleText } from '../../shared/format.js';
 import { Name } from '../../shared/Name.js';
 import { useFound } from '../../shared/useFound.js';
 import { AllWorkspacesMark, WorkspaceMark } from '../WorkspaceMark.js';
+import './group-draft.css';
 
 // Messaging a group: whom to, picked in To by a name, someone's or a group's, or from the groups
 // below it, each a chip; then the message, sent to each of them once. Today's groups, those on a

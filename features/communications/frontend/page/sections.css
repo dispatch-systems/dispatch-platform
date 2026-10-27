@@ -1,21 +1,17 @@
-/* Today's Routes goes by Routes on a phone, and in a list too narrow for all three sections. */
-.pane-list {
-  container: list / inline-size;
-}
 /* The sections, as many segments as there are, each with its mark and how many wait: each as wide
-   as it needs, sharing what's left; three, a little closer together. Only this stylesheet sets
-   these, so they hold whichever loads first. */
-:is(.pane-list, .board-tools) .sections .restored-tabs {
+   as it needs, sharing what's left; three, a little closer together. Today's Routes goes by
+   Routes on a phone, and in a list too narrow for all three (the list's own width, `list`). */
+.segments.sections .restored-tabs {
   grid-template-columns: none;
   grid-auto-columns: auto;
   grid-auto-flow: column;
 }
-:is(.pane-list, .board-tools) .sections .restored-tabs button {
+.segments.sections .restored-tabs button {
   gap: 6px;
   padding: 0 8px;
   white-space: nowrap;
 }
-.pane-list .sections[data-count='3'] .restored-tabs button {
+.pane-list .segments.sections[data-count='3'] .restored-tabs button {
   gap: 4px;
   padding: 0 4px;
 }

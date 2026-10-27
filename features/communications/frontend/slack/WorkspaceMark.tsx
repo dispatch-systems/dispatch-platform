@@ -1,6 +1,7 @@
 import type { CommunicationsWorkspace } from '../../api/index.js';
 import { workspaceLogoUrl } from '../../api/client.js';
 import { SlackLogo, WorkspaceLogo } from '../../../slack/frontend/index.js';
+import './workspace-mark.css';
 
 /** One of the DSP's workspaces' mark, sized by `className`: its logo, else its initials. */
 export function WorkspaceMark({

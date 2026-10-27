@@ -10,7 +10,9 @@ import type {
 } from '../../api/index.js';
 import { waitingIn, type Row, type Section } from '../inbox/inbox.js';
 import type { RouteGroup, RouteRow } from '../todays-routes/todays-routes.js';
-import { SearchInput, Tabs } from '../../../../core/shell/frontend/ui/index.js';
+import { SearchInput } from '../../../../core/shell/frontend/ui/index.js';
+import { Count } from '../shared/Count.js';
+import { Segments } from '../shared/Segments.js';
 import { ContactList } from '../slack/ContactList.js';
 import { ConversationList } from '../inbox/ConversationList.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
@@ -19,6 +21,7 @@ import { Sections } from './Sections.js';
 import { TextContactList } from '../texting/TextContactList.js';
 import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 import { WorkspacePicker } from '../slack/WorkspacePicker.js';
+import './list-pane.css';
 
 // The list beside the conversation: its sections, while there are two or more; in Slack's,
 // which workspace it shows, with two or more where Communications works; Search; and Messages,
@@ -126,7 +129,7 @@ export function ListPane({
           )}
         </div>
         {!routing && (
-          <Tabs
+          <Segments
             label="Show"
             value={contacts ? 'contacts' : 'messages'}
             onChange={(value) => setContacts(value === 'contacts')}
@@ -135,7 +138,7 @@ export function ListPane({
                 'messages',
                 <>
                   Messages
-                  {waiting > 0 && <span className="count">{waiting}</span>}
+                  <Count waiting={waiting} />
                 </>,
               ],
               ['contacts', 'Contacts'],

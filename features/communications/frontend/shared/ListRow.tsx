@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Check } from 'lucide-react';
+import './list-row.css';
 
 // A row of the list, a conversation's, a group's or a driver's on Today's Routes: whom it's with,
 // when it was last written in, what was written last, and what else it shows below that; while it

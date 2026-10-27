@@ -1,0 +1,23 @@
+/* A thread's messages, scrolling on their own, and the day each was written above them. */
+.thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(var(--pad) - 2px) var(--side) 6px;
+}
+.thread > .loading {
+  justify-content: center;
+}
+.thread-messages {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 100%;
+}
+.thread .day {
+  align-self: center;
+  margin: 14px 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 500;
+}

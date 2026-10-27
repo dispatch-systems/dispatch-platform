@@ -1,4 +1,4 @@
-import { Fragment, useContext, useLayoutEffect, useRef } from 'react';
+import { Fragment, useContext } from 'react';
 import { CircleAlert, RotateCw, Users } from 'lucide-react';
 import type { Conversation, Message, Workday, Writing } from '../../api/index.js';
 import { clock, dayLabel, dayOf, textStatus, workdayLabel } from '../shared/format.js';
@@ -6,9 +6,11 @@ import { runs } from './messages.js';
 import { Shown } from '../display/display.js';
 import { Face, Party, SenderFace } from '../shared/Face.js';
 import { MessageBody } from '../shared/MessageBody.js';
-import { More } from '../shared/More.js';
+import { FaceButton, MessageMeta, MessageRun, SenderLine } from '../shared/MessageRun.js';
+import { DayLabel, ThreadFrame } from '../shared/ThreadFrame.js';
 import type { OpensProfile } from '../shared/usePanel.js';
 import { Switched, WorkdayLine } from '../todays-routes/Workday.js';
+import './thread.css';
 
 // A conversation's messages, in the order written, under the day each was written: the
 // member's on the left beside their photo, which opens their profile, the DSP's on the right
@@ -49,130 +51,99 @@ export function Thread({
   /** For a driver's work conversation, each workday's route and van. */
   workdays?: readonly Workday[];
 }) {
-  const scroller = useRef<HTMLDivElement>(null);
-  // Where it was before the latest change: at the latest message, or how far up, which older
-  // messages coming above keep.
-  const before = useRef({ first: '', height: 0, top: 0, latest: true });
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (!element) return;
-    const first = messages[0]?.id ?? '';
-    const was = before.current;
-    if (was.first && first !== was.first && !was.latest)
-      element.scrollTop = was.top + element.scrollHeight - was.height;
-    else if (was.latest) element.scrollTop = element.scrollHeight;
-    before.current = { ...was, first, height: element.scrollHeight, top: element.scrollTop };
-  }, [messages, writing]);
-  const scrolled = () => {
-    const element = scroller.current;
-    if (!element) return;
-    before.current = {
-      ...before.current,
-      height: element.scrollHeight,
-      top: element.scrollTop,
-      latest: element.scrollHeight - element.scrollTop - element.clientHeight < 80,
-    };
-  };
   const person = conversation.with;
   const texted = conversation.kind !== 'slack';
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
   const today = dayOf(now, timeZone);
   return (
-    <div className="thread" ref={scroller} onScroll={scrolled}>
-      {more && <More read={readOlder} />}
-      <div className="thread-messages">
-        {runs(messages, timeZone).map(({ day, at, runs }) => (
-          <div
-            key={day}
-            className={workdays && day !== today ? 'day-messages past' : 'day-messages'}
-          >
-            {workdays ? (
-              <WorkdayLine
-                label={workdayLabel(day, timeZone, now)}
-                workday={workdays.find((each) => each.day === day)}
-                phone={runs[0]?.messages[0]?.number ?? null}
-                today={day === today}
-              />
-            ) : (
-              <div className="day">{dayLabel(at, timeZone, now)}</div>
-            )}
-            {runs.map(({ key, messages: written }, at) => {
-              const first = written[0]!;
-              const sender = first.sender;
-              const before = runs[at - 1]?.messages[0]?.number;
-              const switched = workdays && before && first.number && first.number !== before;
-              return (
-                <Fragment key={key}>
-                  {switched && <Switched number={first.number!} />}
-                  <div className={`msg-group ${first.direction}`}>
-                    {sender ? (
+    <ThreadFrame items={messages} after={writing} more={more} readOlder={readOlder}>
+      {runs(messages, timeZone).map(({ day, at, runs }) => (
+        <div key={day} className={workdays && day !== today ? 'day-messages past' : 'day-messages'}>
+          {workdays ? (
+            <WorkdayLine
+              label={workdayLabel(day, timeZone, now)}
+              workday={workdays.find((each) => each.day === day)}
+              phone={runs[0]?.messages[0]?.number ?? null}
+              today={day === today}
+            />
+          ) : (
+            <DayLabel>{dayLabel(at, timeZone, now)}</DayLabel>
+          )}
+          {runs.map(({ key, messages: written }, at) => {
+            const first = written[0]!;
+            const sender = first.sender;
+            const before = runs[at - 1]?.messages[0]?.number;
+            const switched = workdays && before && first.number && first.number !== before;
+            return (
+              <Fragment key={key}>
+                {switched && <Switched number={first.number!} />}
+                <MessageRun
+                  direction={first.direction}
+                  face={
+                    sender ? (
                       <SenderFace sender={sender} size="message" />
                     ) : texted ? (
                       <Party conversation={conversation} size="message" />
                     ) : (
-                      // Left out of Tab's order: who it's with, above, opens it from the keyboard.
-                      <button
-                        className="face-button"
-                        tabIndex={-1}
-                        aria-label={person.name}
-                        {...profile}
-                      >
+                      // Who it's with, above, opens it from the keyboard.
+                      <FaceButton label={person.name} {...profile}>
                         <Face {...person} size="message" />
-                      </button>
-                    )}
-                    <div className="stack">
-                      {(sender || plain) && (
-                        <div className="sender">
-                          <span className="sender-name">{sender?.name ?? person.name}</span>
-                          {plain && <span className="sent-at">{clock(first.at, timeZone)}</span>}
-                          {first.group && (
-                            <button className="to-group" onClick={() => openGroup(first.group!.id)}>
-                              <Users size={11} aria-hidden="true" />
-                              {first.group.name}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {written.map((message, at) => {
-                        const last = at === written.length - 1;
-                        return (
-                          <Fragment key={message.id}>
-                            <MessageBody message={message} texted={texted} />
-                            <Meta
-                              message={message}
-                              time={!plain && (last || times === 'each_message')}
-                              status={last || message.status === 'failed'}
-                              timeZone={timeZone}
-                              retry={retry}
-                            />
-                          </Fragment>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </Fragment>
-              );
-            })}
+                      </FaceButton>
+                    )
+                  }
+                  sender={
+                    (sender || plain) && (
+                      <SenderLine
+                        name={sender?.name ?? person.name}
+                        at={plain && clock(first.at, timeZone)}
+                      >
+                        {first.group && (
+                          <button className="to-group" onClick={() => openGroup(first.group!.id)}>
+                            <Users size={11} aria-hidden="true" />
+                            {first.group.name}
+                          </button>
+                        )}
+                      </SenderLine>
+                    )
+                  }
+                >
+                  {written.map((message, at) => {
+                    const last = at === written.length - 1;
+                    return (
+                      <Fragment key={message.id}>
+                        <MessageBody message={message} texted={texted} />
+                        <Meta
+                          message={message}
+                          time={!plain && (last || times === 'each_message')}
+                          status={last || message.status === 'failed'}
+                          timeZone={timeZone}
+                          retry={retry}
+                        />
+                      </Fragment>
+                    );
+                  })}
+                </MessageRun>
+              </Fragment>
+            );
+          })}
+        </div>
+      ))}
+      {writing.map((writer) => (
+        <MessageRun
+          key={writer.userId}
+          direction="out"
+          face={<Face name={writer.name} code={writer.code} photo={writer.photo} size="message" />}
+          sender={<SenderLine name={writer.name} />}
+        >
+          <div className="typing" role="status" aria-label={`${writer.firstName} is typing`}>
+            <i />
+            <i />
+            <i />
           </div>
-        ))}
-        {writing.map((writer) => (
-          <div key={writer.userId} className="msg-group out">
-            <Face name={writer.name} code={writer.code} photo={writer.photo} size="message" />
-            <div className="stack">
-              <div className="sender">
-                <span className="sender-name">{writer.name}</span>
-              </div>
-              <div className="typing" role="status" aria-label={`${writer.firstName} is typing`}>
-                <i />
-                <i />
-                <i />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+        </MessageRun>
+      ))}
+    </ThreadFrame>
   );
 }
 
@@ -194,15 +165,8 @@ function Meta({
   retry?: (message: Message) => void;
 }) {
   const gone = status ? message.status : null;
-  if (!time && !gone) return null;
   return (
-    <div className="meta">
-      {time && (
-        <span className="at">
-          {clock(message.at, timeZone)}
-          {gone && ' · '}
-        </span>
-      )}
+    <MessageMeta time={time && clock(message.at, timeZone)}>
       {gone === 'failed' ? (
         <>
           <span className="failed">
@@ -224,6 +188,6 @@ function Meta({
           <span className={gone === 'waiting' ? 'sending' : undefined}>{textStatus[gone]}</span>
         )
       )}
-    </div>
+    </MessageMeta>
   );
 }

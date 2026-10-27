@@ -5,6 +5,7 @@ import { toClipboard } from '../../../../core/shell/frontend/runtime/clipboard.j
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { Popover } from '../../../../core/shell/frontend/ui/index.js';
 import { SaveContact } from './SaveContact.js';
+import './number-actions.css';
 
 // What someone at the DSP does with the number a conversation texts: save a name for it, shared
 // with everyone at the DSP, while Driver Match knows no one by it; copy it; block or unblock it.

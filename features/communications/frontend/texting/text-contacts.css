@@ -1,0 +1,13 @@
+/* A number blocked, with Unblock beside it. */
+.contact.blocked .convo-open:hover,
+.contact.blocked:focus-within .convo-open {
+  background: transparent;
+}
+.contact .unblock {
+  min-height: 0;
+  margin-left: auto;
+  padding: 3px 12px;
+  border-radius: 14px;
+  font-size: var(--small-size);
+  font-weight: 600;
+}

@@ -1,9 +1,12 @@
+import { Users } from 'lucide-react';
 import type { Group } from '../../../api/index.js';
 import type { Listing } from '../../inbox/listing.js';
 import { listTime, preview } from '../../shared/format.js';
 import { ListRow } from '../../shared/ListRow.js';
 import { Wait } from '../../shared/Wait.js';
+import type { Draft } from './GroupDraft.js';
 import { GroupFaces } from './GroupFaces.js';
+import './group-row.css';
 
 /**
  * A group in the list: two of its people, its name and how many it went to, when it was last
@@ -43,5 +46,27 @@ export function GroupRow({
       open={() => openGroup(group.id)}
       done={() => doneGroup(group)}
     />
+  );
+}
+
+/** The message being written to a group, at the top of the list while it is: whom to, and how
+ * many. */
+export function GroupDraftRow({ draft }: { draft: Draft }) {
+  return (
+    <li className="convo selected draft">
+      <span className="convo-open">
+        <span className="face face-list draft-face">
+          <Users aria-hidden="true" />
+        </span>
+        <span className="convo-body">
+          <span className="line1">
+            <strong>
+              {draft.name || 'New message'}
+              {draft.name && <span className="people"> · {draft.people}</span>}
+            </strong>
+          </span>
+        </span>
+      </span>
+    </li>
   );
 }

@@ -1,13 +1,14 @@
 import { useCallback } from 'react';
-import { Users } from 'lucide-react';
 import type { Communications } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { Party } from '../shared/Face.js';
+import { ListEmpty, ListHead, Rows } from '../shared/List.js';
+import { ListRow } from '../shared/ListRow.js';
 import { More } from '../shared/More.js';
 import { useFound } from '../shared/useFound.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
-import { GroupRow } from '../slack/groups/GroupRow.js';
+import { GroupDraftRow, GroupRow } from '../slack/groups/GroupRow.js';
 import { ConversationRow } from './ConversationRow.js';
 import { listingOf, moreIn, rows as listed, sectionOf, type Row, type Section } from './inbox.js';
 import type { Listing } from './listing.js';
@@ -55,7 +56,7 @@ export function ConversationList({
     200,
   );
   const list = (rows: readonly Row[]) => (
-    <ul className="convos">
+    <Rows>
       {rows.map((each) =>
         each.kind === 'group' ? (
           <GroupRow key={each.row.id} group={each.row} {...listing} />
@@ -63,11 +64,10 @@ export function ConversationList({
           <ConversationRow key={each.row.id} conversation={each.row} {...listing} />
         ),
       )}
-    </ul>
+    </Rows>
   );
   if (typed) {
-    if (failed || found?.length === 0)
-      return <p className="list-empty">{failed || 'No matches'}</p>;
+    if (failed || found?.length === 0) return <ListEmpty>{failed || 'No matches'}</ListEmpty>;
     return found ? (
       list(found.map((conversation) => ({ kind: 'conversation', row: conversation })))
     ) : (
@@ -85,55 +85,34 @@ export function ConversationList({
   return (
     <>
       {draft && (
-        <ul className="convos">
-          <li className="convo selected draft">
-            <span className="convo-open">
-              <span className="face face-list draft-face">
-                <Users aria-hidden="true" />
-              </span>
-              <span className="convo-body">
-                <span className="line1">
-                  <strong>
-                    {draft.name || 'New message'}
-                    {draft.name && <span className="people"> · {draft.people}</span>}
-                  </strong>
-                </span>
-              </span>
-            </span>
-          </li>
-        </ul>
+        <Rows>
+          <GroupDraftRow draft={draft} />
+        </Rows>
       )}
       {pinnedShown &&
         (pinned.kind === 'conversation' && pinned.row.lastAt === null ? (
-          <ul className="convos">
-            <li className="convo selected">
-              <button className="convo-open" onClick={() => listing.select(pinned.row.id)}>
-                <Party conversation={pinned.row} size="list" />
-                <span className="convo-body">
-                  <span className="line1">
-                    <strong>{pinned.row.with.name}</strong>
-                  </span>
-                  <span className="line2">
-                    <span className="preview">New message</span>
-                  </span>
-                </span>
-              </button>
-            </li>
-          </ul>
+          <Rows>
+            <ListRow
+              selected
+              waits={false}
+              face={<Party conversation={pinned.row} size="list" />}
+              name={pinned.row.with.name}
+              line={<span className="preview">New message</span>}
+              open={() => listing.select(pinned.row.id)}
+            />
+          </Rows>
         ) : (
           list([pinned])
         ))}
       {waiting.length > 0 && (
         <>
-          <h2 className="list-head">
-            Waiting<span>{waitingPeople}</span>
-          </h2>
+          <ListHead count={waitingPeople}>Waiting</ListHead>
           {list(waiting)}
         </>
       )}
       {answered.length > 0 && (
         <>
-          <h2 className="list-head">Responded</h2>
+          <ListHead>Responded</ListHead>
           {list(answered)}
         </>
       )}

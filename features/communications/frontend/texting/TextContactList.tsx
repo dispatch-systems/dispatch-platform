@@ -6,8 +6,10 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ByInitial, ContactRow } from '../shared/ContactRow.js';
 import { Face, PhoneFace } from '../shared/Face.js';
+import { ListEmpty, ListHead, Rows } from '../shared/List.js';
 import { numberBeside } from '../shared/format.js';
 import { useFound } from '../shared/useFound.js';
+import './text-contacts.css';
 
 // Messaging's Contacts: whom the DSP can text, everyone Driver Match has a number for and every
 // number it saved a name for, A to Z under each name's first letter, or those found by a name or
@@ -44,7 +46,7 @@ export function TextContactList({
     show(await blockNumber(contact.conversationId!, false)),
   );
   if (failed || (typed && found?.contacts.length === 0))
-    return <p className="list-empty">{failed || 'No matches'}</p>;
+    return <ListEmpty>{failed || 'No matches'}</ListEmpty>;
   if (!found) return <Loading />;
   const row = (contact: TextContact) => (
     <ContactRow
@@ -65,8 +67,8 @@ export function TextContactList({
   );
   const blocked = !typed && found.blocked.length > 0 && (
     <>
-      <h2 className="list-head">Blocked</h2>
-      <ul className="convos">
+      <ListHead>Blocked</ListHead>
+      <Rows>
         {found.blocked.map((contact) => {
           const number = numberBeside(contact.person.name, contact.number);
           return (
@@ -88,10 +90,10 @@ export function TextContactList({
             </li>
           );
         })}
-      </ul>
+      </Rows>
     </>
   );
-  if (typed) return <ul className="convos">{found.contacts.map(row)}</ul>;
+  if (typed) return <Rows>{found.contacts.map(row)}</Rows>;
   return (
     <>
       <ByInitial contacts={found.contacts} nameOf={(contact) => contact.person.name} row={row} />

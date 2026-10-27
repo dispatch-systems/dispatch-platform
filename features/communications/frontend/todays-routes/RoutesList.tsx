@@ -1,11 +1,11 @@
 import type { Conversation, Writing } from '../../api/index.js';
 import { ConversationRow } from '../inbox/ConversationRow.js';
 import { Face } from '../shared/Face.js';
+import { ListHead, Rows } from '../shared/List.js';
 import { ListRow } from '../shared/ListRow.js';
 import { headingText, NoRoutes } from './headings.js';
 import { rowKey, type RouteGroup, type RouteRow } from './todays-routes.js';
 import { PaceMark, RouteCode, Stops, WorkPhone } from './RouteFacts.js';
-import './routes-list.css';
 
 // Today's Routes in the list: its groups, Waiting, each wave, no wave and no driver, each row the
 // driver with their route, work phone, stops and pace under what was last written, or a work phone
@@ -38,11 +38,8 @@ export function RoutesList({
     <>
       {groups.map((group) => (
         <section key={group.key} aria-label={headingText(group.heading, timeZone)}>
-          <h2 className="list-head">
-            {headingText(group.heading, timeZone)}
-            <span>{group.rows.length}</span>
-          </h2>
-          <ul className="convos">
+          <ListHead count={group.rows.length}>{headingText(group.heading, timeZone)}</ListHead>
+          <Rows>
             {group.rows.map((row) => {
               const below = row.kind === 'driver' && <RouteLine row={row} />;
               return row.conversation ? (
@@ -67,7 +64,7 @@ export function RoutesList({
                 )
               );
             })}
-          </ul>
+          </Rows>
         </section>
       ))}
     </>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import './more.css';
 
 /**
  * Reads more as it nears view, as the end of a list scrolled to: again while it stays in view

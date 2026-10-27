@@ -1,0 +1,168 @@
+/* Writing a message, its text `--typed-size`, 16px on a touch screen (below). */
+.composer {
+  --typed-size: var(--text-size);
+  margin: 0;
+  padding: 10px var(--side) calc(var(--pad) - 2px);
+}
+.composer .box {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: var(--composer-height);
+  padding: calc((var(--composer-height) - var(--round-size)) / 2 - 1px) 6px;
+  border: 1px solid var(--input);
+  border-radius: calc(var(--composer-height) / 2);
+  background: var(--background);
+}
+.composer .box:focus-within {
+  border-color: var(--ring);
+}
+.composer textarea {
+  flex: 1;
+  min-height: var(--round-size);
+  max-height: calc(var(--typed-size) * 10);
+  padding: calc((var(--round-size) - var(--typed-size) * var(--line)) / 2) 6px;
+  border: 0;
+  background: transparent;
+  resize: none;
+  outline: none;
+  font-size: var(--typed-size);
+  line-height: var(--line);
+}
+.composer textarea:disabled {
+  cursor: default;
+}
+/* With no photos to add, the text starts in from the box's edge. */
+.composer .box > textarea:first-child {
+  padding-left: 12px;
+}
+/* The number a text goes to, by its last digits. */
+.texting-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.communications button.round {
+  width: var(--round-size);
+  min-height: var(--round-size);
+  height: var(--round-size);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.communications button.round svg {
+  width: 53%;
+  height: 53%;
+}
+.communications button.round:hover:not(:disabled) {
+  background: var(--accent);
+}
+.communications button.round.send {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.communications button.round.send:disabled {
+  opacity: 0.4;
+}
+/* Sending to a group, as how many it goes to. */
+.communications button.send-to {
+  gap: 6px;
+  flex-shrink: 0;
+  height: var(--round-size);
+  min-height: var(--round-size);
+  padding: 0 12px 0 15px;
+  border: 0;
+  border-radius: calc(var(--round-size) / 2);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: var(--ui-size);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.communications button.send-to svg {
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
+}
+.communications button.send-to:disabled {
+  opacity: 0.4;
+}
+.composer .adding {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  list-style: none;
+}
+.composer .adding li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--composer-height) * 1.4);
+  height: calc(var(--composer-height) * 1.4);
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--muted);
+}
+.composer .adding img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.composer .adding .spin {
+  position: relative;
+  color: #fff;
+  filter: drop-shadow(0 1px 2px #0008);
+}
+.composer .adding button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #0009;
+  color: #fff;
+}
+
+@container communications (width < 680px) {
+  .composer {
+    padding: 8px 10px 10px;
+  }
+  /* A message to a group gets the box's width, with attaching and sending under it. */
+  .composer .box.writing {
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px;
+    border-radius: 22px;
+  }
+  .composer .box.writing textarea {
+    order: -1;
+    flex-basis: 100%;
+    padding: 2px 8px 6px;
+  }
+  .composer .box.writing .send-to {
+    margin-left: auto;
+  }
+}
+/* On a touch screen, what's typed in is 16px, so a phone's browser doesn't zoom in on it. */
+@media (pointer: coarse) {
+  .composer {
+    --typed-size: 16px;
+  }
+}
