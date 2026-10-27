@@ -3,182 +3,70 @@
 //! fixture mode, its drivers claiming their work phones as any read's do; a text a paired phone
 //! reports from one of those phones is filed under the driver holding it; and once live route
 //! data is emptied, as at the stop, Today's Routes lists nobody.
+use crate::support::{self, Call, OWNER, Who};
 use dispatch_core::{
-    State,
-    db::{self, Store, s},
-    foundation::{config::Config, crypto},
-    server::operations,
+    db::{self, s},
     testing as common,
 };
 use dispatch_cortex as cortex;
 use serde_json::{Value, json};
-use std::{os::unix::fs::PermissionsExt, sync::Arc};
 
 /// The DSP the test reads, at its own address.
 const NORTHLINE: &str = "Northline Logistics";
 const CODE: &str = "nll";
 
-struct Server {
-    _root: tempfile::TempDir,
-    origin: String,
-    /// The DSP's own address.
-    at: String,
-    state: Arc<State>,
-    client: reqwest::Client,
-}
-/// The platform owner, at the admin's address, looking at the DSP.
-struct Owner {
-    cookie: String,
-    csrf: String,
-    view: String,
+/// The served router, with the calls this test makes on it.
+struct Server(support::Server);
+impl std::ops::Deref for Server {
+    type Target = support::Server;
+    fn deref(&self) -> &support::Server {
+        &self.0
+    }
 }
 impl Server {
-    /// The router alone, on the development fixtures, Northline at a station with Cortex
-    /// connected, so Routes can keep its live reads.
+    /// The router with Northline at a station with Cortex connected, so Routes can keep its
+    /// live reads, and Northline's id.
     async fn start() -> (Self, String) {
-        dispatch_backend::install();
-        let root = tempfile::tempdir().unwrap();
-        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let mut config = Config::load().unwrap();
-        config.root = root.path().join("state");
-        db::private_dir(&config.root).unwrap();
-        config.development = true;
-        config.fixture = true;
-        config.environment = "preview".into();
-        config.standalone = true;
-        config.port = port;
-        config.origin = format!("http://127.0.0.1:{port}");
-        config.dsp_origin = format!("http://{{code}}.localhost:{port}");
-        let store = Store::initialize(config.clone()).unwrap();
-        operations::seed(&store).unwrap();
-        let dsp = s(
-            &store
-                .platform
-                .one("SELECT id FROM dsps WHERE name=?", [NORTHLINE])
-                .unwrap()
-                .unwrap(),
-            "id",
-        )
-        .to_owned();
-        store
-            .set_profile(&dsp, json!({"stationCode":"TST1","abbreviation":"NLOG"}))
-            .unwrap();
-        common::ready_connection(&store, &dsp, cortex::PROVIDER).unwrap();
-        drop(store);
-        let state = State::new(config).unwrap();
-        let app = dispatch_core::server::http::router(state.clone())
-            .into_make_service_with_connect_info::<std::net::SocketAddr>();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let server = Self {
-            _root: root,
-            origin: format!("http://127.0.0.1:{port}"),
-            at: format!("http://{CODE}.localhost:{port}"),
-            state,
-            client: reqwest::Client::builder().no_proxy().build().unwrap(),
-        };
-        (server, dsp)
-    }
-    /// What a request answered: its status and body.
-    async fn send(&self, request: reqwest::RequestBuilder) -> (u16, Value) {
-        let response = request.send().await.unwrap();
-        let status = response.status().as_u16();
-        let bytes = response.bytes().await.unwrap();
-        (
-            status,
-            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
-        )
-    }
-    /// The platform owner, looking at `dsp`: their session written directly, so the test skips
-    /// password hashing.
-    async fn owner(&self, dsp: &str) -> Owner {
-        let raw = crypto::token().unwrap();
-        let token = crypto::sha(&raw);
-        self.state
-            .run(move |db| {
-                let user = db
+        let (server, dsp) = support::Server::start_with(|store| {
+            let dsp = s(
+                &store
                     .platform
-                    .one(
-                        "SELECT id,version FROM users WHERE email='owner@dispatch.test'",
-                        [],
-                    )?
-                    .unwrap();
-                db.platform.exec(
-                    "INSERT INTO sessions VALUES (?,?,?,?,?)",
-                    rusqlite::params![
-                        token,
-                        s(&user, "id"),
-                        db::n(&user, "version"),
-                        db::now() + 600000,
-                        db::now()
-                    ],
-                )?;
-                Ok(())
-            })
-            .await
-            .unwrap();
-        let cookie = format!("dispatch_session={raw}");
-        let session = self
-            .send(
-                self.client
-                    .get(format!("{}/api/session", self.origin))
-                    .header("cookie", &cookie),
+                    .one("SELECT id FROM dsps WHERE name=?", [NORTHLINE])
+                    .unwrap()
+                    .unwrap(),
+                "id",
             )
-            .await;
-        let csrf = s(&session.1, "csrf").to_owned();
-        let mut owner = Owner {
-            cookie,
-            csrf,
-            view: String::new(),
-        };
-        let (status, view) = self
-            .post(&owner, "/api/session/dsp", json!({"dspId":dsp}))
-            .await;
-        assert_eq!(status, 200, "{view}");
-        owner.view = s(&view, "token").to_owned();
-        owner
+            .to_owned();
+            store
+                .set_profile(&dsp, json!({"stationCode":"TST1","abbreviation":"NLOG"}))
+                .unwrap();
+            common::ready_connection(store, &dsp, cortex::PROVIDER).unwrap();
+            dsp
+        })
+        .await;
+        (Self(server), dsp)
     }
-    async fn get(&self, owner: &Owner, path: &str) -> Value {
-        let (status, body) = self
-            .send(
-                self.client
-                    .get(format!("{}{path}", self.origin))
-                    .header("cookie", &owner.cookie)
-                    .header("x-dispatch-view", &owner.view),
-            )
-            .await;
-        assert_eq!(status, 200, "{path}: {body}");
-        body
-    }
-    async fn post(&self, owner: &Owner, path: &str, body: Value) -> (u16, Value) {
-        self.send(
-            self.client
-                .post(format!("{}{path}", self.origin))
-                .header("origin", &self.origin)
-                .header("cookie", &owner.cookie)
-                .header("x-csrf-token", &owner.csrf)
-                .header("x-dispatch-view", &owner.view)
-                .header("content-type", "application/json")
-                .body(body.to_string()),
-        )
-        .await
+    async fn get(&self, owner: &Who, path: &str) -> Value {
+        let answer = self.send(Call::get(path).who(owner)).await;
+        assert_eq!(answer.status, 200, "{path}: {}", answer.body);
+        answer.body
     }
     /// A phone's call to the DSP's own address, with its key once it has one.
     async fn phone(&self, key: Option<&str>, path: &str, body: Value) -> Value {
+        let at = self.host(CODE);
         let mut request = self
             .client
-            .post(format!("{}{path}", self.origin))
-            .header("host", self.at.trim_start_matches("http://"))
-            .header("origin", &self.at)
+            .post(self.url(path))
+            .header("host", &at)
+            .header("origin", format!("http://{at}"))
             .header("content-type", "application/json")
             .body(body.to_string());
         if let Some(key) = key {
             request = request.header("authorization", format!("Bearer {key}"));
         }
-        let (status, body) = self.send(request).await;
-        assert_eq!(status, 200, "{path}: {body}");
-        body
+        let answer = self.answer(request).await;
+        assert_eq!(answer.status, 200, "{path}: {}", answer.body);
+        answer.body
     }
 }
 
@@ -205,13 +93,14 @@ fn listed(routes: &Value) -> Vec<(String, Option<String>, Option<String>)> {
 #[tokio::test]
 async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_data_empties() {
     let (server, dsp) = Server::start().await;
-    let owner = server.owner(&dsp).await;
+    // The platform owner, at the admin's address, looking at Northline.
+    let owner = server.member(OWNER).await;
     // A phone paired at the DSP's own address with a code the owner made.
-    let (status, pairing) = server
-        .post(&owner, "/api/dsp/phones/pairing", json!({}))
+    let pairing = server
+        .send(Call::post("/api/dsp/phones/pairing", json!({})).who(&owner))
         .await;
-    assert_eq!(status, 200, "{pairing}");
-    let phone = json!({"code":pairing["code"],"number":"(206) 555-0177","model":"Pixel 8a",
+    assert_eq!(pairing.status, 200, "{}", pairing.body);
+    let phone = json!({"code":pairing.body["code"],"number":"(206) 555-0177","model":"Pixel 8a",
         "version":"1.0.0"});
     let paired = server.phone(None, "/api/phones/pair", phone).await;
     let key = s(&paired, "key").to_owned();
