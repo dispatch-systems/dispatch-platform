@@ -258,7 +258,8 @@ sending again one that failed.
   conversation, and a work phone's nobody held, answer their number; a driver's, the work phone
   they hold now, as live route data says, refused while they hold none
   (`communications_no_work_phone`). Kept as Phones tells of
-  it, named with the writer's full name. Retry sends again one Dispatch sent that failed, while
+  it, under the full name of whoever sent it (`sent_by`), taken as it's first filed, however it was
+  sent: from the page, or through `texting` by anything else. Retry sends again one Dispatch sent that failed, while
   its phone is still paired. Either goes only where a text written now would: in a driver's,
   refused while they hold no work phone (`communications_no_work_phone`) or hold another
   (`communications_work_phone_changed`), as the one it went to may be another driver's since;
@@ -502,8 +503,9 @@ Behind `communications.use`:
 - `POST …/conversations/{id}/driver` (`driverId`): Pick driver, for a work phone nobody held: the
   driver's conversation.
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.
-- `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer; by text, refused as
-  `communications_texting_off` while the DSP doesn't text. Answers the message and the conversation
+- `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer, its text and photos, a
+  Slack one's added by `…/uploads`, a text's pictures by `…/texts/uploads`, as `limits` says; by
+  text, refused as `communications_texting_off` while the DSP doesn't text. Answers the message and the conversation
   it's in now (`conversation`): by text, another once the number changed hands as it went, which
   the page then opens.
 - `POST …/conversations/{id}/messages/{message}/retry`: sends again a text Dispatch sent that

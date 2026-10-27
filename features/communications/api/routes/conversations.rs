@@ -47,8 +47,8 @@ pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
         c.actor(),
     )?)
 }
-/// Sends a message in a conversation: its `text`, and the `photos` added for it, each as its kind
-/// keeps them.
+/// Sends a message in a conversation: its `text`, and the `photos` added for it, by text the
+/// pictures added through texting (`texts/uploads`), in Slack those Communications keeps.
 pub(super) async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
