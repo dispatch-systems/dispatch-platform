@@ -171,7 +171,9 @@ driver who held the DSP's work phones; the one by text with their own number, th
 in of Driver Match's numbers for them, else the first; and their Slack one, in a workspace where
 Communications works, the latest written in, else their first account there. Shown, as chips,
 on each of them while they have two or more, each waiting as the page's list has it, so its dot
-follows each update, and one started since is found by whom it's with.
+follows each update, and one started since is found by whom it's with. A driver holding a work
+phone now has the work conversation of the ID holding it, as Driver Match may know them by
+several, started once they have none there; else the latest of any of their IDs.
 
 ## Messaging
 

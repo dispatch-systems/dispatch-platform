@@ -35,7 +35,9 @@ pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Vec<Elsewhere>> {
     Ok(if found.len() > 1 { found } else { Vec::new() })
 }
 
-/// `person`'s work conversation, while they have one or hold a work phone now.
+/// `person`'s work conversation, while they have one or hold a work phone now: holding one, that
+/// of the ID holding it, which a text there goes to, started if they have none by it; else the
+/// latest of any of their IDs.
 fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
     let live = LiveDay::read(db, dsp)?;
     let source = match &live {
@@ -49,15 +51,26 @@ fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
     if ids.is_empty() {
         return Ok(None);
     }
-    let kept = db.communications_drivers(dsp, source.as_str(), ids)?;
-    let conversation = latest(live_day::slated(db, dsp, kept)?);
+    let kept = live_day::slated(
+        db,
+        dsp,
+        db.communications_drivers(dsp, source.as_str(), ids)?,
+    )?;
     let holding = match &live {
         Some(live) => live.held_by(db, dsp, ids)?,
         None => None,
     };
-    let driver_id = match (&conversation, &holding) {
-        (Some(each), _) => each.driver.as_ref().map(|(_, id)| id.clone()),
-        (None, Some(held)) => Some(held.driver_id.clone()),
+    let conversation = match &holding {
+        Some(held) => kept.into_iter().find(|each| {
+            each.driver
+                .as_ref()
+                .is_some_and(|(_, id)| *id == held.driver_id)
+        }),
+        None => latest(kept),
+    };
+    let driver_id = match (&holding, &conversation) {
+        (Some(held), _) => Some(held.driver_id.clone()),
+        (None, Some(each)) => each.driver.as_ref().map(|(_, id)| id.clone()),
         (None, None) => return Ok(None),
     };
     Ok(Some(Elsewhere {
@@ -145,3 +158,7 @@ fn found(kind: ConversationKind, conversation: Option<TextConversation>) -> Else
         user_id: None,
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/elsewhere.rs"]
+mod tests;
