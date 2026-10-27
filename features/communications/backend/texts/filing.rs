@@ -1,7 +1,8 @@
 //! Filing the texts the DSP's dispatch phones relay, as Phones offers them (`texting`): each in
 //! its conversation, read on from the last change filed whenever Phones says texts changed
 //! (`TextsChanged`), and every minute in case a hearing was missed or failed, or Communications
-//! came on after they came.
+//! came on after they came; and today's filed again every minute too, as who held the work phones
+//! may have changed unheard (`reconcile`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed under whoever held it
 //! as it was written, by their ID of the source that names who held the DSP's work phones, as
@@ -51,7 +52,8 @@ use std::{
 /// looked for, further than a day can be long.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
-/// Every minute, each DSP's texts changed since they were last filed.
+/// Every minute, each DSP's texts changed since they were last filed, and today's filed again
+/// where they belong now.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
@@ -94,6 +96,9 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
                 for dsp in dsps {
                     if let Err(error) = read_on(&state, &dsp).await {
                         failed("communications_texts_failed", &error);
+                    }
+                    if let Err(error) = reconcile(&state, &dsp).await {
+                        failed("communications_texts_refile_failed", &error);
                     }
                 }
             }
@@ -169,11 +174,24 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
     }
     Ok(())
 }
-/// Files every text of today, the DSP's day, again, where it belongs now.
-pub fn refiled(db: &Store, dsp: &str) -> Result<()> {
+/// Files every text of today, the DSP's day, again, where it belongs now, as who held its work
+/// phones may have changed unheard: while Communications was off, or as a hearing failed. Wakes the
+/// pages waiting on its conversations only once one moved.
+pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    let moved = state
+        .run_scoped(dsp, DOMAIN, move |db| refiled(db, &at))
+        .await?;
+    if moved {
+        live::changed(state, dsp);
+    }
+    Ok(())
+}
+/// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
+pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
     let mut filer = Filer::new(db, dsp)?;
     let today = clock::today(filer.zone);
-    refiled_by(db, dsp, &mut filer, today).map(drop)
+    Ok(!refiled_by(db, dsp, &mut filer, today)?.is_empty())
 }
 /// Files every text of `day` again, from when it began until the next day did, where `filer` says
 /// it belongs now: the conversations changed. One whose place can't be told yet stays where it is.

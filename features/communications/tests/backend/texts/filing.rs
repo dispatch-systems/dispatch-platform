@@ -276,6 +276,34 @@ async fn a_drivers_texts_stay_theirs_as_how_one_went_changes_while_routes_is_off
 }
 
 #[tokio::test]
+async fn todays_texts_go_to_whoever_holds_the_work_phone_by_the_next_upkeep_though_none_heard_it() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let asked = texted(
+        &state,
+        &dsp,
+        "+12065550104",
+        "Which van?",
+        at(zone, day, 6, 30),
+    )
+    .await;
+    assert_eq!(
+        filed(&state, &dsp, &asked).await.kind,
+        ConversationKind::Number
+    );
+    // The first live read shows Avery holding it since 7:00 while Communications is off, so it
+    // hears nothing of it.
+    switch(&state, &dsp, "communications", false).await;
+    let avery = vec![hold("avery", "2065550104", at(zone, day, 7, 0), None)];
+    held(&state, &dsp, Some(&day.to_string()), avery, Vec::new()).await;
+    switch(&state, &dsp, "communications", true).await;
+
+    // The next upkeep files it under Avery, with no new text or hold.
+    (MAINTENANCE.run)(state.clone(), false).await;
+    assert_eq!(filed(&state, &dsp, &asked).await.driver, driver("avery"));
+}
+
+#[tokio::test]
 async fn a_saved_days_texts_go_to_whoever_held_the_work_phone_once_its_holds_are_saved_after_them()
 {
     let (_root, state, dsp) = started();

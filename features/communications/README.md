@@ -236,7 +236,10 @@ sending again one that failed.
   holds change (`routes.work_phones_changed`, which names the day), every text of that day, both
   ways, is filed again where it belongs now: a text that came before the day's first live read
   goes to whoever then holds the number. An earlier day's is filed again only while Routes keeps
-  holds of it, so a day it emptied unsaved keeps its texts where its holds had them.
+  holds of it, so a day it emptied unsaved keeps its texts where its holds had them. Today's are
+  filed again every minute too, so a change of holds nothing heard, as while Communications was
+  off or a hearing failed, is repaired by the next pass; an earlier day's only as Routes says it
+  changed, as Routes doesn't say which days had holds saved.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   or after Done. A failed answer leaves it waiting. A work conversation waits only on what was
   written on the live day, while live route data holds today: from the first text in on it
@@ -550,7 +553,8 @@ Public, on the admin's address: `GET /communications/initials/1/{letters}.png`.
   `communications_picked` (the driver picked for a work phone on a day, by whom and when). Kept
   until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
-  what's due to go to groups' people, and filing texts not filed yet, every minute; letting go of
+  what's due to go to groups' people, filing texts not filed yet, and filing today's again where
+  they belong now, every minute; letting go of
   photos added and never sent hourly.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct

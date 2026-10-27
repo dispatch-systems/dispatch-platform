@@ -96,8 +96,8 @@ pub const FEATURE: Feature = Feature {
         ],
     }],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
-    // what members attach, sending what's due to go to groups' people, and filing texts it
-    // didn't hear of, every minute.
+    // what members attach, sending what's due to go to groups' people, filing texts it didn't
+    // hear of, and filing today's again where they belong now, every minute.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,
