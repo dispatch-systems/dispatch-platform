@@ -9,8 +9,8 @@ import {
 // in fixture mode, whose day has two drivers on work phones of their own, Fixture Driver on
 // (206) 555-0190 and Second Driver on 0191, and Live Route Data reading all day. The DSP's demo
 // phone received a text from 0190 an hour before, which files under the driver holding it. The
-// DSP keeps a zone of its own, so its reading window is open whatever the hour the test runs, and
-// a day can end and the next begin.
+// DSP keeps a zone of its own, chosen so its reading window is open whatever the hour the test
+// runs, with its day under way.
 
 /** A picture of a single pixel, as a PNG. */
 const PIXEL = Buffer.from(
@@ -18,52 +18,40 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-/** The zone `hours` east of UTC, as the tz database names it. */
-const zone = (hours: number) => `Etc/GMT${hours > 0 ? '-' : '+'}${Math.abs(hours)}`;
-/** The day it is `hours` east of UTC now, and the time, as Settings writes a time. */
-function clock(hours: number) {
-  const local = new Date(Date.now() + hours * 3_600_000).toISOString();
-  return { day: local.slice(0, 10), time: local.slice(11, 16) };
-}
-/**
- * Where the DSP is: in the west, its day under way, the text an hour old from today and its window
- * open for hours yet; in the east, a later day, mid-window.
- */
-function zones() {
-  for (const west of [-12, -11, -10])
-    for (const east of [14, 13, 12]) {
-      const [here, later] = [clock(west), clock(east)];
-      if (
-        here.time >= '01:30' &&
-        here.time < '23:00' &&
-        later.day > here.day &&
-        later.time >= '00:05' &&
-        later.time < '23:50'
-      )
-        return { west, east };
-    }
-  throw new Error('No zones fit now');
+/** The time it is `hours` east of UTC, as Settings writes a time. */
+const timeAt = (hours: number) =>
+  new Date(Date.now() + hours * 3_600_000).toISOString().slice(11, 16);
+/** Hours east of UTC where the day is under way, the text an hour old is of today, and the window
+ * stays open for an hour yet. */
+function underWay() {
+  for (let hours = -12; hours <= 14; hours++) {
+    const time = timeAt(hours);
+    if (time >= '01:30' && time < '23:00') return hours;
+  }
+  throw new Error('No zone fits now');
 }
 
-/** Northline reading its routes live, `hours` east of UTC, once its day's drivers are read. */
+/**
+ * Northline reading its routes live, `hours` east of UTC, once its day's drivers are read; the
+ * address of its Communications page, and ending its day, as its reading window closing does:
+ * the day saved and live route data emptied.
+ */
 async function reading(dispatch: Dispatch, hours: number) {
   const owner = await dispatch.client();
   const north = (owner.session.dsps as { id: string; name: string }[]).find(
     (dsp) => dsp.name === 'Northline Logistics',
   )!;
   await owner.select(north.id);
-  const moveTo = async (hours: number) => {
-    const moved = await owner.post('/api/dsp/profile', {
-      name: north.name,
-      abbreviation: 'NLL',
-      stationCode: 'TST1',
-      timezone: zone(hours),
-    });
-    expect(moved.status, moved.body).toBe(200);
-    await owner.select(north.id);
-  };
-  // Its window, saved, which wakes the readers: a window open now reads at once, one ended stops
-  // the day, saving it and emptying live route data.
+  const moved = await owner.post('/api/dsp/profile', {
+    name: north.name,
+    abbreviation: 'NLL',
+    stationCode: 'TST1',
+    timezone: `Etc/GMT${hours > 0 ? '-' : '+'}${Math.abs(hours)}`,
+  });
+  expect(moved.status, moved.body).toBe(200);
+  await owner.select(north.id);
+  // Its window, saved, which wakes the readers: a window open now reads at once, one closed ends
+  // the day.
   const window = async (start: string, stop: string) => {
     const section = 'live_route_data.collection';
     const settings = await owner.read('/api/dsp/settings');
@@ -74,7 +62,6 @@ async function reading(dispatch: Dispatch, hours: number) {
     });
     expect(saved.status, saved.body).toBe(200);
   };
-  await moveTo(hours);
   const connected = await owner.post('/api/dsp/connections/cortex', {
     username: 'fixture@example.test',
     password: 'fixture-password',
@@ -84,7 +71,7 @@ async function reading(dispatch: Dispatch, hours: number) {
   // signing in opened, which a live read can't share.
   const queued = await owner.post('/api/dsp/routes/collect', {
     requestId: 'scope',
-    date: clock(hours).day,
+    date: new Date(Date.now() + hours * 3_600_000).toISOString().slice(0, 10),
     mode: 'snapshot',
   });
   expect(queued.status, queued.body).toBe(202);
@@ -104,16 +91,19 @@ async function reading(dispatch: Dispatch, hours: number) {
   await expect
     .poll(async () => (await owner.read('/api/dsp/communications/routes')).drivers.length)
     .toBe(2);
-  return { page: `/#dsp/${north.id}/communications`, moveTo, window };
+  return {
+    page: `/#dsp/${north.id}/communications`,
+    end: () => window('00:00', timeAt(hours)),
+  };
 }
 
 test('Today’s Routes lists the day’s drivers on the board and in the list, and opens a driver’s conversation from each', async ({
   page,
   dispatch,
 }) => {
-  const read = await reading(dispatch, zones().west);
+  const northline = await reading(dispatch, underWay());
   await login(page);
-  await page.goto(read.page);
+  await page.goto(northline.page);
 
   // The board: each driver on their route and work phone.
   await page.getByRole('button', { name: 'Board' }).click();
@@ -141,10 +131,14 @@ test('a driver’s work conversation keeps what’s being written while they hol
   page,
   dispatch,
 }) => {
-  const { west, east } = zones();
-  const { page: communications, moveTo, window } = await reading(dispatch, west);
+  const northline = await reading(dispatch, underWay());
   await login(page);
-  await page.goto(communications);
+  // Today's Routes as read while the day is on, which answers its read again once it's over.
+  const during = page.waitForResponse(
+    (response) => response.url().endsWith('/api/dsp/communications/routes') && response.ok(),
+  );
+  await page.goto(northline.page);
+  const routes = await (await during).json();
   await page
     .getByRole('region', { name: 'Conversations' })
     .getByRole('button', { name: /Fixture Driver/ })
@@ -166,14 +160,16 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await expect(profile.getByText('Work phone')).toBeVisible();
 
   // The day ends: they hold no work phone, as the profile says too, left open.
-  await window('00:00', clock(west).time);
+  await northline.end();
   await expect(conversation.getByText('No work phone')).toBeVisible();
   await expect(profile.getByText('Work phone')).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  // The next day's first read hands them their phone again: what was written is still there.
-  await moveTo(east);
-  await window('00:00', '23:59');
+  // Today's Routes reads them holding their phone again, as the next day's first read would (a
+  // day can't begin here without moving the DSP's zone, which opens its view afresh): what was
+  // written is still there.
+  await page.route('**/api/dsp/communications/routes', (route) => route.fulfill({ json: routes }));
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(box).toHaveValue('Gate code is 4471');
   await expect(picture).toBeVisible();
 });
