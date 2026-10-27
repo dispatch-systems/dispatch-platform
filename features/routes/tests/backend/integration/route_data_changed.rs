@@ -127,11 +127,15 @@ async fn a_live_day_is_heard_of_once_a_read_changed_it_and_as_its_emptied_or_sav
     let first = read(&today, Mode::Snapshot);
     keep_live(&state, &dsp, first.clone()).await;
     assert_eq!(heard(&dsp), [today.as_str()], "a first read");
-    // Read again as it was, or before, it changed nothing.
+    // Read again as it was, or before, it changed nothing; nor did one whose list Cortex answered
+    // later, which stores that response again but changes nothing the day's readers read.
     keep_live(&state, &dsp, first.clone()).await;
     let mut unchanged = first.clone();
     unchanged.finished_at += 1;
     assert_eq!(keep_live(&state, &dsp, unchanged.clone()).await.changed, 0);
+    unchanged.finished_at += 1;
+    unchanged.summaries["backendTime"] = json!(unchanged.finished_at);
+    assert_eq!(keep_live(&state, &dsp, unchanged.clone()).await.changed, 1);
     assert_eq!(heard(&dsp), Vec::<String>::new(), "reads changing nothing");
     let mut moved = unchanged;
     moved.finished_at += 1;

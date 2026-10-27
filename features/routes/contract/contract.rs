@@ -238,14 +238,14 @@ impl Event for WorkPhonesChanged {
     const NAME: &'static str = "routes.work_phones_changed";
 }
 
-/// A day's route data changed, once it's kept: a live read changed it; live route data was emptied
-/// of it, or emptied holding none, of today; a read of it became the day's in historical route
-/// data, saved, collected or reprocessed; or its itineraries' work phones were extracted from its
-/// stored responses. Published after `people.changed` when a live read or a save names drivers
-/// anew. A collected or reprocessed day is published once Routes hears `collection.succeeded` of
-/// its collection, before the features after it in the registry hear it, or by the next minute's
-/// upkeep, whichever is first: until then it's noted only in the server's memory, so a restart
-/// before then publishes none.
+/// A day's route data changed, once it's kept: a live read changed what its readers read, rather
+/// than only the responses it keeps whole; live route data was emptied of it, or emptied holding
+/// none, of today; a read of it became the day's in historical route data, saved, collected or
+/// reprocessed; or its itineraries' work phones were extracted from its stored responses. Published
+/// after `people.changed` when a live read or a save names drivers anew. A collected or reprocessed
+/// day is published once Routes hears `collection.succeeded` of its collection, before the features
+/// after it in the registry hear it, or by the next minute's upkeep, whichever is first: until then
+/// it's noted only in the server's memory, so a restart before then publishes none.
 #[derive(Clone, Debug)]
 pub struct RouteDataChanged {
     /// The day whose route data changed, YYYY-MM-DD in the DSP's own time.

@@ -35,6 +35,19 @@ impl LiveKept {
     }
 }
 
+/// What keeping a live read did, told of once it's committed.
+#[derive(Debug)]
+struct Kept {
+    /// What it counted, for its record.
+    counts: LiveKept,
+    /// Whether it named a driver live route data didn't.
+    named: bool,
+    /// Whether it changed what the day's readers read: its itinerary, driver or route rows, or the
+    /// day itself, one live route data didn't hold. Not the responses kept whole beside them, which
+    /// a read changes each time Cortex answers its list (`backendTime`).
+    data_changed: bool,
+}
+
 /// A whole live read, checked and shaped, ready to keep: its lists with their responses
 /// compressed as they're stored, each itinerary's rows, and the work phones it shows.
 struct Shaped {
@@ -111,8 +124,8 @@ fn key(day: &str, collected: i64) -> String {
 /// or another scope, starts it afresh. A read collected no later than the one it holds changes
 /// nothing. It tells Driver Match of a driver live route data didn't name (`people.changed`), then
 /// every feature that hears it of a hold claimed, moved, handed over or withdrawn on the read's day
-/// (`routes.work_phones_changed`), and of the day's route data changed, when it wrote or deleted
-/// a row (`routes.data_changed`).
+/// (`routes.work_phones_changed`), and of the day's route data changed, when it changed what the
+/// day's readers read (`routes.data_changed`).
 ///
 /// It refuses, changing nothing, a day other than today where the DSP is
 /// (`routes_day_not_available`); a DSP without a station (`routes_station_required`); a read that
@@ -144,7 +157,7 @@ pub async fn keep_live(
             .await
             .map_err(blocking("routes.keep_failed"))??;
         let d = dsp.to_owned();
-        let (kept, named) = state
+        let kept = state
             .run_scoped(dsp, DOMAIN, move |db| {
                 on(db)?;
                 let current = db.connection_revision(&d, cortex::PROVIDER)? == Some(revision);
@@ -152,24 +165,24 @@ pub async fn keep_live(
                 keep(db, &d, &shaped)
             })
             .await?;
-        if named {
+        if kept.named {
             events::publish(state, dsp, PeopleChanged).await;
         }
-        if kept.phone_events > 0 {
+        if kept.counts.phone_events > 0 {
             let day = read_day.clone();
             events::publish(state, dsp, WorkPhonesChanged { day }).await;
         }
-        if kept.changed > 0 {
+        if kept.data_changed {
             events::publish(state, dsp, RouteDataChanged { day: read_day }).await;
         }
-        Ok(kept)
+        Ok(kept.counts)
     })
     .await
 }
 /// Keeps a shaped read in the DSP's live route data in place, in one transaction, answering what
-/// it counted and whether it named a driver live route data didn't. Refuses a read of a day that
-/// isn't today as it's written, however long reading and shaping it took.
-fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
+/// it did. Refuses a read of a day that isn't today as it's written, however long reading and
+/// shaping it took.
+fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<Kept> {
     let (lists, scope) = (&read.lists, &read.lists.scope);
     let day = scope.date.as_str();
     day_allowed(Mode::Snapshot, day, routes_today(store, dsp)?)?;
@@ -190,26 +203,30 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
                     scope.provider.as_str(),
                 )
         });
-        let publication = match same {
+        let (publication, anew) = match same {
             Some(row) => {
                 if s(row, "collected_at") >= at(lists.finished_at).as_str() {
                     let holding = db.count(
                         "SELECT count(*) FROM work_phones WHERE day=? AND until IS NULL",
                         [day],
                     )?;
-                    let kept = LiveKept {
+                    let counts = LiveKept {
                         listed: listed.len() as u64,
                         holding: holding as u64,
                         ..LiveKept::default()
                     };
-                    return Ok((kept, false));
+                    return Ok(Kept {
+                        counts,
+                        named: false,
+                        data_changed: false,
+                    });
                 }
                 ensure(
                     !listed.is_empty() || row["itineraries"] == 0,
                     "routes_capture_invalid",
                     502,
                 )?;
-                s(row, "id").to_owned()
+                (s(row, "id").to_owned(), false)
             }
             None => {
                 if held.is_some() {
@@ -234,7 +251,7 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
                         ADAPTER_VERSION
                     ],
                 )?;
-                publication
+                (publication, true)
             }
         };
         let drivers = db.count("SELECT count(*) FROM drivers", [])?;
@@ -242,7 +259,8 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
             .as_array()
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let mut changed = write_routes(db, Writes::InPlace, &publication, day, routes)?
+        // The rows the day's readers read, counted apart from the responses kept whole beside them.
+        let mut read_rows = write_routes(db, Writes::InPlace, &publication, day, routes)?
             + prune_routes(db, &publication, routes)?
             + write_assigned(
                 db,
@@ -251,23 +269,25 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
                 &lists.route_summaries,
                 &read.itineraries,
             )?;
+        let mut raw = 0;
         for (name, bytes, body) in &read.responses {
-            changed += write_raw(db, Writes::InPlace, &publication, name, *bytes, body)?;
+            raw += write_raw(db, Writes::InPlace, &publication, name, *bytes, body)?;
         }
         for itinerary in &read.itineraries {
             let name = format!("itinerary:{}", itinerary.id);
-            changed += write_itinerary(db, Writes::InPlace, &publication, day, itinerary)?
-                + write_raw(
-                    db,
-                    Writes::InPlace,
-                    &publication,
-                    &name,
-                    itinerary.raw_bytes,
-                    &itinerary.raw,
-                )?
-                + prune_itinerary(db, &publication, itinerary)?;
+            read_rows += write_itinerary(db, Writes::InPlace, &publication, day, itinerary)?;
+            raw += write_raw(
+                db,
+                Writes::InPlace,
+                &publication,
+                &name,
+                itinerary.raw_bytes,
+                &itinerary.raw,
+            )?;
+            read_rows += prune_itinerary(db, &publication, itinerary)?;
         }
-        changed += prune_itineraries(db, &publication, &listed)?;
+        // An itinerary no longer listed goes with its response.
+        read_rows += prune_itineraries(db, &publication, &listed)?;
         // Every itinerary listed, each once.
         ensure(
             db.count(
@@ -295,13 +315,17 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
             ],
         )?;
         let settled = phones::settle(db, day, lists.finished_at, &read.shown)?;
-        let kept = LiveKept {
+        let counts = LiveKept {
             listed: listed.len() as u64,
-            changed: changed as u64,
+            changed: (read_rows + raw) as u64,
             holding: settled.holding,
             phone_events: settled.events,
         };
-        Ok((kept, db.count("SELECT count(*) FROM drivers", [])? > drivers))
+        Ok(Kept {
+            counts,
+            named: db.count("SELECT count(*) FROM drivers", [])? > drivers,
+            data_changed: anew || read_rows > 0,
+        })
     })
 }
 /// Empties live route data, inside the caller's transaction: every read, driver, address and
