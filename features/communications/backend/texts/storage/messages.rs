@@ -64,9 +64,9 @@ pub trait TextStore {
     /// The last of Phones' changes read: 0 before the first.
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64>;
     /// Keeps each of `texts`, one new where it's filed, one kept already where it is, as how it
-    /// went or its files changed, under the name its sender was shown by as it was first kept, and notes that Phones' changes were read up to `read_to`: the
-    /// conversations changed. Where a text is filed is decided again only as its holds settle
-    /// (`refile_communications_texts`).
+    /// went or its files changed, under the name its sender was shown by as it was first kept, and
+    /// notes that Phones' changes were read up to `read_to`: the conversations changed. Where a
+    /// text is filed is decided again only as its holds settle (`refile_communications_texts`).
     fn file_communications_texts(
         &self,
         dsp: &str,
@@ -490,8 +490,8 @@ fn filed_in(db: &Db, id: &str) -> Result<Option<String>> {
 }
 
 /// Keeps whether the conversation waits on an answer, and since when, from its texts and which a
-/// Done covered, done when it was marked so after its latest answer, and notes it changed: by all its texts, whichever day they were written
-/// (`waiting_since`, from the earliest).
+/// Done covered, done when it was marked so after its latest answer, and notes it changed: by all
+/// its texts, whichever day they were written (`waiting_since`, from the earliest).
 fn settle(db: &Db, conversation: &str) -> Result<()> {
     let (since, done): (Option<i64>, bool) = db
         .one_as(
