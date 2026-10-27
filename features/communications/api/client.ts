@@ -25,7 +25,11 @@ import type {
 
 // Communications' endpoints, as its screens call them.
 
-/** What its error codes say. Only its screens make the calls that raise them, so they load with them. */
+/**
+ * What its error codes say: its own, which only its screens make the calls that raise, so they load
+ * with them; and of texting's, which Phones words, those Communications' screens say more of, as
+ * sending from no phone or a picture let go of as it's written.
+ */
 const api = wordedApi({
   communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
   communications_message_not_found: 'This text is no longer here. Refresh the page.',
@@ -36,7 +40,6 @@ const api = wordedApi({
   communications_driver_not_found: "This driver isn't on today's routes.",
   phones_none: 'No phone is paired to send from.',
   phones_file_not_found: 'A picture is no longer attached. Add it again.',
-  phones_text_not_found: "This text can't be sent again.",
   communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',
