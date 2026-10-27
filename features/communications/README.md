@@ -89,8 +89,10 @@ drivers' work phones on Today's Routes, and every other number in Messaging.
   marked Edited, a reply in one of its threads in its place among them, photos shown and other
   files to download, or why one isn't kept; older ones read as it's scrolled to its start; and
   those at the DSP writing in it now. Writing in it: text, with photos attached (the paperclip),
-  Enter to send; while writing, teammates see it. Photos show by Driver Match's person for each
-  (`/api/dsp/people/{code}/photo`), never Slack's own addresses.
+  as much as one message carries as the conversation's read says (`limits`), which what's refused
+  says too, and nothing until it's read; Enter to send; while writing, teammates see it. Photos
+  show by Driver Match's person for each (`/api/dsp/people/{code}/photo`), never Slack's own
+  addresses.
 - **The profile** of whom a conversation is with opens from who it's with, above it, or their
   photo by their messages, over the conversation, and closes with its X, Escape, or a press
   anywhere else; from 1,500 pixels of page, it opens beside the conversation instead, a column
@@ -145,8 +147,11 @@ stay; the next day's drivers fill it as its live reads start.
 - **Search** finds work conversations, across days, by a driver's name or the digits of any work
   phone they texted on.
 - **Fresh:** read when it shows, again every minute while the page is in view
-  (`ROUTES_READ_MS`), as live reads say nothing as they come, and at once when an update changes
-  a work conversation.
+  (`ROUTES_READ_MS`), as live reads say nothing as they come, at once when an update changes a
+  work conversation, and as the page comes back into view or the browser back online, a read that
+  failed tried again, as the dashboard's reads are. Loading until it's first read, never No routes
+  before then; a read that fails says why in Today's Routes, the list or the board, and nowhere
+  else.
 - **A driver's conversation:** under its head, their route code, van and the work phone they hold
   now, and how long it has waited; chips to their conversation of each kind, Work (by the work
   phone they hold), Messaging (by their own number) and Slack, each marked with a dot while it
@@ -155,14 +160,18 @@ stay; the next day's drivers fill it as its live reads start.
   work phone its first text went through; earlier days dimmed; and where they texted from
   another work phone that day, Switched to 7643. With no work phone now (one claimed by another
   driver, never claimed, or once the day stopped), No work phone takes the box's place, with
-  chips to their other conversations.
+  chips to their other conversations; what was being written in it stays, its pictures too, and
+  comes back with a work phone.
 - **A work phone nobody held:** No driver under its name, and **Pick driver**: one of today's
   drivers, found by name or route, each with their route and wave; picked, the phone's texts of
   today are theirs ([Texts](#texts)), and their conversation opens. Escape closes it, focus going
   back to Pick driver.
 - **The profile** of a driver, from their name or photo: the ways to reach them, as the chips;
-  Today: route, van, wave, stops with their bar, pace, and the work phone with since when;
-  Contact: their phone number, email address and Slack workspace.
+  Today: route, van, wave, stops with their bar, pace, and the work phone with since when, as the
+  conversation's head shows them, one source for both: Today's Routes' latest read of the driver
+  while it shows, else the conversation's own, each kept up as the page's are, and none once
+  Today's Routes says the day is over; Contact: their phone number, email address and Slack
+  workspace.
 
 ## Elsewhere
 
@@ -431,6 +440,41 @@ not; nothing reaches a browser closed, as nothing is pushed.
   chime is made as it plays (Web Audio), two soft notes, and rests between chimes.
 - **A phone's browser** shows notifications only from a service worker or a Home Screen app, so
   there Notifications isn't offered.
+
+## The page's code
+
+`frontend/`, by concern, each part's styles in a stylesheet beside it; `communications.css` holds
+the page's layout and the variables its parts draw by.
+
+- `page/`: the page, which section shows, what's open (in the address) and the layout; the
+  section switch and the list's frame; and how each section shows (`section-views.tsx`).
+- `inbox/`: the conversations and groups as they change (`inbox.ts`, `useInbox.ts`), the list of
+  them and its rows, and the sections, each defined once (`sections.ts`).
+- `conversations/`: the conversation open, its thread, composer and profile; each kind of
+  conversation (`kinds.ts`: how its messages carry photos and files, and how one is known and
+  started), whom it's with (`party.tsx`, `parties.tsx`: their face, profile, head, actions and
+  whom a message goes to), and what opens one (`target.ts`).
+- `slack/`, with `groups/`: Slack's contacts and workspaces, New message, Copy chat link and
+  setting Slack up; messaging a group.
+- `texting/`: Messaging's contacts, a number's actions and Save contact, and phones offline.
+- `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
+  Pick driver and No work phone.
+- `shared/`: what any of them draws with: faces, a list's rows and headings, a contact's row, a
+  message's body and runs, a thread's frame, a pane's head, the side panel, and how the page
+  words things (`format.ts`).
+- `alerts/` and `display/`: new messages' alerts on every page, and Message display.
+
+Where to add:
+
+- **A section:** its model in `inbox/sections.ts` (whether the DSP has it, which conversations it
+  holds, how it pages and where it's read and searched) and its view in `page/section-views.tsx`
+  (label, icon, contacts, its own rows, what's beside Search, a board), both by its ID, which
+  members' browsers keep once it ships. A section another feature supplies needs a slot core owns.
+- **A kind of conversation:** its kind in the API, then `conversations/kinds.ts`, its party in
+  `party.tsx` and `parties.tsx`, its section's `holds`, and its chip in `Elsewhere.tsx`.
+- **A texting provider's presentation:** what the page says of the provider, as phones offline,
+  in `texting/`; the provider itself stays behind Communications' API.
+- **How new messages alert:** `alerts/`.
 
 ## What it reads of other features
 
