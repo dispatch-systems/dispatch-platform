@@ -71,8 +71,10 @@ fn day(back: i64) -> String {
 }
 /// The fixture's read of `day`, at the DSP's station: final, or a snapshot of today.
 fn read(day: &str, mode: Mode) -> Capture {
-    let request = Request::parse(&json!({"collection":"routes","mode":mode.as_str(),"date":day,
-        "station":"TST1","timezone":"UTC","dspName":"Test Owner","dspAbbreviation":"NLOG"}))
+    let request = Request::parse(
+        &json!({"collection":"routes","mode":mode.as_str(),"date":day,
+        "station":"TST1","timezone":"UTC","dspName":"Test Owner","dspAbbreviation":"NLOG"}),
+    )
     .unwrap()
     .unwrap();
     routes::fixture(&request).unwrap()
@@ -108,7 +110,10 @@ fn collect(db: &Store, dsp: &str, key: &str, capture: Capture) {
 /// The day's work phones, as other features read them.
 fn day_phones(db: &Store, dsp: &str, day: &str) -> DayPhones {
     let routes = dispatch_routes_contract::for_dsp(db, dsp).unwrap();
-    routes.expect("Routes is on").day_phones(db, dsp, day).unwrap()
+    routes
+        .expect("Routes is on")
+        .day_phones(db, dsp, day)
+        .unwrap()
 }
 /// Routes' upkeep, as the scheduler offers it every minute.
 async fn upkeep(state: &Arc<State>) {
@@ -117,11 +122,11 @@ async fn upkeep(state: &Arc<State>) {
 
 #[tokio::test]
 async fn a_live_day_is_heard_of_once_a_read_changed_it_and_as_its_emptied_or_saved() {
-    let (_root, db, dsp, state) = ready();
+    let (_root, _db, dsp, state) = ready();
     let today = day(0);
     let first = read(&today, Mode::Snapshot);
     keep_live(&state, &dsp, first.clone()).await;
-    assert_eq!(heard(&dsp), [today.clone()], "a first read");
+    assert_eq!(heard(&dsp), [today.as_str()], "a first read");
     // Read again as it was, or before, it changed nothing.
     keep_live(&state, &dsp, first.clone()).await;
     let mut unchanged = first.clone();
@@ -131,8 +136,8 @@ async fn a_live_day_is_heard_of_once_a_read_changed_it_and_as_its_emptied_or_sav
     let mut moved = unchanged;
     moved.finished_at += 1;
     moved.summaries["transporters"][0]["workPhoneNumber"] = json!("5550100003");
-    keep_live(&state, &dsp, moved.clone()).await;
-    assert_eq!(heard(&dsp), [today.clone()], "a read moving a phone");
+    keep_live(&state, &dsp, moved).await;
+    assert_eq!(heard(&dsp), [today.as_str()], "a read moving a phone");
 
     // Emptied; then read, saved and emptied as a stopped day is; then emptied holding none.
     dispatch_routes::clear_live(&state, &dsp).await.unwrap();
@@ -176,7 +181,8 @@ async fn a_collected_or_reprocessed_day_is_heard_of_once_its_collection_succeeds
 
     // A read collected before the day's own changes nothing, told of nothing.
     let mut earlier = read(&day(1), Mode::Final);
-    (earlier.started_at, earlier.finished_at) = (earlier.started_at - 60_000, earlier.finished_at - 60_000);
+    (earlier.started_at, earlier.finished_at) =
+        (earlier.started_at - 60_000, earlier.finished_at - 60_000);
     collect(&db, &dsp, "earlier", earlier);
     upkeep(&state).await;
     assert_eq!(heard(&dsp), Vec::<String>::new());
@@ -220,7 +226,9 @@ async fn a_day_kept_before_its_work_phones_were_has_them_extracted_from_its_stor
     for (back, version) in [(1, 2), (2, 1)] {
         let day = day(back);
         let shaped = "UPDATE route_publications SET adapter_version=? WHERE day=?";
-        historical.exec(shaped, rusqlite::params![version, day]).unwrap();
+        historical
+            .exec(shaped, rusqlite::params![version, day])
+            .unwrap();
         let unkept = "UPDATE itineraries SET work_phone=NULL WHERE day=?";
         historical.exec(unkept, [&day]).unwrap();
     }

@@ -27,7 +27,9 @@ impl Shaper {
     /// when neither shows one.
     pub(super) fn work_phone(&self, driver: &str, own: &Value) -> Option<String> {
         let shown = |records: &[Value]| {
-            let record = records.iter().find(|r| r["transporterId"] == json!(driver))?;
+            let record = records
+                .iter()
+                .find(|r| r["transporterId"] == json!(driver))?;
             digits(record["workPhoneNumber"].as_str()?)
         };
         shown(&self.people).or_else(|| shown(own.as_array().map_or(&[], Vec::as_slice)))
@@ -115,7 +117,8 @@ pub(super) async fn extract(state: &Arc<State>, dsp: &str) -> Result<()> {
             break;
         }
         let (d, stored) = (dsp.to_owned(), row.clone());
-        let phones = match state.read(move |db| phones_kept(&*db.routes_db(&d)?, &stored)).await {
+        let read = state.read(move |db| phones_kept(&*db.routes_db(&d)?, &stored));
+        let phones = match read.await {
             Ok(phones) => phones,
             Err(error) => {
                 observability::event(

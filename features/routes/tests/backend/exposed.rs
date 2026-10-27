@@ -123,7 +123,11 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     let year = offered.routes(&db, &dsp, &driver, &day(365), &day(0));
     assert!(year.is_ok());
     let longest = vec!["d".repeat(MOST_ID_LENGTH)];
-    assert!(offered.routes(&db, &dsp, &longest, &day(3), &day(0)).is_ok());
+    assert!(
+        offered
+            .routes(&db, &dsp, &longest, &day(3), &day(0))
+            .is_ok()
+    );
     let longer = vec!["d".repeat(MOST_ID_LENGTH + 1)];
     let seventeen: Vec<String> = (0..17).map(|n| format!("driver-{n}")).collect();
     for (asked, from, to, code) in [
@@ -507,7 +511,9 @@ async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() 
         .connection_revision(&dsp, dispatch_cortex::PROVIDER)
         .unwrap()
         .unwrap();
-    crate::keep_live(&state, &dsp, read, revision).await.unwrap();
+    crate::keep_live(&state, &dsp, read, revision)
+        .await
+        .unwrap();
     assert_eq!(
         live.day_phones(&db, &dsp).unwrap(),
         DayPhones::Read(vec![
