@@ -179,7 +179,7 @@ pub enum DayPhones {
     /// it holds no read of today.
     Uncollected,
     /// The day's read was kept before Routes kept its itineraries' work phones, and they aren't
-    /// extracted from its stored responses yet.
+    /// extracted from its stored responses yet; or, live, today hasn't been read again since.
     Unextracted,
     /// Each driver's latest work phone of the day, one each, by their ID: none when no itinerary
     /// showed one.

@@ -65,16 +65,16 @@ it is live route data, in a database of its own, `routelive`.
   depart, of those showing one; of two no time tells apart, the one whose ID sorts last. Nothing
   is tracked over time: of two drivers who swapped phones, each has the one they swapped to.
 - **Route data changed:** every feature that hears it is told a day's route data changed, as it's
-  kept, with the day (`routes.data_changed`, after `people.changed` when a live read or a save
-  names drivers anew): after a live read that changed a row of the day's itineraries, drivers or
-  routes, or brought a day new to live route data, rather than only the responses it keeps whole,
-  as the list's, whose `backendTime` changes read by read; each time live route data is emptied,
-  of the day it held, or today once it holds none; once a read of a day saved becomes its read; and
-  once a day's work phones are extracted. A collection, and a reprocess, change a day
-  where nothing is at hand to tell of it, so the day is noted in the server's memory
-  (`backend/changed.rs`) and told once Routes hears its collection succeeded
-  (`collection.succeeded`), or by the next minute's upkeep, whichever is first; a restart before
-  then tells of none.
+  kept, with the day (`routes.data_changed`, after `people.changed` when a live read or a save names
+  drivers anew): after a live read that changed a row of the day's itineraries, drivers or routes,
+  brought a day new to live route data, or read again one kept before itineraries kept their phones,
+  whose phones are read from then on though it shows none, rather than only the responses it keeps
+  whole, as the list's `backendTime` changes read by read; each time live route data is emptied, of
+  the day it held, or today once it holds none; once a read of a day saved becomes its read; and
+  once a day's work phones are extracted. A collection, and a reprocess, change a day where nothing
+  is at hand to tell of it, so the day is noted in the server's memory (`backend/changed.rs`) and
+  told once Routes hears its collection succeeded (`collection.succeeded`), or by the next minute's
+  upkeep, whichever is first; a restart before then tells of none.
 - **Work phones:** who holds which of the company's work phones is settled from each whole live
   read, in the transaction that keeps it (`backend/phones.rs`), from what each driver's record
   shows: the list's phone, else their itinerary's, by its last ten digits. A driver claims a

@@ -79,6 +79,24 @@ fn read(day: &str, mode: Mode) -> Capture {
     .unwrap();
     routes::fixture(&request).unwrap()
 }
+/// The fixture's read of `day` as `read` has it, its drivers' records showing no phone.
+fn phoneless(day: &str, mode: Mode) -> Capture {
+    let mut read = read(day, mode);
+    for drivers in [
+        &mut read.summaries["transporters"],
+        &mut read.route_summaries["transporters"],
+    ] {
+        for driver in drivers.as_array_mut().unwrap() {
+            driver.as_object_mut().unwrap().remove("workPhoneNumber");
+        }
+    }
+    for itinerary in &mut read.itineraries {
+        let mut response: serde_json::Value = serde_json::from_str(&itinerary.detail).unwrap();
+        response["transporters"] = json!([]);
+        itinerary.detail = response.to_string();
+    }
+    read
+}
 /// Keeps `read` as a live reader does, under the DSP's Cortex connection as it stands.
 async fn keep_live(state: &Arc<State>, dsp: &str, read: Capture) -> dispatch_routes::LiveKept {
     let d = dsp.to_owned();
@@ -115,6 +133,11 @@ fn day_phones(db: &Store, dsp: &str, day: &str) -> DayPhones {
         .day_phones(db, dsp, day)
         .unwrap()
 }
+/// Today's work phones as live route data holds them, as other features read them.
+fn live_phones(db: &Store, dsp: &str) -> DayPhones {
+    let live = dispatch_routes_contract::live_for_dsp(db, dsp).unwrap();
+    live.expect("Routes is on").day_phones(db, dsp).unwrap()
+}
 /// Routes' upkeep, as the scheduler offers it every minute.
 async fn upkeep(state: &Arc<State>) {
     (dispatch_routes::FEATURE.maintenance[0].run)(state.clone(), false).await;
@@ -122,7 +145,7 @@ async fn upkeep(state: &Arc<State>) {
 
 #[tokio::test]
 async fn a_live_day_is_heard_of_once_a_read_changed_it_and_as_its_emptied_or_saved() {
-    let (_root, _db, dsp, state) = ready();
+    let (_root, db, dsp, state) = ready();
     let today = day(0);
     let first = read(&today, Mode::Snapshot);
     keep_live(&state, &dsp, first.clone()).await;
@@ -151,6 +174,20 @@ async fn a_live_day_is_heard_of_once_a_read_changed_it_and_as_its_emptied_or_sav
         .unwrap();
     dispatch_routes::clear_live(&state, &dsp).await.unwrap();
     assert_eq!(heard(&dsp), vec![today.clone(); 5]);
+
+    // Kept as a release before kept itineraries' phones left it, its drivers showing none: the next
+    // read writes no row, yet its readers read its phones, none, from then on.
+    let phoneless = phoneless(&today, Mode::Snapshot);
+    keep_live(&state, &dsp, phoneless.clone()).await;
+    let shaped = "UPDATE route_publications SET adapter_version=2";
+    db.routes_live_db(&dsp).unwrap().exec(shaped, []).unwrap();
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Unextracted);
+    heard(&dsp);
+    let mut later = phoneless;
+    later.finished_at += 1;
+    assert_eq!(keep_live(&state, &dsp, later).await.changed, 0);
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(Vec::new()));
+    assert_eq!(heard(&dsp), [today.as_str()], "its phones read");
 
     // Another feature's read of the day before, saved: of that day, unless one the day has is later.
     let before = read(&day(1), Mode::Final);
@@ -209,21 +246,7 @@ async fn a_day_kept_before_its_work_phones_were_has_them_extracted_from_its_stor
     for back in [1, 2] {
         collect(&db, &dsp, &day(back), read(&day(back), Mode::Final));
     }
-    let mut phoneless = read(&day(3), Mode::Final);
-    for drivers in [
-        &mut phoneless.summaries["transporters"],
-        &mut phoneless.route_summaries["transporters"],
-    ] {
-        for driver in drivers.as_array_mut().unwrap() {
-            driver.as_object_mut().unwrap().remove("workPhoneNumber");
-        }
-    }
-    for itinerary in &mut phoneless.itineraries {
-        let mut response: serde_json::Value = serde_json::from_str(&itinerary.detail).unwrap();
-        response["transporters"] = json!([]);
-        itinerary.detail = response.to_string();
-    }
-    collect(&db, &dsp, &day(3), phoneless);
+    collect(&db, &dsp, &day(3), phoneless(&day(3), Mode::Final));
     upkeep(&state).await;
     heard(&dsp);
     let historical = db.routes_db(&dsp).unwrap();

@@ -2,7 +2,7 @@
 //! read in a database of its own beside historical route data (`routelive`), with who holds
 //! which work phone (`phones`); emptied as a new day starts, and saved into historical route data
 //! as one of the day's reads. A feature reading routes live keeps its reads here.
-use super::*;
+use super::{work_phones::PHONES_SINCE, *};
 use dispatch_core::{
     State,
     foundation::crypto,
@@ -43,8 +43,9 @@ struct Kept {
     /// Whether it named a driver live route data didn't.
     named: bool,
     /// Whether it changed what the day's readers read: its itinerary, driver or route rows, or the
-    /// day itself, one live route data didn't hold. Not the responses kept whole beside them, which
-    /// a read changes each time Cortex answers its list (`backendTime`).
+    /// day itself, one live route data didn't hold, or held as shaped before itineraries kept their
+    /// phones, whose phones they read from then on, though it shows none. Not the responses kept
+    /// whole beside them, which a read changes each time Cortex answers its list (`backendTime`).
     data_changed: bool,
 }
 
@@ -190,7 +191,7 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<Kept> {
     let listed: Vec<String> = read.itineraries.iter().map(|i| i.id.clone()).collect();
     db.transaction(|| {
         let held = db.one(
-            "SELECT id,day,station,service_area_id,provider,collected_at,\
+            "SELECT id,day,station,service_area_id,provider,collected_at,adapter_version,\
              (SELECT count(*) FROM itineraries) itineraries FROM route_publications",
             [],
         )?;
@@ -226,7 +227,10 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<Kept> {
                     "routes_capture_invalid",
                     502,
                 )?;
-                (s(row, "id").to_owned(), false)
+                let unextracted = row["adapter_version"]
+                    .as_i64()
+                    .is_none_or(|version| version < PHONES_SINCE);
+                (s(row, "id").to_owned(), unextracted)
             }
             None => {
                 if held.is_some() {
