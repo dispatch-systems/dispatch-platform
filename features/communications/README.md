@@ -500,15 +500,18 @@ Behind `communications.use`:
 - `POST …/conversations/{id}/driver` (`driverId`): Pick driver, for a work phone nobody held: the
   driver's conversation.
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.
-- `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer; by text, the text
-  alone, refused as `communications_texting_off` while the DSP doesn't text.
+- `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer; by text, refused as
+  `communications_texting_off` while the DSP doesn't text. Answers the message and the conversation
+  it's in now (`conversation`): by text, another once the number changed hands as it went, which
+  the page then opens.
 - `POST …/conversations/{id}/messages/{message}/retry`: sends again a text Dispatch sent that
   failed.
 - `POST …/conversations/{id}/done`, and `…/typing`, which says the member is writing.
 - `POST …/conversations/{id}/contact` (`name`), `…/block` and `…/unblock`: a number's
   conversation's, as the number's.
 - `POST …/texts/conversations` (`number`, or `driverId` for one of today's drivers): opens the
-  number's or the driver's conversation, to text them first.
+  conversation a text to the number written now is filed in, as filing decides (a driver's while
+  they hold it as a work phone), or the driver's, to text them first.
 - `POST …/texts/uploads?name=&type=`: a picture for a text not sent yet, as its bytes, kept by
   `texting`.
 - `GET …/texts/contacts?q=<name or digits>`: whom the DSP can text, and the numbers blocked.

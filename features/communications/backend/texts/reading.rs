@@ -335,6 +335,14 @@ pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversatio
     Ok(conversations(db, &people, &numbers, dsp, vec![kept])?.remove(0))
 }
 
+/// The conversation the text `id` is filed in now, as the page reads it.
+pub fn filed(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversation> {
+    let kept = db
+        .communications_text(dsp, id)?
+        .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
+    one(db, state, dsp, &kept.conversation)
+}
+
 /// The text `id` as the page reads it.
 pub fn message(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Message> {
     let kept = db

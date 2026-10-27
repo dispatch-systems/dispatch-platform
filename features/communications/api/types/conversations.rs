@@ -139,6 +139,21 @@ pub struct Sender {
     pub photo: Option<String>,
 }
 
+/// `POST /api/dsp/communications/conversations/{id}/messages`: the message sent, and the
+/// conversation it's in now, as it is: by text, another than the one written in once the number it
+/// went to changed hands as it went, which the page follows.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+#[serde(rename_all = "camelCase")]
+pub struct SentMessage {
+    pub conversation: Conversation,
+    pub message: Message,
+}
+
 /// A photo or file attached to a message, which `files/{id}` serves once it's kept.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

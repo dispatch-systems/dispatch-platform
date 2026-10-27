@@ -2,10 +2,11 @@
 //! lists everyone Driver Match has a phone number for who hasn't left, by their first, and every
 //! number the DSP saved a name for, each number once, by name, with its conversation if it has
 //! one; then the numbers blocked. A name typed, misspelt or not, finds them as it finds
-//! conversations; digits typed, by their number. A number's conversation, or one of today's
-//! drivers', is opened to text it first, and a number saved under a name, shared at the DSP, or
-//! blocked, or unblocked.
+//! conversations; digits typed, by their number. A number's conversation, where a text to it
+//! written now is filed, or one of today's drivers', is opened to text it first, and a number saved
+//! under a name, shared at the DSP, or blocked, or unblocked.
 use super::{
+    filing,
     live_day::LiveDay,
     model::Filed,
     numbers::Numbers,
@@ -99,12 +100,13 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
     })
 }
 
-/// The number `raw`'s conversation, opened with no text if it's new, for someone at the DSP to
-/// text first.
+/// The conversation a text to the number `raw` written now belongs in, as filing would place it,
+/// opened with no text if it's new, for someone at the DSP to text first: a work phone's held now
+/// is its driver's.
 pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversation> {
     let number = texting::normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
     offering(db, dsp)?;
-    let opened = db.open_communications_text(dsp, &Filed::Number(number))?;
+    let opened = db.open_communications_text(dsp, &filing::belongs(db, dsp, &number)?)?;
     one(db, state, dsp, &opened.id)
 }
 
@@ -157,3 +159,7 @@ pub fn block(
     live::changed(state, dsp);
     one(db, state, dsp, id)
 }
+
+#[cfg(test)]
+#[path = "../../tests/backend/texts/contacts.rs"]
+mod tests;

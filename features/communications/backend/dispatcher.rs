@@ -10,7 +10,7 @@ use super::{
     storage::CommunicationsStore,
     texts::{self, storage::TextStore},
 };
-use crate::api::types::{Conversation, ConversationMessages, Message, Profile};
+use crate::api::types::{Conversation, ConversationMessages, Profile, SentMessage};
 use dispatch_core::{
     Result, State, accounts::Context, db::Store, ensure, server::http::route::Dsp,
 };
@@ -84,7 +84,8 @@ pub fn found(db: &Store, dsp: &str, reference: &Reference) -> Result<()> {
 }
 
 /// Sends what the member `c` wrote in the conversation `reference`, with the photos `photos` they
-/// added for it: the message, as the page reads it.
+/// added for it: the message, as the page reads it, and the conversation it's in now, which by text
+/// is another once the number it went to changed hands as it went.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
@@ -92,9 +93,25 @@ pub async fn send(
     reference: &Reference,
     written: &str,
     photos: &[String],
-) -> Result<Message> {
-    match reference {
-        Reference::Slack(id) => reply::send(state, c, access, id, written, photos).await,
-        Reference::Text(id) => texts::reply::send(state, c, access, id, written, photos).await,
-    }
+) -> Result<SentMessage> {
+    let message = match reference {
+        Reference::Slack(id) => reply::send(state, c, access, id, written, photos).await?,
+        Reference::Text(id) => texts::reply::send(state, c, access, id, written, photos).await?,
+    };
+    let (shared, dsp, sent_in, sent) = (
+        state.clone(),
+        c.dsp.id.clone(),
+        reference.clone(),
+        message.id.clone(),
+    );
+    let conversation = state
+        .read(move |db| match &sent_in {
+            Reference::Slack(id) => conversations::one(db, &shared, &dsp, id),
+            Reference::Text(_) => texts::reading::filed(db, &shared, &dsp, &sent),
+        })
+        .await?;
+    Ok(SentMessage {
+        conversation,
+        message,
+    })
 }

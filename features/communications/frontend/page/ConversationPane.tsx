@@ -5,6 +5,7 @@ import type {
   Elsewhere,
   Message,
   RouteDriver,
+  SentMessage,
   Today,
   Writing,
 } from '../../api/index.js';
@@ -118,8 +119,14 @@ export function ConversationPane({
     read.show(after);
     show(after);
   });
-  const sent = (message: Message) => {
+  const sent = ({ conversation: theirs, message }: SentMessage) => {
     if (!conversation) return;
+    // Filed in another conversation, as its number changed hands as it went: follow it there.
+    if (theirs.id !== id) {
+      show(theirs);
+      go(asElsewhere(theirs));
+      return;
+    }
     // Answered, it waits no more, unless it didn't go; the next update says so for everyone.
     const answered: Partial<Conversation> =
       message.status === 'failed' ? {} : { state: 'responded', waitingSince: null };

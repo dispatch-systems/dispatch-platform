@@ -18,6 +18,7 @@ import type {
   GroupPeople,
   Message,
   Profile,
+  SentMessage,
   TextContacts,
   TodaysRoutes,
 } from './index.js';
@@ -109,9 +110,9 @@ export const getContacts = (typed = '', team?: string) =>
 /** Opens a direct message with a member, to message them first. */
 export const openConversation = (teamId: string, userId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations`, { teamId, userId });
-/** Sends a message, with the photos added for it. */
+/** Sends a message, with the photos added for it: it, and the conversation it's in now. */
 export const sendMessage = (id: string, text: string, photos: string[] = []) =>
-  api<Message>(`${communicationsUrl}/conversations/${id}/messages`, { text, photos });
+  api<SentMessage>(`${communicationsUrl}/conversations/${id}/messages`, { text, photos });
 /** Marks a conversation answered without a reply. */
 export const markDone = (id: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/done`, {});

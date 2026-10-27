@@ -45,6 +45,7 @@ export type { ProfileOpens } from './generated/ProfileOpens';
 export type { Reachable } from './generated/Reachable';
 export type { RouteDriver } from './generated/RouteDriver';
 export type { Sender } from './generated/Sender';
+export type { SentMessage } from './generated/SentMessage';
 export type { Spacing } from './generated/Spacing';
 export type { TeamColor } from './generated/TeamColor';
 export type { TeamSide } from './generated/TeamSide';

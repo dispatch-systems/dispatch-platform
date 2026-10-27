@@ -214,6 +214,12 @@ fn refiled_by(
     db.refile_communications_texts(dsp, &moves)
 }
 
+/// Where a text with `number` written now belongs, as filing would place it: what someone at the
+/// DSP opens to text the number first, so their text and its answers go there.
+pub fn belongs(db: &Store, dsp: &str, number: &str) -> Result<Filed> {
+    Filer::new(db, dsp)?.placed(number, now())
+}
+
 /// `text` as Communications keeps it, filed as `filed`.
 fn kept(text: &Text, filed: Filed) -> Incoming {
     Incoming {
