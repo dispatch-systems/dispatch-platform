@@ -4,14 +4,12 @@
 //! each work phone nobody held that texted today, as itself. At the stop it's empty, and the
 //! conversations stay. Offered while the DSP texts and has live route data.
 use super::{
-    live_day::LiveDay,
-    numbers::Numbers,
-    offered as texts, reading,
-    storage::{TextConversation, TextStore},
+    live_day::LiveDay, model::TextConversation, numbers::Numbers, offered as texts, reading,
+    storage::TextStore,
 };
 use crate::{
     api::types::{RouteDriver, TodaysRoutes},
-    backend::{conversations::People, today},
+    backend::{people::People, today},
 };
 use dispatch_core::{Result, State, db::Store, foundation::names};
 use dispatch_routes_contract as routes;

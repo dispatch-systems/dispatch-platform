@@ -6,9 +6,11 @@
 //! (`im:write`). Slack is called outside the database, and the member's access checked again
 //! before anything is kept, or, for a message, before it goes to Slack: what Slack has is kept.
 use super::{
+    compose::{SLACK, checked, photo_kind},
     conversations, files,
     files::{File, FileStore},
     live,
+    people::People,
     sender::{self, Identity},
     storage::{self, CommunicationsStore, DOMAIN, Sent},
     text,
@@ -25,19 +27,8 @@ use dispatch_slack::kit::{self, Bot};
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 
-/// The most a message's text may be, in characters, as Slack shows a section of a message.
-pub const TEXT_MOST: usize = 3000;
-/// The most photos a message may carry, and the largest each may be, in bytes.
-pub const PHOTOS_MOST: usize = 10;
-pub const PHOTO_MOST: u64 = 20 * 1024 * 1024;
 /// How long a message's photos are claimed for it while it goes to Slack, in milliseconds.
 const SENDING_MS: i64 = 10 * 60 * 1000;
-/// The kinds of photo a message carries, by text too, each with how its bytes begin.
-pub const PHOTO_KINDS: &[(&str, &[u8])] = &[
-    ("image/png", b"\x89PNG"),
-    ("image/jpeg", b"\xff\xd8\xff"),
-    ("image/gif", b"GIF8"),
-];
 
 /// Opens a direct message with the workspace `team`'s member `user`, for the member `c` to
 /// message them first: their conversation, made if it's new.
@@ -105,7 +96,7 @@ pub async fn send(
     written: &str,
     photos: &[String],
 ) -> Result<Message> {
-    let written = checked(written, photos)?;
+    let written = checked(written, photos, SLACK)?;
     let (dsp, at, by, chosen) = (
         c.dsp.id.clone(),
         id.to_owned(),
@@ -141,25 +132,6 @@ pub async fn send(
     }
     sent
 }
-/// What someone at the DSP wrote, trimmed, with the photos they added: refused when it's
-/// nothing, longer than Slack shows, or with too many photos or one twice.
-pub(crate) fn checked<'a>(written: &'a str, photos: &[String]) -> Result<&'a str> {
-    let written = written.trim();
-    let distinct = photos
-        .iter()
-        .enumerate()
-        .all(|(n, photo)| !photos[..n].contains(photo));
-    ensure(
-        (!written.is_empty() || !photos.is_empty())
-            && written.chars().count() <= TEXT_MOST
-            && photos.len() <= PHOTOS_MOST
-            && distinct,
-        "invalid_input",
-        400,
-    )?;
-    Ok(written)
-}
-
 /// Sends what the member `c` wrote in `conversation`, with the photos `uploads` they added, then
 /// keeps it: the message, as the page reads it.
 async fn deliver(
@@ -204,7 +176,7 @@ async fn deliver(
                 photos: &photos,
             };
             let kept = db.keep_communications_reply(&dsp, &id, &sent)?;
-            let people = conversations::People::read(db, &shared, &dsp)?;
+            let people = People::read(db, &shared, &dsp)?;
             Ok(conversations::messages(db, &people, &dsp, vec![kept])?.remove(0))
         })
         .await?;
@@ -276,11 +248,7 @@ pub async fn upload(
     mime: &str,
     upload: Upload,
 ) -> Result<CommunicationsUpload> {
-    let begins = PHOTO_KINDS
-        .iter()
-        .find(|(kind, _)| *kind == mime)
-        .map(|(_, begins)| *begins)
-        .ok_or_else(|| Error::new("communications_photo_kind", 415))?;
+    let begins = photo_kind(mime).ok_or_else(|| Error::new("communications_photo_kind", 415))?;
     let size = upload.length as i64;
     let sha256 = files::keep(state, &c.dsp.id, upload).await?;
     let head = files::head(state, &c.dsp.id, &sha256, begins.len()).await?;

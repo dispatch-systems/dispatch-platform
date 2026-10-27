@@ -1,44 +1,23 @@
 //! Communications' storage, in each DSP's own database: each conversation with a member of one of
-//! its Slack workspaces, its messages, and each change to them in order, for the pages waiting
-//! on them. Whether a conversation waits on an answer follows from its messages, and is kept
-//! beside them each time they change. The photos and files attached are `files`'. Only this
+//! its Slack workspaces, and its messages, each change to them noted for the pages waiting on
+//! them (`changes`). Whether a conversation waits on an answer follows from its messages, and is
+//! kept beside them each time they change. The photos and files attached are `files`'. Only this
 //! crate writes SQL against its tables.
-use super::groups::storage::settle_group;
+use super::{
+    changes::changed_conversation,
+    groups::storage::settle_group,
+    model::{ConversationState, Direction, SLACK_PREFIX},
+};
 use dispatch_core::{
     Error, Result,
     db::{Db, FromRow, Row, Store, migrations::add_column, now},
     foundation::crypto,
     server::cache::DataDomain,
-    text_enum,
 };
 use rusqlite::params;
 
 /// What Communications' writes change, for the read cache: its own data alone.
 pub const DOMAIN: DataDomain = DataDomain::new("communications");
-/// How many changes are kept for the pages waiting on them: one further behind reads afresh.
-const CHANGES_KEPT: i64 = 1000;
-
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    /// Whether a conversation waits on an answer: the member's latest message came after
-    /// anyone at the DSP answered, or marked it done; someone at the DSP answered last; or
-    /// marked it done without answering.
-    pub enum ConversationState {
-        Waiting => "waiting",
-        Responded => "responded",
-        Done => "done",
-    }
-}
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    /// Who wrote a message: the member (`in`), or someone at the DSP (`out`).
-    pub enum Direction {
-        In => "in",
-        Out => "out",
-    }
-}
 
 /// A conversation with a member of one of the DSP's workspaces, as kept.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -233,15 +212,6 @@ pub trait CommunicationsStore {
         before: Option<&str>,
         most: usize,
     ) -> Result<Vec<Message>>;
-    /// The latest change to any conversation: 0 before the first.
-    fn communications_revision(&self, dsp: &str) -> Result<i64>;
-    /// The conversations changed since the change `after`, and the latest change: none for
-    /// changes no longer kept, which reading afresh answers.
-    fn communications_changed_since(
-        &self,
-        dsp: &str,
-        after: i64,
-    ) -> Result<(Option<Vec<String>>, i64)>;
     /// The workspace's conversations.
     fn communications_in(&self, dsp: &str, team: &str) -> Result<Vec<Conversation>>;
     /// Notes that catching up read the conversation's messages up to `at`.
@@ -489,33 +459,6 @@ impl CommunicationsStore for Store {
         messages.reverse();
         Ok(messages)
     }
-    fn communications_revision(&self, dsp: &str) -> Result<i64> {
-        let db = self.dsp(dsp)?;
-        revision(&db)
-    }
-    fn communications_changed_since(
-        &self,
-        dsp: &str,
-        after: i64,
-    ) -> Result<(Option<Vec<String>>, i64)> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            let latest = revision(&db)?;
-            let first = db.count(
-                "SELECT coalesce(min(revision),0) FROM communications_changes",
-                [],
-            )?;
-            // Changes since one no longer kept, or one never made, are read afresh.
-            if after > latest || after < first - 1 {
-                return Ok((None, latest));
-            }
-            let changed: Vec<(String,)> = db.query_as(
-                "SELECT DISTINCT conversation_id FROM communications_changes WHERE revision>?",
-                [after],
-            )?;
-            Ok((Some(changed.into_iter().map(|(id,)| id).collect()), latest))
-        })
-    }
     fn communications_in(&self, dsp: &str, team: &str) -> Result<Vec<Conversation>> {
         self.dsp(dsp)?.query_as(
             "SELECT * FROM communications_conversations WHERE team_id=? ORDER BY id",
@@ -575,7 +518,7 @@ pub(crate) fn opened(db: &Db, team: &str, user: &str, channel: &str, name: &str)
         "INSERT INTO communications_conversations (id,team_id,user_id,channel_id,name) \
          VALUES (?,?,?,?,?) ON CONFLICT(team_id,user_id) DO UPDATE SET \
          channel_id=excluded.channel_id,name=excluded.name",
-        params![crypto::id("cv")?, team, user, channel, name],
+        params![crypto::id(SLACK_PREFIX)?, team, user, channel, name],
     )?;
     let (id,): (String,) = db
         .one_as(
@@ -745,28 +688,6 @@ pub(crate) fn add_groups(db: &Db) -> Result<()> {
         [],
     )?;
     Ok(())
-}
-
-/// Notes the conversation, or the group (by its own ID, which the column holds as well), changed,
-/// for the pages waiting on changes, keeping the latest thousand.
-pub(crate) fn changed_conversation(db: &Db, conversation: &str) -> Result<()> {
-    db.exec(
-        "INSERT INTO communications_changes (conversation_id) VALUES (?)",
-        [conversation],
-    )?;
-    db.exec(
-        "DELETE FROM communications_changes WHERE revision<=\
-         (SELECT max(revision) FROM communications_changes)-?",
-        [CHANGES_KEPT],
-    )?;
-    Ok(())
-}
-
-fn revision(db: &Db) -> Result<i64> {
-    db.count(
-        "SELECT coalesce(max(revision),0) FROM communications_changes",
-        [],
-    )
 }
 
 #[cfg(test)]

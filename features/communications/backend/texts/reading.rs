@@ -4,22 +4,22 @@
 //! the live day (`live_day`); a driver's comes with their route today, each workday's route, and
 //! their conversations of other kinds.
 use super::{
-    elsewhere,
     live_day::{self, LiveDay},
+    model::{Text, TextConversation},
     numbers::Numbers,
     offered,
-    storage::{ConversationKind, Text, TextConversation, TextStore},
+    storage::TextStore,
     workdays,
 };
 use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
 };
 use crate::backend::{
-    conversations::{PAGE, People},
+    compose, elsewhere,
     files::FileStatus,
-    search,
-    storage::Direction,
-    today,
+    model::{ConversationKind, Direction, PAGE},
+    people::People,
+    search, today,
 };
 use dispatch_core::manifest::people::Person;
 use dispatch_core::{
@@ -145,13 +145,21 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
         .collect()
 }
 
+/// The numbers' conversations waiting, while the DSP texts, the longest waiting first, but a
+/// blocked number's.
+pub fn waiting_numbers(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
+    if !offered(db, dsp)? {
+        return Ok(Vec::new());
+    }
+    db.waiting_communications_texts(dsp)
+}
 /// The conversations by text waiting, while the DSP texts, the longest waiting first: the
 /// numbers', but a blocked number's, and the work conversations waiting on the live day.
 pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
     if !offered(db, dsp)? {
         return Ok(Vec::new());
     }
-    let mut waiting = db.waiting_communications_texts(dsp)?;
+    let mut waiting = waiting_numbers(db, dsp)?;
     waiting.extend(live_day::waiting(db, dsp)?);
     waiting.sort_by(|a, b| {
         a.waiting_since
@@ -304,6 +312,7 @@ pub fn opened(
         today,
         elsewhere,
         workdays,
+        limits: texting::for_dsp(db, dsp)?.map(|texting| compose::texted(texting).into()),
     })
 }
 /// Whom the conversation `kept` is with, as Driver Match knows them: the driver, or whoever it
@@ -322,6 +331,14 @@ pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversatio
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
     Ok(conversations(db, &people, &numbers, dsp, vec![kept])?.remove(0))
+}
+
+/// The conversation the text `id` is filed in now, as the page reads it.
+pub fn filed(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversation> {
+    let kept = db
+        .communications_text(dsp, id)?
+        .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
+    one(db, state, dsp, &kept.conversation)
 }
 
 /// The text `id` as the page reads it.

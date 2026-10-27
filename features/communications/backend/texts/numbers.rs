@@ -2,7 +2,7 @@
 //! (`shown`); the ten digits Routes keeps a work phone by (`ten_digits`), and back
 //! (`work_number`); and what the DSP keeps of the numbers that text it, and what its phones are
 //! called, to read its texts by (`Numbers`).
-use super::storage::TextStore;
+use super::storage::ContactStore;
 use dispatch_core::{Result, db::Store};
 use dispatch_phones_contract as texting;
 use std::collections::{BTreeSet, HashMap};

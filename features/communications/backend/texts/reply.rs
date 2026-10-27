@@ -1,7 +1,8 @@
 //! Answering by text, with pictures, and sending again one that failed. An answer goes as
 //! written, with nothing added, so the other party sees only the DSP's number: through `texting`,
 //! from the phone that last texted that number, else the one seen last; and is kept as Phones then
-//! tells of it, with how it went, under the full name of whoever wrote it, as a Slack answer is.
+//! tells of it, with how it went, under the full name of whoever wrote it, as a Slack answer is,
+//! which filing takes as it first keeps it (`sent_by`).
 //! A number's conversation, and a work phone's nobody held, answer their number; a driver's, the
 //! work phone they hold now, as live route data says, and none while they hold none. Its pictures
 //! are kept by `texting` as they're added, its adder's alone until they go with it, and let go of
@@ -9,20 +10,14 @@
 //! Either goes only where a text written now goes, and while the member may still send it, checked
 //! as `texting` queues it, so no handoff, stop or change of their access comes between.
 use super::{
-    filing,
-    live_day::LiveDay,
-    numbers::work_number,
-    offering,
-    reading::message,
-    storage::{ConversationKind, TextStore},
+    filing, live_day::LiveDay, numbers::work_number, offering, reading::message, storage::TextStore,
 };
 use crate::{
     api::types::{CommunicationsUpload, Message},
     backend::{
+        compose::{checked, photo_kind, texted},
         live,
-        reply::{PHOTO_KINDS, checked},
-        sender,
-        storage::DOMAIN,
+        model::ConversationKind,
     },
 };
 use dispatch_core::{
@@ -42,11 +37,11 @@ pub async fn send(
     written: &str,
     photos: &[String],
 ) -> Result<Message> {
-    let body = checked(written, photos)?.to_owned();
     let (dsp, at) = (c.dsp.id.clone(), id.to_owned());
     let (to, texting) = state
         .read(move |db| Ok((recipient(db, &dsp, &at)?, offering(db, &dsp)?)))
         .await?;
+    let body = checked(written, photos, texted(texting))?.to_owned();
     // Checked again as it's queued: once Phones has it, it's sent.
     let (asked, at, number) = (c.clone(), id.to_owned(), to.clone());
     let condition = Box::new(move |db: &Store| {
@@ -63,12 +58,9 @@ pub async fn send(
     let sent = texting.send(state, &c.dsp.id, outgoing, condition).await?;
     live::stopped(state, &c.dsp.id, id, &c.auth.user.id);
     filing::read_on(state, &c.dsp.id).await?;
-    let (shared, dsp, name) = (state.clone(), c.dsp.id.clone(), sender::name(&c.auth.user));
+    let (shared, dsp) = (state.clone(), c.dsp.id.clone());
     state
-        .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            db.name_communications_text(&dsp, &sent.id, &name)?;
-            message(db, &shared, &dsp, &sent.id)
-        })
+        .read(move |db| message(db, &shared, &dsp, &sent.id))
         .await
 }
 
@@ -154,11 +146,7 @@ pub async fn upload(
     mime: &str,
     photo: Upload,
 ) -> Result<CommunicationsUpload> {
-    ensure(
-        PHOTO_KINDS.iter().any(|(kind, _)| *kind == mime),
-        "communications_photo_kind",
-        415,
-    )?;
+    ensure(photo_kind(mime).is_some(), "communications_photo_kind", 415)?;
     let dsp = c.dsp.id.clone();
     let texting = state.read(move |db| offering(db, &dsp)).await?;
     let added = Added {

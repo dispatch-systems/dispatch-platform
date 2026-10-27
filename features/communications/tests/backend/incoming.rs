@@ -4,7 +4,7 @@
 use super::*;
 use crate::backend::{
     files::{self, FileStatus, FileStore},
-    storage::ConversationState,
+    model::ConversationState,
     support,
 };
 use dispatch_core::db::now;

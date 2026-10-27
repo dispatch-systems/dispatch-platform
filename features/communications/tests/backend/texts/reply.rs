@@ -1,5 +1,6 @@
 //! Answering by text: what's written goes as written, from the DSP's phone, under whoever wrote
-//! it on the page; one that fails leaves the conversation waiting, and Retry sends it again. Neither
+//! it on the page, as much as texting says a text carries; one that fails leaves the conversation
+//! waiting, and Retry sends it again. Neither
 //! goes to a work phone the driver no longer holds, even as it changes hands while it's under way,
 //! nor once its writer's access ended as it went.
 //! A picture added for one is let go of once its adder's access ended while it came.
@@ -7,10 +8,7 @@ use super::*;
 use crate::ConversationState;
 use crate::backend::{
     support::{self, at, filed, held, hold, texted, today},
-    texts::{
-        reading::one,
-        storage::{TextStatus, TextStore},
-    },
+    texts::{model::TextStatus, reading::one, storage::TextStore},
 };
 use axum::body::Bytes;
 use dispatch_core::{db::now, server::http::upload::Upload};
@@ -205,4 +203,41 @@ async fn a_picture_is_let_go_once_its_adders_access_ended_while_its_bytes_came()
     support::off_while_reading(&dsp);
     assert_eq!(add().await.unwrap_err().code, "permission_denied");
     assert_eq!(support::added(&dsp), [kept.id]);
+}
+
+#[tokio::test]
+async fn an_answer_carries_as_much_as_texting_says_a_text_does_not_what_slacks_does() {
+    let (_root, state, dsp) = support::started();
+    let asked = texted(&state, &dsp, "+12535550177", "Can I swap Saturday?", now()).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let mut pictures = Vec::new();
+    for _ in 0..4 {
+        let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"png"))]);
+        let photo = Upload::streamed(3, u64::MAX, chunks).await.unwrap();
+        let added = upload(&state, &c, support::USE, "door.png", "image/png", photo).await;
+        pictures.push(added.unwrap().id);
+    }
+    let answer = |written: String, photos: &[String]| {
+        let (state, c, conversation, photos) = (&state, &c, &conversation, photos.to_vec());
+        async move {
+            send(state, c, support::USE, conversation, &written, &photos)
+                .await
+                .map(|sent| sent.text)
+                .map_err(|refused| refused.code)
+        }
+    };
+
+    // The stand-in's texts carry 1,000 characters and three pictures, where Slack's carry more.
+    let most = "a".repeat(1_000);
+    let refused = Err("invalid_input".to_owned());
+    assert_eq!(answer(format!("{most}a"), &[]).await, refused);
+    assert_eq!(answer(String::new(), &pictures).await, refused);
+    assert_eq!(answer(most.clone(), &[]).await, Ok(most));
+    assert!(answer(String::new(), &pictures[..3]).await.is_ok());
+    assert_eq!(
+        support::sent(&dsp).len(),
+        2,
+        "only those within texting's limits went"
+    );
 }

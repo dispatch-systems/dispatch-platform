@@ -73,7 +73,7 @@ test('a direct message reaches Communications live, and its answer and photo go 
     text: 'On my way',
   });
   assert.equal(answer.status, 201, answer.body);
-  assert.equal(answer.value.sender.name, 'Platform Owner');
+  assert.equal(answer.value.message.sender.name, 'Platform Owner');
   assert.equal((await read()).conversations[0].state, 'responded');
   await write({ text: 'Thanks' });
   await until(async () => (await read()).waiting === 1);
@@ -208,9 +208,10 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   });
   assert.equal(answer.status, 201, answer.body);
   assert.deepEqual(
-    [answer.value.text, answer.value.status, answer.value.sender.name],
+    [answer.value.message.text, answer.value.message.status, answer.value.message.sender.name],
     ['Yes, this is dispatch', 'delivered', 'Platform Owner'],
   );
+  assert.equal(answer.value.conversation.id, asked.id);
   const opened = await owner.read(`${route}/conversations/${asked.id}`);
   assert.equal(opened.conversation.state, 'responded');
   const saved = await owner.post(`${route}/conversations/${asked.id}/contact`, {
@@ -255,7 +256,10 @@ test('a DSP’s texts are its own: listed by number, answered through its phone 
   });
   assert.equal(pictured.status, 201, pictured.body);
   assert.deepEqual(
-    [pictured.value.status, pictured.value.files.map((file: { id: string }) => file.id)],
+    [
+      pictured.value.message.status,
+      pictured.value.message.files.map((file: { id: string }) => file.id),
+    ],
     ['delivered', [picture]],
   );
   const kept = await f.raw(`${route}/texts/files/${picture}`, undefined, owner.headers);

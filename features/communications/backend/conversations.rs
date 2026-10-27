@@ -1,165 +1,31 @@
-//! The DSP's conversations as its pages read them: who each is with, as Driver Match knows them,
-//! else as their Slack profile last named them; each message with who at the DSP sent it, its
-//! files and the group it went to; and the workspaces they're in. Those waiting come first, the
-//! longest waiting first, with the groups waiting, then the latest answered and the groups among
-//! them, of every workspace or one, fifty at a time; a conversation's messages the latest fifty at
-//! a time, in the order written. The conversations by text come with them, as `texts` reads them,
-//! while the DSP texts.
+//! Slack's conversations as the DSP's pages read them: who each is with, as Driver Match knows
+//! them, else as their Slack profile last named them; each message with who at the DSP sent it, its
+//! files and the group it went to; and the workspaces they're in. The latest answered and the
+//! groups among them, of every workspace or one, fifty at a time, and those found by a name typed;
+//! a conversation's messages the latest fifty at a time, in the order written. The list of every
+//! kind, with those waiting, is `inbox`'s.
 use super::{
+    compose, elsewhere,
     files::{File, FileStore},
     groups::{
         self,
         storage::{Answered, GroupStore},
     },
-    live, search,
-    storage::{self, CommunicationsStore, Direction},
-    texts::{
-        self, elsewhere,
-        numbers::{Numbers, shown},
-        reading,
-        storage::{ConversationKind, TextStore},
-        todays_routes,
-    },
+    model::{ConversationKind, Direction, PAGE},
+    people::People,
+    search,
+    storage::{self, CommunicationsStore},
 };
 use crate::{
     api::types::{
-        Communications, CommunicationsUpdates, CommunicationsWaiting, CommunicationsWorkspace,
-        Conversation, ConversationMessages, Conversations, Correspondent, Group, Message,
-        MessageFile, MessageGroup, Sender, Typing, WaitingMessage,
+        CommunicationsWorkspace, Conversation, ConversationMessages, Conversations, Group, Message,
+        MessageFile, MessageGroup,
     },
     integrations::messages::{self, ID},
 };
-use dispatch_core::{
-    Error, Result, State,
-    db::Store,
-    manifest::people::{self, Everyone, Person, Photo, Source},
-};
+use dispatch_core::{Error, Result, State, db::Store, ensure, manifest::people::Photo};
 use dispatch_slack::kit;
-use std::{collections::HashMap, sync::Arc};
-
-/// How many answered conversations, or messages, are read at a time.
-pub const PAGE: usize = 50;
-
-/// Who the DSP's conversations are with, and who at the DSP sent each message: everyone Driver
-/// Match tells apart, and the DSP's members' email addresses, by their accounts.
-pub struct People {
-    everyone: Arc<Everyone>,
-    emails: HashMap<String, String>,
-}
-impl People {
-    pub fn read(db: &Store, state: &State, dsp: &str) -> Result<Self> {
-        Ok(Self {
-            everyone: people::everyone(db, state, dsp)?,
-            emails: db
-                .members(dsp)?
-                .into_iter()
-                .map(|member| (member.user_id, member.email))
-                .collect(),
-        })
-    }
-    /// Everyone Driver Match tells apart.
-    pub fn everyone(&self) -> &Everyone {
-        &self.everyone
-    }
-    /// The workspace `team`'s member `user`, as Driver Match knows them, if it does.
-    pub fn member_of(&self, team: &str, user: &str) -> Option<&Person> {
-        self.everyone
-            .holding(kit::SOURCE, &kit::member_id(team, user))
-    }
-    /// The workspace `team`'s member `user`, whose Slack profile last named them `name`.
-    pub fn correspondent(&self, team: &str, user: &str, name: &str) -> Correspondent {
-        Correspondent {
-            user_id: Some(user.to_owned()),
-            ..with(self.member_of(team, user), name)
-        }
-    }
-    /// The person Driver Match has the phone number `number` for, if any: of several, one who
-    /// hasn't left first, then by name.
-    pub fn holding_number(&self, number: &str) -> Option<&Person> {
-        let having = self.everyone.by_phone(number);
-        having
-            .iter()
-            .find(|person| !person.role.left())
-            .or(having.first())
-            .copied()
-    }
-    /// Whoever texts from `number`: the person Driver Match has it for, else by the name the DSP
-    /// saved for it, `contact`, else by the number.
-    pub fn texting(&self, number: &str, contact: Option<&str>) -> Correspondent {
-        let name = contact.map_or_else(|| shown(number), str::to_owned);
-        with(self.holding_number(number), &name)
-    }
-    /// The driver holding `id` of the source `source`, as Driver Match knows them, if it does.
-    pub fn driver_of(&self, source: &str, id: &str) -> Option<&Person> {
-        Source::parse(source).and_then(|source| self.everyone.holding(source, id))
-    }
-    /// The driver holding `id` of the source `source`, as Driver Match knows them, else by the
-    /// name `name`.
-    pub fn driver(&self, source: &str, id: &str, name: &str) -> Correspondent {
-        with(self.driver_of(source, id), name)
-    }
-    /// The driver holding `id` of `source`, as a reader of routes names its drivers, as Driver
-    /// Match knows them, else by that ID.
-    pub fn routed(&self, source: Source, id: &str) -> Correspondent {
-        with(self.everyone.holding(source, id), id)
-    }
-    /// A work phone nobody held, `number`, by its last four digits.
-    pub fn work_phone(&self, number: &str) -> Correspondent {
-        let digits: String = number.chars().filter(char::is_ascii_digit).collect();
-        with(
-            None,
-            &format!("Work phone {}", &digits[digits.len().saturating_sub(4)..]),
-        )
-    }
-    /// The person the DSP's member `user` is, by their email address, if any: their code and
-    /// their photo's version.
-    fn member(&self, user: &str) -> (Option<String>, Option<String>) {
-        let person = self
-            .emails
-            .get(user)
-            .and_then(|email| self.everyone.find(email).into_iter().next());
-        (
-            person.map(|person| person.code.clone()),
-            person.and_then(|person| person.photo.clone()),
-        )
-    }
-    /// Who at the DSP sent `message`, as the person their email address is, if any.
-    fn sender(&self, message: &storage::Message) -> Option<Sender> {
-        let user = message.sent_by.as_ref()?;
-        Some(self.sent_by(user, message.sender_name.as_deref().unwrap_or_default()))
-    }
-    /// The DSP's member `user`, who sent a message under the name `name`, as the person their
-    /// email address is, if any.
-    pub fn sent_by(&self, user: &str, name: &str) -> Sender {
-        let (code, photo) = self.member(user);
-        Sender {
-            user_id: Some(user.to_owned()),
-            phone_id: None,
-            name: name.to_owned(),
-            code,
-            photo,
-        }
-    }
-    /// Who is writing, each as the person they are, if any.
-    fn writing(&self, mut typing: Typing) -> Typing {
-        for writer in &mut typing.writing {
-            (writer.code, writer.photo) = self.member(&writer.user_id);
-        }
-        typing
-    }
-}
-
-/// Whom a conversation is with: `person`, as Driver Match knows them, else by `name`.
-fn with(person: Option<&Person>, name: &str) -> Correspondent {
-    Correspondent {
-        user_id: None,
-        name: person.map_or_else(|| name.to_owned(), |person| person.name.clone()),
-        code: person.map(|person| person.code.clone()),
-        role: person.map(|person| person.role),
-        title: person.and_then(|person| person.title),
-        photo: person.and_then(|person| person.photo.clone()),
-    }
-}
+use std::collections::HashMap;
 
 /// `kept` as its pages read them, each with its latest message.
 pub fn conversations(
@@ -284,7 +150,7 @@ pub fn attached(
 /// The answered conversations not listed under a group, and the groups nothing under waits in,
 /// as the page reads them: of the workspace `team` or every one, before `before`, a page of them,
 /// and whether there are more.
-fn answered(
+pub fn answered(
     db: &Store,
     people: &People,
     dsp: &str,
@@ -312,49 +178,6 @@ fn answered(
     ))
 }
 
-/// `GET /api/dsp/communications`, for the member `me`: every conversation waiting, as the counts
-/// go by them, and every group waiting; then the latest answered conversations and groups of the
-/// workspace `team`, or every one, and the latest answered numbers' conversations.
-pub fn overview(
-    db: &Store,
-    state: &State,
-    dsp: &str,
-    me: &str,
-    team: Option<&str>,
-) -> Result<Communications> {
-    let people = People::read(db, state, dsp)?;
-    let numbers = Numbers::read(db, dsp)?;
-    let revision = db.communications_revision(dsp)?;
-    let waiting = db.waiting_communications(dsp)?;
-    let texted = reading::waiting(db, dsp)?;
-    let count = waiting.len() + texted.len();
-    let waiting_groups = db.waiting_communications_groups(dsp)?;
-    let (answered, answered_groups, more) = answered(db, &people, dsp, team, None)?;
-    let (answered_texts, more_texts) = reading::answered(db, &people, &numbers, dsp, None)?;
-    Ok(Communications {
-        revision,
-        waiting: count,
-        conversations: [
-            conversations(db, &people, dsp, waiting)?,
-            reading::conversations(db, &people, &numbers, dsp, texted)?,
-            answered,
-            answered_texts,
-        ]
-        .concat(),
-        groups: [
-            groups::listed(db, &people, dsp, waiting_groups)?,
-            answered_groups,
-        ]
-        .concat(),
-        more,
-        more_texts,
-        workspaces: workspaces(db, dsp)?,
-        texting: texts::offered(db, dsp)?,
-        routes: todays_routes::offered(db, dsp)?,
-        phones: texts::phones(db, dsp)?,
-        typing: people.writing(live::typing(dsp, me).0),
-    })
-}
 /// The answered conversations and groups, of the workspace `team` or every one, before `before`,
 /// the time last written in and the ID.
 pub fn older(
@@ -412,6 +235,17 @@ pub fn search(
         more: false,
     })
 }
+/// Where a page of a conversation's messages left off, `before`: a message's `ts` in Slack, its
+/// seconds, `.` and its microseconds.
+pub fn before(value: &str) -> Result<&str> {
+    let valid = value.split_once('.').is_some_and(|(seconds, micros)| {
+        [seconds, micros]
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+    });
+    ensure(valid, "invalid_input", 400)?;
+    Ok(value)
+}
 /// The conversation `id` and its latest messages, or those before the one Slack knows as
 /// `before`, with whom it's with's conversations of each kind.
 pub fn opened(
@@ -441,6 +275,7 @@ pub fn opened(
         today: None,
         elsewhere,
         workdays: Vec::new(),
+        limits: Some(compose::SLACK.into()),
     })
 }
 /// The conversation `id` as its pages read it.
@@ -450,126 +285,6 @@ pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversatio
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
     let people = People::read(db, state, dsp)?;
     Ok(conversations(db, &people, dsp, vec![kept])?.remove(0))
-}
-/// What changed since the change `after`, for the member `me`, with the workspaces as they are
-/// now, and when who is writing next changes on its own, if anyone is.
-pub fn updates(
-    db: &Store,
-    state: &State,
-    dsp: &str,
-    after: i64,
-    me: &str,
-) -> Result<(CommunicationsUpdates, Option<i64>)> {
-    let (changed, revision) = db.communications_changed_since(dsp, after)?;
-    let (mut typing, next) = live::typing(dsp, me);
-    let waiting = db.waiting_communications(dsp)?.len() + reading::waiting(db, dsp)?.len();
-    let ids = changed.as_ref().filter(|ids| !ids.is_empty());
-    let (mut conversations, mut changed_groups) = (Vec::new(), Vec::new());
-    // Who anyone is, only when there's someone to name.
-    if ids.is_some() || !typing.writing.is_empty() {
-        let people = People::read(db, state, dsp)?;
-        typing = people.writing(typing);
-        if let Some(ids) = ids {
-            // Each change names a conversation, a group, or a conversation by text.
-            let kept = db.communications_conversations(dsp, ids)?;
-            conversations = self::conversations(db, &people, dsp, kept)?;
-            let kept = db.communications_groups(dsp, ids)?;
-            changed_groups = groups::listed(db, &people, dsp, kept)?;
-            let texted = db.communications_text_conversations(dsp, ids)?;
-            let numbers = Numbers::read(db, dsp)?;
-            conversations.extend(reading::conversations(db, &people, &numbers, dsp, texted)?);
-        }
-    }
-    Ok((
-        CommunicationsUpdates {
-            revision,
-            reset: changed.is_none(),
-            waiting,
-            conversations,
-            groups: changed_groups,
-            typing,
-            workspaces: workspaces(db, dsp)?,
-            texting: texts::offered(db, dsp)?,
-            routes: todays_routes::offered(db, dsp)?,
-            phones: texts::phones(db, dsp)?,
-        },
-        next,
-    ))
-}
-/// How many conversations wait, since when each has, and the latest message from whom each is
-/// with, the longest waiting first.
-pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWaiting> {
-    let waiting = db.waiting_communications(dsp)?;
-    let ids: Vec<String> = waiting.iter().map(|each| each.id.clone()).collect();
-    let written = db.latest_communications_written(dsp, &ids)?;
-    let of: Vec<String> = written
-        .iter()
-        .map(|each| each.conversation.clone())
-        .collect();
-    let people = People::read(db, state, dsp)?;
-    let mut written: HashMap<String, Message> = of
-        .into_iter()
-        .zip(messages(db, &people, dsp, written)?)
-        .collect();
-    let mut latest: Vec<(Option<i64>, WaitingMessage)> = waiting
-        .iter()
-        .filter_map(|conversation| {
-            Some((
-                conversation.waiting_since,
-                WaitingMessage {
-                    message: written.remove(&conversation.id)?,
-                    conversation_id: conversation.id.clone(),
-                    group_id: conversation.group.clone(),
-                    from: people
-                        .correspondent(&conversation.team, &conversation.user, &conversation.name)
-                        .name,
-                },
-            ))
-        })
-        .collect();
-    let mut since: Vec<i64> = waiting
-        .into_iter()
-        .filter_map(|conversation| conversation.waiting_since)
-        .collect();
-    // The numbers' too, as the page lists them.
-    let texted = reading::waiting(db, dsp)?;
-    if !texted.is_empty() {
-        let numbers = Numbers::read(db, dsp)?;
-        let ids: Vec<String> = texted.iter().map(|each| each.id.clone()).collect();
-        let mut written: HashMap<String, Message> = db
-            .latest_communications_texts_in(dsp, &ids)?
-            .into_iter()
-            .map(|text| {
-                let of = text.conversation.clone();
-                (
-                    of,
-                    reading::messages(&people, &numbers, vec![text]).remove(0),
-                )
-            })
-            .collect();
-        for listed in reading::conversations(db, &people, &numbers, dsp, texted)? {
-            since.extend(listed.waiting_since);
-            if let Some(message) = written.remove(&listed.id) {
-                latest.push((
-                    listed.waiting_since,
-                    WaitingMessage {
-                        message,
-                        conversation_id: listed.id,
-                        group_id: None,
-                        from: listed.with.name,
-                    },
-                ));
-            }
-        }
-        since.sort();
-        latest.sort_by_key(|(since, _)| *since);
-    }
-    Ok(CommunicationsWaiting {
-        revision: db.communications_revision(dsp)?,
-        count: since.len(),
-        since,
-        latest: latest.into_iter().map(|(_, message)| message).collect(),
-    })
 }
 /// What the page calls a workspace: its name in Dispatch, else its name in Slack.
 pub fn named(workspace: &kit::Workspace) -> String {
@@ -606,7 +321,3 @@ pub fn workspaces(db: &Store, dsp: &str) -> Result<Vec<CommunicationsWorkspace>>
         })
         .collect())
 }
-
-#[cfg(test)]
-#[path = "../tests/backend/conversations.rs"]
-mod tests;

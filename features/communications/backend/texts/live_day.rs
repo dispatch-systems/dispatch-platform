@@ -4,12 +4,8 @@
 //! live route data empties, none waits, and the next day starts afresh, with what drivers texted
 //! before its first live read. A Slack or number's conversation waits as its messages say,
 //! whichever day.
-use super::{
-    began,
-    storage::{ConversationKind, TextConversation, TextStore},
-    zone,
-};
-use crate::backend::storage::ConversationState;
+use super::{began, model::TextConversation, storage::TextStore, zone};
+use crate::backend::model::{ConversationKind, ConversationState};
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::Store};
 use dispatch_routes_contract::{self as routes, LiveRouteData, WorkPhone};

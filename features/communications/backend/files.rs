@@ -7,8 +7,9 @@
 //! message is kept as it's uploaded, before the message is sent, and let go if it isn't sent
 //! within a day.
 use super::{
+    changes::{ChangeStore, changed_conversation},
     live,
-    storage::{CommunicationsStore, DOMAIN, changed_conversation},
+    storage::DOMAIN,
 };
 use crate::integrations::messages::ID;
 use dispatch_core::{

@@ -2,7 +2,7 @@
 //! holds today, from what came before its first read, and done with at the stop, as it empties.
 use crate::ConversationState;
 use crate::backend::{
-    conversations,
+    inbox,
     support::{at, filed, held, hold, started, texted, today},
     texts::reading,
 };
@@ -13,7 +13,7 @@ use std::sync::Arc;
 async fn counted(state: &Arc<State>, dsp: &str) -> usize {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     state
-        .read(move |db| conversations::waiting(db, &shared, &dsp))
+        .read(move |db| inbox::waiting(db, &shared, &dsp))
         .await
         .unwrap()
         .count

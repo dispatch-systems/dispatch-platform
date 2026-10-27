@@ -1,7 +1,8 @@
 //! Filing the texts the DSP's dispatch phones relay, as Phones offers them (`texting`): each in
 //! its conversation, read on from the last change filed whenever Phones says texts changed
 //! (`TextsChanged`), and every minute in case a hearing was missed or failed, or Communications
-//! came on after they came.
+//! came on after they came; and today's filed again every minute too, as who held the work phones
+//! may have changed unheard (`reconcile`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed under whoever held it
 //! as it was written, by their ID of the source that names who held the DSP's work phones, as
@@ -11,23 +12,23 @@
 //! signed in; written once nobody held it, the work phone's own. A work phone nobody held that
 //! day is still one (`was_work_phone`). Where someone at the DSP picked a driver for the phone
 //! that day (`picking`), a text no hold covers is that driver's, before the day's first holder.
-//! Any other number's texts are its own. Who held which phone settles as the day goes on, and a
-//! day's holds may reach historical route data after its texts, as a text a phone relayed late;
-//! so a day's texts are filed again each time Routes says its holds changed
-//! (`WorkPhonesChanged`): today's, the pages waiting on changes hearing of the work
-//! conversations waiting, which wait only on the live day, and of those of the drivers holding a
-//! work phone today, whose phone may have changed; an earlier day's while Routes keeps holds of
-//! it, as a day it emptied unsaved keeps its texts where its holds had them.
+//! Any other number's texts are its own. While Routes is off for the DSP, nothing tells whether a
+//! number was a work phone, so a text that comes then is placed under its number until it can be
+//! filed. A text is placed as it first comes; how it went, or its files coming, never moves it.
+//! Who held which phone settles as the day goes on, and a day's holds may reach historical route
+//! data after its texts, as a text a phone relayed late; so a day's texts are filed again each
+//! time Routes says its holds changed (`WorkPhonesChanged`): today's, the pages waiting on changes
+//! hearing of the work conversations waiting, which wait only on the live day, and of every
+//! driver's, whose phone may have changed or been withdrawn; an earlier day's while Routes keeps
+//! holds of it, as a day it emptied unsaved keeps its texts where its holds had them.
 use super::{
     began,
+    model::{Filed, Incoming, TextFile, TextStatus},
     numbers::ten_digits,
-    storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
+    storage::{PickStore, TextStore},
     zone,
 };
-use crate::backend::{
-    live,
-    storage::{DOMAIN, Direction},
-};
+use crate::backend::{live, model::Direction, sender, storage::DOMAIN};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use dispatch_core::{
@@ -51,7 +52,8 @@ use std::{
 /// looked for, further than a day can be long.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
-/// Every minute, each DSP's texts changed since they were last filed.
+/// Every minute, each DSP's texts changed since they were last filed, and today's filed again
+/// where they belong now.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
@@ -95,6 +97,9 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
                     if let Err(error) = read_on(&state, &dsp).await {
                         failed("communications_texts_failed", &error);
                     }
+                    if let Err(error) = reconcile(&state, &dsp).await {
+                        failed("communications_texts_refile_failed", &error);
+                    }
                 }
             }
             Err(error) => failed("communications_texts_failed", &error),
@@ -122,10 +127,21 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
                     return Ok((false, false));
                 }
                 let mut filer = Filer::new(db, &at)?;
+                let senders = senders(db, &changes.texts)?;
+                let ids: Vec<String> = changes.texts.iter().map(|text| text.id.clone()).collect();
+                let kept_already = db.communications_texts_kept(&at, &ids)?;
                 let incoming = changes
                     .texts
                     .iter()
-                    .map(|text| Ok(kept(text, filer.filed(&text.number, text.at)?)))
+                    .map(|text| {
+                        // Only a text new to Communications is placed: one kept already stays
+                        // where it is until its day's texts are filed again.
+                        let filed = (!kept_already.contains(&text.id))
+                            .then(|| filer.placed(&text.number, text.at))
+                            .transpose()?;
+                        let sender = text.sent_by.as_ref().and_then(|by| senders.get(by));
+                        Ok(kept(text, filed, sender.cloned()))
+                    })
                     .collect::<Result<Vec<_>>>()?;
                 let touched = db.file_communications_texts(&at, &incoming, changes.next)?;
                 Ok((!touched.is_empty(), changes.more))
@@ -142,9 +158,9 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
 
 /// Files every text of `day`, YYYY-MM-DD in the DSP's time, again, where it belongs now, then wakes
 /// the pages waiting on what changed. Today's, noting changed the work conversations waiting, as
-/// the live day may have begun or ended, and those of the drivers holding a work phone today, held
-/// or texted in or not, as the phone they hold may have changed. An earlier day's only while Routes
-/// keeps holds of it.
+/// the live day may have begun or ended, and every driver's, texted in or not, as the phone they
+/// hold may have changed, or been withdrawn from them. An earlier day's only while Routes keeps
+/// holds of it.
 pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> {
     let day =
         NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|_| Error::new("invalid_date", 400))?;
@@ -154,11 +170,10 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
             let mut filer = Filer::new(db, &at)?;
             if day == clock::today(filer.zone) {
                 refiled_by(db, &at, &mut filer, day)?;
-                let holding = filer.holding_today()?;
-                db.changed_communications_work(&at, now() - TWO_DAYS_MS, &holding)?;
+                db.changed_communications_work(&at, now() - TWO_DAYS_MS)?;
                 return Ok(true);
             }
-            if filer.holds(&day.to_string())?.is_empty() {
+            if filer.holds(&day.to_string())?.is_none_or(<[_]>::is_empty) {
                 return Ok(false);
             }
             Ok(!refiled_by(db, &at, &mut filer, day)?.is_empty())
@@ -169,14 +184,27 @@ pub async fn refile_day(state: &Arc<State>, dsp: &str, day: &str) -> Result<()> 
     }
     Ok(())
 }
-/// Files every text of today, the DSP's day, again, where it belongs now.
-pub fn refiled(db: &Store, dsp: &str) -> Result<()> {
+/// Files every text of today, the DSP's day, again, where it belongs now, as who held its work
+/// phones may have changed unheard: while Communications was off, or as a hearing failed. Wakes the
+/// pages waiting on its conversations only once one moved.
+pub async fn reconcile(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let at = dsp.to_owned();
+    let moved = state
+        .run_scoped(dsp, DOMAIN, move |db| refiled(db, &at))
+        .await?;
+    if moved {
+        live::changed(state, dsp);
+    }
+    Ok(())
+}
+/// Files every text of today, the DSP's day, again, where it belongs now: whether any moved.
+pub fn refiled(db: &Store, dsp: &str) -> Result<bool> {
     let mut filer = Filer::new(db, dsp)?;
     let today = clock::today(filer.zone);
-    refiled_by(db, dsp, &mut filer, today).map(drop)
+    Ok(!refiled_by(db, dsp, &mut filer, today)?.is_empty())
 }
 /// Files every text of `day` again, from when it began until the next day did, where `filer` says
-/// it belongs now: the conversations changed.
+/// it belongs now: the conversations changed. One whose place can't be told yet stays where it is.
 fn refiled_by(
     db: &Store,
     dsp: &str,
@@ -187,16 +215,38 @@ fn refiled_by(
         .succ_opt()
         .ok_or_else(|| Error::new("invalid_date", 400))?;
     let (from, to) = (began(filer.zone, day)?, began(filer.zone, next)?);
-    let moves = db
-        .communications_texts_between(dsp, from, to)?
-        .into_iter()
-        .map(|text| Ok((text.id, filer.filed(&text.number, text.at)?)))
-        .collect::<Result<Vec<_>>>()?;
+    let mut moves = Vec::new();
+    for text in db.communications_texts_between(dsp, from, to)? {
+        if let Some(filed) = filer.filed(&text.number, text.at)? {
+            moves.push((text.id, filed));
+        }
+    }
     db.refile_communications_texts(dsp, &moves)
 }
 
-/// `text` as Communications keeps it, filed as `filed`.
-fn kept(text: &Text, filed: Filed) -> Incoming {
+/// Where a text with `number` written now belongs, as filing would place it: what someone at the
+/// DSP opens to text the number first, so their text and its answers go there.
+pub fn belongs(db: &Store, dsp: &str, number: &str) -> Result<Filed> {
+    Filer::new(db, dsp)?.placed(number, now())
+}
+
+/// The name each one at the DSP who sent a text of `texts` is shown by, by their account: their
+/// full name as they sent it, as an answer from the page goes under.
+fn senders(db: &Store, texts: &[Text]) -> Result<HashMap<String, String>> {
+    let mut senders = HashMap::new();
+    for by in texts.iter().filter_map(|text| text.sent_by.as_ref()) {
+        if !senders.contains_key(by)
+            && let Some(name) = db.platform_user_name(by)?
+        {
+            senders.insert(by.clone(), sender::full(&name));
+        }
+    }
+    Ok(senders)
+}
+
+/// `text` as Communications keeps it, filed as `filed` if it's new, sent by someone at the DSP
+/// shown by `sender_name`.
+fn kept(text: &Text, filed: Option<Filed>, sender_name: Option<String>) -> Incoming {
     Incoming {
         id: text.id.clone(),
         phone: text.phone.clone(),
@@ -208,6 +258,7 @@ fn kept(text: &Text, filed: Filed) -> Incoming {
         body: text.body.clone(),
         at: text.at,
         sent_by: text.sent_by.clone(),
+        sender_name,
         status: (text.origin == Origin::Dispatch)
             .then_some(text.status)
             .flatten()
@@ -271,14 +322,18 @@ impl<'a> Filer<'a> {
     }
     /// Where a text with `number`, written at `at`, is filed: under the driver whose hold covers
     /// it, else the driver picked for the phone that day, else the day's first holder when it came
-    /// before any hold; else under the work phone, or the number, as itself.
-    fn filed(&mut self, number: &str, at: i64) -> Result<Filed> {
+    /// before any hold; else under the work phone, or the number, as itself. None while what would
+    /// tell isn't on for the DSP: that day's holds, or whether the number was ever a work phone,
+    /// as Routes knows them. Routes being off isn't the number not being a work phone.
+    fn filed(&mut self, number: &str, at: i64) -> Result<Option<Filed>> {
         let Some(ten) = ten_digits(number) else {
-            return Ok(Filed::Number(number.to_owned()));
+            return Ok(Some(Filed::Number(number.to_owned())));
         };
         let day = clock::day(self.zone, at).to_string();
-        let held: Vec<(String, WorkPhoneHold)> = self
-            .holds(&day)?
+        let Some(holds) = self.holds(&day)? else {
+            return Ok(None);
+        };
+        let held: Vec<(String, WorkPhoneHold)> = holds
             .iter()
             .filter(|(_, hold)| hold.phone == ten)
             .cloned()
@@ -291,26 +346,38 @@ impl<'a> Filer<'a> {
             .iter()
             .find(|(_, hold)| hold.since <= at && hold.until.is_none_or(|until| at < until));
         if let Some(covering) = covering {
-            return Ok(driver(covering));
+            return Ok(Some(driver(covering)));
         }
         if let Some(picked) = self.picked(&day)?.get(&ten) {
-            return Ok(picked.clone());
+            return Ok(Some(picked.clone()));
         }
         let first = held
             .iter()
             .min_by_key(|(_, hold)| hold.since)
             .filter(|(_, hold)| at < hold.since);
-        Ok(match first {
-            Some(first) => driver(first),
-            None if !held.is_empty() || self.was_work_phone(&ten)? => {
-                Filed::WorkPhone(number.to_owned())
-            }
-            None => Filed::Number(number.to_owned()),
-        })
+        if let Some(first) = first {
+            return Ok(Some(driver(first)));
+        }
+        let work_phone = if held.is_empty() {
+            self.was_work_phone(&ten)?
+        } else {
+            Some(true)
+        };
+        Ok(work_phone.map(|was| match was {
+            true => Filed::WorkPhone(number.to_owned()),
+            false => Filed::Number(number.to_owned()),
+        }))
+    }
+    /// Where a text new to Communications, with `number`, written at `at`, is placed: where it's
+    /// filed, else, while that can't be told, under its number, to be filed again once it can.
+    fn placed(&mut self, number: &str, at: i64) -> Result<Filed> {
+        Ok(self
+            .filed(number, at)?
+            .unwrap_or_else(|| Filed::Number(number.to_owned())))
     }
     /// Every hold on a work phone on `day`: live route data's while it holds that day, else the
-    /// day's saved ones.
-    fn holds(&mut self, day: &str) -> Result<&[(String, WorkPhoneHold)]> {
+    /// day's saved ones; none while neither is on for the DSP.
+    fn holds(&mut self, day: &str) -> Result<Option<&[(String, WorkPhoneHold)]>> {
         if !self.holds.contains_key(day) {
             let read = match (self.live, self.routes) {
                 (Some(live), _) if self.live_day.as_deref() == Some(day) => {
@@ -328,22 +395,11 @@ impl<'a> Filer<'a> {
                         .map(|hold| (source.clone(), hold))
                         .collect()
                 }
-                _ => Vec::new(),
+                _ => return Ok(None),
             };
             self.holds.insert(day.to_owned(), read);
         }
-        Ok(&self.holds[day])
-    }
-    /// The drivers holding a work phone today, the DSP's day, each by the source of their ID and
-    /// the ID.
-    fn holding_today(&mut self) -> Result<Vec<(String, String)>> {
-        let today = clock::today(self.zone).to_string();
-        let holding: BTreeSet<(String, String)> = self
-            .holds(&today)?
-            .iter()
-            .map(|(source, hold)| (source.clone(), hold.driver_id.clone()))
-            .collect();
-        Ok(holding.into_iter().collect())
+        Ok(Some(&self.holds[day]))
     }
     /// The drivers picked for work phones on `day`, by their ten digits.
     fn picked(&mut self, day: &str) -> Result<&HashMap<String, Filed>> {
@@ -357,16 +413,18 @@ impl<'a> Filer<'a> {
         }
         Ok(&self.picked[day])
     }
-    fn was_work_phone(&mut self, ten: &str) -> Result<bool> {
-        if let Some(&was) = self.work_phones.get(ten) {
-            return Ok(was);
-        }
-        let was = match self.routes {
-            Some(routes) => routes.was_work_phone(self.db, self.dsp, ten)?,
-            None => false,
+    /// Whether the number with the ten digits `ten` was ever a work phone, as Routes knows it:
+    /// none while it's off for the DSP.
+    fn was_work_phone(&mut self, ten: &str) -> Result<Option<bool>> {
+        let Some(routes) = self.routes else {
+            return Ok(None);
         };
+        if let Some(&was) = self.work_phones.get(ten) {
+            return Ok(Some(was));
+        }
+        let was = routes.was_work_phone(self.db, self.dsp, ten)?;
         self.work_phones.insert(ten.to_owned(), was);
-        Ok(was)
+        Ok(Some(was))
     }
 }
 

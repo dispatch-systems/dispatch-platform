@@ -171,7 +171,9 @@ driver who held the DSP's work phones; the one by text with their own number, th
 in of Driver Match's numbers for them, else the first; and their Slack one, in a workspace where
 Communications works, the latest written in, else their first account there. Shown, as chips,
 on each of them while they have two or more, each waiting as the page's list has it, so its dot
-follows each update, and one started since is found by whom it's with.
+follows each update, and one started since is found by whom it's with. A driver holding a work
+phone now has the work conversation of the ID holding it, as Driver Match may know them by
+several, started once they have none there; else the latest of any of their IDs.
 
 ## Messaging
 
@@ -198,8 +200,9 @@ who may or may not work for the DSP.
   under who wrote each, or the phone's name and mark for one sent from the phone's own messaging
   app; each picture shown, as the phone keeps it. Under a text the DSP sent, the last of a run or
   one that failed: Sending, Sent, Delivered, or Not sent with **Retry**.
-- **Writing:** text, up to 3,000 characters, with up to ten pictures (PNG, JPEG or GIF, up to 20
-  MB each, by their stated type), Enter to send, the number's last four digits beside it while the
+- **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
+  carries as whatever offers `texting` says (its `limits()`: Phones', 10,000 characters and ten
+  pictures of up to 20 MB each), Enter to send, the number's last four digits beside it while the
   name doesn't say it; teammates see who's writing, as in Slack's. As in a driver's work
   conversation.
 
@@ -226,20 +229,28 @@ sending again one that failed.
     day (Pick driver, `communications_picked`), a text no hold covers is that driver's, before
     the day's first holder. Both are listed in Today's Routes.
   - **Any other number's**, Messaging's, by the number.
+  - **While Routes is off** for the DSP, nothing says whether a number is a work phone: a text
+    kept already stays where it was filed, and one that comes is placed under its number until
+    holds can be read. A text is placed as it first comes; how it went, or its pictures coming,
+    never moves it.
 - **Filed again:** who held which phone settles as the day goes, and a day's holds may reach
   historical route data after its texts, as a text a phone relayed late; so each time a day's
   holds change (`routes.work_phones_changed`, which names the day), every text of that day, both
   ways, is filed again where it belongs now: a text that came before the day's first live read
   goes to whoever then holds the number. An earlier day's is filed again only while Routes keeps
-  holds of it, so a day it emptied unsaved keeps its texts where its holds had them.
+  holds of it, so a day it emptied unsaved keeps its texts where its holds had them. Today's are
+  filed again every minute too, so a change of holds nothing heard, as while Communications was
+  off or a hearing failed, is repaired by the next pass; an earlier day's only as Routes says it
+  changed, as Routes doesn't say which days had holds saved.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
-  or after Done. A failed answer leaves it waiting. A work conversation waits only on what was
+  and not covered by a Done. Done marks each text in it covers, which stays handled wherever it's
+  filed again, never handling a text it didn't cover. A failed answer leaves it waiting. A work conversation waits only on what was
   written on the live day, while live route data holds today: from the first text in on it
   after its latest answer or Done, though it came before the day's first live read; so at the
   stop, as live route data empties, none waits or counts, and the next day starts afresh. Each
   time who holds the work phones today changes, the work conversations waiting by their texts are
-  noted changed, so the pages waiting on changes hear the day begin or end, and so are those of
-  the drivers holding a work phone today, so one open hears its driver take or return one.
+  noted changed, so the pages waiting on changes hear the day begin or end, and so is every
+  driver's, so one open hears its driver take, return or lose one, their last hold withdrawn.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, through
   `texting`, from the phone that last texted that number, else the one seen last, with its
   pictures, kept by `texting` as they're added (`add_file`), the adder's alone until they go, and
@@ -247,7 +258,8 @@ sending again one that failed.
   conversation, and a work phone's nobody held, answer their number; a driver's, the work phone
   they hold now, as live route data says, refused while they hold none
   (`communications_no_work_phone`). Kept as Phones tells of
-  it, named with the writer's full name. Retry sends again one Dispatch sent that failed, while
+  it, under the full name of whoever sent it (`sent_by`), taken as it's first filed, however it was
+  sent: from the page, or through `texting` by anything else. Retry sends again one Dispatch sent that failed, while
   its phone is still paired. Either goes only where a text written now would: in a driver's,
   refused while they hold no work phone (`communications_no_work_phone`) or hold another
   (`communications_work_phone_changed`), as the one it went to may be another driver's since;
@@ -477,8 +489,10 @@ Behind `communications.use`:
   or the answered ones before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written; by text, `ts` is `<at>:<id>`; with whom it's with's
-  conversations of each kind (`elsewhere`), and for a driver's, their route `today` and each of
-  its days' route and van (`workdays`).
+  conversations of each kind (`elsewhere`), for a driver's, their route `today` and each of its
+  days' route and van (`workdays`), and what a message written in it may carry (`limits`: its
+  text's characters, photos, each photo's bytes and their kinds; Slack's own, or as `texting`
+  says, none by text while nothing offers it).
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, a member of a
   workspace or a driver, besides the name, role and photo the conversation has: their route
   `today` (`route`, `van`, `waveAt`, `stops`, `stopsDone`, `pace`, and the work phone they hold,
@@ -489,15 +503,20 @@ Behind `communications.use`:
 - `POST …/conversations/{id}/driver` (`driverId`): Pick driver, for a work phone nobody held: the
   driver's conversation.
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.
-- `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer; by text, the text
-  alone, refused as `communications_texting_off` while the DSP doesn't text.
+- `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer, its text and photos, a
+  Slack one's added by `…/uploads`, a text's pictures by `…/texts/uploads`, as `limits` says; by
+  text, refused as `communications_texting_off` while the DSP doesn't text. Answers the message and the conversation
+  it's in now (`conversation`): by text, another once the number changed hands as it went, which
+  the page then opens. The member's access is checked again before it answers: once it ended as
+  the answer went, what went is kept, and the answer refused.
 - `POST …/conversations/{id}/messages/{message}/retry`: sends again a text Dispatch sent that
   failed.
 - `POST …/conversations/{id}/done`, and `…/typing`, which says the member is writing.
 - `POST …/conversations/{id}/contact` (`name`), `…/block` and `…/unblock`: a number's
   conversation's, as the number's.
 - `POST …/texts/conversations` (`number`, or `driverId` for one of today's drivers): opens the
-  number's or the driver's conversation, to text them first.
+  conversation a text to the number written now is filed in, as filing decides (a driver's while
+  they hold it as a work phone), or the driver's, to text them first.
 - `POST …/texts/uploads?name=&type=`: a picture for a text not sent yet, as its bytes, kept by
   `texting`.
 - `GET …/texts/contacts?q=<name or digits>`: whom the DSP can text, and the numbers blocked.
@@ -537,13 +556,15 @@ Public, on the admin's address: `GET /communications/initials/1/{letters}.png`.
   group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
   `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
   (each a driver's, a work phone's nobody held, or a number's), `communications_texts` (each
-  text filed, by Phones' ID, its pictures as Phones keeps them), `communications_texting` (the
-  last of Phones' changes filed), `communications_contacts` (the names saved for numbers, by
-  whom and when), `communications_blocked` (the numbers blocked, by whom and when) and
-  `communications_picked` (the driver picked for a work phone on a day, by whom and when). Kept
+  text filed, by Phones' ID, its pictures as Phones keeps them, and the Done that covered it),
+  `communications_texting` (the last of Phones' changes filed), `communications_contacts` (the
+  names saved for numbers, by whom and when), `communications_blocked` (the numbers blocked, by
+  whom and when) and `communications_picked` (the driver picked for a work phone on a day, by
+  whom and when). Kept
   until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
-  what's due to go to groups' people, and filing texts not filed yet, every minute; letting go of
+  what's due to go to groups' people, filing texts not filed yet, and filing today's again where
+  they belong now, every minute; letting go of
   photos added and never sent hourly.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct

@@ -1,147 +1,19 @@
-//! Texting's storage, in each DSP's own database, beside the Slack conversations': each
-//! conversation by text, each text filed in one, how far Phones' changes were read, and the
-//! names and blocks the DSP keeps for numbers. Whether a conversation waits follows from its
-//! texts, and is kept beside them each time they change, as a Slack conversation's is.
-use crate::backend::storage::{ConversationState, Direction, changed_conversation};
+//! Each conversation by text and the texts filed in it, how far Phones' changes were read, and
+//! whether each conversation waits, kept beside its texts each time they change.
+use crate::backend::{
+    changes::changed_conversation,
+    model::{ConversationState, TEXT_PREFIX},
+    texts::model::{Filed, Incoming, Text, TextConversation},
+};
 use dispatch_core::{
     Error, Result,
-    db::{Db, FromRow, Row, Store, now},
+    db::{Db, Store, migrations::add_column, now},
     foundation::crypto,
-    text_enum,
 };
 use rusqlite::params;
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    /// What a conversation is: a Slack direct message, the texts of the work phones a driver
-    /// held (or of one nobody held as they were written), or a number's texts.
-    pub enum ConversationKind {
-        Slack => "slack",
-        Work => "work",
-        Number => "number",
-    }
-}
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    /// How a text Dispatch sent went: waiting on the phone to send it, sent, delivered, or
-    /// failed.
-    pub enum TextStatus {
-        Waiting => "waiting",
-        Sent => "sent",
-        Delivered => "delivered",
-        Failed => "failed",
-    }
-}
-
-/// A conversation by text, as kept.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TextConversation {
-    pub id: String,
-    pub kind: ConversationKind,
-    /// For a driver's, the source of their ID and the ID.
-    pub driver: Option<(String, String)>,
-    /// For a number's, its number; for a work phone's nobody held, the phone's.
-    pub number: Option<String>,
-    pub state: ConversationState,
-    pub waiting_since: Option<i64>,
-    pub last_at: Option<i64>,
-}
-impl FromRow for TextConversation {
-    fn from_row(row: &Row<'_>) -> Result<Self> {
-        Ok(Self {
-            id: row.get("id")?,
-            kind: row.get("kind")?,
-            driver: match (row.get("source")?, row.get("driver_id")?) {
-                (Some(source), Some(id)) => Some((source, id)),
-                _ => None,
-            },
-            number: row.get("number")?,
-            state: row.get("state")?,
-            waiting_since: row.get("waiting_since")?,
-            last_at: row.get("last_at")?,
-        })
-    }
-}
-
-/// A text, as kept.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Text {
-    /// Phones' ID of it.
-    pub id: String,
-    pub conversation: String,
-    /// The DSP's phone it went through.
-    pub phone: String,
-    pub direction: Direction,
-    /// The other party's number.
-    pub number: String,
-    pub body: String,
-    pub at: i64,
-    /// Who at the DSP sent it, for one Dispatch sent, and the name they're shown by.
-    pub sent_by: Option<String>,
-    pub sender_name: Option<String>,
-    /// How one Dispatch sent went, and why it failed.
-    pub status: Option<TextStatus>,
-    pub error: Option<String>,
-    pub files: Vec<TextFile>,
-}
-impl FromRow for Text {
-    fn from_row(row: &Row<'_>) -> Result<Self> {
-        let files: String = row.get("files")?;
-        Ok(Self {
-            id: row.get("id")?,
-            conversation: row.get("conversation_id")?,
-            phone: row.get("phone")?,
-            direction: row.get("direction")?,
-            number: row.get("number")?,
-            body: row.get("body")?,
-            at: row.get("at")?,
-            sent_by: row.get("sent_by")?,
-            sender_name: row.get("sender_name")?,
-            status: row.get("status")?,
-            error: row.get("error")?,
-            files: serde_json::from_str(&files)?,
-        })
-    }
-}
-/// A text's picture or file, as Phones has it: whether its bytes are kept yet.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TextFile {
-    pub id: String,
-    pub name: String,
-    pub mime: String,
-    pub size: i64,
-    pub kept: bool,
-}
-
-/// Where a text is filed: under the driver who held the work phone it was written with, by
-/// their ID of a source; under a work phone nobody held then; or under its number.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Filed {
-    Driver { source: String, id: String },
-    WorkPhone(String),
-    Number(String),
-}
-
-/// A text to keep, as Phones has it now, and where it's filed.
-pub struct Incoming {
-    pub id: String,
-    pub phone: String,
-    pub direction: Direction,
-    pub number: String,
-    pub body: String,
-    pub at: i64,
-    pub sent_by: Option<String>,
-    pub status: Option<TextStatus>,
-    pub error: Option<String>,
-    pub files: Vec<TextFile>,
-    pub filed: Filed,
-}
-
-/// What texting reads and writes of its conversations, texts, contacts and blocks.
+/// What texting reads and writes of its conversations and their texts.
 pub trait TextStore {
     fn communications_text_conversation(
         &self,
@@ -189,18 +61,21 @@ pub trait TextStore {
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
     /// Every text written from `from` until `to`, oldest first.
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
+    /// Of the texts `ids`, those kept already.
+    fn communications_texts_kept(&self, dsp: &str, ids: &[String]) -> Result<BTreeSet<String>>;
     /// The last of Phones' changes read: 0 before the first.
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64>;
-    /// Keeps each of `texts` where it's filed, moving one kept elsewhere before, and notes that
-    /// Phones' changes were read up to `read_to`: the conversations changed.
+    /// Keeps each of `texts`, one new where it's filed, one kept already where it is, as how it
+    /// went or its files changed, under the name its sender was shown by as it was first kept, and
+    /// notes that Phones' changes were read up to `read_to`: the conversations changed. Where a
+    /// text is filed is decided again only as its holds settle (`refile_communications_texts`).
+    /// A new one without where it's filed is refused.
     fn file_communications_texts(
         &self,
         dsp: &str,
         texts: &[Incoming],
         read_to: i64,
     ) -> Result<BTreeSet<String>>;
-    /// Names the text `id` Dispatch sent with the name of whoever at the DSP wrote it.
-    fn name_communications_text(&self, dsp: &str, id: &str, name: &str) -> Result<()>;
     /// Moves each text kept to where it's filed now, by its ID: the conversations changed.
     fn refile_communications_texts(
         &self,
@@ -234,46 +109,15 @@ pub trait TextStore {
     ) -> Result<Vec<(String, i64)>>;
     /// Notes changed, for the pages waiting on changes, each work conversation waiting by its
     /// texts written in from `from` on, as whether it waits counts only on the live day, which
-    /// began or ended; and each of the drivers `drivers`', by the source of their ID and the ID,
-    /// texted in or not, as the work phone they hold may have changed.
-    fn changed_communications_work(
-        &self,
-        dsp: &str,
-        from: i64,
-        drivers: &[(String, String)],
-    ) -> Result<()>;
+    /// began or ended; and every driver's, texted in or not, as the work phone they hold may have
+    /// changed, one they held before as much as one they hold now.
+    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()>;
     /// The conversation texts filed so would be in, made with no text if it's new.
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;
-    /// Marks the conversation done without an answer, as the member `by`, while it waits:
-    /// whether it was waiting.
+    /// Marks the conversation done without an answer, as the member `by`, while it waits, and
+    /// each text in it the Done covers, which stays so wherever it's filed again: whether it was
+    /// waiting.
     fn mark_communications_text_done(&self, dsp: &str, id: &str, by: &str) -> Result<bool>;
-    /// Every contact the DSP saved: each number with its name.
-    fn communications_contacts(&self, dsp: &str) -> Result<Vec<(String, String)>>;
-    /// Saves `name` for the number, as the member `by`.
-    fn save_communications_contact(
-        &self,
-        dsp: &str,
-        number: &str,
-        name: &str,
-        by: &str,
-    ) -> Result<()>;
-    /// Every number blocked.
-    fn communications_blocked(&self, dsp: &str) -> Result<BTreeSet<String>>;
-    /// Blocks the number, as the member `by`, or unblocks it.
-    fn block_communications_number(&self, dsp: &str, number: &str, by: Option<&str>) -> Result<()>;
-    /// Each work phone a driver was picked for on `day`, by its ten digits: the driver's source
-    /// and ID.
-    fn communications_picked(&self, dsp: &str, day: &str) -> Result<Vec<(String, Filed)>>;
-    /// Picks the driver `driver` of the source `source` as holding the work phone `phone`, by its
-    /// ten digits, on `day`, as the member `by`.
-    fn pick_communications_driver(
-        &self,
-        dsp: &str,
-        phone: &str,
-        day: &str,
-        driver: &Filed,
-        by: &str,
-    ) -> Result<()>;
 }
 
 /// When the conversation `c`'s latest text out that didn't fail was written.
@@ -284,13 +128,13 @@ macro_rules! last_out {
     };
 }
 /// Since when the conversation `c` waits, on texts written from `?1` on: the first text in, but
-/// one that came while its number was blocked, after the latest text out that didn't fail and
-/// after it was marked done; none when it waits on nothing written from then.
+/// one that came while its number was blocked or one a Done covered, wherever it was filed then,
+/// after the latest text out that didn't fail; none when it waits on nothing written from then.
 macro_rules! waiting_since {
     () => {
         concat!(
             "(SELECT min(t.at) FROM communications_texts t WHERE t.conversation_id=c.id \
-             AND t.direction='in' AND t.blocked=0 AND t.at>=?1 AND t.at>coalesce(c.done_at,-1) \
+             AND t.direction='in' AND t.blocked=0 AND t.at>=?1 AND t.done_at IS NULL \
              AND t.at>coalesce(",
             last_out!(),
             ",-1))"
@@ -411,6 +255,13 @@ impl TextStore for Store {
             [from, to],
         )
     }
+    fn communications_texts_kept(&self, dsp: &str, ids: &[String]) -> Result<BTreeSet<String>> {
+        let kept: Vec<(String,)> = self.dsp(dsp)?.query_as(
+            "SELECT id FROM communications_texts WHERE id IN (SELECT value FROM json_each(?))",
+            [serde_json::to_string(ids)?],
+        )?;
+        Ok(kept.into_iter().map(|(id,)| id).collect())
+    }
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64> {
         self.dsp(dsp)?.count(
             "SELECT coalesce((SELECT read_to FROM communications_texting WHERE id=1),0)",
@@ -427,21 +278,24 @@ impl TextStore for Store {
         db.transaction(|| {
             let mut touched = BTreeSet::new();
             for text in texts {
-                let conversation = conversation(&db, &text.filed)?;
-                let was = filed_in(&db, &text.id)?;
+                let conversation = match (filed_in(&db, &text.id)?, &text.filed) {
+                    (Some(kept), _) => kept,
+                    (None, Some(filed)) => conversation(&db, filed)?,
+                    (None, None) => return Err(Error::new("communications_text_unfiled", 500)),
+                };
                 // A text from a number blocked as it came never makes its conversation wait.
-                let blocked = matches!(text.filed, Filed::Number(_))
+                let blocked = matches!(text.filed, Some(Filed::Number(_)))
                     && db.count(
                         "SELECT count(*) FROM communications_blocked WHERE number=?",
                         [&text.number],
                     )? > 0;
                 db.exec(
                     "INSERT INTO communications_texts (id,conversation_id,phone,direction,number,\
-                     body,at,sent_by,status,error,files,blocked) \
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) \
-                     ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,\
-                     body=excluded.body,status=excluded.status,error=excluded.error,\
-                     files=excluded.files",
+                     body,at,sent_by,sender_name,status,error,files,blocked) \
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) \
+                     ON CONFLICT(id) DO UPDATE SET body=excluded.body,status=excluded.status,\
+                     error=excluded.error,files=excluded.files,\
+                     sender_name=coalesce(communications_texts.sender_name,excluded.sender_name)",
                     params![
                         text.id,
                         conversation,
@@ -451,13 +305,13 @@ impl TextStore for Store {
                         text.body,
                         text.at,
                         text.sent_by,
+                        text.sender_name,
                         text.status,
                         text.error,
                         serde_json::to_string(&text.files)?,
                         blocked,
                     ],
                 )?;
-                touched.extend(was);
                 touched.insert(conversation);
             }
             db.exec(
@@ -469,19 +323,6 @@ impl TextStore for Store {
                 settle(&db, conversation)?;
             }
             Ok(touched)
-        })
-    }
-    fn name_communications_text(&self, dsp: &str, id: &str, name: &str) -> Result<()> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            db.exec(
-                "UPDATE communications_texts SET sender_name=? WHERE id=?",
-                params![name, id],
-            )?;
-            match filed_in(&db, id)? {
-                Some(conversation) => changed_conversation(&db, &conversation),
-                None => Ok(()),
-            }
         })
     }
     fn refile_communications_texts(
@@ -573,19 +414,13 @@ impl TextStore for Store {
             params![from, serde_json::to_string(ids)?],
         )
     }
-    fn changed_communications_work(
-        &self,
-        dsp: &str,
-        from: i64,
-        drivers: &[(String, String)],
-    ) -> Result<()> {
+    fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let changed: Vec<(String,)> = db.query_as(
                 "SELECT id FROM communications_text_conversations WHERE kind='work' \
-                 AND ((state='waiting' AND last_at>=?1) OR (source,driver_id) IN \
-                 (SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?2)))",
-                params![from, serde_json::to_string(drivers)?],
+                 AND (driver_id IS NOT NULL OR (state='waiting' AND last_at>=?1))",
+                [from],
             )?;
             for (id,) in changed {
                 changed_conversation(&db, &id)?;
@@ -607,93 +442,22 @@ impl TextStore for Store {
     fn mark_communications_text_done(&self, dsp: &str, id: &str, by: &str) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
+            let at = now();
             let marked = db.exec(
                 "UPDATE communications_text_conversations SET done_at=?,done_by=? \
                  WHERE id=? AND state='waiting'",
-                params![now(), by, id],
+                params![at, by, id],
             )?;
             if marked > 0 {
+                db.exec(
+                    "UPDATE communications_texts SET done_at=?,done_by=? \
+                     WHERE conversation_id=? AND direction='in' AND done_at IS NULL",
+                    params![at, by, id],
+                )?;
                 settle(&db, id)?;
             }
             Ok(marked > 0)
         })
-    }
-    fn communications_contacts(&self, dsp: &str) -> Result<Vec<(String, String)>> {
-        self.dsp(dsp)?.query_as(
-            "SELECT number,name FROM communications_contacts ORDER BY number",
-            [],
-        )
-    }
-    fn save_communications_contact(
-        &self,
-        dsp: &str,
-        number: &str,
-        name: &str,
-        by: &str,
-    ) -> Result<()> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            db.exec(
-                "INSERT INTO communications_contacts (number,name,saved_by,saved_at) \
-                 VALUES (?,?,?,?) ON CONFLICT(number) DO UPDATE SET name=excluded.name,\
-                 saved_by=excluded.saved_by,saved_at=excluded.saved_at",
-                params![number, name, by, now()],
-            )?;
-            changed_number(&db, number)
-        })
-    }
-    fn communications_blocked(&self, dsp: &str) -> Result<BTreeSet<String>> {
-        let blocked: Vec<(String,)> = self
-            .dsp(dsp)?
-            .query_as("SELECT number FROM communications_blocked", [])?;
-        Ok(blocked.into_iter().map(|(number,)| number).collect())
-    }
-    fn block_communications_number(&self, dsp: &str, number: &str, by: Option<&str>) -> Result<()> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            match by {
-                Some(by) => db.exec(
-                    "INSERT OR IGNORE INTO communications_blocked (number,blocked_by,blocked_at) \
-                     VALUES (?,?,?)",
-                    params![number, by, now()],
-                )?,
-                None => db.exec(
-                    "DELETE FROM communications_blocked WHERE number=?",
-                    [number],
-                )?,
-            };
-            changed_number(&db, number)
-        })
-    }
-    fn communications_picked(&self, dsp: &str, day: &str) -> Result<Vec<(String, Filed)>> {
-        let picked: Vec<(String, String, String)> = self.dsp(dsp)?.query_as(
-            "SELECT phone,source,driver_id FROM communications_picked WHERE day=?",
-            [day],
-        )?;
-        Ok(picked
-            .into_iter()
-            .map(|(phone, source, id)| (phone, Filed::Driver { source, id }))
-            .collect())
-    }
-    fn pick_communications_driver(
-        &self,
-        dsp: &str,
-        phone: &str,
-        day: &str,
-        driver: &Filed,
-        by: &str,
-    ) -> Result<()> {
-        let Filed::Driver { source, id } = driver else {
-            return Err(Error::new("invalid_input", 400));
-        };
-        self.dsp(dsp)?.exec(
-            "INSERT INTO communications_picked (phone,day,source,driver_id,picked_by,picked_at) \
-             VALUES (?,?,?,?,?,?) ON CONFLICT(phone,day) DO UPDATE SET source=excluded.source,\
-             driver_id=excluded.driver_id,picked_by=excluded.picked_by,\
-             picked_at=excluded.picked_at",
-            params![phone, day, source, id, by, now()],
-        )?;
-        Ok(())
     }
 }
 
@@ -718,7 +482,7 @@ fn conversation(db: &Db, filed: &Filed) -> Result<String> {
     if let Some((id,)) = found {
         return Ok(id);
     }
-    let id = crypto::id("tc")?;
+    let id = crypto::id(TEXT_PREFIX)?;
     db.exec(
         "INSERT INTO communications_text_conversations (id,kind,source,driver_id,number) \
          VALUES (?,?,?,?,?)",
@@ -736,24 +500,10 @@ fn filed_in(db: &Db, id: &str) -> Result<Option<String>> {
     Ok(found.map(|(conversation,)| conversation))
 }
 
-/// Notes that the number's conversation changed, as a name saved for it or its block, for the
-/// pages waiting on changes.
-fn changed_number(db: &Db, number: &str) -> Result<()> {
-    let found: Option<(String,)> = db.one_as(
-        "SELECT id FROM communications_text_conversations \
-         WHERE kind='number' AND number=? AND driver_id IS NULL",
-        [number],
-    )?;
-    match found {
-        Some((id,)) => changed_conversation(db, &id),
-        None => Ok(()),
-    }
-}
-
-/// Keeps whether the conversation waits on an answer, and since when, from its texts and when
-/// it was marked done, and notes it changed: by all its texts, whichever day they were written
-/// (`waiting_since`, from the earliest).
-pub(crate) fn settle(db: &Db, conversation: &str) -> Result<()> {
+/// Keeps whether the conversation waits on an answer, and since when, from its texts and which a
+/// Done covered, done when it was marked so after its latest answer, and notes it changed: by all
+/// its texts, whichever day they were written (`waiting_since`, from the earliest).
+fn settle(db: &Db, conversation: &str) -> Result<()> {
     let (since, done): (Option<i64>, bool) = db
         .one_as(
             concat!(
@@ -780,4 +530,23 @@ pub(crate) fn settle(db: &Db, conversation: &str) -> Result<()> {
         params![conversation, state, since],
     )?;
     changed_conversation(db, conversation)
+}
+
+/// Communications' migration 6: Done marks each text it covered (`communications_texts.done_at`,
+/// `done_by`), so it stays handled wherever it's filed again; each text a conversation's Done
+/// covered as it stands, written before it, is marked so.
+pub(crate) fn add_text_done(db: &Db) -> Result<()> {
+    add_column(db, "communications_texts", "done_at", "INTEGER")?;
+    add_column(db, "communications_texts", "done_by", "TEXT")?;
+    db.exec(
+        "UPDATE communications_texts SET \
+         done_at=(SELECT c.done_at FROM communications_text_conversations c \
+         WHERE c.id=communications_texts.conversation_id),\
+         done_by=(SELECT c.done_by FROM communications_text_conversations c \
+         WHERE c.id=communications_texts.conversation_id) \
+         WHERE direction='in' AND done_at IS NULL AND at<=(SELECT c.done_at \
+         FROM communications_text_conversations c WHERE c.id=communications_texts.conversation_id)",
+        [],
+    )?;
+    Ok(())
 }

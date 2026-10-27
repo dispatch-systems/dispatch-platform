@@ -1,7 +1,7 @@
 //! Each day a driver texted on a work phone, for the line that begins it in their work
 //! conversation: the route and van they drove, today's as live route data holds it, an earlier
 //! day's as Routes kept it (`driver_routes`), with what the DSP calls the van (`amazon_fleet`).
-use super::{live_day::LiveDay, storage::Text, zone};
+use super::{live_day::LiveDay, model::Text, zone};
 use crate::{api::types::Workday, backend::today};
 use chrono::NaiveDate;
 use dispatch_core::{Result, db::Store, foundation::clock};

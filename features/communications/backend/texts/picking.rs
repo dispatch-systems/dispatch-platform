@@ -4,11 +4,15 @@
 use super::{
     filing,
     live_day::LiveDay,
+    model::Filed,
     numbers::ten_digits,
     reading,
-    storage::{ConversationKind, Filed, TextStore},
+    storage::{PickStore, TextStore},
 };
-use crate::{api::types::Conversation, backend::live};
+use crate::{
+    api::types::Conversation,
+    backend::{live, model::ConversationKind},
+};
 use dispatch_core::{Error, Result, State, db::Store, ensure};
 
 /// Picks `driver`, one of today's drivers, as holding the work phone of the conversation `id`

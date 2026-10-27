@@ -2,8 +2,10 @@
 //! to, each message the DSP sent it, and each of those going to each of its people. Whether a
 //! group waits follows from the conversations listed under it, and is kept beside it each time
 //! one of them changes. Only this crate writes SQL against its tables.
-use crate::backend::storage::{
-    ConversationState, Message, Sent, changed_conversation, opened, sent_out, settle, settle_with,
+use crate::backend::{
+    changes::changed_conversation,
+    model::ConversationState,
+    storage::{Message, Sent, opened, sent_out, settle, settle_with},
 };
 use dispatch_core::{
     Error, Result,

@@ -12,13 +12,13 @@ pub use api::display::{
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
-    CommunicationsWorkspace, Contact, Contacts, Conversation, ConversationKind,
+    CommunicationsWorkspace, ComposeLimits, Contact, Contacts, Conversation, ConversationKind,
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
     GroupProgress, Message, MessageFile, MessageGroup, Pace, Profile, Reachable, RouteDriver,
-    Sender, TextContact, TextContacts, TextStatus, Today, TodaysRoutes, Typing, WaitingMessage,
-    Workday, Writing,
+    Sender, SentMessage, TextContact, TextContacts, TextStatus, Today, TodaysRoutes, Typing,
+    WaitingMessage, Workday, Writing,
 };
 
 use dispatch_core::db::{
@@ -93,11 +93,16 @@ pub const FEATURE: Feature = Feature {
                     "migrations/dsp/0005_communications_picked.sql"
                 )),
             },
+            Migration {
+                id: 6,
+                name: "communications_texts_done",
+                apply: Code(backend::texts::storage::add_text_done),
+            },
         ],
     }],
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
-    // what members attach, sending what's due to go to groups' people, and filing texts it
-    // didn't hear of, every minute.
+    // what members attach, sending what's due to go to groups' people, filing texts it didn't
+    // hear of, and filing today's again where they belong now, every minute.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,
@@ -137,6 +142,8 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         FileStatus,
         Conversations,
         ConversationMessages,
+        SentMessage,
+        ComposeLimits,
         Elsewhere,
         Workday,
         TodaysRoutes,
