@@ -2,10 +2,11 @@
 //! minutes, or as often as a DSP saves, inside the window each DSP saves, on time the test
 //! moves: each DSP on its grid from its window's start, its days started and stopped, its slot
 //! kept across a restart, no more reads or stops at once than the server allows, a read the
-//! browsers' memory turned away tried once more within its slot, waits of five minutes at most
-//! however seldom a DSP reads, a stalled DSP started again alone, switching off mid-window, a
-//! switch or a saved window taking effect at once, the browser a hook opens, and how a DSP's
-//! reading goes as Settings shows it.
+//! browsers' memory turned away tried once more within its slot, and kept on record when the
+//! retry never starts, waits of five minutes at most however seldom a DSP reads, a stalled DSP
+//! started again alone, switching off mid-window, a switch or a saved window taking effect at
+//! once, the browser a hook opens, and how a DSP's reading goes as Settings shows it, its next
+//! read the one its task reads.
 //! A program of its own, as its registry holds the stand-ins, and a program holds one registry.
 use chrono::{DateTime, NaiveDate, Timelike, Weekday::*};
 use chrono_tz::Tz;
@@ -103,6 +104,8 @@ enum Script {
     MemoryBusy,
     /// Its next read finds the browsers' memory busy; those after read.
     MemoryBusyOnce,
+    /// Its next read takes two minutes; those after read at once.
+    Slow,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum Seen {
@@ -296,6 +299,10 @@ impl LiveReader for Reader {
                 Script::MemoryBusyOnce => {
                     set_script(&reading.dsp, Script::Reads);
                     return Err(Error::new("browser_memory_busy", 503));
+                }
+                Script::Slow => {
+                    set_script(&reading.dsp, Script::Reads);
+                    tokio::time::sleep(2 * MINUTE).await;
                 }
                 Script::Reads | Script::Hangs | Script::KeepsBrowsing | Script::FailsToStop => {}
             }
@@ -567,6 +574,16 @@ impl Server {
             .await
             .unwrap()
     }
+    /// DSPs enough to hold every turn to read, each reading from `start` until `stop`, with
+    /// the first read of each waiting for the probe's gate.
+    async fn hold_every_turn(&self, start: &str, stop: &str) {
+        for _ in 0..READS_AT_ONCE {
+            let dsp = self.dsp(Script::Gated).await;
+            self.window(&dsp, start, stop).await;
+            self.switch(&dsp, true).await;
+        }
+        tokio::time::sleep(SECOND).await;
+    }
     /// How the DSP's reading goes, as Settings shows it.
     async fn reading(&self, dsp: &str) -> Option<LiveReading> {
         let dsp = dsp.to_owned();
@@ -786,11 +803,7 @@ async fn a_days_stop_waits_its_turn_among_the_reads_and_still_happens() {
     assert_eq!(server.records(&stops).await, [kept()]);
     // Every turn is held by a read that waits on its provider as the window closes.
     let (stop, _) = server.at(60);
-    for _ in 0..READS_AT_ONCE {
-        let dsp = server.dsp(Script::Gated).await;
-        server.window(&dsp, &opened, &stop).await;
-        server.switch(&dsp, true).await;
-    }
+    server.hold_every_turn(&opened, &stop).await;
     until(close + MINUTE).await;
     let day = server.today();
     assert!(!server.probe.of(&stops).contains(&Seen::Stopped(day)));
@@ -841,6 +854,54 @@ async fn a_read_the_browsers_memory_turns_away_is_tried_once_more_within_its_slo
     let slots = [open, open + MINUTE, open + 2 * MINUTE];
     assert!(all_near(&server.probe.reads(&every_minute), &slots));
     assert_eq!(server.records(&every_minute).await.len(), 3);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_retry_whose_turn_comes_only_at_its_next_slot_never_starts_and_that_slot_reads() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(60);
+    let (_, next) = server.at(5);
+    let dsp = server.dsp(Script::MemoryBusyOnce).await;
+    server.window(&dsp, &opened, &stop).await;
+    server.switch(&dsp, true).await;
+    tokio::time::sleep(SECOND).await;
+    let first = server.probe.reads(&dsp)[0].1;
+    // Every turn is held from then until its next slot has come.
+    server.hold_every_turn(&opened, &stop).await;
+    until(next + SECOND / 2).await;
+    server.probe.gate.add_permits(READS_AT_ONCE);
+    until(next + MINUTE).await;
+    // The retry never read: the slot keeps the first try's failure, and the next reads.
+    assert!(all_near(&server.probe.reads(&dsp), &[first, next]));
+    let busy = failed("browser_memory_busy");
+    assert_eq!(server.records(&dsp).await, [busy, kept()]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_retry_that_never_starts_leaves_the_first_tries_failure_on_record() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(60);
+    let (later, _) = server.at(90);
+    let (moved, unplugged) = (
+        server.dsp(Script::MemoryBusy).await,
+        server.dsp(Script::MemoryBusy).await,
+    );
+    for dsp in [&moved, &unplugged] {
+        server.window(dsp, &opened, &stop).await;
+        server.switch(dsp, true).await;
+    }
+    // In the minute before each retry, one's Stop moves, and the other is switched off.
+    tokio::time::sleep(30 * SECOND).await;
+    server.window(&moved, &opened, &later).await;
+    server.switch(&unplugged, false).await;
+    tokio::time::sleep(MINUTE).await;
+    let busy = failed("browser_memory_busy");
+    for dsp in [&moved, &unplugged] {
+        assert_eq!(server.probe.reads(dsp).len(), 1);
+        assert_eq!(server.records(dsp).await, [busy.clone()]);
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -1059,12 +1120,7 @@ async fn a_read_whose_turn_comes_after_its_window_closed_never_starts() {
     let (opened, _) = server.at(-30);
     let (stop, _) = server.at(60);
     // Every turn to read is held by a read that waits on its provider.
-    for _ in 0..READS_AT_ONCE {
-        let dsp = server.dsp(Script::Gated).await;
-        server.window(&dsp, &opened, &stop).await;
-        server.switch(&dsp, true).await;
-    }
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    server.hold_every_turn(&opened, &stop).await;
     assert_eq!(server.probe.flying.load(Ordering::SeqCst), READS_AT_ONCE);
     // Its window closes within the minute, as it waits for its turn.
     let late = server.dsp(Script::Reads).await;
@@ -1139,4 +1195,51 @@ async fn a_dsps_reading_shows_its_last_read_its_next_and_its_last_error_while_it
     assert!(near(instant(&after.next_read), tomorrow));
     server.switch(&dsp, false).await;
     assert!(server.reading(&dsp).await.is_none());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_late_reads_next_read_is_the_first_slot_after_it_ended_as_its_status_says() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(60);
+    let ((_, freed), (_, slot)) = (server.at(4), server.at(10));
+    // Its read waits for its turn until a minute before its next slot, then takes two minutes.
+    server.hold_every_turn(&opened, &stop).await;
+    let late = server.dsp(Script::Slow).await;
+    server.window(&late, &opened, &stop).await;
+    server.switch(&late, true).await;
+    until(freed).await;
+    server.probe.gate.add_permits(READS_AT_ONCE);
+    until(freed + 2 * MINUTE + 30 * SECOND).await;
+    assert_eq!(server.records(&late).await, [kept()]);
+    let next = instant(&server.reading(&late).await.unwrap().next_read);
+    until(slot + MINUTE).await;
+    let reads = server.probe.reads(&late);
+    assert!(all_near(&reads, &[freed, next]));
+    assert!(near(next, slot));
+}
+
+#[tokio::test(start_paused = true)]
+async fn started_again_soon_after_a_late_read_a_dsp_reads_when_its_status_says() {
+    let mut server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(60);
+    let ((_, freed), (_, back)) = (server.at(4), server.at(6));
+    // Its read waits for its turn until a minute before its next slot, and ends at once.
+    server.hold_every_turn(&opened, &stop).await;
+    let late = server.dsp(Script::Reads).await;
+    server.window(&late, &opened, &stop).await;
+    server.switch(&late, true).await;
+    until(freed).await;
+    server.probe.gate.add_permits(READS_AT_ONCE);
+    // Down soon after, until its next slot has passed.
+    until(freed + 30 * SECOND).await;
+    server.stop_readers().await;
+    until(back).await;
+    let next = instant(&server.reading(&late).await.unwrap().next_read);
+    server.run_readers();
+    until(back + MINUTE).await;
+    let reads = server.probe.reads(&late);
+    assert!(all_near(&reads, &[freed, next]));
+    assert!(near(next, back));
 }

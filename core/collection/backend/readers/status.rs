@@ -1,6 +1,6 @@
 //! How a live reader reads for a DSP, as Settings shows it with the section that sets when it
-//! reads: its last read, when it reads next by the DSP's plan, and its last failure, from the
-//! records of the last two weeks.
+//! reads: its last read, when it reads next by the DSP's plan, as its task does, and its last
+//! failure, from the records of the last two weeks.
 use super::{now, plan};
 use crate::{
     Error, Result,
@@ -22,7 +22,8 @@ pub fn reading(db: &Store, dsp: &Dsp, reader: &str) -> Result<Option<LiveReading
     };
     let last = db.last_read(reader, &dsp.id)?;
     let ended = db.last_ended(reader, &dsp.id)?;
-    let after = last.as_ref().map_or(i64::MIN, |read| read.at);
+    // Its task's next slot is the first after its last read ended, in memory or started again.
+    let after = last.as_ref().map_or(i64::MIN, |read| read.ended);
     Ok(Some(LiveReading {
         last_read: last.map(|read| LiveRead {
             at: db::at(read.at),

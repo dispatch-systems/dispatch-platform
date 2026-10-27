@@ -21,21 +21,25 @@ pub(super) struct Read<'a> {
     pub outcome: std::result::Result<Counts, String>,
 }
 
-/// A read as its record says it went: when it began, and whether it was kept.
+/// A read as its record says it went: when it began and ended, and whether it was kept.
 pub(super) struct LastRead {
     pub at: i64,
+    /// Where its task's next slot is reckoned from: the first after it.
+    pub ended: i64,
     pub kept: bool,
 }
 
 impl Store {
     /// How `reader` last read for the DSP, whatever came of it.
     pub(super) fn last_read(&self, reader: &str, dsp: &str) -> Result<Option<LastRead>> {
-        let last: Option<(i64, String)> = self.jobs.one_as(
-            "SELECT at,outcome FROM live_reads WHERE reader=? AND dsp_id=? ORDER BY at DESC LIMIT 1",
+        let last: Option<(i64, i64, String)> = self.jobs.one_as(
+            "SELECT at,ms,outcome FROM live_reads WHERE reader=? AND dsp_id=? \
+             ORDER BY at DESC LIMIT 1",
             [reader, dsp],
         )?;
-        Ok(last.map(|(at, outcome)| LastRead {
+        Ok(last.map(|(at, ms, outcome)| LastRead {
             at,
+            ended: at + ms,
             kept: outcome == "kept",
         }))
     }

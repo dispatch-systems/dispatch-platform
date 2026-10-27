@@ -1,7 +1,8 @@
 //! One DSP's reading for one reader: a light task that waits for each slot of its window,
 //! reads, hands what it read to its reader to keep, records how it went, and stops each day it
 //! started once its window ends. A read the browsers' memory turns away is tried once more
-//! within its slot.
+//! within its slot. Its next slot is the first after its last read ended, as that read's record
+//! keeps it, so started again it goes on as it would have.
 use super::{
     Reading, WAITING, now,
     plan::{Day, Plan, Step},
@@ -23,7 +24,10 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, watch};
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore, watch},
+    time::Instant,
+};
 
 /// How long a read the browsers' memory turned away waits before it's tried again.
 const MEMORY_BUSY_RETRY: Duration = Duration::from_secs(60);
@@ -42,16 +46,16 @@ pub(super) struct Task {
 /// Reads for the DSP as its plan says, until the plan is none, when what's under way ends: a
 /// read is dropped and recorded so, while what keeps it or a day finishes.
 pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
-    // Its next slot is the first after its last read, whenever that was.
+    // Its next slot is the first after its last read ended, whenever that was.
     let mut after = loop {
-        let Some(plan) = *plans.borrow() else {
+        if plans.borrow().is_none() {
             return;
-        };
+        }
         match task
-            .query(|db, reader, dsp| Ok(db.last_read(reader, dsp)?.map(|read| read.at)))
+            .query(|db, reader, dsp| Ok(db.last_read(reader, dsp)?.map(|read| read.ended)))
             .await
         {
-            Some(last) => break plan.resumed(now(), last),
+            Some(last) => break last.unwrap_or(i64::MIN),
             None => task.retry(&mut plans).await,
         }
     };
@@ -102,15 +106,13 @@ pub(super) async fn run(task: Task, mut plans: watch::Receiver<Option<Plan>>) {
                     }
                 }
                 let memory = &mut held.as_mut().expect("held for the day").1;
-                if task
-                    .read_once(&plan, day, memory.as_mut(), &mut plans)
+                match task
+                    .read_once(&plan, day, at, memory.as_mut(), &mut plans)
                     .await
                 {
-                    // Its next slot is after this one, though the clock reads a moment
-                    // earlier than it did.
-                    after = now().max(at);
-                } else {
-                    return;
+                    Slot::Recorded(ended) => after = ended,
+                    Slot::Unrecorded => {}
+                    Slot::Ended => return,
                 }
             }
         }
@@ -143,63 +145,81 @@ impl Task {
         observability::event(level, event, fields);
     }
 
-    /// One read of `day`, waiting its turn among the server's reads, kept when whole, and
-    /// recorded. Answers false once its plan is none. A read whose turn comes once its window
-    /// has closed or its plan has changed is left to plan again. One the browsers' memory turned
+    /// The read of `day`'s slot its task came to at `since`, waiting its turn among the
+    /// server's reads, kept when whole, and recorded as beginning and ending no earlier than
+    /// `since`: where it leaves the task. A read whose turn comes once its window has closed or
+    /// its plan has changed is left to plan again, unrecorded. One the browsers' memory turned
     /// away is tried once more a minute on, its turn let go meanwhile, while that's before its
-    /// next slot and its window's close, and the slot keeps the record of that retry.
+    /// next slot and its window's close: the slot keeps the record of the retry once it starts,
+    /// and of the first try otherwise.
     async fn read_once(
         &self,
         plan: &Plan,
         day: Day,
+        since: i64,
         held: &mut (dyn Any + Send),
         plans: &mut watch::Receiver<Option<Plan>>,
-    ) -> bool {
+    ) -> Slot {
         let reading = self.reading(plan, &day);
         let mut attempt = self
-            .attempt(plan, &day, &reading, held, plans, plan.timeout())
+            .attempt(plan, &day, &reading, held, plans, day.close)
             .await;
-        if let Some(until) = attempt.retried(plan, &day) {
-            self.failed(&day, Code::BrowserMemoryBusy.as_str());
-            drop(attempt);
+        // The first try, logged as it failed, while a retry may replace its record.
+        let mut first = None;
+        if let Attempt::Failed(at, ended, error) = &attempt
+            && let Some(until) = retry_before(plan, &day, (*ended).max(since), error)
+        {
+            self.failed(&day, &error.code);
+            first = Some((*at, *ended, error.code.clone()));
             self.waiting();
-            tokio::select! {
-                _ = tokio::time::sleep(MEMORY_BUSY_RETRY) => {}
-                _ = plans.wait_for(Option::is_none) => return false,
-            }
-            self.busy();
-            // Its turn comes before its next slot, or not at all.
-            let wait = Duration::from_millis((until - now()).max(0) as u64);
-            attempt = self
-                .attempt(plan, &day, &reading, held, plans, wait.min(plan.timeout()))
-                .await;
+            let planned = tokio::select! {
+                _ = tokio::time::sleep(MEMORY_BUSY_RETRY) => true,
+                _ = plans.wait_for(Option::is_none) => false,
+            };
+            attempt = if planned {
+                self.busy();
+                self.attempt(plan, &day, &reading, held, plans, until)
+                    .await
+            } else {
+                Attempt::Dropped(None)
+            };
         }
-        match attempt {
+        let ends = matches!(attempt, Attempt::Dropped(_));
+        let ended = match attempt {
             Attempt::Read(_turn, at, read) => {
-                let outcome = match read {
-                    Ok(read) => self.keep(&reading, &day, read).await,
-                    Err(error) => Err(error),
-                };
-                self.record(&day, at, outcome).await;
+                let outcome = self.keep(&reading, &day, read).await;
+                self.record(&day, since, at, now(), outcome).await
+            }
+            Attempt::Failed(at, ended, error) => {
+                self.record(&day, since, at, ended, Err(error)).await
             }
             Attempt::Busy(waited) => {
-                self.record(&day, waited, Err(Error::new("live_reads_busy", 503)))
-                    .await;
+                let busy = Err(Error::new("live_reads_busy", 503));
+                self.record(&day, since, waited, now(), busy).await
             }
-            Attempt::Late => {}
-            Attempt::Dropped(at) => {
-                if let Some(at) = at {
-                    self.record(&day, at, Err(Error::new("live_read_stopped", 409)))
-                        .await;
+            Attempt::Dropped(Some(at)) => {
+                let stopped = Err(Error::new("live_read_stopped", 409));
+                self.record(&day, since, at, now(), stopped).await
+            }
+            // A retry that never started leaves the first try on record.
+            Attempt::Late | Attempt::Dropped(None) => match first {
+                Some((at, ended, code)) => {
+                    self.write_record(&day, since, at, ended, Err(code))
+                        .await
                 }
-                return false;
-            }
+                None if ends => return Slot::Ended,
+                None => return Slot::Unrecorded,
+            },
+        };
+        if ends {
+            Slot::Ended
+        } else {
+            Slot::Recorded(ended)
         }
-        true
     }
 
-    /// One try at a read of `day`: its turn among the server's reads, waited for for `wait` at
-    /// most, then the read, for the plan's timeout at most.
+    /// One try at a read of `day`, which must start before `before`: its turn among the server's
+    /// reads, waited for for the plan's timeout at most, then the read, for that timeout at most.
     async fn attempt(
         &self,
         plan: &Plan,
@@ -207,21 +227,29 @@ impl Task {
         reading: &Reading,
         held: &mut (dyn Any + Send),
         plans: &mut watch::Receiver<Option<Plan>>,
-        wait: Duration,
+        before: i64,
     ) -> Attempt {
         let waited = now();
-        // A read that can't start within its wait missed its slot, as when the server reads
+        // `before`, as the runtime's timers keep time: a turn that comes then, or none by then,
+        // is late, though the wall clock reads a moment earlier.
+        let start = Instant::now();
+        let late = start + Duration::from_millis((before - waited).max(0) as u64);
+        // A read that can't start within its timeout missed its slot, as when the server reads
         // too much at once.
+        let wait = late.min(start + plan.timeout());
         let turn = tokio::select! {
-            turn = tokio::time::timeout(wait, self.reads.clone().acquire_owned()) => turn,
+            turn = tokio::time::timeout_at(wait, self.reads.clone().acquire_owned()) => turn,
             _ = plans.wait_for(Option::is_none) => return Attempt::Dropped(None),
         };
+        if Instant::now() >= late {
+            return Attempt::Late;
+        }
         let Ok(Ok(turn)) = turn else {
             return Attempt::Busy(waited);
         };
         self.busy();
         let at = now();
-        if *plans.borrow() != Some(*plan) || at >= day.close {
+        if *plans.borrow() != Some(*plan) {
             return Attempt::Late;
         }
         let read = tokio::select! {
@@ -231,7 +259,10 @@ impl Task {
             _ = plans.wait_for(Option::is_none) => return Attempt::Dropped(Some(at)),
         };
         self.busy();
-        Attempt::Read(turn, at, read)
+        match read {
+            Ok(read) => Attempt::Read(turn, at, read),
+            Err(error) => Attempt::Failed(at, now(), error),
+        }
     }
 
     /// Keeps a whole read: a day's first starts the day first.
@@ -300,12 +331,36 @@ impl Task {
         stopped.is_ok()
     }
 
-    async fn record(&self, day: &Day, at: i64, outcome: crate::Result<crate::manifest::Counts>) {
+    /// Records a read of `day` that began at `at` and ended at `ended`, its slot come to at
+    /// `since`, logging a failure: answers when it ended, as its record keeps it.
+    async fn record(
+        &self,
+        day: &Day,
+        since: i64,
+        at: i64,
+        ended: i64,
+        outcome: crate::Result<crate::manifest::Counts>,
+    ) -> i64 {
         let outcome = outcome.map_err(|error| error.code);
         if let Err(code) = &outcome {
             self.failed(day, code);
         }
-        let (date, ms) = (day.date, (now() - at).max(0));
+        self.write_record(day, since, at, ended, outcome).await
+    }
+    /// Writes a read's record, beginning and ending no earlier than `since`, so its task's next
+    /// slot is past the one it came to though the clock read a moment earlier then: answers
+    /// when it ended, as the record keeps it.
+    async fn write_record(
+        &self,
+        day: &Day,
+        since: i64,
+        at: i64,
+        ended: i64,
+        outcome: std::result::Result<crate::manifest::Counts, String>,
+    ) -> i64 {
+        let at = at.max(since);
+        let ended = ended.max(at);
+        let date = day.date;
         let kept = self
             .write(move |db, reader, dsp| {
                 db.record_read(&records::Read {
@@ -313,7 +368,7 @@ impl Task {
                     dsp,
                     day: date,
                     at,
-                    ms,
+                    ms: ended - at,
                     outcome,
                 })
             })
@@ -322,6 +377,7 @@ impl Task {
             self.log("error", "live.record_failed", json!({"error":error.code}));
         }
         self.busy();
+        ended
     }
 
     /// Notes in the server's log a read of `day` that failed, by its error's code.
@@ -368,30 +424,36 @@ impl Task {
 
 /// What came of one try at a read.
 enum Attempt {
-    /// It read, from the instant it holds, whole or not, its turn held until what it read is
-    /// kept.
-    Read(
-        OwnedSemaphorePermit,
-        i64,
-        crate::Result<Box<dyn Any + Send + Sync>>,
-    ),
-    /// Its turn didn't come within its wait, begun at the instant it holds.
+    /// It read whole, from the instant it holds, its turn held until what it read is kept.
+    Read(OwnedSemaphorePermit, i64, Box<dyn Any + Send + Sync>),
+    /// It read from the first instant it holds until the second, and failed: it holds no turn,
+    /// as there's nothing to keep.
+    Failed(i64, i64, Error),
+    /// Its turn didn't come within its timeout, begun at the instant it holds.
     Busy(i64),
-    /// Its turn came once its window had closed or its plan had changed.
+    /// Its turn came no earlier than it had to start before, or none came before then, or its
+    /// plan changed.
     Late,
     /// Its plan became none: as it read, from the instant it holds, or as it waited for its
     /// turn.
     Dropped(Option<i64>),
 }
-impl Attempt {
-    /// Until when a read the browsers' memory turned away may be tried again: its next slot,
-    /// or its window's close when that's sooner, while a retry a minute on comes before it.
-    fn retried(&self, plan: &Plan, day: &Day) -> Option<i64> {
-        let Attempt::Read(_, at, Err(error)) = self else {
-            return None;
-        };
-        let until = plan.slot_after(day, *at).min(day.close);
-        let retry = now() + MEMORY_BUSY_RETRY.as_millis() as i64;
-        (error.is(Code::BrowserMemoryBusy) && retry < until).then_some(until)
-    }
+
+/// Where a slot's read leaves its task.
+enum Slot {
+    /// On record, ended at the instant it holds: its next slot is the first after it.
+    Recorded(i64),
+    /// With no record: its slot reads as planned again.
+    Unrecorded,
+    /// Its plan is none: the task ends.
+    Ended,
+}
+
+/// Before when a read of `day` the browsers' memory turned away may be tried again, its record
+/// ending at `ended`: its next slot, or its window's close when that's sooner, while a retry a
+/// minute on comes before it.
+fn retry_before(plan: &Plan, day: &Day, ended: i64, error: &Error) -> Option<i64> {
+    let until = plan.slot_after(day, ended).min(day.close);
+    let retry = now() + MEMORY_BUSY_RETRY.as_millis() as i64;
+    (error.is(Code::BrowserMemoryBusy) && retry < until).then_some(until)
 }

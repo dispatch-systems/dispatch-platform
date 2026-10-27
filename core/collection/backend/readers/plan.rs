@@ -91,19 +91,9 @@ impl Plan {
         day.open + ((after - day.open) / self.every() + 1) * self.every()
     }
 
-    /// What a DSP's slots go on from as its reading starts again at `now`, having read last at
-    /// `last`: a read less than an interval old, as one that came late, keeps it to its next
-    /// slot to come, so it reads at once only when its last read is over an interval old.
-    pub fn resumed(&self, now: i64, last: Option<i64>) -> i64 {
-        match last {
-            Some(last) if now - last < self.every() => last.max(now),
-            Some(last) => last,
-            None => i64::MIN,
-        }
-    }
-
-    /// What a task does next at `now`, having read last at `after` (none: its first slot),
-    /// started the days `unstopped` without stopping them yet, and ended the day `ended` last,
+    /// What a task does next at `now`, its last read having ended at `after` (`i64::MIN`: none,
+    /// its first slot is next), having started the days `unstopped` without stopping them yet,
+    /// and ended the day `ended` last,
     /// its stop begun or done. A day other than the one open now stops once its window has
     /// closed, at once when its stop began already, and the open day reads only once each
     /// earlier day it started has stopped. The open day reads at its first slot after `after`,
@@ -149,8 +139,9 @@ impl Plan {
         Step::Wait(until)
     }
 
-    /// When it reads next at `now`, having read last at `after` and ended the day `ended` last,
-    /// as `step` reads: the open day's first slot after `after`, now when that has passed, while
+    /// When it reads next at `now`, its last read having ended at `after` and the day `ended`
+    /// having ended last, as `step` reads: the open day's first slot after `after`, now when
+    /// that has passed, while
     /// it's before the day's close and the day hasn't ended; otherwise the start of the next day
     /// it opens on, as a day that ended never reads again.
     pub fn next_read(&self, now: i64, after: i64, ended: Option<NaiveDate>) -> i64 {
@@ -165,8 +156,8 @@ impl Plan {
         next.open
     }
 
-    /// When the open `day` reads next at `now`, having read last at `after`: its first slot
-    /// after then, now when that has passed, while that's before its close.
+    /// When the open `day` reads next at `now`, its last read having ended at `after`: its first
+    /// slot after then, now when that has passed, while that's before its close.
     fn due(&self, day: &Day, now: i64, after: i64) -> Option<i64> {
         let due = self.slot_after(day, after).max(now);
         (due < day.close).then_some(due)
