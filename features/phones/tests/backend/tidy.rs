@@ -1,10 +1,14 @@
 //! Upkeep lets go of each picture never sent on its own: one whose bytes can't go leaves the
 //! rest to go, and goes the next time; bytes a later file of the same picture keeps stay; and
-//! bytes left arriving go once abandoned.
+//! bytes left arriving go once abandoned. Each job runs on its own: codes expired go though no
+//! bytes can be looked at.
 use super::let_go;
-use crate::backend::{
-    storage::{FileStore, ReportedFile},
-    support::kept,
+use crate::{
+    api::types::PairingStatus,
+    backend::{
+        storage::{DeviceStore, FileStore, ReportedFile},
+        support::{CODE, kept, store},
+    },
 };
 use dispatch_core::testing;
 use std::time::{Duration, SystemTime};
@@ -30,13 +34,13 @@ fn a_picture_that_cannot_go_leaves_the_rest_to_go() {
         .unwrap();
     db.phones_add_file(&dsp, &owner, &picture(), "loose", 1_000)
         .unwrap();
-    let_go(&db, &dsp, 2_000).unwrap();
+    let_go(&db, &dsp, 2_000);
     assert!(!folder.join("loose").exists(), "the rest still go");
     assert!(!db.phones_bytes_kept(&dsp, "blocked").unwrap());
     // Once nothing stands in their place, the next pass lets them go, though no file names them.
     std::fs::remove_dir(folder.join("blocked")).unwrap();
     std::fs::write(folder.join("blocked"), b"door").unwrap();
-    let_go(&db, &dsp, 2_000).unwrap();
+    let_go(&db, &dsp, 2_000);
     assert!(!folder.join("blocked").exists(), "tried again, they go");
 }
 
@@ -52,13 +56,13 @@ fn bytes_a_later_file_keeps_outlive_the_first_let_go() {
         .unwrap();
     db.phones_add_file(&dsp, &owner, &picture(), "door-sha", 5_000)
         .unwrap();
-    let_go(&db, &dsp, 2_000).unwrap();
+    let_go(&db, &dsp, 2_000);
     assert!(
         folder.join("door-sha").exists(),
         "the later file keeps them"
     );
     // Once nothing keeps them, they go.
-    let_go(&db, &dsp, 6_000).unwrap();
+    let_go(&db, &dsp, 6_000);
     assert!(!folder.join("door-sha").exists());
 }
 
@@ -78,7 +82,22 @@ fn bytes_left_arriving_an_hour_go() {
         .unwrap()
         .set_modified(long_ago)
         .unwrap();
-    let_go(&db, &dsp, 2_000).unwrap();
+    let_go(&db, &dsp, 2_000);
     assert!(!cut.exists(), "abandoned, they go");
     assert!(arriving.exists(), "still arriving, they stay");
+}
+
+#[test]
+fn codes_expired_go_though_no_bytes_can_be_looked_at() {
+    let (_root, db, dsp) = store();
+    let owner = testing::a_user(&db);
+    let code = db.phones_new_pairing(&dsp, &owner, CODE, 1_000).unwrap();
+    // Something else stands where the bytes are kept, so the folder can't be read.
+    let folder = kept(&db, &dsp);
+    std::fs::remove_dir(&folder).unwrap();
+    std::fs::write(&folder, b"").unwrap();
+    let_go(&db, &dsp, 2_000);
+    // Asked how it stood while it still worked, a code kept is waiting; one let go, expired.
+    let status = db.phones_pairing(&dsp, &code, 1_000).unwrap();
+    assert_eq!(status, PairingStatus::Expired, "the code goes anyway");
 }
