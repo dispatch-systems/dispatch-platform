@@ -1,13 +1,12 @@
-import { Fragment, useCallback } from 'react';
+import { useCallback } from 'react';
 import type { Conversation, TextContact } from '../../api/index.js';
 import { blockNumber, getTextContacts } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
-import { letter, listTime, numberBeside } from '../shared/format.js';
+import { ByInitial, ContactRow } from '../shared/ContactRow.js';
 import { Face, PhoneFace } from '../shared/Face.js';
-import { Name } from '../shared/Name.js';
-import { Wait } from '../shared/Wait.js';
+import { numberBeside } from '../shared/format.js';
 import { useFound } from '../shared/useFound.js';
 
 // Messaging's Contacts: whom the DSP can text, everyone Driver Match has a number for and every
@@ -47,34 +46,23 @@ export function TextContactList({
   if (failed || (typed && found?.contacts.length === 0))
     return <p className="list-empty">{failed || 'No matches'}</p>;
   if (!found) return <Loading />;
-  const row = (contact: TextContact) => {
-    const { person } = contact;
-    const selected = Boolean(current && current.id === contact.conversationId);
-    return (
-      <li key={contact.number} className={selected ? 'convo contact selected' : 'convo contact'}>
-        <button
-          className="convo-open"
-          aria-current={selected || undefined}
-          onClick={() => {
-            if (!chosen.busy) void chosen.run(contact);
-          }}
-        >
-          <Face {...person} size="contact" />
-          <span className="convo-body">
-            <strong>
-              <Name name={person.name} matched={contact.matched} />
-            </strong>
-            <small>{phoneText(contact.number)}</small>
-          </span>
-          {contact.waitingSince !== null ? (
-            <Wait since={contact.waitingSince} now={now} />
-          ) : (
-            contact.lastAt !== null && <time>{listTime(contact.lastAt, timeZone, now)}</time>
-          )}
-        </button>
-      </li>
-    );
-  };
+  const row = (contact: TextContact) => (
+    <ContactRow
+      key={contact.number}
+      face={<Face {...contact.person} size="contact" />}
+      name={contact.person.name}
+      matched={contact.matched}
+      detail={phoneText(contact.number)}
+      waitingSince={contact.waitingSince}
+      lastAt={contact.lastAt}
+      selected={Boolean(current && current.id === contact.conversationId)}
+      timeZone={timeZone}
+      now={now}
+      open={() => {
+        if (!chosen.busy) void chosen.run(contact);
+      }}
+    />
+  );
   const blocked = !typed && found.blocked.length > 0 && (
     <>
       <h2 className="list-head">Blocked</h2>
@@ -104,21 +92,9 @@ export function TextContactList({
     </>
   );
   if (typed) return <ul className="convos">{found.contacts.map(row)}</ul>;
-  // A to Z, under each first letter.
-  const letters: { letter: string; contacts: TextContact[] }[] = [];
-  for (const contact of found.contacts) {
-    const first = letter(contact.person.name);
-    if (letters.at(-1)?.letter !== first) letters.push({ letter: first, contacts: [] });
-    letters.at(-1)!.contacts.push(contact);
-  }
   return (
     <>
-      {letters.map(({ letter: first, contacts }, at) => (
-        <Fragment key={`${at}:${first}`}>
-          <h2 className="list-head">{first}</h2>
-          <ul className="convos">{contacts.map(row)}</ul>
-        </Fragment>
-      ))}
+      <ByInitial contacts={found.contacts} nameOf={(contact) => contact.person.name} row={row} />
       {blocked}
     </>
   );

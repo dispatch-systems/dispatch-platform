@@ -1,13 +1,11 @@
-import { Fragment, useCallback } from 'react';
+import { useCallback } from 'react';
 import type { CommunicationsWorkspace, Contact, Conversation } from '../../api/index.js';
 import { getContacts } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { letter, listTime } from '../shared/format.js';
+import { ByInitial, ContactRow } from '../shared/ContactRow.js';
 import { Face } from '../shared/Face.js';
 import { roleText } from '../shared/format.js';
-import { Name } from '../shared/Name.js';
-import { Wait } from '../shared/Wait.js';
 import { useFound } from '../shared/useFound.js';
 
 // Contacts: everyone the DSP can message, of every workspace or the one chosen, A to Z under
@@ -54,55 +52,23 @@ export function ContactList({
   // With every workspace shown, each says which it's in.
   const named = new Map(workspaces.map((workspace) => [workspace.teamId, workspace.name]));
   const where = !team && named.size > 1 ? named : undefined;
-  const row = (contact: Contact) => {
-    const { person } = contact;
-    const selected = current?.teamId === contact.teamId && current.with.userId === person.userId;
-    return (
-      <li
-        key={`${contact.teamId}:${person.userId}`}
-        className={selected ? 'convo contact selected' : 'convo contact'}
-      >
-        <button
-          className="convo-open"
-          aria-current={selected || undefined}
-          onClick={() => {
-            if (!chosen.busy) void chosen.run(contact);
-          }}
-        >
-          <Face {...person} size="contact" />
-          <span className="convo-body">
-            <strong>
-              <Name name={person.name} matched={contact.matched} />
-            </strong>
-            <small>
-              {[roleText(person), where?.get(contact.teamId)].filter(Boolean).join(' · ')}
-            </small>
-          </span>
-          {contact.waitingSince !== null ? (
-            <Wait since={contact.waitingSince} now={now} />
-          ) : (
-            contact.lastAt !== null && <time>{listTime(contact.lastAt, timeZone, now)}</time>
-          )}
-        </button>
-      </li>
-    );
-  };
-  if (typed) return <ul className="convos">{found.map(row)}</ul>;
-  // A to Z, under each first letter.
-  const letters: { letter: string; contacts: Contact[] }[] = [];
-  for (const contact of found) {
-    const first = letter(contact.person.name);
-    if (letters.at(-1)?.letter !== first) letters.push({ letter: first, contacts: [] });
-    letters.at(-1)!.contacts.push(contact);
-  }
-  return (
-    <>
-      {letters.map(({ letter: first, contacts }, at) => (
-        <Fragment key={`${at}:${first}`}>
-          <h2 className="list-head">{first}</h2>
-          <ul className="convos">{contacts.map(row)}</ul>
-        </Fragment>
-      ))}
-    </>
+  const row = (contact: Contact) => (
+    <ContactRow
+      key={`${contact.teamId}:${contact.person.userId}`}
+      face={<Face {...contact.person} size="contact" />}
+      name={contact.person.name}
+      matched={contact.matched}
+      detail={[roleText(contact.person), where?.get(contact.teamId)].filter(Boolean).join(' · ')}
+      waitingSince={contact.waitingSince}
+      lastAt={contact.lastAt}
+      selected={current?.teamId === contact.teamId && current.with.userId === contact.person.userId}
+      timeZone={timeZone}
+      now={now}
+      open={() => {
+        if (!chosen.busy) void chosen.run(contact);
+      }}
+    />
   );
+  if (typed) return <ul className="convos">{found.map(row)}</ul>;
+  return <ByInitial contacts={found} nameOf={(contact) => contact.person.name} row={row} />;
 }
