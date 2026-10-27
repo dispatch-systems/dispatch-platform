@@ -128,11 +128,17 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
                 }
                 let mut filer = Filer::new(db, &at)?;
                 let senders = senders(db, &changes.texts)?;
+                let ids: Vec<String> = changes.texts.iter().map(|text| text.id.clone()).collect();
+                let kept_already = db.communications_texts_kept(&at, &ids)?;
                 let incoming = changes
                     .texts
                     .iter()
                     .map(|text| {
-                        let filed = filer.placed(&text.number, text.at)?;
+                        // Only a text new to Communications is placed: one kept already stays
+                        // where it is until its day's texts are filed again.
+                        let filed = (!kept_already.contains(&text.id))
+                            .then(|| filer.placed(&text.number, text.at))
+                            .transpose()?;
                         let sender = text.sent_by.as_ref().and_then(|by| senders.get(by));
                         Ok(kept(text, filed, sender.cloned()))
                     })
@@ -238,9 +244,9 @@ fn senders(db: &Store, texts: &[Text]) -> Result<HashMap<String, String>> {
     Ok(senders)
 }
 
-/// `text` as Communications keeps it, filed as `filed`, sent by someone at the DSP shown by
-/// `sender_name`.
-fn kept(text: &Text, filed: Filed, sender_name: Option<String>) -> Incoming {
+/// `text` as Communications keeps it, filed as `filed` if it's new, sent by someone at the DSP
+/// shown by `sender_name`.
+fn kept(text: &Text, filed: Option<Filed>, sender_name: Option<String>) -> Incoming {
     Incoming {
         id: text.id.clone(),
         phone: text.phone.clone(),

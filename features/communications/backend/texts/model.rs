@@ -126,5 +126,7 @@ pub struct Incoming {
     pub status: Option<TextStatus>,
     pub error: Option<String>,
     pub files: Vec<TextFile>,
-    pub filed: Filed,
+    /// Where it's filed, for one new to Communications: none for one kept already, which stays
+    /// where it is until its day's texts are filed again.
+    pub filed: Option<Filed>,
 }
