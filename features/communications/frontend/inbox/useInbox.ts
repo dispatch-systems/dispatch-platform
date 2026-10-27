@@ -10,16 +10,15 @@ import { ApiError } from '../../../../core/shell/frontend/runtime/api.js';
 import { dataCache } from '../../../../core/shell/frontend/runtime/data-cache.js';
 import { backoff } from '../../../../core/shell/frontend/lib/backoff.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
+import { sectionNamed, type Section } from './sections.js';
 import {
   lastAnswered,
-  listingOf,
   moreIn,
   shownWorkspace,
   updated,
   withConversation,
   withGroup,
   withOlder,
-  type Section,
 } from './inbox.js';
 
 /** What changed in the latest update: the conversations and groups, or every one after reading
@@ -146,11 +145,11 @@ export function useInbox(chosen?: string) {
     async (section: Section) => {
       const listed = current.current;
       const last = listed && lastAnswered(listed, section);
-      if (section === 'routes' || !listed || !moreIn(listed, section) || !last || reading) return;
+      if (!listed || !moreIn(listed, section) || !last || reading) return;
       setReading(true);
       try {
         const asked = scope.current;
-        const older = await olderConversations(last, listingOf(section, asked));
+        const older = await olderConversations(last, sectionNamed(section).listing(asked));
         // Read while another workspace's list came, it isn't of that list.
         if (current.current && scope.current === asked)
           change(withOlder(current.current, older, section));

@@ -6,27 +6,15 @@ import type {
   Conversations,
   Group,
 } from '../../api/index.js';
-import type { Listing } from '../../api/client.js';
+import { groupsSection, sectionNamed, sectionOf, SECTIONS, type Section } from './sections.js';
 
 // The page's conversations and groups as they change: what the overview read, each update the
 // page waits on, older answered ones as they're read, and what the page's own writes answer with.
 // Those waiting come first, the longest waiting first, then those answered, the latest first: the
 // order the server reads them in, so reading older ones goes on where each section's list stops.
-// A conversation listed under a group is the group's row, not one of its own. Each is listed in a
-// section: a work phone's texts in Today's Routes, which lists them by its own read
-// (`todays-routes/todays-routes.ts`); a number's texts in Messaging; a Slack direct message and
-// the groups in Slack; a blocked number's in none.
-
-/** A section of the list, in the order the switch shows them. */
-export const sections = ['routes', 'messaging', 'slack'] as const;
-export type Section = (typeof sections)[number];
-/** The section a conversation is listed in, if any. */
-export function sectionOf(conversation: Conversation): Section | undefined {
-  if (conversation.kind === 'slack') return 'slack';
-  if (conversation.kind === 'work') return 'routes';
-  if (!conversation.blocked) return 'messaging';
-  return undefined;
-}
+// A conversation listed under a group is the group's row, not one of its own. Each is listed in
+// the section that holds it (`sections.ts`), and the groups in the one that lists them; Today's
+// Routes lists its own by its own read (`todays-routes/todays-routes.ts`).
 
 /** A row of the list: a conversation, or a group. */
 type Listed = Pick<Conversation, 'id' | 'state' | 'waitingSince'> & { lastAt: number | null };
@@ -48,23 +36,21 @@ const rowIn = (section: Section) => (conversation: Conversation) =>
   conversation.groupId === null && sectionOf(conversation) === section;
 /** How many conversations wait in each section, those under a group too. */
 export function waitingIn(inbox: Communications): Record<Section, number> {
-  const waiting = { routes: 0, messaging: 0, slack: 0 };
+  const waiting = Object.fromEntries(SECTIONS.map((each) => [each.id, 0])) as Record<
+    Section,
+    number
+  >;
   for (const conversation of inbox.conversations) {
     const section = sectionOf(conversation);
     if (conversation.state === 'waiting' && section) waiting[section]++;
   }
   return waiting;
 }
-/** Where the list says whether older answered rows of a section that pages are left to read:
- * Today's Routes is read whole. */
-const moreOf = (section: Exclude<Section, 'routes'>) =>
-  section === 'slack' ? 'more' : 'moreTexts';
-/** Whether older answered rows of `section` are left to read. */
-export const moreIn = (inbox: Communications, section: Section) =>
-  section !== 'routes' && inbox[moreOf(section)];
-/** Where `section`'s conversations are read from: in Slack's, of every workspace or `team`'s. */
-export const listingOf = (section: Section, team?: string): Listing =>
-  section === 'slack' ? { team } : { kind: section === 'routes' ? 'work' : 'number' };
+/** Whether older answered rows of `section` are left to read: never of one read whole. */
+export const moreIn = (inbox: Communications, section: Section) => {
+  const { more } = sectionNamed(section);
+  return more ? inbox[more] : false;
+};
 
 /** The workspace `chosen`, while it's one of two or more Communications works in; else none,
  * for every one. */
@@ -81,7 +67,10 @@ export function shownWorkspace(
 /** The last answered row listed in `section`, a conversation or a group, which reading older
  * ones goes on from. */
 export const lastAnswered = (inbox: Communications, section: Section): Listed | undefined =>
-  [...inbox.conversations.filter(rowIn(section)), ...(section === 'slack' ? inbox.groups : [])]
+  [
+    ...inbox.conversations.filter(rowIn(section)),
+    ...(sectionNamed(section).groups ? inbox.groups : []),
+  ]
     .filter((row) => row.state !== 'waiting')
     .sort(order)
     .at(-1);
@@ -96,7 +85,7 @@ function merged(
   conversations: readonly Conversation[],
   groups: readonly Group[],
 ): Pick<Communications, 'conversations' | 'groups'> {
-  const last = new Map(sections.map((section) => [section, lastAnswered(inbox, section)]));
+  const last = new Map(SECTIONS.map(({ id }) => [id, lastAnswered(inbox, id)]));
   const kept = <T extends Listed>(
     rows: readonly T[],
     changed: readonly T[],
@@ -117,7 +106,7 @@ function merged(
   };
   return {
     conversations: kept(inbox.conversations, conversations, sectionOf),
-    groups: kept(inbox.groups, groups, () => 'slack'),
+    groups: kept(inbox.groups, groups, () => groupsSection),
   };
 }
 
@@ -127,13 +116,15 @@ export function updated(inbox: Communications, update: CommunicationsUpdates): C
   const { reset: _reset, conversations, groups, ...now } = update;
   return { ...inbox, ...now, ...merged(inbox, conversations, groups) };
 }
-/** The list with the older answered conversations and groups of `section` read after its last. */
+/** The list with the older answered conversations and groups of `section` read after its last:
+ * one that pages. */
 export function withOlder(
   inbox: Communications,
   older: Conversations,
-  section: Exclude<Section, 'routes'>,
+  section: Section,
 ): Communications {
-  const more = moreOf(section);
+  const { more } = sectionNamed(section);
+  if (!more) return inbox;
   return {
     ...inbox,
     [more]: older.more,
@@ -158,7 +149,7 @@ export function rows(inbox: Communications, section: Section, team?: string) {
     .filter(rowIn(section))
     .filter((conversation) => !team || conversation.teamId === team)
     .map((conversation) => ({ kind: 'conversation' as const, row: conversation }));
-  const groups = (section === 'slack' ? inbox.groups : [])
+  const groups = (sectionNamed(section).groups ? inbox.groups : [])
     .filter((group) => !team || group.teamIds.includes(team))
     .map((group) => ({ kind: 'group' as const, row: group }));
   return [...conversations, ...groups].sort((a, b) => order(a.row, b.row));

@@ -10,7 +10,8 @@ import { useFound } from '../shared/useFound.js';
 import type { Draft } from '../slack/groups/GroupDraft.js';
 import { GroupDraftRow, GroupRow } from '../slack/groups/GroupRow.js';
 import { ConversationRow } from './ConversationRow.js';
-import { listingOf, moreIn, rows as listed, sectionOf, type Row, type Section } from './inbox.js';
+import { moreIn, rows as listed, type Row } from './inbox.js';
+import { groupsSection, sectionNamed, sectionOf, type Section } from './sections.js';
 import type { Listing } from './listing.js';
 
 // Messages: a section's conversations, and in Slack's the groups, of every workspace or the one
@@ -46,7 +47,10 @@ export function ConversationList({
   readOlder: () => void;
 }) {
   const search = useCallback(
-    () => searchConversations(typed, listingOf(section, team)).then((found) => found.conversations),
+    () =>
+      searchConversations(typed, sectionNamed(section).listing(team)).then(
+        (found) => found.conversations,
+      ),
     [typed, section, team],
   );
   const { found, failed } = useFound(
@@ -80,7 +84,7 @@ export function ConversationList({
   const pinnedShown =
     pinned &&
     (pinned.kind === 'group'
-      ? section === 'slack' && (!team || pinned.row.teamIds.includes(team))
+      ? section === groupsSection && (!team || pinned.row.teamIds.includes(team))
       : sectionOf(pinned.row) === section && (!team || pinned.row.teamId === team));
   return (
     <>

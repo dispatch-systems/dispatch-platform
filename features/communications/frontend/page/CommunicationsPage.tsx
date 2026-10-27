@@ -18,14 +18,14 @@ import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route
 import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { dockAt, pageLook, Shown, useDisplay } from '../display/display.js';
+import { rows, waitingIn, type Row } from '../inbox/inbox.js';
 import {
-  rows,
+  groupsSection,
+  sectionNamed,
   sectionOf,
-  sections as order,
-  waitingIn,
-  type Row,
+  SECTIONS,
   type Section,
-} from '../inbox/inbox.js';
+} from '../inbox/sections.js';
 import { routeGroups, routeRows, rowTarget } from '../todays-routes/todays-routes.js';
 import { started, type Target } from '../conversations/target.js';
 import { memberTarget } from '../slack/members.js';
@@ -36,7 +36,7 @@ import { GroupPane } from '../slack/groups/GroupPane.js';
 import { ListPane } from './ListPane.js';
 import { NewMessage } from '../slack/NewMessage.js';
 import { PhonesOffline } from '../texting/PhonesOffline.js';
-import { RoutesBoard } from '../todays-routes/RoutesBoard.js';
+import { VIEWS, type RoutesShown } from './section-views.js';
 import { Sections } from './Sections.js';
 import { ConnectSlack, UpdateSlack } from '../slack/Setup.js';
 import { useInbox } from '../inbox/useInbox.js';
@@ -92,19 +92,15 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
   const [chosenView, chooseView] = useRemembered('routes-view', view.dsp.id, user);
   const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(chosen);
-  // Today's Routes while the DSP texts and has live route data, Messaging while it texts, Slack
-  // while it has a workspace.
-  const routing = Boolean(inbox?.routes);
+  // The sections the DSP has, the one chosen shown, else the first; with none, Slack's, empty
+  // until it's connected.
   const texting = Boolean(inbox?.texting);
-  const slacking = Boolean(inbox?.workspaces.length);
-  const sections = useMemo(
-    () =>
-      order.filter((each) =>
-        each === 'routes' ? routing : each === 'messaging' ? texting : slacking,
-      ),
-    [routing, texting, slacking],
+  const sections: Section[] = SECTIONS.filter((each) => inbox && each.offered(inbox)).map(
+    (each) => each.id,
   );
   const section = sections.find((each) => each === chosenSection) ?? sections[0] ?? 'slack';
+  const model = sectionNamed(section);
+  const shows = VIEWS[section];
   const todays = useTodaysRoutes(section === 'routes', changed, inbox);
   const routeList = useMemo(
     () =>
@@ -153,21 +149,18 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     if (next === 'board') closed();
   };
   const working = inbox?.workspaces.filter((workspace) => workspace.on) ?? [];
-  const listedTeam = section === 'slack' ? team : undefined;
+  const listedTeam = model.workspaces ? team : undefined;
   const shownRows = inbox ? rows(inbox, section, listedTeam) : [];
   // Today's Routes as a board across the page, as the member chose, but one pane at a time, and
   // while nothing is open: what opens, from a row, a link or a chip, shows in the list, and the
   // board comes back once nothing is.
   const routesView: RoutesView = chosenView === 'board' ? 'board' : 'list';
   const boardable = layout !== undefined && layout !== 'phone';
-  const board = section === 'routes' && routesView === 'board' && boardable && !reading;
+  const board = shows.board !== undefined && routesView === 'board' && boardable && !reading;
   // Side by side, something is always open: the first listed with a conversation, until another
   // is chosen, and as the page widens to show both; on the board, nothing.
-  const first =
-    section === 'routes'
-      ? routeList.flatMap((each) => each.rows).find((row) => row.conversation)?.conversation
-      : shownRows[0]?.row;
-  const firstGroup = section === 'slack' && shownRows[0]?.kind === 'group';
+  const first = shows.first ? shows.first(routeList) : shownRows[0]?.row;
+  const firstGroup = !shows.first && shownRows[0]?.kind === 'group';
   useEffect(() => {
     if (open || group || drafting || board || !first || !layout || layout === 'phone') return;
     if (firstGroup) openGroup(first.id);
@@ -176,9 +169,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // While Slack shows: each update brings the workspaces as they are, so it goes once Slack is
   // updated.
   const updating =
-    manages && section === 'slack'
-      ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? [])
-      : [];
+    manages && model.workspaces ? (inbox?.workspaces.filter((each) => each.needsUpdate) ?? []) : [];
   const done = useAction(async (conversation: Conversation) =>
     show(await markDone(conversation.id)),
   );
@@ -193,20 +184,15 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const seenGroup = useCallback((listed: Group) => setPinned({ kind: 'group', row: listed }), []);
   // What a target names, opened: a conversation there is, or one started, pinned until it holds
   // a message.
-  const reach = useCallback(
-    async (target: Target) => {
-      let id: string;
-      if (target.kind === 'conversation') id = target.id;
-      else {
-        const begun = await started(target);
-        id = begun.id;
-        setPinned({ kind: 'conversation', row: begun });
-      }
-      select(id);
-      setComposing(false);
-    },
-    [select],
-  );
+  const reach = async (target: Target) => {
+    if (target.kind === 'conversation') select(target.id);
+    else {
+      const begun = await started(target);
+      setPinned({ kind: 'conversation', row: begun });
+      select(begun.id);
+    }
+    setComposing(false);
+  };
   const reaching = useAction(reach);
   const go = (target: Target) => void reaching.run(target);
 
@@ -243,19 +229,26 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // Choosing a section leaves what's open in another, for the first of the one chosen.
   const showSection = (next: Section) => {
     chooseSection(next);
-    const elsewhere = current ? sectionOf(current) !== next : next !== 'slack';
+    const elsewhere = current ? sectionOf(current) !== next : next !== groupsSection;
     if (elsewhere && (current || currentGroup || drafting)) closed();
   };
   // What opens shows its section, once as it opens, as by a link: a group Slack's, a conversation
   // its own. What was open last is forgotten once nothing is, so it shows its section again.
   const placed = useRef<string>(undefined);
   const shown = currentGroup ?? current;
-  const shownIn = currentGroup ? 'slack' : current && sectionOf(current);
+  const shownIn = currentGroup ? groupsSection : current && sectionOf(current);
   useEffect(() => {
     if (placed.current === shown?.id) return;
     placed.current = shown?.id;
     if (shownIn && shownIn !== section && sections.includes(shownIn)) chooseSection(shownIn);
   }, [shown, shownIn, section, sections, chooseSection]);
+  // Today's Routes as the page reads it, which its list and its board show.
+  const routes: RoutesShown = {
+    groups: routeList,
+    choose: (row) => go(rowTarget(row)),
+    driver: current?.driverId,
+    view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,
+  };
   // The DSP's phones offline: in the heading, or on a phone, a line of their own under it.
   const offline = <PhonesOffline phones={inbox?.phones ?? []} now={now} />;
   return (
@@ -301,8 +294,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
           ) : connect ? (
             <ConnectSlack busy={returned.busy} />
           ) : board ? (
-            <RoutesBoard
-              tools={
+            shows.board?.({
+              tools: (
                 <>
                   {sections.length > 1 && (
                     <Sections
@@ -314,23 +307,17 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   )}
                   <ViewToggle view="board" choose={chooseRoutesView} />
                 </>
-              }
-              groups={routeList}
-              typing={inbox.typing.writing}
-              timeZone={timeZone}
-              now={now}
-              choose={(row) => go(rowTarget(row))}
-            />
+              ),
+              routes,
+              typing: inbox.typing.writing,
+              timeZone,
+              now,
+            })
           ) : (
             <div className="chat-frame">
               <ListPane
                 inbox={inbox}
-                routes={{
-                  groups: routeList,
-                  choose: (row) => go(rowTarget(row)),
-                  driver: current?.driverId,
-                  view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,
-                }}
+                routes={routes}
                 sections={sections}
                 section={section}
                 chooseSection={showSection}
@@ -427,7 +414,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
             group={() => {
               setComposing(false);
               setDraft({ name: '', people: 0 });
-              chooseSection('slack');
+              chooseSection(groupsSection);
               opening({ drafting: true });
             }}
             close={() => setComposing(false)}
