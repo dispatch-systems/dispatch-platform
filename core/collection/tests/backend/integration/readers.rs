@@ -897,10 +897,9 @@ async fn a_retry_that_never_starts_leaves_the_first_tries_failure_on_record() {
     server.window(&moved, &opened, &later).await;
     server.switch(&unplugged, false).await;
     tokio::time::sleep(MINUTE).await;
-    let busy = failed("browser_memory_busy");
     for dsp in [&moved, &unplugged] {
         assert_eq!(server.probe.reads(dsp).len(), 1);
-        assert_eq!(server.records(dsp).await, [busy.clone()]);
+        assert_eq!(server.records(dsp).await, [failed("browser_memory_busy")]);
     }
 }
 
