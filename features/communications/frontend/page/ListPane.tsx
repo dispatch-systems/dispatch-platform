@@ -8,17 +8,17 @@ import type {
   TextContact,
   Writing,
 } from '../../api/index.js';
-import { waitingIn, type Row, type Section } from '../inbox.js';
-import type { RouteGroup, RouteRow } from '../todays-routes.js';
+import { waitingIn, type Row, type Section } from '../inbox/inbox.js';
+import type { RouteGroup, RouteRow } from '../todays-routes/todays-routes.js';
 import { SearchInput, Tabs } from '../../../../core/shell/frontend/ui/index.js';
-import { ContactList } from './ContactList.js';
-import { ConversationList } from './ConversationList.js';
-import type { Draft } from './GroupDraft.js';
-import { RoutesList } from './RoutesList.js';
+import { ContactList } from '../slack/ContactList.js';
+import { ConversationList } from '../inbox/ConversationList.js';
+import type { Draft } from '../slack/groups/GroupDraft.js';
+import { RoutesList } from '../todays-routes/RoutesList.js';
 import { Sections } from './Sections.js';
-import { TextContactList } from './TextContactList.js';
-import { ViewToggle, type RoutesView } from './ViewToggle.js';
-import { WorkspacePicker } from './WorkspacePicker.js';
+import { TextContactList } from '../texting/TextContactList.js';
+import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
+import { WorkspacePicker } from '../slack/WorkspacePicker.js';
 
 // The list beside the conversation: its sections, while there are two or more; in Slack's,
 // which workspace it shows, with two or more where Communications works; Search; and Messages,

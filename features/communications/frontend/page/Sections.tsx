@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Phone, Route } from 'lucide-react';
 import { SlackLogo } from '../../../slack/frontend/index.js';
 import { Tabs } from '../../../../core/shell/frontend/ui/index.js';
-import type { Section } from '../inbox.js';
+import type { Section } from '../inbox/inbox.js';
 import './sections.css';
 
 // The sections of the list, at its top while there are two or more: Today's Routes, the work

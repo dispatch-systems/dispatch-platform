@@ -1,10 +1,10 @@
 import { useId, useMemo, useRef } from 'react';
-import { Composer } from '../page/Composer.js';
-import { ConversationHead } from '../page/ConversationHead.js';
+import { Composer } from '../conversations/Composer.js';
+import { ConversationHead } from '../conversations/ConversationHead.js';
 import { ListPane } from '../page/ListPane.js';
-import { roleText } from '../page/parts.js';
-import { ProfileShown } from '../page/Profile.js';
-import { Thread } from '../page/Thread.js';
+import { roleText } from '../shared/format.js';
+import { ProfileShown } from '../conversations/Profile.js';
+import { Thread } from '../conversations/Thread.js';
 import { useLayout } from '../page/useLayout.js';
 import { dockAt, pageLook, Shown, type Display } from './display.js';
 import { sample } from './sample.js';

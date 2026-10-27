@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Message, Sender } from '../../api/index.js';
-import { fresh, runs } from '../../frontend/messages.js';
+import { fresh, runs } from '../../frontend/conversations/messages.js';
 
 /** A text written `minutes` past 4 PM: from the number a conversation is with, or by `sender`. */
 const text = (id: string, minutes: number, sender: Sender | null = null): Message => {

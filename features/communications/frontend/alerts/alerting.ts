@@ -11,7 +11,7 @@ import { settingsRead, type Watching } from '../../../../core/shell/frontend/run
 import { getWaiting, waitingUrl } from '../../api/client.js';
 import type { CommunicationsWaiting } from '../../api/index.js';
 import { ownDisplay } from '../display/display.js';
-import { preview } from '../format.js';
+import { preview } from '../shared/format.js';
 import { arrived, keepSeen, readSeen, type InFront } from './arrivals.js';
 import { chime } from './chime.js';
 import { lead } from './leading.js';

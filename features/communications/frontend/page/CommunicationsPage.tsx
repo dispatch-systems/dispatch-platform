@@ -24,23 +24,31 @@ import { prefetchRouteData } from '../../../../core/shell/frontend/runtime/route
 import { settingsPage } from '../../../../core/shell/frontend/runtime/slots.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { dockAt, pageLook, Shown, useDisplay } from '../display/display.js';
-import { rows, sectionOf, sections as order, waitingIn, type Row, type Section } from '../inbox.js';
-import { routeGroups, routeRows, type RouteRow } from '../todays-routes.js';
-import { ConversationPane } from './ConversationPane.js';
-import { CopyChatLink } from './CopyChatLink.js';
-import { GroupDraft, type Draft } from './GroupDraft.js';
-import { GroupPane } from './GroupPane.js';
+import {
+  rows,
+  sectionOf,
+  sections as order,
+  waitingIn,
+  type Row,
+  type Section,
+} from '../inbox/inbox.js';
+import { routeGroups, routeRows, type RouteRow } from '../todays-routes/todays-routes.js';
+import { ConversationPane } from '../conversations/ConversationPane.js';
+import { CopyChatLink } from '../slack/CopyChatLink.js';
+import { GroupDraft, type Draft } from '../slack/groups/GroupDraft.js';
+import { GroupPane } from '../slack/groups/GroupPane.js';
 import { ListPane } from './ListPane.js';
-import { NewMessage } from './NewMessage.js';
-import { PhonesOffline } from './PhonesOffline.js';
-import { RoutesBoard } from './RoutesBoard.js';
+import { NewMessage } from '../slack/NewMessage.js';
+import { PhonesOffline } from '../texting/PhonesOffline.js';
+import { RoutesBoard } from '../todays-routes/RoutesBoard.js';
 import { Sections } from './Sections.js';
-import { ConnectSlack, UpdateSlack } from './Setup.js';
-import { useInbox } from './useInbox.js';
+import { ConnectSlack, UpdateSlack } from '../slack/Setup.js';
+import { useInbox } from '../inbox/useInbox.js';
 import { useLayout } from './useLayout.js';
+import { useNow } from './useNow.js';
 import { useRemembered } from './useRemembered.js';
-import { useTodaysRoutes } from './useTodaysRoutes.js';
-import { ViewToggle, type RoutesView } from './ViewToggle.js';
+import { useTodaysRoutes } from '../todays-routes/useTodaysRoutes.js';
+import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 
 // The Communications page: the DSP's conversations, in sections: Today's Routes, the drivers on a
 // route today and their work phones, while it texts and has live route data; Messaging, the
@@ -55,19 +63,6 @@ import { ViewToggle, type RoutesView } from './ViewToggle.js';
 // conversation or group open is kept in the address (`?open=`, `?group=`): a link to one opens it,
 // in its section, the page open or not. It looks as the member chose in Settings' Message display,
 // which Display opens.
-
-/** How often the times waited move on. */
-const TICK_MS = 30_000;
-
-/** The time now, moving on every `every` milliseconds. */
-function useNow(every: number) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), every);
-    return () => clearInterval(timer);
-  }, [every]);
-  return now;
-}
 
 /** What the pane shows: a conversation or a group, by its ID, or a message being written to a
  * group. */
@@ -134,7 +129,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [pinned, setPinned] = useState<Row>();
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState<Draft>({ name: '', people: 0 });
-  const now = useNow(TICK_MS);
+  const now = useNow();
   const opening = useCallback((next: Opened) => {
     setOpened(next);
     // One pinned to the top of the list goes once another is open.

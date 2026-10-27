@@ -11,16 +11,16 @@ import type {
   Reachable,
 } from '../../api/index.js';
 import {
-  elsewhereNow,
-  marked,
   rows,
   shownWorkspace,
   updated,
   withOlder,
   type Section,
-} from '../../frontend/inbox.js';
-import { groupName, recipients, type Pick } from '../../frontend/groups.js';
-import { letter, waited } from '../../frontend/format.js';
+} from '../../frontend/inbox/inbox.js';
+import { elsewhereNow } from '../../frontend/conversations/elsewhere.js';
+import { groupName, recipients, type Pick } from '../../frontend/slack/groups/groups.js';
+import { letter, waited } from '../../frontend/shared/format.js';
+import { marked } from '../../frontend/shared/Name.js';
 
 /** A conversation, waiting since `since` or answered, its latest message written at `at`, listed
  * under the group `group`, if any. */
