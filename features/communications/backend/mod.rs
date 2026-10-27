@@ -49,5 +49,5 @@ pub(crate) mod texts;
 pub(crate) mod today;
 
 #[cfg(test)]
-#[path = "../tests/backend/support.rs"]
+#[path = "../tests/backend/support/mod.rs"]
 pub(crate) mod support;
