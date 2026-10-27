@@ -268,10 +268,14 @@ impl RoutesStore for Store {
         })
     }
     /// Makes a staged day the day's read if it was collected later than the one the day has
-    /// (`publish_day`), keeping the day's work phones: the standard collection reads none.
-    /// Answers whether it is the day's read now.
+    /// (`publish_day`), keeping the day's work phones: the standard collection reads none. A day
+    /// it changed is noted, to tell of (`changed`). Answers whether it is the day's read now.
     fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool> {
-        publish_day(&*self.routes_db(id)?, job, staged, None)
+        let current = publish_day(&*self.routes_db(id)?, job, staged, None)?;
+        if current {
+            changed::note(id, &staged.day);
+        }
+        Ok(current)
     }
     /// Retires the days a DSP's retention window has passed: they become inactive, and
     /// `sweep_routes` deletes them in small steps. Addresses and drivers last seen before
@@ -309,7 +313,8 @@ impl RoutesStore for Store {
         sweep_routes_step(self, id, &mut None)
     }
     /// Rebuilds every active publication's rows, or one day's, from the responses it
-    /// stored: what a release that reads more of them needs, without collecting again.
+    /// stored: what a release that reads more of them needs, without collecting again. Each day
+    /// rebuilt is noted, to tell of (`changed`).
     fn reprocess_routes(&self, id: &str, day: Option<&str>) -> Result<RouteReprocess> {
         if let Some(day) = day {
             dispatch_core::foundation::validate::date(day)?;
@@ -364,6 +369,7 @@ impl RoutesStore for Store {
                 )?;
                 Ok(())
             })?;
+            changed::note(id, s(row, "day"));
             let fresh = db
                 .one(
                     "SELECT id,day,mode,station,collected_at,route_count,itinerary_count,stop_count,task_count \

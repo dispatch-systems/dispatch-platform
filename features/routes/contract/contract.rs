@@ -6,8 +6,9 @@
 //! outside what's collected is unknown. Routes exposes it as `driver_routes`, from historical
 //! route data; and today as live reads leave it, with the work phone each driver holds now, as
 //! `live_route_data` (`LiveRouteData`). Each driver's latest work phone of a day, today and on a
-//! saved day, is in both (`day_phones`). Who held which work phone, from when until when, is in both
-//! too, and `WorkPhonesChanged` says when it changed, and of which day.
+//! saved day, is in both (`day_phones`), and `RouteDataChanged` says when a day's route data
+//! changed. Who held which work phone, from when until when, is in both too, and
+//! `WorkPhonesChanged` says when it changed, and of which day.
 use dispatch_core::{
     Result,
     db::Store,
@@ -232,6 +233,23 @@ pub struct WorkPhonesChanged {
 }
 impl Event for WorkPhonesChanged {
     const NAME: &'static str = "routes.work_phones_changed";
+}
+
+/// A day's route data changed, once it's kept: a live read changed it; live route data was emptied
+/// of it, or emptied holding none, of today; a read of it became the day's in historical route
+/// data, saved, collected or reprocessed; or its itineraries' work phones were extracted from its
+/// stored responses. Published after `people.changed` when a live read or a save names drivers
+/// anew. A collected or reprocessed day is published once Routes hears `collection.succeeded` of
+/// its collection, before the features after it in the registry hear it, or by the next minute's
+/// upkeep, whichever is first: until then it's noted only in the server's memory, so a restart
+/// before then publishes none.
+#[derive(Clone, Debug)]
+pub struct RouteDataChanged {
+    /// The day whose route data changed, YYYY-MM-DD in the DSP's own time.
+    pub day: String,
+}
+impl Event for RouteDataChanged {
+    const NAME: &'static str = "routes.data_changed";
 }
 
 /// What reads the DSP's live route data: only while Routes is on there.

@@ -181,6 +181,11 @@ pub const FEATURE: Feature = Feature {
     ],
     domains: &[backend::DOMAIN],
     maintenance: &[backend::maintenance::MAINTENANCE],
+    // The days its collections change, told of once they succeed.
+    on: &[dispatch_core::on!(
+        dispatch_core::manifest::events::CollectionSucceeded,
+        backend::changed::collected,
+    )],
     people: &[&backend::people::PEOPLE, &backend::people::LIVE_PEOPLE],
     // Its events are its collections' and their data's, which its settings keep.
     audit: Audit {

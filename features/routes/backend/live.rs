@@ -11,7 +11,7 @@ use dispatch_core::{
         events::{self, PeopleChanged},
     },
 };
-use dispatch_routes_contract::WorkPhonesChanged;
+use dispatch_routes_contract::{RouteDataChanged, WorkPhonesChanged};
 use std::sync::Arc;
 
 /// What keeping a live read counted, for its record: the itineraries it listed, the rows it
@@ -111,7 +111,8 @@ fn key(day: &str, collected: i64) -> String {
 /// or another scope, starts it afresh. A read collected no later than the one it holds changes
 /// nothing. It tells Driver Match of a driver live route data didn't name (`people.changed`), then
 /// every feature that hears it of a hold claimed, moved, handed over or withdrawn on the read's day
-/// (`routes.work_phones_changed`).
+/// (`routes.work_phones_changed`), and of the day's route data changed, when it wrote or deleted
+/// a row (`routes.data_changed`).
 ///
 /// It refuses, changing nothing, a day other than today where the DSP is
 /// (`routes_day_not_available`); a DSP without a station (`routes_station_required`); a read that
@@ -155,7 +156,11 @@ pub async fn keep_live(
             events::publish(state, dsp, PeopleChanged).await;
         }
         if kept.phone_events > 0 {
-            events::publish(state, dsp, WorkPhonesChanged { day: read_day }).await;
+            let day = read_day.clone();
+            events::publish(state, dsp, WorkPhonesChanged { day }).await;
+        }
+        if kept.changed > 0 {
+            events::publish(state, dsp, RouteDataChanged { day: read_day }).await;
         }
         Ok(kept)
     })
@@ -324,9 +329,10 @@ fn empty(db: &Db) -> Result<()> {
 
 /// Empties live route data, as a new day starts or a saved one stops, and gives back the
 /// file's space, its log's with it; then tells every feature that hears it that its holds on the
-/// work phones of the day it held are gone (`routes.work_phones_changed`), each time, so a call
-/// made again after one that couldn't give the space back tells them too, of today where the DSP
-/// is, as it holds no day by then. Refuses while Routes is off for the DSP (`routes_off`).
+/// work phones of the day it held are gone (`routes.work_phones_changed`), and that the day's route
+/// data changed (`routes.data_changed`), each time, so a call made again after one that couldn't
+/// give the space back tells them too, of today where the DSP is, as it holds no day by then.
+/// Refuses while Routes is off for the DSP (`routes_off`).
 pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
     let d = dsp.to_owned();
     let day = State::patiently(state.run_scoped(dsp, DOMAIN, move |db| {
@@ -345,7 +351,9 @@ pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
         }
     }))
     .await?;
-    events::publish(state, dsp, WorkPhonesChanged { day }).await;
+    let changed = day.clone();
+    events::publish(state, dsp, WorkPhonesChanged { day: changed }).await;
+    events::publish(state, dsp, RouteDataChanged { day }).await;
     Ok(())
 }
 

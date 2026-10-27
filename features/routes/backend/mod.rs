@@ -5,6 +5,7 @@
 //! HTTP data is untrusted input. The collection is `routes` to the platform; its database is
 //! `routedata`, historical route data. Today as live reads leave it is live route data, in a
 //! database of its own, `routelive`, which a feature reading routes live keeps (`live`).
+pub(crate) mod changed;
 pub(crate) mod exposed;
 pub(crate) mod keeper;
 mod live;
