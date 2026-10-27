@@ -270,7 +270,6 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
     let mut read = dispatch_cortex::routes::fixture(&request).unwrap();
     let first = read.summaries["itinerarySummaries"][0].clone();
     read.summaries["itinerarySummaries"] = json!([first]);
-    read.summaries["itinerarySummaries"][0]["lastDriverEventTime"] = json!(read.started_at);
     read.itineraries.truncate(1);
     // Another provider's route at the station, its driver assigned, is none of the DSP's.
     let mut other = read.route_summaries["rmsRouteSummaries"][1].clone();
@@ -340,7 +339,7 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
         offered.work_phones(&db, &dsp).unwrap(),
         [WorkPhone {
             driver_id: "driver-1".into(),
-            phone: "5550000000".into(),
+            phone: "2065550190".into(),
             since: read.finished_at,
         }]
     );

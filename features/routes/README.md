@@ -66,10 +66,11 @@ it is live route data, in a database of its own, `routelive`.
   recently active driver holds a phone two records show. Every hold is kept, from its claim
   until it ends or the day does, so a restart neither repeats a claim nor loses one; and saved
   with the day into historical route data, which keeps each day's for the retention window.
-  Every feature that hears it is told once who holds a phone changed, as it's kept
-  (`routes.work_phones_changed`, after `people.changed` when both are): after a live read that
-  claimed, moved, handed over or withdrew a hold; each time live route data is emptied; and once
-  a day saved becomes the day's read, its holds with it.
+  Every feature that hears it is told once who held a phone on a day changed, as it's kept, with
+  the day (`routes.work_phones_changed`, after `people.changed` when both are): after a live read
+  that claimed, moved, handed over or withdrew a hold, of the read's day; each time live route
+  data is emptied, of the day it held, or today once it holds none; and once a day saved becomes
+  the day's read, its holds with it, of that day.
 - **Schedule:** the DSP's own rules, none made for it, set on Settings' Collectors page behind
   `routes.manage` (its keeper's `schedules`, which offers the choice), through core's
   `/api/dsp/collectors/routes` routes. Each rule reads one day of its choosing, its Day:
@@ -128,14 +129,14 @@ it is live route data, in a database of its own, `routelive`.
   read replaces it. A driver without a route didn't drive only on a complete day: one read while
   under way may be read before dispatch. Never addresses, locations or order IDs, nor a phone
   number but a work phone's. IDs are matched exactly, and none reads the days alone. It refuses a day that isn't YYYY-MM-DD
-  (`invalid_date`); and `from` after `to`, more than 366 days, more than 16 IDs, or an ID that's
-  empty or over 128 characters (`invalid_input`). And `live_route_data` (`LiveRouteData`), while
-  it's on: today as live route data holds it, read the same way, without the days collected:
-  the live day, every driver's routes, or those of up to 16 IDs, each a route they're assigned to
-  and haven't started too, as planned; the work phone each driver holds now, since when; and
-  every hold of the day, ended ones too, each driver's phone by its ten digits from when until
-  when (`work_phone_holds`). Nothing of a day that isn't today; never complete. It refuses IDs as
-  `driver_routes` does. `driver_routes` reads a saved day's holds the same way
-  (`work_phone_holds`, refusing a day as `day` does), and whether a number, by its last ten
-  digits, was ever held as a work phone in live or historical route data (`was_work_phone`):
-  a work phone nobody holds now is still one.
+  (`invalid_date`); and `from` after `to`, more than 366 days (`MOST_DAYS`), more than 16 IDs
+  (`MOST_IDS`), or an ID that's empty or over 128 characters (`invalid_input`). And
+  `live_route_data` (`LiveRouteData`), while it's on: today as live route data holds it, read the
+  same way, without the days collected: the live day, every driver's routes, or those of up to 16
+  IDs, each a route they're assigned to and haven't started too, as planned; the work phone each
+  driver holds now, since when; and every hold of the day, ended ones too, each driver's phone by
+  its ten digits from when until when (`work_phone_holds`). Nothing of a day that isn't today;
+  never complete. It refuses IDs as `driver_routes` does. `driver_routes` reads a saved day's
+  holds the same way (`work_phone_holds`, refusing a day as `day` does), and whether a number, by
+  its last ten digits, was ever held as a work phone in live or historical route data
+  (`was_work_phone`): a work phone nobody holds now is still one.

@@ -8,11 +8,8 @@ use super::texts::{live_day::LiveDay, numbers::work_number, zone};
 use crate::api::types::Today;
 use dispatch_core::{Result, db::Store, foundation::clock, manifest::people::Person, text_enum};
 use dispatch_routes_contract::{self as routes, RouteDay, WorkPhone};
-use dispatch_vans_contract as fleet;
+use dispatch_vans_contract::{self as fleet, MOST_VINS};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-
-/// How many VINs one read of the DSP's fleet names: as many as Vans reads at once.
-const VINS_PER_READ: usize = 100;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -78,7 +75,7 @@ pub fn vans<'a>(
         return Ok(HashMap::new());
     };
     let mut named = HashMap::new();
-    for read in vins.chunks(VINS_PER_READ) {
+    for read in vins.chunks(MOST_VINS) {
         named.extend(
             fleet
                 .vans(db, dsp, read)?
