@@ -1,11 +1,11 @@
 import { Phone, PhoneOff, Smartphone } from 'lucide-react';
-import type { Conversation, Sender } from '../../api/index.js';
+import type { Sender } from '../../api/index.js';
 import { PersonAvatar } from '../../../../core/shell/frontend/runtime/PersonAvatar.js';
 import { tone } from './format.js';
 import './face.css';
 
 /** Where someone is shown, which says how large. */
-type Size = 'list' | 'contact' | 'sender' | 'head' | 'message' | 'profile';
+export type Size = 'list' | 'contact' | 'sender' | 'head' | 'message' | 'profile';
 
 /**
  * Someone in a conversation, as large as where they're shown (`size`): their photo as Driver
@@ -43,19 +43,6 @@ export function PhoneFace({ size, mark = 'number' }: { size: Size; mark?: keyof 
     <span className={`face face-${size} face-phone`} aria-hidden="true">
       <Icon />
     </span>
-  );
-}
-
-/** Whom a conversation is with, as large as where they're shown: by their number alone, or a work
- * phone nobody held, a phone. */
-export function Party({ conversation, size }: { conversation: Conversation; size: Size }) {
-  const { with: person } = conversation;
-  if (conversation.kind === 'work' && !conversation.driverId)
-    return <PhoneFace size={size} mark="work" />;
-  return conversation.kind === 'number' && !person.code && !conversation.contact ? (
-    <PhoneFace size={size} />
-  ) : (
-    <Face {...person} size={size} />
   );
 }
 

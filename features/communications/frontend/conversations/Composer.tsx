@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
 import type { CommunicationsUpload } from '../../api/index.js';
-import { addPhoto } from '../../api/client.js';
+import type { Attachments } from '../../api/client.js';
 import { useFeedback } from '../../../../core/shell/frontend/runtime/feedback.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
@@ -37,7 +37,7 @@ export function Composer({
   writable,
   ready: whom = true,
   photos: attaching = true,
-  texted = false,
+  attachments,
   to,
   send: deliver,
   typing,
@@ -48,8 +48,8 @@ export function Composer({
   writable: boolean;
   /** Whether photos can be added to it. */
   photos?: boolean;
-  /** Whether it goes by text, its photos kept by the DSP's phones. */
-  texted?: boolean;
+  /** How the photos added are kept, by the way it goes: in Dispatch, or by the DSP's phones. */
+  attachments: Attachments;
   /** The last digits of the number a text goes to, when the name doesn't say it. */
   to?: string;
   /** Whether what's written can go, as once there's someone to send it to. */
@@ -111,7 +111,7 @@ export function Composer({
     }));
     setPhotos((now) => [...now, ...adding]);
     for (const photo of adding)
-      addPhoto(photo.file, texted, photo.controller.signal).then(
+      attachments.add(photo.file, photo.controller.signal).then(
         (uploaded) =>
           setPhotos((now) =>
             now.map((each) => (each.key === photo.key ? { ...each, uploaded } : each)),

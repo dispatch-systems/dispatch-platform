@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { Communications } from '../../api/index.js';
 import { searchConversations } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
-import { Party } from '../shared/Face.js';
+import { PartyFace } from '../conversations/party.js';
 import { ListEmpty, ListHead, Rows } from '../shared/List.js';
 import { ListRow } from '../shared/ListRow.js';
 import { More } from '../shared/More.js';
@@ -95,7 +95,7 @@ export function ConversationList({
             <ListRow
               selected
               waits={false}
-              face={<Party conversation={pinned.row} size="list" />}
+              face={<PartyFace conversation={pinned.row} size="list" />}
               name={pinned.row.with.name}
               line={<span className="preview">New message</span>}
               open={() => listing.select(pinned.row.id)}

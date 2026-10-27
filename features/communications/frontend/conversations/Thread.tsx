@@ -4,7 +4,9 @@ import type { Conversation, Message, Workday, Writing } from '../../api/index.js
 import { clock, dayLabel, dayOf, textStatus, workdayLabel } from '../shared/format.js';
 import { runs } from './messages.js';
 import { Shown } from '../display/display.js';
-import { Face, Party, SenderFace } from '../shared/Face.js';
+import { Face, SenderFace } from '../shared/Face.js';
+import { KINDS } from './kinds.js';
+import { PartyFace } from './party.js';
 import { MessageBody } from '../shared/MessageBody.js';
 import { FaceButton, MessageMeta, MessageRun, SenderLine } from '../shared/MessageRun.js';
 import { DayLabel, ThreadFrame } from '../shared/ThreadFrame.js';
@@ -42,8 +44,8 @@ export function Thread({
   writing: readonly Writing[];
   timeZone: string;
   now: number;
-  /** What makes the member's photo open their profile. */
-  profile: Partial<OpensProfile>;
+  /** What makes their photo by their messages open their profile, where it does. */
+  profile?: Partial<OpensProfile>;
   /** Opens the group a message went to. */
   openGroup: (id: string) => void;
   /** Sends again a text the DSP sent that failed. */
@@ -52,7 +54,7 @@ export function Thread({
   workdays?: readonly Workday[];
 }) {
   const person = conversation.with;
-  const texted = conversation.kind !== 'slack';
+  const { address } = KINDS[conversation.kind].attachments;
   const { style, times } = useContext(Shown);
   const plain = style === 'plain';
   const today = dayOf(now, timeZone);
@@ -83,13 +85,13 @@ export function Thread({
                   face={
                     sender ? (
                       <SenderFace sender={sender} size="message" />
-                    ) : texted ? (
-                      <Party conversation={conversation} size="message" />
-                    ) : (
+                    ) : profile ? (
                       // Who it's with, above, opens it from the keyboard.
                       <FaceButton label={person.name} {...profile}>
                         <Face {...person} size="message" />
                       </FaceButton>
+                    ) : (
+                      <PartyFace conversation={conversation} size="message" />
                     )
                   }
                   sender={
@@ -112,7 +114,7 @@ export function Thread({
                     const last = at === written.length - 1;
                     return (
                       <Fragment key={message.id}>
-                        <MessageBody message={message} texted={texted} />
+                        <MessageBody message={message} address={address} />
                         <Meta
                           message={message}
                           time={!plain && (last || times === 'each_message')}

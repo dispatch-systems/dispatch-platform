@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SlidersHorizontal, SquarePen } from 'lucide-react';
 import type { DspView } from '../../../../core/accounts/api/index.js';
-import type { Contact, Conversation, Elsewhere, Group, TextContact } from '../../api/index.js';
-import {
-  markDone,
-  markGroupDone,
-  openConversation,
-  textDriver,
-  textFirst,
-} from '../../api/client.js';
+import type { Conversation, Group } from '../../api/index.js';
+import { markDone, markGroupDone } from '../../api/client.js';
 import { finishSlack } from '../../../slack/api/client.js';
 import { useSlackReturn } from '../../../slack/frontend/index.js';
 import { ErrorBox, Header, Loading } from '../../../../core/shell/frontend/ui/index.js';
@@ -32,7 +26,9 @@ import {
   type Row,
   type Section,
 } from '../inbox/inbox.js';
-import { routeGroups, routeRows, type RouteRow } from '../todays-routes/todays-routes.js';
+import { routeGroups, routeRows, rowTarget } from '../todays-routes/todays-routes.js';
+import { started, type Target } from '../conversations/target.js';
+import { memberTarget } from '../slack/members.js';
 import { ConversationPane } from '../conversations/ConversationPane.js';
 import { CopyChatLink } from '../slack/CopyChatLink.js';
 import { GroupDraft, type Draft } from '../slack/groups/GroupDraft.js';
@@ -195,57 +191,24 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
     [],
   );
   const seenGroup = useCallback((listed: Group) => setPinned({ kind: 'group', row: listed }), []);
+  // What a target names, opened: a conversation there is, or one started, pinned until it holds
+  // a message.
   const reach = useCallback(
-    async (teamId: string, userId: string, conversationId: string | null) => {
-      let id = conversationId;
-      if (!id) {
-        const started = await openConversation(teamId, userId);
-        id = started.id;
-        setPinned({ kind: 'conversation', row: started });
+    async (target: Target) => {
+      let id: string;
+      if (target.kind === 'conversation') id = target.id;
+      else {
+        const begun = await started(target);
+        id = begun.id;
+        setPinned({ kind: 'conversation', row: begun });
       }
       select(id);
       setComposing(false);
     },
     [select],
   );
-  const pick = useCallback(
-    (contact: Contact) => reach(contact.teamId, contact.person.userId!, contact.conversationId),
-    [reach],
-  );
   const reaching = useAction(reach);
-  // A conversation by text to open: as it is, or once started, pinned until it holds a text.
-  const openText = useCallback(
-    async (id: string | null, start: () => Promise<Conversation>) => {
-      if (!id) {
-        const started = await start();
-        id = started.id;
-        setPinned({ kind: 'conversation', row: started });
-      }
-      select(id);
-    },
-    [select],
-  );
-  // Someone to text: their conversation, or one started with their number.
-  const pickNumber = useCallback(
-    (contact: TextContact) => openText(contact.conversationId, () => textFirst(contact.number)),
-    [openText],
-  );
-  // A row of Today's Routes: its conversation, or one started with the driver, in the list.
-  const routeChosen = useAction((row: RouteRow) =>
-    openText(row.conversation?.id ?? null, () =>
-      textDriver(row.kind === 'driver' ? row.driver.driverId : ''),
-    ),
-  );
-  // Whom a conversation is with's conversation of another kind: as it is, or once started.
-  const going = useAction((elsewhere: Elsewhere) =>
-    elsewhere.kind === 'slack'
-      ? reach(elsewhere.teamId!, elsewhere.userId!, elsewhere.conversationId)
-      : openText(elsewhere.conversationId, () =>
-          elsewhere.kind === 'work'
-            ? textDriver(elsewhere.driverId!)
-            : textFirst(elsewhere.number!),
-        ),
-  );
+  const go = (target: Target) => void reaching.run(target);
 
   const connect = manages && inbox?.workspaces.length === 0 && !inbox.texting;
   const listed = inbox?.conversations.find((conversation) => conversation.id === open);
@@ -356,7 +319,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
               typing={inbox.typing.writing}
               timeZone={timeZone}
               now={now}
-              choose={(row) => void routeChosen.run(row)}
+              choose={(row) => go(rowTarget(row))}
             />
           ) : (
             <div className="chat-frame">
@@ -364,7 +327,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                 inbox={inbox}
                 routes={{
                   groups: routeList,
-                  choose: (row) => void routeChosen.run(row),
+                  choose: (row) => go(rowTarget(row)),
                   driver: current?.driverId,
                   view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,
                 }}
@@ -378,8 +341,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                 pinned={unlisted}
                 current={current}
                 readOlder={readOlder}
-                pick={pick}
-                pickNumber={pickNumber}
+                reach={reach}
                 show={show}
                 open={open ?? group}
                 typing={inbox.typing.writing}
@@ -418,9 +380,10 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   reply={(entry) => {
                     if (entry.conversationId) select(entry.conversationId);
                   }}
-                  open={(person) =>
-                    void reaching.run(person.teamId, person.person.userId!, person.conversationId)
-                  }
+                  open={(person) => {
+                    const target = memberTarget(person);
+                    if (target) go(target);
+                  }}
                 />
               ) : open ? (
                 <ConversationPane
@@ -442,7 +405,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   closed={closed}
                   openGroup={openGroup}
                   drivers={todays.routes?.drivers ?? []}
-                  go={(elsewhere) => void going.run(elsewhere)}
+                  open={go}
                 />
               ) : (
                 <section className="pane-thread" aria-label="Conversation" />
@@ -460,7 +423,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
         {composing && (
           <NewMessage
             workspaces={working}
-            pick={pick}
+            reach={reach}
             group={() => {
               setComposing(false);
               setDraft({ name: '', people: 0 });

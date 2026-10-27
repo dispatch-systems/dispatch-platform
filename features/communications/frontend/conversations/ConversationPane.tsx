@@ -11,23 +11,22 @@ import type {
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
 import { ErrorBox } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
-import { lastFour, numberBeside } from '../shared/format.js';
-import { asElsewhere, elsewhereNow } from './elsewhere.js';
-import { Composer } from './Composer.js';
-import { ElsewhereChips } from './Elsewhere.js';
-import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
-import { NumberActions } from '../texting/NumberActions.js';
-import { roleText } from '../shared/format.js';
-import { Party } from '../shared/Face.js';
+import type { Changed } from '../inbox/useInbox.js';
+import { lastFour } from '../shared/format.js';
 import { PaneHead } from '../shared/PaneHead.js';
 import { ThreadPending } from '../shared/ThreadFrame.js';
-import { PickDriver } from '../todays-routes/PickDriver.js';
+import { usePanel } from '../shared/usePanel.js';
+import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
+import { Composer } from './Composer.js';
+import { ElsewhereChips } from './Elsewhere.js';
+import { elsewhereNow, targetOf } from './elsewhere.js';
+import { KINDS } from './kinds.js';
+import { PARTIES, type Open } from './parties.js';
+import { PartyFace, partyOf } from './party.js';
 import { Profile } from './Profile.js';
-import { RouteToday } from '../todays-routes/RouteFacts.js';
+import type { Target } from './target.js';
 import { Thread } from './Thread.js';
 import { useConversation } from './useConversation.js';
-import { usePanel } from '../shared/usePanel.js';
-import type { Changed } from '../inbox/useInbox.js';
 
 // The conversation open: who it's with, the workspace it's in while there are several, the number
 // it texts, or a driver's route today and the work phone they hold, and, while it waits, how long
@@ -56,7 +55,7 @@ export function ConversationPane({
   closed,
   openGroup,
   drivers,
-  go,
+  open,
 }: {
   id: string;
   /** The conversation as the list has it, which the page's own writes and each update keep. */
@@ -86,8 +85,8 @@ export function ConversationPane({
   openGroup: (id: string) => void;
   /** Today's drivers, whom a work phone nobody held can be picked for. */
   drivers: readonly RouteDriver[];
-  /** Goes to whom it's with's conversation of another kind. */
-  go: (elsewhere: Elsewhere) => void;
+  /** Opens another conversation, as whom it's with's of another kind, or starts it. */
+  open: (target: Target) => void;
 }) {
   const { opened, error, gone, readOlder, ...read } = useConversation(id, changed);
   useEffect(() => {
@@ -97,24 +96,35 @@ export function ConversationPane({
     if (opened) seen(opened.conversation);
   }, [opened, seen]);
   const conversation = listed ?? opened?.conversation;
-  const texted = conversation !== undefined && conversation.kind !== 'slack';
-  // A driver's work conversation, or a work phone's nobody held.
-  const driver = conversation?.kind === 'work' && conversation.driverId !== null;
-  const workPhone = conversation?.kind === 'work' && !driver;
-  const today = opened?.today ?? null;
+  const party = conversation && PARTIES[partyOf(conversation)];
   const elsewhere = elsewhereNow(opened?.elsewhere ?? [], conversations);
-  const number = (driver ? today?.phone : conversation?.number) ?? '';
   const working = workspaces.filter((workspace) => workspace.on);
-  // A driver's goes to the work phone they hold now.
-  const unreachable = driver && opened !== undefined && !today?.phone;
-  const writable = texted
-    ? texting && !unreachable
-    : working.some((workspace) => workspace.teamId === conversation?.teamId);
-  // With several workspaces to tell apart, the one it's in.
-  const where =
-    working.length > 1
-      ? workspaces.find((workspace) => workspace.teamId === conversation?.teamId)?.name
-      : undefined;
+  const follow = (theirs: Conversation) => {
+    show(theirs);
+    open({ kind: 'conversation', id: theirs.id });
+  };
+  const go = (to: Elsewhere) => {
+    const target = targetOf(to);
+    if (target) open(target);
+  };
+  const shown: Open | undefined = conversation && {
+    conversation,
+    today: opened?.today ?? null,
+    // With several workspaces to tell apart, the one it's in.
+    where:
+      working.length > 1
+        ? workspaces.find((workspace) => workspace.teamId === conversation.teamId)?.name
+        : undefined,
+    working,
+    texting,
+    drivers,
+    timeZone,
+    show,
+    follow,
+  };
+  const number = (shown && party?.number(shown)) ?? '';
+  // One that can't reach them now, as a driver holding no work phone, once it's read.
+  const unreachable = shown && opened !== undefined && party?.reachable?.(shown) === false;
   const done = useAction(async () => {
     const after = await markDone(id);
     read.show(after);
@@ -123,11 +133,7 @@ export function ConversationPane({
   const sent = ({ conversation: theirs, message }: SentMessage) => {
     if (!conversation) return;
     // Filed in another conversation, as its number changed hands as it went: follow it there.
-    if (theirs.id !== id) {
-      show(theirs);
-      go(asElsewhere(theirs));
-      return;
-    }
+    if (theirs.id !== id) return follow(theirs);
     // Answered, it waits no more, unless it didn't go; the next update says so for everyone.
     const answered: Partial<Conversation> =
       message.status === 'failed' ? {} : { state: 'responded', waitingSince: null };
@@ -140,33 +146,19 @@ export function ConversationPane({
   });
   const writing = typing.filter((writer) => writer.conversationId === id);
   const person = conversation?.with;
-  // What they do for the DSP, and where; a driver's route and work phone; a work phone that no
-  // driver held; or, by text, their number, while it isn't their name.
-  const about: ReactNode = driver
-    ? today && <RouteToday today={today} />
-    : workPhone
-      ? 'No driver'
-      : texted
-        ? numberBeside(person?.name ?? '', number)
-        : [person && roleText(person), where].filter(Boolean).join(' · ');
+  const about: ReactNode = shown && party?.about(shown);
   // The profile, and what opened it, which focus goes back to as it closes: the photo by the
-  // messages, or who it's with when that photo is gone. A number's or a work phone's has none.
-  const profiled = !texted || driver;
-  const profile = usePanel(kept && profiled);
+  // messages, or who it's with when that photo is gone.
+  const profiled = party?.profile || undefined;
+  const profile = usePanel(kept && Boolean(profiled));
   const opens = profiled ? profile.opens : undefined;
-  // Whom it goes to, by name, or a work phone by its last digits.
-  const whom = workPhone
-    ? lastFour(number)
-    : texted && !person?.code
-      ? (person?.name ?? '')
-      : (person?.name.split(' ')[0] ?? '');
   return (
     <section
       className={profile.open ? 'pane-thread profiled' : 'pane-thread'}
       aria-label={person?.name ?? 'Conversation'}
     >
       <PaneHead
-        face={conversation && <Party conversation={conversation} size="head" />}
+        face={conversation && <PartyFace conversation={conversation} size="head" />}
         name={person?.name}
         about={about}
         waits={conversation?.state === 'waiting'}
@@ -177,24 +169,7 @@ export function ConversationPane({
         opens={opens}
         back={back}
         done={{ busy: done.busy, run: () => void done.run() }}
-        actions={
-          conversation?.kind === 'number' ? (
-            <NumberActions conversation={conversation} show={show} />
-          ) : (
-            workPhone &&
-            drivers.length > 0 && (
-              <PickDriver
-                conversation={conversation}
-                drivers={drivers}
-                timeZone={timeZone}
-                picked={(theirs) => {
-                  show(theirs);
-                  go(asElsewhere(theirs));
-                }}
-              />
-            )
-          )
-        }
+        actions={shown && party?.actions?.(shown)}
       />
       <ElsewhereChips elsewhere={elsewhere} current={id} go={go} />
       {profile.drawn && person && profiled && (
@@ -203,7 +178,7 @@ export function ConversationPane({
           conversation={id}
           person={person}
           workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
-          elsewhere={driver ? elsewhere : []}
+          elsewhere={profiled.ways ? elsewhere : []}
           go={go}
           timeZone={timeZone}
           docked={docked}
@@ -223,24 +198,24 @@ export function ConversationPane({
           writing={writing}
           timeZone={timeZone}
           now={now}
-          profile={opens ?? {}}
+          profile={profiled?.fromPhoto ? opens : undefined}
           openGroup={openGroup}
           retry={(failed) => void retry.run(failed)}
-          workdays={driver ? opened.workdays : undefined}
+          workdays={party?.workdays ? opened.workdays : undefined}
         />
       ) : (
         <ThreadPending failed={Boolean(error)} />
       )}
-      {conversation &&
-        person &&
+      {shown &&
+        party &&
         (unreachable ? (
           <NoWorkPhone elsewhere={elsewhere} go={go} />
         ) : (
           <Composer
-            placeholder={`Message ${whom}`}
-            writable={writable}
-            texted={texted}
-            to={texted && about && number ? lastFour(number) : undefined}
+            placeholder={`Message ${party.whom(shown)}`}
+            writable={party.writable(shown) && !unreachable}
+            attachments={KINDS[shown.conversation.kind].attachments}
+            to={about && number ? lastFour(number) : undefined}
             send={async (text, photos) => sent(await sendMessage(id, text, photos))}
             typing={() => void sayTyping(id).catch(() => undefined)}
           />

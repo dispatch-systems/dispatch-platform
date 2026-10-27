@@ -1,4 +1,5 @@
 import type { Conversation, RouteDriver, TodaysRoutes } from '../../api/index.js';
+import type { Target } from '../conversations/target.js';
 import { order } from '../inbox/inbox.js';
 
 // Today's Routes as the page lists it: each driver on a route today, and each work phone nobody
@@ -34,6 +35,13 @@ export function routeRows(routes: TodaysRoutes, listed: readonly Conversation[])
 /** The ID a row goes by: its conversation's, else its driver's. */
 export const rowKey = (row: RouteRow) =>
   row.conversation?.id ?? (row.kind === 'driver' ? row.driver.driverId : '');
+/** What a row opens: its conversation, or one started with the driver, to text them first. */
+export const rowTarget = (row: RouteRow): Target =>
+  row.kind === 'phone'
+    ? { kind: 'conversation', id: row.conversation.id }
+    : row.conversation
+      ? { kind: 'conversation', id: row.conversation.id }
+      : { kind: 'driver', driverId: row.driver.driverId };
 /** Whether a row waits on an answer. */
 export const waits = (row: RouteRow) => row.conversation?.state === 'waiting';
 

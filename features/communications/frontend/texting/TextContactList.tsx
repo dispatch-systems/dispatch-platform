@@ -4,6 +4,7 @@ import { blockNumber, getTextContacts } from '../../api/client.js';
 import { Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
+import { existingOr, type Target } from '../conversations/target.js';
 import { ByInitial, ContactRow } from '../shared/ContactRow.js';
 import { Face, PhoneFace } from '../shared/Face.js';
 import { ListEmpty, ListHead, Rows } from '../shared/List.js';
@@ -23,7 +24,7 @@ export function TextContactList({
   current,
   timeZone,
   now,
-  pick,
+  reach,
   show,
 }: {
   /** What's typed in Search, trimmed. */
@@ -34,14 +35,14 @@ export function TextContactList({
   current?: Conversation;
   timeZone: string;
   now: number;
-  /** Opens the conversation with whoever was picked. */
-  pick: (contact: TextContact) => Promise<void>;
+  /** Opens the conversation with whoever was picked, or starts it with their number. */
+  reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
 }) {
   const read = useCallback(() => getTextContacts(typed), [typed]);
   const { found, failed } = useFound(read, typed ? 'found' : 'all', revision, typed ? 200 : 0);
-  const chosen = useAction(pick);
+  const chosen = useAction(reach);
   const unblock = useAction(async (contact: TextContact) =>
     show(await blockNumber(contact.conversationId!, false)),
   );
@@ -61,7 +62,10 @@ export function TextContactList({
       timeZone={timeZone}
       now={now}
       open={() => {
-        if (!chosen.busy) void chosen.run(contact);
+        if (!chosen.busy)
+          void chosen.run(
+            existingOr(contact.conversationId, { kind: 'number', number: contact.number }),
+          );
       }}
     />
   );

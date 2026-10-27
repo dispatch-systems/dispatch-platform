@@ -6,7 +6,9 @@ import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js'
 import { ByInitial, ContactRow } from '../shared/ContactRow.js';
 import { Face } from '../shared/Face.js';
 import { ListEmpty, Rows } from '../shared/List.js';
+import type { Target } from '../conversations/target.js';
 import { roleText } from '../shared/format.js';
+import { memberTarget } from './members.js';
 import { useFound } from '../shared/useFound.js';
 
 // Contacts: everyone the DSP can message, of every workspace or the one chosen, A to Z under
@@ -22,7 +24,7 @@ export function ContactList({
   current,
   timeZone,
   now,
-  pick,
+  reach,
 }: {
   /** The workspace chosen, if one is. */
   team?: string;
@@ -36,8 +38,8 @@ export function ContactList({
   current?: Conversation;
   timeZone: string;
   now: number;
-  /** Opens the conversation with whoever was picked. */
-  pick: (contact: Contact) => Promise<void>;
+  /** Opens the conversation with whoever was picked, or starts it. */
+  reach: (target: Target) => Promise<void>;
 }) {
   const read = useCallback(
     () => getContacts(typed, team).then((found) => found.contacts),
@@ -46,7 +48,7 @@ export function ContactList({
   // Those found by a name are another list from all of them, as is each workspace's.
   const list = `${team ?? ''} ${typed ? 'found' : 'all'}`;
   const { found, failed } = useFound(read, list, revision, typed ? 200 : 0);
-  const chosen = useAction(pick);
+  const chosen = useAction(reach);
   if (failed || (typed && found?.length === 0))
     return <ListEmpty>{failed || 'No matches'}</ListEmpty>;
   if (!found) return <Loading />;
@@ -66,7 +68,8 @@ export function ContactList({
       timeZone={timeZone}
       now={now}
       open={() => {
-        if (!chosen.busy) void chosen.run(contact);
+        const target = memberTarget(contact);
+        if (target && !chosen.busy) void chosen.run(target);
       }}
     />
   );

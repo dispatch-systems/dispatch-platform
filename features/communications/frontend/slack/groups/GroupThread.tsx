@@ -1,6 +1,7 @@
 import { Fragment, useContext } from 'react';
 import { Reply } from 'lucide-react';
 import type { GroupEntry, GroupProgress } from '../../../api/index.js';
+import { slackAttachments } from '../../../api/client.js';
 import { clock, dayLabel, dayOf } from '../../shared/format.js';
 import { Shown } from '../../display/display.js';
 import { Face } from '../../shared/Face.js';
@@ -88,7 +89,7 @@ export function GroupThread({
                     <SenderLine name={first.sender.name} at={plain && clock(first.at, timeZone)} />
                   }
                 >
-                  <MessageBody message={first} />
+                  <MessageBody message={first} address={slackAttachments.address} />
                   <MessageMeta time={!plain && clock(first.at, timeZone)}>
                     {gone && (
                       <span className={gone.sending ? 'sending' : undefined}>{gone.text}</span>
@@ -130,7 +131,7 @@ export function GroupThread({
               >
                 {written.map((entry) => (
                   <Fragment key={entry.id}>
-                    <MessageBody message={entry} />
+                    <MessageBody message={entry} address={slackAttachments.address} />
                     <MessageMeta
                       time={!plain && times === 'each_message' && clock(entry.at, timeZone)}
                     />

@@ -146,17 +146,32 @@ export const pickDriver = (id: string, driverId: string) =>
 /** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
 export const getTextContacts = (typed = '') =>
   api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));
-/** Adds a photo for a message not sent yet: by text, through the DSP's phones (`texted`). */
-export const addPhoto = (photo: File, texted: boolean, signal?: AbortSignal) =>
+/**
+ * How a message carries photos and files, by the way it goes: a photo added before it's sent, and
+ * where a photo or file attached to one is read from once it's kept.
+ */
+export type Attachments = {
+  add: (photo: File, signal?: AbortSignal) => Promise<CommunicationsUpload>;
+  address: (id: string) => string;
+};
+/** Adds `photo` through the upload route `path`, for a message not sent yet. */
+const adding = (path: string) => (photo: File, signal?: AbortSignal) =>
   upload<CommunicationsUpload>(
-    `${communicationsUrl}/${texted ? 'texts/uploads' : 'uploads'}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
+    `${communicationsUrl}/${path}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
     photo,
     undefined,
     signal,
   );
-/** Where a photo or file attached to a message is read from: a text's, as its phone keeps it. */
-export const fileUrl = (id: string, texted = false) =>
-  `${communicationsUrl}/${texted ? 'texts/files' : 'files'}/${id}`;
+/** A Slack message's, kept in Dispatch. */
+export const slackAttachments: Attachments = {
+  add: adding('uploads'),
+  address: (id) => `${communicationsUrl}/files/${id}`,
+};
+/** A text's, kept by the DSP's phones, as what offers texting keeps them. */
+export const textAttachments: Attachments = {
+  add: adding('texts/uploads'),
+  address: (id) => `${communicationsUrl}/texts/files/${id}`,
+};
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>
   `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;

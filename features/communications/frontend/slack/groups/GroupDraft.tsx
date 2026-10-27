@@ -8,7 +8,12 @@ import type {
   GroupChoices,
   Reachable,
 } from '../../../api/index.js';
-import { createGroup, getContacts, getGroupChoices } from '../../../api/client.js';
+import {
+  createGroup,
+  getContacts,
+  getGroupChoices,
+  slackAttachments,
+} from '../../../api/client.js';
 import { ErrorBox, Loading } from '../../../../../core/shell/frontend/ui/index.js';
 import { messageOf } from '../../../../../core/shell/frontend/lib/errors.js';
 import {
@@ -136,6 +141,7 @@ export function GroupDraft({
         )}
       </div>
       <Composer
+        attachments={slackAttachments}
         placeholder="Message"
         writable
         ready={to.length > 0}

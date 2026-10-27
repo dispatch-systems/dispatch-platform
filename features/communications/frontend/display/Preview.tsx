@@ -1,8 +1,9 @@
 import { useId, useMemo, useRef } from 'react';
+import { slackAttachments } from '../../api/client.js';
 import { Composer } from '../conversations/Composer.js';
 import { ListPane } from '../page/ListPane.js';
 import { roleText } from '../shared/format.js';
-import { Party } from '../shared/Face.js';
+import { PartyFace } from '../conversations/party.js';
 import { PaneHead } from '../shared/PaneHead.js';
 import { ProfileShown } from '../conversations/Profile.js';
 import { Thread } from '../conversations/Thread.js';
@@ -65,8 +66,7 @@ export function Preview({
                 choose={nothing}
                 current={open}
                 readOlder={nothing}
-                pick={() => Promise.resolve()}
-                pickNumber={() => Promise.resolve()}
+                reach={() => Promise.resolve()}
                 show={nothing}
                 open={open.id}
                 typing={[]}
@@ -82,7 +82,7 @@ export function Preview({
                 aria-label={open.with.name}
               >
                 <PaneHead
-                  face={<Party conversation={open} size="head" />}
+                  face={<PartyFace conversation={open} size="head" />}
                   name={open.with.name}
                   about={about}
                   waits={open.state === 'waiting'}
@@ -119,6 +119,7 @@ export function Preview({
                 <Composer
                   placeholder={`Message ${open.with.name.split(' ')[0]}`}
                   writable
+                  attachments={slackAttachments}
                   send={() => Promise.resolve()}
                 />
               </section>

@@ -5,7 +5,7 @@ import type {
   GroupEntry,
   GroupPerson,
 } from '../../../api/index.js';
-import { markGroupDone, messageGroup } from '../../../api/client.js';
+import { markGroupDone, messageGroup, slackAttachments } from '../../../api/client.js';
 import { ErrorBox } from '../../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { peopleText } from './groups.js';
@@ -127,6 +127,7 @@ export function GroupPane({
       )}
       {group && (
         <Composer
+          attachments={slackAttachments}
           placeholder={`Message all ${group.people}`}
           writable={writable}
           send={async (text, photos) => {

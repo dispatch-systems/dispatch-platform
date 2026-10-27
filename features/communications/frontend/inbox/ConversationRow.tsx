@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import type { Conversation, Writing } from '../../api/index.js';
 import { listTime, preview, typingNote } from '../shared/format.js';
-import { Party, SenderFace } from '../shared/Face.js';
+import { SenderFace } from '../shared/Face.js';
+import { PartyFace } from '../conversations/party.js';
 import { ListRow } from '../shared/ListRow.js';
 import { Name } from '../shared/Name.js';
 import { Wait } from '../shared/Wait.js';
@@ -32,7 +33,7 @@ export function ConversationRow({
     <ListRow
       selected={open === conversation.id}
       waits={waits}
-      face={<Party conversation={conversation} size="list" />}
+      face={<PartyFace conversation={conversation} size="list" />}
       name={<Name name={person.name} matched={conversation.matched} />}
       time={conversation.lastAt !== null && listTime(conversation.lastAt, timeZone, now)}
       wait={

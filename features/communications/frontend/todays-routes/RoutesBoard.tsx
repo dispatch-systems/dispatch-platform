@@ -2,7 +2,8 @@ import { Fragment, type ReactNode } from 'react';
 import type { Writing } from '../../api/index.js';
 import { clock, listTime, preview } from '../shared/format.js';
 import { rowKey, waits, type RouteGroup, type RouteRow } from './todays-routes.js';
-import { Face, Party, SenderFace } from '../shared/Face.js';
+import { Face, SenderFace } from '../shared/Face.js';
+import { PartyFace } from '../conversations/party.js';
 import { headingText, NoRoutes } from './headings.js';
 import { PaceMark, RouteCode, Stops, WorkPhone } from './RouteFacts.js';
 import { typingNote } from '../shared/format.js';
@@ -109,7 +110,7 @@ function BoardRow({
           {row.kind === 'driver' ? (
             <Face {...row.driver.person} size="message" />
           ) : (
-            <Party conversation={row.conversation} size="message" />
+            <PartyFace conversation={row.conversation} size="message" />
           )}
           {name}
         </button>

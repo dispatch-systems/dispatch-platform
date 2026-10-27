@@ -2,15 +2,14 @@ import { useState } from 'react';
 import type {
   Communications,
   CommunicationsWorkspace,
-  Contact,
   Conversation,
   Group,
-  TextContact,
   Writing,
 } from '../../api/index.js';
 import { waitingIn, type Row, type Section } from '../inbox/inbox.js';
 import type { RouteGroup, RouteRow } from '../todays-routes/todays-routes.js';
 import { SearchInput } from '../../../../core/shell/frontend/ui/index.js';
+import type { Target } from '../conversations/target.js';
 import { Count } from '../shared/Count.js';
 import { Segments } from '../shared/Segments.js';
 import { ContactList } from '../slack/ContactList.js';
@@ -41,8 +40,7 @@ export function ListPane({
   pinned,
   current,
   readOlder,
-  pick,
-  pickNumber,
+  reach,
   show,
   routes,
   ...listing
@@ -74,9 +72,7 @@ export function ListPane({
   current?: Conversation;
   readOlder: (section: Section) => void;
   /** Opens the conversation with a contact, or starts one. */
-  pick: (contact: Contact) => Promise<void>;
-  /** Opens the conversation with someone to text, or starts one. */
-  pickNumber: (contact: TextContact) => Promise<void>;
+  reach: (target: Target) => Promise<void>;
   /** Shows a conversation as the page's own writes left it. */
   show: (conversation: Conversation) => void;
   /** What's open: a conversation or a group, by its ID. */
@@ -167,7 +163,7 @@ export function ListPane({
             current={current}
             timeZone={listing.timeZone}
             now={listing.now}
-            pick={pick}
+            reach={reach}
           />
         ) : contacts ? (
           <TextContactList
@@ -176,7 +172,7 @@ export function ListPane({
             current={current}
             timeZone={listing.timeZone}
             now={listing.now}
-            pick={pickNumber}
+            reach={reach}
             show={show}
           />
         ) : (

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { ChevronRight, Search, Users } from 'lucide-react';
-import type { CommunicationsWorkspace, Contact } from '../../api/index.js';
+import type { CommunicationsWorkspace } from '../../api/index.js';
 import { getContacts } from '../../api/client.js';
 import { Modal } from '../../../../core/shell/frontend/ui/index.js';
 import { useAction } from '../../../../core/shell/frontend/runtime/useAction.js';
+import type { Target } from '../conversations/target.js';
 import { Face } from '../shared/Face.js';
+import { memberTarget } from './members.js';
 import { ListEmpty } from '../shared/List.js';
 import { roleText } from '../shared/format.js';
 import { Name } from '../shared/Name.js';
@@ -17,13 +19,13 @@ import './new-message.css';
 
 export function NewMessage({
   workspaces,
-  pick,
+  reach,
   group,
   close,
 }: {
   workspaces: readonly CommunicationsWorkspace[];
-  /** Opens the conversation with whoever was picked. */
-  pick: (contact: Contact) => Promise<void>;
+  /** Opens the conversation with whoever was picked, or starts it. */
+  reach: (target: Target) => Promise<void>;
   /** Starts a message to a group. */
   group: () => void;
   close: () => void;
@@ -41,7 +43,7 @@ export function NewMessage({
   useEffect(() => {
     document.getElementById(`${list}-${active}`)?.scrollIntoView({ block: 'nearest' });
   }, [list, active]);
-  const chosen = useAction(pick);
+  const chosen = useAction(reach);
   // With several workspaces, each says which it's in.
   const named = new Map(workspaces.map((workspace) => [workspace.teamId, workspace.name]));
   const several = named.size > 1;
@@ -52,7 +54,8 @@ export function NewMessage({
   const choose = (at: number) => {
     if (grouping && at === 0) return group();
     const contact = found?.[grouping ? at - 1 : at];
-    if (contact && !chosen.busy) void chosen.run(contact);
+    const target = contact && memberTarget(contact);
+    if (target && !chosen.busy) void chosen.run(target);
   };
   return (
     <Modal title="New message" onClose={close} initialFocus="input">
