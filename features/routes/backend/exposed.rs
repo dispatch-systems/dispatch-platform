@@ -2,7 +2,7 @@
 //! read from the rows its own pages read in historical route data; and today in live route data,
 //! with the work phone each driver holds now; and who held which work phone, today and on a saved
 //! day (`dispatch_routes_contract`).
-use super::{RoutesStore, phones, routes_today};
+use super::{RoutesStore, phones, routes_today, work_phones};
 use dispatch_core::{
     Result,
     db::{Db, Store, s},
@@ -125,7 +125,7 @@ impl DriverRoutes for Exposed {
         holds(&*db.routes_db(dsp)?, day)
     }
     fn was_work_phone(&self, db: &Store, dsp: &str, phone: &str) -> Result<bool> {
-        let Some(phone) = phones::digits(phone) else {
+        let Some(phone) = work_phones::digits(phone) else {
             return Ok(false);
         };
         Ok(phones::ever_held(&*db.routes_live_db(dsp)?, &phone)?
