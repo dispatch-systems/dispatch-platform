@@ -2,7 +2,7 @@
 //! whether each conversation waits, kept beside its texts each time they change.
 use crate::backend::{
     changes::changed_conversation,
-    model::ConversationState,
+    model::{ConversationState, TEXT_PREFIX},
     texts::model::{Filed, Incoming, Text, TextConversation},
 };
 use dispatch_core::{
@@ -486,7 +486,7 @@ fn conversation(db: &Db, filed: &Filed) -> Result<String> {
     if let Some((id,)) = found {
         return Ok(id);
     }
-    let id = crypto::id("tc")?;
+    let id = crypto::id(TEXT_PREFIX)?;
     db.exec(
         "INSERT INTO communications_text_conversations (id,kind,source,driver_id,number) \
          VALUES (?,?,?,?,?)",

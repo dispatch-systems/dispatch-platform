@@ -38,7 +38,7 @@ async fn days(state: &Arc<State>, dsp: &str) -> (String, String) {
 async fn profile(state: &Arc<State>, dsp: &str, id: &str) -> Profile {
     let (shared, dsp, id) = (state.clone(), dsp.to_owned(), id.to_owned());
     state
-        .read(move |db| of(db, &shared, &dsp, &id, false))
+        .read(move |db| member(db, &shared, &dsp, &id))
         .await
         .unwrap()
 }

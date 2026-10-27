@@ -6,7 +6,7 @@
 use super::{
     changes::changed_conversation,
     groups::storage::settle_group,
-    model::{ConversationState, Direction},
+    model::{ConversationState, Direction, SLACK_PREFIX},
 };
 use dispatch_core::{
     Error, Result,
@@ -518,7 +518,7 @@ pub(crate) fn opened(db: &Db, team: &str, user: &str, channel: &str, name: &str)
         "INSERT INTO communications_conversations (id,team_id,user_id,channel_id,name) \
          VALUES (?,?,?,?,?) ON CONFLICT(team_id,user_id) DO UPDATE SET \
          channel_id=excluded.channel_id,name=excluded.name",
-        params![crypto::id("cv")?, team, user, channel, name],
+        params![crypto::id(SLACK_PREFIX)?, team, user, channel, name],
     )?;
     let (id,): (String,) = db
         .one_as(

@@ -28,7 +28,7 @@ use crate::{
     },
     integrations::messages::{self, ID},
 };
-use dispatch_core::{Error, Result, State, db::Store, manifest::people::Photo};
+use dispatch_core::{Error, Result, State, db::Store, ensure, manifest::people::Photo};
 use dispatch_slack::kit;
 use std::collections::HashMap;
 
@@ -285,6 +285,17 @@ pub fn search(
         groups: Vec::new(),
         more: false,
     })
+}
+/// Where a page of a conversation's messages left off, `before`: a message's `ts` in Slack, its
+/// seconds, `.` and its microseconds.
+pub fn before(value: &str) -> Result<&str> {
+    let valid = value.split_once('.').is_some_and(|(seconds, micros)| {
+        [seconds, micros]
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+    });
+    ensure(valid, "invalid_input", 400)?;
+    Ok(value)
 }
 /// The conversation `id` and its latest messages, or those before the one Slack knows as
 /// `before`, with whom it's with's conversations of each kind.

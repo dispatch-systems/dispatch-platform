@@ -7,6 +7,8 @@
 //!   `changes`, each change to a conversation of either kind, in order, for the pages waiting on
 //!   them; `files`, the photos and files attached, kept in the DSP's own data, and downloading
 //!   members' from Slack.
+//! - `dispatcher`: one conversation of either transport, by its reference: reading it, its
+//!   profile, sending in it, Done and who's writing.
 //! - `conversations`: the conversations as the page reads them; `people`, who each is with and who
 //!   at the DSP wrote in it, as every kind shows them; `elsewhere`, a person's conversation of each
 //!   kind; `contacts`, whom the DSP can message; `search`, finding people by a name typed;
@@ -25,6 +27,7 @@ pub(crate) mod changes;
 pub(crate) mod compose;
 pub(crate) mod contacts;
 pub(crate) mod conversations;
+pub(crate) mod dispatcher;
 pub(crate) mod display;
 pub(crate) mod elsewhere;
 pub(crate) mod files;

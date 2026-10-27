@@ -1,7 +1,13 @@
 //! What every kind of conversation shares, as Communications keeps and reads them: what a
-//! conversation is (`ConversationKind`), whether it waits on an answer (`ConversationState`), and
-//! who wrote a message (`Direction`).
-use dispatch_core::text_enum;
+//! conversation is (`ConversationKind`), the reference naming one of either transport
+//! (`Reference`), whether it waits on an answer (`ConversationState`), and who wrote a message
+//! (`Direction`).
+use dispatch_core::{Error, Result, db, text_enum};
+
+/// What a Slack conversation's ID begins with, before `_` and 32 hexadecimal digits.
+pub const SLACK_PREFIX: &str = "cv";
+/// What a conversation by text's ID begins with, as a Slack one's does.
+pub const TEXT_PREFIX: &str = "tc";
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -33,5 +39,39 @@ text_enum! {
     pub enum Direction {
         In => "in",
         Out => "out",
+    }
+}
+
+/// One of the DSP's conversations, by the transport it's kept by and its ID there: a Slack
+/// direct message, or texts, a driver's, a work phone's nobody held, or a number's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reference {
+    Slack(String),
+    Text(String),
+}
+impl Reference {
+    /// The conversation `id` names, by what it begins with: refused for one that names none.
+    pub fn parse(id: &str) -> Result<Self> {
+        if db::identifier(id, &format!("{SLACK_PREFIX}_")) {
+            return Ok(Self::Slack(id.to_owned()));
+        }
+        if db::identifier(id, &format!("{TEXT_PREFIX}_")) {
+            return Ok(Self::Text(id.to_owned()));
+        }
+        Err(Error::new("invalid_input", 400))
+    }
+    /// Its ID, as its transport keeps it.
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Slack(id) | Self::Text(id) => id,
+        }
+    }
+    /// Its ID, for what only a conversation by text has, as a number to name or block: refused
+    /// for a Slack one.
+    pub fn texted(self) -> Result<String> {
+        match self {
+            Self::Text(id) => Ok(id),
+            Self::Slack(_) => Err(Error::new("invalid_input", 400)),
+        }
     }
 }
