@@ -7,7 +7,7 @@ use crate::api::types::Message;
 use crate::backend::{
     conversations,
     storage::CommunicationsStore,
-    texts::storage::{TextConversation, TextStore},
+    texts::{model::TextConversation, storage::TextStore},
 };
 use crate::integrations::messages::incoming;
 use axum::body::Body;

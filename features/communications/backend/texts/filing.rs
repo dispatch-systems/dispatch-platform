@@ -20,8 +20,9 @@
 //! it, as a day it emptied unsaved keeps its texts where its holds had them.
 use super::{
     began,
+    model::{Filed, Incoming, TextFile, TextStatus},
     numbers::ten_digits,
-    storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
+    storage::{PickStore, TextStore},
     zone,
 };
 use crate::backend::{live, model::Direction, storage::DOMAIN};

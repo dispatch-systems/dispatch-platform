@@ -7,10 +7,11 @@
 //! blocked, or unblocked.
 use super::{
     live_day::LiveDay,
+    model::Filed,
     numbers::Numbers,
     offered, offering,
     reading::{like, numbered, one},
-    storage::{Filed, TextStore},
+    storage::{ContactStore, TextStore},
 };
 use crate::{
     api::types::{Conversation, TextContact, TextContacts},

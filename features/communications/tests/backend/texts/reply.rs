@@ -7,10 +7,7 @@ use super::*;
 use crate::ConversationState;
 use crate::backend::{
     support::{self, at, filed, held, hold, texted, today},
-    texts::{
-        reading::one,
-        storage::{TextStatus, TextStore},
-    },
+    texts::{model::TextStatus, reading::one, storage::TextStore},
 };
 use axum::body::Bytes;
 use dispatch_core::{db::now, server::http::upload::Upload};

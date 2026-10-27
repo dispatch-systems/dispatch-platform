@@ -9,9 +9,10 @@ use super::{
     storage::CommunicationsStore,
     texts::{
         live_day::{self, LiveDay},
+        model::TextConversation,
         numbers::work_number,
         offered,
-        storage::{TextConversation, TextStore},
+        storage::TextStore,
     },
 };
 use crate::{api::types::Elsewhere, integrations::messages::ID};

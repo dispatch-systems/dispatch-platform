@@ -4,7 +4,7 @@ pub use crate::backend::{
     files::FileStatus,
     groups::{GroupChoiceKind, GroupPersonState},
     model::{ConversationKind, ConversationState, Direction},
-    texts::storage::TextStatus,
+    texts::model::TextStatus,
     today::Pace,
 };
 use dispatch_core::manifest::people::{PersonRole, PersonTitle};

@@ -5,9 +5,10 @@
 //! their conversations of other kinds.
 use super::{
     live_day::{self, LiveDay},
+    model::{Text, TextConversation},
     numbers::Numbers,
     offered,
-    storage::{Text, TextConversation, TextStore},
+    storage::TextStore,
     workdays,
 };
 use crate::api::types::{

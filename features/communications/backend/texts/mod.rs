@@ -4,8 +4,9 @@
 //! Messaging's: the number's conversation, with whoever Driver Match has the number for, else the
 //! name the DSP saved for it, else the number itself.
 //!
-//! - `storage`: conversations by text, each text filed in one, how far Phones' changes were read,
-//!   and the names and blocks the DSP keeps for numbers.
+//! - `model`: what texting keeps: conversations by text, each text filed in one, and where a text
+//!   is filed; `storage`, keeping them, how far Phones' changes were read, the names and blocks the
+//!   DSP keeps for numbers, and the drivers picked for work phones.
 //! - `filing`: filing each text Phones relays in its conversation, and a day's again as who held
 //!   its work phones settles.
 //! - `numbers`: one number written one way, how one reads, and what the DSP keeps of them.
@@ -23,6 +24,7 @@
 pub(crate) mod contacts;
 pub(crate) mod filing;
 pub(crate) mod live_day;
+pub(crate) mod model;
 pub(crate) mod numbers;
 pub(crate) mod picking;
 pub(crate) mod reading;
