@@ -17,6 +17,8 @@ use dispatch_core::{
 
 /// The most IDs one read of a driver's routes names.
 pub const MOST_IDS: usize = 16;
+/// The longest ID a read of a driver's routes names, in characters.
+pub const MOST_ID_LENGTH: usize = 128;
 /// The most days one read of a driver's routes covers, its first and last among them.
 pub const MOST_DAYS: i64 = 366;
 
@@ -30,7 +32,7 @@ pub trait DriverRoutes: Send + Sync {
     /// time, and which of those days were collected; no IDs answer the days alone. An ID is
     /// matched exactly. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`; and
     /// with `invalid_input`, `from` after `to`, more than `MOST_DAYS` days, more than `MOST_IDS`
-    /// IDs, or an ID that's empty or over 128 characters.
+    /// IDs, or an ID that's empty or over `MOST_ID_LENGTH` characters.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str)
     -> Result<Driven>;
     /// What every driver drove on `day`, YYYY-MM-DD in the DSP's own time, each itinerary by
@@ -152,7 +154,8 @@ pub trait LiveRouteData: Send + Sync {
     fn day(&self, db: &Store, dsp: &str) -> Result<Driven>;
     /// The itineraries today of the drivers holding `ids` as last read live, and the routes
     /// they're assigned to without one yet. An ID is matched exactly. Routes refuses more than
-    /// `MOST_IDS` IDs, or one that's empty or over 128 characters, with `invalid_input`.
+    /// `MOST_IDS` IDs, or one that's empty or over `MOST_ID_LENGTH` characters, with
+    /// `invalid_input`.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Driven>;
     /// Each driver's latest work phone today, as the last whole live read left it; `Uncollected`
     /// without a live day.

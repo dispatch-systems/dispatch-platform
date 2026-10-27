@@ -10,7 +10,7 @@ use crate::backend::{
 use chrono::Duration;
 use dispatch_core::testing;
 use dispatch_cortex::routes::{Capture, ItineraryCapture, Mode};
-use dispatch_routes_contract::DriverPhone;
+use dispatch_routes_contract::{DriverPhone, MOST_ID_LENGTH};
 use serde_json::json;
 
 #[test]
@@ -122,6 +122,9 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     // Each refusal changes one thing from a read that's answered.
     let year = offered.routes(&db, &dsp, &driver, &day(365), &day(0));
     assert!(year.is_ok());
+    let longest = vec!["d".repeat(MOST_ID_LENGTH)];
+    assert!(offered.routes(&db, &dsp, &longest, &day(3), &day(0)).is_ok());
+    let longer = vec!["d".repeat(MOST_ID_LENGTH + 1)];
     let seventeen: Vec<String> = (0..17).map(|n| format!("driver-{n}")).collect();
     for (asked, from, to, code) in [
         (
@@ -132,6 +135,7 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
         ),
         (driver.clone(), day(366), day(0), "invalid_input"),
         (seventeen, day(3), day(0), "invalid_input"),
+        (longer, day(3), day(0), "invalid_input"),
     ] {
         let refused = offered.routes(&db, &dsp, &asked, &from, &to).unwrap_err();
         assert_eq!(refused.code, code, "{asked:?} {from} {to}");
