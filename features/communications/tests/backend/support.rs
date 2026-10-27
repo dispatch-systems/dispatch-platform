@@ -26,15 +26,15 @@ use dispatch_core::{
     testing,
 };
 use dispatch_phones_contract::{
-    Added, Answer, Changes, Condition, Direction, File, Origin, Outgoing, Phone, Status, Text,
-    Texting, TextsChanged,
+    Added, Answer, Changes, Condition, Direction, File, Limits, Origin, Outgoing, Phone, Status,
+    Text, Texting, TextsChanged,
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, RouteDay, WorkPhone,
+    Collected, CollectedDay, Driven, DriverRoutes, LiveRouteData, MOST_DAYS, RouteDay, WorkPhone,
     WorkPhoneHold, WorkPhonesChanged,
 };
 use dispatch_slack::{kit::Bot, testing as slack};
-use dispatch_vans_contract::{AmazonFleet, Van};
+use dispatch_vans_contract::{AmazonFleet, MOST_VINS, Van};
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -315,11 +315,6 @@ pub const DRIVERS: Source = Source::new(&SourceInfo {
     label: "Drivers",
     order: 90,
 });
-/// The most days one read of drivers' routes reaches, and VINs one read of the fleet names, as
-/// Routes and Vans refuse more.
-const ROUTES_DAYS_MOST: i64 = 366;
-const FLEET_VINS_MOST: usize = 100;
-
 /// What the stand-ins know of a DSP.
 #[derive(Default)]
 struct Known {
@@ -344,8 +339,9 @@ struct Known {
     /// again.
     held_while_queuing: Option<Holds>,
     /// Whether Communications is switched off for the DSP while the phone next reads a file's
-    /// bytes.
+    /// bytes, or as it next goes to queue a text.
     off_while_reading: bool,
+    off_while_queuing: bool,
 }
 /// Who holds a DSP's work phones, as `held` says it.
 struct Holds {
@@ -367,7 +363,9 @@ pub fn know(state: &State, dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>
     state.changed(Some(dsp));
 }
 /// Has the stand-ins answer who held the DSP's work phones: live route data's holds of its live
-/// day `live_day`, if it holds one, and each saved day's; then says they changed, as Routes does.
+/// day `live_day`, if it holds one, and each saved day's; then says, as Routes does, of which days
+/// they changed: the live day it held before, as emptying it does, the one it holds now, and each
+/// saved one.
 pub async fn held(
     state: &Arc<State>,
     dsp: &str,
@@ -375,12 +373,21 @@ pub async fn held(
     live: Vec<WorkPhoneHold>,
     saved: Vec<(String, WorkPhoneHold)>,
 ) {
-    {
+    let changed: BTreeSet<String> = {
         let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
         let known = known.entry(dsp.to_owned()).or_default();
+        let before = known.live_day.take();
         (known.live_day, known.live, known.saved) = (live_day.map(str::to_owned), live, saved);
+        let saved = known.saved.iter().map(|(day, _)| day.clone());
+        before
+            .into_iter()
+            .chain(known.live_day.clone())
+            .chain(saved)
+            .collect()
+    };
+    for day in changed {
+        events::publish(state, dsp, WorkPhonesChanged { day }).await;
     }
-    events::publish(state, dsp, WorkPhonesChanged).await;
 }
 /// Has live route data's stand-in answer `routes` as the live day's, as a live read leaves them,
 /// which Routes says nothing of.
@@ -403,7 +410,7 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
     let id = phone(dsp, |phone| {
         phone.change += 1;
         let text = Text {
-            id: crypto::id("text").unwrap(),
+            id: given("sms"),
             phone: STAND_IN.to_owned(),
             direction: Direction::In,
             origin: Origin::Phone,
@@ -445,8 +452,13 @@ pub fn held_while_queuing(
         });
     });
 }
-/// Hands the DSP's work phones over as `held_while_queuing` said, if it did, as its phone goes to
-/// queue a text.
+/// Has Communications switched off for the DSP as its phone next goes to queue a text, sent or
+/// sent again, as the platform owner might while a member's answer is under way.
+pub fn off_while_queuing(dsp: &str) {
+    phone(dsp, |phone| phone.off_while_queuing = true);
+}
+/// Hands the DSP's work phones over as `held_while_queuing` said, and switches Communications off
+/// as `off_while_queuing` did, if they did, as its phone goes to queue a text.
 async fn queuing(state: &Arc<State>, dsp: &str) {
     if let Some(holds) = phone(dsp, |phone| phone.held_while_queuing.take()) {
         let Holds {
@@ -455,6 +467,9 @@ async fn queuing(state: &Arc<State>, dsp: &str) {
             saved,
         } = holds;
         held(state, dsp, live_day.as_deref(), live, saved).await;
+    }
+    if phone(dsp, |phone| std::mem::take(&mut phone.off_while_queuing)) {
+        switch(state, dsp, "communications", false).await;
     }
 }
 /// Has Communications switched off for the DSP while its phone next reads a file's bytes, one
@@ -474,8 +489,20 @@ pub fn sent(dsp: &str) -> Vec<Outgoing> {
 }
 /// The stand-in phone's ID.
 const STAND_IN: &str = "phone_stand_in";
-/// The most a picture the stand-in keeps may be, in bytes.
-const LARGEST: u64 = 1024 * 1024;
+/// An ID the stand-in gives a text or a picture: opaque, as texting's contract says, and unlike
+/// any Phones gives, as another offerer's may be.
+fn given(kind: &str) -> String {
+    format!("{kind}-{}", crypto::hex(&crypto::random::<6>().unwrap()))
+}
+/// What one text the stand-in sends may carry.
+const LIMITS: Limits = Limits {
+    body: 1_000,
+    files: 3,
+    largest: 1024 * 1024,
+};
+/// The most texts the stand-in phone gives at once: a page smaller than Phones', so what reads it
+/// reads on as it says.
+const PAGE: usize = 2;
 fn phone<T>(dsp: &str, change: impl FnOnce(&mut Known) -> T) -> T {
     let mut known = KNOWN.lock().unwrap_or_else(|poison| poison.into_inner());
     change(known.entry(dsp.to_owned()).or_default())
@@ -512,7 +539,7 @@ impl DriverRoutes for Standing {
     /// more days than Routes reads.
     fn routes(&self, _: &Store, dsp: &str, ids: &[String], from: &str, to: &str) -> Result<Driven> {
         let day = |day: &str| NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
-        if (day(to) - day(from)).num_days() >= ROUTES_DAYS_MOST {
+        if (day(to) - day(from)).num_days() >= MOST_DAYS {
             return Err(Error::new("invalid_input", 400));
         }
         let routes: Vec<RouteDay> = known(dsp, |known| {
@@ -617,7 +644,8 @@ impl Texting for Standing {
             last_seen_at: Some(now()),
         }])
     }
-    fn changes(&self, _: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes> {
+    /// A page of `PAGE` at most, as it pages.
+    fn changes(&self, _: &Store, dsp: &str, after: i64) -> Result<Changes> {
         Ok(phone(dsp, |phone| {
             let mut texts: Vec<Text> = phone
                 .texts
@@ -626,12 +654,13 @@ impl Texting for Standing {
                 .cloned()
                 .collect();
             texts.sort_by_key(|text| text.change);
-            texts.truncate(most);
-            let last = match texts.last() {
-                Some(text) if texts.len() == most => text.change,
+            let more = texts.len() > PAGE;
+            texts.truncate(PAGE);
+            let next = match texts.last() {
+                Some(text) if more => text.change,
                 _ => phone.change,
             };
-            Changes { texts, last }
+            Changes { texts, next, more }
         }))
     }
     fn send<'a>(
@@ -650,7 +679,7 @@ impl Texting for Standing {
                     phone(&at, |phone| {
                         phone.change += 1;
                         let text = Text {
-                            id: crypto::id("text")?,
+                            id: given("sms"),
                             phone: STAND_IN.to_owned(),
                             direction: Direction::Out,
                             origin: Origin::Dispatch,
@@ -719,7 +748,7 @@ impl Texting for Standing {
         Box::pin(async move {
             read_bytes(state, dsp).await;
             let file = File {
-                id: crypto::id("file")?,
+                id: given("mms"),
                 name: added.name,
                 mime: added.mime,
                 size: bytes.length as i64,
@@ -745,8 +774,8 @@ impl Texting for Standing {
             Ok(())
         })
     }
-    fn largest(&self) -> u64 {
-        LARGEST
+    fn limits(&self) -> Limits {
+        LIMITS
     }
     /// Any file asked of it, a photo.
     fn file<'a>(
@@ -790,7 +819,7 @@ impl AmazonFleet for Standing {
     }
     /// The vans it knows under `vins`; refused for more than Vans reads.
     fn vans(&self, _: &Store, dsp: &str, vins: &[String]) -> Result<Vec<Van>> {
-        if vins.len() > FLEET_VINS_MOST {
+        if vins.len() > MOST_VINS {
             return Err(Error::new("invalid_input", 400));
         }
         Ok(known(dsp, |known| {

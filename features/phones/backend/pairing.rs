@@ -8,7 +8,9 @@ use qrcode::{QrCode, render::svg};
 /// The letters a code is made of: no 0 or O, no 1 or I, so one read aloud or typed is right.
 const LETTERS: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 /// How many letters a code has.
-const LENGTH: usize = 8;
+pub const LENGTH: usize = 8;
+/// How many random bytes a phone's key is: written in hexadecimal, twice as many letters.
+pub const KEY_BYTES: usize = 32;
 
 /// A new code: eight of `LETTERS`.
 pub fn new_code() -> Result<String> {
@@ -27,9 +29,9 @@ pub fn kept(code: &str) -> Option<String> {
     (letters.len() == LENGTH && letters.bytes().all(|b| LETTERS.contains(&b)))
         .then(|| crypto::sha(letters))
 }
-/// A new key for a phone: 32 random bytes, in hexadecimal.
+/// A new key for a phone: `KEY_BYTES` random bytes, in hexadecimal.
 pub fn new_key() -> Result<String> {
-    Ok(crypto::hex(&crypto::random::<32>()?))
+    Ok(crypto::hex(&crypto::random::<KEY_BYTES>()?))
 }
 /// What the phone's app reads from the code's picture: the DSP's address, and the code.
 pub fn link(site: &str, code: &str) -> String {

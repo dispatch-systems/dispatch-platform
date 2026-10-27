@@ -226,31 +226,33 @@ sending again one that failed.
     day (Pick driver, `communications_picked`), a text no hold covers is that driver's, before
     the day's first holder. Both are listed in Today's Routes.
   - **Any other number's**, Messaging's, by the number.
-- **Filed again:** who held which phone settles as the day goes, so each time it changes
-  (`routes.work_phones_changed`), every text of today, the DSP's day, both ways, is filed again
-  where it belongs now: a text that came before the day's first live read goes to whoever then
-  holds the number.
+- **Filed again:** who held which phone settles as the day goes, and a day's holds may reach
+  historical route data after its texts, as a text a phone relayed late; so each time a day's
+  holds change (`routes.work_phones_changed`, which names the day), every text of that day, both
+  ways, is filed again where it belongs now: a text that came before the day's first live read
+  goes to whoever then holds the number. An earlier day's is filed again only while Routes keeps
+  holds of it, so a day it emptied unsaved keeps its texts where its holds had them.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   or after Done. A failed answer leaves it waiting. A work conversation waits only on what was
   written on the live day, while live route data holds today: from the first text in on it
   after its latest answer or Done, though it came before the day's first live read; so at the
   stop, as live route data empties, none waits or counts, and the next day starts afresh. Each
-  time who holds the work phones changes, the work conversations waiting by their texts are
+  time who holds the work phones today changes, the work conversations waiting by their texts are
   noted changed, so the pages waiting on changes hear the day begin or end, and so are those of
   the drivers holding a work phone today, so one open hears its driver take or return one.
 - **Answering:** what someone at the DSP writes goes as written, nothing added, through
   `texting`, from the phone that last texted that number, else the one seen last, with its
   pictures, kept by `texting` as they're added (`add_file`), the adder's alone until they go, and
-  let go of (`remove_file`) should the adder's access end while their bytes come; the member's
-  access is checked again before it goes. A number's conversation, and a work phone's
-  nobody held, answer their number; a driver's, the work phone they hold now, as live route data
-  says, refused while they hold none (`communications_no_work_phone`). Kept as Phones tells of
+  let go of (`remove_file`) should the adder's access end while their bytes come. A number's
+  conversation, and a work phone's nobody held, answer their number; a driver's, the work phone
+  they hold now, as live route data says, refused while they hold none
+  (`communications_no_work_phone`). Kept as Phones tells of
   it, named with the writer's full name. Retry sends again one Dispatch sent that failed, while
   its phone is still paired. Either goes only where a text written now would: in a driver's,
   refused while they hold no work phone (`communications_no_work_phone`) or hold another
   (`communications_work_phone_changed`), as the one it went to may be another driver's since;
-  checked as Phones queues it (`texting.send`'s and `texting.retry`'s condition), so a handoff or
-  the stop can't come between.
+  checked as Phones queues it (`texting.send`'s and `texting.retry`'s condition), with the
+  member's access, so a handoff, the stop or a change of their access can't come between.
 
 ## Messaging a group
 

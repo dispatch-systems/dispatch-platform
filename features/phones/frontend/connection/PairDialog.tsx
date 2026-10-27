@@ -1,21 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { countdown } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading, Modal } from '../../../../core/shell/frontend/ui/index.js';
-import { newPairing, usePhones, type PhonePairing } from '../../api/client.js';
+import { newPairing, usePairing, type PhonePairing } from '../../api/client.js';
 
-/** How often the dialog reads the DSP's phones, to close once the code paired one. */
+/** How often the dialog asks after its code until the server says it paired, was replaced or
+ * expired, to close once it paired a phone. */
 const POLL = 3_000;
 
 // Add phone: the code that pairs the next phone, as a picture its app reads and as its letters,
-// with how long it lasts. A code that expires gives way to a new one at a press. It closes
-// itself once a new phone appears.
+// with how long it lasts. One that expired, or that a newer code replaced, gives way to a new one
+// at a press. It closes itself once its own code paired a phone.
 
 export function PairDialog({ onClose }: { onClose: () => void }) {
   const [pairing, setPairing] = useState<PhonePairing>();
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
-  const phones = usePhones(POLL);
-  const known = useRef<number | undefined>(undefined);
   const make = () => {
     setError('');
     setPairing(undefined);
@@ -26,14 +25,19 @@ export function PairDialog({ onClose }: { onClose: () => void }) {
     const ticking = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(ticking);
   }, []);
-  // Closes once the DSP has a phone more than it had as the dialog opened.
-  const count = phones.data?.phones.length;
+  const lapsed = pairing !== undefined && now >= pairing.expiresAt;
+  const [asking, setAsking] = useState(true);
+  const { data, refresh } = usePairing(pairing?.id, asking ? POLL : 0);
+  const status = data?.status;
+  useEffect(() => setAsking(status === undefined || status === 'waiting'), [status]);
+  // Expired here, it asks once more: a phone may have paired since it last asked.
   useEffect(() => {
-    if (count === undefined) return;
-    if (known.current === undefined) known.current = count;
-    else if (count > known.current) onClose();
-  }, [count, onClose]);
-  const expired = pairing !== undefined && now >= pairing.expiresAt;
+    if (lapsed) refresh();
+  }, [lapsed, refresh]);
+  useEffect(() => {
+    if (status === 'paired') onClose();
+  }, [status, onClose]);
+  const over = lapsed || status === 'replaced' || status === 'expired';
   return (
     <Modal title="Add phone" onClose={onClose}>
       <div className="phones-pairing">
@@ -44,12 +48,12 @@ export function PairDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <img
-              className={expired ? 'phones-code expired' : 'phones-code'}
+              className={over ? 'phones-code expired' : 'phones-code'}
               src={pairing.picture}
               alt={`Pairing code ${pairing.code}`}
             />
             <code className="phones-code-letters">{pairing.code}</code>
-            {expired ? (
+            {over ? (
               <button className="primary" onClick={make}>
                 New code
               </button>

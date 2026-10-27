@@ -1,6 +1,7 @@
 //! Answering by text: what's written goes as written, from the DSP's phone, under whoever wrote
 //! it on the page; one that fails leaves the conversation waiting, and Retry sends it again. Neither
-//! goes to a work phone the driver no longer holds, even as it changes hands while it's under way.
+//! goes to a work phone the driver no longer holds, even as it changes hands while it's under way,
+//! nor once its writer's access ended as it went.
 //! A picture added for one is let go of once its adder's access ended while it came.
 use super::*;
 use crate::ConversationState;
@@ -173,6 +174,20 @@ async fn an_answer_never_goes_to_a_work_phone_handed_on_as_it_goes() {
         "communications_work_phone_changed"
     );
     assert!(support::sent(&dsp).is_empty(), "nothing went to Blake");
+}
+
+#[tokio::test]
+async fn an_answer_never_goes_once_its_writers_access_ended_as_it_goes() {
+    let (_root, state, dsp) = support::started();
+    let asked = texted(&state, &dsp, "+12535550177", "Can I swap Saturday?", now()).await;
+    let conversation = filed(&state, &dsp, &asked).await.id;
+    let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    // Communications goes off for the DSP as the phone goes to queue it, and with it their
+    // permission: refused, nothing goes.
+    support::off_while_queuing(&dsp);
+    let refused = send(&state, &c, support::USE, &conversation, "Swap it", &[]).await;
+    assert_eq!(refused.unwrap_err().code, "permission_denied");
+    assert!(support::sent(&dsp).is_empty(), "nothing went");
 }
 
 #[tokio::test]

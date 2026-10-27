@@ -11,7 +11,7 @@ use dispatch_cortex::{
     self as cortex,
     vans::{Capture, Collection, Request},
 };
-use dispatch_vans_contract::Van;
+use dispatch_vans_contract::{MOST_VINS, Van};
 use rusqlite::params;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -32,9 +32,6 @@ fn verify(db: &Db) -> Result<()> {
     }
     Ok(())
 }
-/// The most VINs one question names.
-const MAX_ASKED: usize = 100;
-
 /// What a fleet job carries while queued; the DSP's code is bound just before it runs.
 pub(crate) fn fleet_request() -> Value {
     json!({"collection": "vans"})
@@ -57,7 +54,7 @@ pub trait VansStore {
     /// Stores a fleet as the current one.
     fn publish_fleet(&self, dsp: &str, job: &str, capture: &Capture) -> Result<()>;
     /// What the fleet says of each of `vins` it has listed, in their order. Refuses an empty
-    /// VIN, one over 128 characters, or more than a hundred.
+    /// VIN, one over 128 characters, or more than `MOST_VINS`.
     fn vans(&self, dsp: &str, vins: &[String]) -> Result<Vec<Van>>;
 }
 impl VansStore for Store {
@@ -111,7 +108,7 @@ impl VansStore for Store {
         })
     }
     fn vans(&self, dsp: &str, vins: &[String]) -> Result<Vec<Van>> {
-        validate::ids(vins, MAX_ASKED)?;
+        validate::ids(vins, MOST_VINS)?;
         let asked: Vec<String> = vins
             .iter()
             .map(|vin| vin.trim().to_ascii_uppercase())

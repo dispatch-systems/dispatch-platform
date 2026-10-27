@@ -32,7 +32,7 @@ CREATE TABLE person_titles ( code TEXT PRIMARY KEY REFERENCES people(code), titl
 CREATE TABLE phones_change ( id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL );
 CREATE TABLE phones_devices ( id TEXT PRIMARY KEY, name TEXT NOT NULL, number TEXT NOT NULL, model TEXT NOT NULL, app_version TEXT NOT NULL, key_sha256 TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, paired_by TEXT NOT NULL, last_seen_at INTEGER, removed_at INTEGER, stand_in INTEGER NOT NULL DEFAULT 0 CHECK (stand_in IN (0, 1)) );
 CREATE TABLE phones_files ( id TEXT PRIMARY KEY, text_id TEXT REFERENCES phones_texts (id), added_by TEXT, name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT, added_at INTEGER NOT NULL );
-CREATE TABLE phones_pairings ( code_sha256 TEXT PRIMARY KEY, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, device_id TEXT REFERENCES phones_devices (id) );
+CREATE TABLE phones_pairings ( code_sha256 TEXT PRIMARY KEY, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, device_id TEXT REFERENCES phones_devices (id) , id TEXT, replaced_at INTEGER);
 CREATE TABLE phones_texts ( id TEXT PRIMARY KEY, device_id TEXT NOT NULL REFERENCES phones_devices (id), client_id TEXT, direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), origin TEXT NOT NULL CHECK (origin IN ('phone', 'dispatch')), number TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL, sent_by TEXT, status TEXT CHECK (status IN ('waiting', 'sent', 'delivered', 'failed')), status_at INTEGER, error TEXT, attempt INTEGER, change INTEGER NOT NULL, UNIQUE (device_id, client_id) );
 CREATE TABLE recovery_codes ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE );
 CREATE TABLE resets ( hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), user_version INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER );
@@ -86,6 +86,7 @@ CREATE INDEX memberships_dsp_role ON memberships(dsp_id,role,user_id);
 CREATE INDEX memberships_role ON memberships(role_id);
 CREATE INDEX person_ids_code ON person_ids(code);
 CREATE INDEX phones_files_text ON phones_files (text_id);
+CREATE UNIQUE INDEX phones_pairings_id ON phones_pairings (id);
 CREATE INDEX phones_texts_change ON phones_texts (change);
 CREATE INDEX phones_texts_number ON phones_texts (number, at);
 CREATE INDEX phones_texts_waiting ON phones_texts (device_id, status);

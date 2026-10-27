@@ -1,12 +1,15 @@
 //! Filing texts: a number's in its own conversation, with whoever Driver Match has it for, else
 //! the name the DSP saved for it, else the number; a work phone's under the driver who held it as
-//! each was written, by today's holds or a saved day's, and today's again as who held it settles,
-//! both ways; a blocked number's out of the list, never waiting on what it sent while blocked.
+//! each was written, by today's holds or a saved day's, and a day's again as who held it settles,
+//! both ways, while Routes keeps the day's holds; a blocked number's out of the list, never
+//! waiting on what it sent while blocked.
 use super::*;
 use crate::backend::{
     conversations,
     storage::CommunicationsStore,
-    support::{self, DRIVERS, at, filed, held, hold, route, routed, started, texted, today},
+    support::{
+        self, DRIVERS, at, filed, held, hold, route, routed, started, switch, texted, today,
+    },
     texts::{
         contacts, reply,
         storage::{ConversationKind, TextStore},
@@ -39,6 +42,17 @@ async fn block(
         .await
         .unwrap();
     (after.blocked, after.state)
+}
+/// Moves the DSP to `zone`, as its owner might on Settings.
+async fn moved(state: &Arc<State>, dsp: &str, zone: Tz) {
+    let dsp = dsp.to_owned();
+    state
+        .run(move |db| {
+            let name = db.find_dsp(&dsp)?.name;
+            db.keep_dsp_profile(&dsp, &name, zone.name(), None, None)
+        })
+        .await
+        .unwrap();
 }
 /// Whose a driver's conversation is, by their ID of the stand-in's source.
 fn driver(id: &str) -> Option<(String, String)> {
@@ -231,6 +245,78 @@ async fn todays_texts_both_ways_go_to_whoever_holds_the_work_phone_once_live_rou
 }
 
 #[tokio::test]
+async fn a_saved_days_texts_go_to_whoever_held_the_work_phone_once_its_holds_are_saved_after_them()
+{
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    // Yesterday where the DSP is; and a day long gone in Beirut, whose clocks went from midnight
+    // to 01:00 that day, written in the hour after.
+    let beirut: Tz = "Asia/Beirut".parse().unwrap();
+    let skipped = NaiveDate::from_ymd_opt(2026, 3, 29).unwrap();
+    for (zone, day, phone, (hour, minute)) in [
+        (zone, day.pred_opt().unwrap(), "2065550101", (18, 0)),
+        (beirut, skipped, "2065550102", (1, 30)),
+    ] {
+        moved(&state, &dsp, zone).await;
+        // The day's text, relayed late, comes before the day is saved: no hold says whose it is.
+        let late = texted(
+            &state,
+            &dsp,
+            &format!("+1{phone}"),
+            "Dropped the keys at the station",
+            at(zone, day, hour, minute),
+        )
+        .await;
+        assert_eq!(
+            filed(&state, &dsp, &late).await.kind,
+            ConversationKind::Number
+        );
+
+        // Saved with Casey holding the phone since 7:00: it's theirs.
+        let saved = hold("casey", phone, at(zone, day, 7, 0), None);
+        held(
+            &state,
+            &dsp,
+            None,
+            Vec::new(),
+            vec![(day.to_string(), saved)],
+        )
+        .await;
+        let filed = filed(&state, &dsp, &late).await;
+        assert_eq!(
+            (filed.kind, filed.driver),
+            (ConversationKind::Work, driver("casey")),
+            "{day}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_days_texts_stay_with_whoever_held_the_work_phone_once_routes_empties_it_unsaved() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    // Yesterday, while live route data held it, Avery held 0101 and texted from it.
+    let since = at(zone, yesterday, 7, 0);
+    let avery = vec![hold("avery", "2065550101", since, None)];
+    held(
+        &state,
+        &dsp,
+        Some(&yesterday.to_string()),
+        avery,
+        Vec::new(),
+    )
+    .await;
+    let written = at(zone, yesterday, 16, 0);
+    let text = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
+    assert_eq!(filed(&state, &dsp, &text).await.driver, driver("avery"));
+
+    // Emptied unsaved, as the next day's first read leaves it: still theirs.
+    held(&state, &dsp, None, Vec::new(), Vec::new()).await;
+    assert_eq!(filed(&state, &dsp, &text).await.driver, driver("avery"));
+}
+
+#[tokio::test]
 async fn a_blocked_numbers_conversation_leaves_the_list_and_never_waits_on_what_it_sent_while_blocked()
  {
     let (_root, state, dsp) = started();
@@ -345,4 +431,44 @@ async fn a_drivers_work_conversation_changes_as_they_take_and_return_a_work_phon
     let (taken, returned) = (at(zone, day, 7, 0), at(zone, day, 7, 30));
     assert!(heard(vec![hold("A1", "2065550101", taken, None)]).await);
     assert!(heard(vec![hold("A1", "2065550101", taken, Some(returned))]).await);
+}
+
+#[tokio::test]
+async fn texts_that_came_while_communications_was_off_are_each_filed_once_it_reads_on() {
+    let (_root, state, dsp) = started();
+    switch(&state, &dsp, "communications", false).await;
+    let mut came = Vec::new();
+    for (ago, number) in [
+        (3, "+14255550134"),
+        (2, "+14255550135"),
+        (1, "+14255550136"),
+    ] {
+        came.push(
+            texted(
+                &state,
+                &dsp,
+                number,
+                "Van 208 is ready",
+                now() - ago * 60_000,
+            )
+            .await,
+        );
+    }
+    switch(&state, &dsp, "communications", true).await;
+    // Texting gives them a page at a time, smaller than any Communications would ask for.
+    read_on(&state, &dsp).await.unwrap();
+    let at = dsp.clone();
+    let unfiled = state
+        .read(move |db| {
+            let mut unfiled = Vec::new();
+            for id in came {
+                if db.communications_text(&at, &id)?.is_none() {
+                    unfiled.push(id);
+                }
+            }
+            Ok(unfiled)
+        })
+        .await
+        .unwrap();
+    assert!(unfiled.is_empty(), "read on while more remain: {unfiled:?}");
 }

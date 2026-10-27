@@ -4,10 +4,13 @@ mod api;
 mod backend;
 
 /// What its API answers with, which the app writes to TypeScript.
-pub use api::types::{PhonePairing, PhoneRow, Phones};
+pub use api::types::{PairingStatus, PhonePairing, PhonePairingStatus, PhoneRow, Phones};
 
 use dispatch_core::{
-    db::{Kind, Migration, OwnMigrations, migrations::Apply::Sql},
+    db::{
+        Kind, Migration, OwnMigrations,
+        migrations::Apply::{Code, Sql},
+    },
     manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
@@ -32,11 +35,18 @@ pub const FEATURE: Feature = Feature {
     )],
     own_migrations: &[OwnMigrations {
         kind: Kind::DSP,
-        list: &[Migration {
-            id: 1,
-            name: "phones",
-            apply: Sql(include_str!("migrations/dsp/0001_phones.sql")),
-        }],
+        list: &[
+            Migration {
+                id: 1,
+                name: "phones",
+                apply: Sql(include_str!("migrations/dsp/0001_phones.sql")),
+            },
+            Migration {
+                id: 2,
+                name: "pairing_ids",
+                apply: Code(backend::storage::add_pairing_ids),
+            },
+        ],
     }],
     dsp_connection: true,
     // Letting go of pictures never sent and codes expired, hourly.
@@ -59,5 +69,12 @@ pub const FEATURE: Feature = Feature {
 /// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
 #[cfg(feature = "ts")]
 pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
-    dispatch_core::typescript!(cfg, Phones, PhoneRow, PhonePairing)
+    dispatch_core::typescript!(
+        cfg,
+        Phones,
+        PhoneRow,
+        PhonePairing,
+        PhonePairingStatus,
+        PairingStatus
+    )
 }
