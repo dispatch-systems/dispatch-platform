@@ -14,18 +14,16 @@ export function NoWorkPhone({
   go: (elsewhere: Elsewhere) => void;
 }) {
   return (
-    <div className="composer">
-      <div className="no-work-phone">
-        <span>
-          <PhoneOff aria-hidden="true" />
-          No work phone
-        </span>
-        {elsewhere
-          .filter((each) => each.kind !== 'work')
-          .map((each) => (
-            <ElsewhereChip key={each.kind} elsewhere={each} go={go} />
-          ))}
-      </div>
+    <div className="no-work-phone">
+      <span>
+        <PhoneOff aria-hidden="true" />
+        No work phone
+      </span>
+      {elsewhere
+        .filter((each) => each.kind !== 'work')
+        .map((each) => (
+          <ElsewhereChip key={each.kind} elsewhere={each} go={go} />
+        ))}
     </div>
   );
 }

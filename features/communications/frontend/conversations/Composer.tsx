@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowUp, LoaderCircle, Paperclip, Phone, X } from 'lucide-react';
 import type { CommunicationsUpload, ComposeLimits } from '../../api/index.js';
 import type { Attachments } from '../../api/client.js';
@@ -16,7 +16,9 @@ import './composer.css';
 // (`attachments`): by text, to the DSP's phones, which send them with it. Enter sends, Shift+Enter
 // starts a new line; or, as the member may choose, Enter starts one and Ctrl or ⌘ with it sends.
 // While someone writes in a conversation, their teammates see they are, said again every few
-// seconds. A text says the number it goes to by its last digits, when the name doesn't.
+// seconds. A text says the number it goes to by its last digits, when the name doesn't. While what
+// it goes to can't be reached, as a driver holding no work phone, what says so takes the box's
+// place (`instead`), and what's written stays, with its photos, until it can be again.
 
 /** How often writing is said again: the server counts it for six seconds. */
 const TYPING_MS = 3000;
@@ -40,6 +42,7 @@ export function Composer({
   send: deliver,
   typing,
   label,
+  instead,
 }: {
   placeholder: string;
   /** Whether it can be written in: Communications works where it goes now. */
@@ -58,6 +61,8 @@ export function Composer({
   typing?: () => void;
   /** What sending says beside its arrow, as "Send to 8"; else the arrow alone. */
   label?: string;
+  /** What shows in the box's place while what it goes to can't be reached. */
+  instead?: ReactNode;
 }) {
   const { fail } = useFeedback();
   const [text, setText] = useState('');
@@ -145,6 +150,7 @@ export function Composer({
     }
   };
   const sending = send.busy ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />;
+  if (instead) return <div className="composer">{instead}</div>;
   return (
     <form
       className="composer"
