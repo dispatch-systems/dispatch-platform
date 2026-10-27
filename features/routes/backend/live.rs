@@ -274,7 +274,7 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
         )?;
         db.exec(
             "UPDATE route_publications SET job_id=?,timezone=?,started_at=?,collected_at=?,\
-             route_count=?,itinerary_count=?,stop_count=?,task_count=? WHERE id=?",
+             route_count=?,itinerary_count=?,stop_count=?,task_count=?,adapter_version=? WHERE id=?",
             params![
                 key(day, lists.finished_at),
                 scope.timezone,
@@ -284,6 +284,8 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<(LiveKept, bool)> {
                 listed.len() as i64,
                 read.itineraries.iter().map(|i| i.stops.len()).sum::<usize>() as i64,
                 read.itineraries.iter().map(|i| i.tasks.len()).sum::<usize>() as i64,
+                // Every row is this read's now, shaped as it was.
+                ADAPTER_VERSION,
                 publication
             ],
         )?;

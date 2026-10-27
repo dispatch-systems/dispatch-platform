@@ -156,15 +156,27 @@ pub const FEATURE: Feature = Feature {
                         "migrations/routedata/0009_work_phones_phone.sql"
                     )),
                 },
+                Migration {
+                    id: 10,
+                    name: "itinerary_work_phone",
+                    apply: Code(backend::add_work_phone),
+                },
             ],
         },
         Migrations {
             kind: backend::LIVE_DATABASE,
-            list: &[Migration {
-                id: 1,
-                name: "baseline",
-                apply: Sql(include_str!("migrations/routelive/0001_baseline.sql")),
-            }],
+            list: &[
+                Migration {
+                    id: 1,
+                    name: "baseline",
+                    apply: Sql(include_str!("migrations/routelive/0001_baseline.sql")),
+                },
+                Migration {
+                    id: 2,
+                    name: "itinerary_work_phone",
+                    apply: Code(backend::add_live_work_phone),
+                },
+            ],
         },
     ],
     domains: &[backend::DOMAIN],
