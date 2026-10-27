@@ -198,8 +198,9 @@ who may or may not work for the DSP.
   under who wrote each, or the phone's name and mark for one sent from the phone's own messaging
   app; each picture shown, as the phone keeps it. Under a text the DSP sent, the last of a run or
   one that failed: Sending, Sent, Delivered, or Not sent with **Retry**.
-- **Writing:** text, up to 3,000 characters, with up to ten pictures (PNG, JPEG or GIF, up to 20
-  MB each, by their stated type), Enter to send, the number's last four digits beside it while the
+- **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
+  carries as whatever offers `texting` says (its `limits()`: Phones', 10,000 characters and ten
+  pictures of up to 20 MB each), Enter to send, the number's last four digits beside it while the
   name doesn't say it; teammates see who's writing, as in Slack's. As in a driver's work
   conversation.
 
@@ -477,8 +478,10 @@ Behind `communications.use`:
   or the answered ones before the last shown.
 - `GET …/conversations/{id}`, `?before=<ts>`: a conversation and its fifty latest messages, or
   those before one, in the order written; by text, `ts` is `<at>:<id>`; with whom it's with's
-  conversations of each kind (`elsewhere`), and for a driver's, their route `today` and each of
-  its days' route and van (`workdays`).
+  conversations of each kind (`elsewhere`), for a driver's, their route `today` and each of its
+  days' route and van (`workdays`), and what a message written in it may carry (`limits`: its
+  text's characters, photos, each photo's bytes and their kinds; Slack's own, or as `texting`
+  says, none by text while nothing offers it).
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, a member of a
   workspace or a driver, besides the name, role and photo the conversation has: their route
   `today` (`route`, `van`, `waveAt`, `stops`, `stopsDone`, `pace`, and the work phone they hold,

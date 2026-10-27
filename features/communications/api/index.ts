@@ -4,6 +4,7 @@ export type { CommunicationsUpdates } from './generated/CommunicationsUpdates';
 export type { CommunicationsUpload } from './generated/CommunicationsUpload';
 export type { CommunicationsWaiting } from './generated/CommunicationsWaiting';
 export type { CommunicationsWorkspace } from './generated/CommunicationsWorkspace';
+export type { ComposeLimits } from './generated/ComposeLimits';
 export type { Contact } from './generated/Contact';
 export type { Contacts } from './generated/Contacts';
 export type { Conversation } from './generated/Conversation';

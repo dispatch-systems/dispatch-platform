@@ -1,7 +1,10 @@
-//! What someone at the DSP writes, checked before it goes, against what one message may carry
-//! (`Limits`), as a Slack message's are (`SLACK`). Either kind carries photos of the same kinds
-//! (`PHOTO_KINDS`).
-use dispatch_core::{Result, ensure};
+//! What someone at the DSP writes, checked before it goes, against what one message of its kind
+//! may carry (`Limits`): a Slack message's (`SLACK`), or a text's as whatever offers the DSP
+//! texting says (`texting.limits()`). Either carries photos of the same kinds (`PHOTO_KINDS`).
+use super::model::Reference;
+use crate::api::types::ComposeLimits;
+use dispatch_core::{Result, db::Store, ensure};
+use dispatch_phones_contract::{self as texting, Texting};
 
 /// What a Slack message may carry: as much text as Slack shows in a section of one, and up to ten
 /// photos of up to 20 MB each.
@@ -24,6 +27,44 @@ pub struct Limits {
     pub text: usize,
     pub photos: usize,
     pub largest: u64,
+}
+impl Limits {
+    /// The most characters of a message's text read before it's trimmed and checked: twice what
+    /// it may carry, for the spaces around it.
+    pub fn read(self) -> usize {
+        self.text * 2
+    }
+}
+impl From<Limits> for ComposeLimits {
+    fn from(limits: Limits) -> Self {
+        Self {
+            text: limits.text,
+            photos: limits.photos,
+            largest: limits.largest,
+            kinds: PHOTO_KINDS
+                .iter()
+                .map(|(kind, _)| (*kind).to_owned())
+                .collect(),
+        }
+    }
+}
+
+/// What a text may carry, as `texting` says.
+pub fn texted(texting: &dyn Texting) -> Limits {
+    let limits = texting.limits();
+    Limits {
+        text: limits.body,
+        photos: limits.files,
+        largest: limits.largest,
+    }
+}
+/// What a message in the conversation `reference` may carry: a Slack one's, or by text as what
+/// offers the DSP texting says, none while nothing does.
+pub fn of(db: &Store, dsp: &str, reference: &Reference) -> Result<Option<Limits>> {
+    Ok(match reference {
+        Reference::Slack(_) => Some(SLACK),
+        Reference::Text(_) => texting::for_dsp(db, dsp)?.map(texted),
+    })
 }
 
 /// What someone at the DSP wrote, trimmed, with the photos they added: refused when it's

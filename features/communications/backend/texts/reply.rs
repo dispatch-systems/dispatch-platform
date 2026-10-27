@@ -14,7 +14,7 @@ use super::{
 use crate::{
     api::types::{CommunicationsUpload, Message},
     backend::{
-        compose::{SLACK, checked, photo_kind},
+        compose::{checked, photo_kind, texted},
         live,
         model::ConversationKind,
         sender,
@@ -38,11 +38,11 @@ pub async fn send(
     written: &str,
     photos: &[String],
 ) -> Result<Message> {
-    let body = checked(written, photos, SLACK)?.to_owned();
     let (dsp, at) = (c.dsp.id.clone(), id.to_owned());
     let (to, texting) = state
         .read(move |db| Ok((recipient(db, &dsp, &at)?, offering(db, &dsp)?)))
         .await?;
+    let body = checked(written, photos, texted(texting))?.to_owned();
     // Checked again as it's queued: once Phones has it, it's sent.
     let (asked, at, number) = (c.clone(), id.to_owned(), to.clone());
     let condition = Box::new(move |db: &Store| {

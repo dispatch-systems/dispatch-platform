@@ -70,7 +70,7 @@ pub(super) async fn create_group(state: Arc<State>, input: Input, access: Dsp) -
             ))
         })
         .collect::<Result<Vec<_>>>()?;
-    let text = optional_text(&input.body, "text", compose::SLACK.text * 2)?;
+    let text = optional_text(&input.body, "text", compose::SLACK.read())?;
     let photos = photos(&input.body, file_id)?;
     let group = send::create(&state, &c, access, name, &people, text, &photos).await?;
     send::send_soon(&state, &c.dsp.id);
@@ -82,7 +82,7 @@ pub(super) async fn message_group(state: Arc<State>, input: Input, access: Dsp) 
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["text", "photos"])?;
     let group = id(input.param("id"), "grp")?;
-    let text = optional_text(&input.body, "text", compose::SLACK.text * 2)?;
+    let text = optional_text(&input.body, "text", compose::SLACK.read())?;
     let photos = photos(&input.body, file_id)?;
     let entry = send::again(&state, &c, access, &group, text, &photos).await?;
     send::send_soon(&state, &c.dsp.id);

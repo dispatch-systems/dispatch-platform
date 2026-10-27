@@ -4,7 +4,7 @@
 use super::{PLACE_MOST, photo_id, photos, slack_id, team};
 use crate::backend::{compose, contacts, dispatcher, live, model::Reference, reply};
 use dispatch_core::{
-    Result, State,
+    Error, Result, State,
     db::Store,
     foundation::validate as v,
     server::http::{
@@ -51,10 +51,18 @@ pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
 /// keeps them.
 pub(super) async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
-    let c = state.read(move |db| access.authorize(db, &asked)).await?;
-    v::fields(&input.body, &["text", "photos"])?;
     let reference = Reference::parse(input.param("id"))?;
-    let text = optional_text(&input.body, "text", compose::SLACK.text * 2)?;
+    let of = reference.clone();
+    let (c, limits) = state
+        .read(move |db| {
+            let c = access.authorize(db, &asked)?;
+            let limits = compose::of(db, &c.dsp.id, &of)?
+                .ok_or_else(|| Error::new("communications_texting_off", 409))?;
+            Ok((c, limits))
+        })
+        .await?;
+    v::fields(&input.body, &["text", "photos"])?;
+    let text = optional_text(&input.body, "text", limits.read())?;
     let photos = photos(&input.body, photo_id(&reference))?;
     let message = dispatcher::send(&state, &c, access, &reference, text, &photos).await?;
     Reply::of_status(&message, 201)

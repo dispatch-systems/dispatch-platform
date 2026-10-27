@@ -15,6 +15,7 @@ use crate::api::types::{
     Conversation, ConversationMessages, Conversations, Message, MessageFile, Sender,
 };
 use crate::backend::{
+    compose,
     conversations::PAGE,
     elsewhere,
     files::FileStatus,
@@ -313,6 +314,7 @@ pub fn opened(
         today,
         elsewhere,
         workdays,
+        limits: texting::for_dsp(db, dsp)?.map(|texting| compose::texted(texting).into()),
     })
 }
 /// Whom the conversation `kept` is with, as Driver Match knows them: the driver, or whoever it

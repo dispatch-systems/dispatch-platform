@@ -12,7 +12,7 @@ pub use api::display::{
 /// What its API answers with, which the app writes to TypeScript.
 pub use api::types::{
     Communications, CommunicationsUpdates, CommunicationsUpload, CommunicationsWaiting,
-    CommunicationsWorkspace, Contact, Contacts, Conversation, ConversationKind,
+    CommunicationsWorkspace, ComposeLimits, Contact, Contacts, Conversation, ConversationKind,
     ConversationMessages, ConversationState, Conversations, Correspondent, Direction,
     DispatchPhone, Elsewhere, FileStatus, Group, GroupChoice, GroupChoiceKind, GroupChoices,
     GroupEntry, GroupMember, GroupMessages, GroupPeople, GroupPerson, GroupPersonState,
@@ -137,6 +137,7 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
         FileStatus,
         Conversations,
         ConversationMessages,
+        ComposeLimits,
         Elsewhere,
         Workday,
         TodaysRoutes,

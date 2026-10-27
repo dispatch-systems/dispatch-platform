@@ -7,7 +7,7 @@
 //! while the DSP texts.
 use super::{
     changes::ChangeStore,
-    elsewhere,
+    compose, elsewhere,
     files::{File, FileStore},
     groups::{
         self,
@@ -335,6 +335,7 @@ pub fn opened(
         today: None,
         elsewhere,
         workdays: Vec::new(),
+        limits: Some(compose::SLACK.into()),
     })
 }
 /// The conversation `id` as its pages read it.
