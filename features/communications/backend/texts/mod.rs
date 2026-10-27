@@ -18,11 +18,9 @@
 //! - `todays_routes`: Today's Routes, the drivers on a route today with their work conversations,
 //!   and the work phones nobody held.
 //! - `picking`: Pick driver, filing a work phone nobody held under one of today's drivers.
-//! - `elsewhere`: a person's conversations of each kind, which the page goes between.
 //! - `workdays`: each workday's route and van, for the line that begins it in a driver's
 //!   conversation.
 pub(crate) mod contacts;
-pub(crate) mod elsewhere;
 pub(crate) mod filing;
 pub(crate) mod live_day;
 pub(crate) mod numbers;

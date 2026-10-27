@@ -2,7 +2,10 @@
 //! conversation by text, each text filed in one, how far Phones' changes were read, and the
 //! names and blocks the DSP keeps for numbers. Whether a conversation waits follows from its
 //! texts, and is kept beside them each time they change, as a Slack conversation's is.
-use crate::backend::storage::{ConversationState, Direction, changed_conversation};
+use crate::backend::{
+    changes::changed_conversation,
+    model::{ConversationKind, ConversationState, Direction},
+};
 use dispatch_core::{
     Error, Result,
     db::{Db, FromRow, Row, Store, now},
@@ -13,17 +16,6 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 
-text_enum! {
-    #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-    #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]
-    /// What a conversation is: a Slack direct message, the texts of the work phones a driver
-    /// held (or of one nobody held as they were written), or a number's texts.
-    pub enum ConversationKind {
-        Slack => "slack",
-        Work => "work",
-        Number => "number",
-    }
-}
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts", ts(export_to = "features/communications/api/generated/"))]

@@ -9,18 +9,14 @@
 //! Either goes only where a text written now goes, and while the member may still send it, checked
 //! as `texting` queues it, so no handoff, stop or change of their access comes between.
 use super::{
-    filing,
-    live_day::LiveDay,
-    numbers::work_number,
-    offering,
-    reading::message,
-    storage::{ConversationKind, TextStore},
+    filing, live_day::LiveDay, numbers::work_number, offering, reading::message, storage::TextStore,
 };
 use crate::{
     api::types::{CommunicationsUpload, Message},
     backend::{
+        compose::{SLACK, checked, photo_kind},
         live,
-        reply::{PHOTO_KINDS, checked},
+        model::ConversationKind,
         sender,
         storage::DOMAIN,
     },
@@ -42,7 +38,7 @@ pub async fn send(
     written: &str,
     photos: &[String],
 ) -> Result<Message> {
-    let body = checked(written, photos)?.to_owned();
+    let body = checked(written, photos, SLACK)?.to_owned();
     let (dsp, at) = (c.dsp.id.clone(), id.to_owned());
     let (to, texting) = state
         .read(move |db| Ok((recipient(db, &dsp, &at)?, offering(db, &dsp)?)))
@@ -154,11 +150,7 @@ pub async fn upload(
     mime: &str,
     photo: Upload,
 ) -> Result<CommunicationsUpload> {
-    ensure(
-        PHOTO_KINDS.iter().any(|(kind, _)| *kind == mime),
-        "communications_photo_kind",
-        415,
-    )?;
+    ensure(photo_kind(mime).is_some(), "communications_photo_kind", 415)?;
     let dsp = c.dsp.id.clone();
     let texting = state.read(move |db| offering(db, &dsp)).await?;
     let added = Added {

@@ -1,6 +1,7 @@
 //! What's kept of each conversation: its messages, an edit in place of what was written, and
 //! whether it waits on an answer, from its messages in the order they were written.
 use super::*;
+use crate::backend::changes::ChangeStore;
 use dispatch_core::testing;
 
 const TEAM: &str = "T0FIXTURE1";

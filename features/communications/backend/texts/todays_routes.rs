@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{
     api::types::{RouteDriver, TodaysRoutes},
-    backend::{conversations::People, today},
+    backend::{people::People, today},
 };
 use dispatch_core::{Result, State, db::Store, foundation::names};
 use dispatch_routes_contract as routes;

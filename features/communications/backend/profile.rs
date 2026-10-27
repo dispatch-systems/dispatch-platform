@@ -6,11 +6,9 @@
 //! it's on for the DSP, and what none knows is left out. A number's conversation has none.
 use super::{
     conversations,
+    model::ConversationKind,
     storage::CommunicationsStore,
-    texts::{
-        live_day::LiveDay,
-        storage::{ConversationKind, TextStore},
-    },
+    texts::{live_day::LiveDay, storage::TextStore},
     today,
 };
 use crate::api::types::Profile;

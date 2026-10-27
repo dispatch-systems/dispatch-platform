@@ -1,20 +1,20 @@
-//! A person's conversations of each kind, which the page goes between under a conversation's
-//! head: their work conversation, as a driver who held the DSP's work phones, with the work phone
+//! A person's conversations of each kind, which the page goes between under the head of any of
+//! them: their work conversation, as a driver who held the DSP's work phones, with the work phone
 //! they hold now; the one by text with their own number, while the DSP texts, the latest written
 //! in of Driver Match's numbers for them, else the first; and their Slack one, in a workspace
 //! where Communications works, the latest written in, else their first account there. Each with
 //! whether it waits, and what starts one they don't have yet; listed only with two or more.
 use super::{
-    live_day::{self, LiveDay},
-    numbers::work_number,
-    offered,
-    storage::{ConversationKind, TextConversation, TextStore},
+    model::{ConversationKind, ConversationState},
+    storage::CommunicationsStore,
+    texts::{
+        live_day::{self, LiveDay},
+        numbers::work_number,
+        offered,
+        storage::{TextConversation, TextStore},
+    },
 };
-use crate::{
-    api::types::Elsewhere,
-    backend::storage::{CommunicationsStore, ConversationState},
-    integrations::messages::ID,
-};
+use crate::{api::types::Elsewhere, integrations::messages::ID};
 use dispatch_core::{Result, db::Store, manifest::people::Person};
 use dispatch_phones_contract as texting;
 use dispatch_routes_contract as routes;

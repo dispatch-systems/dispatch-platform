@@ -3,7 +3,7 @@
 //! role, and their conversation if they have one: whether it waits and when it was last written
 //! in. By name, or found by a name typed, misspelt or not, the closest first.
 use super::{
-    conversations::People,
+    people::People,
     search,
     storage::{self, CommunicationsStore},
 };

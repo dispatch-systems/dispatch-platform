@@ -6,7 +6,8 @@ use crate::backend::{
     conversations,
     files::{FileStatus, FileStore},
     initials,
-    storage::{CommunicationsStore, ConversationState},
+    model::ConversationState,
+    storage::CommunicationsStore,
     support::{self, USE},
 };
 use crate::integrations::messages::incoming;
@@ -119,7 +120,7 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
             let length = bytes.len() as u64;
             let photo = Upload::streamed(
                 length,
-                PHOTO_MOST,
+                SLACK.largest,
                 stream::iter([Ok::<_, std::io::Error>(Bytes::from(bytes))]),
             )
             .await

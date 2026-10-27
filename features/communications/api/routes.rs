@@ -4,15 +4,14 @@
 //! address. The server checks the session and the permission before a handler runs; those that
 //! call Slack or send a text wait outside the database and check again before they write.
 use crate::backend::{
-    contacts, conversations,
+    compose, contacts, conversations,
     files::{self, FileStatus, FileStore},
     groups::{self, choices, send as group_send},
-    initials, live, profile, reply,
+    initials, live,
+    model::ConversationKind,
+    profile, reply,
     storage::CommunicationsStore,
-    texts::{
-        self,
-        storage::{ConversationKind, TextStore},
-    },
+    texts::{self, storage::TextStore},
 };
 use axum::{
     body::Body,
@@ -126,7 +125,7 @@ pub fn routes() -> Vec<Route> {
         upload(
             "/api/dsp/communications/uploads",
             USE,
-            reply::PHOTO_MOST,
+            compose::SLACK.largest,
             add_photo,
         ),
         async_get("/api/dsp/communications/files/{id}", USE, file),
@@ -412,7 +411,7 @@ async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["text", "photos"])?;
     let (conversation, texted) = conversation_id(input.param("id"))?;
-    let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
+    let text = optional_text(&input.body, "text", compose::SLACK.text * 2)?;
     let message = if texted {
         let photos = photos(&input.body, texting_id)?;
         texts::reply::send(&state, &c, access, &conversation, text, &photos).await?
@@ -539,7 +538,7 @@ async fn create_group(state: Arc<State>, input: Input, access: Dsp) -> Result<Re
             ))
         })
         .collect::<Result<Vec<_>>>()?;
-    let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
+    let text = optional_text(&input.body, "text", compose::SLACK.text * 2)?;
     let photos = photos(&input.body, file_id)?;
     let group = group_send::create(&state, &c, access, name, &people, text, &photos).await?;
     group_send::send_soon(&state, &c.dsp.id);
@@ -551,7 +550,7 @@ async fn message_group(state: Arc<State>, input: Input, access: Dsp) -> Result<R
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
     v::fields(&input.body, &["text", "photos"])?;
     let group = id(input.param("id"), "grp")?;
-    let text = optional_text(&input.body, "text", reply::TEXT_MOST * 2)?;
+    let text = optional_text(&input.body, "text", compose::SLACK.text * 2)?;
     let photos = photos(&input.body, file_id)?;
     let entry = group_send::again(&state, &c, access, &group, text, &photos).await?;
     group_send::send_soon(&state, &c.dsp.id);

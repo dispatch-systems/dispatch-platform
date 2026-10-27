@@ -6,10 +6,10 @@
 //! whichever day.
 use super::{
     began,
-    storage::{ConversationKind, TextConversation, TextStore},
+    storage::{TextConversation, TextStore},
     zone,
 };
-use crate::backend::storage::ConversationState;
+use crate::backend::model::{ConversationKind, ConversationState};
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::Store};
 use dispatch_routes_contract::{self as routes, LiveRouteData, WorkPhone};

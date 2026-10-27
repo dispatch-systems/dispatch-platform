@@ -6,6 +6,7 @@ use crate::backend::{
     reply,
     support::{self, USE},
 };
+use std::sync::Arc;
 
 const TEAM: &str = "T0FIXTURE2";
 

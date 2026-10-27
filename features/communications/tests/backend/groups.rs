@@ -5,8 +5,8 @@
 //! hold someone each.
 use super::*;
 use crate::backend::{
+    model::ConversationState,
     reply,
-    storage::ConversationState,
     support::{self, DRIVERS, USE},
 };
 use crate::integrations::messages::ID;

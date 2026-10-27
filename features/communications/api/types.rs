@@ -3,8 +3,8 @@
 pub use crate::backend::{
     files::FileStatus,
     groups::{GroupChoiceKind, GroupPersonState},
-    storage::{ConversationState, Direction},
-    texts::storage::{ConversationKind, TextStatus},
+    model::{ConversationKind, ConversationState, Direction},
+    texts::storage::TextStatus,
     today::Pace,
 };
 use dispatch_core::manifest::people::{PersonRole, PersonTitle};

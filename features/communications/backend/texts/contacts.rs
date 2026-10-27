@@ -14,7 +14,7 @@ use super::{
 };
 use crate::{
     api::types::{Conversation, TextContact, TextContacts},
-    backend::{conversations::People, live},
+    backend::{live, people::People},
 };
 use dispatch_core::{Error, Result, State, db::Store, ensure, foundation::names};
 use dispatch_phones_contract as texting;

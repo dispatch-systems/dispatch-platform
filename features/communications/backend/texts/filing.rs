@@ -24,10 +24,7 @@ use super::{
     storage::{Filed, Incoming, TextFile, TextStatus, TextStore},
     zone,
 };
-use crate::backend::{
-    live,
-    storage::{DOMAIN, Direction},
-};
+use crate::backend::{live, model::Direction, storage::DOMAIN};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use dispatch_core::{

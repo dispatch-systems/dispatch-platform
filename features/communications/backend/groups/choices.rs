@@ -8,7 +8,7 @@
 use super::GroupChoiceKind;
 use crate::{
     api::types::{GroupChoice, GroupChoices, GroupMember, Reachable},
-    backend::{conversations::People, storage::CommunicationsStore},
+    backend::{people::People, storage::CommunicationsStore},
     integrations::messages::ID,
 };
 use dispatch_core::{

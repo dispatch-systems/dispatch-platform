@@ -14,8 +14,9 @@ pub(crate) mod send;
 pub(crate) mod storage;
 
 use super::{
-    conversations::{self, People},
+    conversations,
     files::FileStore,
+    people::People,
     storage::{self as kept, CommunicationsStore},
 };
 use crate::api::types::{
