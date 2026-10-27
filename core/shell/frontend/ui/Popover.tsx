@@ -55,8 +55,45 @@ export function openContextMenu(event: ReactMouseEvent<HTMLElement>) {
   }
 }
 
+/** What every popover has: a trigger, named `label`, and what its panel holds. */
+type Opener = {
+  label: string;
+  trigger: ReactNode;
+  children: ReactNode;
+  className: string;
+  triggerClassName?: string;
+};
+/** A menu, which opens and closes itself. */
+type MenuProps = Opener & {
+  /** Places the panel against the viewport so a scrolling or clipping ancestor cannot cut it off. */
+  anchored?: boolean;
+  /** Mount row actions only while their menu is open. The empty panel keeps dismissal safe. */
+  lazy?: boolean;
+};
+/**
+ * A panel holding a search field or a form, open while `open` is: its trigger asks to open it,
+ * and its trigger, a press outside it or Escape ask to close it, so an editor can ask first
+ * about what isn't saved.
+ */
+type PanelProps = Opener & {
+  open: boolean;
+  onRequestOpen: () => void;
+  onRequestClose: () => void;
+  /** The panel's class: it is a dialog, named as its trigger is. */
+  panelClassName: string;
+};
+
+/**
+ * What opens under its trigger and closes on Escape, focus going back to the trigger, or on a
+ * press outside it: a menu, which closes too once an item is chosen; or, given `open` and asked
+ * to open and close, a panel holding a search field or a form, which a press inside never closes.
+ */
+export function Popover(props: MenuProps | PanelProps) {
+  return 'onRequestClose' in props ? <Panel {...props} /> : <Menu {...props} />;
+}
+
 /** A `<details>` menu that closes on Escape, on a press outside it, and once an item is chosen. */
-export function Popover({
+function Menu({
   label,
   trigger,
   children,
@@ -64,17 +101,7 @@ export function Popover({
   triggerClassName,
   anchored = false,
   lazy = false,
-}: {
-  label: string;
-  trigger: ReactNode;
-  children: ReactNode;
-  className: string;
-  triggerClassName?: string;
-  /** Places the panel against the viewport so a scrolling or clipping ancestor cannot cut it off. */
-  anchored?: boolean;
-  /** Mount row actions only while their menu is open. The empty panel keeps dismissal safe. */
-  lazy?: boolean;
-}) {
+}: MenuProps) {
   const details = useRef<HTMLDetailsElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -156,5 +183,65 @@ export function Popover({
         {(!lazy || open) && children}
       </div>
     </details>
+  );
+}
+
+/** A panel holding a search field or a form, open while its owner says. */
+function Panel({
+  label,
+  trigger,
+  children,
+  className,
+  triggerClassName,
+  open,
+  onRequestOpen,
+  onRequestClose,
+  panelClassName,
+}: PanelProps) {
+  const root = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const close = useRef(onRequestClose);
+  useEffect(() => {
+    close.current = onRequestClose;
+  }, [onRequestClose]);
+  // Whether Escape asked it to close: focus goes back to the trigger as it does.
+  const escaped = useRef(false);
+  useEffect(() => {
+    if (!open) return;
+    const [element, opener] = [root.current!, button.current!];
+    const outside = (event: PointerEvent) => {
+      if (!element.contains(event.target as Node)) close.current();
+    };
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      escaped.current = true;
+      close.current();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+      if (escaped.current) opener.focus();
+      escaped.current = false;
+    };
+  }, [open]);
+  return (
+    <div ref={root} className={className}>
+      <button
+        ref={button}
+        className={triggerClassName}
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => (open ? onRequestClose() : onRequestOpen())}
+      >
+        {trigger}
+      </button>
+      {open && (
+        <div className={panelClassName} role="dialog" aria-label={label}>
+          {children}
+        </div>
+      )}
+    </div>
   );
 }

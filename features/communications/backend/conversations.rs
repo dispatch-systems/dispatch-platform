@@ -35,7 +35,7 @@ use dispatch_core::{
     manifest::people::{self, Everyone, Person, Photo, Source},
 };
 use dispatch_slack::kit;
-use std::{cell::OnceCell, collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 /// How many answered conversations, or messages, are read at a time.
 pub const PAGE: usize = 50;
@@ -45,8 +45,6 @@ pub const PAGE: usize = 50;
 pub struct People {
     everyone: Arc<Everyone>,
     emails: HashMap<String, String>,
-    /// Whose each phone number is, by its last ten digits, as asked for the first time.
-    numbers: OnceCell<HashMap<String, String>>,
 }
 impl People {
     pub fn read(db: &Store, state: &State, dsp: &str) -> Result<Self> {
@@ -57,7 +55,6 @@ impl People {
                 .into_iter()
                 .map(|member| (member.user_id, member.email))
                 .collect(),
-            numbers: OnceCell::new(),
         })
     }
     /// Everyone Driver Match tells apart.
@@ -79,21 +76,12 @@ impl People {
     /// The person Driver Match has the phone number `number` for, if any: of several, one who
     /// hasn't left first, then by name.
     pub fn holding_number(&self, number: &str) -> Option<&Person> {
-        let numbers = self.numbers.get_or_init(|| {
-            let mut numbers = HashMap::new();
-            let (staying, left): (Vec<&Person>, Vec<&Person>) =
-                self.everyone.iter().partition(|person| !person.role.left());
-            for person in staying.into_iter().chain(left) {
-                for phone in &person.phones {
-                    if let Some(dialed) = dialed(phone) {
-                        numbers.entry(dialed).or_insert_with(|| person.code.clone());
-                    }
-                }
-            }
-            numbers
-        });
-        let code = numbers.get(&dialed(number)?)?;
-        self.everyone.person(code)
+        let having = self.everyone.by_phone(number);
+        having
+            .iter()
+            .find(|person| !person.role.left())
+            .or(having.first())
+            .copied()
     }
     /// Whoever texts from `number`: the person Driver Match has it for, else by the name the DSP
     /// saved for it, `contact`, else by the number.
@@ -171,12 +159,6 @@ fn with(person: Option<&Person>, name: &str) -> Correspondent {
         title: person.and_then(|person| person.title),
         photo: person.and_then(|person| person.photo.clone()),
     }
-}
-/// A phone number's last ten digits, as Driver Match tells numbers apart: none with fewer than
-/// seven.
-fn dialed(number: &str) -> Option<String> {
-    let digits: Vec<char> = number.chars().filter(char::is_ascii_digit).collect();
-    (digits.len() >= 7).then(|| digits[digits.len().saturating_sub(10)..].iter().collect())
 }
 
 /// `kept` as its pages read them, each with its latest message.
