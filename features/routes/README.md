@@ -52,6 +52,27 @@ it is live route data, in a database of its own, `routelive`.
   `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
   once it's saved, or once it holds no day, as after an earlier call emptied it but couldn't give
   its space back. All four refuse while Routes is off.
+- **Each itinerary's work phone:** every itinerary keeps the company phone its driver's records
+  show with it, by its last ten digits, in both route databases (`backend/work_phones.rs`): the
+  day's list's record of them, else the itinerary's own response's, so a list record without a
+  phone gives way to the itinerary's. Only the DSP's own drivers have an itinerary; one only
+  assigned to a route has no phone. A day's read is shaped with them from adapter version 3; a
+  saved day kept by the version before has them extracted from its stored responses by the
+  minute's upkeep, four days a DSP at a time, newest first, which writes only the phones and the
+  version, so the drivers and addresses the days share are left as they are; an older day waits
+  for a reprocess, which shapes it whole. A driver's latest of a day is the one on their itinerary
+  that began last, by when it started, or else was planned to depart, of those showing one; of two
+  no time tells apart, the one whose ID sorts last. Nothing is tracked over time: of two drivers
+  who swapped phones, each has the one they swapped to.
+- **Route data changed:** every feature that hears it is told a day's route data changed, as it's
+  kept, with the day (`routes.data_changed`, after `people.changed` when a live read or a save
+  names drivers anew): after a live read that wrote or deleted a row; each time live route data is
+  emptied, of the day it held, or today once it holds none; once a read of a day saved becomes its
+  read; and once a day's work phones are extracted. A collection, and a reprocess, change a day
+  where nothing is at hand to tell of it, so the day is noted in the server's memory
+  (`backend/changed.rs`) and told once Routes hears its collection succeeded
+  (`collection.succeeded`), or by the next minute's upkeep, whichever is first; a restart before
+  then tells of none.
 - **Work phones:** who holds which of the company's work phones is settled from each whole live
   read, in the transaction that keeps it (`backend/phones.rs`), from what each driver's record
   shows: the list's phone, else their itinerary's, by its last ten digits. A driver claims a
@@ -87,7 +108,9 @@ it is live route data, in a database of its own, `routelive`.
   owner rebuilds a DSP's rows from its stored responses with
   `POST /api/platform/dsps/{id}/routes/reprocess`, for every day or one, after a release that
   reads fields the earlier one didn't.
-- **Data:** live route data, in `routelive`: today's one read, in historical route data's tables
+- **Data:** each itinerary's work phone in its row, in both; in historical route data found by
+  the phone too, for whether a number was ever one. Live route data, in `routelive`: today's one
+  read, in historical route data's tables
   but its staged rows, with only the indexes a day's reads need; the drivers it names, those only
   assigned too; every hold of the day in `work_phones`; and in `work_phones_shown`, what each
   driver's record showed of a phone, which holds are settled from: the first phone today, the
@@ -130,7 +153,8 @@ it is live route data, in a database of its own, `routelive`.
   under way may be read before dispatch. Never addresses, locations or order IDs, nor a phone
   number but a work phone's. IDs are matched exactly, and none reads the days alone. It refuses a day that isn't YYYY-MM-DD
   (`invalid_date`); and `from` after `to`, more than 366 days (`MOST_DAYS`), more than 16 IDs
-  (`MOST_IDS`), or an ID that's empty or over 128 characters (`invalid_input`). And
+  (`MOST_IDS`), or an ID that's empty or over 128 characters (`MOST_ID_LENGTH`,
+  `invalid_input`). And
   `live_route_data` (`LiveRouteData`), while it's on: today as live route data holds it, read the
   same way, without the days collected: the live day, every driver's routes, or those of up to 16
   IDs, each a route they're assigned to and haven't started too, as planned; the work phone each
@@ -139,4 +163,10 @@ it is live route data, in a database of its own, `routelive`.
   never complete. It refuses IDs as `driver_routes` does. `driver_routes` reads a saved day's
   holds the same way (`work_phone_holds`, refusing a day as `day` does), and whether a number, by
   its last ten digits, was ever held as a work phone in live or historical route data
-  (`was_work_phone`): a work phone nobody holds now is still one.
+  (`was_work_phone`): a work phone nobody holds now is still one. Each driver's latest work phone
+  of a day reads from both, a saved day's (`DriverRoutes::day_phones`, refusing a day as `day`
+  does) and today's (`LiveRouteData::day_phones`): each driver ID once with their phone by its ten
+  digits, and whether it's another driver ID's latest that day too, which names no one driver; a
+  day not collected, or not live, and one whose phones aren't extracted yet, are told apart from a
+  day without phones. And whether a number, by its last ten digits, is an itinerary's work phone
+  on any day kept, live or historical (`ever_work_phone`).
