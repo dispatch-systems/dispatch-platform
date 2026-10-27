@@ -161,9 +161,7 @@ impl Task {
         plans: &mut watch::Receiver<Option<Plan>>,
     ) -> Slot {
         let reading = self.reading(plan, &day);
-        let mut attempt = self
-            .attempt(plan, &day, &reading, held, plans, day.close)
-            .await;
+        let mut attempt = self.attempt(plan, &reading, held, plans, day.close).await;
         // The first try, logged as it failed, while a retry may replace its record.
         let mut first = None;
         if let Attempt::Failed(at, ended, error) = &attempt
@@ -178,8 +176,7 @@ impl Task {
             };
             attempt = if planned {
                 self.busy();
-                self.attempt(plan, &day, &reading, held, plans, until)
-                    .await
+                self.attempt(plan, &reading, held, plans, until).await
             } else {
                 Attempt::Dropped(None)
             };
@@ -204,8 +201,7 @@ impl Task {
             // A retry that never started leaves the first try on record.
             Attempt::Late | Attempt::Dropped(None) => match first {
                 Some((at, ended, code)) => {
-                    self.write_record(&day, since, at, ended, Err(code))
-                        .await
+                    self.write_record(&day, since, at, ended, Err(code)).await
                 }
                 None if ends => return Slot::Ended,
                 None => return Slot::Unrecorded,
@@ -218,12 +214,11 @@ impl Task {
         }
     }
 
-    /// One try at a read of `day`, which must start before `before`: its turn among the server's
-    /// reads, waited for for the plan's timeout at most, then the read, for that timeout at most.
+    /// One try at a read, which must start before `before`: its turn among the server's reads,
+    /// waited for for the plan's timeout at most, then the read, for that timeout at most.
     async fn attempt(
         &self,
         plan: &Plan,
-        day: &Day,
         reading: &Reading,
         held: &mut (dyn Any + Send),
         plans: &mut watch::Receiver<Option<Plan>>,
