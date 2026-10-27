@@ -6,9 +6,8 @@ import type { Access } from './pages.js';
 
 // The watchers slot: what an owner keeps running on every DSP page for the person, drawing
 // nothing, as something that alerts them wherever they are in the app. The shell mounts each the
-// DSP has and the person passes, whatever page is open, loading its code as it first does. Each
-// runs apart (`shell/Watchers.tsx`): one that fails stops alone, and one whose code fails to load
-// is tried again.
+// DSP has and the person passes, whatever page is open, loading its code as it first does while
+// the browser is online. Each runs apart (`shell/Watchers.tsx`): one that fails stops alone.
 
 /** Whom a watcher runs for: the person, at the DSP open. */
 export type Watching = Access & { view: DspView };
@@ -21,7 +20,7 @@ export type Watcher = {
   part?: Feature;
   /** Whether it runs for the person; omitted, for everyone at a DSP with it. */
   visible?: (access: Watching) => boolean;
-  /** Its code, loaded as the shell first mounts it. */
+  /** Its code, loaded as the shell first mounts it, once the browser is online. */
   load: () => Promise<ComponentType<Watching>>;
 };
 

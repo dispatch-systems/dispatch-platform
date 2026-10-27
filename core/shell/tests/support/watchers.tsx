@@ -5,8 +5,9 @@ import { installFeatures } from '../../frontend/runtime/slots.js';
 import { Watchers } from '../../frontend/shell/Watchers.js';
 
 // The page watchers.spec.ts draws: stand-in watchers beside the page, as the shell runs them. One
-// runs until it's told to fail; one's code fails to load the first time it's asked for, as with
-// the network down; one keeps running. Each shows it runs, as no real watcher does.
+// runs until it's told to fail; one's code never loads; one's code is a chunk of its own, which
+// watchers.spec.ts fails to download while the browser is offline; one keeps running. Each shows
+// it runs, as no real watcher does.
 
 /** Runs until it's told to fail. */
 function Failing() {
@@ -15,19 +16,23 @@ function Failing() {
   return <button onClick={() => setFailed(true)}>Fail</button>;
 }
 
-let asked = 0;
 installFeatures([
   { name: 'failing', watchers: [{ id: 'failing.runs', load: async () => Failing }] },
+  {
+    name: 'missing',
+    watchers: [
+      {
+        id: 'missing.loads',
+        load: () => Promise.reject(new Error('Stand-in download failure')),
+      },
+    ],
+  },
   {
     name: 'late',
     watchers: [
       {
         id: 'late.loads',
-        load: async () => {
-          asked += 1;
-          if (asked === 1) throw new Error('Stand-in network down');
-          return () => <p>Late watcher running</p>;
-        },
+        load: () => import('./late-watcher.js').then((module) => module.LateWatcher),
       },
     ],
   },
