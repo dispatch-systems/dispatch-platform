@@ -1,5 +1,10 @@
 import { useCallback } from 'react';
-import { useCachedData, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import {
+  api as call,
+  ApiError,
+  useCachedData,
+  useData,
+} from '../../../core/shell/frontend/runtime/api.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   Communications,
@@ -30,7 +35,7 @@ import type {
  * with them; and of texting's, which Phones words, those Communications' screens say more of, as
  * sending from no phone or a picture let go of as it's written.
  */
-const api = wordedApi({
+const wording: Readonly<Record<string, string>> = {
   communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
   communications_message_not_found: 'This text is no longer here. Refresh the page.',
   communications_texting_off: 'Texting is off for this DSP.',
@@ -53,7 +58,17 @@ const api = wordedApi({
   slack_unreachable: "Slack didn't answer. Try again in a minute.",
   slack_rate_limited: 'Slack is busy. Try again in a minute.',
   slack_refused: "Slack didn't take the message. Try again.",
-});
+};
+/** A refusal as Communications words it, its code, status and request ID as they were. */
+function worded(error: unknown) {
+  const words = error instanceof ApiError && wording[error.code];
+  return words ? new ApiError(error.code, words, error.status, error.requestId) : error;
+}
+/** One of its calls, a refusal worded as Communications words it. */
+const api = <T>(...asked: Parameters<typeof call>) =>
+  call<T>(...asked).catch((error: unknown) => {
+    throw worded(error);
+  });
 
 export const communicationsUrl = '/api/dsp/communications';
 /** `path` asking `asked`, what's left empty left out: as `team`, for one workspace's alone. */
@@ -157,14 +172,17 @@ export type Attachments = {
   add: (photo: File, signal?: AbortSignal) => Promise<CommunicationsUpload>;
   address: (id: string) => string;
 };
-/** Adds `photo` through the upload route `path`, for a message not sent yet. */
+/** Adds `photo` through the upload route `path`, for a message not sent yet: a refusal worded as
+ * its calls' are. */
 const adding = (path: string) => (photo: File, signal?: AbortSignal) =>
   upload<CommunicationsUpload>(
     `${communicationsUrl}/${path}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
     photo,
     undefined,
     signal,
-  );
+  ).catch((error: unknown) => {
+    throw worded(error);
+  });
 /** A Slack message's, kept in Dispatch. */
 export const slackAttachments: Attachments = {
   add: adding('uploads'),
