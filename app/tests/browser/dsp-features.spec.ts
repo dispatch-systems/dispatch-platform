@@ -129,6 +129,14 @@ test('a feature switched back on brings its parts as they were, and a part the c
       .getByRole('listitem')
       .filter({ has: page.getByRole('switch', { name, exact: true }) })
       .first();
+  // A switch that takes nothing with it asks nothing. Switched off and on before the member
+  // signs in: a view the member reopened in between would lack the page their next request uses.
+  const uniforms = toggle('Uniform Inventory');
+  await uniforms.click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(uniforms).not.toBeChecked();
+  await uniforms.click();
+  await expect(uniforms).toBeChecked();
   const context = await browser.newContext();
   const member = await context.newPage();
   await login(member, 'member@dispatch.test');
@@ -150,13 +158,6 @@ test('a feature switched back on brings its parts as they were, and a part the c
   await on.getByRole('button', { name: 'Switch on', exact: true }).click();
   await expect(tab('Meal Breaks')).toBeChecked();
   await expect(cortex).toBeChecked();
-  // A switch that takes nothing with it asks nothing.
-  const uniforms = toggle('Uniform Inventory');
-  await uniforms.click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(uniforms).not.toBeChecked();
-  await uniforms.click();
-  await expect(uniforms).toBeChecked();
   // A tab switches alone; the last one on takes its page, and says so first.
   await tab('Employee Search').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
