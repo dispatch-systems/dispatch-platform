@@ -1,7 +1,8 @@
 //! Answering by text, with pictures, and sending again one that failed. An answer goes as
 //! written, with nothing added, so the other party sees only the DSP's number: through `texting`,
 //! from the phone that last texted that number, else the one seen last; and is kept as Phones then
-//! tells of it, with how it went, under the full name of whoever wrote it, as a Slack answer is.
+//! tells of it, with how it went, under the full name of whoever wrote it, as a Slack answer is,
+//! which filing takes as it first keeps it (`sent_by`).
 //! A number's conversation, and a work phone's nobody held, answer their number; a driver's, the
 //! work phone they hold now, as live route data says, and none while they hold none. Its pictures
 //! are kept by `texting` as they're added, its adder's alone until they go with it, and let go of
@@ -17,8 +18,6 @@ use crate::{
         compose::{checked, photo_kind, texted},
         live,
         model::ConversationKind,
-        sender,
-        storage::DOMAIN,
     },
 };
 use dispatch_core::{
@@ -59,12 +58,9 @@ pub async fn send(
     let sent = texting.send(state, &c.dsp.id, outgoing, condition).await?;
     live::stopped(state, &c.dsp.id, id, &c.auth.user.id);
     filing::read_on(state, &c.dsp.id).await?;
-    let (shared, dsp, name) = (state.clone(), c.dsp.id.clone(), sender::name(&c.auth.user));
+    let (shared, dsp) = (state.clone(), c.dsp.id.clone());
     state
-        .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            db.name_communications_text(&dsp, &sent.id, &name)?;
-            message(db, &shared, &dsp, &sent.id)
-        })
+        .read(move |db| message(db, &shared, &dsp, &sent.id))
         .await
 }
 

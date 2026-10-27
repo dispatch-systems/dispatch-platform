@@ -41,7 +41,12 @@ pub async fn identity(state: &Arc<State>, dsp: &str, team: &str, user: &PublicUs
 }
 /// The name a message from `user` goes out under: their full name, as Slack shows one.
 pub fn name(user: &PublicUser) -> String {
-    user.name().trim().chars().take(NAME_MOST).collect()
+    full(&user.name())
+}
+/// The name a message from someone at the DSP whose full name is `name` goes out under, as Slack
+/// shows one.
+pub fn full(name: &str) -> String {
+    name.trim().chars().take(NAME_MOST).collect()
 }
 /// Who someone at the DSP named `name` sends a message in its workspace `team` as: their Slack
 /// photo by their email address `email`, while they have one, else the image of their initials

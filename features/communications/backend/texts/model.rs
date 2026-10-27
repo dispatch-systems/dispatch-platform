@@ -119,7 +119,10 @@ pub struct Incoming {
     pub number: String,
     pub body: String,
     pub at: i64,
+    /// Who at the DSP sent it, for one Dispatch sent, and the name they're shown by as it's
+    /// first kept.
     pub sent_by: Option<String>,
+    pub sender_name: Option<String>,
     pub status: Option<TextStatus>,
     pub error: Option<String>,
     pub files: Vec<TextFile>,

@@ -64,7 +64,7 @@ pub trait TextStore {
     /// The last of Phones' changes read: 0 before the first.
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64>;
     /// Keeps each of `texts`, one new where it's filed, one kept already where it is, as how it
-    /// went or its files changed, and notes that Phones' changes were read up to `read_to`: the
+    /// went or its files changed, under the name its sender was shown by as it was first kept, and notes that Phones' changes were read up to `read_to`: the
     /// conversations changed. Where a text is filed is decided again only as its holds settle
     /// (`refile_communications_texts`).
     fn file_communications_texts(
@@ -73,8 +73,6 @@ pub trait TextStore {
         texts: &[Incoming],
         read_to: i64,
     ) -> Result<BTreeSet<String>>;
-    /// Names the text `id` Dispatch sent with the name of whoever at the DSP wrote it.
-    fn name_communications_text(&self, dsp: &str, id: &str, name: &str) -> Result<()>;
     /// Moves each text kept to where it's filed now, by its ID: the conversations changed.
     fn refile_communications_texts(
         &self,
@@ -282,10 +280,11 @@ impl TextStore for Store {
                     )? > 0;
                 db.exec(
                     "INSERT INTO communications_texts (id,conversation_id,phone,direction,number,\
-                     body,at,sent_by,status,error,files,blocked) \
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) \
+                     body,at,sent_by,sender_name,status,error,files,blocked) \
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13) \
                      ON CONFLICT(id) DO UPDATE SET body=excluded.body,status=excluded.status,\
-                     error=excluded.error,files=excluded.files",
+                     error=excluded.error,files=excluded.files,\
+                     sender_name=coalesce(communications_texts.sender_name,excluded.sender_name)",
                     params![
                         text.id,
                         conversation,
@@ -295,6 +294,7 @@ impl TextStore for Store {
                         text.body,
                         text.at,
                         text.sent_by,
+                        text.sender_name,
                         text.status,
                         text.error,
                         serde_json::to_string(&text.files)?,
@@ -312,19 +312,6 @@ impl TextStore for Store {
                 settle(&db, conversation)?;
             }
             Ok(touched)
-        })
-    }
-    fn name_communications_text(&self, dsp: &str, id: &str, name: &str) -> Result<()> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            db.exec(
-                "UPDATE communications_texts SET sender_name=? WHERE id=?",
-                params![name, id],
-            )?;
-            match filed_in(&db, id)? {
-                Some(conversation) => changed_conversation(&db, &conversation),
-                None => Ok(()),
-            }
         })
     }
     fn refile_communications_texts(

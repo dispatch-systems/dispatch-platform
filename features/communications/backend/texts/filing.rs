@@ -28,7 +28,7 @@ use super::{
     storage::{PickStore, TextStore},
     zone,
 };
-use crate::backend::{live, model::Direction, storage::DOMAIN};
+use crate::backend::{live, model::Direction, sender, storage::DOMAIN};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use dispatch_core::{
@@ -127,10 +127,15 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
                     return Ok((false, false));
                 }
                 let mut filer = Filer::new(db, &at)?;
+                let senders = senders(db, &changes.texts)?;
                 let incoming = changes
                     .texts
                     .iter()
-                    .map(|text| Ok(kept(text, filer.placed(&text.number, text.at)?)))
+                    .map(|text| {
+                        let filed = filer.placed(&text.number, text.at)?;
+                        let sender = text.sent_by.as_ref().and_then(|by| senders.get(by));
+                        Ok(kept(text, filed, sender.cloned()))
+                    })
                     .collect::<Result<Vec<_>>>()?;
                 let touched = db.file_communications_texts(&at, &incoming, changes.next)?;
                 Ok((!touched.is_empty(), changes.more))
@@ -219,8 +224,23 @@ pub fn belongs(db: &Store, dsp: &str, number: &str) -> Result<Filed> {
     Filer::new(db, dsp)?.placed(number, now())
 }
 
-/// `text` as Communications keeps it, filed as `filed`.
-fn kept(text: &Text, filed: Filed) -> Incoming {
+/// The name each one at the DSP who sent a text of `texts` is shown by, by their account: their
+/// full name as they sent it, as an answer from the page goes under.
+fn senders(db: &Store, texts: &[Text]) -> Result<HashMap<String, String>> {
+    let mut senders = HashMap::new();
+    for by in texts.iter().filter_map(|text| text.sent_by.as_ref()) {
+        if !senders.contains_key(by)
+            && let Some(name) = db.platform_user_name(by)?
+        {
+            senders.insert(by.clone(), sender::full(&name));
+        }
+    }
+    Ok(senders)
+}
+
+/// `text` as Communications keeps it, filed as `filed`, sent by someone at the DSP shown by
+/// `sender_name`.
+fn kept(text: &Text, filed: Filed, sender_name: Option<String>) -> Incoming {
     Incoming {
         id: text.id.clone(),
         phone: text.phone.clone(),
@@ -232,6 +252,7 @@ fn kept(text: &Text, filed: Filed) -> Incoming {
         body: text.body.clone(),
         at: text.at,
         sent_by: text.sent_by.clone(),
+        sender_name,
         status: (text.origin == Origin::Dispatch)
             .then_some(text.status)
             .flatten()

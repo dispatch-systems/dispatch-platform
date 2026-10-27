@@ -16,7 +16,7 @@ use crate::backend::{
 };
 use crate::{Communications, ConversationState};
 use dispatch_core::manifest::people::{Person, PersonRole};
-use dispatch_phones_contract::Status;
+use dispatch_phones_contract::{Outgoing, Status};
 use std::collections::BTreeMap;
 
 /// The page's list as the member `me` reads it.
@@ -363,6 +363,40 @@ async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_wait
         (shown.state, shown.waiting_since),
         (ConversationState::Waiting, Some(at(zone, day, 8, 0)))
     );
+}
+
+#[tokio::test]
+async fn a_text_dispatch_sent_another_way_is_under_whoever_at_the_dsp_sent_it() {
+    let (_root, state, dsp) = started();
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test")
+        .await
+        .auth
+        .user
+        .id;
+    // Sent through texting as any feature may, not through Communications' answer.
+    let at_dsp = dsp.clone();
+    let texting = state
+        .read(move |db| texting::for_dsp(db, &at_dsp))
+        .await
+        .unwrap()
+        .unwrap();
+    let outgoing = Outgoing {
+        phone: None,
+        to: "+12535550177".into(),
+        body: "Your shift moved to 9".into(),
+        files: Vec::new(),
+        by: owner,
+    };
+    let sent = texting
+        .send(&state, &dsp, outgoing, Box::new(|_| Ok(())))
+        .await
+        .unwrap();
+    let (shared, at_dsp) = (state.clone(), dsp.clone());
+    let message = state
+        .read(move |db| reading::message(db, &shared, &at_dsp, &sent.id))
+        .await
+        .unwrap();
+    assert_eq!(message.sender.unwrap().name, "Test Owner");
 }
 
 #[tokio::test]
