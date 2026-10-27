@@ -2,7 +2,7 @@ import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { draw } from '../support/harness.js';
 
-test('a watcher that fails stops alone, logged by its ID, and one whose code failed to load loads as the browser comes back online', async ({
+test('a watcher that fails stops alone, logged by its ID, and one opened offline loads as the browser comes back online', async ({
   page,
   context,
 }) => {
@@ -10,10 +10,23 @@ test('a watcher that fails stops alone, logged by its ID, and one whose code fai
   page.on('console', (message) => {
     if (message.type() === 'error') logged.push(message.text());
   });
-  await draw(page, path.resolve(import.meta.dirname, '../support/watchers.tsx'));
+
+  // The page opens offline, the late watcher's code failing to download while it is.
+  let offline = true;
+  await context.setOffline(true);
+  await draw(
+    page,
+    path.resolve(import.meta.dirname, '../support/watchers.tsx'),
+    (file) => offline && file.startsWith('/assets/late-watcher-'),
+  );
+  await expect(page.getByText('Page', { exact: true })).toBeVisible();
+
+  // Back online, each watcher's code is asked for: one whose code never loads is logged by its ID.
+  offline = false;
+  await context.setOffline(false);
+  await expect(page.getByText('Late watcher running')).toBeVisible();
   await expect(page.getByText('Steady watcher running')).toBeVisible();
-  await expect.poll(() => logged.some((line) => line.includes('late.loads'))).toBe(true);
-  await expect(page.getByText('Late watcher running')).toHaveCount(0);
+  await expect.poll(() => logged.some((line) => line.includes('missing.loads'))).toBe(true);
 
   // One failing as it runs leaves the page and the others running.
   await page.getByRole('button', { name: 'Fail' }).click();
@@ -21,9 +34,4 @@ test('a watcher that fails stops alone, logged by its ID, and one whose code fai
   await expect(page.getByText('Page', { exact: true })).toBeVisible();
   await expect(page.getByText('Steady watcher running')).toBeVisible();
   await expect.poll(() => logged.some((line) => line.includes('failing.runs'))).toBe(true);
-
-  // Its code is asked for again as the browser comes back online.
-  await context.setOffline(true);
-  await context.setOffline(false);
-  await expect(page.getByText('Late watcher running')).toBeVisible();
 });

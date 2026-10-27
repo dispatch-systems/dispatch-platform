@@ -91,7 +91,6 @@
   "features/dvic/tests/browser/dvic.spec.ts › unconfigured collection explains the missing station and Cortex connection": 5.1,
   "features/home/tests/browser/home.spec.ts › a member opens their DSP on its home page": 3.3,
   "features/live_route_data/tests/browser/live-route-data.spec.ts › Live Route Data words the schedule its page of Settings refuses, and keeps the days and interval chosen": 5.5,
-  "features/phones/tests/browser/phones.spec.ts › Add phone shows the code that pairs the next phone, and a rename asks before it closes": 5.1,
   "features/routes/tests/browser/routes-settings.spec.ts › Settings draws route data from its declaration, and a window that deletes stored days asks first": 8.9,
   "features/routes/tests/browser/routes-settings.spec.ts › a Routes rule reads yesterday unless it is set to read today so far": 5.6,
   "features/routes/tests/browser/routes-settings.spec.ts › a member without management permissions never sees the Data page or Driver Match": 2.5,
