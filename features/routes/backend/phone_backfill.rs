@@ -6,16 +6,17 @@ use dispatch_core::{State, manifest::events};
 use dispatch_routes_contract::RouteDataChanged;
 use std::sync::Arc;
 
-/// The most days of a DSP the minute's upkeep extracts work phones for, newest first: each day's
-/// stored responses are read whole, so a year of days takes a couple of hours.
-const EXTRACTED_PER_PASS: usize = 4;
+/// The most days of a DSP the minute's upkeep tries to extract work phones for, newest first, those
+/// whose stored responses can't be read among them: each day's are read whole, so a year of days
+/// takes a couple of hours.
+const EXTRACTED_PER_PASS: i64 = 4;
 
 /// Extracts the itineraries' work phones of up to `EXTRACTED_PER_PASS` of the DSP's saved days
 /// kept before Routes kept them, newest first, from their stored responses, while Routes is on for
 /// the DSP; then tells every feature that hears it of each day, once it's kept
 /// (`routes.data_changed`). Only a day shaped by the version just before is: one older needs a
 /// reprocess, which shapes it whole. A day whose stored responses can't be read is logged and left
-/// as it was.
+/// as it was, one of the days tried.
 pub(super) async fn extract(state: &Arc<State>, dsp: &str) -> Result<()> {
     let d = dsp.to_owned();
     let days = state
@@ -25,17 +26,13 @@ pub(super) async fn extract(state: &Arc<State>, dsp: &str) -> Result<()> {
             }
             db.routes_db(&d)?.all(
                 "SELECT id,day,mode,station,service_area_id,provider,timezone,started_at,\
-                 collected_at FROM route_publications WHERE active=1 AND adapter_version=? \
-                 ORDER BY day DESC",
-                [PHONES_SINCE - 1],
+                 collected_at FROM route_publications WHERE active=1 AND adapter_version=?1 \
+                 ORDER BY day DESC LIMIT ?2",
+                params![PHONES_SINCE - 1, EXTRACTED_PER_PASS],
             )
         })
         .await?;
-    let mut extracted = 0;
     for row in days {
-        if extracted == EXTRACTED_PER_PASS {
-            break;
-        }
         let (d, stored) = (dsp.to_owned(), row.clone());
         let read = state.read(move |db| phones_kept(&*db.routes_db(&d)?, &stored));
         let phones = match read.await {
@@ -74,7 +71,6 @@ pub(super) async fn extract(state: &Arc<State>, dsp: &str) -> Result<()> {
                 })
             })
             .await?;
-        extracted += 1;
         if kept {
             let day = s(&row, "day").to_owned();
             events::publish(state, dsp, RouteDataChanged { day }).await;
@@ -96,3 +92,7 @@ fn phones_kept(routes: &Db, publication: &Value) -> Result<Vec<(String, Option<S
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/phone_backfill.rs"]
+mod tests;

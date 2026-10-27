@@ -52,18 +52,19 @@ it is live route data, in a database of its own, `routelive`.
   `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
   once it's saved, or once it holds no day, as after an earlier call emptied it but couldn't give
   its space back. All four refuse while Routes is off.
-- **Each itinerary's work phone:** every itinerary keeps the company phone its driver's records
-  show with it, by its last ten digits, in both route databases (`backend/work_phones.rs`): the
-  day's list's record of them, else the itinerary's own response's, so a list record without a
-  phone gives way to the itinerary's. Only the DSP's own drivers have an itinerary; one only
-  assigned to a route has no phone. A day's read is shaped with them from adapter version 3; a
-  saved day kept by the version before has them extracted from its stored responses by the
-  minute's upkeep (`backend/phone_backfill.rs`), four days a DSP at a time, newest first, which
-  writes only the phones and the version, so the drivers and addresses the days share are left as
-  they are; an older day waits for a reprocess, which shapes it whole. A driver's latest of a day
-  is the one on their itinerary that began last, by when it started, or else was planned to
-  depart, of those showing one; of two no time tells apart, the one whose ID sorts last. Nothing
-  is tracked over time: of two drivers who swapped phones, each has the one they swapped to.
+- **Each itinerary's work phone:** every itinerary keeps the company phone its driver's records show
+  with it, by its last ten digits, in both route databases (`backend/work_phones.rs`): the day's
+  list's record of them, else the itinerary's own response's, so a list record without a phone gives
+  way to the itinerary's. Only the DSP's own drivers have an itinerary; one only assigned to a route
+  has no phone. A day's read is shaped with them from adapter version 3; a saved day kept by the
+  version before has them extracted from its stored responses by the minute's upkeep
+  (`backend/phone_backfill.rs`), four days a DSP at a time, newest first, a day whose stored
+  responses can't be read among them, logged and left as it was; it writes only the phones and the
+  version, so the drivers and addresses the days share are left as they are; an older day waits for
+  a reprocess, which shapes it whole. A driver's latest of a day is the one on their itinerary that
+  began last, by when it started, or else was planned to depart, of those showing one; of two no
+  time tells apart, the one whose ID sorts last. Nothing is tracked over time: of two drivers who
+  swapped phones, each has the one they swapped to.
 - **Route data changed:** every feature that hears it is told a day's route data changed, as it's
   kept, with the day (`routes.data_changed`, after `people.changed` when a live read or a save names
   drivers anew): after a live read that changed a row of the day's itineraries, drivers or routes,

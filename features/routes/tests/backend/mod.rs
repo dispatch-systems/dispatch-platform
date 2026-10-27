@@ -117,8 +117,9 @@ fn a_save_still_staging_is_kept_from_the_sweep() {
     assert_eq!(publications, 0);
 }
 /// Queues `day`, stages the fixture's day for that job and publishes it, as the executor does.
-pub(super) fn publish(db: &Store, dsp: &str, day: &str, mode: Mode) {
-    publish_edited(db, dsp, day, mode, |_| {});
+/// Answers the job's ID.
+pub(super) fn publish(db: &Store, dsp: &str, day: &str, mode: Mode) -> String {
+    publish_edited(db, dsp, day, mode, |_| {})
 }
 /// Publishes `day` as `publish` does, the fixture's day as `edit` changes it.
 pub(super) fn publish_edited(
@@ -127,7 +128,7 @@ pub(super) fn publish_edited(
     day: &str,
     mode: Mode,
     edit: impl FnOnce(&mut Capture),
-) {
+) -> String {
     let jobs = db
         .enqueue_routes(dsp, None, day, Some(day), mode, 1)
         .unwrap();
@@ -137,6 +138,7 @@ pub(super) fn publish_edited(
     edit(&mut capture);
     let staged = db.stage_routes(dsp, &job, capture).unwrap();
     db.publish_routes(dsp, &job, &staged).unwrap();
+    job
 }
 fn request(mode: Mode) -> Request {
     Request {
