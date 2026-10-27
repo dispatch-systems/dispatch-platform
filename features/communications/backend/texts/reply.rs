@@ -6,8 +6,8 @@
 //! work phone they hold now, as live route data says, and none while they hold none. Its pictures
 //! are kept by `texting` as they're added, its adder's alone until they go with it, and let go of
 //! should the adder's access end while their bytes come. One that failed is sent again with Retry.
-//! Either goes only where a text written now goes, checked as `texting` queues it, so no handoff or
-//! stop comes between; and the member's access is checked again before it goes.
+//! Either goes only where a text written now goes, and while the member may still send it, checked
+//! as `texting` queues it, so no handoff, stop or change of their access comes between.
 use super::{
     filing,
     live_day::LiveDay,
@@ -47,11 +47,12 @@ pub async fn send(
     let (to, texting) = state
         .read(move |db| Ok((recipient(db, &dsp, &at)?, offering(db, &dsp)?)))
         .await?;
-    // Checked again before it goes: once Phones has it, it's sent.
-    let asked = c.clone();
-    let c = state.read(move |db| access.revalidate(db, &asked)).await?;
-    let (dsp, at, number) = (c.dsp.id.clone(), id.to_owned(), to.clone());
-    let condition = Box::new(move |db: &Store| goes_to(db, &dsp, &at, &number));
+    // Checked again as it's queued: once Phones has it, it's sent.
+    let (asked, at, number) = (c.clone(), id.to_owned(), to.clone());
+    let condition = Box::new(move |db: &Store| {
+        let c = access.revalidate(db, &asked)?;
+        goes_to(db, &c.dsp.id, &at, &number)
+    });
     let outgoing = Outgoing {
         phone: None,
         to,
@@ -117,8 +118,8 @@ fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
 
 /// Sends again the text `text`, which Dispatch sent in the conversation `id` and failed, while it
 /// goes where a text written now would: not to a work phone the driver no longer holds, which may
-/// be another's since. Checked as `texting` queues it, so no handoff or stop comes between. The
-/// text, as kept.
+/// be another's since. Checked as `texting` queues it, with the member's access, so no handoff,
+/// stop or change of access comes between. The text, as kept.
 pub async fn retry(
     state: &Arc<State>,
     c: &Context,
@@ -128,10 +129,11 @@ pub async fn retry(
 ) -> Result<Message> {
     let dsp = c.dsp.id.clone();
     let texting = state.read(move |db| offering(db, &dsp)).await?;
-    let asked = c.clone();
-    let c = state.read(move |db| access.revalidate(db, &asked)).await?;
-    let (dsp, at, wanted) = (c.dsp.id.clone(), id.to_owned(), text.to_owned());
-    let condition = Box::new(move |db: &Store| goes_now(db, &dsp, &at, &wanted));
+    let (asked, at, wanted) = (c.clone(), id.to_owned(), text.to_owned());
+    let condition = Box::new(move |db: &Store| {
+        let c = access.revalidate(db, &asked)?;
+        goes_now(db, &c.dsp.id, &at, &wanted)
+    });
     let sent = texting.retry(state, &c.dsp.id, text, condition).await?;
     filing::read_on(state, &c.dsp.id).await?;
     let (shared, dsp) = (state.clone(), c.dsp.id.clone());
@@ -159,7 +161,6 @@ pub async fn upload(
     )?;
     let dsp = c.dsp.id.clone();
     let texting = state.read(move |db| offering(db, &dsp)).await?;
-    ensure(photo.length <= texting.largest(), "upload_too_large", 413)?;
     let added = Added {
         by: c.auth.user.id.clone(),
         name: name.to_owned(),

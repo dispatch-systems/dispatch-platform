@@ -1,6 +1,6 @@
 //! What a development or preview DSP shows of Phones: a stand-in phone, which no app holds, with
 //! a few texts it received this morning. A text Dispatch sends from it is delivered at once.
-use super::storage::{PhonesStore, Reported};
+use super::storage::{DeviceStore, Reported};
 use dispatch_core::{
     Result,
     db::{self, Store},

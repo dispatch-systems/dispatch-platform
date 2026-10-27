@@ -47,8 +47,6 @@ use std::{
     time::Duration,
 };
 
-/// How many texts are read from Phones at a time: as many as it gives.
-const PAGE: usize = 100;
 /// Two days, in milliseconds: how far back the work conversations today's texts may wait in are
 /// looked for, further than a day can be long.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
@@ -108,8 +106,8 @@ fn failed(event: &'static str, error: &Error) {
     observability::event("error", event, json!({"error": error.code}));
 }
 
-/// Files the DSP's texts changed since the last filed, a page at a time, and wakes the pages
-/// waiting on its conversations once any changed.
+/// Files the DSP's texts changed since the last filed, a page at a time while texting says more
+/// remain, and wakes the pages waiting on its conversations once any changed.
 pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
     loop {
         let at = dsp.to_owned();
@@ -119,8 +117,8 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
                     return Ok((false, false));
                 };
                 let after = db.communications_texts_read_to(&at)?;
-                let changes = texting.changes(db, &at, after, PAGE)?;
-                if changes.last == after {
+                let changes = texting.changes(db, &at, after)?;
+                if changes.next == after {
                     return Ok((false, false));
                 }
                 let mut filer = Filer::new(db, &at)?;
@@ -129,8 +127,8 @@ pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
                     .iter()
                     .map(|text| Ok(kept(text, filer.filed(&text.number, text.at)?)))
                     .collect::<Result<Vec<_>>>()?;
-                let touched = db.file_communications_texts(&at, &incoming, changes.last)?;
-                Ok((!touched.is_empty(), changes.texts.len() == PAGE))
+                let touched = db.file_communications_texts(&at, &incoming, changes.next)?;
+                Ok((!touched.is_empty(), changes.more))
             })
             .await?;
         if changed {

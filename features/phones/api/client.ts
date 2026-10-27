@@ -1,24 +1,24 @@
 import { useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
 import type { PhonePairing } from './generated/PhonePairing.js';
+import type { PhonePairingStatus } from './generated/PhonePairingStatus.js';
 import type { PhoneRow } from './generated/PhoneRow.js';
 import type { Phones } from './generated/Phones.js';
 
+export type { PairingStatus } from './generated/PairingStatus.js';
 export type { PhonePairing } from './generated/PhonePairing.js';
+export type { PhonePairingStatus } from './generated/PhonePairingStatus.js';
 export type { PhoneRow } from './generated/PhoneRow.js';
 export type { Phones } from './generated/Phones.js';
 
 // Phones' endpoints, as its card on Settings' Connections calls them.
 
-/** What its error codes say. Only its card makes the calls that raise them. */
+/** What its card's own error codes say; those `texting` gives are worded in its manifest. */
 const wording: Record<string, string> = {
-  phones_not_found: "That phone isn't paired anymore. Refresh the page.",
   phones_address_required: 'The DSP needs its own address first.',
   phones_pairing_unavailable: "A code couldn't be made. Try again.",
-  // Only the phones' app meets these.
-  phones_off: 'Phones is off for this DSP.',
+  // Only the phones' app meets these, though its routes' refusals are each worded.
   phones_pairing_invalid: "That code didn't work. Make a new one.",
   phones_removed: 'This phone was removed.',
-  phones_file_not_found: "That picture isn't there anymore.",
 };
 const call = wordedApi(wording);
 
@@ -28,6 +28,9 @@ export const phonesUrl = '/api/dsp/phones';
 export const usePhones = (poll: number) => useData<Phones>(phonesUrl, poll);
 /** A new code that pairs the next phone, in place of any shown before. */
 export const newPairing = () => call<PhonePairing>('/api/dsp/phones/pairing', {});
+/** How the code `id` stands, read again every `poll` milliseconds; nothing without one. */
+export const usePairing = (id: string | undefined, poll: number) =>
+  useData<PhonePairingStatus>(id ? `/api/dsp/phones/pairing/${encodeURIComponent(id)}` : '', poll);
 export const renamePhone = (id: string, name: string) =>
   call<PhoneRow>(`/api/dsp/phones/${encodeURIComponent(id)}/rename`, { name });
 /** Removes the phone: its key works no more, and its texts stay. */

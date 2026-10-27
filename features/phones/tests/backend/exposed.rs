@@ -1,16 +1,13 @@
 //! What Phones exposes, as a feature using it finds it: only while it's on for the DSP, with
 //! the DSP's phones and the texts they relay, sending one from them, sending one that failed again
 //! as its caller's condition allows, and the pictures added for one, let go of while not sent.
-use crate::backend::storage::{PhonesStore, StatusReport};
-use axum::body::Bytes;
-use dispatch_core::{
-    Error, State,
-    db::{self, Store},
-    ensure,
-    server::http::upload::Upload,
-    testing,
+use crate::backend::{
+    storage::{StatusReport, TextStore},
+    support::{always, kept},
 };
-use dispatch_phones_contract::{Added, Condition, Outgoing, Status, Texting, for_dsp};
+use axum::body::Bytes;
+use dispatch_core::{Error, State, db::Store, ensure, server::http::upload::Upload, testing};
+use dispatch_phones_contract::{Added, Outgoing, Status, Texting, for_dsp};
 use futures_util::stream;
 use std::sync::Arc;
 
@@ -24,7 +21,7 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
     let phones = texting.phones(&db, &dsp).unwrap();
     assert_eq!(phones.len(), 1);
     assert!(phones[0].online);
-    let received = texting.changes(&db, &dsp, 0, 100).unwrap();
+    let received = texting.changes(&db, &dsp, 0).unwrap();
     assert_eq!(received.texts.len(), 3);
     let config = db.config.clone();
     drop(db);
@@ -47,26 +44,35 @@ async fn texting_sends_from_the_dsps_phone_while_phones_is_on() {
         Some(Status::Delivered),
         "the demo's stand-in delivers at once"
     );
-    let (at, after) = (dsp.clone(), received.last);
+    let (at, after) = (dsp.clone(), received.next);
     let changed = state
-        .read(move |db| texting.changes(db, &at, after, 100))
+        .read(move |db| texting.changes(db, &at, after))
         .await
         .unwrap();
     assert_eq!(changed.texts, [sent]);
 
     let at = dsp.clone();
+    let by = owner.clone();
     state
-        .run(move |db| db.set_feature(&at, "phones", false, &owner))
+        .run(move |db| db.set_feature(&at, "phones", false, &by))
         .await
         .unwrap();
     let at = dsp.clone();
     let offered = state.read(move |db| for_dsp(db, &at)).await.unwrap();
     assert!(offered.is_none());
-}
-
-/// A condition that always holds.
-fn always() -> Condition {
-    Box::new(|_: &Store| Ok(()))
+    // Switched off after its caller found it, Phones queues nothing more.
+    let late = Outgoing {
+        phone: None,
+        to: "(425) 555-0199".into(),
+        body: "Gate 4411".into(),
+        files: Vec::new(),
+        by: owner,
+    };
+    let refused = texting.send(&state, &dsp, late, always()).await;
+    assert_eq!(refused.unwrap_err().code.as_str(), "phones_off");
+    let (at, phone) = (dsp.clone(), phones[0].id.clone());
+    let queued = state.read(move |db| db.phones_outbox(&at, &phone)).await;
+    assert!(queued.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -143,11 +149,6 @@ async fn texting_sends_a_text_or_a_failed_one_again_only_as_its_condition_allows
     assert_eq!(retried.status, Some(Status::Waiting));
 }
 
-/// Where the DSP's pictures' bytes are kept, made private as the feature makes it.
-fn kept(db: &Store, dsp: &str) -> std::path::PathBuf {
-    let owner = db::private_dir(&db.area(dsp, "data").unwrap().join("phones")).unwrap();
-    db::private_dir(&owner.join("files")).unwrap()
-}
 /// The picture `bytes`, as `by` adds it for a text.
 async fn add(
     texting: &dyn Texting,
@@ -158,7 +159,7 @@ async fn add(
 ) -> String {
     let length = bytes.len() as u64;
     let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(bytes))]);
-    let upload = Upload::streamed(length, texting.largest(), chunks)
+    let upload = Upload::streamed(length, texting.limits().largest, chunks)
         .await
         .unwrap();
     let added = Added {
@@ -244,4 +245,51 @@ async fn texting_lets_go_of_a_picture_only_its_adder_has_not_sent() {
     assert!(!shown(twin).await);
     assert!(shown(sent).await);
     assert_eq!(bytes_kept(), 1);
+}
+
+#[tokio::test]
+async fn texting_refuses_a_text_or_a_picture_past_its_limits_before_keeping_it() {
+    testing::install(&[], &[&crate::FEATURE]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    let owner = testing::a_user(&db);
+    crate::backend::demo::demo(&db, &dsp, "America/Los_Angeles").unwrap();
+    let texting = for_dsp(&db, &dsp).unwrap().expect("Phones is on");
+    let limits = texting.limits();
+    let folder = kept(&db, &dsp);
+    let config = db.config.clone();
+    drop(db);
+    let state = State::new(config).unwrap();
+    // A picture past its limit is refused before any of it is kept, however large its upload
+    // allowed.
+    let length = limits.largest + 1;
+    let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from(vec![
+        0;
+        length as usize
+    ]))]);
+    let upload = Upload::streamed(length, u64::MAX, chunks).await.unwrap();
+    let added = Added {
+        by: owner.clone(),
+        name: "door.png".into(),
+        mime: "image/png".into(),
+    };
+    let refused = texting.add_file(&state, &dsp, added, upload).await;
+    assert_eq!(refused.unwrap_err().code.as_str(), "upload_too_large");
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
+    // A text with nothing in it, too long, or with too many pictures is never queued.
+    let text = |body: String, files: Vec<String>| Outgoing {
+        phone: None,
+        to: "(425) 555-0199".into(),
+        body,
+        files,
+        by: owner.clone(),
+    };
+    let many = (0..=limits.files).map(|n| format!("file_{n}")).collect();
+    for (outgoing, why) in [
+        (text(" ".into(), Vec::new()), "nothing in it"),
+        (text("a".repeat(limits.body + 1), Vec::new()), "too long"),
+        (text("The side door".into(), many), "too many pictures"),
+    ] {
+        let refused = texting.send(&state, &dsp, outgoing, always()).await;
+        assert_eq!(refused.unwrap_err().code.as_str(), "invalid_input", "{why}");
+    }
 }

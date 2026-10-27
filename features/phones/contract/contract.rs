@@ -1,6 +1,25 @@
 //! Texting, as any feature uses it without depending on Phones: the texts and pictures a DSP's
 //! dispatch phones relay, and sending one from the DSP's own number. Phones exposes it as
 //! `texting`. Every call names the DSP and works only inside what Phones keeps for it.
+//!
+//! Its IDs, of a phone, a text or a file, are opaque: at most `ID_MOST` ASCII letters, digits, `_`
+//! or `-` (`identifier`), meaning nothing but to whoever gave them.
+//!
+//! What it refuses, by code, each worded for members by the frontend of the feature offering it
+//! (Phones' `errors`):
+//! - `phones_none` (409): `send` while the DSP has no phone.
+//! - `phones_not_found` (404): `send` from a phone not the DSP's, or removed.
+//! - `phones_file_not_found` (404): `send` with a picture its sender didn't add, or another text
+//!   took; `file` of one whose bytes are kept no more.
+//! - `phones_text_not_found` (404): `retry` of a text that isn't one Dispatch sent that failed, or
+//!   whose phone was removed.
+//! - `phones_off` (409): `send` or `retry` once texting went off for the DSP after `for_dsp`
+//!   found it.
+//! - `invalid_input` (400): `send` to something that isn't a number, or of a text with nothing in
+//!   it or past `limits()`.
+//! - `upload_too_large` (413) and `upload_incomplete` (400): `add_file` of a picture past
+//!   `limits().largest`, or whose bytes stopped coming.
+//! - Whatever a `Condition` refuses with, as it is.
 use dispatch_core::{
     Result, State,
     db::Store,
@@ -10,11 +29,20 @@ use dispatch_core::{
 use serde::Serialize;
 use std::{future::Future, pin::Pin, sync::Arc};
 
+/// The most characters an ID texting gives may have.
+pub const ID_MOST: usize = 64;
+/// Why a text Dispatch queued failed when its phone was removed before it went: its `error`.
+pub const PHONE_REMOVED: &str = "phones_removed";
+/// The most characters a number may be written with, spaces and punctuation among its digits.
+pub const NUMBER_MOST: usize = 32;
+
 /// What its asynchronous answers are: work done outside the database, as keeping bytes is.
 pub type Answer<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 /// What must hold for a text to go, checked in the write that queues it, so nothing it reads can
-/// change before the text is queued: its refusal is the answer.
+/// change before the text is queued: its refusal is the answer. The caller owns its member's
+/// authorization, and checks it here, with whatever else must hold of where the text goes;
+/// texting checks its own, that it's still on for the DSP, and its phones, numbers and pictures.
 pub type Condition = Box<dyn FnOnce(&Store) -> Result<()> + Send>;
 
 /// A DSP's texts by phone: those its phones receive and send, and those Dispatch sends from
@@ -22,13 +50,13 @@ pub type Condition = Box<dyn FnOnce(&Store) -> Result<()> + Send>;
 pub trait Texting: Send + Sync {
     /// The DSP's phones, those removed left out.
     fn phones(&self, db: &Store, dsp: &str) -> Result<Vec<Phone>>;
-    /// The texts changed after `after`, a text's `change`, oldest change first, at most `most`;
-    /// and the last change there is, which reading on from finds nothing missed.
-    fn changes(&self, db: &Store, dsp: &str, after: i64, most: usize) -> Result<Changes>;
-    /// Sends `outgoing` from one of the DSP's phones, provided `condition` holds as it's queued,
-    /// waiting for it until it says how it went. Refused as `condition` refuses it, as
-    /// `phones_none` while the DSP has no phone, `phones_not_found` for a phone not its own, and
-    /// `phones_file_not_found` for a picture not added by `by`.
+    /// Each text changed after `after`, a text's `change`, as it is now, oldest change first: a
+    /// page of them, as many as texting gives at once, saying where to read on and whether more
+    /// remain.
+    fn changes(&self, db: &Store, dsp: &str, after: i64) -> Result<Changes>;
+    /// Queues `outgoing` to go from one of the DSP's phones, provided `condition` holds as it's
+    /// queued: the text as accepted, with how it stands now, waiting until its phone says how it
+    /// went, which `changes` and `TextsChanged` tell of.
     fn send<'a>(
         &'a self,
         state: &'a Arc<State>,
@@ -36,8 +64,8 @@ pub trait Texting: Send + Sync {
         outgoing: Outgoing,
         condition: Condition,
     ) -> Answer<'a, Text>;
-    /// Sends again a text Dispatch sent that failed, provided `condition` holds as it's queued.
-    /// Refused as `condition` refuses it, and as `phones_text_not_found` otherwise.
+    /// Queues again a text Dispatch sent that failed, as a new attempt from the phone it went
+    /// from, provided `condition` holds as it's queued: the text, waiting again, as `send`'s is.
     fn retry<'a>(
         &'a self,
         state: &'a Arc<State>,
@@ -46,7 +74,7 @@ pub trait Texting: Send + Sync {
         condition: Condition,
     ) -> Answer<'a, Text>;
     /// Keeps a picture for a text not sent yet, `by`'s alone until it's sent: its bytes as
-    /// they arrive, up to `largest()`.
+    /// they arrive, refused before any past `limits().largest`.
     fn add_file<'a>(
         &'a self,
         state: &'a Arc<State>,
@@ -64,8 +92,8 @@ pub trait Texting: Send + Sync {
         id: &'a str,
         by: &'a str,
     ) -> Answer<'a, ()>;
-    /// The most a picture may be, in bytes.
-    fn largest(&self) -> u64;
+    /// What one text may carry, as `send` and `add_file` refuse more.
+    fn limits(&self) -> Limits;
     /// A text's picture or file as kept, to answer a page with; none for one not the DSP's,
     /// one whose bytes haven't come yet, and one added for a text not sent yet but by `viewer`.
     fn file<'a>(
@@ -91,12 +119,28 @@ pub struct Phone {
     pub last_seen_at: Option<i64>,
 }
 
-/// Texts changed after where a reader left off.
+/// A page of the feed of each text as it is now: those changed after where a reader left off,
+/// each once, oldest change first. A text changes as it comes, as Dispatch queues it or tries it
+/// again, as how it went changes, and as its files' bytes arrive; the feed keeps no history of
+/// the changes themselves.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Changes {
     pub texts: Vec<Text>,
-    /// The last change there is: where reading on starts.
-    pub last: i64,
+    /// Where reading on starts: after every change this page read.
+    pub next: i64,
+    /// Whether more changes remain after `next`, to read on for at once.
+    pub more: bool,
+}
+
+/// What one text may carry: `send` refuses more, and `add_file` a picture past `largest`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    /// The most characters its body may have.
+    pub body: usize,
+    /// The most pictures or files it may carry.
+    pub files: usize,
+    /// The most bytes each may be.
+    pub largest: u64,
 }
 
 /// A text, as a phone reported it or Dispatch sent it.
@@ -109,7 +153,7 @@ pub struct Text {
     pub direction: Direction,
     /// Whether the phone reported it or Dispatch sent it.
     pub origin: Origin,
-    /// The other party's number: `+` and its digits for one in North America.
+    /// The other party's number, as `normal` writes it.
     pub number: String,
     pub body: String,
     /// When it was written, epoch milliseconds.
@@ -119,7 +163,8 @@ pub struct Text {
     /// How one Dispatch sent went; none for one the phone reported.
     pub status: Option<Status>,
     pub status_at: Option<i64>,
-    /// Why it failed, as the phone said.
+    /// Why it failed: as the phone said, or `PHONE_REMOVED` for one whose phone was removed
+    /// before it went.
     pub error: Option<String>,
     pub files: Vec<File>,
     /// Its latest change, after every one before it.
@@ -169,8 +214,9 @@ pub struct Outgoing {
     pub phone: Option<String>,
     /// The number to send it to.
     pub to: String,
+    /// What it says, at most `limits().body` characters: empty only with a picture.
     pub body: String,
-    /// Pictures `by` added for it.
+    /// Pictures `by` added for it, at most `limits().files`.
     pub files: Vec<String>,
     /// Who at the DSP sends it.
     pub by: String,
@@ -184,8 +230,8 @@ pub struct Added {
     pub mime: String,
 }
 
-/// The DSP's texts changed: one came, was sent, or how one went changed. Read `changes` from
-/// where you left off.
+/// The DSP's texts changed: one came, was queued or tried again, or how one went changed. Read
+/// `changes` from where you left off.
 #[derive(Clone, Debug)]
 pub struct TextsChanged;
 impl Event for TextsChanged {
@@ -198,7 +244,7 @@ impl Event for TextsChanged {
 /// isn't a number. Each text's `number` is written so, and `Outgoing`'s `to` is read so.
 pub fn normal(raw: &str) -> Option<String> {
     let raw = raw.trim();
-    if raw.is_empty() || raw.len() > 32 {
+    if raw.is_empty() || raw.len() > NUMBER_MOST {
         return None;
     }
     let plus = raw.starts_with('+');
@@ -217,6 +263,16 @@ pub fn normal(raw: &str) -> Option<String> {
         3..=7 if bare => Some(digits),
         _ => None,
     }
+}
+
+/// Whether `id` may be an ID texting gives a phone, a text or a file: 1 to `ID_MOST` ASCII
+/// letters, digits, `_` or `-`. It says nothing more of it: only whoever gave it knows what it
+/// names.
+pub fn identifier(id: &str) -> bool {
+    (1..=ID_MOST).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 /// What offers it for the DSP: only while Phones is on there.
