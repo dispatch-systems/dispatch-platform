@@ -4,8 +4,8 @@ import type {
   Conversation,
   Elsewhere,
   Message,
-  RouteDriver,
   SentMessage,
+  TodaysRoutes,
   Writing,
 } from '../../api/index.js';
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
@@ -17,6 +17,7 @@ import { PaneHead } from '../shared/PaneHead.js';
 import { ThreadPending } from '../shared/ThreadFrame.js';
 import { usePanel } from '../shared/usePanel.js';
 import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
+import { driverToday } from '../todays-routes/todays-routes.js';
 import { Composer } from './Composer.js';
 import { ElsewhereChips } from './Elsewhere.js';
 import { elsewhereNow, targetOf } from './elsewhere.js';
@@ -54,7 +55,7 @@ export function ConversationPane({
   back,
   closed,
   openGroup,
-  drivers,
+  todays,
   open,
 }: {
   id: string;
@@ -83,8 +84,9 @@ export function ConversationPane({
   closed: () => void;
   /** Opens a group, as one a message went to. */
   openGroup: (id: string) => void;
-  /** Today's drivers, whom a work phone nobody held can be picked for. */
-  drivers: readonly RouteDriver[];
+  /** Today's Routes as the page last read it, while it shows: today's drivers, whom a work phone
+   * nobody held can be picked for, and their routes today. */
+  todays?: TodaysRoutes;
   /** Opens another conversation, as whom it's with's of another kind, or starts it. */
   open: (target: Target) => void;
 }) {
@@ -109,7 +111,7 @@ export function ConversationPane({
   };
   const shown: Open | undefined = conversation && {
     conversation,
-    today: opened?.today ?? null,
+    today: conversation.driverId ? driverToday(conversation.driverId, opened?.today, todays) : null,
     // With several workspaces to tell apart, the one it's in.
     where:
       working.length > 1
@@ -117,7 +119,7 @@ export function ConversationPane({
         : undefined,
     working,
     texting,
-    drivers,
+    drivers: todays?.drivers ?? [],
     timeZone,
     show,
     follow,
@@ -179,6 +181,7 @@ export function ConversationPane({
           person={person}
           workspace={workspaces.find((workspace) => workspace.teamId === conversation?.teamId)}
           elsewhere={profiled.ways ? elsewhere : []}
+          today={profiled.today ? (shown?.today ?? null) : undefined}
           go={go}
           timeZone={timeZone}
           docked={docked}

@@ -1,4 +1,4 @@
-import type { Conversation, RouteDriver, TodaysRoutes } from '../../api/index.js';
+import type { Conversation, RouteDriver, Today, TodaysRoutes } from '../../api/index.js';
 import type { Target } from '../conversations/target.js';
 import { order } from '../inbox/inbox.js';
 
@@ -70,4 +70,18 @@ export function routeGroups(rows: readonly RouteRow[]): RouteGroup[] {
     },
     { key: 'no_driver', heading: { kind: 'no_driver' } as const, rows: phones },
   ].filter((group) => group.rows.length > 0);
+}
+
+/**
+ * A driver's route today and the work phone they hold now, one source for all that shows them:
+ * Today's Routes' latest read of them (`routes`), as it's read every minute while it shows, else
+ * what their conversation's read said (`read`); none once Today's Routes says the day is over.
+ */
+export function driverToday(
+  driverId: string | null,
+  read: Today | null | undefined,
+  routes: TodaysRoutes | undefined,
+): Today | null {
+  if (routes && routes.day === null) return null;
+  return routes?.drivers.find((each) => each.driverId === driverId)?.today ?? read ?? null;
 }

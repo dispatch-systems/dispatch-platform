@@ -392,7 +392,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   back={closed}
                   closed={closed}
                   openGroup={openGroup}
-                  drivers={todays.routes?.drivers ?? []}
+                  todays={todays.routes}
                   open={go}
                 />
               ) : (

@@ -15,7 +15,7 @@ import type { Party } from './party.js';
 export type Open = {
   conversation: Conversation;
   /** For a driver's, their route today and the work phone they hold now, while there's a live
-   * day. */
+   * day, as its head and profile both show them (`driverToday`). */
   today: Today | null;
   /** The workspace it's in, while the DSP has two or more where Communications works. */
   where?: string;
@@ -34,8 +34,10 @@ export type Open = {
 
 type PartyPane = {
   /** Whether they have a profile, opened from who it's with, and from their photo by their
-   * messages too (`fromPhoto`); and whether it goes to each of their conversations (`ways`). */
-  profile: false | { fromPhoto: boolean; ways: boolean };
+   * messages too (`fromPhoto`); whether it goes to each of their conversations (`ways`); and
+   * whether its Today is the conversation's own, live, as its head's is (`today`), else read with
+   * it. */
+  profile: false | { fromPhoto: boolean; ways: boolean; today: boolean };
   /** The number a message goes to: none in Slack. */
   number: (open: Open) => string | null;
   /** Whether a message reaches them now: one that can't shows No work phone in the box's place. */
@@ -60,7 +62,7 @@ const named = (open: Open) =>
 
 export const PARTIES: { [P in Party]: PartyPane } = {
   member: {
-    profile: { fromPhoto: true, ways: false },
+    profile: { fromPhoto: true, ways: false, today: false },
     number: () => null,
     writable: ({ conversation, working }) =>
       working.some((workspace) => workspace.teamId === conversation.teamId),
@@ -79,7 +81,7 @@ export const PARTIES: { [P in Party]: PartyPane } = {
     workdays: false,
   },
   driver: {
-    profile: { fromPhoto: false, ways: true },
+    profile: { fromPhoto: false, ways: true, today: true },
     number: ({ today }) => today?.phone ?? null,
     reachable: ({ today }) => Boolean(today?.phone),
     writable: ({ texting }) => texting,
