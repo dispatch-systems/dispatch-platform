@@ -446,9 +446,9 @@ enum Slot {
 
 /// Before when a read of `day` the browsers' memory turned away may be tried again, its record
 /// ending at `ended`: its next slot, or its window's close when that's sooner, while a retry a
-/// minute on comes before it.
+/// minute after it ended comes before then, reckoned as its next slot is.
 fn retry_before(plan: &Plan, day: &Day, ended: i64, error: &Error) -> Option<i64> {
     let until = plan.slot_after(day, ended).min(day.close);
-    let retry = now() + MEMORY_BUSY_RETRY.as_millis() as i64;
+    let retry = ended + MEMORY_BUSY_RETRY.as_millis() as i64;
     (error.is(Code::BrowserMemoryBusy) && retry < until).then_some(until)
 }
