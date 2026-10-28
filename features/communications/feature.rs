@@ -138,8 +138,8 @@ pub const FEATURE: Feature = Feature {
     dsp_connection: true,
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
     // what members attach, sending what's due to go to groups' people, filing texts waiting to be
-    // filed, and filing today's again where they belong now, every minute; and letting go of the
-    // phones' pictures never sent and codes expired, hourly.
+    // filed, and filing today's again where they belong now, every minute; and letting go of
+    // photos and the phones' pictures never sent, bytes no file keeps and codes expired, hourly.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,

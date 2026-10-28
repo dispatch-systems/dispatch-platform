@@ -27,7 +27,7 @@ use serde_json::json;
 use std::{sync::Arc, time::Duration};
 
 /// Every minute, the files due to download in each DSP; hourly, the photos added and never sent
-/// are let go.
+/// are let go, then the bytes no file keeps or left arriving.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60 * 60),
     run: pass,
@@ -134,8 +134,8 @@ pub trait FileStore {
     /// Lets go of the photos `ids` names, claimed for a message Slack didn't take.
     fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()>;
     /// Lets go of the photos added before `before` for a message never sent, but one going with
-    /// a message now: the SHA-256 of each whose bytes nothing keeps now.
-    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
+    /// a message now, whose bytes upkeep then lets go of once no file keeps them.
+    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()>;
     /// Whether any file is kept by the SHA-256 `sha256`.
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool>;
     /// The SHA-256 of every bytes a file keeps.
@@ -219,32 +219,14 @@ impl FileStore for Store {
         )?;
         Ok(())
     }
-    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            // Not one going to Slack with a message now, nor a group message's.
-            const UNSENT: &str = "message_id IS NULL AND group_message_id IS NULL \
-                AND added_at<?1 AND coalesce(claimed_until,0)<?2";
-            let unsent: Vec<(String,)> = db.query_as(
-                &format!("SELECT DISTINCT sha256 FROM communications_files WHERE {UNSENT}"),
-                params![before, now()],
-            )?;
-            db.exec(
-                &format!("DELETE FROM communications_files WHERE {UNSENT}"),
-                params![before, now()],
-            )?;
-            let mut loose = Vec::new();
-            for (sha256,) in unsent {
-                let kept = db.count(
-                    "SELECT count(*) FROM communications_files WHERE sha256=?",
-                    [&sha256],
-                )?;
-                if kept == 0 {
-                    loose.push(sha256);
-                }
-            }
-            Ok(loose)
-        })
+    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()> {
+        // Not one going to Slack with a message now, nor a group message's.
+        self.dsp(dsp)?.exec(
+            "DELETE FROM communications_files WHERE message_id IS NULL \
+             AND group_message_id IS NULL AND added_at<? AND coalesce(claimed_until,0)<?",
+            params![before, now()],
+        )?;
+        Ok(())
     }
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool> {
         Ok(self.dsp(dsp)?.count(
@@ -287,25 +269,32 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
     Box::pin(async move {
         for dsp in kit::dsps(&state, FAILED).await {
             download_due(&state, &dsp).await;
-            if due && let Err(error) = forget_unsent(&state, &dsp).await {
+            if !due {
+                continue;
+            }
+            let at = dsp.clone();
+            let tidied = state
+                .run_scoped(dsp, DOMAIN, move |db| {
+                    let_go(db, &at, now() - UNSENT_MS);
+                    Ok(())
+                })
+                .await;
+            if let Err(error) = tidied {
                 kit::failed(FAILED, &error);
             }
         }
     })
 }
-
-/// Lets go of the photos added for a message and not sent within a day, and their bytes, in one
-/// write.
-async fn forget_unsent(state: &Arc<State>, dsp: &str) -> Result<()> {
-    let at = dsp.to_owned();
-    state
-        .run_scoped(dsp, DOMAIN, move |db| {
-            for sha256 in db.forget_unsent_communications(&at, now() - UNSENT_MS)? {
-                BYTES.let_go(db, &at, &sha256)?;
-            }
-            Ok(())
-        })
-        .await
+/// Lets go of the DSP's photos added before `before` and never sent, then of the bytes no file
+/// keeps or left arriving, each job on its own, and each of the bytes, so one that fails is
+/// reported and tried again the next hour, and the rest still go. Inside a write.
+fn let_go(db: &Store, dsp: &str, before: i64) {
+    if let Err(error) = db.forget_unsent_communications(dsp, before) {
+        kit::failed(FAILED, &error);
+    }
+    for error in BYTES.reconcile(db, dsp).unwrap_or_else(|error| vec![error]) {
+        kit::failed(FAILED, &error);
+    }
 }
 
 /// A member's file due to download: its workspace, Slack's ID of it, and how often it failed.
@@ -514,3 +503,7 @@ fn failure(item: &Due, error: &Error) -> Outcome {
         None => left(FileStatus::Failed, &error.code),
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/files.rs"]
+mod tests;

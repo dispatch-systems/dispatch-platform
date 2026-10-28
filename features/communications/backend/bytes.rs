@@ -137,7 +137,7 @@ impl Folder {
         })
     }
     /// Lets go of the DSP's bytes kept by `sha256`, unless a file keeps them still: inside a write.
-    pub fn let_go(&self, db: &Store, dsp: &str, sha256: &str) -> Result<()> {
+    fn let_go(&self, db: &Store, dsp: &str, sha256: &str) -> Result<()> {
         if (self.keeps)(db, dsp, sha256)? {
             return Ok(());
         }
