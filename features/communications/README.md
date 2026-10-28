@@ -192,8 +192,9 @@ Communications works, the latest written in, else their first account there. Sho
 on each of them while they have two or more, each waiting as the page's list has it, so its dot
 follows each update, and one started since is found by whom it's with. A driver with a work phone
 now has the work conversation of the ID that has it, as Driver Match may know them by several,
-started once they have none there; of two IDs with one, the one whose route today has the most
-stops, the route their Today shows, else the first linked; else the latest of any of their IDs.
+started once they have none there; of several IDs with one, however many, the one whose route
+today has the most stops, the route their Today shows, else the first linked; else the latest of
+any of their IDs.
 
 ## Messaging
 
