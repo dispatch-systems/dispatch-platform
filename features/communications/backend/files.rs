@@ -315,10 +315,10 @@ impl FromRow for Due {
         })
     }
 }
-/// What trying to download a file came to: one kept carries its bytes, beside the DSP's until
-/// finishing keeps it.
+/// What trying to download a file came to: its bytes arrived, beside the DSP's until finishing
+/// keeps the file with them; it's to be tried again later; or it's never to be kept, and why.
 pub enum Outcome {
-    Kept(Arrived),
+    Arrived(Arrived),
     Later {
         reason: String,
         at: i64,
@@ -371,7 +371,7 @@ impl Queue for Downloads {
         match outcome {
             // Its bytes take their place with the file that keeps them: should either fail, it's
             // tried again later, or given up, as a download that failed is.
-            Outcome::Kept(arrived) => BYTES
+            Outcome::Arrived(arrived) => BYTES
                 .keep(db, dsp, arrived, || finished(db, dsp, item, outcome))
                 .or_else(|error| finished(db, dsp, item, &failure(item, &error))),
             _ => finished(db, dsp, item, outcome),
@@ -386,7 +386,7 @@ fn finished(db: &Store, dsp: &str, item: &Due, outcome: &Outcome) -> Result<()> 
         // Its message shows it kept, or not to be: a wait changes nothing it shows.
         let shown = !matches!(outcome, Outcome::Later { .. });
         match outcome {
-            Outcome::Kept(arrived) => db.exec(
+            Outcome::Arrived(arrived) => db.exec(
                 "UPDATE communications_files SET status='kept',sha256=?,size=?,reason=NULL,\
                  claimed_until=NULL WHERE id=?",
                 params![arrived.sha256, arrived.size, item.id],
@@ -465,7 +465,7 @@ async fn download(state: &Arc<State>, dsp: &str, item: &Due) -> Result<Outcome> 
         .unwrap_or("application/octet-stream");
     let bytes = bot.download(url, mime).await?;
     let bytes = Upload::streamed(size, UPLOAD_LIMIT, bytes).await?;
-    Ok(Outcome::Kept(
+    Ok(Outcome::Arrived(
         BYTES.receive(state, dsp, bytes, UPLOAD_LIMIT).await?,
     ))
 }
