@@ -7,7 +7,6 @@ use super::{
     live_day::{self, LiveDay},
     model::{Text, TextConversation},
     numbers::Numbers,
-    offered,
     storage::TextStore,
     workdays,
 };
@@ -19,6 +18,7 @@ use crate::backend::{
     files::FileStatus,
     model::{ConversationKind, Direction, PAGE},
     people::People,
+    phone::files,
     search, today,
 };
 use dispatch_core::manifest::people::Person;
@@ -28,7 +28,6 @@ use dispatch_core::{
     db::Store,
     server::http::{input::Reply, route::Dsp},
 };
-use dispatch_phones_contract as texting;
 use std::{collections::HashMap, sync::Arc};
 
 /// A text's place among its conversation's, as a message's `ts`: when it was written, thirteen
@@ -145,20 +144,13 @@ pub fn messages(people: &People, numbers: &Numbers, kept: Vec<Text>) -> Vec<Mess
         .collect()
 }
 
-/// The numbers' conversations waiting, while the DSP texts, the longest waiting first, but a
-/// blocked number's.
+/// The numbers' conversations waiting, the longest waiting first, but a blocked number's.
 pub fn waiting_numbers(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
-    if !offered(db, dsp)? {
-        return Ok(Vec::new());
-    }
     db.waiting_communications_texts(dsp)
 }
-/// The conversations by text waiting, while the DSP texts, the longest waiting first: the
-/// numbers', but a blocked number's, and the work conversations waiting on the live day.
+/// The conversations by text waiting, the longest waiting first: the numbers', but a blocked
+/// number's, and the work conversations waiting on the live day.
 pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
-    if !offered(db, dsp)? {
-        return Ok(Vec::new());
-    }
     let mut waiting = waiting_numbers(db, dsp)?;
     waiting.extend(live_day::waiting(db, dsp)?);
     waiting.sort_by(|a, b| {
@@ -169,8 +161,8 @@ pub fn waiting(db: &Store, dsp: &str) -> Result<Vec<TextConversation>> {
     Ok(waiting)
 }
 
-/// The numbers' conversations answered, while the DSP texts, before `before`, a page of them,
-/// and whether there are more.
+/// The numbers' conversations answered before `before`, a page of them, and whether there are
+/// more.
 pub fn answered(
     db: &Store,
     people: &People,
@@ -178,9 +170,6 @@ pub fn answered(
     dsp: &str,
     before: Option<(i64, &str)>,
 ) -> Result<(Vec<Conversation>, bool)> {
-    if !offered(db, dsp)? {
-        return Ok((Vec::new(), false));
-    }
     let mut kept = db.answered_communications_texts(dsp, before, PAGE + 1)?;
     let more = kept.len() > PAGE;
     kept.truncate(PAGE);
@@ -214,30 +203,28 @@ pub fn search(
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
     let mut found: Vec<Found> = Vec::new();
-    if offered(db, dsp)? {
-        let (kept, mut texted_with) = match kind {
-            ConversationKind::Work => (
-                db.communications_work(dsp)?,
-                db.communications_work_numbers(dsp)?,
-            ),
-            _ => (db.communications_numbers(dsp)?, HashMap::new()),
+    let (kept, mut texted_with) = match kind {
+        ConversationKind::Work => (
+            db.communications_work(dsp)?,
+            db.communications_work_numbers(dsp)?,
+        ),
+        _ => (db.communications_numbers(dsp)?, HashMap::new()),
+    };
+    for conversation in kept {
+        let number = conversation.number.clone().unwrap_or_default();
+        if conversation.last_at.is_none() || numbers.blocked(&number) {
+            continue;
+        }
+        let named = match (&conversation.driver, kind) {
+            (Some((source, id)), _) => people.driver(source, id, id),
+            (None, ConversationKind::Work) => people.work_phone(&number),
+            (None, _) => people.texting(&number, numbers.contact(&number)),
         };
-        for conversation in kept {
-            let number = conversation.number.clone().unwrap_or_default();
-            if conversation.last_at.is_none() || numbers.blocked(&number) {
-                continue;
-            }
-            let named = match (&conversation.driver, kind) {
-                (Some((source, id)), _) => people.driver(source, id, id),
-                (None, ConversationKind::Work) => people.work_phone(&number),
-                (None, _) => people.texting(&number, numbers.contact(&number)),
-            };
-            let with = texted_with
-                .remove(&conversation.id)
-                .unwrap_or_else(|| vec![number]);
-            if let Some((score, marks)) = like(typed, &named.name, &with) {
-                found.push((score, marks, conversation));
-            }
+        let with = texted_with
+            .remove(&conversation.id)
+            .unwrap_or_else(|| vec![number]);
+        if let Some((score, marks)) = like(typed, &named.name, &with) {
+            found.push((score, marks, conversation));
         }
     }
     found.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.2.last_at.cmp(&a.2.last_at)));
@@ -312,7 +299,7 @@ pub fn opened(
         today,
         elsewhere,
         workdays,
-        limits: texting::for_dsp(db, dsp)?.map(|texting| compose::texted(texting).into()),
+        limits: compose::TEXT.into(),
     })
 }
 /// Whom the conversation `kept` is with, as Driver Match knows them: the driver, or whoever it
@@ -351,16 +338,10 @@ pub fn message(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Message
     Ok(messages(&people, &numbers, vec![kept]).remove(0))
 }
 
-/// A text's picture or file, `id`, as what offers the DSP texting keeps it, for the member `c`,
-/// whose access is checked again once it's read: it may have ended while it was.
+/// A text's picture or file, `id`, as the phone side keeps it, for the member `c`, whose access is
+/// checked again once it's read: it may have ended while it was.
 pub async fn file(state: &Arc<State>, c: &Context, access: Dsp, id: &str) -> Result<Reply> {
-    let dsp = c.dsp.id.clone();
-    let texting = state
-        .read(move |db| texting::for_dsp(db, &dsp))
-        .await?
-        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
-    let file = texting
-        .file(state, &c.dsp.id, id, &c.auth.user.id)
+    let file = files::shown(state, &c.dsp.id, id, &c.auth.user.id)
         .await?
         .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     let asked = c.clone();

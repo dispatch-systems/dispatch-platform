@@ -79,6 +79,8 @@
       ["communications", 4, "communications_texts", "503f834ef4617484"],
       ["communications", 5, "communications_picked", "148dbda50b8c03f0"],
       ["communications", 6, "communications_texts_done", "code"],
+      ["communications", 7, "phones", "c05bd804e8f9d0bf"],
+      ["communications", 8, "phones_pairing_ids", "code"],
       ["slack", 1, "slack", "8ca8fd50f814a724"],
       ["slack", 2, "slack_new_connections", "code"],
       ["slack", 3, "slack_members", "a3cacf7486f2ded9"],
@@ -89,9 +91,7 @@
       ["slack", 8, "slack_workspaces_added", "code"],
       ["slack", 9, "slack_install_links_by_workspace", "c02a5b6288a083bc"],
       ["slack", 10, "slack_install_pages", "code"],
-      ["slack", 11, "slack_logos", "b75a1f564d324b29"],
-      ["phones", 1, "phones", "d5e4a32a62e1bb6d"],
-      ["phones", 2, "pairing_ids", "code"]
+      ["slack", 11, "slack_logos", "b75a1f564d324b29"]
     ]
   },
   {

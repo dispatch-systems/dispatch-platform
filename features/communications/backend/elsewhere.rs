@@ -1,7 +1,7 @@
 //! A person's conversations of each kind, which the page goes between under the head of any of
 //! them: their work conversation, as a driver who held the DSP's work phones, with the work phone
-//! they hold now; the one by text with their own number, while the DSP texts, the latest written
-//! in of Driver Match's numbers for them, else the first; and their Slack one, in a workspace
+//! they hold now; the one by text with their own number, the latest written in of Driver Match's
+//! numbers for them, else the first; and their Slack one, in a workspace
 //! where Communications works, the latest written in, else their first account there. Each with
 //! whether it waits, and what starts one they don't have yet; listed only with two or more.
 use super::{
@@ -11,13 +11,11 @@ use super::{
         live_day::{self, LiveDay},
         model::TextConversation,
         numbers::work_number,
-        offered,
         storage::TextStore,
     },
 };
-use crate::{api::types::Elsewhere, integrations::messages::ID};
+use crate::{api::types::Elsewhere, backend::phone::numbers::normal, integrations::messages::ID};
 use dispatch_core::{Result, db::Store, manifest::people::Person};
-use dispatch_phones_contract as texting;
 use dispatch_routes_contract as routes;
 use dispatch_slack::kit;
 
@@ -80,16 +78,12 @@ fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
     }))
 }
 
-/// `person`'s conversation by text with their own number, while the DSP texts and Driver Match
-/// has one for them.
+/// `person`'s conversation by text with their own number, while Driver Match has one for them.
 fn number(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
-    if !offered(db, dsp)? {
-        return Ok(None);
-    }
     let numbers: Vec<String> = person
         .phones
         .iter()
-        .filter_map(|phone| texting::normal(phone))
+        .filter_map(|phone| normal(phone))
         .collect();
     let Some(first) = numbers.first().cloned() else {
         return Ok(None);

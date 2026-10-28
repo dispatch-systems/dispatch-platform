@@ -1,18 +1,19 @@
 //! Answering by text: what's written goes as written, from the DSP's phone, under whoever wrote
-//! it on the page, as much as texting says a text carries; one that fails leaves the conversation
-//! waiting, and Retry sends it again. Neither
-//! goes to a work phone the driver no longer holds, even as it changes hands while it's under way,
-//! nor once its writer's access ended as it went.
-//! A picture added for one is let go of once its adder's access ended while it came.
+//! it on the page, as much as a text carries; one that fails leaves the conversation waiting, and
+//! Retry sends it again. Neither goes to a work phone the driver no longer holds, even as it
+//! changed hands once it was asked for, nor once its writer's access ended, each checked in the
+//! write that queues it. A picture added for one keeps nothing once its adder's access ended while
+//! its bytes came.
 use super::*;
 use crate::ConversationState;
 use crate::backend::{
-    support::{self, at, filed, held, hold, texted, today},
-    texts::{model::TextStatus, reading::one, storage::TextStore},
+    phone::{model::Status, storage::FileStore},
+    support::{self, at, filed, held, hold, reported, switch, texted, today},
+    texts::{model::TextStatus, reading, reading::one, storage::TextStore},
 };
 use axum::body::Bytes;
 use dispatch_core::{db::now, server::http::upload::Upload};
-use futures_util::stream;
+use futures_util::{StreamExt, stream};
 
 #[tokio::test]
 async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
@@ -37,8 +38,7 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     };
 
     // The phone fails to send it: the answer shows so, under who wrote it, and it still waits.
-    support::failing(&dsp, true);
-    let failed = send(
+    let answer = send(
         &state,
         &c,
         support::USE,
@@ -48,19 +48,21 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     )
     .await
     .unwrap();
-    let sent = support::sent(&dsp);
+    let sent = support::sent(&state, &dsp).await;
     assert_eq!(
-        (
-            sent[0].to.as_str(),
-            sent[0].body.as_str(),
-            sent[0].by.as_str()
-        ),
-        (
-            "+12535550177",
-            "Perfect, thank you!",
-            c.auth.user.id.as_str()
-        )
+        sent,
+        [(
+            "+12535550177".to_owned(),
+            "Perfect, thank you!".to_owned(),
+            c.auth.user.id.clone()
+        )]
     );
+    reported(&state, &dsp, &answer.id, Status::Failed).await;
+    let (shared, at, id) = (state.clone(), dsp.clone(), answer.id.clone());
+    let failed = state
+        .read(move |db| reading::message(db, &shared, &at, &id))
+        .await
+        .unwrap();
     assert_eq!(
         (failed.status, failed.sender.unwrap().name.as_str()),
         (Some(TextStatus::Failed), "Test Owner")
@@ -68,7 +70,6 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     assert_eq!(state_of().await.unwrap(), ConversationState::Waiting);
 
     // Sent again, it's on its way: an answer.
-    support::failing(&dsp, false);
     let again = retry(&state, &c, support::USE, &conversation, &failed.id)
         .await
         .unwrap();
@@ -97,15 +98,13 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    support::failing(&dsp, true);
     let failed = send(&state, &c, support::USE, &conversation, "Van 214", &[])
         .await
         .unwrap();
-    support::failing(&dsp, false);
+    reported(&state, &dsp, &failed.id, Status::Failed).await;
     let retried = || retry(&state, &c, support::USE, &conversation, &failed.id);
 
-    // As the phone goes to send it again, Avery hands 0101 to Blake and takes 0202: it would reach
-    // Blake.
+    // Once Retry is asked for, Avery hands 0101 to Blake and takes 0202: it would reach Blake.
     let (handoff, back) = (failed.at + 1, failed.at + 2);
     let handed = |until| {
         vec![
@@ -114,13 +113,13 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
             hold("B2", "2065550101", handoff, until),
         ]
     };
-    support::held_while_queuing(&dsp, Some(&today), handed(None), Vec::new());
+    held(&state, &dsp, Some(&today), handed(None), Vec::new()).await;
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_work_phone_changed"
     );
-    // Blake hands 0101 back; then, as it goes again, the stop saves the day's holds, and Avery holds
-    // none.
+    // Blake hands 0101 back; then, as Retry is asked for again, the stop saves the day's holds,
+    // and Avery holds none.
     let mut holds = handed(Some(back));
     holds.push(hold("A1", "2065550101", back, None));
     held(&state, &dsp, Some(&today), holds.clone(), Vec::new()).await;
@@ -128,7 +127,7 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
         .into_iter()
         .map(|hold| (today.clone(), hold))
         .collect();
-    support::held_while_queuing(&dsp, None, Vec::new(), saved);
+    held(&state, &dsp, None, Vec::new(), saved).await;
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_no_work_phone"
@@ -147,7 +146,7 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
 }
 
 #[tokio::test]
-async fn an_answer_never_goes_to_a_work_phone_handed_on_as_it_goes() {
+async fn an_answer_goes_to_the_work_phone_its_driver_holds_as_it_is_queued() {
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
     let (midnight, today) = (at(zone, day, 0, 0), day.to_string());
@@ -158,20 +157,24 @@ async fn an_answer_never_goes_to_a_work_phone_handed_on_as_it_goes() {
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
 
-    // As the answer goes, Avery hands 0101 to Blake and takes 0202: it would reach Blake.
+    // Once the answer is asked for, Avery hands 0101 to Blake and takes 0202: it reaches Avery,
+    // never Blake.
     let handoff = now();
     let handed = vec![
         hold("A1", "2065550101", midnight, Some(handoff)),
         hold("A1", "2065550202", handoff, None),
         hold("B2", "2065550101", handoff, None),
     ];
-    support::held_while_queuing(&dsp, Some(&today), handed, Vec::new());
-    let refused = send(&state, &c, support::USE, &conversation, "Van 214", &[]).await;
-    assert_eq!(
-        refused.unwrap_err().code,
-        "communications_work_phone_changed"
-    );
-    assert!(support::sent(&dsp).is_empty(), "nothing went to Blake");
+    held(&state, &dsp, Some(&today), handed, Vec::new()).await;
+    send(&state, &c, support::USE, &conversation, "Van 214", &[])
+        .await
+        .unwrap();
+    let went: Vec<String> = support::sent(&state, &dsp)
+        .await
+        .into_iter()
+        .map(|(to, _, _)| to)
+        .collect();
+    assert_eq!(went, ["+12065550202"], "nothing went to Blake");
 }
 
 #[tokio::test]
@@ -180,41 +183,65 @@ async fn an_answer_never_goes_once_its_writers_access_ended_as_it_goes() {
     let asked = texted(&state, &dsp, "+12535550177", "Can I swap Saturday?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    // Communications goes off for the DSP as the phone goes to queue it, and with it their
+    // Communications goes off for the DSP once the answer is asked for, and with it their
     // permission: refused, nothing goes.
-    support::off_while_queuing(&dsp);
+    switch(&state, &dsp, "communications", false).await;
     let refused = send(&state, &c, support::USE, &conversation, "Swap it", &[]).await;
     assert_eq!(refused.unwrap_err().code, "permission_denied");
-    assert!(support::sent(&dsp).is_empty(), "nothing went");
+    assert!(support::sent(&state, &dsp).await.is_empty(), "nothing went");
+}
+
+/// `bytes` as a picture of a PNG, the upload's last chunk coming once `last` is done.
+async fn picture(bytes: &'static [u8], last: impl Future<Output = ()> + Send + 'static) -> Upload {
+    let first = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(&bytes[..1]))]);
+    let rest = stream::once(async move {
+        last.await;
+        Ok(Bytes::from_static(&bytes[1..]))
+    });
+    Upload::streamed(bytes.len() as u64, u64::MAX, first.chain(rest))
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
-async fn a_picture_is_let_go_once_its_adders_access_ended_while_its_bytes_came() {
+async fn a_picture_keeps_nothing_once_its_adders_access_ended_while_its_bytes_came() {
     let (_root, state, dsp) = support::started();
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let add = || async {
-        let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"png"))]);
-        let photo = Upload::streamed(3, u64::MAX, chunks).await.unwrap();
-        upload(&state, &c, support::USE, "door.png", "image/png", photo).await
-    };
-    let kept = add().await.unwrap();
-    // Communications goes off for the DSP as the phone keeps the next one's bytes, and with it
-    // their permission: refused, the phone keeps none of it.
-    support::off_while_reading(&dsp);
-    assert_eq!(add().await.unwrap_err().code, "permission_denied");
-    assert_eq!(support::added(&dsp), [kept.id]);
+    let photo = picture(b"door", async {}).await;
+    let kept = upload(&state, &c, support::USE, "door.png", "image/png", photo)
+        .await
+        .unwrap();
+    // Communications goes off for the DSP while the next one's bytes come, and with it their
+    // permission: refused, the phone side keeps none of it.
+    let (shared, at_dsp) = (state.clone(), dsp.clone());
+    let off = async move { switch(&shared, &at_dsp, "communications", false).await };
+    let photo = picture(b"dock", off).await;
+    let refused = upload(&state, &c, support::USE, "dock.png", "image/png", photo).await;
+    assert_eq!(refused.unwrap_err().code, "permission_denied");
+    let at_dsp = dsp.clone();
+    let bytes = state
+        .read(move |db| db.phones_kept_bytes(&at_dsp))
+        .await
+        .unwrap();
+    assert_eq!(bytes.len(), 1, "only the first's: {bytes:?}");
+    let (at_dsp, id) = (dsp.clone(), kept.id.clone());
+    let first = state
+        .read(move |db| db.phones_file(&at_dsp, &id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.sha256.as_deref(), Some(bytes[0].as_str()));
 }
 
 #[tokio::test]
-async fn an_answer_carries_as_much_as_texting_says_a_text_does_not_what_slacks_does() {
+async fn an_answer_carries_as_much_as_a_text_does_not_what_slacks_does() {
     let (_root, state, dsp) = support::started();
     let asked = texted(&state, &dsp, "+12535550177", "Can I swap Saturday?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let mut pictures = Vec::new();
-    for _ in 0..4 {
-        let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"png"))]);
-        let photo = Upload::streamed(3, u64::MAX, chunks).await.unwrap();
+    for _ in 0..11 {
+        let photo = picture(b"png", async {}).await;
         let added = upload(&state, &c, support::USE, "door.png", "image/png", photo).await;
         pictures.push(added.unwrap().id);
     }
@@ -228,16 +255,16 @@ async fn an_answer_carries_as_much_as_texting_says_a_text_does_not_what_slacks_d
         }
     };
 
-    // The stand-in's texts carry 1,000 characters and three pictures, where Slack's carry more.
-    let most = "a".repeat(1_000);
+    // A text carries 10,000 characters, where a Slack message carries 3,000, and ten pictures.
+    let most = "a".repeat(10_000);
     let refused = Err("invalid_input".to_owned());
     assert_eq!(answer(format!("{most}a"), &[]).await, refused);
     assert_eq!(answer(String::new(), &pictures).await, refused);
     assert_eq!(answer(most.clone(), &[]).await, Ok(most));
-    assert!(answer(String::new(), &pictures[..3]).await.is_ok());
+    assert!(answer(String::new(), &pictures[..10]).await.is_ok());
     assert_eq!(
-        support::sent(&dsp).len(),
+        support::sent(&state, &dsp).await.len(),
         2,
-        "only those within texting's limits went"
+        "only those within a text's limits went"
     );
 }

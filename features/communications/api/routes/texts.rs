@@ -2,7 +2,7 @@
 //! one of today's drivers first, whom the DSP can text, a text's pictures, Today's Routes and Pick
 //! driver. A Slack conversation's ID is refused for each.
 use super::{DRIVER_ID_MOST, texting_id};
-use crate::backend::{model::Reference, texts};
+use crate::backend::{model::Reference, phone::numbers::NUMBER_MOST, texts};
 use dispatch_core::{
     Result, State,
     db::Store,
@@ -14,7 +14,6 @@ use dispatch_core::{
         upload::Upload,
     },
 };
-use dispatch_phones_contract as texting;
 use std::sync::Arc;
 
 /// The conversation by text the route names.
@@ -82,7 +81,7 @@ pub(super) fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply>
             driver,
         )?);
     }
-    let number = v::text(&input.body, "number", 3, texting::NUMBER_MOST)?;
+    let number = v::text(&input.body, "number", 3, NUMBER_MOST)?;
     Reply::of(&texts::contacts::open(db, c.state, c.dsp_id(), number)?)
 }
 /// Whom the DSP can text, or those found by a name or number typed, `q`, and the numbers
@@ -93,7 +92,7 @@ pub(super) fn text_contacts(db: &Store, c: &Member, input: &Input) -> Result<Rep
     let typed = (!typed.is_empty()).then_some(typed);
     Reply::of(&texts::contacts::contacts(db, c.state, c.dsp_id(), typed)?)
 }
-/// A text's picture or file, as what offers the DSP texting keeps it.
+/// A text's picture or file, as the phone side keeps it.
 pub(super) async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
@@ -101,8 +100,8 @@ pub(super) async fn text_file(state: Arc<State>, input: Input, access: Dsp) -> R
     let wanted = texting_id(input.param("id"))?;
     texts::reading::file(&state, &c, access, &wanted).await
 }
-/// Keeps a picture added for a text not sent yet, through what offers the DSP texting: its
-/// `name` and `type` in the query.
+/// Keeps a picture added for a text not sent yet, as the phone side keeps it: its `name` and
+/// `type` in the query.
 pub(super) async fn add_text_photo(
     state: Arc<State>,
     input: Input,

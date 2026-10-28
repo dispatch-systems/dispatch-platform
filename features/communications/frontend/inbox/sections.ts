@@ -26,8 +26,8 @@ export type SectionModel = {
 
 export const SECTIONS = [
   {
-    // Today's Routes: the drivers on a route today and their work phones, while the DSP texts and
-    // has live route data, listed by its own read (todays-routes/).
+    // Today's Routes: the drivers on a route today and their work phones, while the DSP has live
+    // route data, listed by its own read (todays-routes/).
     id: 'routes',
     offered: (inbox) => inbox.routes,
     holds: (conversation) => conversation.kind === 'work',
@@ -36,7 +36,7 @@ export const SECTIONS = [
     workspaces: false,
   },
   {
-    // Messaging: the numbers that text the DSP's phones, but those blocked, while it texts.
+    // Messaging: the numbers that text the DSP's phones, but those blocked, always.
     id: 'messaging',
     offered: (inbox) => inbox.texting,
     holds: (conversation) => conversation.kind === 'number' && !conversation.blocked,

@@ -8,17 +8,23 @@
     "keeps": [],
     "migrations": {},
     "permissions": [
-      "communications.use"
+      "communications.use",
+      "phones.manage"
     ],
     "slots": {
       "audit": {
-        "areas": [],
+        "areas": [
+          [
+            "phones.",
+            "connections"
+          ]
+        ],
         "names": false,
         "subjects": []
       },
       "cached": [],
       "commands": null,
-      "demo": false,
+      "demo": true,
       "domains": [
         "communications"
       ],
@@ -33,13 +39,10 @@
         3600,
         3600,
         60,
-        60
+        60,
+        3600
       ],
       "on": [
-        {
-          "event": "phones.texts_changed",
-          "kind": "dispatch_phones_contract::TextsChanged"
-        },
         {
           "event": "routes.work_phones_changed",
           "kind": "dispatch_routes_contract::WorkPhonesChanged"
@@ -77,7 +80,18 @@
         "POST /api/dsp/communications/uploads",
         "GET /api/dsp/communications/files/{id}",
         "GET /api/dsp/communications/workspaces/{team}/logo",
-        "GET /communications/initials/1/{name}"
+        "GET /communications/initials/1/{name}",
+        "GET /api/dsp/communications/phones",
+        "POST /api/dsp/communications/phones/pairing",
+        "GET /api/dsp/communications/phones/pairing/{id}",
+        "POST /api/dsp/communications/phones/{id}/rename",
+        "POST /api/dsp/communications/phones/{id}/remove",
+        "POST /api/communications/phone/pair",
+        "GET /api/communications/phone/outbox",
+        "POST /api/communications/phone/texts",
+        "POST /api/communications/phone/files/{id}",
+        "GET /api/communications/phone/files/{id}",
+        "POST /api/communications/phone/statuses"
       ],
       "exposes": [],
       "env": [],
@@ -103,7 +117,12 @@
         "communications_picked",
         "communications_text_conversations",
         "communications_texting",
-        "communications_texts"
+        "communications_texts",
+        "phones_change",
+        "phones_devices",
+        "phones_files",
+        "phones_pairings",
+        "phones_texts"
       ]
     },
     "subfeatures": []
@@ -614,75 +633,6 @@
     "switch": "live_route_data",
     "mandatory": false,
     "tables": {},
-    "subfeatures": []
-  },
-  "phones": {
-    "collectors": [],
-    "depends_on": [],
-    "frontend": true,
-    "keeps": [],
-    "migrations": {},
-    "permissions": [
-      "phones.manage"
-    ],
-    "slots": {
-      "audit": {
-        "areas": [
-          [
-            "phones.",
-            "connections"
-          ]
-        ],
-        "names": false,
-        "subjects": []
-      },
-      "cached": [],
-      "commands": null,
-      "demo": true,
-      "domains": [
-        "phones"
-      ],
-      "integrations": [],
-      "live": [],
-      "maintenance": [
-        3600
-      ],
-      "on": [],
-      "people": [],
-      "routes": [
-        "GET /api/dsp/phones",
-        "POST /api/dsp/phones/pairing",
-        "GET /api/dsp/phones/pairing/{id}",
-        "POST /api/dsp/phones/{id}/rename",
-        "POST /api/dsp/phones/{id}/remove",
-        "POST /api/phones/pair",
-        "GET /api/phones/outbox",
-        "POST /api/phones/texts",
-        "POST /api/phones/files/{id}",
-        "GET /api/phones/files/{id}",
-        "POST /api/phones/statuses"
-      ],
-      "exposes": [
-        {
-          "name": "texting",
-          "contract": "dispatch_phones_contract::Texting",
-          "about": "The texts and pictures a DSP's dispatch phones relay, and sending one from its number."
-        }
-      ],
-      "env": [],
-      "settings": []
-    },
-    "switch": "phones",
-    "mandatory": false,
-    "tables": {
-      "dsp": [
-        "phones_change",
-        "phones_devices",
-        "phones_files",
-        "phones_pairings",
-        "phones_texts"
-      ]
-    },
     "subfeatures": []
   },
   "routes": {

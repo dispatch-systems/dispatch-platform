@@ -34,14 +34,14 @@ more: boolean,
  */
 moreTexts: boolean, workspaces: Array<CommunicationsWorkspace>,
 /**
- * Whether the DSP texts: something offers it texting, its dispatch phones.
+ * Whether Messaging is offered: always, empty until a phone is paired and texted.
  */
 texting: boolean,
 /**
- * Whether Today's Routes is offered: the DSP texts and has live route data.
+ * Whether Today's Routes is offered: the DSP has live route data.
  */
 routes: boolean,
 /**
- * The DSP's dispatch phones, while it texts.
+ * The DSP's dispatch phones: none until one is paired.
  */
 phones: Array<DispatchPhone>, typing: Typing, };

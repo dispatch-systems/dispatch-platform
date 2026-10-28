@@ -2,10 +2,9 @@
 //! route as last read live and the work phone they hold now, and their work conversation; each
 //! driver holding a work phone today but gone from the day's list, once they texted today; and
 //! each work phone nobody held that texted today, as itself. At the stop it's empty, and the
-//! conversations stay. Offered while the DSP texts and has live route data.
+//! conversations stay. Offered while the DSP has live route data.
 use super::{
-    live_day::LiveDay, model::TextConversation, numbers::Numbers, offered as texts, reading,
-    storage::TextStore,
+    live_day::LiveDay, model::TextConversation, numbers::Numbers, reading, storage::TextStore,
 };
 use crate::{
     api::types::{RouteDriver, TodaysRoutes},
@@ -15,23 +14,20 @@ use dispatch_core::{Result, State, db::Store, foundation::names};
 use dispatch_routes_contract as routes;
 use std::collections::{BTreeMap, HashMap};
 
-/// Whether the DSP has Today's Routes: it texts, and has live route data.
+/// Whether the DSP has Today's Routes: it has live route data.
 pub fn offered(db: &Store, dsp: &str) -> Result<bool> {
-    Ok(texts(db, dsp)? && routes::live_for_dsp(db, dsp)?.is_some())
+    Ok(routes::live_for_dsp(db, dsp)?.is_some())
 }
 
 /// Today's Routes as it is now: its drivers by name, and the work phones nobody held, the latest
 /// written in first.
 pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
-    let live = match LiveDay::read(db, dsp)? {
-        Some(live) if texts(db, dsp)? => live,
-        _ => {
-            return Ok(TodaysRoutes {
-                day: None,
-                drivers: Vec::new(),
-                phones: Vec::new(),
-            });
-        }
+    let Some(live) = LiveDay::read(db, dsp)? else {
+        return Ok(TodaysRoutes {
+            day: None,
+            drivers: Vec::new(),
+            phones: Vec::new(),
+        });
     };
     let routes = today::busiest(live.reader.day(db, dsp)?.routes, today::driver);
     let holding = live.holding(db, dsp)?;

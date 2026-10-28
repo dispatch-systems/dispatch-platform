@@ -25,8 +25,8 @@ function refusing(answer: { status: number; body: unknown; requestId: string }) 
 
 test('a picture for a text the server refuses is worded as Communications words that refusal', async () => {
   globalThis.XMLHttpRequest = refusing({
-    status: 409,
-    body: { error: 'communications_texting_off' },
+    status: 415,
+    body: { error: 'communications_photo_kind' },
     requestId: 'req_1',
   }) as unknown as typeof XMLHttpRequest;
   const photo = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'door.png', {
@@ -36,7 +36,7 @@ test('a picture for a text the server refuses is worded as Communications words 
     assert.ok(error instanceof ApiError);
     assert.deepEqual(
       [error.message, error.code, error.status, error.requestId],
-      ['Texting is off for this DSP.', 'communications_texting_off', 409, 'req_1'],
+      ['Photos must be PNG, JPEG or GIF.', 'communications_photo_kind', 415, 'req_1'],
     );
     return true;
   });

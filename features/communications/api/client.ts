@@ -22,29 +22,39 @@ import type {
   GroupMessages,
   GroupPeople,
   Message,
+  PhonePairing,
+  PhonePairingStatus,
+  PhoneRow,
+  Phones,
   Profile,
   SentMessage,
   TextContacts,
   TodaysRoutes,
 } from './index.js';
 
-// Communications' endpoints, as its screens call them.
+// Communications' endpoints, as its screens and its phones' card on DSP Connections call them.
 
 /**
- * What its error codes say: its own, which only its screens make the calls that raise, so they load
- * with them; and of texting's, which Phones words, those Communications' screens say more of, as
- * sending from no phone or a picture let go of as it's written.
+ * What its error codes say, which only its screens make the calls that raise, so they load with
+ * them: the page's, and its phones' card's, including those only the phones' app meets at their
+ * own address, though each of its routes' refusals is worded.
  */
 const wording: Readonly<Record<string, string>> = {
   communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
   communications_message_not_found: 'This text is no longer here. Refresh the page.',
-  communications_texting_off: 'Texting is off for this DSP.',
   communications_no_work_phone: 'This driver has no work phone now.',
   communications_work_phone_changed: 'This driver has another work phone now.',
   communications_routes_over: "Today's routes are over.",
   communications_driver_not_found: "This driver isn't on today's routes.",
   phones_none: 'No phone is paired to send from.',
+  phones_not_found: "That phone isn't paired anymore. Refresh the page.",
+  phones_text_not_found: "That text can't be sent again.",
   phones_file_not_found: 'A picture is no longer attached. Add it again.',
+  phones_address_required: 'The DSP needs its own address first.',
+  phones_pairing_unavailable: "A code couldn't be made. Try again.",
+  phones_pairing_invalid: "That code didn't work. Make a new one.",
+  phones_removed: 'This phone was removed.',
+  phones_off: 'Communications is off for this DSP.',
   communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',
@@ -189,7 +199,7 @@ export const slackAttachments: Attachments = {
   add: adding('uploads'),
   address: (id) => `${communicationsUrl}/files/${id}`,
 };
-/** A text's, kept by the DSP's phones, as what offers texting keeps them. */
+/** A text's, kept with the texts the DSP's phones relay. */
 export const textAttachments: Attachments = {
   add: adding('texts/uploads'),
   address: (id) => `${communicationsUrl}/texts/files/${id}`,
@@ -226,3 +236,17 @@ export const messageGroup = (id: string, text: string, photos: string[] = []) =>
 /** Marks done every conversation listed under a group that waits. */
 export const markGroupDone = (id: string) =>
   api<Group>(`${communicationsUrl}/groups/${id}/done`, {});
+/** The DSP's phones, as those who manage them or all its connections see them. */
+export const phonesUrl = `${communicationsUrl}/phones`;
+/** The DSP's phones, read again every `poll` milliseconds, as they check in. */
+export const usePhones = (poll: number) => useData<Phones>(phonesUrl, poll);
+/** A new code that pairs the next phone, in place of any shown before. */
+export const newPairing = () => api<PhonePairing>(`${phonesUrl}/pairing`, {});
+/** How the code `id` stands, read again every `poll` milliseconds; nothing without one. */
+export const usePairing = (id: string | undefined, poll: number) =>
+  useData<PhonePairingStatus>(id ? `${phonesUrl}/pairing/${encodeURIComponent(id)}` : '', poll);
+export const renamePhone = (id: string, name: string) =>
+  api<PhoneRow>(`${phonesUrl}/${encodeURIComponent(id)}/rename`, { name });
+/** Removes the phone: its key works no more, and its texts stay. */
+export const removePhone = (id: string) =>
+  api<{ ok: true }>(`${phonesUrl}/${encodeURIComponent(id)}/remove`, {});

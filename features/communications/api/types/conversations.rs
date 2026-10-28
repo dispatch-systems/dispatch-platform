@@ -211,8 +211,8 @@ pub struct ConversationMessages {
     pub elsewhere: Vec<Elsewhere>,
     /// For a driver's work conversation, the route and van of each day its messages were written.
     pub workdays: Vec<Workday>,
-    /// What a message written in it may carry: none by text while nothing offers the DSP texting.
-    pub limits: Option<ComposeLimits>,
+    /// What a message written in it may carry.
+    pub limits: ComposeLimits,
 }
 
 /// What one message may carry: the most characters its text may have, how many photos, the most

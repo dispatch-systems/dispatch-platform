@@ -1,25 +1,23 @@
 import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
 import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
 
-// The seeded DSP has every feature switched on, and its owner holds every permission. Fixture
+// The seeded DSPs have every feature switched on, and their owner holds every permission. Fixture
 // mode's Slack sends the browser straight back from installing, to the first of its workspaces
 // no DSP has: Operations, where Jordan Ellis and Morgan Lane are members. These are Slack's, so
-// each starts with Northline not texting, as its demo phone would have it (texting.spec.ts).
-test.beforeEach(async ({ dispatch }) => {
+// each is at Summit Delivery, which has no phone and no texts, its Slack section chosen, as its
+// owner would have it (texting.spec.ts has Northline, which texts).
+test.beforeEach(async ({ page, dispatch }) => {
   const owner = await dispatch.client();
-  const north = (owner.session.dsps as { id: string; name: string }[]).find(
-    (dsp) => dsp.name === 'Northline Logistics',
+  const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Summit Delivery',
   )!;
-  const off = await owner.post(`/api/platform/dsps/${north.id}/features`, {
-    feature: 'phones',
-    enabled: false,
-  });
-  expect(off.status, off.body).toBe(200);
+  const chosen = `dispatch-communications-section:${summit.id}:${owner.session.user.id}`;
+  await page.addInitScript((key) => localStorage.setItem(key, 'slack'), chosen);
 });
 
 test('Communications is on from the start in a workspace just connected', async ({ page }) => {
   await login(page);
-  await openDsp(page, 'Northline Logistics');
+  await openDsp(page, 'Summit Delivery');
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('button', { name: 'Settings', exact: true })
@@ -49,7 +47,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   dispatch,
 }) => {
   await login(page);
-  await openDsp(page, 'Northline Logistics');
+  await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
   // Without Slack, connecting it takes the inbox's place, and there's no one to write to.
   await expect(
@@ -170,16 +168,16 @@ test('an owner connects Slack from Communications, answers a member as they writ
   );
 });
 
-test('Slack needing an update covers Communications alone, with no way to close it, until it is updated', async ({
+test('Slack needing an update covers its section alone, the sidebar still going elsewhere, until it is updated from there', async ({
   page,
   dispatch,
 }) => {
   // Its admin approved the app before it answered direct messages.
   const owner = await dispatch.client();
-  const north = (owner.session.dsps as { id: string; name: string }[]).find(
-    (dsp) => dsp.name === 'Northline Logistics',
+  const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Summit Delivery',
   )!;
-  await owner.select(north.id);
+  await owner.select(summit.id);
   const started = await owner.post('/api/dsp/slack/connect', { label: '' });
   const { state } = install(started.value.url);
   const earlier = 'fixture:T0FIXTURE1:team:read,users:read,users:read.email';
@@ -188,12 +186,10 @@ test('Slack needing an update covers Communications alone, with no way to close 
   );
 
   await login(page);
-  await openDsp(page, 'Northline Logistics');
+  await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
   const update = page.getByRole('dialog', { name: 'Update Slack' });
   await expect(update.getByRole('listitem')).toHaveText(/Operations/);
-  await page.keyboard.press('Escape');
-  await expect(update).toBeVisible();
   // The sidebar still goes elsewhere.
   await page.getByRole('link', { name: 'Team & Roles' }).click();
   await expect(page).toHaveURL(/\/team/);
@@ -211,10 +207,10 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
   dispatch,
 }) => {
   const owner = await dispatch.client();
-  const north = (owner.session.dsps as { id: string; name: string }[]).find(
-    (dsp) => dsp.name === 'Northline Logistics',
+  const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Summit Delivery',
   )!;
-  await owner.select(north.id);
+  await owner.select(summit.id);
   expect((await connect(owner, 'T0FIXTURE1')).status).toBe(200);
   expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
   // Jordan Ellis writes in Operations, Cameron Hayes in Drivers.
@@ -244,7 +240,7 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
     .toBe(true);
 
   await login(page);
-  await openDsp(page, 'Northline Logistics');
+  await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
   const list = page.getByRole('region', { name: 'Conversations' });
   const jordan = list.getByRole('listitem').filter({ hasText: 'Jordan Ellis' });
@@ -294,14 +290,14 @@ test('an owner messages a group from New message, its answers come back together
   dispatch,
 }) => {
   const owner = await dispatch.client();
-  const north = (owner.session.dsps as { id: string; name: string }[]).find(
-    (dsp) => dsp.name === 'Northline Logistics',
+  const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Summit Delivery',
   )!;
-  await owner.select(north.id);
+  await owner.select(summit.id);
   expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
 
   await login(page);
-  await openDsp(page, 'Northline Logistics');
+  await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
   // Message a group comes first in New message, and Enter picks it.
   await page.getByRole('button', { name: 'New message' }).click();
@@ -360,10 +356,10 @@ test('Display opens the member’s own Message display, its preview made to fit,
   dispatch,
 }) => {
   const owner = await dispatch.client();
-  const north = (owner.session.dsps as { id: string; name: string }[]).find(
-    (dsp) => dsp.name === 'Northline Logistics',
+  const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Summit Delivery',
   )!;
-  await owner.select(north.id);
+  await owner.select(summit.id);
   expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
   const written = await fromSlack(
     dispatch,
@@ -380,7 +376,7 @@ test('Display opens the member’s own Message display, its preview made to fit,
   expect(written.status).toBe(200);
 
   await login(page);
-  await openDsp(page, 'Northline Logistics');
+  await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
   await page.getByRole('button', { name: 'Display' }).click();
   await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
@@ -440,10 +436,10 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
   dispatch,
 }) => {
   const owner = await dispatch.client();
-  const north = (owner.session.dsps as { id: string; name: string }[]).find(
-    (dsp) => dsp.name === 'Northline Logistics',
+  const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Summit Delivery',
   )!;
-  await owner.select(north.id);
+  await owner.select(summit.id);
   expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
   const long =
     'The gate code at Riverside changed again this morning and the leasing office said they would text the new one, but nobody has it yet, so stops 40 through 58 may be late unless someone calls them before ten';
@@ -478,7 +474,7 @@ test('on a wide screen a bubble is as wide as chosen, plain lines stay readable,
 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await login(page);
-  await page.goto(`/#dsp/${north.id}/communications`);
+  await page.goto(`/#dsp/${summit.id}/communications`);
   const list = page.getByRole('region', { name: 'Conversations' });
   await list.getByRole('button', { name: /^Casey Rivera/ }).click();
   const casey = page.getByRole('region', { name: 'Casey Rivera' });
@@ -551,10 +547,10 @@ test.describe('on a phone', () => {
     dispatch,
   }) => {
     const owner = await dispatch.client();
-    const north = (owner.session.dsps as { id: string; name: string }[]).find(
-      (dsp) => dsp.name === 'Northline Logistics',
+    const summit = (owner.session.dsps as { id: string; name: string }[]).find(
+      (dsp) => dsp.name === 'Summit Delivery',
     )!;
-    await owner.select(north.id);
+    await owner.select(summit.id);
     expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
     const written = await fromSlack(
       dispatch,
@@ -571,7 +567,7 @@ test.describe('on a phone', () => {
     expect(written.status).toBe(200);
 
     await login(page);
-    await page.goto(`/#dsp/${north.id}/communications`);
+    await page.goto(`/#dsp/${summit.id}/communications`);
     await page.getByRole('button', { name: 'Display' }).click();
     // A phone's own, to start.
     await expect(page.getByRole('radio', { name: 'Phone' })).toBeChecked();

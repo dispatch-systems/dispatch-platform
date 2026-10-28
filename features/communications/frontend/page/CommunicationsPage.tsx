@@ -47,14 +47,15 @@ import { useTodaysRoutes } from '../todays-routes/useTodaysRoutes.js';
 import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 
 // The Communications page: the DSP's conversations, in sections: Today's Routes, the drivers on a
-// route today and their work phones, while it texts and has live route data; Messaging, the
-// numbers that text its phones, while it texts; and Slack, with the members of its Slack
-// workspaces, and the groups it messaged, while it has one. In each, those waiting on an answer
-// first, or everyone it can message, in Slack of every workspace or one; and the conversation or
-// group open beside them, or a message to a group being written, all kept up to date as they
-// change; or Today's Routes as a board across the page. A chip in the heading for each of its
-// phones offline. Those who manage the DSP's connections connect Slack here while it has neither,
-// and, while Slack shows, update it while a workspace hasn't approved what Communications uses.
+// route today and their work phones, while it has live route data; Messaging, the numbers that
+// text its phones, always, empty until a phone is paired and texted; and Slack, with the members
+// of its Slack workspaces, and the groups it messaged, while it has one. In each, those waiting on
+// an answer first, or everyone it can message, in Slack of every workspace or one; and the
+// conversation or group open beside them, or a message to a group being written, all kept up to
+// date as they change; or Today's Routes as a board across the page. A chip in the heading for
+// each of its phones offline. Those who manage the DSP's connections connect Slack here while it
+// has neither a workspace nor a phone, and, while Slack shows, update it while a workspace hasn't
+// approved what Communications uses.
 // The section shown, and Today's Routes' view, are remembered for each member, and the
 // conversation or group open is kept in the address (`?open=`, `?group=`): a link to one opens it,
 // in its section, the page open or not. It looks as the member chose in Settings' Message display,
@@ -196,7 +197,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const reaching = useAction(reach);
   const go = (target: Target) => void reaching.run(target);
 
-  const connect = manages && inbox?.workspaces.length === 0 && !inbox.texting;
+  const connect = manages && inbox?.workspaces.length === 0 && inbox.phones.length === 0;
   const listed = inbox?.conversations.find((conversation) => conversation.id === open);
   const listedGroup = inbox?.groups.find((each) => each.id === group);
   // What's pinned as the list has it, while it holds it, as each update keeps it.

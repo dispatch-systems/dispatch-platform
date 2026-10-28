@@ -1,23 +1,29 @@
 //! Reading texts: a text's picture goes only to a member whose access still stands once the phone
-//! has read it; a driver's work conversation is found by each work phone they texted on.
+//! side has read it; a driver's work conversation is found by each work phone they texted on.
 use super::*;
-use crate::backend::support::{self, at, held, hold, texted, today};
-use dispatch_core::testing;
+use crate::backend::{
+    support::{self, at, held, hold, switch, texted, today},
+    texts::reply,
+};
+use axum::body::Bytes;
+use dispatch_core::server::http::upload::Upload;
+use futures_util::stream;
 
 #[tokio::test]
-async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phone_read_it() {
-    support::install();
-    let (_root, store, dsp) = testing::bootstrapped();
-    let config = store.config.clone();
-    drop(store);
-    let state = State::new(config).unwrap();
+async fn a_texts_picture_is_refused_once_the_members_access_ended_after_they_were_let_in() {
+    let (_root, state, dsp) = support::started();
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    let photo = "file_photo";
-    assert!(file(&state, &c, support::USE, photo).await.is_ok());
+    let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"png"))]);
+    let photo = Upload::streamed(3, u64::MAX, chunks).await.unwrap();
+    let added = reply::upload(&state, &c, support::USE, "door.png", "image/png", photo)
+        .await
+        .unwrap();
+    assert!(file(&state, &c, support::USE, &added.id).await.is_ok());
 
-    // Communications goes off for the DSP as the phone reads it, and with it their permission.
-    support::off_while_reading(&dsp);
-    let refused = file(&state, &c, support::USE, photo).await.err();
+    // Communications goes off for the DSP once they were let in, and with it their permission:
+    // the phone side reads the picture, and it's refused them.
+    switch(&state, &dsp, "communications", false).await;
+    let refused = file(&state, &c, support::USE, &added.id).await.err();
     assert_eq!(
         refused.map(|error| error.code).as_deref(),
         Some("permission_denied")

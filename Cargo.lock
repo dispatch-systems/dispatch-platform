@@ -614,7 +614,6 @@ dependencies = [
  "dispatch-live-route-data",
  "dispatch-mcp",
  "dispatch-paycom",
- "dispatch-phones",
  "dispatch-routes",
  "dispatch-settings",
  "dispatch-slack",
@@ -640,19 +639,21 @@ name = "dispatch-communications"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "base64 0.23.1",
  "chrono",
  "chrono-tz",
  "dispatch-core",
- "dispatch-phones-contract",
  "dispatch-routes-contract",
  "dispatch-slack",
  "dispatch-vans-contract",
  "flate2",
  "futures-util",
+ "qrcode",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "tokio",
  "ts-rs",
 ]
@@ -918,33 +919,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "ts-rs",
-]
-
-[[package]]
-name = "dispatch-phones"
-version = "0.0.0"
-dependencies = [
- "axum",
- "base64 0.23.1",
- "dispatch-core",
- "dispatch-phones-contract",
- "futures-util",
- "qrcode",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "ts-rs",
-]
-
-[[package]]
-name = "dispatch-phones-contract"
-version = "0.0.0"
-dependencies = [
- "dispatch-core",
- "serde",
 ]
 
 [[package]]

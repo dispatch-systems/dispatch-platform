@@ -9,6 +9,13 @@ use crate::backend::{
     changes::ChangeStore,
     inbox,
     model::ConversationKind,
+    phone::{
+        self,
+        model::{Outgoing, Status},
+        outbox,
+        storage::{MOST_TEXTS, Reported},
+    },
+    storage::DOMAIN,
     support::{
         self, DRIVERS, at, filed, held, hold, route, routed, started, switch, texted, today,
     },
@@ -16,7 +23,6 @@ use crate::backend::{
 };
 use crate::{Communications, ConversationState};
 use dispatch_core::manifest::people::{Person, PersonRole};
-use dispatch_phones_contract::{Outgoing, Status};
 use std::collections::BTreeMap;
 
 /// The page's list as the member `me` reads it.
@@ -255,10 +261,10 @@ async fn a_drivers_texts_stay_theirs_as_how_one_went_changes_while_routes_is_off
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
-    support::failing(&dsp, true);
     let answer = reply::send(&state, &c, support::USE, &conversation, "Van 214", &[])
         .await
         .unwrap();
+    support::reported(&state, &dsp, &answer.id, Status::Failed).await;
 
     // Routes goes off, and the phone then says the answer went after all: still Avery's.
     switch(&state, &dsp, "driving", false).await;
@@ -373,13 +379,7 @@ async fn a_text_dispatch_sent_another_way_is_under_whoever_at_the_dsp_sent_it() 
         .auth
         .user
         .id;
-    // Sent through texting as any feature may, not through Communications' answer.
-    let at_dsp = dsp.clone();
-    let texting = state
-        .read(move |db| texting::for_dsp(db, &at_dsp))
-        .await
-        .unwrap()
-        .unwrap();
+    // Queued at the phone side, not through Communications' answer, then filed as it reads on.
     let outgoing = Outgoing {
         phone: None,
         to: "+12535550177".into(),
@@ -387,10 +387,14 @@ async fn a_text_dispatch_sent_another_way_is_under_whoever_at_the_dsp_sent_it() 
         files: Vec::new(),
         by: owner,
     };
-    let sent = texting
-        .send(&state, &dsp, outgoing, Box::new(|_| Ok(())))
+    let at_dsp = dsp.clone();
+    let sent = state
+        .run_scoped(dsp.clone(), DOMAIN, move |db| {
+            outbox::send(db, &at_dsp, &outgoing, now())
+        })
         .await
         .unwrap();
+    read_on(&state, &dsp).await.unwrap();
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let message = state
         .read(move |db| reading::message(db, &shared, &at_dsp, &sent.id))
@@ -592,28 +596,33 @@ async fn a_drivers_work_conversation_changes_as_they_take_return_or_lose_a_work_
 }
 
 #[tokio::test]
-async fn texts_that_came_while_communications_was_off_are_each_filed_once_it_reads_on() {
+async fn texts_kept_that_filing_never_heard_of_are_each_filed_once_it_reads_on() {
     let (_root, state, dsp) = started();
-    switch(&state, &dsp, "communications", false).await;
-    let mut came = Vec::new();
-    for (ago, number) in [
-        (3, "+14255550134"),
-        (2, "+14255550135"),
-        (1, "+14255550136"),
-    ] {
-        came.push(
-            texted(
-                &state,
-                &dsp,
-                number,
-                "Van 208 is ready",
-                now() - ago * 60_000,
-            )
-            .await,
-        );
-    }
-    switch(&state, &dsp, "communications", true).await;
-    // Texting gives them a page at a time, smaller than any Communications would ask for.
+    // More than a page of texts the phone side kept, as a restart between keeping them and
+    // telling filing leaves them.
+    let at_dsp = dsp.clone();
+    let came = state
+        .run(move |db| {
+            let phone = phone::phones(db, &at_dsp)?.remove(0).id;
+            let texts = (0..=MOST_TEXTS as i64)
+                .map(|n| Reported {
+                    client_id: format!("sms-{n}"),
+                    direction: phone::model::Direction::In,
+                    number: "+14255550134".into(),
+                    body: "Van 208 is ready".into(),
+                    at: now() - (n + 1) * 60_000,
+                    files: Vec::new(),
+                })
+                .collect();
+            Ok(db
+                .phones_report(&at_dsp, &phone, texts)?
+                .into_iter()
+                .map(|kept| kept.id)
+                .collect::<Vec<_>>())
+        })
+        .await
+        .unwrap();
+    // The phone side gives them a page at a time.
     read_on(&state, &dsp).await.unwrap();
     let at = dsp.clone();
     let unfiled = state

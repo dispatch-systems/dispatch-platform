@@ -30,6 +30,6 @@ elsewhere: Array<Elsewhere>,
  */
 workdays: Array<Workday>,
 /**
- * What a message written in it may carry: none by text while nothing offers the DSP texting.
+ * What a message written in it may carry.
  */
-limits: ComposeLimits | null, };
+limits: ComposeLimits, };

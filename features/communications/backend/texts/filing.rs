@@ -1,6 +1,6 @@
-//! Filing the texts the DSP's dispatch phones relay, as Phones offers them (`texting`): each in
-//! its conversation, read on from the last change filed whenever Phones says texts changed
-//! (`TextsChanged`), and every minute in case a hearing was missed or failed, or Communications
+//! Filing the texts the DSP's dispatch phones relay, as the phone side keeps them (`phone`): each
+//! in its conversation, read on from the last change filed whenever the phone side says texts
+//! changed (`told`), once it's kept them, and every minute in case that failed, or Communications
 //! came on after they came; and today's filed again every minute too, as who held the work phones
 //! may have changed unheard (`reconcile`).
 //!
@@ -28,7 +28,17 @@ use super::{
     storage::{PickStore, TextStore},
     zone,
 };
-use crate::backend::{live, model::Direction, sender, storage::DOMAIN};
+use crate::backend::{
+    live,
+    model::Direction,
+    phone::{
+        self,
+        model::{Origin, Status, Text},
+        storage::TextStore as _,
+    },
+    sender,
+    storage::DOMAIN,
+};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use dispatch_core::{
@@ -37,7 +47,6 @@ use dispatch_core::{
     foundation::{clock, observability},
     manifest::{Maintenance, Upkeep},
 };
-use dispatch_phones_contract::{self as texting, Origin, Status, Text, TextsChanged};
 use dispatch_routes_contract::{
     self as routes, DriverRoutes, LiveRouteData, WorkPhoneHold, WorkPhonesChanged,
 };
@@ -59,13 +68,12 @@ pub const MAINTENANCE: Maintenance = Maintenance {
     run: pass,
 };
 
-/// Phones says the DSP's texts changed: files them.
-pub fn heard(state: Arc<State>, dsp: String, _: TextsChanged) -> Upkeep {
-    Box::pin(async move {
-        if let Err(error) = read_on(&state, &dsp).await {
-            failed("communications_texts_failed", &error);
-        }
-    })
+/// The phone side says the DSP's texts changed, once it's kept them: files them. A failure is
+/// logged, and the minute's catch-up files them instead.
+pub async fn told(state: &Arc<State>, dsp: &str) {
+    if let Err(error) = read_on(state, dsp).await {
+        failed("communications_texts_failed", &error);
+    }
 }
 /// Routes says who held the DSP's work phones on a day changed: files that day's texts again.
 pub fn refile(state: Arc<State>, dsp: String, changed: WorkPhonesChanged) -> Upkeep {
@@ -78,20 +86,18 @@ pub fn refile(state: Arc<State>, dsp: String, changed: WorkPhonesChanged) -> Upk
 
 fn pass(state: Arc<State>, _: bool) -> Upkeep {
     Box::pin(async move {
-        let texting = state
+        let on = state
             .read(|db| {
                 let mut found = Vec::new();
                 for dsp in db.kept_dsps()? {
-                    if db.feature_enabled(&dsp, "communications")?
-                        && texting::for_dsp(db, &dsp)?.is_some()
-                    {
+                    if db.feature_enabled(&dsp, crate::FEATURE.switch.id)? {
                         found.push(dsp);
                     }
                 }
                 Ok(found)
             })
             .await;
-        match texting {
+        match on {
             Ok(dsps) => {
                 for dsp in dsps {
                     if let Err(error) = read_on(&state, &dsp).await {
@@ -111,18 +117,15 @@ fn failed(event: &'static str, error: &Error) {
     observability::event("error", event, json!({"error": error.code}));
 }
 
-/// Files the DSP's texts changed since the last filed, a page at a time while texting says more
-/// remain, and wakes the pages waiting on its conversations once any changed.
+/// Files the DSP's texts changed since the last filed, a page at a time while the phone side says
+/// more remain, and wakes the pages waiting on its conversations once any changed.
 pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
     loop {
         let at = dsp.to_owned();
         let (changed, more) = state
             .run_scoped(dsp, DOMAIN, move |db| {
-                let Some(texting) = texting::for_dsp(db, &at)? else {
-                    return Ok((false, false));
-                };
                 let after = db.communications_texts_read_to(&at)?;
-                let changes = texting.changes(db, &at, after)?;
+                let changes = db.phones_changes(&at, after)?;
                 if changes.next == after {
                     return Ok((false, false));
                 }
@@ -251,8 +254,8 @@ fn kept(text: &Text, filed: Option<Filed>, sender_name: Option<String>) -> Incom
         id: text.id.clone(),
         phone: text.phone.clone(),
         direction: match text.direction {
-            texting::Direction::In => Direction::In,
-            texting::Direction::Out => Direction::Out,
+            phone::model::Direction::In => Direction::In,
+            phone::model::Direction::Out => Direction::Out,
         },
         number: text.number.clone(),
         body: text.body.clone(),

@@ -19,16 +19,17 @@ ts = ["dep:ts-rs", "dispatch-core/ts"]
 # compiles.
 [dependencies]
 axum = { workspace = true }
+base64 = { workspace = true }
 # The DSP's days, as the live day begins at its midnight.
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 dispatch-core = { path = "../../core" }
-dispatch-phones-contract = { path = "../phones/contract" }
 dispatch-routes-contract = { path = "../routes/contract" }
 dispatch-slack = { path = "../slack" }
 dispatch-vans-contract = { path = "../vans/contract" }
 flate2 = { workspace = true }
 futures-util = { workspace = true }
+qrcode = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -39,5 +40,6 @@ ts-rs = { workspace = true, optional = true }
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
 dispatch-slack = { path = "../slack", features = ["testing"] }
+tempfile = { workspace = true }
 # A clock the tests move, through sending's pace between posts.
 tokio = { workspace = true, features = ["test-util"] }

@@ -28,11 +28,12 @@ test('a direct message reaches Communications live, and its answer and photo go 
   const f = await fixture();
   t.after(f.close);
   const owner = await f.client();
-  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-  // A DSP that doesn't text: what it counts and lists is Slack's alone.
-  const phones = { feature: 'phones', enabled: false };
-  assert.equal((await owner.post(`/api/platform/dsps/${north.id}/features`, phones)).status, 200);
-  await owner.select(north.id);
+  // A DSP with no phone and no texts: Messaging is there, empty, and what it counts and lists is
+  // Slack's alone.
+  const summit = owner.session.dsps.find((d: { name: string }) => d.name === 'Summit Delivery');
+  await owner.select(summit.id);
+  const texting = await owner.read(route);
+  assert.deepEqual([texting.texting, texting.phones, texting.conversations], [true, [], []]);
   assert.equal((await connect(owner, 'T0FIXTURE1')).status, 200);
   const write = (fields: Record<string, unknown>) => fromJordan(f, fields);
   const read = () => owner.read(route);

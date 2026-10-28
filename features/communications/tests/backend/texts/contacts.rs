@@ -1,6 +1,6 @@
 //! Texting a number first: its conversation is where a text to it written now is filed, a driver's
-//! while they hold it as a work phone, so what's sent there stays there; and what's sent as the
-//! number changes hands is answered with the conversation it went to.
+//! while they hold it as a work phone, so what's sent there stays there; and what's sent once the
+//! number changed hands is answered with the conversation it went to.
 use super::*;
 use crate::backend::{
     dispatcher,
@@ -45,12 +45,12 @@ async fn a_number_opened_to_text_first_is_where_its_texts_go_a_drivers_while_the
     );
     assert_eq!(send(&theirs, "Van 214").await.conversation.id, theirs.id);
 
-    // 0303 is nobody's: opened, it's the number's. Blake takes it as the text goes, so it's
-    // answered with Blake's conversation, where it went.
+    // 0303 is nobody's: opened, it's the number's. Blake takes it once it's open, before the text
+    // goes, so it's answered with Blake's conversation, where it went.
     let number = opened(&state, &dsp, "2065550303").await;
     assert_eq!(number.kind, ConversationKind::Number);
     let blake = hold("B2", "2065550303", now(), None);
-    support::held_while_queuing(&dsp, Some(&today), vec![avery, blake], Vec::new());
+    held(&state, &dsp, Some(&today), vec![avery, blake], Vec::new()).await;
     let went = send(&number, "Which van?").await.conversation;
     assert_eq!(
         (went.kind, went.driver_id.as_deref()),

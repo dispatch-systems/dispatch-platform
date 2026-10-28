@@ -1,10 +1,10 @@
-//! Phone numbers, each written one way as `texting` writes them (its `normal`): how one reads
-//! (`shown`); the ten digits Routes keeps a work phone by (`ten_digits`), and back
+//! Phone numbers, each written one way as the phone side writes them (`phone::numbers::normal`):
+//! how one reads (`shown`); the ten digits Routes keeps a work phone by (`ten_digits`), and back
 //! (`work_number`); and what the DSP keeps of the numbers that text it, and what its phones are
 //! called, to read its texts by (`Numbers`).
 use super::storage::ContactStore;
+use crate::backend::phone;
 use dispatch_core::{Result, db::Store};
-use dispatch_phones_contract as texting;
 use std::collections::{BTreeSet, HashMap};
 
 /// What the DSP keeps of the numbers that text it, and what its phones are called, to read its
@@ -16,14 +16,10 @@ pub struct Numbers {
 }
 impl Numbers {
     pub fn read(db: &Store, dsp: &str) -> Result<Self> {
-        let phones = match texting::for_dsp(db, dsp)? {
-            Some(texting) => texting
-                .phones(db, dsp)?
-                .into_iter()
-                .map(|phone| (phone.id, phone.name))
-                .collect(),
-            None => HashMap::new(),
-        };
+        let phones = phone::phones(db, dsp)?
+            .into_iter()
+            .map(|phone| (phone.id, phone.name))
+            .collect();
         Ok(Self {
             contacts: db.communications_contacts(dsp)?.into_iter().collect(),
             blocked: db.communications_blocked(dsp)?,
