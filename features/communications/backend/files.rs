@@ -315,7 +315,8 @@ impl FromRow for Due {
         })
     }
 }
-/// What trying to download a file came to: its bytes, beside the DSP's until it's kept.
+/// What trying to download a file came to: one kept carries its bytes, beside the DSP's until
+/// finishing keeps it.
 pub enum Outcome {
     Kept(Arrived),
     Later {
