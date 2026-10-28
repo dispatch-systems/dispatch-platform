@@ -1,9 +1,9 @@
 //! Texting's storage across its upgrades, from a database as the build before migration 9 left it:
 //! the phone side's rows of the texts, without what filing keeps on them, and a copy of each text
 //! filed (`communications_texts`) up to the last of the phone side's changes it read
-//! (`communications_texting`). Once migrations 6 and 9 run, each text reads as it did, its Done,
-//! its block and its sender's name as they were kept; and a text the copy never read is filed by
-//! the next upkeep.
+//! (`communications_texting`). Once migrations 6, 9 and 10 run, each text reads as it did, its
+//! Done, its block and its sender's name as they were kept, and the copy is gone; and a text the
+//! copy never read is filed by the next upkeep.
 use super::*;
 use crate::backend::{
     inbox,
@@ -26,7 +26,8 @@ use rusqlite::params;
 use std::sync::Arc;
 
 /// Puts the DSP's database back as the build before migration 9 left it: the phone side's texts
-/// and files as Communications' migration 7 makes them, with nothing filing keeps on them.
+/// and files as Communications' migration 7 makes them, with nothing filing keeps on them; and the
+/// copy, and how far it read, as migrations 4 and 6 make them.
 fn before_filing(db: &Store, dsp: &str) {
     let database = db.dsp(dsp).unwrap();
     database
@@ -34,7 +35,7 @@ fn before_filing(db: &Store, dsp: &str) {
         .execute_batch("DROP TABLE phones_files; DROP TABLE phones_texts;")
         .unwrap();
     drop(database);
-    migrate(db, dsp, &[7]);
+    migrate(db, dsp, &[4, 6, 7]);
 }
 /// The text a phone reported from `number` at `at`, saying `body`, with `pictures` pictures whose
 /// bytes haven't come: its ID, and its pictures'.
@@ -115,8 +116,8 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
     let (zone, day) = today(&state, &dsp).await;
     // From 0101, no work phone yet, texts at 6:00 and 6:30, then one at 7:30, filed under its
     // number in the copy; that conversation was marked done at 7:00 as Done was kept before
-    // migration 6, on the conversation alone. Migrations 6 and 9 then run over it, as an upgrade
-    // does.
+    // migration 6, on the conversation alone. Migrations 6, 9 and 10 then run over it, as an
+    // upgrade does.
     let (at_dsp, done_at) = (dsp.clone(), at(zone, day, 7, 0));
     let texts = state
         .run(move |db| {
@@ -140,7 +141,7 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
                 params![done_at, conversation],
             )?;
             drop(database);
-            migrate(db, &at_dsp, &[6, 9]);
+            migrate(db, &at_dsp, &[6, 9, 10]);
             Ok(texts)
         })
         .await
@@ -240,11 +241,25 @@ async fn texts_filed_before_migration_9_read_as_they_did_their_done_block_and_se
             )?;
             read_to_now(&database);
             drop(database);
-            migrate(db, &at_dsp, &[9]);
+            migrate(db, &at_dsp, &[9, 10]);
             Ok((asked.id, answer, done.id, spam))
         })
         .await
         .unwrap();
+
+    // The copy, and how far it read, are gone.
+    let at_dsp = dsp.clone();
+    let left: Vec<(String,)> = state
+        .read(move |db| {
+            db.dsp(&at_dsp)?.query_as(
+                "SELECT name FROM sqlite_master \
+                 WHERE name IN ('communications_texts','communications_texting')",
+                [],
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(left, Vec::<(String,)>::new());
 
     // The answer reads under the name its sender had as it was filed, still waiting for the
     // phone, which still has it to send; in Lakeside's conversation, with the question.
@@ -346,7 +361,7 @@ async fn texts_the_copy_never_read_before_migration_9_are_filed_by_the_next_upke
             };
             db.phones_status(&at_dsp, &phone, &report)?;
             let unread = reported(db, &at_dsp, "+14255550177", "Is this dispatch?", now(), 0);
-            migrate(db, &at_dsp, &[9]);
+            migrate(db, &at_dsp, &[9, 10]);
             Ok((
                 pictured.id,
                 pictured.files[0].clone(),

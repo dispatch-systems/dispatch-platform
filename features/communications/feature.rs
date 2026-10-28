@@ -62,11 +62,6 @@ pub const FEATURE: Feature = Feature {
             "communications_deliveries",
             "communications_group_uploads",
             "communications_text_conversations",
-            // Each text filed, a copy of the phone side's, and how far it had read the phone
-            // side's changes: read and written by nothing since migration 9, which files each
-            // text on its own row (`phones_texts`); left as they were, not dropped.
-            "communications_texts",
-            "communications_texting",
             "communications_contacts",
             "communications_blocked",
             "communications_picked",
@@ -131,6 +126,15 @@ pub const FEATURE: Feature = Feature {
                 id: 9,
                 name: "phones_texts_filed",
                 apply: Code(backend::texts::storage::add_filing),
+            },
+            // The copy of each text filed that migration 9 took the filing from, and how far it
+            // had read, dropped.
+            Migration {
+                id: 10,
+                name: "communications_texts_dropped",
+                apply: Sql(include_str!(
+                    "migrations/dsp/0010_communications_texts_dropped.sql"
+                )),
             },
         ],
     }],

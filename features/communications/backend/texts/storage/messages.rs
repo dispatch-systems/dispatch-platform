@@ -587,8 +587,8 @@ pub(crate) fn add_text_done(db: &Db) -> Result<()> {
 /// `done_by`), each copied as `communications_texts` kept it, never worked out again. A text that
 /// copy never had, as one changed after the copy last read the phone side, waits to be filed,
 /// which the next upkeep does; a conversation whose texts changed after that read is settled from
-/// them as they are. The copy, and how far it read (`communications_texting`), stay as they were,
-/// read by nothing. Each step is taken only if it wasn't.
+/// them as they are. Migration 10 then drops the copy, and how far it read
+/// (`communications_texting`). Each step is taken only if it wasn't.
 pub(crate) fn add_filing(db: &Db) -> Result<()> {
     add_column(
         db,
