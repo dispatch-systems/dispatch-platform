@@ -149,9 +149,9 @@ stay; the next day's drivers fill it as its live reads start.
 - **Fresh:** read when it shows, again every minute while the page is in view
   (`ROUTES_READ_MS`), as live reads say nothing as they come, at once when an update changes a
   work conversation, and as the page comes back into view or the browser back online, a read that
-  failed tried again, as the dashboard's reads are. Loading until it's first read, never No routes
-  before then; a read that fails says why in Today's Routes, the list or the board, and nowhere
-  else.
+  failed tried again, as the dashboard's reads are. Until a read answers, loading, or offline or
+  paused, as the dashboard's pages say it, never No routes; a read that fails says why in Today's
+  Routes, the list or the board, and nowhere else.
 - **A driver's conversation:** under its head, their route code, van and the work phone they hold
   now, and how long it has waited; chips to their conversation of each kind, Work (by the work
   phone they hold), Messaging (by their own number) and Slack, each marked with a dot while it
@@ -168,9 +168,9 @@ stay; the next day's drivers fill it as its live reads start.
   back to Pick driver.
 - **The profile** of a driver, from their name or photo: the ways to reach them, as the chips;
   Today: route, van, wave, stops with their bar, pace, and the work phone with since when, as the
-  conversation's head shows them, one source for both: Today's Routes' latest read of the driver
-  while it shows, else the conversation's own, each kept up as the page's are, and none once
-  Today's Routes says the day is over; Contact: their phone number, email address and Slack
+  conversation's head shows them, one source for both: Today's Routes' read of the driver while it
+  shows and its read answers the latest change, else the conversation's own, as an older read of
+  Today's Routes may hold a phone since withdrawn; none once Today's Routes says the day is over; Contact: their phone number, email address and Slack
   workspace.
 
 ## Elsewhere
