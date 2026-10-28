@@ -108,11 +108,12 @@ pub fn shown(
     }
 }
 
-/// The route `person` drives today, and the work phone they have now, if anything knows either.
+/// The route `person` drives today, and the work phone they have now, if anything knows either:
+/// by every one of their IDs while live route data holds today, so the phone is the one their Work
+/// chip goes to (`LiveDay::phone_of`).
 pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
     if let Some(live) = LiveDay::read(db, dsp)? {
-        let ids = ids(person.ids_of(live.reader.source()));
-        return of_drivers(db, dsp, &live, &ids);
+        return of_drivers(db, dsp, &live, person.ids_of(live.reader.source()));
     }
     let Some(reader) = routes::for_dsp(db, dsp)? else {
         return Ok(None);

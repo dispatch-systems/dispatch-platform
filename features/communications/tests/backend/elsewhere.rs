@@ -1,6 +1,6 @@
 //! A person's conversations of each kind: their work one follows the ID with a work phone now,
 //! whichever of their IDs their earlier texts were under; of IDs with one, however many, the one
-//! on the busiest route today.
+//! on the busiest route today, whose route and phone their profile shows.
 use super::*;
 use crate::backend::support::{
     self, DRIVERS, at, phoned, phones, route, routed, saved, texted, today,
@@ -128,5 +128,23 @@ async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person
     assert_eq!(
         (work.driver_id.as_deref(), work.number.as_deref()),
         (Some(last.as_str()), Some(phone.as_str()))
+    );
+}
+
+#[tokio::test]
+async fn the_profile_shows_the_route_and_work_phone_of_the_id_the_work_chip_goes_to() {
+    let (_root, state, dsp) = support::started();
+    let (avery, _, phone) = many_ids(&state, &dsp).await;
+
+    let at_dsp = dsp.clone();
+    let shown = state
+        .read(move |db| crate::backend::today::of(db, &at_dsp, &avery))
+        .await
+        .unwrap()
+        .unwrap();
+    let route = format!("CX{:02}", dispatch_routes_contract::MOST_IDS);
+    assert_eq!(
+        (shown.route.as_deref(), shown.phone.as_deref()),
+        (Some(route.as_str()), Some(phone.as_str()))
     );
 }
