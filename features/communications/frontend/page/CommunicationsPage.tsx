@@ -104,7 +104,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const todays = useTodaysRoutes(section === 'routes', changed, inbox);
   const routeList = useMemo(
     () =>
-      todays.read && inbox ? routeGroups(routeRows(todays.read.routes, inbox.conversations)) : [],
+      todays.read && inbox ? routeGroups(routeRows(todays.read.value, inbox.conversations)) : [],
     [todays.read, inbox],
   );
   // Slack sends those who connected or updated it from here back here, to finish.
@@ -245,7 +245,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // Today's Routes as the page reads it, which its list and its board show.
   const routes: RoutesShown = {
     groups: routeList,
-    read: { routes: todays.read?.routes, error: todays.error, retry: todays.refresh },
+    read: { routes: todays.read?.value, error: todays.error, retry: todays.refresh },
     choose: (row) => go(rowTarget(row)),
     driver: current?.driverId,
     view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,

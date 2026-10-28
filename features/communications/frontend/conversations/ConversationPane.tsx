@@ -110,7 +110,13 @@ export function ConversationPane({
   };
   const shown: Open | undefined = conversation && {
     conversation,
-    today: conversation.driverId ? driverToday(conversation.driverId, opened?.today, todays) : null,
+    today: conversation.driverId
+      ? driverToday(
+          conversation.driverId,
+          opened && { value: opened.today, at: opened.readAt },
+          todays,
+        )
+      : null,
     // With several workspaces to tell apart, the one it's in.
     where:
       working.length > 1
@@ -118,7 +124,7 @@ export function ConversationPane({
         : undefined,
     working,
     texting,
-    drivers: todays?.routes.drivers ?? [],
+    drivers: todays?.value.drivers ?? [],
     timeZone,
     show,
     follow,

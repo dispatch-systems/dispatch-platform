@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Communications, TodaysRoutes } from '../../api/index.js';
+import type { Communications } from '../../api/index.js';
 import { getTodaysRoutes, todaysRoutesUrl } from '../../api/client.js';
 import { useData } from '../../../../core/shell/frontend/runtime/api.js';
 import type { Changed } from '../inbox/useInbox.js';
@@ -14,8 +14,8 @@ import type { TodaysRead } from './todays-routes.js';
 /** How often Today's Routes is read again while it shows, for its drivers' progress. */
 export const ROUTES_READ_MS = 60_000;
 
-/** Today's Routes while `shown`, once read, and whether that read answers the latest change; why
- * the latest read failed, if it did; and reading it again. */
+/** Today's Routes while `shown`, as it last answered and when; why the latest read failed, if it
+ * did; and reading it again. */
 export function useTodaysRoutes(shown: boolean, changed: Changed, inbox?: Communications) {
   // An update changing a work conversation, or a fresh read of the list, reads it again.
   const [generation, setGeneration] = useState(0);
@@ -29,17 +29,20 @@ export function useTodaysRoutes(shown: boolean, changed: Changed, inbox?: Commun
       ids.some((id) => inbox?.conversations.some((each) => each.id === id && each.kind === 'work'));
     if (work) setGeneration((n) => n + 1);
   }, [changed, inbox]);
-  const load = useCallback((signal: AbortSignal) => getTodaysRoutes(signal), []);
-  const key = String(generation);
-  const { data, error, refresh, validatedKey } = useData<TodaysRoutes>(
+  const load = useCallback(
+    async (signal: AbortSignal): Promise<TodaysRead> => ({
+      value: await getTodaysRoutes(signal),
+      at: performance.now(),
+    }),
+    [],
+  );
+  const { data, error, refresh } = useData<TodaysRead>(
     shown ? todaysRoutesUrl : '',
     ROUTES_READ_MS,
-    key,
+    String(generation),
     undefined,
     false,
     load,
   );
-  const read: TodaysRead | undefined =
-    shown && data ? { routes: data, current: validatedKey === key } : undefined;
-  return { read, error, refresh };
+  return { read: shown ? data : undefined, error, refresh };
 }

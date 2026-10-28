@@ -72,23 +72,26 @@ export function routeGroups(rows: readonly RouteRow[]): RouteGroup[] {
   ].filter((group) => group.rows.length > 0);
 }
 
-/** Today's Routes as the page last read it, and whether that read answers the latest change: one
- * still to answer it, or that failed, leaves the read before, which is older. */
-export type TodaysRead = { routes: TodaysRoutes; current: boolean };
+/** A read as the page holds it: what it answered, and when it did, by the page's own clock
+ * (`performance.now()`), so two reads can be told apart by which answered last. */
+export type Answered<T> = { value: T; at: number };
+/** Today's Routes as the page last read it. */
+export type TodaysRead = Answered<TodaysRoutes>;
 
 /**
  * A driver's route today and the work phone they hold now, one source for all that shows them:
- * Today's Routes' read of them (`todays`), as it's read every minute while it shows, while that
- * read answers the latest change; none once it says the day is over; else what their
- * conversation's read said (`read`), as an older read of Today's Routes may hold a phone since
- * withdrawn.
+ * whichever of two reads answered last, Today's Routes' (`todays`), as it's read every minute
+ * while it shows, or their conversation's (`read`), as each change to it is. Today's Routes'
+ * says none once the day is over, and the conversation's own stands for a driver it doesn't list.
+ * A read failing, or another driver's change, leaves each as it last answered.
  */
 export function driverToday(
   driverId: string | null,
-  read: Today | null | undefined,
+  read: Answered<Today | null> | undefined,
   todays: TodaysRead | undefined,
 ): Today | null {
-  if (!todays?.current) return read ?? null;
-  if (todays.routes.day === null) return null;
-  return todays.routes.drivers.find((each) => each.driverId === driverId)?.today ?? read ?? null;
+  const own = read?.value ?? null;
+  if (!todays || (read && read.at > todays.at)) return own;
+  if (todays.value.day === null) return null;
+  return todays.value.drivers.find((each) => each.driverId === driverId)?.today ?? own;
 }

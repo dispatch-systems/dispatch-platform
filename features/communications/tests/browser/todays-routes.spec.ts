@@ -100,6 +100,16 @@ async function reading(dispatch: Dispatch, hours: number) {
   return {
     page: `/#dsp/${north.id}/communications`,
     end: () => window('00:00', timeAt(hours)),
+    /** Texts one of today's drivers, as someone at the DSP does. */
+    text: async (driverId: string, text: string) => {
+      const opened = await owner.post('/api/dsp/communications/texts/conversations', { driverId });
+      expect(opened.status, opened.body).toBe(200);
+      const sent = await owner.post(
+        `/api/dsp/communications/conversations/${opened.value.id}/messages`,
+        { text, photos: [] },
+      );
+      expect(sent.status, sent.body).toBe(201);
+    },
   };
 }
 
@@ -206,4 +216,44 @@ test('a driver’s work conversation keeps what’s being written while they hol
   await expect
     .poll(() => box.evaluate((field) => field.getBoundingClientRect().height))
     .toBe(height);
+});
+
+test('a driver’s progress stays as it was last read, though another driver’s change finds Today’s Routes unreadable', async ({
+  page,
+  dispatch,
+}) => {
+  const northline = await reading(dispatch, underWay());
+  await login(page);
+  await page.goto(northline.page);
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await list.getByRole('button', { name: /Fixture Driver/ }).click();
+  const conversation = page.getByRole('region', { name: 'Fixture Driver' });
+  await conversation.getByRole('button', { name: /^Fixture Driver/ }).click();
+  const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
+  // As their conversation was read as it opened: the fixture's two stops, both done.
+  await expect(profile.getByText('2/2')).toBeVisible();
+
+  // Today's Routes read after it, as the page comes back into view, has them further on.
+  const routesRead = '**/api/dsp/communications/routes';
+  await page.route(routesRead, async (route) => {
+    const response = await route.fetch();
+    const read = await response.json();
+    const further = { stops: 168, stopsDone: 98, pace: null };
+    read.drivers = read.drivers.map((each: { driverId: string; today: object }) =>
+      each.driverId === 'driver-1' ? { ...each, today: { ...each.today, ...further } } : each,
+    );
+    await route.fulfill({ response, json: read });
+  });
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(profile.getByText('98/168')).toBeVisible();
+
+  // Second Driver is texted, which reads Today's Routes again, and that read fails: Fixture
+  // Driver's conversation, not read again and so older, doesn't take their progress back.
+  await page.unroute(routesRead);
+  await page.route(routesRead, (route) =>
+    route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
+  );
+  await northline.text('driver-2', 'Running 20 late');
+  await expect(list.getByRole('alert')).toHaveText('Something went wrong.');
+  await expect(profile.getByText('98/168')).toBeVisible();
 });
