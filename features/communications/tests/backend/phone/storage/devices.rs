@@ -78,21 +78,16 @@ fn a_phone_removed_fails_the_texts_still_waiting_on_it() {
         error: None,
     };
     assert!(db.phones_status(&dsp, &phone.id, &report).unwrap());
-    let read = db.phones_changes(&dsp, 0).unwrap().next;
-    db.phones_remove(&dsp, &phone.id, 5_000).unwrap();
-    // The one waiting fails, a change its readers find; the one sent stays sent.
-    let changed = db.phones_changes(&dsp, read).unwrap();
-    let failed: Vec<_> = changed
-        .texts
-        .iter()
-        .map(|text| (text.id.as_str(), text.status, text.error.as_deref()))
-        .collect();
+    let (_, failed) = db.phones_remove(&dsp, &phone.id, 5_000).unwrap();
+    // The one waiting fails, which removing it answers, for filing; the one sent stays sent.
+    assert_eq!(failed, std::slice::from_ref(&waiting.id));
+    let now = |id: &str| {
+        let text = db.phones_text(&dsp, id).unwrap().unwrap();
+        (text.status, text.error)
+    };
     assert_eq!(
-        failed,
-        [(
-            waiting.id.as_str(),
-            Some(Status::Failed),
-            Some(PHONE_REMOVED)
-        )]
+        now(&waiting.id),
+        (Some(Status::Failed), Some(PHONE_REMOVED.to_owned()))
     );
+    assert_eq!(now(&sent.id), (Some(Status::Sent), None));
 }

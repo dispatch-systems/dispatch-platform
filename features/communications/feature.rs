@@ -62,6 +62,9 @@ pub const FEATURE: Feature = Feature {
             "communications_deliveries",
             "communications_group_uploads",
             "communications_text_conversations",
+            // Each text filed, a copy of the phone side's, and how far it had read the phone
+            // side's changes: read and written by nothing since migration 9, which files each
+            // text on its own row (`phones_texts`); left as they were, not dropped.
             "communications_texts",
             "communications_texting",
             "communications_contacts",
@@ -123,14 +126,20 @@ pub const FEATURE: Feature = Feature {
                 name: "phones_pairing_ids",
                 apply: Code(backend::phone::storage::add_pairing_ids),
             },
+            // Each text filed on the phone side's row of it, as its copy had it filed.
+            Migration {
+                id: 9,
+                name: "phones_texts_filed",
+                apply: Code(backend::texts::storage::add_filing),
+            },
         ],
     }],
     // Its dispatch phones are the DSP's own, managed on DSP Connections.
     dsp_connection: true,
     // Catching up on what Dispatch didn't hear of, hourly and as the server starts; downloading
-    // what members attach, sending what's due to go to groups' people, filing texts it didn't
-    // hear of, and filing today's again where they belong now, every minute; and letting go of
-    // the phones' pictures never sent and codes expired, hourly.
+    // what members attach, sending what's due to go to groups' people, filing texts waiting to be
+    // filed, and filing today's again where they belong now, every minute; and letting go of the
+    // phones' pictures never sent and codes expired, hourly.
     maintenance: &[
         integrations::messages::catch_up::MAINTENANCE,
         backend::files::MAINTENANCE,

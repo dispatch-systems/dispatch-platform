@@ -3,7 +3,6 @@
 use super::access::Phone;
 use crate::backend::{
     phone::{files, storage::FileStore},
-    storage::DOMAIN,
     texts::filing,
 };
 use dispatch_core::{
@@ -17,7 +16,7 @@ use dispatch_core::{
 };
 use std::sync::Arc;
 
-/// Keeps the bytes of a file of a text the phone reported.
+/// Keeps the bytes of a file of a text the phone reported, which filing hears of.
 pub(super) async fn file_in(
     state: Arc<State>,
     input: Input,
@@ -29,13 +28,12 @@ pub(super) async fn file_in(
     let caller = state.read(move |db| access.authorize(db, &asked)).await?;
     let arrived = files::receive(&state, &caller.dsp, bytes).await?;
     let (asked, id) = (input.clone(), input.param("id").to_owned());
-    state
-        .run_scoped(caller.dsp.clone(), DOMAIN, move |db| {
-            let caller = access.authorize(db, &asked)?;
-            files::keep_reported(db, &caller.dsp, &caller.device.id, &id, &arrived)
-        })
-        .await?;
-    filing::told(&state, &caller.dsp).await;
+    filing::changing(&state, &caller.dsp, move |db| {
+        let caller = access.authorize(db, &asked)?;
+        let text = files::keep_reported(db, &caller.dsp, &caller.device.id, &id, &arrived)?;
+        Ok(((), vec![text]))
+    })
+    .await?;
     Ok(Reply::ok())
 }
 /// The bytes of a picture of a text Dispatch has for the phone to send: asked again, once the

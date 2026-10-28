@@ -3,7 +3,7 @@
 //! phone it is the day each was written, today's or a saved day's, and a day's again as its route
 //! data changes, both ways, while Routes can read the day, and only then: never as how one went
 //! changes, nor while Routes is off; a blocked number's out of the list, never waiting on what it
-//! sent while blocked.
+//! sent while blocked. A text that can't be filed as it comes is kept, and filed by the next upkeep.
 use super::*;
 use crate::backend::{
     changes::ChangeStore,
@@ -13,12 +13,12 @@ use crate::backend::{
         self,
         model::{Outgoing, Status},
         outbox,
-        storage::{MOST_TEXTS, Reported},
+        storage::{MOST_TEXTS, Reported, TextStore as _},
     },
     storage::DOMAIN,
     support::{
-        self, DRIVERS, at, filed, phoned, phones, route, routed, saved, started, switch, texted,
-        today,
+        self, DRIVERS, at, failing, filed, phoned, phones, route, routed, saved, started, switch,
+        texted, today,
     },
     texts::{contacts, reading, reply, storage::TextStore},
 };
@@ -379,14 +379,14 @@ async fn a_text_marked_done_stays_done_filed_under_a_driver_whose_own_still_wait
 }
 
 #[tokio::test]
-async fn a_text_dispatch_sent_another_way_is_under_whoever_at_the_dsp_sent_it() {
+async fn a_text_dispatch_sent_filed_by_the_upkeep_is_under_whoever_at_the_dsp_sent_it() {
     let (_root, state, dsp) = started();
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test")
         .await
         .auth
         .user
         .id;
-    // Queued at the phone side, not through Communications' answer, then filed as it reads on.
+    // Queued at the phone side alone, waiting to be filed, then filed by the upkeep.
     let outgoing = Outgoing {
         phone: None,
         to: "+12535550177".into(),
@@ -401,7 +401,7 @@ async fn a_text_dispatch_sent_another_way_is_under_whoever_at_the_dsp_sent_it() 
         })
         .await
         .unwrap();
-    read_on(&state, &dsp).await.unwrap();
+    unfiled(&state, &dsp).await.unwrap();
     let (shared, at_dsp) = (state.clone(), dsp.clone());
     let message = state
         .read(move |db| reading::message(db, &shared, &at_dsp, &sent.id))
@@ -621,10 +621,10 @@ async fn a_drivers_work_conversation_changes_as_their_work_phone_changes_with_no
 }
 
 #[tokio::test]
-async fn texts_kept_that_filing_never_heard_of_are_each_filed_once_it_reads_on() {
+async fn texts_waiting_to_be_filed_are_each_filed_however_many_wait() {
     let (_root, state, dsp) = started();
-    // More than a page of texts the phone side kept, as a restart between keeping them and
-    // telling filing leaves them.
+    // More than a page of texts the phone side kept that wait to be filed, as an upgrade finds
+    // those the old copy never read.
     let at_dsp = dsp.clone();
     let came = state
         .run(move |db| {
@@ -647,20 +647,56 @@ async fn texts_kept_that_filing_never_heard_of_are_each_filed_once_it_reads_on()
         })
         .await
         .unwrap();
-    // The phone side gives them a page at a time.
-    read_on(&state, &dsp).await.unwrap();
-    let at = dsp.clone();
-    let unfiled = state
+    // Filed a page at a time: each still kept, and in a conversation.
+    unfiled(&state, &dsp).await.unwrap();
+    let (at, asked) = (dsp.clone(), came.clone());
+    let read = state
         .read(move |db| {
-            let mut unfiled = Vec::new();
-            for id in came {
-                if db.communications_text(&at, &id)?.is_none() {
-                    unfiled.push(id);
-                }
+            let mut read = Vec::new();
+            for id in &asked {
+                read.extend(db.communications_text(&at, id)?);
             }
-            Ok(unfiled)
+            Ok(read)
         })
         .await
         .unwrap();
-    assert!(unfiled.is_empty(), "read on while more remain: {unfiled:?}");
+    let kept: Vec<&String> = read.iter().map(|text| &text.id).collect();
+    assert_eq!(kept, came.iter().collect::<Vec<_>>(), "each still kept");
+    let unfiled: Vec<&str> = read
+        .iter()
+        .filter(|text| text.conversation.is_none())
+        .map(|text| text.id.as_str())
+        .collect();
+    assert!(
+        unfiled.is_empty(),
+        "filed on while more remain: {unfiled:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_text_that_cant_be_filed_as_it_comes_is_kept_waiting_and_the_next_upkeep_files_it() {
+    let (_root, state, dsp) = started();
+    let (zone, day) = today(&state, &dsp).await;
+    let yesterday = day.pred_opt().unwrap();
+    // Yesterday was saved with Avery's phone 0101; then reading a day's phones fails.
+    let avery = saved(yesterday, &[("avery", "2065550101")]);
+    phoned(&state, &dsp, None, Vec::new(), vec![avery]).await;
+    failing(&dsp, true);
+
+    // A text of yesterday's, relayed late, is kept: the phone hears it was, though it's filed
+    // nowhere yet.
+    let written = at(zone, yesterday, 16, 0);
+    let late = texted(&state, &dsp, "+12065550101", "Back at the station", written).await;
+    let (at_dsp, id) = (dsp.clone(), late.clone());
+    let kept = state
+        .read(move |db| db.communications_text(&at_dsp, &id))
+        .await
+        .unwrap()
+        .expect("kept");
+    assert_eq!(kept.conversation, None);
+
+    // Once the day can be read, the next upkeep files it under Avery.
+    failing(&dsp, false);
+    (MAINTENANCE.run)(state.clone(), false).await;
+    assert_eq!(filed(&state, &dsp, &late).await.driver, driver("avery"));
 }

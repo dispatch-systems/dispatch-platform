@@ -8,7 +8,6 @@ use crate::backend::{
         numbers::{NUMBER_MOST, normal},
         storage::{Kept, MOST_TEXTS, Reported, ReportedFile, TextStore},
     },
-    storage::DOMAIN,
     texts::filing,
 };
 use dispatch_core::{
@@ -43,7 +42,7 @@ struct Report {
     files: Vec<String>,
 }
 /// Keeps the texts the phone reports: those it received, and those sent from its own messaging
-/// app, each once.
+/// app, each once, and files those new.
 pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.body, &["texts"])?;
     let reported = input.body["texts"]
@@ -54,14 +53,18 @@ pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Res
         .map(reported)
         .collect::<Result<Vec<_>>>()?;
     let caller = checked_in(&state, &input, access).await?;
-    let (asked, dsp) = (input.clone(), caller.dsp.clone());
-    let kept = state
-        .run_scoped(caller.dsp, DOMAIN, move |db| {
-            let caller = access.authorize(db, &asked)?;
-            db.phones_report(&caller.dsp, &caller.device.id, reported)
-        })
-        .await?;
-    filing::told(&state, &dsp).await;
+    let asked = input.clone();
+    let kept = filing::changing(&state, &caller.dsp, move |db| {
+        let caller = access.authorize(db, &asked)?;
+        let kept = db.phones_report(&caller.dsp, &caller.device.id, reported)?;
+        let new: Vec<String> = kept
+            .iter()
+            .filter(|kept| kept.new)
+            .map(|kept| kept.id.clone())
+            .collect();
+        Ok((kept, new))
+    })
+    .await?;
     Reply::of(&Reports {
         texts: kept
             .into_iter()
@@ -70,6 +73,7 @@ pub(super) async fn texts(state: Arc<State>, input: Input, access: Phone) -> Res
                      client_id,
                      id,
                      files,
+                     ..
                  }| Report {
                     client_id,
                     id,

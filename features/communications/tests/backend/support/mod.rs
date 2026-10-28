@@ -4,10 +4,11 @@
 //! (`directory`, always), their routes and each saved day's work phones (`routes`, `driver_routes`
 //! while `driving` is on), today's as read live (`live`, `live_route_data` while `live` is on) and
 //! the DSP's vans (`fleet`, `amazon_fleet` while `fleet` is on). Each answers what a test says of
-//! its DSP, with `know`, `phoned` and `routed`, and nothing else. A test starts with a platform with one
-//! DSP, every feature on for it, and its dispatch phone paired (`phone`), which `texted` and
-//! `reported` speak for; or with one of its fixture workspaces connected too, its members read:
-//! the workspace's admin has approved all the app asks for.
+//! its DSP, with `know`, `phoned` and `routed`, and nothing else; Routes' fails to read a day while
+//! a test says it does (`failing`). A test starts with a platform with one DSP, every feature on
+//! for it, and its dispatch phone paired (`phone`), which `texted` and `reported` speak for; or
+//! with one of its fixture workspaces connected too, its members read: the workspace's admin has
+//! approved all the app asks for.
 mod directory;
 mod fleet;
 mod live;
@@ -16,6 +17,7 @@ mod routes;
 
 pub use live::{read_live, routed};
 pub use phone::{reported, sent, texted};
+pub use routes::failing;
 
 use crate::api::types::Message;
 use crate::backend::{
@@ -29,7 +31,11 @@ use chrono_tz::Tz;
 use dispatch_core::{
     State,
     accounts::{Context, SessionLifetime},
-    db::now,
+    db::{
+        Store,
+        migrations::{Apply, Migration},
+        now,
+    },
     foundation::{clock, config::Site},
     manifest::{
         events,
@@ -95,8 +101,9 @@ pub async fn filed(state: &Arc<State>, dsp: &str, id: &str) -> TextConversation 
     state
         .read(move |db| {
             let text = db.communications_text(&dsp, &id)?.unwrap();
+            let conversation = text.conversation.expect("filed");
             Ok(db
-                .communications_text_conversation(&dsp, &text.conversation)?
+                .communications_text_conversation(&dsp, &conversation)?
                 .unwrap())
         })
         .await
@@ -155,6 +162,22 @@ pub fn van(vin: &str, name: &str) -> Van {
     }
 }
 
+/// Runs Communications' migrations `ids` over the DSP's database, as its manifest declares them,
+/// as the runner runs those a database hasn't recorded: a server starting on a newer build.
+pub fn migrate(db: &Store, dsp: &str, ids: &[u32]) {
+    let database = db.dsp(dsp).unwrap();
+    for id in ids {
+        let declared: &Migration = crate::FEATURE.own_migrations[0]
+            .list
+            .iter()
+            .find(|migration| migration.id == *id)
+            .unwrap();
+        match declared.apply {
+            Apply::Sql(sql) => database.0.execute_batch(sql).unwrap(),
+            Apply::Code(code) => code(&database).unwrap(),
+        }
+    }
+}
 /// Installs Slack, Communications and the stand-ins.
 pub fn install() {
     testing::install(

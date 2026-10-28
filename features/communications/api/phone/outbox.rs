@@ -6,7 +6,6 @@ use crate::backend::{
         model::{ID_MOST, Status, Text},
         storage::{MOST_TEXTS, StatusReport, TextStore},
     },
-    storage::DOMAIN,
     texts::filing,
 };
 use dispatch_core::{
@@ -97,7 +96,7 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
     }
 }
 
-/// Notes how the texts Dispatch had for the phone went.
+/// Notes how the texts Dispatch had for the phone went, and files those that moved.
 pub(super) async fn statuses(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
     v::fields(&input.body, &["statuses"])?;
     let statuses = input.body["statuses"]
@@ -108,20 +107,18 @@ pub(super) async fn statuses(state: Arc<State>, input: Input, access: Phone) -> 
         .map(reported)
         .collect::<Result<Vec<_>>>()?;
     let caller = checked_in(&state, &input, access).await?;
-    let (asked, dsp) = (input.clone(), caller.dsp.clone());
-    let moved = state
-        .run_scoped(caller.dsp, DOMAIN, move |db| {
-            let caller = access.authorize(db, &asked)?;
-            let mut moved = false;
-            for report in &statuses {
-                moved |= db.phones_status(&caller.dsp, &caller.device.id, report)?;
+    let asked = input.clone();
+    filing::changing(&state, &caller.dsp, move |db| {
+        let caller = access.authorize(db, &asked)?;
+        let mut moved = Vec::new();
+        for report in statuses {
+            if db.phones_status(&caller.dsp, &caller.device.id, &report)? {
+                moved.push(report.id);
             }
-            Ok(moved)
-        })
-        .await?;
-    if moved {
-        filing::told(&state, &dsp).await;
-    }
+        }
+        Ok(((), moved))
+    })
+    .await?;
     Ok(Reply::ok())
 }
 /// How one attempt went, as the phone reports it.

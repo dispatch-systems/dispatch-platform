@@ -97,8 +97,8 @@ pub trait DeviceStore {
     fn phones_seen(&self, dsp: &str, device: &str, at: i64) -> Result<()>;
     fn phones_rename(&self, dsp: &str, id: &str, name: &str) -> Result<Device>;
     /// Removes the phone: its key works no more, and the texts still waiting on it fail, as no
-    /// phone would send them.
-    fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<Device>;
+    /// phone would send them. The phone as it was, and the texts that failed.
+    fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<(Device, Vec<String>)>;
     /// Keeps the code that pairs the next phone, replacing any not used yet: its ID.
     fn phones_new_pairing(&self, dsp: &str, by: &str, code_sha256: &str, at: i64)
     -> Result<String>;
@@ -173,19 +173,19 @@ impl DeviceStore for Store {
         self.phones_device(dsp, id)?
             .ok_or_else(|| Error::new("phones_not_found", 404))
     }
-    fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<Device> {
+    fn phones_remove(&self, dsp: &str, id: &str, at: i64) -> Result<(Device, Vec<String>)> {
         let device = self
             .phones_device(dsp, id)?
             .ok_or_else(|| Error::new("phones_not_found", 404))?;
         let db = self.dsp(dsp)?;
-        db.transaction(|| {
+        let failed = db.transaction(|| {
             db.exec(
                 "UPDATE phones_devices SET removed_at=? WHERE id=?",
                 params![at, id],
             )?;
             texts::orphaned(&db, id, at)
         })?;
-        Ok(device)
+        Ok((device, failed))
     }
     fn phones_new_pairing(
         &self,

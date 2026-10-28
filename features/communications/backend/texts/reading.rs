@@ -60,7 +60,7 @@ pub fn conversations(
     let mut latest: HashMap<String, Text> = db
         .latest_communications_texts(dsp, &ids)?
         .into_iter()
-        .map(|text| (text.conversation.clone(), text))
+        .filter_map(|text| Some((text.conversation.clone()?, text)))
         .collect();
     Ok(kept
         .into_iter()
@@ -320,12 +320,24 @@ pub fn one(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversatio
     Ok(conversations(db, &people, &numbers, dsp, vec![kept])?.remove(0))
 }
 
-/// The conversation the text `id` is filed in now, as the page reads it.
-pub fn filed(db: &Store, state: &State, dsp: &str, id: &str) -> Result<Conversation> {
+/// The conversation the text `id`, written in the conversation `written_in`, is filed in now, as
+/// the page reads it: `written_in` while it waits to be filed.
+pub fn filed(
+    db: &Store,
+    state: &State,
+    dsp: &str,
+    id: &str,
+    written_in: &str,
+) -> Result<Conversation> {
     let kept = db
         .communications_text(dsp, id)?
         .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
-    one(db, state, dsp, &kept.conversation)
+    one(
+        db,
+        state,
+        dsp,
+        kept.conversation.as_deref().unwrap_or(written_in),
+    )
 }
 
 /// The text `id` as the page reads it.

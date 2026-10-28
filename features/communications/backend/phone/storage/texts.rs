@@ -1,13 +1,14 @@
 //! Every text the DSP's phones relay: those a phone reports, each kept once by its own ID of it,
-//! and those Dispatch sends from one, waiting for it until it says how each attempt went; and the
-//! order every change to them is read in.
+//! and those Dispatch sends from one, waiting for it until it says how each attempt went. Of each
+//! text's row, `phones_texts`, the phone side keeps the transport's columns; the conversation it's
+//! filed in, and what filing keeps beside it, are `texts::storage`'s.
 use super::{
-    files::{ReportedFile, file_of},
+    files::{FileStore, ReportedFile},
     next_change,
 };
 use crate::backend::phone::{
     LIMITS,
-    model::{Changes, Direction, File, Origin, Outgoing, PHONE_REMOVED, Status, Text},
+    model::{Direction, Origin, Outgoing, PHONE_REMOVED, Status, Text},
     numbers::normal,
 };
 use dispatch_core::{
@@ -18,10 +19,9 @@ use dispatch_core::{
 };
 use rusqlite::params;
 use serde_json::Value;
-use std::collections::BTreeMap;
 
-/// The most texts one call reads or reports: a page of changes, a phone's outbox, or what a phone
-/// reports at once.
+/// The most texts one call reads or reports: a phone's outbox, what a phone reports at once, or a
+/// page of the texts filing places.
 pub const MOST_TEXTS: usize = 100;
 
 /// A text as the phone reports it, by its own ID of it.
@@ -38,6 +38,8 @@ pub struct Kept {
     pub client_id: String,
     pub id: String,
     pub files: Vec<String>,
+    /// Whether this report kept it: not one reported before.
+    pub new: bool,
 }
 
 /// What a phone says of an attempt at a text Dispatch sent.
@@ -61,8 +63,6 @@ pub trait TextStore {
     /// only for the latest attempt, so a late report of an earlier one never cancels the text
     /// tried again. Answers whether it moved.
     fn phones_status(&self, dsp: &str, device: &str, report: &StatusReport) -> Result<bool>;
-    /// The texts changed after `after`, as they are now: `MOST_TEXTS` at most.
-    fn phones_changes(&self, dsp: &str, after: i64) -> Result<Changes>;
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
     /// Queues `outgoing` from the phone it names, else the one that last texted its number, else
     /// the one seen last: refused as `invalid_input` for a number that isn't one, or a text with
@@ -97,6 +97,7 @@ impl TextStore for Store {
                         client_id: text.client_id,
                         id,
                         files,
+                        new: false,
                     });
                     continue;
                 }
@@ -131,6 +132,7 @@ impl TextStore for Store {
                     client_id: text.client_id,
                     id,
                     files,
+                    new: true,
                 });
             }
             Ok(kept)
@@ -143,8 +145,9 @@ impl TextStore for Store {
              AND status='waiting' ORDER BY at,rowid LIMIT ?",
             params![device, MOST_TEXTS as i64],
         )?;
+        drop(db);
         let attempts: Vec<i64> = rows.iter().map(|row| n(row, "attempt")).collect();
-        Ok(texts(&db, rows)?.into_iter().zip(attempts).collect())
+        Ok(texts(self, dsp, rows)?.into_iter().zip(attempts).collect())
     }
     fn phones_status(&self, dsp: &str, device: &str, report: &StatusReport) -> Result<bool> {
         let db = self.dsp(dsp)?;
@@ -186,33 +189,11 @@ impl TextStore for Store {
             Ok(true)
         })
     }
-    fn phones_changes(&self, dsp: &str, after: i64) -> Result<Changes> {
-        let db = self.dsp(dsp)?;
-        let mut rows = db.all(
-            "SELECT * FROM phones_texts WHERE change>? ORDER BY change LIMIT ?",
-            params![after, MOST_TEXTS as i64 + 1],
-        )?;
-        let more = rows.len() > MOST_TEXTS;
-        rows.truncate(MOST_TEXTS);
-        // With more to come, reading on starts after this page; else after every change given.
-        let next = match rows.last() {
-            Some(row) if more => n(row, "change"),
-            _ => n(
-                &db.one("SELECT last FROM phones_change WHERE id=1", [])?
-                    .unwrap_or_default(),
-                "last",
-            ),
-        };
-        Ok(Changes {
-            texts: texts(&db, rows)?,
-            next,
-            more,
-        })
-    }
     fn phones_text(&self, dsp: &str, id: &str) -> Result<Option<Text>> {
-        let db = self.dsp(dsp)?;
-        let rows = db.all("SELECT * FROM phones_texts WHERE id=?", [id])?;
-        Ok(texts(&db, rows)?.pop())
+        let rows = self
+            .dsp(dsp)?
+            .all("SELECT * FROM phones_texts WHERE id=?", [id])?;
+        Ok(texts(self, dsp, rows)?.pop())
     }
     fn phones_send(&self, dsp: &str, outgoing: &Outgoing, at: i64) -> Result<Text> {
         let to = normal(&outgoing.to).ok_or_else(|| Error::new("invalid_input", 400))?;
@@ -303,34 +284,29 @@ impl TextStore for Store {
     }
 }
 
-/// Fails the texts Dispatch queued that still wait on the phone `device`, which was removed: each
-/// a change readers find. Inside the write that removed it.
-pub(super) fn orphaned(db: &Db, device: &str, at: i64) -> Result<()> {
+/// Fails the texts Dispatch queued that still wait on the phone `device`, which was removed:
+/// those it failed. Inside the write that removed it.
+pub(super) fn orphaned(db: &Db, device: &str, at: i64) -> Result<Vec<String>> {
     let waiting = db.all(
         "SELECT id FROM phones_texts WHERE device_id=? AND origin='dispatch' AND status='waiting'",
         [device],
     )?;
+    let mut failed = Vec::with_capacity(waiting.len());
     for text in &waiting {
         let change = next_change(db)?;
         db.exec(
             "UPDATE phones_texts SET status='failed', status_at=?, error=?, change=? WHERE id=?",
             params![at, PHONE_REMOVED, change, s(text, "id")],
         )?;
+        failed.push(s(text, "id").to_owned());
     }
-    Ok(())
+    Ok(failed)
 }
 
-/// Texts from their rows, each with its files.
-fn texts(db: &Db, rows: Vec<Value>) -> Result<Vec<Text>> {
-    let mut files: BTreeMap<String, Vec<File>> = BTreeMap::new();
-    for row in &rows {
-        let id = s(row, "id");
-        let kept = db.all(
-            "SELECT * FROM phones_files WHERE text_id=? ORDER BY added_at,rowid",
-            [id],
-        )?;
-        files.insert(id.to_owned(), kept.iter().map(file_of).collect());
-    }
+/// The DSP's texts from their rows, each with its files.
+fn texts(db: &Store, dsp: &str, rows: Vec<Value>) -> Result<Vec<Text>> {
+    let ids: Vec<String> = rows.iter().map(|row| s(row, "id").to_owned()).collect();
+    let mut files = db.phones_files_of(dsp, &ids)?;
     Ok(rows
         .iter()
         .map(|row| Text {

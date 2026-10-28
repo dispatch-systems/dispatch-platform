@@ -10,7 +10,6 @@ use crate::{
             live, pairing,
             storage::{Device, DeviceStore, PAIRING_MS},
         },
-        storage::DOMAIN,
         texts::filing,
     },
 };
@@ -114,7 +113,7 @@ pub(super) fn rename(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     Reply::of(&row(&device, db::now()))
 }
 /// Removes the phone: its key works no more, its texts stay, and those still waiting on it fail,
-/// which filing hears of.
+/// filed as they fail.
 pub(super) async fn remove(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let c = state.read(move |db| access.authorize(db, &asked)).await?;
@@ -122,16 +121,15 @@ pub(super) async fn remove(state: Arc<State>, input: Input, access: Dsp) -> Resu
     v::fields(&input.body, &[])?;
     let id = id(input.param("id"), "phone")?;
     let dsp = c.dsp.id.clone();
-    state
-        .run_scoped(dsp.clone(), DOMAIN, move |db| {
-            let c = access.revalidate(db, &c)?;
-            on(&c)?;
-            let device = db.phones_remove(&c.dsp.id, &id, db::now())?;
-            c.audit(db, "phones.removed", &device.logged())
-        })
-        .await?;
+    filing::changing(&state, &dsp, move |db| {
+        let c = access.revalidate(db, &c)?;
+        on(&c)?;
+        let (device, failed) = db.phones_remove(&c.dsp.id, &id, db::now())?;
+        c.audit(db, "phones.removed", &device.logged())?;
+        Ok(((), failed))
+    })
+    .await?;
     // A phone waiting on its outbox hears at once that it was removed.
     live::queued(&state, &dsp);
-    filing::told(&state, &dsp).await;
     Ok(Reply::ok())
 }

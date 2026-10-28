@@ -110,7 +110,7 @@ pub async fn send(
             let c = access.revalidate(db, &asked)?;
             match &sent_in {
                 Reference::Slack(id) => conversations::one(db, &shared, &c.dsp.id, id),
-                Reference::Text(_) => texts::reading::filed(db, &shared, &c.dsp.id, &sent),
+                Reference::Text(id) => texts::reading::filed(db, &shared, &c.dsp.id, &sent, id),
             }
         })
         .await?;

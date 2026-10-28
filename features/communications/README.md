@@ -260,7 +260,7 @@ decides ([Texts](#texts)).
   Phone 2 and so on, until renamed.
 - **Removed:** a phone removed keeps its texts; its key works no more, and its next call is
   refused as `phones_removed`. The texts Dispatch queued that still wait on it fail as it's
-  removed, with `phones_removed` as their error, which filing hears of.
+  removed, with `phones_removed` as their error, filed as they fail.
 - **Their address:** `/api/communications/phone/…`, at the DSP's own address alone, never from a
   browser (a request with a cookie is refused), while the DSP is active and Communications is on
   there (`phones_off` otherwise): pairing by the code, public; every other call by
@@ -285,16 +285,19 @@ decides ([Texts](#texts)).
 
 ## Texts
 
-What the DSP's dispatch phones relay, as the phone side keeps them: each text as it is now, in a
-feed of those changed after a point, which filing reads; and answering, or sending again one that
-failed, which queues a text for a phone.
+What the DSP's dispatch phones relay, as the phone side keeps them, one row each: filed in its
+conversation as it's kept or changes; and answering, or sending again one that failed, which
+queues a text for a phone.
 
-- **Filed:** as the phone side says texts changed, once it's kept a phone's report, a status, a
-  picture's bytes or a phone removed (`filing::told`), and every minute, in case filing then
-  failed, or Communications came on after texts did, each text changed since the last filed is
-  kept (`communications_texts`, by the phone side's ID), with its phone, direction, number, body,
-  when it was written, who at the DSP sent it, how it went, and its pictures as the phone side has
-  them, in a conversation (`communications_text_conversations`):
+- **Filed:** in the same write and transaction as the phone side keeps a phone's report, a
+  status, a picture's bytes, a phone removed or an answer queued (`filing::changing`), each text
+  new is placed in a conversation (`communications_text_conversations`), on its own row
+  (`phones_texts`, by the phone side's ID, with its phone, direction, number, body, when it was
+  written, who at the DSP sent it, how it went, and its pictures as the phone side keeps them),
+  and each conversation a change touched keeps whether it waits; the pages waiting on it hear
+  once both are committed. A text that can't be placed as it comes, as reading where it belongs
+  failed, is kept all the same, waiting to be filed (no conversation yet), and every minute's
+  upkeep places those waiting, oldest first, each on its own. Where it's placed:
   - **A work phone's**, a driver's: a number `+1` and ten digits, as Routes' work phones are, is
     filed by the day it was written, where the DSP is, under the driver whose latest work phone
     it is that day, by their ID of the source naming the drivers, as Routes reads the day
@@ -336,13 +339,13 @@ failed, which queues a text for a phone.
   while its bytes come. A number's conversation, and a work phone's nobody had, answer their number;
   a driver's, the work phone they have now: their latest of today, as live route data reads it, but
   one that's another driver's latest too, which is no one driver's; refused while they have none
-  (`communications_no_work_phone`). Kept as filing reads it back, under the full name of whoever
-  sent it (`sent_by`), taken as it's first filed, however it was sent. Retry sends again one
+  (`communications_no_work_phone`). Filed as it's queued, under the full name of whoever sent it
+  (`sent_by`), taken as it's first filed, however it was sent. Retry sends again one
   Dispatch sent that failed, while its phone is still paired, and only where a text written now
   would go: in a driver's, refused while they have no work phone (`communications_no_work_phone`) or
   have another (`communications_work_phone_changed`), as the one it went to may be another driver's
-  since. Either is queued in the write that checks where it goes and the member's access
-  (`phone::outbox`), so a handoff, the stop or a change of their access can't come between.
+  since. Either is queued, and filed, in the write that checks where it goes and the member's
+  access (`phone::outbox`), so a handoff, the stop or a change of their access can't come between.
 
 ## Messaging a group
 
@@ -683,10 +686,12 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   waiting, sent with their message, or not sent and why) and `communications_group_uploads` (a
   group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
   `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
-  (each a driver's, a work phone's nobody had, or a number's), `communications_texts` (each
-  text filed, by the phone side's ID, its pictures as the phone side keeps them, and the Done that
-  covered it), `communications_texting` (the last of the phone side's changes filed),
-  `communications_contacts` (the names saved for numbers, by whom and when),
+  (each a driver's, a work phone's nobody had, or a number's), on each text's own row
+  (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
+  sender was shown by, whether its number was blocked as it came and the Done that covered it
+  (migration 9, which copied each from `communications_texts`; that copy of each text filed, and
+  `communications_texting`, how far it had read the phone side, are left as they were, read by
+  nothing), `communications_contacts` (the names saved for numbers, by whom and when),
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
   (the driver picked for a work phone on a day, by whom and when). The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
@@ -700,13 +705,14 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   them, and take their place, and are let go, only under the platform's write lock with the files
   that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
-  what's due to go to groups' people, filing texts not filed yet, and filing today's again where
-  they belong now, every minute; letting go of photos added and never sent hourly. And the phone
-  side's, hourly, in each DSP with Communications on: letting go of pictures added and never sent
-  within a day; of bytes no file keeps, as a removal that failed leaves, and of bytes left
-  arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
-  runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
-  the rest to run, and is tried again the next hour.
+  what's due to go to groups' people, filing texts waiting to be filed, and filing today's again
+  where they belong now, every minute; letting go of photos added and never sent hourly. And the
+  phone side's, hourly, in each DSP with Communications on: letting go of pictures added and never
+  sent within a day; of bytes no file keeps, as bytes sent again in place of others and a removal
+  that failed leave, and of bytes left arriving an hour, as a restart leaves, each on its own; and
+  of codes expired. Each of these jobs runs on its own too: one that fails, logged as
+  `phones_tidy_failed` with its DSP and job, leaves the rest to run, and is tried again the next
+  hour.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct
   message with the app is `D` and the rest of their ID, and holds what the app posted there, as

@@ -5,10 +5,10 @@
 //! for it, else the number itself.
 //!
 //! - `model`: what texting keeps: conversations by text, each text filed in one, and where a text
-//!   is filed; `storage`, keeping them, how far the phone side's changes were read, the names and
+//!   is filed; `storage`, keeping them, each text on the phone side's row of it, the names and
 //!   blocks the DSP keeps for numbers, and the drivers picked for work phones.
-//! - `filing`: filing each text the phones relay in its conversation, and a day's again as its
-//!   route data changes.
+//! - `filing`: filing each text the phones relay in its conversation, in the write the phone side
+//!   keeps or changes it in, and a day's again as its route data changes.
 //! - `numbers`: one number written one way, how one reads, and what the DSP keeps of them.
 //! - `reading`: the conversations and their texts, as the page reads them.
 //! - `reply`: answering by text, and sending again one that failed.

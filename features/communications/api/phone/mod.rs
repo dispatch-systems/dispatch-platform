@@ -2,8 +2,9 @@
 //! concern: who a call comes from (`access`), pairing by a code (`pairing`), the texts a phone
 //! reports (`texts`), waiting on the texts Dispatch has for it and saying how they went
 //! (`outbox`), and their pictures' bytes (`files`). No browser calls these: a request carrying a
-//! cookie, or at another address than a DSP's, is refused. Once what a call brings is kept, filing
-//! hears of it (`texts::filing::told`). The protocol, call by call, is `README.md` beside them.
+//! cookie, or at another address than a DSP's, is refused. What a call brings is filed as it's
+//! kept, in the same write (`texts::filing::changing`). The protocol, call by call, is `README.md`
+//! beside them.
 mod access;
 mod files;
 mod outbox;

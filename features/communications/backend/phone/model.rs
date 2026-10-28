@@ -1,6 +1,6 @@
 //! What the phone side speaks in: the DSP's dispatch phones, the texts they relay and Dispatch's
-//! sent from them, their pictures and files, and what one text may carry. Filing takes its texts
-//! from here as they are (`Changes`), and answering queues one here (`Outgoing`).
+//! sent from them, their pictures and files, and what one text may carry. Answering queues a text
+//! here (`Outgoing`); filing reads the same text's row, and its files as they're here (`File`).
 //!
 //! Its IDs, of a phone, a text or a file, are opaque: at most `ID_MOST` ASCII letters, digits, `_`
 //! or `-` (`identifier`), meaning nothing but to the phone side, which gave them.
@@ -23,19 +23,6 @@ pub struct Phone {
     pub online: bool,
     /// When it last checked in, epoch milliseconds; none before it ever has.
     pub last_seen_at: Option<i64>,
-}
-
-/// A page of the feed of each text as it is now: those changed after where a reader left off,
-/// each once, oldest change first. A text changes as it comes, as Dispatch queues it or tries it
-/// again, as how it went changes, and as its files' bytes arrive; the feed keeps no history of
-/// the changes themselves.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Changes {
-    pub texts: Vec<Text>,
-    /// Where reading on starts: after every change this page read.
-    pub next: i64,
-    /// Whether more changes remain after `next`, to read on for at once.
-    pub more: bool,
 }
 
 /// What one text may carry: queuing refuses more, and keeping a picture one past `largest`.
@@ -73,7 +60,8 @@ pub struct Text {
     /// before it went.
     pub error: Option<String>,
     pub files: Vec<File>,
-    /// Its latest change, after every one before it.
+    /// Its latest change, after every one before it: a text changes as it comes, as Dispatch
+    /// queues it or tries it again, as how it went changes, and as its files' bytes arrive.
     pub change: i64,
 }
 
@@ -102,7 +90,7 @@ pub enum Status {
 }
 
 /// A text's picture or file.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct File {
     pub id: String,
     pub name: String,
