@@ -211,5 +211,5 @@ async fn asked(state: &Arc<State>, dsp: &str, team: &str, user: &str) -> String 
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/incoming.rs"]
+#[path = "tests/backend/incoming.rs"]
 mod tests;

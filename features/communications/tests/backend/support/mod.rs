@@ -259,14 +259,6 @@ pub async fn writes(state: &Arc<State>, dsp: &str, team: &str, user: &str, text:
         "user": user, "text": text, "ts": incoming::ts(now())});
     incoming::heard(state, dsp, team, &event).await.unwrap();
 }
-/// The texts of the conversation's messages, in the order written.
-pub async fn texts(state: &Arc<State>, dsp: &str, conversation: &str) -> Vec<String> {
-    messages(state, dsp, conversation)
-        .await
-        .into_iter()
-        .map(|message| message.text)
-        .collect()
-}
 /// The conversation's messages, as the page reads them.
 pub async fn messages(state: &Arc<State>, dsp: &str, conversation: &str) -> Vec<Message> {
     let (shared, dsp, conversation) = (state.clone(), dsp.to_owned(), conversation.to_owned());

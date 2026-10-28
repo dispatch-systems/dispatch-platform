@@ -85,5 +85,5 @@ fn forget(db: &Store, dsp: &str, team: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/messages.rs"]
+#[path = "tests/backend/messages.rs"]
 mod tests;

@@ -8,6 +8,15 @@ use serde_json::json;
 
 const TEAM: &str = "T0FIXTURE3";
 
+/// The texts of the conversation's messages, in the order written.
+async fn texts(state: &Arc<State>, dsp: &str, conversation: &str) -> Vec<String> {
+    support::messages(state, dsp, conversation)
+        .await
+        .into_iter()
+        .map(|message| message.text)
+        .collect()
+}
+
 #[tokio::test]
 async fn a_workspace_forgotten_keeps_its_messages_and_lets_go_of_conversations_without_any() {
     let (_root, state, bot) = support::connected(TEAM).await;
@@ -28,10 +37,7 @@ async fn a_workspace_forgotten_keeps_its_messages_and_lets_go_of_conversations_w
         .await
         .unwrap();
     assert_eq!(kept.name, "Morgan Lane");
-    assert_eq!(
-        support::texts(&state, &dsp, &kept.id).await,
-        ["Keys are in the van"]
-    );
+    assert_eq!(texts(&state, &dsp, &kept.id).await, ["Keys are in the van"]);
     // Its workspace gone, it can't be written in.
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let refused = reply::send(&state, &owner, support::USE, &kept.id, "Still there?", &[])
