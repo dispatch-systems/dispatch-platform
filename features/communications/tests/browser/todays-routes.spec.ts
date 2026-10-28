@@ -139,12 +139,25 @@ test('a driver’s work conversation keeps what’s being written while they hol
 }) => {
   const northline = await reading(dispatch, underWay());
   await login(page);
-  // Today's Routes as read while the day is on, which answers its read again once it's over.
-  const during = page.waitForResponse(
-    (response) => response.url().endsWith('/api/dsp/communications/routes') && response.ok(),
+  // Today's Routes as read while the day is on, which answers its read again once it's over: taken
+  // from its first read as the test fetches it for the page, before the page has it, so opening a
+  // conversation, which replaces the page's address and with it what the browser kept of the
+  // read, can't come first.
+  const routesRead = '**/api/dsp/communications/routes';
+  let duringDay!: (routes: unknown) => void;
+  const during = new Promise((resolve) => (duringDay = resolve));
+  await page.route(
+    routesRead,
+    async (route) => {
+      const response = await route.fetch();
+      const read = await response.json();
+      duringDay(read);
+      await route.fulfill({ response, json: read });
+    },
+    { times: 1 },
   );
   await page.goto(northline.page);
-  const routes = await (await during).json();
+  const routes = await during;
   await page
     .getByRole('region', { name: 'Conversations' })
     .getByRole('button', { name: /Fixture Driver/ })
@@ -170,7 +183,6 @@ test('a driver’s work conversation keeps what’s being written while they hol
   // The day ends while Today's Routes can't be read: their conversation, read again, says they
   // hold no work phone, as the profile left open does, though Today's Routes' last read, older,
   // had one.
-  const routesRead = '**/api/dsp/communications/routes';
   await page.route(routesRead, (route) =>
     route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
   );
