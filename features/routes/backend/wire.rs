@@ -12,6 +12,10 @@ use std::{borrow::Cow, collections::BTreeSet, fmt};
 pub(super) fn read(text: &str) -> serde_json::Result<Itinerary> {
     serde_json::from_str(text)
 }
+/// The drivers an itinerary's response names, as shaping reads them, the rest of it skipped.
+pub(super) fn drivers(text: &str) -> serde_json::Result<Drivers> {
+    serde_json::from_str(text)
+}
 
 /// The visitor methods of a reading that takes anything but what it expects as nothing.
 macro_rules! otherwise_default {
@@ -216,6 +220,12 @@ wire!(
     Itinerary {
         "itineraryDetails" => detail: Object<Detail>,
         "addresses" => addresses: Value,
+        "transporters" => transporters: Value,
+    }
+);
+wire!(
+    /// What extracting an itinerary's work phone reads of its response: the drivers it names.
+    Drivers {
         "transporters" => transporters: Value,
     }
 );

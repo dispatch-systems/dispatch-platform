@@ -4,7 +4,7 @@
 //! driver to driver, so a hold is never a sign that two drivers are one person. Its state is
 //! live route data's, `work_phones` and `work_phones_shown`, settled in the transaction that
 //! keeps the read it comes from, so a restart neither repeats a claim nor loses one.
-use super::*;
+use super::{work_phones::digits, *};
 use dispatch_cortex::routes::token;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,11 +31,6 @@ pub(super) struct Settled {
     pub(super) holding: u64,
 }
 
-/// A phone number as its last ten digits, which is how two records are compared.
-pub(super) fn digits(text: &str) -> Option<String> {
-    let digits: String = text.chars().filter(char::is_ascii_digit).collect();
-    (digits.len() >= 10).then(|| digits[digits.len() - 10..].to_owned())
-}
 /// The phones a list of drivers shows, by the IDs that can name a hold.
 pub(super) fn phones_of(transporters: &Value) -> impl Iterator<Item = (String, Option<String>)> {
     let transporters = transporters.as_array().into_iter().flatten();

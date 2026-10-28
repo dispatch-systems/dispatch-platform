@@ -15,8 +15,8 @@ fn a_read_whose_day_ended_before_it_was_written_is_refused_changing_nothing() {
     let yesterday = (routes_today(&db, &dsp).unwrap() - Duration::days(1)).to_string();
     let request = day_request(&db, &dsp, &yesterday, Mode::Snapshot).unwrap();
     let read = dispatch_cortex::routes::fixture(&request).unwrap();
-    let shaped = Shaped::new(read, &request).unwrap();
-    let refused = keep(&db, &dsp, &shaped).unwrap_err();
+    let mut shaped = Shaped::new(read, &request).unwrap();
+    let refused = keep(&db, &dsp, &mut shaped).unwrap_err();
     assert_eq!(refused.code, "routes_day_not_available");
     let live = db.routes_live_db(&dsp).unwrap();
     for table in [

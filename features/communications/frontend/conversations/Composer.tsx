@@ -85,13 +85,15 @@ export function Composer({
     },
     [],
   );
-  // The field grows with what's written, up to a few lines.
+  // The field grows with what's written, up to a few lines, and as it's drawn again with what was
+  // kept while something else took its place.
+  const away = Boolean(instead);
   useEffect(() => {
     const element = field.current;
     if (!element) return;
     element.style.height = 'auto';
     element.style.height = `${element.scrollHeight}px`;
-  }, [text]);
+  }, [text, away]);
 
   const remove = (key: string) => {
     const photo = added.current.find((each) => each.key === key);

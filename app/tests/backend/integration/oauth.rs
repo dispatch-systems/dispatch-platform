@@ -1,12 +1,12 @@
 //! Sign in with Dispatch, over HTTP against the real router: discovery, the authorization
 //! request and its refusals, the owner's approval, the token endpoint, revocation, and the
 //! connected app signing in to the agent API and MCP like a key.
+use crate::support::{self, Answer, OWNER, Who};
 use dispatch_core::testing as common;
 use dispatch_core::{
     State,
-    db::{self, Store, s},
-    foundation::{config::Config, crypto},
-    server::operations,
+    db::{self, s},
+    foundation::crypto,
 };
 use dispatch_mcp::{
     GuardStore, OAuthStore,
@@ -16,51 +16,38 @@ use dispatch_mcp::{
     toolbox::{Grants, Toolbox},
 };
 use serde_json::{Value, json};
-use std::{os::unix::fs::PermissionsExt, sync::Arc};
+use std::sync::Arc;
 
 const CLAUDE_CODE: &str = "https://claude.ai/oauth/claude-code-client-metadata";
 const CHATGPT: &str = "https://chatgpt.com/oauth/client.json";
 const CHATGPT_REDIRECT: &str = "https://chatgpt.com/connector_platform_oauth_redirect";
 const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 
+/// The served router, with the owner's browser and what apps ask of it.
 struct Server {
-    _root: tempfile::TempDir,
-    origin: String,
-    state: Arc<State>,
-    client: reqwest::Client,
+    served: support::Server,
     /// The cookies the owner's browser keeps for the requests it brought from apps, one per
     /// request as `name=nonce`: set by the authorization endpoint, cleared by an answer, sent
     /// with the owner's calls.
     browser: std::sync::Mutex<Vec<String>>,
 }
+impl std::ops::Deref for Server {
+    type Target = support::Server;
+    fn deref(&self) -> &support::Server {
+        &self.served
+    }
+}
 /// The name of a browser's cookie for an authorization request, as development names it.
 fn browser_cookie(request: &str) -> String {
     format!("dispatch_oauth_request_{request}")
 }
-struct Owner {
-    cookie: String,
-    csrf: String,
-}
-struct Answer {
-    status: u16,
-    body: Value,
-    headers: reqwest::header::HeaderMap,
-}
-impl Answer {
-    fn header(&self, name: &str) -> &str {
-        self.headers
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-    }
-    /// Where a redirect goes: the Location's query parameters, after its `?`.
-    fn location(&self) -> Vec<(String, String)> {
-        let location = self.header("location");
-        let query = location.split_once('?').map_or("", |(_, query)| query);
-        url::form_urlencoded::parse(query.as_bytes())
-            .into_owned()
-            .collect()
-    }
+/// Where a redirect goes: the Location's query parameters, after its `?`.
+fn redirect_params(answer: &Answer) -> Vec<(String, String)> {
+    let location = answer.header("location");
+    let query = location.split_once('?').map_or("", |(_, query)| query);
+    url::form_urlencoded::parse(query.as_bytes())
+        .into_owned()
+        .collect()
 }
 fn param<'a>(params: &'a [(String, String)], name: &str) -> Option<&'a str> {
     params
@@ -70,39 +57,9 @@ fn param<'a>(params: &'a [(String, String)], name: &str) -> Option<&'a str> {
 }
 impl Server {
     async fn start() -> Self {
-        dispatch_backend::install();
-        let root = tempfile::tempdir().unwrap();
-        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-        let dashboard = root.path().join("dashboard");
-        std::fs::create_dir_all(dashboard.join("assets")).unwrap();
-        std::fs::write(dashboard.join("index.html"), "<html><head></head></html>").unwrap();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let mut config = Config::load().unwrap();
-        config.root = root.path().join("state");
-        db::private_dir(&config.root).unwrap();
-        config.development = true;
-        config.fixture = true;
-        config.environment = "preview".into();
-        config.standalone = true;
-        config.dashboard = dashboard;
-        config.port = port;
-        config.origin = format!("http://127.0.0.1:{port}");
-        operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
-        let state = State::new(config).unwrap();
-        let app = dispatch_core::server::http::router(state.clone())
-            .into_make_service_with_connect_info::<std::net::SocketAddr>();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         Self {
+            served: support::Server::start().await,
             browser: std::sync::Mutex::default(),
-            _root: root,
-            origin: format!("http://127.0.0.1:{port}"),
-            state,
-            client: reqwest::Client::builder()
-                .no_proxy()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .unwrap(),
         }
     }
     /// A server whose platform owner has opened the pairing window, as apps need to ask.
@@ -124,73 +81,14 @@ impl Server {
             .await
             .unwrap();
     }
-    /// A session row written directly, so tests do not pay for password hashing.
-    async fn owner(&self) -> Owner {
-        self.signed_in(db::now()).await
-    }
-    /// The platform owner's session, signed in at `created_at`.
-    async fn signed_in(&self, created_at: i64) -> Owner {
-        let raw = crypto::token().unwrap();
-        let token = raw.clone();
-        self.state
-            .run(move |db| {
-                let user = db
-                    .platform
-                    .one(
-                        "SELECT id,version FROM users WHERE email='owner@dispatch.test'",
-                        [],
-                    )?
-                    .unwrap();
-                db.platform.exec(
-                    "INSERT INTO sessions VALUES (?,?,?,?,?)",
-                    rusqlite::params![
-                        crypto::sha(&token),
-                        s(&user, "id"),
-                        db::n(&user, "version"),
-                        db::now() + 600000,
-                        created_at
-                    ],
-                )?;
-                Ok(())
-            })
-            .await
-            .unwrap();
-        let cookie = format!("dispatch_session={raw}");
-        let session = self
-            .send(
-                self.client
-                    .get(self.url("/api/session"))
-                    .header("cookie", &cookie),
-            )
-            .await;
-        assert_eq!(session.status, 200, "{}", session.body);
-        Owner {
-            cookie,
-            csrf: s(&session.body, "csrf").to_owned(),
-        }
-    }
-    fn url(&self, path: &str) -> String {
-        format!("{}{path}", self.origin)
-    }
-    async fn send(&self, request: reqwest::RequestBuilder) -> Answer {
-        let response = request.send().await.unwrap();
-        let status = response.status().as_u16();
-        let headers = response.headers().clone();
-        let bytes = response.bytes().await.unwrap();
-        Answer {
-            status,
-            body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
-            headers,
-        }
-    }
     async fn get(&self, path: &str) -> Answer {
-        self.send(self.client.get(self.url(path))).await
+        self.answer(self.client.get(self.url(path))).await
     }
     async fn text(&self, path: &str) -> (u16, String) {
         let response = self.client.get(self.url(path)).send().await.unwrap();
         (response.status().as_u16(), response.text().await.unwrap())
     }
-    async fn as_owner(&self, owner: &Owner, method: &str, path: &str, body: Value) -> Answer {
+    async fn as_owner(&self, owner: &Who, method: &str, path: &str, body: Value) -> Answer {
         let request = if method == "GET" {
             self.client.get(self.url(path))
         } else {
@@ -206,7 +104,7 @@ impl Server {
             .chain(self.browser())
             .collect::<Vec<_>>()
             .join("; ");
-        let answer = self.send(request.header("cookie", cookie)).await;
+        let answer = self.answer(request.header("cookie", cookie)).await;
         self.keep_browser(&answer);
         answer
     }
@@ -240,7 +138,7 @@ impl Server {
         let body = url::form_urlencoded::Serializer::new(String::new())
             .extend_pairs(fields)
             .finish();
-        self.send(
+        self.answer(
             self.client
                 .post(self.url(path))
                 .header("content-type", "application/x-www-form-urlencoded")
@@ -256,17 +154,6 @@ impl Server {
         // The owner's browser follows the app's link.
         self.keep_browser(&answer);
         answer
-    }
-    async fn dsp(&self, name: &'static str) -> String {
-        self.state
-            .read(move |db| {
-                let row = db
-                    .platform
-                    .one("SELECT id FROM dsps WHERE name=?", [name])?;
-                Ok(s(&row.unwrap(), "id").to_owned())
-            })
-            .await
-            .unwrap()
     }
     fn resource(&self) -> String {
         format!("{}/api/v1/mcp", self.origin)
@@ -305,7 +192,7 @@ impl Server {
             .to_owned()
     }
     /// The code an approval sends back, checked to carry the state and the issuer.
-    async fn approved(&self, owner: &Owner, request: &str, choices: Value) -> String {
+    async fn approved(&self, owner: &Who, request: &str, choices: Value) -> String {
         let approved = self
             .as_owner(
                 owner,
@@ -352,32 +239,12 @@ impl Server {
         .await
     }
     /// A connected app from authorization to its first tokens.
-    async fn connect(&self, owner: &Owner, client: &str, redirect: &str, choices: Value) -> Value {
+    async fn connect(&self, owner: &Who, client: &str, redirect: &str, choices: Value) -> Value {
         let request = self.requested(client, redirect).await;
         let code = self.approved(owner, &request, choices).await;
         let tokens = self.exchange(client, redirect, &code).await;
         assert_eq!(tokens.status, 200, "{}", tokens.body);
         tokens.body
-    }
-    async fn bearer(&self, path: &str, token: &str) -> Answer {
-        self.send(
-            self.client
-                .get(self.url(path))
-                .header("authorization", format!("Bearer {token}")),
-        )
-        .await
-    }
-    async fn mcp(&self, token: &str, method: &str) -> Answer {
-        self.send(
-            self.client
-                .post(self.url("/api/v1/mcp"))
-                .header("authorization", format!("Bearer {token}"))
-                .header("content-type", "application/json")
-                .header("accept", "application/json, text/event-stream")
-                .header("mcp-protocol-version", "2025-06-18")
-                .body(json!({"jsonrpc":"2.0","id":1,"method":method,"params":{}}).to_string()),
-        )
-        .await
     }
 }
 fn everything(name: &str) -> Value {
@@ -464,7 +331,7 @@ async fn the_mcp_endpoint_challenges_with_where_to_sign_in() {
     for answer in [
         server.get("/api/v1/mcp").await,
         server
-            .send(
+            .answer(
                 server
                     .client
                     .post(server.url("/api/v1/mcp"))
@@ -621,7 +488,7 @@ async fn a_known_app_hears_what_was_wrong_with_its_request() {
         assert_eq!(answer.status, 302);
         let location = answer.header("location");
         assert!(location.starts_with(&format!("{local}?")), "{location}");
-        let params = answer.location();
+        let params = redirect_params(&answer);
         assert_eq!(param(&params, "error"), Some(error), "{location}");
         assert!(param(&params, "error_description").is_some());
         assert_eq!(param(&params, "state"), Some("st/ate 1"));
@@ -642,7 +509,7 @@ async fn a_known_app_hears_what_was_wrong_with_its_request() {
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    let params = server.authorize(&pairs).await.location();
+    let params = redirect_params(&server.authorize(&pairs).await);
     assert_eq!(param(&params, "error"), Some("invalid_request"));
     assert_eq!(param(&params, "state"), None);
     // MCP clients must name the protected resource. Scope may be omitted and defaults to the
@@ -652,7 +519,7 @@ async fn a_known_app_hears_what_was_wrong_with_its_request() {
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    let missing = server.authorize(&pairs).await.location();
+    let missing = redirect_params(&server.authorize(&pairs).await);
     assert_eq!(param(&missing, "error"), Some("invalid_target"));
     let fields = with(&[("scope", None)]);
     let pairs: Vec<(&str, &str)> = fields
@@ -671,14 +538,14 @@ async fn a_known_app_hears_what_was_wrong_with_its_request() {
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    let unknown = server.authorize(&pairs).await.location();
+    let unknown = redirect_params(&server.authorize(&pairs).await);
     assert_eq!(param(&unknown, "error"), Some("invalid_scope"));
     let fields = with(&[("scope", Some("offline_access"))]);
     let pairs: Vec<(&str, &str)> = fields
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    let incomplete = server.authorize(&pairs).await.location();
+    let incomplete = redirect_params(&server.authorize(&pairs).await);
     assert_eq!(param(&incomplete, "error"), Some("invalid_scope"));
 }
 
@@ -970,7 +837,7 @@ async fn a_name_a_key_or_another_app_holds_stays_taken() {
 /// Registers an app as it would itself, answering its new client id.
 async fn registered(server: &Server, name: &str, redirect: &str) -> String {
     let answer = server
-        .send(
+        .answer(
             server
                 .client
                 .post(server.url("/oauth/register"))
@@ -982,7 +849,7 @@ async fn registered(server: &Server, name: &str, redirect: &str) -> String {
     s(&answer.body, "client_id").to_owned()
 }
 /// The connected apps still in use, by name and client.
-async fn live_apps(server: &Server, owner: &Owner) -> Vec<(String, String)> {
+async fn live_apps(server: &Server, owner: &Who) -> Vec<(String, String)> {
     let listed = server
         .as_owner(owner, "GET", "/api/platform/agents", json!({}))
         .await;
@@ -1119,7 +986,7 @@ async fn registrations_never_used_are_capped_across_every_address() {
         .await
         .unwrap();
     let refused = server
-        .send(
+        .answer(
             server
                 .client
                 .post(server.url("/oauth/register"))
@@ -1156,7 +1023,7 @@ async fn registrations_never_used_are_capped_across_every_address() {
 async fn registration_is_closed_until_the_owner_opens_pairing() {
     let server = Server::start().await;
     let answer = server
-        .send(
+        .answer(
             server
                 .client
                 .post(server.url("/oauth/register"))
@@ -1442,7 +1309,7 @@ async fn expired_or_revoked_access_ends_with_invalid_token() {
     let access = s(&tokens, "access_token").to_owned();
     // Never as an API key, and never a refresh token as a bearer.
     let keyed = server
-        .send(
+        .answer(
             server
                 .client
                 .get(server.url("/api/v1/whoami"))
@@ -1551,7 +1418,7 @@ async fn a_connected_app_reaches_only_what_the_owner_chose() {
         .collect();
     assert_eq!(dsps, [north.as_str()]);
     // MCP offers it the tools a key has.
-    let listed = server.mcp(access, "tools/list").await;
+    let listed = server.mcp(access, "tools/list", json!({})).await;
     assert_eq!(listed.status, 200, "{}", listed.body);
     let tools: Vec<&str> = listed.body["result"]["tools"]
         .as_array()
@@ -1576,7 +1443,7 @@ async fn apps_register_themselves_only_to_come_back_to_this_computer() {
     let server = Server::paired().await;
     let owner = server.owner().await;
     let register = |body: Value| {
-        server.send(
+        server.answer(
             server
                 .client
                 .post(server.url("/oauth/register"))
@@ -1777,7 +1644,7 @@ async fn revoking_any_token_ends_the_app_and_unknown_tokens_are_fine() {
     assert!(listed.body["keys"][0]["revokedAt"].is_string());
     // Form posts only, as RFC 6749 says, and never 415.
     let json_body = server
-        .send(
+        .answer(
             server
                 .client
                 .post(server.url("/oauth/token"))
@@ -1808,7 +1675,7 @@ async fn token_ingress_rejects_cross_site_browsers_and_stops_before_database_sat
     let owner = server.owner().await;
     let resource = server.resource();
     let cross_site = server
-        .send(
+        .answer(
             server
                 .client
                 .post(server.url("/oauth/token"))
@@ -1854,7 +1721,7 @@ async fn registration_rejects_cross_site_browsers_before_spending_its_budget() {
     let server = Server::paired().await;
     for _ in 0..20 {
         let refused = server
-            .send(
+            .answer(
                 server
                     .client
                     .post(server.url("/oauth/register"))
@@ -1873,7 +1740,7 @@ async fn registration_rejects_cross_site_browsers_before_spending_its_budget() {
     // same source can still use its complete durable allowance for real JSON registrations.
     for index in 0..20 {
         let answer = server
-            .send(
+            .answer(
                 server
                     .client
                     .post(server.url("/oauth/register"))
@@ -1890,7 +1757,7 @@ async fn registration_rejects_cross_site_browsers_before_spending_its_budget() {
         assert_eq!(answer.status, 201, "{index}: {}", answer.body);
     }
     let limited = server
-        .send(
+        .answer(
             server
                 .client
                 .post(server.url("/oauth/register"))
@@ -2061,7 +1928,7 @@ async fn apps_ask_to_connect_only_while_the_pairing_window_is_open() {
     // Only a platform owner opens it, and with no fresh verification: a session signed in a
     // day ago does.
     assert_eq!(server.get(pairing).await.status, 401);
-    let earlier = server.signed_in(db::now() - DAY).await;
+    let earlier = server.signed_in(OWNER, db::now() - DAY).await;
     let opened = server.as_owner(&earlier, "POST", pairing, json!({})).await;
     assert_eq!(opened.status, 200, "{}", opened.body);
     let until = s(&opened.body, "openUntil").to_owned();
@@ -2138,7 +2005,7 @@ async fn the_owner_chooses_which_kinds_of_app_may_connect() {
     assert_eq!(listed.body, defaults);
     assert_eq!(server.get(path).await.status, 401);
     // Choosing is routine, as approving is: a session signed in a day ago chooses below.
-    let earlier = server.signed_in(db::now() - DAY).await;
+    let earlier = server.signed_in(OWNER, db::now() - DAY).await;
     for body in [
         json!({"id":"cursor","allowed":false}),
         json!({"id":"codex"}),
@@ -2339,7 +2206,7 @@ async fn websites_connect_only_when_allowed_and_only_from_public_addresses() {
         .use_network(internet.clone());
     let page = |error: &str| format!("{}/#authorize?error={error}", server.origin);
     let register = |redirect: &str| {
-        server.send(
+        server.answer(
             server
                 .client
                 .post(server.url("/oauth/register"))
@@ -2973,7 +2840,7 @@ async fn turning_a_kind_of_app_off_stops_its_waiting_requests_and_codes() {
 }
 
 /// What the Agents page lists of one key or app, by name.
-async fn listed_key(server: &Server, owner: &Owner, name: &str) -> Value {
+async fn listed_key(server: &Server, owner: &Who, name: &str) -> Value {
     let listed = server
         .as_owner(owner, "GET", "/api/platform/agents", json!({}))
         .await;
@@ -3127,7 +2994,7 @@ async fn a_connected_app_is_edited_like_a_key_but_only_ever_reads_and_never_expi
 #[tokio::test]
 async fn only_disabling_removing_or_restoring_a_dsp_asks_the_owner_to_verify_again() {
     let server = Server::paired().await;
-    let earlier = server.signed_in(db::now() - DAY).await;
+    let earlier = server.signed_in(OWNER, db::now() - DAY).await;
     let north = server.dsp("Northline Logistics").await;
     let key = |name: &str| json!({"name":name,"allDsps":true,"dsps":[],"access":"read","allTools":true,"tools":{},"expiresAt":null});
     let request = server

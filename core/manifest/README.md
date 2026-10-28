@@ -271,11 +271,13 @@ live_readers: &[&backend::live::READER],
   or reading other than every whole number of seconds, a minute or more (`invalid_schedule`). A
   stop no later than the start is the next day's, and the same as the start reads all day. A
   day's window is the day it opens on, which the hooks are handed as `Reading::day`, today as
-  the server reckons it.
+  the server reckons it. The section it reads them from names it (`.reader(id)`), and Settings
+  shows there how it reads for the DSP: its last read, its next and its last error.
 - **Its reads** (`read`): one each interval, from the window's start until it closes, on each
   day it opens on; DSPs whose windows open together wait their turns to read. A read is whole,
-  or an error whose code says why not; one slower than its interval is cut off
-  (`live_read_timeout`). `held` is the DSP's memory, as a provider's session and key: never
+  or an error whose code says why not; one slower than its interval, or five minutes, is cut
+  off (`live_read_timeout`), and one the browsers' memory turned away is tried once more within
+  its slot. `held` is the DSP's memory, as a provider's session and key: never
   written, and made anew each day and whenever its reading starts again, as after a restart, a
   switch or a stall.
 - **A whole read** goes to `kept`, which answers what it counted, under fixed names. A day's
@@ -285,8 +287,8 @@ live_readers: &[&backend::live::READER],
   server was down then or the day is no longer one it opens on, and before a later day starts.
   A day reads no more once its stop has begun, though its window is moved to end later or
   `stopped` fails part of the way: its stop is finished first, after a restart too, and its
-  next reads are the next day's. A hook that fails is asked again: `started` with the next
-  whole read, `stopped` a minute later.
+  next reads are the next day's. `stopped` waits its turn among the server's reads. A hook
+  that fails is asked again: `started` with the next whole read, `stopped` a minute later.
 - **A browser** (`Reading::browser(provider)`): a hook that needs one, to sign in or take a
   key from a page, opens the DSP's own for a provider, signed in as a job's is and within the
   server's limits on browsers and memory. It's the reader's alone until it closes, closing
@@ -300,7 +302,8 @@ live_readers: &[&backend::live::READER],
   but those that declare a live reader, so nothing reads a provider for it unasked: a preview or
   a test switches one on.
 
-The registry refuses two readers with one id, and an id outside its feature's name.
+The registry refuses two readers with one id, an id outside its feature's name, and a section
+naming a reader its feature doesn't declare.
 
 ## Frontend slots
 

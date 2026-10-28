@@ -120,16 +120,16 @@ pub fn everything(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
         format!("tooling/cli/dispatchdev build && {}", quoted.join(" ")),
     ])
 }
-/// The owner `given` names, as its kind and name: `<kind>:<name>`, `mcp`, or a name found by its
-/// folder, a feature's, a collector's or a part of core's.
+/// The owner `given` names, as its kind and name: `<kind>:<name>`, `app` or `mcp`, which have no
+/// name, or a name found by its folder, a feature's, a collector's or a part of core's.
 pub fn owner(root: &Path, given: &str) -> Result<(String, String)> {
-    if given == "mcp" {
-        return Ok(("mcp".into(), String::new()));
+    if ["app", "mcp"].contains(&given) {
+        return Ok((given.into(), String::new()));
     }
     if let Some((kind, name)) = given.split_once(':') {
         require(
             ["feature", "collector", "core"].contains(&kind) && !name.is_empty(),
-            "An owner is kind:name with kind feature, collector or core, or mcp.",
+            "An owner is kind:name with kind feature, collector or core, app or mcp.",
         )?;
         return Ok((kind.into(), name.into()));
     }
@@ -138,7 +138,7 @@ pub fn owner(root: &Path, given: &str) -> Result<(String, String)> {
             && given
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
-        "An owner is a feature's, a collector's or a part of core's name, kind:name or mcp.",
+        "An owner is a feature's, a collector's or a part of core's name, kind:name, app or mcp.",
     )?;
     let kinds: Vec<&str> = [
         ("feature", "features"),
@@ -535,6 +535,7 @@ mod tests {
             Ok(("collector".into(), "paycom".into()))
         );
         assert_eq!(owner("mcp"), Ok(("mcp".into(), String::new())));
+        assert_eq!(owner("app"), Ok(("app".into(), String::new())));
         // A kind there is no owner of is refused in one line, as an empty name is.
         for given in ["page:parking", "feature:", "x:y:z"] {
             assert!(owner(given).unwrap_err().contains("kind:name"), "{given}");

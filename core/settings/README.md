@@ -35,7 +35,9 @@ let policy: Policy = dispatch_core::settings::read(db, dsp, &POLICY)?;
   the member's own; `dsp`, `connections`, `collectors` and `data`, the DSP's. `.collection(..)` puts
   it with a collection its feature keeps, on `collectors`, under the permission that sets when
   that collection runs: the Collectors page draws it below the collection's schedule, as Daily
-  Performance's `daily_performance.collection` is.
+  Performance's `daily_performance.collection` is. `.reader(..)` names the live reader of its
+  feature's whose schedule it sets: Settings shows under its heading how that reader reads for
+  the DSP, as Live Route Data's `live_route_data.collection` does.
 - **Who:** `permission`, one its feature declares, or `roles::ACCESS` for every member.
   `.part(..)` makes it go with a part of its feature. `.member()` gives each member their own
   values, which the log doesn't record.

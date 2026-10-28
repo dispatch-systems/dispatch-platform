@@ -1,9 +1,10 @@
-import { api, useCachedData } from '../../shell/frontend/runtime/api.js';
+import { api, useCachedData, useData } from '../../shell/frontend/runtime/api.js';
 import type {
   CollectionUpdates,
   Collectors,
   Connection,
   Job,
+  LiveReading,
   ScheduleCollection,
   ScheduledCollection,
   ScheduleRuleInput,
@@ -12,7 +13,7 @@ import type {
 import { collectorsRead } from './urls.js';
 
 // Collection's endpoints, as the frontend calls them: live updates, the Collectors page's
-// schedules and connections.
+// schedules, how a live reader reads, and connections.
 
 export const getCollectionUpdates = (after: string, signal: AbortSignal) =>
   api<CollectionUpdates>(
@@ -43,6 +44,17 @@ export const collectNow = (
   collects: ScheduleCollection,
   requestId: string,
 ) => api<Job[]>(`${collection(name)}/collect`, { collects, requestId });
+
+/**
+ * How the live reader `reader` reads for the DSP, none while it reads nothing there: read again
+ * every `poll` milliseconds, and as `refreshKey` changes.
+ */
+export const useLiveReading = (reader: string, poll: number, refreshKey: string) =>
+  useData<LiveReading | null>(
+    `/api/dsp/live-readers/${encodeURIComponent(reader)}`,
+    poll,
+    refreshKey,
+  );
 
 export const connectionUrl = (provider: Connection['provider']) =>
   `/api/dsp/connections/${provider}`;

@@ -5,11 +5,13 @@
 //! HTTP data is untrusted input. The collection is `routes` to the platform; its database is
 //! `routedata`, historical route data. Today as live reads leave it is live route data, in a
 //! database of its own, `routelive`, which a feature reading routes live keeps (`live`).
+pub(crate) mod changed;
 pub(crate) mod exposed;
 pub(crate) mod keeper;
 mod live;
 pub(crate) mod maintenance;
 pub(crate) mod people;
+mod phone_backfill;
 mod phones;
 mod publishing;
 mod rows;
@@ -17,6 +19,7 @@ mod saving;
 pub(crate) mod settings;
 mod storage;
 mod wire;
+mod work_phones;
 
 pub use live::{LiveKept, clear_live, keep_live, live_request, save_and_clear_live, save_live_day};
 use publishing::*;
@@ -59,8 +62,9 @@ pub const TODAY: &str = "routes_today";
 /// The routes, itineraries and packages it keeps.
 pub const DOMAIN: DataDomain = DataDomain::new("routes");
 /// What shaped a publication's rows. 2 keys tasks by itinerary and keeps their events
-/// as triples; a reprocess brings an older publication up to date.
-pub const ADAPTER_VERSION: i64 = 2;
+/// as triples; 3 keeps each itinerary's work phone, which a publication of 2 has extracted from
+/// its stored responses (`work_phones`). A reprocess brings an older publication up to date.
+pub const ADAPTER_VERSION: i64 = 3;
 /// The route data database beside `cortex.sqlite`. It holds a day of tasks per
 /// publication and answers day-range reads, so its indexes stay in memory.
 pub const DATABASE: Kind = Kind::new("routedata", 1).cache(32768);
@@ -91,6 +95,19 @@ pub(crate) fn add_details(db: &Db) -> Result<()> {
     }
     db.0.execute_batch(include_str!("../migrations/routedata/0002_details.sql"))?;
     Ok(())
+}
+/// Migration 10: each itinerary keeps its work phone, found by the phone too.
+pub(crate) fn add_work_phone(db: &Db) -> Result<()> {
+    add_column(db, "itineraries", "work_phone", "TEXT")?;
+    db.0.execute_batch(include_str!(
+        "../migrations/routedata/0010_itinerary_work_phone.sql"
+    ))?;
+    Ok(())
+}
+/// Live route data's migration 2: each itinerary keeps its work phone, as in historical route
+/// data; a day's one read needs no index to find it by.
+pub(crate) fn add_live_work_phone(db: &Db) -> Result<()> {
+    add_column(db, "itineraries", "work_phone", "TEXT")
 }
 /// How far back a schedule collects days it has no final publication of.
 pub const BACKFILL_DAYS: usize = 7;
@@ -293,12 +310,12 @@ impl Shaper {
             _ => text(&detail["transporterName"]).unwrap_or_else(|| transporter_id.to_owned()),
         };
         let flat = flatten(&summary, detail, transporter_id, &driver_name);
+        let work_phone = self.work_phone(transporter_id, read.transporters);
         Ok(PreparedItinerary {
             id: id.to_owned(),
             transporter_id: transporter_id.to_owned(),
-            columns: flat
-                .itinerary
-                .into_iter()
+            columns: (flat.itinerary.into_iter())
+                .chain([("work_phone", opt(work_phone))])
                 .map(|(c, v)| (c.to_owned(), v))
                 .collect(),
             stops: read.stops,

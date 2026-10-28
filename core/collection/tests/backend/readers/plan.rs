@@ -150,40 +150,48 @@ fn a_dsp_reads_at_its_window_start_and_on_each_slot_until_the_window_closes() {
 fn started_again_a_dsp_keeps_its_slot_and_reads_at_once_only_past_it() {
     let plan = plan("08:00", "21:00");
     let day = plan.day(date("2026-10-20"));
-    let resumed = |now: &str, last: &str| {
-        let now = local(now);
-        plan.step(now, plan.resumed(now, Some(local(last))), &[], None)
-    };
+    // Back at `now`, its last read having ended at `ended`, as its record keeps it.
+    let back = |now: &str, ended: &str| plan.step(local(now), local(ended), &[], None);
     // Back two minutes after its last read, it waits for its next slot.
     assert_eq!(
-        resumed("2026-10-20 10:02:00", "2026-10-20 10:00:00"),
+        back("2026-10-20 10:02:00", "2026-10-20 10:00:04"),
         Step::Wait(local("2026-10-20 10:05:00"))
     );
     // Back once that slot has passed, it reads at once, and only once.
-    let back = local("2026-10-20 10:20:00");
     assert_eq!(
-        resumed("2026-10-20 10:20:00", "2026-10-20 10:00:00"),
+        back("2026-10-20 10:20:00", "2026-10-20 10:00:04"),
         Step::Read(day)
     );
+    let read = local("2026-10-20 10:20:03");
     assert_eq!(
-        plan.step(back, back, &[], None),
+        plan.step(read, read, &[], None),
         Step::Wait(local("2026-10-20 10:25:00"))
     );
-    // Its last read came late, off the grid: back soon after, though its slot has passed, it
-    // waits for the next.
+    // Its last read came late, off the grid, and ended past the slot it was late for: back
+    // soon after, it waits for the next.
     assert_eq!(
-        resumed("2026-10-20 10:06:40", "2026-10-20 10:06:20"),
+        back("2026-10-20 10:06:40", "2026-10-20 10:06:25"),
         Step::Wait(local("2026-10-20 10:10:00"))
+    );
+    // So does one that began before a slot and ended after it.
+    assert_eq!(
+        back("2026-10-20 10:07:00", "2026-10-20 10:06:00"),
+        Step::Wait(local("2026-10-20 10:10:00"))
+    );
+    // One that came late but ended before the next slot leaves that slot to read, at once once
+    // it has passed, as it would have without the restart.
+    assert_eq!(
+        back("2026-10-20 10:06:00", "2026-10-20 10:04:05"),
+        Step::Read(day)
     );
     // Its last read yesterday counts for nothing today: it reads as the window opens.
     assert_eq!(
-        resumed("2026-10-20 08:00:00", "2026-10-19 20:55:00"),
+        back("2026-10-20 08:00:00", "2026-10-19 20:55:04"),
         Step::Read(day)
     );
     // Never read, it reads as soon as a slot has come.
-    let first = local("2026-10-20 09:00:00");
     assert_eq!(
-        plan.step(first, plan.resumed(first, None), &[], None),
+        plan.step(local("2026-10-20 09:00:00"), i64::MIN, &[], None),
         Step::Read(day)
     );
 }
@@ -270,5 +278,36 @@ fn a_day_that_ended_reads_no_more_though_its_window_is_moved_to_end_later() {
     assert_eq!(
         later.step(tomorrow.open, last, &[], Some(today)),
         Step::Read(tomorrow)
+    );
+}
+
+#[test]
+fn it_reads_next_at_the_open_days_next_slot_and_otherwise_at_the_next_days_start() {
+    // 2026-10-20 is a Tuesday.
+    let plan = reading(&[Tue, Thu], "08:00", "21:00", FIVE_MINUTES);
+    let today = date("2026-10-20");
+    assert_eq!(
+        plan.next_read(local("2026-10-20 07:00:00"), i64::MIN, None),
+        local("2026-10-20 08:00:00")
+    );
+    // Open, at the slot after its last read ended, or now once that has passed.
+    let read = local("2026-10-20 10:00:01");
+    assert_eq!(
+        plan.next_read(local("2026-10-20 10:02:00"), read, None),
+        local("2026-10-20 10:05:00")
+    );
+    let late = local("2026-10-20 10:12:00");
+    assert_eq!(plan.next_read(late, read, None), late);
+    // Past its last slot, at the start of the next day it opens on.
+    let last = local("2026-10-20 20:55:01");
+    assert_eq!(
+        plan.next_read(local("2026-10-20 20:57:00"), last, None),
+        local("2026-10-22 08:00:00")
+    );
+    // A day that ended reads no more, though its window opens again later that day.
+    let afternoon = reading(&[Tue, Thu], "14:00", "18:00", FIVE_MINUTES);
+    assert_eq!(
+        afternoon.next_read(local("2026-10-20 12:00:00"), last, Some(today)),
+        local("2026-10-22 14:00:00")
     );
 }

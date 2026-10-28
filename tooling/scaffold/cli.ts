@@ -122,7 +122,7 @@ const COMMANDS: Record<string, Command> = {
         'Usage: dispatchdev todo [<owner>] [--json]',
         '',
         "What the generators left to write, by owner, or only <owner>'s: a name, as parking, or",
-        'a kind and a name, as feature:parking, integration:<name>, core:<part> or mcp.',
+        'a kind and a name, as feature:parking, integration:<name> or core:<part>, app or mcp.',
       ].join('\n'),
     run: async (argv, json) => {
       const { root, rest } = rooted(argv);

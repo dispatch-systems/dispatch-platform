@@ -1,0 +1,398 @@
+//! A day's route data changed, as every feature hears it once it's kept (`routes.data_changed`):
+//! after a live read that changed it, live route data emptied, the day saved, collected or
+//! reprocessed, and its itineraries' work phones extracted from its stored responses, which tells a
+//! day kept before Routes kept them from one without a phone; and an itinerary that a read shows no
+//! phone for keeping the one its day's route data stored, which changes nothing its readers read.
+//! Made-up days only.
+use dispatch_core::{
+    State,
+    collection::browser::Collected,
+    db::{Store, s},
+    manifest::{
+        Feature, Upkeep,
+        events::{self, CollectionSucceeded},
+        feature, optional, registry,
+    },
+    testing as common,
+};
+use dispatch_cortex::{
+    self as cortex,
+    routes::{self, Capture, JOB_KIND, Mode, Request},
+};
+use dispatch_routes::RoutesStore;
+use dispatch_routes_contract::{DayPhones, DriverPhone, RouteDataChanged};
+use serde_json::json;
+use std::sync::{Arc, Mutex};
+
+/// A feature hearing a day's route data changed, on for a test's DSP as every feature is.
+static HEARING: Feature = Feature {
+    switch: optional("hearing", "Hearing", &[]),
+    on: &[dispatch_core::on!(RouteDataChanged, changed)],
+    ..feature("hearing")
+};
+/// Each DSP and day the stand-in heard of, once each time.
+static HEARD: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+fn changed(_: Arc<State>, dsp: String, changed: RouteDataChanged) -> Upkeep {
+    let mut heard = HEARD.lock().unwrap_or_else(|poison| poison.into_inner());
+    heard.push((dsp, changed.day));
+    Box::pin(async {})
+}
+/// The days the stand-in heard of the DSP's route data changing since it was last asked, in order.
+fn heard(dsp: &str) -> Vec<String> {
+    let mut heard = HEARD.lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut days = Vec::new();
+    heard.retain(|(at, day)| {
+        let theirs = at == dsp;
+        if theirs {
+            days.push(day.clone());
+        }
+        !theirs
+    });
+    days
+}
+
+/// A DSP with a station and Cortex connected, Routes on, with its server's state.
+fn ready() -> (tempfile::TempDir, Store, String, Arc<State>) {
+    common::install(
+        &[&cortex::COLLECTOR],
+        &[&dispatch_routes::FEATURE, &HEARING],
+    );
+    let (root, db, dsp) = common::bootstrapped();
+    db.set_profile(
+        &dsp,
+        json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
+    )
+    .unwrap();
+    common::ready_connection(&db, &dsp, cortex::PROVIDER).unwrap();
+    let state = State::new(db.config.clone()).unwrap();
+    (root, db, dsp, state)
+}
+/// The bootstrapped DSP's day `back` days before today: it keeps UTC.
+fn day(back: i64) -> String {
+    (chrono::Utc::now().date_naive() - chrono::Duration::days(back)).to_string()
+}
+/// The fixture's read of `day`, at the DSP's station: final, or a snapshot of today.
+fn read(day: &str, mode: Mode) -> Capture {
+    let request = Request::parse(
+        &json!({"collection":"routes","mode":mode.as_str(),"date":day,
+        "station":"TST1","timezone":"UTC","dspName":"Test Owner","dspAbbreviation":"NLOG"}),
+    )
+    .unwrap()
+    .unwrap();
+    routes::fixture(&request).unwrap()
+}
+/// The fixture's read of `day` as `read` has it, its drivers' records showing no phone.
+fn phoneless(day: &str, mode: Mode) -> Capture {
+    let mut read = read(day, mode);
+    for drivers in [
+        &mut read.summaries["transporters"],
+        &mut read.route_summaries["transporters"],
+    ] {
+        for driver in drivers.as_array_mut().unwrap() {
+            driver.as_object_mut().unwrap().remove("workPhoneNumber");
+        }
+    }
+    for itinerary in &mut read.itineraries {
+        let mut response: serde_json::Value = serde_json::from_str(&itinerary.detail).unwrap();
+        response["transporters"] = json!([]);
+        itinerary.detail = response.to_string();
+    }
+    read
+}
+/// Keeps `read` as a live reader does, under the DSP's Cortex connection as it stands.
+async fn keep_live(state: &Arc<State>, dsp: &str, read: Capture) -> dispatch_routes::LiveKept {
+    let d = dsp.to_owned();
+    let revision = state
+        .read(move |db| db.connection_revision(&d, cortex::PROVIDER))
+        .await
+        .unwrap()
+        .expect("Cortex is connected");
+    dispatch_routes::keep_live(state, dsp, read, revision)
+        .await
+        .unwrap()
+}
+/// Collects `capture` under `key` as the standard collection does: queued, staged and published
+/// by Routes' keeper, as the executor publishes a job.
+fn collect(db: &Store, dsp: &str, key: &str, capture: Capture) {
+    let day = capture.scope.date.clone();
+    let jobs = db
+        .enqueue_routes(dsp, None, key, Some(&day), capture.mode, 1)
+        .unwrap();
+    let job = s(&jobs[0], "id").to_owned();
+    let staged = db.stage_routes(dsp, &job, capture).unwrap();
+    let collected = Collected {
+        data: serde_json::to_value(staged).unwrap(),
+        scope: None,
+    };
+    let keeper = registry().keeper(JOB_KIND);
+    keeper.publish(db, dsp, &job, collected).unwrap();
+}
+/// The day's work phones, as other features read them.
+fn day_phones(db: &Store, dsp: &str, day: &str) -> DayPhones {
+    let routes = dispatch_routes_contract::for_dsp(db, dsp).unwrap();
+    routes
+        .expect("Routes is on")
+        .day_phones(db, dsp, day)
+        .unwrap()
+}
+/// Today's work phones as live route data holds them, as other features read them.
+fn live_phones(db: &Store, dsp: &str) -> DayPhones {
+    let live = dispatch_routes_contract::live_for_dsp(db, dsp).unwrap();
+    live.expect("Routes is on").day_phones(db, dsp).unwrap()
+}
+/// `driver`'s latest work phone of a day, `shared` when it's another driver's latest too.
+fn latest(driver: &str, phone: &str, shared: bool) -> DriverPhone {
+    DriverPhone {
+        driver_id: driver.into(),
+        phone: phone.into(),
+        shared,
+    }
+}
+/// Routes' upkeep, as the scheduler offers it every minute.
+async fn upkeep(state: &Arc<State>) {
+    (dispatch_routes::FEATURE.maintenance[0].run)(state.clone(), false).await;
+}
+
+#[tokio::test]
+async fn a_live_day_is_heard_of_once_a_read_changed_it_and_as_its_emptied_or_saved() {
+    let (_root, db, dsp, state) = ready();
+    let today = day(0);
+    let first = read(&today, Mode::Snapshot);
+    keep_live(&state, &dsp, first.clone()).await;
+    assert_eq!(heard(&dsp), [today.as_str()], "a first read");
+    // Read again as it was, or before, it changed nothing; nor did one whose list Cortex answered
+    // later, which stores that response again but changes nothing the day's readers read.
+    keep_live(&state, &dsp, first.clone()).await;
+    let mut unchanged = first.clone();
+    unchanged.finished_at += 1;
+    assert_eq!(keep_live(&state, &dsp, unchanged.clone()).await.changed, 0);
+    unchanged.finished_at += 1;
+    unchanged.summaries["backendTime"] = json!(unchanged.finished_at);
+    assert_eq!(keep_live(&state, &dsp, unchanged.clone()).await.changed, 1);
+    assert_eq!(heard(&dsp), Vec::<String>::new(), "reads changing nothing");
+    let mut moved = unchanged;
+    moved.finished_at += 1;
+    moved.summaries["transporters"][0]["workPhoneNumber"] = json!("5550100003");
+    keep_live(&state, &dsp, moved).await;
+    assert_eq!(heard(&dsp), [today.as_str()], "a read moving a phone");
+
+    // Emptied; then read, saved and emptied as a stopped day is; then emptied holding none.
+    dispatch_routes::clear_live(&state, &dsp).await.unwrap();
+    keep_live(&state, &dsp, first).await;
+    dispatch_routes::save_and_clear_live(&state, &dsp)
+        .await
+        .unwrap();
+    dispatch_routes::clear_live(&state, &dsp).await.unwrap();
+    assert_eq!(heard(&dsp), vec![today.clone(); 5]);
+
+    // Kept as a release before kept itineraries' phones left it, its drivers showing none: the next
+    // read writes no row, yet its readers read its phones, none, from then on.
+    let phoneless = phoneless(&today, Mode::Snapshot);
+    keep_live(&state, &dsp, phoneless.clone()).await;
+    let shaped = "UPDATE route_publications SET adapter_version=2";
+    db.routes_live_db(&dsp).unwrap().exec(shaped, []).unwrap();
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Unextracted);
+    heard(&dsp);
+    let mut later = phoneless;
+    later.finished_at += 1;
+    assert_eq!(keep_live(&state, &dsp, later).await.changed, 0);
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(Vec::new()));
+    assert_eq!(heard(&dsp), [today.as_str()], "its phones read");
+
+    // Another feature's read of the day before, saved: of that day, unless one the day has is later.
+    let before = read(&day(1), Mode::Final);
+    let saved = dispatch_routes::save_day(&state, &dsp, "before", before.clone(), Vec::new());
+    assert!(saved.await.unwrap());
+    let mut earlier = before;
+    (earlier.started_at, earlier.finished_at) = (earlier.started_at - 1, earlier.finished_at - 1);
+    let saved = dispatch_routes::save_day(&state, &dsp, "earlier", earlier, Vec::new());
+    assert!(!saved.await.unwrap());
+    assert_eq!(heard(&dsp), [day(1)]);
+}
+
+#[tokio::test]
+async fn a_collected_or_reprocessed_day_is_heard_of_once_its_collection_succeeds_or_by_the_upkeep()
+{
+    let (_root, db, dsp, state) = ready();
+    // Collected, it's told once the collection is: the executor publishes in its database work.
+    collect(&db, &dsp, "first", read(&day(1), Mode::Final));
+    assert_eq!(heard(&dsp), Vec::<String>::new());
+    let succeeded = |keeps| CollectionSucceeded { keeps };
+    events::publish(&state, &dsp, succeeded(JOB_KIND)).await;
+    events::publish(&state, &dsp, succeeded(JOB_KIND)).await;
+    assert_eq!(heard(&dsp), [day(1)], "told once");
+
+    // One whose collection was never told succeeded, as when its job couldn't finish, and another
+    // collection's success: told by the next upkeep.
+    collect(&db, &dsp, "second", read(&day(2), Mode::Final));
+    events::publish(&state, &dsp, succeeded(cortex::dvic::JOB_KIND)).await;
+    assert_eq!(heard(&dsp), Vec::<String>::new());
+    upkeep(&state).await;
+    assert_eq!(heard(&dsp), [day(2)]);
+
+    // A read collected before the day's own changes nothing, told of nothing.
+    let mut earlier = read(&day(1), Mode::Final);
+    (earlier.started_at, earlier.finished_at) =
+        (earlier.started_at - 60_000, earlier.finished_at - 60_000);
+    collect(&db, &dsp, "earlier", earlier);
+    upkeep(&state).await;
+    assert_eq!(heard(&dsp), Vec::<String>::new());
+
+    // Reprocessed, as the platform owner asks: each day it rebuilt, by the next upkeep.
+    db.reprocess_routes(&dsp, None).unwrap();
+    upkeep(&state).await;
+    assert_eq!(heard(&dsp), [day(2), day(1)]);
+}
+
+#[tokio::test]
+async fn a_day_kept_before_its_work_phones_were_has_them_extracted_from_its_stored_responses() {
+    let (_root, db, dsp, state) = ready();
+    let routes = dispatch_routes_contract::for_dsp(&db, &dsp)
+        .unwrap()
+        .unwrap();
+    let ever = |phone: &str| routes.ever_work_phone(&db, &dsp, phone).unwrap();
+    // Three days collected: two then made as a release before kept their phones left them, the
+    // version just before and an older one; and one whose drivers show no phone.
+    for back in [1, 2] {
+        collect(&db, &dsp, &day(back), read(&day(back), Mode::Final));
+    }
+    collect(&db, &dsp, &day(3), phoneless(&day(3), Mode::Final));
+    upkeep(&state).await;
+    heard(&dsp);
+    let historical = db.routes_db(&dsp).unwrap();
+    for (back, version) in [(1, 2), (2, 1)] {
+        let day = day(back);
+        let shaped = "UPDATE route_publications SET adapter_version=? WHERE day=?";
+        historical
+            .exec(shaped, rusqlite::params![version, day])
+            .unwrap();
+        let unkept = "UPDATE itineraries SET work_phone=NULL WHERE day=?";
+        historical.exec(unkept, [&day]).unwrap();
+    }
+    drop(historical);
+    let phones = |back| day_phones(&db, &dsp, &day(back));
+    assert_eq!(phones(1), DayPhones::Unextracted);
+    assert_eq!(phones(2), DayPhones::Unextracted);
+    assert_eq!(phones(3), DayPhones::Read(Vec::new()), "no phone");
+    assert!(!ever("2065550190"));
+
+    // The upkeep extracts the newer's from its stored responses, telling of it once; the older
+    // needs a reprocess, which shapes it whole.
+    upkeep(&state).await;
+    assert_eq!(
+        phones(1),
+        DayPhones::Read(vec![
+            latest("driver-1", "2065550190", false),
+            latest("driver-2", "2065550191", false),
+        ])
+    );
+    assert_eq!(phones(2), DayPhones::Unextracted);
+    assert!(ever("+1 (206) 555-0190"));
+    upkeep(&state).await;
+    assert_eq!(heard(&dsp), [day(1)]);
+}
+
+#[tokio::test]
+async fn a_live_itinerary_showing_no_phone_keeps_the_one_stored_until_another_driver_shows_it() {
+    let (_root, db, dsp, state) = ready();
+    let today = day(0);
+    let (first, second, third) = ("2065550190", "2065550191", "2065550192");
+    keep_live(&state, &dsp, read(&today, Mode::Snapshot)).await;
+    let mut blank = phoneless(&today, Mode::Snapshot);
+    heard(&dsp);
+
+    // Read again, the drivers' records showing no phone, as once Cortex ends their sessions: each
+    // itinerary keeps the one stored, which changes nothing the day's readers read.
+    blank.finished_at += 1;
+    keep_live(&state, &dsp, blank.clone()).await;
+    let kept = vec![
+        latest("driver-1", first, false),
+        latest("driver-2", second, false),
+    ];
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(kept));
+    assert_eq!(heard(&dsp), Vec::<String>::new(), "phones kept");
+
+    // The second's record showing another phone, it replaces the one kept; and the day saved, the
+    // first's is kept there too, as live route data kept it.
+    blank.finished_at += 1;
+    blank.summaries["transporters"][1]["workPhoneNumber"] = json!(third);
+    keep_live(&state, &dsp, blank.clone()).await;
+    let moved = vec![
+        latest("driver-1", first, false),
+        latest("driver-2", third, false),
+    ];
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(moved.clone()));
+    assert_eq!(
+        dispatch_routes::save_live_day(&state, &dsp).await.unwrap(),
+        Some(true)
+    );
+    assert_eq!(day_phones(&db, &dsp, &today), DayPhones::Read(moved));
+    assert_eq!(
+        heard(&dsp),
+        [today.as_str(), today.as_str()],
+        "moved, then saved"
+    );
+
+    // Handed over: the first's record still blank, the second's showing their phone, which is the
+    // second's alone.
+    blank.finished_at += 1;
+    blank.summaries["transporters"][1]["workPhoneNumber"] = json!(first);
+    keep_live(&state, &dsp, blank.clone()).await;
+    let handed = vec![latest("driver-2", first, false)];
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(handed.clone()));
+    assert_eq!(heard(&dsp), [today.as_str()], "a phone handed over");
+
+    // Both records blank, then the day saved over the read saved before, which had the first on
+    // that phone: it's the second's alone there too, as live route data has it.
+    blank.finished_at += 1;
+    let record = blank.summaries["transporters"][1].as_object_mut().unwrap();
+    record.remove("workPhoneNumber");
+    keep_live(&state, &dsp, blank).await;
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(handed.clone()));
+    let saved = dispatch_routes::save_live_day(&state, &dsp).await.unwrap();
+    assert_eq!(saved, Some(true));
+    assert_eq!(day_phones(&db, &dsp, &today), DayPhones::Read(handed));
+}
+
+#[tokio::test]
+async fn a_saved_live_day_gives_no_phone_back_to_the_driver_live_route_data_took_it_from() {
+    let (_root, db, dsp, state) = ready();
+    let today = day(0);
+    let (first, third) = ("2065550190", "2065550192");
+    // Today collected with the first driver on a phone; then read live, the first's record blank,
+    // the second's showing that phone, then another, then none.
+    collect(&db, &dsp, "before", read(&today, Mode::Snapshot));
+    let mut blank = phoneless(&today, Mode::Snapshot);
+    for phone in [Some(first), Some(third), None] {
+        blank.finished_at += 1;
+        blank.summaries["transporters"][1]["workPhoneNumber"] = json!(phone);
+        keep_live(&state, &dsp, blank.clone()).await;
+    }
+    let moved_on = vec![latest("driver-2", third, false)];
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(moved_on.clone()));
+    // Saved over the read collected: the first has no phone there either, as live route data has it.
+    let saved = dispatch_routes::save_live_day(&state, &dsp).await.unwrap();
+    assert_eq!(saved, Some(true));
+    assert_eq!(day_phones(&db, &dsp, &today), DayPhones::Read(moved_on));
+}
+
+#[tokio::test]
+async fn a_saved_day_read_again_showing_no_phone_keeps_its_reads_but_never_the_day_befores() {
+    let (_root, db, dsp, _state) = ready();
+    let own = DayPhones::Read(vec![
+        latest("driver-1", "2065550190", false),
+        latest("driver-2", "2065550191", false),
+    ]);
+    collect(&db, &dsp, "first", read(&day(2), Mode::Final));
+    // Collected again, its drivers' records showing no phone: each itinerary keeps the one the read
+    // it replaced stored; and rebuilt from those responses, keeps it still.
+    let mut again = phoneless(&day(2), Mode::Final);
+    again.finished_at += 1;
+    collect(&db, &dsp, "again", again);
+    assert_eq!(day_phones(&db, &dsp, &day(2)), own);
+    db.reprocess_routes(&dsp, Some(&day(2))).unwrap();
+    assert_eq!(day_phones(&db, &dsp, &day(2)), own);
+    // The day after, its records showing none: none of the day before's.
+    collect(&db, &dsp, "next", phoneless(&day(1), Mode::Final));
+    assert_eq!(day_phones(&db, &dsp, &day(1)), DayPhones::Read(Vec::new()));
+}

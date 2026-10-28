@@ -7,6 +7,7 @@ pub mod routes {
     pub mod collectors;
     pub mod connections;
     pub mod jobs;
+    pub mod readers;
 }
 
 /// Its API types, which the app's export writes to TypeScript in its `api/generated/`.
@@ -29,6 +30,9 @@ pub fn typescript(cfg: &ts_rs::Config) -> crate::Typescript {
         types::Connection,
         types::ConnectionStatus,
         types::LastRun,
+        types::LiveError,
+        types::LiveRead,
+        types::LiveReading,
         types::RuleKind,
         types::RunCounts,
         types::ScheduleChoice,
@@ -45,5 +49,6 @@ pub fn routes() -> Vec<crate::server::http::Route> {
     let mut all = routes::jobs::routes();
     all.extend(routes::connections::routes());
     all.extend(routes::collectors::routes());
+    all.extend(routes::readers::routes());
     all
 }

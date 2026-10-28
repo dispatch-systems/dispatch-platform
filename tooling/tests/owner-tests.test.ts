@@ -6,8 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { ownerTests, shell } from '../testing/owner-tests.js';
 
-// test:feature, test:collector, test:core and test:mcp, listed rather than run: the commands they would
-// run name the owner's tests of every kind, found by the folder each sits in.
+// test:feature, test:collector, test:core, test:mcp and test:app, listed rather than run: the
+// commands they would run name the owner's tests of every kind, found by the folder each sits in.
 
 const root = path.resolve(import.meta.dirname, '../..');
 const list = (...args: string[]) => {
@@ -125,6 +125,29 @@ test("the MCP's list, which takes no name, names its crate's tests, API tests an
   );
 });
 
+test("the app's list, which takes no name, names its backend's tests and the rest of its own, and where its rules run", () => {
+  const { status, commands, notes } = list('app');
+  assert.equal(status, 0);
+  assert.equal(commands[0], 'cargo test --locked -p dispatch-backend');
+  const native = owned('app/tests/native', /\.test\.ts$/);
+  const sharded = Object.entries(shards).filter(([, files]) =>
+    files.some((file) => native.includes(file)),
+  );
+  const unsharded = native.filter((file) => !sharded.some(([, files]) => files.includes(file)));
+  const node = [
+    ...owned('app/tests/api', /\.test\.ts$/),
+    ...owned('app/tests/frontend', /\.test\.ts$/),
+    ...unsharded,
+  ];
+  assert(commands.includes(`node node_modules/tsx/dist/cli.mjs --test ${node.join(' ')}`));
+  assert(
+    commands.includes(`npm run test:ui -- ${owned('app/tests/browser', /\.spec\.ts$/).join(' ')}`),
+  );
+  for (const [shard] of sharded)
+    assert(commands.includes(`npm run test:browseros -- --shard ${shard}`), shard);
+  assert.match(notes.join('\n'), /app\/tests\/rules\/ run with npm run check:rules/);
+});
+
 test('--only keeps one kind of tests and the build it needs, --file one test, --debug the debug package', () => {
   const api = owned('features/dvic/tests/api', /\.test\.ts$/);
   assert.deepEqual(list('feature', 'dvic', '--only', 'api').commands, [
@@ -234,6 +257,28 @@ test('one Rust test file runs as its program, or as the module of the program or
     const stray = run('stray.rs');
     assert.deepEqual(stray.commands.map(shell), [cargo]);
     assert.match(stray.notes.join('\n'), /stray\.rs/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("one of the app's Rust test files runs as the module it is of its backend's library or program", () => {
+  const dir = repository({
+    'app/backend/Cargo.toml':
+      '[package]\nname = "dispatch-backend"\n\n[lib]\npath = "lib.rs"\n\n' +
+      '[[test]]\nname = "integration"\npath = "../../app/tests/backend/integration/main.rs"\n',
+    'app/backend/lib.rs': '#[cfg(test)]\n#[path = "../tests/backend/audit.rs"]\nmod audit_areas;\n',
+    'app/tests/backend/audit.rs': '',
+    'app/tests/backend/integration/main.rs': 'mod support;\n\nmod oauth;\n',
+    'app/tests/backend/integration/oauth.rs': '',
+  });
+  try {
+    const run = (file: string) =>
+      ownerTests(dir, 'app', '', { file: `app/tests/backend/${file}` }).commands.map(shell);
+    const cargo = 'cargo test --locked -p dispatch-backend';
+    assert.deepEqual(run('audit.rs'), [`${cargo} --lib -- audit_areas::`]);
+    // The program's root sits in app/tests/, outside the crate's folder.
+    assert.deepEqual(run('integration/oauth.rs'), [`${cargo} --test integration -- oauth::`]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
