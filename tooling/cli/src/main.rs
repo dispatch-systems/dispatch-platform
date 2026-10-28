@@ -172,9 +172,9 @@ const COMMANDS: &[Spec] = &[
         ],
         "The tests the diff touches, or --all of them, one line each, stopping at the first \
          failure: for fixing a test, as the merge queue runs them. --owner runs one owner's of \
-         every kind, as feature:<name>, collector:<site>, core:<part>, mcp or a name alone, or \
-         --only its rust, api, frontend, browser or native ones, or one --file of them. Each \
-         run builds in a folder of its own, deleted when it ends unless --keep.",
+         every kind, as feature:<name>, collector:<site>, core:<part>, app, mcp or a name \
+         alone, or --only its rust, api, frontend, browser or native ones, or one --file of \
+         them. Each run builds in a folder of its own, deleted when it ends unless --keep.",
     )
     .flags(&["--all", "--keep"])
     .options(&["--owner", "--only", "--file"]),
@@ -327,8 +327,8 @@ const COMMANDS: &[Spec] = &[
         "todo",
         &["todo [<owner>] [--json]"],
         "What a generator left to write, by owner: each scaffold marker's file, line and what \
-         it asks for, or one owner's: a name, or feature:, collector:, integration:, core: \
-         or mcp with it.",
+         it asks for, or one owner's: a name, or feature:, collector:, integration: or core: \
+         with it, app or mcp.",
     )
     .passed(),
     spec(

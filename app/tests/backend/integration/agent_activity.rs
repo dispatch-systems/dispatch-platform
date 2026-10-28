@@ -2,11 +2,11 @@
 //! a key or connected app makes is held in memory and written down in batches, never one by
 //! one; refusals keep their code; the log pages newest first, narrows to one key or to what
 //! was refused, and forgets calls past 90 days.
+use crate::support::{self, Answer, Call, Who};
 use dispatch_core::{
     State,
-    db::{self, Store, s},
-    foundation::{config::Config, crypto},
-    server::operations,
+    db::{self, s},
+    foundation::crypto,
 };
 use dispatch_mcp::{
     ActivityStore, KeyStore, activity,
@@ -15,113 +15,23 @@ use dispatch_mcp::{
     piece::Kept,
 };
 use serde_json::{Value, json};
-use std::{os::unix::fs::PermissionsExt, sync::Arc};
 
-struct Server {
-    _root: tempfile::TempDir,
-    origin: String,
-    state: Arc<State>,
-    client: reqwest::Client,
-}
-struct Answer {
-    status: u16,
-    body: Value,
-    bytes: usize,
+/// The served router, with the keys, apps and calls these tests make on it. Nothing is
+/// written down unless a test flushes it.
+struct Server(support::Server);
+impl std::ops::Deref for Server {
+    type Target = support::Server;
+    fn deref(&self) -> &support::Server {
+        &self.0
+    }
 }
 impl Server {
-    /// The router alone, without the scheduler, so nothing is written down unless a test
-    /// flushes it.
     async fn start() -> Self {
-        dispatch_backend::install();
-        let root = tempfile::tempdir().unwrap();
-        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-        let dashboard = root.path().join("dashboard");
-        std::fs::create_dir_all(dashboard.join("assets")).unwrap();
-        std::fs::write(dashboard.join("index.html"), "<html><head></head></html>").unwrap();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let mut config = Config::load().unwrap();
-        config.root = root.path().join("state");
-        db::private_dir(&config.root).unwrap();
-        config.development = true;
-        config.fixture = true;
-        config.environment = "preview".into();
-        config.standalone = true;
-        config.dashboard = dashboard;
-        config.port = port;
-        config.origin = format!("http://127.0.0.1:{port}");
-        operations::seed(&Store::initialize(config.clone()).unwrap()).unwrap();
-        let state = State::new(config).unwrap();
-        let app = dispatch_core::server::http::router(state.clone())
-            .into_make_service_with_connect_info::<std::net::SocketAddr>();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        Self {
-            _root: root,
-            origin: format!("http://127.0.0.1:{port}"),
-            state,
-            client: reqwest::Client::builder().no_proxy().build().unwrap(),
-        }
+        Self(support::Server::start().await)
     }
-    async fn send(&self, request: reqwest::RequestBuilder) -> Answer {
-        let response = request.send().await.unwrap();
-        let status = response.status().as_u16();
-        let bytes = response.bytes().await.unwrap();
-        Answer {
-            status,
-            body: serde_json::from_slice(&bytes).unwrap_or(Value::Null),
-            bytes: bytes.len(),
-        }
-    }
-    /// The platform owner's session cookie, written directly so tests skip password hashing.
-    async fn owner(&self) -> String {
-        let raw = crypto::token().unwrap();
-        let token = raw.clone();
-        self.state
-            .run(move |db| {
-                let user = db
-                    .platform
-                    .one(
-                        "SELECT id,version FROM users WHERE email='owner@dispatch.test'",
-                        [],
-                    )?
-                    .unwrap();
-                db.platform.exec(
-                    "INSERT INTO sessions VALUES (?,?,?,?,?)",
-                    rusqlite::params![
-                        crypto::sha(&token),
-                        s(&user, "id"),
-                        db::n(&user, "version"),
-                        db::now() + 600000,
-                        db::now()
-                    ],
-                )?;
-                Ok(())
-            })
-            .await
-            .unwrap();
-        format!("dispatch_session={raw}")
-    }
-    async fn log(&self, cookie: &str, query: &str) -> Answer {
-        self.send(
-            self.client
-                .get(format!(
-                    "{}/api/platform/agents/activity{query}",
-                    self.origin
-                ))
-                .header("cookie", cookie),
-        )
-        .await
-    }
-    async fn dsp(&self, name: &'static str) -> String {
-        self.state
-            .read(move |db| {
-                let row = db
-                    .platform
-                    .one("SELECT id FROM dsps WHERE name=?", [name])?;
-                Ok(s(&row.unwrap(), "id").to_owned())
-            })
-            .await
-            .unwrap()
+    async fn log(&self, owner: &Who, query: &str) -> Answer {
+        let path = format!("/api/platform/agents/activity{query}");
+        self.send(Call::get(&path).who(owner)).await
     }
     /// A key made the way the Agents page makes one, reaching `dsps` (every DSP when empty).
     async fn key(&self, name: &str, dsps: Vec<String>) -> (String, String) {
@@ -176,26 +86,6 @@ impl Server {
             .await
             .unwrap();
         (id, token)
-    }
-    async fn rest(&self, token: &str, path: &str) -> Answer {
-        self.send(
-            self.client
-                .get(format!("{}{path}", self.origin))
-                .header("authorization", format!("Bearer {token}")),
-        )
-        .await
-    }
-    async fn mcp(&self, token: &str, method: &str, params: Value) -> Answer {
-        self.send(
-            self.client
-                .post(format!("{}/api/v1/mcp", self.origin))
-                .header("authorization", format!("Bearer {token}"))
-                .header("content-type", "application/json")
-                .header("accept", "application/json, text/event-stream")
-                .header("mcp-protocol-version", "2025-06-18")
-                .body(json!({"jsonrpc":"2.0","id":1,"method":method,"params":params}).to_string()),
-        )
-        .await
     }
     async fn tool(&self, token: &str, name: &str, arguments: Value) -> Answer {
         self.mcp(
@@ -267,14 +157,14 @@ fn row(surface: &str, kind: &str, dsp: &str, outcome: &str) -> (String, String, 
 #[tokio::test]
 async fn rest_and_mcp_calls_are_held_then_written_with_their_outcome() {
     let server = Server::start().await;
-    let cookie = server.owner().await;
+    let owner = server.owner().await;
     let north = server.dsp("Northline Logistics").await;
     let (key, token) = server
         .key("Laptop – Claude Code", vec![north.clone()])
         .await;
     let (app, access) = server.app("Claude Code").await;
 
-    let whoami = server.rest(&token, "/api/v1/whoami").await;
+    let whoami = server.bearer("/api/v1/whoami", &token).await;
     assert_eq!(whoami.status, 200, "{}", whoami.body);
     // The MCP handshake and lists are no calls; a tool call is, refused or not.
     let hello = json!({"protocolVersion":"2025-06-18","capabilities":{},
@@ -293,24 +183,24 @@ async fn rest_and_mcp_calls_are_held_then_written_with_their_outcome() {
     let invented = server.tool(&token, "secret Avery Morgan", json!({})).await;
     assert_eq!(invented.body["result"]["isError"], true);
     // A connected app's calls are its own.
-    assert_eq!(server.rest(&access, "/api/v1/whoami").await.status, 200);
+    assert_eq!(server.bearer("/api/v1/whoami", &access).await.status, 200);
     let profile = server.tool(&access, "get_profile", json!({})).await;
     assert_eq!(profile.body["result"]["isError"], false, "{}", profile.body);
     // A request no key signs is no one's call.
     assert_eq!(
-        server.rest("dsk_dev_nope", "/api/v1/whoami").await.status,
+        server.bearer("/api/v1/whoami", "dsk_dev_nope").await.status,
         401
     );
 
     // Nothing was written yet: every call waits in memory.
     assert_eq!(server.written().await, 0);
     assert_eq!(Kept::of(&server.state).activity.pending(), 6);
-    assert_eq!(server.log(&cookie, "").await.body["rows"], json!([]));
+    assert_eq!(server.log(&owner, "").await.body["rows"], json!([]));
     assert_eq!(activity::flush(&server.state).await.unwrap(), 6);
     assert_eq!(Kept::of(&server.state).activity.pending(), 0);
     assert_eq!(server.written().await, 6);
 
-    let log = server.log(&cookie, "").await;
+    let log = server.log(&owner, "").await;
     assert_eq!(log.status, 200, "{}", log.body);
     assert_eq!(log.body["next"], Value::Null);
     assert_eq!(
@@ -349,14 +239,14 @@ async fn rest_and_mcp_calls_are_held_then_written_with_their_outcome() {
 #[tokio::test]
 async fn a_key_refused_for_its_rate_is_recorded_once_a_minute() {
     let server = Server::start().await;
-    let cookie = server.owner().await;
+    let owner = server.owner().await;
     let (key, token) = server.key("Busy", vec![]).await;
     // The minute's calls already made, so the next ones are refused, over REST and MCP
     // alike. A minute may turn between filling it and calling: then fill the new one.
     let mut minutes = 0;
     for _ in 0..3 {
         while Kept::of(&server.state).usage.admit(&key, "curl").is_ok() {}
-        let rest = server.rest(&token, "/api/v1/whoami").await;
+        let rest = server.bearer("/api/v1/whoami", &token).await;
         let tool = server.tool(&token, "whoami", json!({})).await;
         if rest.status == 429 {
             assert_eq!(rest.body["error"], "rate_limited");
@@ -368,7 +258,7 @@ async fn a_key_refused_for_its_rate_is_recorded_once_a_minute() {
     }
     assert!(minutes > 0);
     activity::flush(&server.state).await.unwrap();
-    let log = server.log(&cookie, "?outcome=refused").await;
+    let log = server.log(&owner, "?outcome=refused").await;
     let refused: Vec<_> = seen(&log.body["rows"])
         .into_iter()
         .filter(|(_, _, _, outcome)| outcome == "rate_limited")
@@ -381,7 +271,7 @@ async fn a_key_refused_for_its_rate_is_recorded_once_a_minute() {
 #[tokio::test]
 async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
     let server = Server::start().await;
-    let cookie = server.owner().await;
+    let owner = server.owner().await;
     let key = |id: &str| AgentActivityKey {
         id: id.into(),
         name: format!("Key {id}"),
@@ -421,7 +311,7 @@ async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
     let mut paged = vec![];
     let mut query = "?limit=3".to_owned();
     loop {
-        let page = server.log(&cookie, &query).await;
+        let page = server.log(&owner, &query).await;
         assert_eq!(page.status, 200, "{}", page.body);
         assert!(page.body["rows"].as_array().unwrap().len() <= 3);
         paged.extend(surfaces(&page));
@@ -438,25 +328,25 @@ async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
             .collect()
     };
     assert_eq!(
-        surfaces(&server.log(&cookie, "?key=agentkey_a").await),
+        surfaces(&server.log(&owner, "?key=agentkey_a").await),
         only(&[0, 3, 6])
     );
     assert_eq!(
-        surfaces(&server.log(&cookie, "?outcome=refused").await),
+        surfaces(&server.log(&owner, "?outcome=refused").await),
         only(&[1, 3, 5])
     );
     assert_eq!(
-        surfaces(&server.log(&cookie, "?outcome=ok").await),
+        surfaces(&server.log(&owner, "?outcome=ok").await),
         only(&[0, 2, 4, 6])
     );
     let narrowed = server
-        .log(&cookie, "?key=agentkey_b&outcome=refused&limit=1")
+        .log(&owner, "?key=agentkey_b&outcome=refused&limit=1")
         .await;
     assert_eq!(surfaces(&narrowed), ["rest:call5"]);
     let next = narrowed.body["next"].as_str().unwrap().to_owned();
     let after = server
         .log(
-            &cookie,
+            &owner,
             &format!("?key=agentkey_b&outcome=refused&before={next}"),
         )
         .await;
@@ -469,13 +359,13 @@ async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
         "?limit=201",
         "?dsp=x",
     ] {
-        assert_eq!(server.log(&cookie, wrong).await.status, 400, "{wrong}");
+        assert_eq!(server.log(&owner, wrong).await.status, 400, "{wrong}");
     }
     // Only a platform owner reads it, never an agent.
     let (_, token) = server.key("Reader", vec![]).await;
     assert_ne!(
         server
-            .rest(&token, "/api/platform/agents/activity")
+            .bearer("/api/platform/agents/activity", &token)
             .await
             .status,
         200
@@ -485,7 +375,7 @@ async fn the_log_pages_newest_first_and_narrows_to_a_key_or_to_refusals() {
 #[tokio::test]
 async fn a_key_past_its_days_calls_is_capped_and_a_restart_keeps_the_cap() {
     let server = Server::start().await;
-    let cookie = server.owner().await;
+    let owner = server.owner().await;
     let (busy, _) = server.key("Busy", vec![]).await;
     let (quiet, _) = server.key("Quiet", vec![]).await;
     let day = 86_400_000;
@@ -559,7 +449,7 @@ async fn a_key_past_its_days_calls_is_capped_and_a_restart_keeps_the_cap() {
     let marker = row("activity:capped", "capped", "Busy");
     let last = row("rest:whoami", "ok", "Busy");
     assert_eq!(
-        listed(server.log(&cookie, "?limit=3").await),
+        listed(server.log(&owner, "?limit=3").await),
         [
             row("rest:whoami", "ok", "Quiet"),
             marker.clone(),
@@ -567,11 +457,11 @@ async fn a_key_past_its_days_calls_is_capped_and_a_restart_keeps_the_cap() {
         ]
     );
     // The marker stands for calls that ended every way, so either filter lists it.
-    let refused = listed(server.log(&cookie, "?outcome=refused").await);
+    let refused = listed(server.log(&owner, "?outcome=refused").await);
     assert_eq!(refused, std::slice::from_ref(&marker));
     let only = format!("?key={busy}&outcome=ok&limit=2");
-    assert_eq!(listed(server.log(&cookie, &only).await), [marker, last]);
-    let capped = &server.log(&cookie, "?outcome=refused").await.body["rows"][0];
+    assert_eq!(listed(server.log(&owner, &only).await), [marker, last]);
+    let capped = &server.log(&owner, "?outcome=refused").await.body["rows"][0];
     assert_eq!(s(capped, "at"), db::at(now + 1));
     assert_eq!((&capped["ms"], &capped["bytes"]), (&json!(0), &json!(0)));
     assert_eq!(capped["dsp"], Value::Null);

@@ -3,14 +3,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Command } from '../ci/execution-plan.js';
 
-// `npm run test:feature <name>`, `test:collector <site>`, `test:core <part>` and `test:mcp`: one
-// owner's tests of every kind, found by the folder they sit in, and run as CI runs them. Each command is printed
-// before it runs; `--list` prints them and runs nothing, `--no-build` skips the builds. `--only`
-// keeps one kind of them, `--file` one test file; `--debug` packages the browser tests' runtime
-// with the debug backend, as `dispatchdev test --owner` runs them.
+// `npm run test:feature <name>`, `test:collector <site>`, `test:core <part>`, `test:mcp` and
+// `test:app`: one owner's tests of every kind, found by the folder they sit in, and run as CI runs
+// them. Each command is printed before it runs; `--list` prints them and runs nothing,
+// `--no-build` skips the builds. `--only` keeps one kind of them, `--file` one test file;
+// `--debug` packages the browser tests' runtime with the debug backend, as
+// `dispatchdev test --owner` runs them.
 //
-//   Rust      its crate's tests, `cargo test -p <crate>`. A core part's are the core crate's,
-//             filtered to the part; one file's, its module's.
+//   Rust      its crate's tests, `cargo test -p <crate>`, the app's its backend's. A core part's
+//             are the core crate's, filtered to the part; one file's, its module's.
 //   node      tests/api/ and tests/frontend/, and tests/native/ suites no native shard holds,
 //             the API and native ones against the debug backend.
 //   browser   tests/browser/ through `npm run test:ui`, against the built artifact.
@@ -20,14 +21,25 @@ const usage = `Usage: npm run test:feature -- <name> [options]
        npm run test:collector -- <site> [options]
        npm run test:core -- <part> [options]
        npm run test:mcp -- [options]
+       npm run test:app -- [options]
 
   --only <kind>    only its rust, api, frontend, browser or native tests
   --file <path>    only one of its test files
   --debug          package the browser tests' runtime with the debug backend
   --list           print the commands and run nothing
   --no-build       skip the builds`;
-const homes = { feature: 'features', collector: 'collectors', core: 'core', mcp: 'mcp' } as const;
+const homes = {
+  feature: 'features',
+  collector: 'collectors',
+  core: 'core',
+  mcp: 'mcp',
+  app: 'app',
+} as const;
 export type Kind = keyof typeof homes;
+/** The owners that are one folder each, with no name of their own. */
+const unnamed = (kind: string) => kind === 'mcp' || kind === 'app';
+/** The folder of an owner's own crate: the app's is its backend, beside its tests. */
+const crateOf = (kind: Kind, dir: string) => (kind === 'app' ? `${dir}/backend` : dir);
 /** `at` as the file system resolves it, through any link, or as given when it doesn't exist. */
 const real = (at: string) => {
   try {
@@ -116,16 +128,20 @@ function declaring(sources: Map<string, string>, roots: string[], file: string) 
   return by ? { by, module } : undefined;
 }
 /**
- * The Rust tests of one file of a crate: the test program it is or is a module of, or the
- * library's, filtered to the path of the module it is.
+ * The Rust tests of one file of a crate whose sources sit in `tree`: the test program it is or
+ * is a module of, or the library's, filtered to the path of the module it is.
  */
-function rustFile(root: string, crate: string, file: string, notes: string[]): Command {
+function rustFile(
+  root: string,
+  crate: string,
+  tree: string,
+  file: string,
+  notes: string[],
+): Command {
   const name = packageOf(root, `${crate}/Cargo.toml`)!;
   const programs = testTargets(root, `${crate}/Cargo.toml`);
   const library = libraryOf(root, crate);
-  const sources = new Map(
-    files(root, crate, /\.rs$/).map((source) => [source, read(root, source)]),
-  );
+  const sources = new Map(files(root, tree, /\.rs$/).map((source) => [source, read(root, source)]));
   const roots = [library, ...programs.map((program) => program.file)];
   const modules: string[] = [];
   const seen = new Set<string>();
@@ -146,7 +162,10 @@ function rustFile(root: string, crate: string, file: string, notes: string[]): C
   return cargo('Rust tests', ['-p', name]);
 }
 
-/** The Rust tests: the owner's crate, or the core crate's part; only `file`'s if it names one. */
+/**
+ * The Rust tests: the owner's crate, the app's backend, or the core crate's part; only `file`'s if
+ * it names one.
+ */
 function rust(
   root: string,
   kind: Kind,
@@ -155,10 +174,13 @@ function rust(
   notes: string[],
   file?: string,
 ): Command[] {
-  const own = `${dir}/Cargo.toml`;
+  const home = crateOf(kind, dir);
+  const own = `${home}/Cargo.toml`;
   if (file) {
-    const crate = exists(root, own) ? dir : kind === 'core' ? 'core' : undefined;
-    return crate && exists(root, `${crate}/Cargo.toml`) ? [rustFile(root, crate, file, notes)] : [];
+    const crate = exists(root, own) ? home : kind === 'core' ? 'core' : undefined;
+    if (!crate || !exists(root, `${crate}/Cargo.toml`)) return [];
+    // The app's backend mounts its tests from beside it, in app/tests/: its sources are the app's.
+    return [rustFile(root, crate, kind === 'app' ? dir : crate, file, notes)];
   }
   if (exists(root, own)) return [cargo('Rust tests', ['-p', packageOf(root, own)!])];
   if (kind === 'core' && exists(root, 'core/Cargo.toml')) {
@@ -231,9 +253,9 @@ export function ownerTests(
   name: string,
   { build = true, debug = false, only, file }: Options = {},
 ) {
-  // The MCP is one owner in one folder, with no name of its own.
-  const dir = kind === 'mcp' ? homes.mcp : `${homes[kind]}/${name}`;
-  if ((kind !== 'mcp' && !/^[a-z][a-z0-9_]*$/.test(name)) || !exists(root, dir)) {
+  // The MCP and the app are each one owner in one folder, with no name of their own.
+  const dir = unnamed(kind) ? homes[kind] : `${homes[kind]}/${name}`;
+  if ((!unnamed(kind) && !/^[a-z][a-z0-9_]*$/.test(name)) || !exists(root, dir)) {
     const known = fs
       .readdirSync(path.join(root, homes[kind]), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
@@ -309,6 +331,9 @@ export function ownerTests(
       args: ['run', 'test:browseros', '--', '--shard', shard],
     });
   }
+  // The app's rules hold the whole platform's layout, not one owner's tests.
+  if (kind === 'app' && !layer)
+    notes.push('The tests in app/tests/rules/ run with npm run check:rules.');
   if (!commands.length) notes.push(`${dir} has no ${only ? `${only} ` : ''}tests yet.`);
   return { commands, notes };
 }
@@ -335,14 +360,14 @@ function parse(rest: string[]) {
 
 function main(argv: string[]) {
   const [kind, ...given] = argv;
-  // The MCP's tests take no name.
-  const [name, ...rest] = kind === 'mcp' ? ['', ...given] : given;
+  // The MCP's and the app's tests take no name.
+  const [name, ...rest] = kind && unnamed(kind) ? ['', ...given] : given;
   const root = path.resolve(import.meta.dirname, '../..');
   let plan: ReturnType<typeof ownerTests>;
   let line: ReturnType<typeof parse>;
   try {
     line = parse(rest);
-    if (!kind || !(kind in homes) || (kind !== 'mcp' && (!name || name.startsWith('-'))) || !line) {
+    if (!kind || !(kind in homes) || (!unnamed(kind) && (!name || name.startsWith('-'))) || !line) {
       process.stderr.write(`${usage}\n`);
       return 1;
     }
