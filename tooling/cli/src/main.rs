@@ -172,9 +172,10 @@ const COMMANDS: &[Spec] = &[
         ],
         "The tests the diff touches, or --all of them, one line each, stopping at the first \
          failure: for fixing a test, as the merge queue runs them. --owner runs one owner's of \
-         every kind, as feature:<name>, collector:<site>, core:<part>, app, mcp or a name \
-         alone, or --only its rust, api, frontend, browser or native ones, or one --file of \
-         them. Each run builds in a folder of its own, deleted when it ends unless --keep.",
+         every kind, as feature:<name>, collector:<site>, core:<part>, integration:<name>, app, \
+         mcp or a name alone, or --only its rust, api, frontend, browser or native ones, or one \
+         --file of them. Each run builds in a folder of its own, deleted when it ends unless \
+         --keep.",
     )
     .flags(&["--all", "--keep"])
     .options(&["--owner", "--only", "--file"]),

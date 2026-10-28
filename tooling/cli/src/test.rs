@@ -120,16 +120,17 @@ pub fn everything(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
         format!("tooling/cli/dispatchdev build && {}", quoted.join(" ")),
     ])
 }
-/// The owner `given` names, as its kind and name: `<kind>:<name>`, `app` or `mcp`, which have no
-/// name, or a name found by its folder, a feature's, a collector's or a part of core's.
+/// The owner `given` names, as its kind and name: `<kind>:<name>`, a feature's integration's as
+/// `integration:<name>`, `app` or `mcp`, which have no name, or a name found by its folder, a
+/// feature's, a collector's or a part of core's.
 pub fn owner(root: &Path, given: &str) -> Result<(String, String)> {
     if ["app", "mcp"].contains(&given) {
         return Ok((given.into(), String::new()));
     }
     if let Some((kind, name)) = given.split_once(':') {
         require(
-            ["feature", "collector", "core"].contains(&kind) && !name.is_empty(),
-            "An owner is kind:name with kind feature, collector or core, app or mcp.",
+            ["feature", "collector", "core", "integration"].contains(&kind) && !name.is_empty(),
+            "An owner is kind:name with kind feature, collector, core or integration, app or mcp.",
         )?;
         return Ok((kind.into(), name.into()));
     }
@@ -533,6 +534,10 @@ mod tests {
         assert_eq!(
             owner("collector:paycom"),
             Ok(("collector".into(), "paycom".into()))
+        );
+        assert_eq!(
+            owner("integration:import_files"),
+            Ok(("integration".into(), "import_files".into()))
         );
         assert_eq!(owner("mcp"), Ok(("mcp".into(), String::new())));
         assert_eq!(owner("app"), Ok(("app".into(), String::new())));

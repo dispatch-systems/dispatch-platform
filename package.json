@@ -30,6 +30,7 @@
     "test:feature": "tsx tooling/testing/owner-tests.ts feature",
     "test:collector": "tsx tooling/testing/owner-tests.ts collector",
     "test:core": "tsx tooling/testing/owner-tests.ts core",
+    "test:integration": "tsx tooling/testing/owner-tests.ts integration",
     "test:mcp": "tsx tooling/testing/owner-tests.ts mcp",
     "test:app": "tsx tooling/testing/owner-tests.ts app",
     "predev": "tooling/cli/dispatchdev build",
