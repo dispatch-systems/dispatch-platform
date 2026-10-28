@@ -328,20 +328,19 @@ failed, which queues a text for a phone.
   time today's route data changes, the work conversations waiting by their texts are noted
   changed, so the pages waiting on changes hear the day begin or end, and so is every driver's,
   so one open hears their work phone change, or none shown any more.
-- **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone
-  that last texted that number, else the one seen last, with its pictures, kept by the phone side
-  as they're added, the adder's alone until they go, and none of one kept should the adder's
-  access end while its bytes come. A number's conversation, and a work phone's nobody had, answer
-  their number; a driver's, the work phone they have now: their latest of today, as live route
-  data reads it, but one that's another driver's latest too, which is no one driver's; refused
-  while they have none (`communications_no_work_phone`). Kept as filing reads it back, under the full
-  name of whoever sent it (`sent_by`), taken as it's first filed, however it was sent. Retry sends
-  again one Dispatch sent that failed, while its phone is still paired, and only where a text
-  written now would go: in a driver's, refused while they have no work phone
-  (`communications_no_work_phone`) or have another (`communications_work_phone_changed`), as the
-  one it went to may be another driver's since. Either is queued in the write that checks where
-  it goes and the member's access (`phone::outbox`), so a handoff, the stop or a change of their
-  access can't come between.
+- **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone that
+  last texted that number, else the one seen last, with its pictures, kept by the phone side as
+  they're added, the adder's alone until they go, and none of one kept should the adder's access end
+  while its bytes come. A number's conversation, and a work phone's nobody had, answer their number;
+  a driver's, the work phone they have now: their latest of today, as live route data reads it, but
+  one that's another driver's latest too, which is no one driver's; refused while they have none
+  (`communications_no_work_phone`). Kept as filing reads it back, under the full name of whoever
+  sent it (`sent_by`), taken as it's first filed, however it was sent. Retry sends again one
+  Dispatch sent that failed, while its phone is still paired, and only where a text written now
+  would go: in a driver's, refused while they have no work phone (`communications_no_work_phone`) or
+  have another (`communications_work_phone_changed`), as the one it went to may be another driver's
+  since. Either is queued in the write that checks where it goes and the member's access
+  (`phone::outbox`), so a handoff, the stop or a change of their access can't come between.
 
 ## Messaging a group
 

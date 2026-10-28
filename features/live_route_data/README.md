@@ -72,7 +72,8 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   counts `browser` when it opened the DSP's browser, what read the day (`routes_native`,
   `routes_signed` or `routes_signed_moved`, as a job's metrics name them; none in fixture mode), and
   why native reading fell back (`routes_native_no_key`, `_refused`, `_signed_out`, `_unavailable`
-  or `_invalid`), each as 1. A failed read keeps its error's code. The days started and stopped are in `live_days`.
+  or `_invalid`), each as 1. A failed read keeps its error's code. The days started and stopped
+  are in `live_days`.
 - **Data:** none of its own: live route data and historical route data are Routes'.
 - **API, upkeep, environment:** none. Beside core's `live.*` events, it logs only
   `live_route_data.not_saved`, a day's code when it can't be saved.

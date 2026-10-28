@@ -182,11 +182,7 @@ export function ProfileShown({
               ),
             ],
             [Gauge, 'Pace', today.pace && <PaceMark pace={today.pace} />],
-            [
-              Smartphone,
-              'Work phone',
-              today.phone && lastFour(today.phone),
-            ],
+            [Smartphone, 'Work phone', today.phone && lastFour(today.phone)],
           ]}
         />
       )}
