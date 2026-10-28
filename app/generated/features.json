@@ -116,8 +116,6 @@
         "communications_messages",
         "communications_picked",
         "communications_text_conversations",
-        "communications_texting",
-        "communications_texts",
         "phones_change",
         "phones_devices",
         "phones_files",

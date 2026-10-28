@@ -14,8 +14,6 @@ CREATE TABLE communications_groups ( id TEXT PRIMARY KEY, name TEXT NOT NULL, cr
 CREATE TABLE communications_messages ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES communications_conversations (id), ts TEXT NOT NULL, thread_ts TEXT, direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), sent_by TEXT, sender_name TEXT, text TEXT NOT NULL, at INTEGER NOT NULL, edited_at INTEGER, group_id TEXT, UNIQUE (conversation_id, ts) );
 CREATE TABLE communications_picked ( phone TEXT NOT NULL, day TEXT NOT NULL, source TEXT NOT NULL, driver_id TEXT NOT NULL, picked_by TEXT NOT NULL, picked_at INTEGER NOT NULL, PRIMARY KEY (phone, day) );
 CREATE TABLE communications_text_conversations ( id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('work', 'number')), source TEXT, driver_id TEXT, number TEXT, state TEXT NOT NULL DEFAULT 'responded' CHECK (state IN ('waiting', 'responded', 'done')), waiting_since INTEGER, last_at INTEGER, done_at INTEGER, done_by TEXT );
-CREATE TABLE communications_texting ( id INTEGER PRIMARY KEY CHECK (id = 1), read_to INTEGER NOT NULL );
-CREATE TABLE communications_texts ( id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES communications_text_conversations (id), phone TEXT NOT NULL, direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), number TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL, sent_by TEXT, sender_name TEXT, status TEXT CHECK (status IN ('waiting', 'sent', 'delivered', 'failed')), error TEXT, files TEXT NOT NULL DEFAULT '[]', blocked INTEGER NOT NULL DEFAULT 0 , done_at INTEGER, done_by TEXT);
 CREATE TABLE documents_connect_requests ( state_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, verifier TEXT NOT NULL, expires_at INTEGER NOT NULL );
 CREATE TABLE documents_connection ( id INTEGER PRIMARY KEY CHECK (id = 1), status TEXT NOT NULL CHECK (status IN ('connected', 'broken')), account_email TEXT NOT NULL, account_kind TEXT NOT NULL CHECK (account_kind IN ('workspace', 'personal')), folder_id TEXT NOT NULL, folder_name TEXT NOT NULL, connected_by TEXT NOT NULL, connected_at TEXT NOT NULL, broken_at TEXT , full_access INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE documents_files ( file_id TEXT PRIMARY KEY, added_by TEXT NOT NULL, added_at TEXT NOT NULL, changed_by TEXT NOT NULL, changed_at TEXT NOT NULL , added_name TEXT, changed_name TEXT);
@@ -77,8 +75,6 @@ CREATE INDEX communications_messages_latest ON communications_messages (conversa
 CREATE UNIQUE INDEX communications_text_conversations_drivers ON communications_text_conversations (source, driver_id) WHERE driver_id IS NOT NULL;
 CREATE INDEX communications_text_conversations_latest ON communications_text_conversations (kind, last_at, id);
 CREATE UNIQUE INDEX communications_text_conversations_numbers ON communications_text_conversations (kind, number) WHERE driver_id IS NULL;
-CREATE INDEX communications_texts_latest ON communications_texts (conversation_id, at, id);
-CREATE INDEX communications_texts_written ON communications_texts (at);
 CREATE INDEX invitations_dsp_owner ON invitations(dsp_id,role,expires_at DESC) WHERE used_at IS NULL;
 CREATE INDEX invitations_expiry ON invitations(expires_at);
 CREATE INDEX invitations_role ON invitations(role_id) WHERE used_at IS NULL;

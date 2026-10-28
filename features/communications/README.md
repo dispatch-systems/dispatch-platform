@@ -689,9 +689,8 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   (each a driver's, a work phone's nobody had, or a number's), on each text's own row
   (`phones_texts`, below) the conversation it's filed in, none while it waits to be, the name its
   sender was shown by, whether its number was blocked as it came and the Done that covered it
-  (migration 9, which copied each from `communications_texts`; that copy of each text filed, and
-  `communications_texting`, how far it had read the phone side, are left as they were, read by
-  nothing), `communications_contacts` (the names saved for numbers, by whom and when),
+  (migration 9, which copied each from `communications_texts`, since dropped),
+  `communications_contacts` (the names saved for numbers, by whom and when),
   `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
   (the driver picked for a work phone on a day, by whom and when). The phone side's, as Phones
   made them before Communications adopted them (its migrations 7 and 8, which find them made on a
