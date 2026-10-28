@@ -45,8 +45,8 @@ it is live route data, in a database of its own, `routelive`.
   is read, and Driver Match hears of each driver it names first (`people.changed`).
   `clear_live` empties it and gives the file's space back, as a day starts or once a stopped
   day is saved; `save_live_day` saves the last whole read it holds into historical route data
-  through `save_day`, with every hold of the day, under the key `live:<day>:<collected ms>`, so
-  saving it again saves nothing twice: a final read if it was read once its day had ended where
+  through `save_day`, with every hold of the day and each itinerary's work phone as it keeps it,
+  under the key `live:<day>:<collected ms>`, so saving it again saves nothing twice: a final read if it was read once its day had ended where
   the DSP is, a snapshot otherwise, so a day's later final read replaces it. It answers none
   when live route data holds no day, and leaves live route data as it was.
   `save_and_clear_live` saves the day so, then empties live route data, as a stopped day does:
@@ -56,22 +56,30 @@ it is live route data, in a database of its own, `routelive`.
   with it, by its last ten digits, in both route databases (`backend/work_phones.rs`): the day's
   list's record of them, else the itinerary's own response's, so a list record without a phone gives
   way to the itinerary's. Only the DSP's own drivers have an itinerary; one only assigned to a route
-  has no phone. A day's read is shaped with them from adapter version 3; a saved day kept by the
+  has no phone. An itinerary a read of its day shows no phone for, as once Cortex ends its driver's
+  session, keeps the one the day's route data last stored for it, unless the same read shows that
+  phone on another driver's itinerary, whose it is then; never an earlier day's, as phones pass
+  from driver to driver day by day. A live read keeps the one the day's last read kept; a read
+  collected or saved, the one the day's read it replaces kept, and a live day saved, live route
+  data's first; a reprocess, the one the rows it rebuilds kept. A phone kept changes nothing the
+  day's readers read. A day's read is shaped with them from adapter version 3; a saved day kept by the
   version before has them extracted from its stored responses by the minute's upkeep
   (`backend/phone_backfill.rs`), four days a DSP at a time, newest first, a day whose stored
   responses can't be read among them, logged and left as it was; it writes only the phones and the
   version, so the drivers and addresses the days share are left as they are; an older day waits for
   a reprocess, which shapes it whole. A driver's latest of a day is the one on their itinerary that
-  began last, by when it started, or else was planned to depart, of those showing one; of two no
-  time tells apart, the one whose ID sorts last. Nothing is tracked over time: of two drivers who
-  swapped phones, each has the one they swapped to.
+  began last, by when it started, or else was planned to depart, of those showing or keeping one,
+  so one whose later itinerary shows none has the latest that does; of two no time tells apart, the
+  one whose ID sorts last. Nothing is tracked over time: of two drivers who swapped phones, each
+  has the one they swapped to.
 - **Route data changed:** every feature that hears it is told a day's route data changed, as it's
   kept, with the day (`routes.data_changed`, after `people.changed` when a live read or a save names
-  drivers anew): after a live read that changed a row of the day's itineraries, drivers or routes,
-  brought a day new to live route data, or read again one kept before itineraries kept their phones,
-  whose phones are read from then on though it shows none, rather than only the responses it keeps
-  whole, as the list's `backendTime` changes read by read; each time live route data is emptied, of
-  the day it held, or today once it holds none; once a read of a day saved becomes its read; and
+  drivers anew): after a live read that changed a row of the day's own, its routes and itineraries
+  with what they hold, brought a day new to live route data, or read again one kept before
+  itineraries kept their phones, whose phones are read from then on though it shows none, rather
+  than only the drivers and addresses the days share or the responses it keeps whole, as the
+  list's `backendTime` changes read by read; each time live route data is emptied, of the day it
+  held, or today once it holds none; once a read of a day saved becomes its read; and
   once a day's work phones are extracted. A collection, and a reprocess, change a day where nothing
   is at hand to tell of it, so the day is noted in the server's memory (`backend/changed.rs`) and
   told once Routes hears its collection succeeded (`collection.succeeded`), or by the next minute's
