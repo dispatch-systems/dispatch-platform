@@ -1,16 +1,39 @@
 //! Reading texts: a text's picture goes only to a member whose access still stands once the phone
-//! side has read it; a driver's work conversation is found by each work phone they texted on.
+//! side has it ready; a driver's work conversation is found by each work phone they texted on.
 use super::*;
 use crate::backend::{
+    phone::{storage::FileStore, support::kept},
     support::{self, at, held, hold, switch, texted, today},
     texts::reply,
 };
 use axum::body::Bytes;
 use dispatch_core::server::http::upload::Upload;
 use futures_util::stream;
+use std::{
+    ffi::CString,
+    fs::OpenOptions,
+    os::unix::{ffi::OsStrExt, fs::OpenOptionsExt},
+    path::Path,
+    task::Poll,
+};
+
+/// Whether something has the pipe at `path` open to read from: only then may a writer open it
+/// without waiting.
+fn read_open(path: &Path) -> bool {
+    match OpenOptions::new()
+        .write(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(_) => true,
+        Err(error) if error.raw_os_error() == Some(libc::ENXIO) => false,
+        Err(error) => panic!("{error}"),
+    }
+}
 
 #[tokio::test]
-async fn a_texts_picture_is_refused_once_the_members_access_ended_after_they_were_let_in() {
+async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phone_side_got_it_ready()
+ {
     let (_root, state, dsp) = support::started();
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"png"))]);
@@ -18,16 +41,45 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_after_they_wer
     let added = reply::upload(&state, &c, support::USE, "door.png", "image/png", photo)
         .await
         .unwrap();
-    assert!(file(&state, &c, support::USE, &added.id).await.is_ok());
+    // Its bytes, where the phone side keeps them, become a pipe, a writer waiting on it: the phone
+    // side opening it, as it gets the picture ready, is then seen from here.
+    let (at_dsp, id) = (dsp.clone(), added.id.clone());
+    let bytes = state
+        .read(move |db| {
+            let sha256 = db.phones_file(&at_dsp, &id)?.unwrap().sha256.unwrap();
+            Ok(kept(db, &at_dsp).join(sha256))
+        })
+        .await
+        .unwrap();
+    std::fs::remove_file(&bytes).unwrap();
+    let path = CString::new(bytes.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+    let waiting = bytes.clone();
+    let writer = std::thread::spawn(move || OpenOptions::new().write(true).open(waiting));
 
-    // Communications goes off for the DSP once they were let in, and with it their permission:
-    // the phone side reads the picture, and it's refused them.
+    // Asked for with their access standing, the picture is got ready until the phone side has it
+    // open, and held there.
+    let asked = file(&state, &c, support::USE, &added.id);
+    tokio::pin!(asked);
+    std::future::poll_fn(|cx| {
+        if read_open(&bytes) {
+            return Poll::Ready(());
+        }
+        match asked.as_mut().poll(cx) {
+            Poll::Ready(_) => panic!("answered before the phone side opened the picture"),
+            Poll::Pending => Poll::Pending,
+        }
+    })
+    .await;
+    // Communications goes off for the DSP meanwhile, and with it their permission: once the
+    // picture is ready, it's refused them.
     switch(&state, &dsp, "communications", false).await;
-    let refused = file(&state, &c, support::USE, &added.id).await.err();
+    let refused = asked.await.err();
     assert_eq!(
         refused.map(|error| error.code).as_deref(),
         Some("permission_denied")
     );
+    writer.join().unwrap().unwrap();
 }
 
 #[tokio::test]

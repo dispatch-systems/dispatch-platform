@@ -40,5 +40,7 @@ ts-rs = { workspace = true, optional = true }
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
 dispatch-slack = { path = "../slack", features = ["testing"] }
+# A pipe in place of a picture's bytes, through getting it ready to answer.
+libc = { workspace = true }
 # A clock the tests move, through sending's pace between posts.
 tokio = { workspace = true, features = ["test-util"] }

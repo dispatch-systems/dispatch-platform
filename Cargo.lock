@@ -648,6 +648,7 @@ dependencies = [
  "dispatch-vans-contract",
  "flate2",
  "futures-util",
+ "libc",
  "qrcode",
  "rusqlite",
  "serde",
