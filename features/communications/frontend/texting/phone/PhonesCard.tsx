@@ -9,7 +9,8 @@ import {
   DataState,
   Popover,
 } from '../../../../../core/shell/frontend/ui/index.js';
-import { removePhone, usePhones, type PhoneRow } from '../../../api/client.js';
+import { removePhone, usePhones } from '../../../api/client.js';
+import type { PhoneRow } from '../../../api/index.js';
 import { PairDialog } from './PairDialog.js';
 import { RenameDialog } from './RenameDialog.js';
 import './phones.css';

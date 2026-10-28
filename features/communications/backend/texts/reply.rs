@@ -1,7 +1,7 @@
 //! Answering by text, with pictures, and sending again one that failed. An answer goes as
 //! written, with nothing added, so the other party sees only the DSP's number: from the phone that
-//! last texted that number, else the one seen last; and is kept as filing reads it back, with how it
-//! went, under the full name of whoever wrote it, as a Slack answer is (`sent_by`).
+//! last texted that number, else the one seen last; and is kept as filing reads it back, with how
+//! it went, under the full name of whoever wrote it, as a Slack answer is (`sent_by`).
 //! A number's conversation, and a work phone's nobody held, answer their number; a driver's, the
 //! work phone they hold now, as live route data says, and none while they hold none. Its pictures
 //! are kept by the phone side as they're added, its adder's alone until they go with it, and none

@@ -40,6 +40,5 @@ ts-rs = { workspace = true, optional = true }
 [dev-dependencies]
 dispatch-core = { path = "../../core", features = ["testing"] }
 dispatch-slack = { path = "../slack", features = ["testing"] }
-tempfile = { workspace = true }
 # A clock the tests move, through sending's pace between posts.
 tokio = { workspace = true, features = ["test-util"] }

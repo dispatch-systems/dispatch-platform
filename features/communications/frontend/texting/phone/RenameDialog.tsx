@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
 import { Modal } from '../../../../../core/shell/frontend/ui/index.js';
-import { renamePhone, type PhoneRow } from '../../../api/client.js';
+import { renamePhone } from '../../../api/client.js';
+import type { PhoneRow } from '../../../api/index.js';
 
 // Renaming one of the DSP's phones, as Dispatch or Station 2. A name changed and not saved is
 // never just closed: Escape, the backdrop, the close button and Cancel ask "Save changes?" with

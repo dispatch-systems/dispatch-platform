@@ -6,7 +6,7 @@ import {
   login,
   openDsp,
 } from '../../../../core/shell/tests/support/fixtures.js';
-import type { PhonePairing } from '../../api/client.js';
+import type { PhonePairing } from '../../api/index.js';
 
 // The seeded DSP has every feature switched on, its demo's stand-in phone paired, and its owner
 // holds every permission.

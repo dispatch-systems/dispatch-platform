@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { countdown } from '../../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading, Modal } from '../../../../../core/shell/frontend/ui/index.js';
-import { newPairing, usePairing, type PhonePairing } from '../../../api/client.js';
+import { newPairing, usePairing } from '../../../api/client.js';
+import type { PhonePairing } from '../../../api/index.js';
 
 /** How often the dialog asks after its code until the server says it paired, was replaced or
  * expired, to close once it paired a phone. */

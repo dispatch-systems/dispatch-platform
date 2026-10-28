@@ -213,7 +213,9 @@ async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_dat
     assert_eq!(status, 200, "{pairing}");
     let phone = json!({"code":pairing["code"],"number":"(206) 555-0177","model":"Pixel 8a",
         "version":"1.0.0"});
-    let paired = server.phone(None, "/api/communications/phone/pair", phone).await;
+    let paired = server
+        .phone(None, "/api/communications/phone/pair", phone)
+        .await;
     let key = s(&paired, "key").to_owned();
 
     // Routes keeps a live read of today, the Cortex fixture's day as Live Route Data reads it in
@@ -251,7 +253,11 @@ async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_dat
     let text = json!({"clientId":"sms-1","direction":"in","number":"+12065550191",
         "body":"Running ten minutes late","at":db::now()});
     server
-        .phone(Some(&key), "/api/communications/phone/texts", json!({"texts":[text]}))
+        .phone(
+            Some(&key),
+            "/api/communications/phone/texts",
+            json!({"texts":[text]}),
+        )
         .await;
     let routes = server.get(&owner, "/api/dsp/communications/routes").await;
     assert_eq!(

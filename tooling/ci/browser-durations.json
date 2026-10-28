@@ -63,7 +63,7 @@
   "core/support/tests/browser/support.spec.ts › intake outcomes show agent responses and unclear reports focus the shared reply": 6.2,
   "features/communications/tests/browser/communications.spec.ts › Communications is on from the start in a workspace just connected": 6.5,
   "features/communications/tests/browser/communications.spec.ts › Display opens the member’s own Message display, its preview made to fit, where Enter can start a new line, Ctrl+Enter still sends, and a kept profile opens with each conversation, beside the list in a 1024px window": 8.0,
-  "features/communications/tests/browser/communications.spec.ts › Slack needing an update covers Communications alone, with no way to close it, until it is updated": 5.5,
+  "features/communications/tests/browser/communications.spec.ts › Slack needing an update covers its section alone, the sidebar still going elsewhere, until it is updated from there": 5.5,
   "features/communications/tests/browser/communications.spec.ts › an owner connects Slack from Communications, answers a member as they write, and writes to someone first": 10.1,
   "features/communications/tests/browser/communications.spec.ts › an owner messages a group from New message, its answers come back together, and Reply opens one person’s own conversation": 6.1,
   "features/communications/tests/browser/communications.spec.ts › on a phone › Communications draws by the phone’s own Message display, where Return starts a new line, Send sends, its text size is the phone’s alone, and its header keeps a line each": 4.8,
