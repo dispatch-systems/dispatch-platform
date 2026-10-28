@@ -168,9 +168,10 @@ stay; the next day's drivers fill it as its live reads start.
   back to Pick driver.
 - **The profile** of a driver, from their name or photo: the ways to reach them, as the chips;
   Today: route, van, wave, stops with their bar, pace, and the work phone with since when, as the
-  conversation's head shows them, one source for both: Today's Routes' read of the driver while it
-  shows and its read answers the latest change, else the conversation's own, as an older read of
-  Today's Routes may hold a phone since withdrawn; none once Today's Routes says the day is over; Contact: their phone number, email address and Slack
+  conversation's head shows them, one source for both: whichever answered last of Today's Routes'
+  read of the driver, while it shows, and the conversation's own, so a phone withdrawn shows at
+  once and another driver's change takes nobody's progress back; none once Today's Routes says the
+  day is over; Contact: their phone number, email address and Slack
   workspace.
 
 ## Elsewhere
