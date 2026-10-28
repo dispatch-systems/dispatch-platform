@@ -74,11 +74,13 @@ impl LiveDay {
         if theirs.len() < 2 {
             return Ok(theirs.into_iter().next());
         }
-        // As many as one read of their routes names.
-        let with: Vec<String> = (theirs.iter().take(routes::MOST_IDS))
-            .map(|each| each.driver_id.clone())
-            .collect();
-        let routes = today::busiest(self.reader.routes(db, dsp, &with)?.routes, today::driver);
+        // Every one of them, as many at a time as one read of their routes names.
+        let with: Vec<String> = theirs.iter().map(|each| each.driver_id.clone()).collect();
+        let mut driven = Vec::new();
+        for some in with.chunks(routes::MOST_IDS) {
+            driven.extend(self.reader.routes(db, dsp, some)?.routes);
+        }
+        let routes = today::busiest(driven, today::driver);
         let stops = |each: &DriverPhone| routes.get(&each.driver_id).map_or(0, |r| r.stops);
         Ok(theirs.into_iter().min_by_key(|each| Reverse(stops(each))))
     }

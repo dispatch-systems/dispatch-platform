@@ -1,6 +1,6 @@
 //! A person's conversations of each kind: their work one follows the ID with a work phone now,
-//! whichever of their IDs their earlier texts were under; of two IDs with one, the one on the
-//! busier route today.
+//! whichever of their IDs their earlier texts were under; of IDs with one, however many, the one
+//! on the busiest route today.
 use super::*;
 use crate::backend::support::{
     self, DRIVERS, at, phoned, phones, route, routed, saved, texted, today,
@@ -62,4 +62,66 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
     let both = phones(&[("A1", "2065550303"), ("A2", "2065550202")]);
     phoned(&state, &dsp, Some(&today), both, vec![earlier]).await;
     assert_eq!(work().await, a2);
+}
+
+#[tokio::test]
+async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person_has() {
+    let (_root, state, dsp) = support::started();
+    let (zone, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery, one person to Driver Match by more IDs than one read of their routes names, has a work
+    // phone of their own today by each; only the last linked drives the busier route.
+    let most = dispatch_routes_contract::MOST_IDS;
+    let ids: Vec<String> = (0..=most).map(|n| format!("A{n:02}")).collect();
+    let avery = Person {
+        code: "avery".into(),
+        name: "Avery Diaz".into(),
+        names: vec!["Avery Diaz".into()],
+        role: PersonRole::Driver,
+        title: None,
+        ids: BTreeMap::from([(DRIVERS, ids.clone())]),
+        emails: Vec::new(),
+        phones: vec!["(253) 555-0177".into()],
+        confirmed: true,
+        photo: None,
+    };
+    support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
+    let wave = at(zone, day, 9, 0);
+    let routed_on = |n: usize, id: &str| {
+        let stops = if n == most { 100 } else { 10 };
+        route(
+            &today,
+            id,
+            &format!("CX{n:02}"),
+            &format!("VIN{n:02}"),
+            stops,
+            wave,
+        )
+    };
+    routed(
+        &dsp,
+        ids.iter()
+            .enumerate()
+            .map(|(n, id)| routed_on(n, id))
+            .collect(),
+    );
+    let numbers: Vec<String> = (0..=most).map(|n| format!("20655503{n:02}")).collect();
+    let each: Vec<(&str, &str)> = ids
+        .iter()
+        .zip(&numbers)
+        .map(|(id, phone)| (id.as_str(), phone.as_str()))
+        .collect();
+    phoned(&state, &dsp, Some(&today), phones(&each), Vec::new()).await;
+
+    let at_dsp = dsp.clone();
+    let found = state.read(move |db| of(db, &at_dsp, &avery)).await.unwrap();
+    let work = found
+        .into_iter()
+        .find(|each| each.kind == ConversationKind::Work);
+    let work = work.unwrap();
+    let last = format!("+1{}", numbers[most]);
+    assert_eq!(
+        (work.driver_id.as_deref(), work.number.as_deref()),
+        (Some(ids[most].as_str()), Some(last.as_str()))
+    );
 }
