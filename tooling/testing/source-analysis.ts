@@ -2,9 +2,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 
+/**
+ * The last file parsed, with the text it was parsed from. Callers ask several of the questions
+ * below of one file in turn, so each file is parsed once.
+ */
+let parsed: { file: string; text: string; source: ts.SourceFile } | undefined;
+function parse(text: string, file: string) {
+  if (parsed?.file !== file || parsed.text !== text)
+    parsed = { file, text, source: ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true) };
+  return parsed.source;
+}
+
 /** Module references in TypeScript/JavaScript, including type-only and lazy imports. */
 export function moduleSpecifiers(text: string, file: string): string[] {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const source = parse(text, file);
   const references = new Set<string>();
   const add = (node: ts.Node | undefined) => {
     if (node && ts.isStringLiteralLike(node)) references.add(node.text);
@@ -32,7 +43,7 @@ export function moduleSpecifiers(text: string, file: string): string[] {
 
 /** The modules a file loads with it: value imports and re-exports, not lazy or type-only ones. */
 export function eagerSpecifiers(text: string, file: string): string[] {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const source = parse(text, file);
   return source.statements.flatMap((statement) =>
     (ts.isImportDeclaration(statement) && !statement.importClause?.isTypeOnly) ||
     (ts.isExportDeclaration(statement) && !statement.isTypeOnly)
@@ -45,7 +56,7 @@ export function eagerSpecifiers(text: string, file: string): string[] {
 
 /** The modules a file loads lazily, with `import()`. */
 export function lazySpecifiers(text: string, file: string): string[] {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const source = parse(text, file);
   const references: string[] = [];
   const visit = (node: ts.Node) => {
     if (
@@ -90,7 +101,7 @@ export function dependencies(file: string) {
 
 /** Environment reads are syntax, not text in comments or fixture strings. */
 export function readsEnvironment(text: string, file: string, variable: string): boolean {
-  const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const source = parse(text, file);
   let found = false;
   const visit = (node: ts.Node) => {
     if (
