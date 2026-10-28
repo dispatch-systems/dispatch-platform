@@ -32,9 +32,10 @@ read that can't start within that misses its slot (`live_reads_busy`), one that 
 cut off (`live_read_timeout`), and one whose turn comes no earlier than its window's close, or
 once its plan has changed, doesn't start and leaves no record. A read the browsers' memory
 turned away (`browser_memory_busy`) is logged as `live.read_failed` and tried once more a minute
-on, its turn let go meanwhile, while that's before its next slot and its window's close; the
-retry starts only with its turn before then. The slot keeps one record: the retry's once it
-starts, and the first try's when it doesn't, as when its plan changes or becomes none meanwhile.
+on, its turn let go meanwhile, while that's within its slot, before the next and its window's
+close; the retry starts only with its turn before then. The slot keeps one record: the retry's
+once it reads, and the first try's when it doesn't, as when its plan changes or becomes none
+meanwhile, or its turn doesn't come.
 A DSP's next slot is the first after its last read ended, as that read's record keeps it, so
 started again it goes on as it would have without the restart: at its next slot, or at once
 when that has passed, with no burst. A task busy for three

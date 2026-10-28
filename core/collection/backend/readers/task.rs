@@ -150,7 +150,7 @@ impl Task {
     /// `since`: where it leaves the task. A read whose turn comes once its window has closed or
     /// its plan has changed is left to plan again, unrecorded. One the browsers' memory turned
     /// away is tried once more a minute on, its turn let go meanwhile, while that's before its
-    /// next slot and its window's close: the slot keeps the record of the retry once it starts,
+    /// slot's next and its window's close: the slot keeps the record of the retry once it reads,
     /// and of the first try otherwise.
     async fn read_once(
         &self,
@@ -165,7 +165,7 @@ impl Task {
         // The first try, logged as it failed, while a retry may replace its record.
         let mut first = None;
         if let Attempt::Failed(at, ended, error) = &attempt
-            && let Some(until) = retry_before(plan, &day, (*ended).max(since), error)
+            && let Some(until) = retry_before(plan, &day, since, (*ended).max(since), error)
         {
             self.failed(&day, &error.code);
             first = Some((*at, *ended, error.code.clone()));
@@ -182,30 +182,29 @@ impl Task {
             };
         }
         let ends = matches!(attempt, Attempt::Dropped(_));
-        let ended = match attempt {
-            Attempt::Read(_turn, at, read) => {
+        let ended = match (attempt, first) {
+            // A retry that never read leaves the first try on record.
+            (
+                Attempt::Busy(_) | Attempt::Late | Attempt::Dropped(None),
+                Some((at, ended, code)),
+            ) => self.write_record(&day, since, at, ended, Err(code)).await,
+            (Attempt::Read(_turn, at, read), _) => {
                 let outcome = self.keep(&reading, &day, read).await;
                 self.record(&day, since, at, now(), outcome).await
             }
-            Attempt::Failed(at, ended, error) => {
+            (Attempt::Failed(at, ended, error), _) => {
                 self.record(&day, since, at, ended, Err(error)).await
             }
-            Attempt::Busy(waited) => {
+            (Attempt::Busy(waited), None) => {
                 let busy = Err(Error::new("live_reads_busy", 503));
                 self.record(&day, since, waited, now(), busy).await
             }
-            Attempt::Dropped(Some(at)) => {
+            (Attempt::Dropped(Some(at)), _) => {
                 let stopped = Err(Error::new("live_read_stopped", 409));
                 self.record(&day, since, at, now(), stopped).await
             }
-            // A retry that never started leaves the first try on record.
-            Attempt::Late | Attempt::Dropped(None) => match first {
-                Some((at, ended, code)) => {
-                    self.write_record(&day, since, at, ended, Err(code)).await
-                }
-                None if ends => return Slot::Ended,
-                None => return Slot::Unrecorded,
-            },
+            (Attempt::Late, None) => return Slot::Unrecorded,
+            (Attempt::Dropped(None), None) => return Slot::Ended,
         };
         if ends {
             Slot::Ended
@@ -444,11 +443,11 @@ enum Slot {
     Ended,
 }
 
-/// Before when a read of `day` the browsers' memory turned away may be tried again, its record
-/// ending at `ended`: its next slot, or its window's close when that's sooner, while a retry a
-/// minute after it ended comes before then, reckoned as its next slot is.
-fn retry_before(plan: &Plan, day: &Day, ended: i64, error: &Error) -> Option<i64> {
-    let until = plan.slot_after(day, ended).min(day.close);
+/// Before when a read of `day` the browsers' memory turned away may be tried again, having come
+/// to its slot at `since` and ended at `ended`: within that slot, before the next or its window's
+/// close when that's sooner, while a retry a minute after it ended comes before then.
+fn retry_before(plan: &Plan, day: &Day, since: i64, ended: i64, error: &Error) -> Option<i64> {
+    let until = plan.slot_after(day, since).min(day.close);
     let retry = ended + MEMORY_BUSY_RETRY.as_millis() as i64;
     (error.is(Code::BrowserMemoryBusy) && retry < until).then_some(until)
 }

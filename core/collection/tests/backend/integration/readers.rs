@@ -106,6 +106,8 @@ enum Script {
     MemoryBusyOnce,
     /// Its next read takes two minutes; those after read at once.
     Slow,
+    /// Its next read takes two minutes and finds the browsers' memory busy; those after read.
+    SlowMemoryBusy,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum Seen {
@@ -303,6 +305,11 @@ impl LiveReader for Reader {
                 Script::Slow => {
                     set_script(&reading.dsp, Script::Reads);
                     tokio::time::sleep(2 * MINUTE).await;
+                }
+                Script::SlowMemoryBusy => {
+                    set_script(&reading.dsp, Script::Reads);
+                    tokio::time::sleep(2 * MINUTE).await;
+                    return Err(Error::new("browser_memory_busy", 503));
                 }
                 Script::Reads | Script::Hangs | Script::KeepsBrowsing | Script::FailsToStop => {}
             }
@@ -901,6 +908,52 @@ async fn a_retry_that_never_starts_leaves_the_first_tries_failure_on_record() {
         assert_eq!(server.probe.reads(dsp).len(), 1);
         assert_eq!(server.records(dsp).await, [failed("browser_memory_busy")]);
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_retry_whose_turn_never_comes_leaves_the_first_tries_failure_on_record() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(60);
+    // Its next slot is far enough on that the retry's wait for its turn runs out first.
+    let dsp = server.dsp(Script::MemoryBusy).await;
+    server.schedule(&dsp, &opened, &stop, 15 * MINUTE).await;
+    server.switch(&dsp, true).await;
+    tokio::time::sleep(SECOND).await;
+    let first = server.probe.reads(&dsp)[0].1;
+    // Every turn is held from then on by DSPs whose keeping never ends.
+    for _ in 0..READS_AT_ONCE {
+        let hung = server.dsp(Script::Hangs).await;
+        server.schedule(&hung, &opened, &stop, HOUR).await;
+        server.switch(&hung, true).await;
+    }
+    until(first + MINUTE + LONGEST + MINUTE).await;
+    assert_eq!(server.probe.reads(&dsp).len(), 1);
+    assert_eq!(server.records(&dsp).await, [failed("browser_memory_busy")]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_read_turned_away_once_its_next_slot_has_come_is_not_tried_again() {
+    let server = Server::start().await;
+    let (opened, _) = server.at(-30);
+    let (stop, _) = server.at(60);
+    let (_, next) = server.at(5);
+    // Every turn is held until a minute before its next slot, and its read takes two.
+    server.hold_every_turn(&opened, &stop).await;
+    let dsp = server.dsp(Script::SlowMemoryBusy).await;
+    server.window(&dsp, &opened, &stop).await;
+    server.switch(&dsp, true).await;
+    until(next - MINUTE).await;
+    server.probe.gate.add_permits(READS_AT_ONCE);
+    until(next + EVERY + MINUTE).await;
+    // A minute after it failed is past its slot: the slot keeps its failure, and the first
+    // slot after the read reads.
+    assert!(all_near(
+        &server.probe.reads(&dsp),
+        &[next - MINUTE, next + EVERY]
+    ));
+    let busy = failed("browser_memory_busy");
+    assert_eq!(server.records(&dsp).await, [busy, kept()]);
 }
 
 #[tokio::test(start_paused = true)]

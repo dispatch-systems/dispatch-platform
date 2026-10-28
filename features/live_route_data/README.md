@@ -67,7 +67,7 @@ through core's live readers (`core/collection/backend/readers/`), never as jobs.
   emptying nothing.
 - **Records:** each read in the jobs database's `live_reads` (core's), with counts and codes only.
   A read the browsers' memory turned away is tried once more within its slot, which keeps the
-  retry's record once it starts, and the first try's otherwise (core's).
+  retry's record once it reads, and the first try's otherwise (core's).
   A kept read counts the itineraries listed, the rows changed, the work phones held and the holds
   changed (`listed`, `changed`, `holding`, `phoneEvents`). It also counts `browser` when it opened
   the DSP's browser, what read the day (`routes_native`, `routes_signed` or `routes_signed_moved`,
