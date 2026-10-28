@@ -1,37 +1,33 @@
-//! The phones' tables as Communications adopts them: a DSP's database from before, as Phones left
-//! it, with a phone paired, a text Dispatch queued for it and the picture it carries, upgrades with
-//! nothing lost, and Phones' records of its own migrations left as they were.
+//! The phones' tables as Communications adopts them: a DSP's database Phones migrated, with a
+//! phone paired, a text Dispatch queued for it and the picture it carries, upgrades with nothing
+//! lost. That the runner leaves Phones' own records of its migrations as they were is core's to
+//! prove.
 use super::*;
 use crate::{
     api::types::PairingStatus,
     backend::phone::support::{CODE, kept, outgoing, paired, store},
 };
 use dispatch_core::{
-    db::{Kind, migrations::migrate},
+    db::migrations::{Apply, Migration},
     foundation::crypto,
     testing,
 };
+
+/// Communications' migration `id`, as its manifest declares it.
+fn migration(id: u32) -> &'static Migration {
+    crate::FEATURE.own_migrations[0]
+        .list
+        .iter()
+        .find(|migration| migration.id == id)
+        .unwrap()
+}
 
 #[test]
 fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_picture_working() {
     let (_root, db, dsp) = store();
     let owner = testing::a_user(&db);
-    // As Phones left it: its tables, its own two migrations recorded, Communications' 7 and 8 not.
-    {
-        let raw = db.dsp(&dsp).unwrap();
-        raw.exec(
-            "DELETE FROM owner_migrations WHERE owner='communications' AND id IN (7,8)",
-            [],
-        )
-        .unwrap();
-        raw.exec(
-            "INSERT INTO owner_migrations(owner,id,name,applied_at) \
-             VALUES ('phones',1,'phones',1),('phones',2,'pairing_ids',1)",
-            [],
-        )
-        .unwrap();
-    }
-    // A phone paired, and a text Dispatch queued for it with a picture, its bytes kept.
+    // As Phones left it, its tables made as Communications' are: a phone paired, and a text
+    // Dispatch queued for it with a picture, its bytes kept.
     let key = crypto::sha("phone-key");
     let phone = paired(&db, &dsp, &key, "2065550100");
     let bytes = b"door";
@@ -53,8 +49,16 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
         )
         .unwrap();
 
-    // The server starts on a build where Communications owns them: its migrations run over it.
-    migrate(&db.dsp(&dsp).unwrap(), Kind::DSP).unwrap();
+    // The server starts on a build where Communications owns them: its migrations 7 and 8 run
+    // over it, as the runner runs what a database hasn't recorded.
+    let upgraded = db.dsp(&dsp).unwrap();
+    for id in [7, 8] {
+        match migration(id).apply {
+            Apply::Sql(sql) => upgraded.0.execute_batch(sql).unwrap(),
+            Apply::Code(code) => code(&upgraded).unwrap(),
+        }
+    }
+    drop(upgraded);
 
     // The phone's key still works, its text still waits for it with its picture, and the
     // picture's bytes are still there to fetch.
@@ -86,32 +90,5 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
     assert_eq!(
         db.phones_pairing(&dsp, &made, 4_000).unwrap(),
         PairingStatus::Waiting
-    );
-    // Communications' 7 and 8 are recorded, beside Phones' own, left as they were.
-    let recorded: Vec<(String, i64)> = db
-        .dsp(&dsp)
-        .unwrap()
-        .all(
-            "SELECT owner,id FROM owner_migrations WHERE owner='phones' \
-             OR (owner='communications' AND id>6) ORDER BY owner,id",
-            [],
-        )
-        .unwrap()
-        .iter()
-        .map(|row| {
-            (
-                row["owner"].as_str().unwrap().to_owned(),
-                row["id"].as_i64().unwrap(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        recorded,
-        [
-            ("communications".to_owned(), 7),
-            ("communications".to_owned(), 8),
-            ("phones".to_owned(), 1),
-            ("phones".to_owned(), 2),
-        ]
     );
 }
