@@ -4,7 +4,7 @@
 use super::{PLACE_MOST, photo_id, photos, slack_id, team};
 use crate::backend::{compose, contacts, dispatcher, live, model::Reference, reply};
 use dispatch_core::{
-    Error, Result, State,
+    Result, State,
     db::Store,
     foundation::validate as v,
     server::http::{
@@ -48,19 +48,12 @@ pub(super) fn done(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     )?)
 }
 /// Sends a message in a conversation: its `text`, and the `photos` added for it, by text the
-/// pictures added through texting (`texts/uploads`), in Slack those Communications keeps.
+/// pictures the phone side keeps (`texts/uploads`), in Slack those Communications keeps.
 pub(super) async fn send(state: Arc<State>, input: Input, access: Dsp) -> Result<Reply> {
     let asked = input.clone();
     let reference = Reference::parse(input.param("id"))?;
-    let of = reference.clone();
-    let (c, limits) = state
-        .read(move |db| {
-            let c = access.authorize(db, &asked)?;
-            let limits = compose::of(db, &c.dsp.id, &of)?
-                .ok_or_else(|| Error::new("communications_texting_off", 409))?;
-            Ok((c, limits))
-        })
-        .await?;
+    let c = state.read(move |db| access.authorize(db, &asked)).await?;
+    let limits = compose::of(&reference);
     v::fields(&input.body, &["text", "photos"])?;
     let text = optional_text(&input.body, "text", limits.read())?;
     let photos = photos(&input.body, photo_id(&reference))?;

@@ -10,16 +10,14 @@ use super::{
     live_day::LiveDay,
     model::Filed,
     numbers::Numbers,
-    offered, offering,
     reading::{like, numbered, one},
     storage::{ContactStore, TextStore},
 };
 use crate::{
     api::types::{Conversation, TextContact, TextContacts},
-    backend::{live, people::People},
+    backend::{live, people::People, phone::numbers::normal},
 };
 use dispatch_core::{Error, Result, State, db::Store, ensure, foundation::names};
-use dispatch_phones_contract as texting;
 use std::collections::{HashMap, HashSet};
 
 /// How many are listed with nothing typed, at most.
@@ -31,12 +29,6 @@ pub const NAME_MOST: usize = 80;
 
 /// Whom the DSP can text, all of them or those like `typed`, and the numbers blocked.
 pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Result<TextContacts> {
-    if !offered(db, dsp)? {
-        return Ok(TextContacts {
-            contacts: Vec::new(),
-            blocked: Vec::new(),
-        });
-    }
     let people = People::read(db, state, dsp)?;
     let numbers = Numbers::read(db, dsp)?;
     let conversations: HashMap<String, (String, Option<i64>, Option<i64>)> = db
@@ -62,12 +54,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
         .everyone()
         .iter()
         .filter(|person| !person.role.left())
-        .filter_map(|person| {
-            person
-                .phones
-                .iter()
-                .find_map(|phone| texting::normal(phone))
-        });
+        .filter_map(|person| person.phones.iter().find_map(|phone| normal(phone)));
     for number in theirs.chain(numbers.contacts().map(str::to_owned)) {
         if !numbers.blocked(&number) && seen.insert(number.clone()) {
             listed.push(number);
@@ -104,8 +91,7 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
 /// opened with no text if it's new, for someone at the DSP to text first: a work phone's held now
 /// is its driver's.
 pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversation> {
-    let number = texting::normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
-    offering(db, dsp)?;
+    let number = normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
     let opened = db.open_communications_text(dsp, &filing::belongs(db, dsp, &number)?)?;
     one(db, state, dsp, &opened.id)
 }
@@ -113,7 +99,6 @@ pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversat
 /// The work conversation of `driver`, one of today's drivers, opened with no text if it's new,
 /// for someone at the DSP to text them first at the work phone they hold.
 pub fn open_driver(db: &Store, state: &State, dsp: &str, driver: &str) -> Result<Conversation> {
-    offering(db, dsp)?;
     let live =
         LiveDay::read(db, dsp)?.ok_or_else(|| Error::new("communications_routes_over", 409))?;
     ensure(

@@ -16,8 +16,7 @@ export const pages = [
   "settings",
   "slack",
   "vans",
-  "live_route_data",
-  "phones"
+  "live_route_data"
 ] as const;
 export const subfeatures = [
   "timecard.daily",
@@ -47,7 +46,6 @@ export const features = [
   "slack",
   "vans",
   "live_route_data",
-  "phones",
   "timecard.daily",
   "timecard.meal_breaks",
   "timecard.employees",
@@ -176,10 +174,12 @@ export const featureCatalog = [
     "id": "communications",
     "label": "Communications",
     "permissions": [
-      "communications.use"
+      "communications.use",
+      "phones.manage"
     ],
     "requires": [],
-    "kind": "page"
+    "kind": "page",
+    "connects": true
   },
   {
     "id": "team",
@@ -228,16 +228,6 @@ export const featureCatalog = [
       "routes"
     ],
     "kind": "page"
-  },
-  {
-    "id": "phones",
-    "label": "Phones",
-    "permissions": [
-      "phones.manage"
-    ],
-    "requires": [],
-    "kind": "page",
-    "connects": true
   },
   {
     "id": "timecard.daily",
@@ -449,7 +439,8 @@ export const permissionGroups = [
   [
     "Communications",
     [
-      "communications.use"
+      "communications.use",
+      "phones.manage"
     ]
   ],
   [
@@ -468,12 +459,6 @@ export const permissionGroups = [
     "Live Route Data",
     [
       "live_route_data.manage"
-    ]
-  ],
-  [
-    "Phones",
-    [
-      "phones.manage"
     ]
   ],
   [

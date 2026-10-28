@@ -20,8 +20,6 @@ pub const FEATURES: &[&Feature] = &[
     &dispatch_home::FEATURE,
     #[cfg(feature = "live_route_data")]
     &dispatch_live_route_data::FEATURE,
-    #[cfg(feature = "phones")]
-    &dispatch_phones::FEATURE,
     #[cfg(feature = "routes")]
     &dispatch_routes::FEATURE,
     #[cfg(feature = "settings")]
@@ -57,8 +55,6 @@ pub fn typescript(cfg: &ts_rs::Config) -> dispatch_core::Typescript {
     all.extend(dispatch_driver_match::typescript(cfg));
     #[cfg(feature = "dvic")]
     all.extend(dispatch_dvic::typescript(cfg));
-    #[cfg(feature = "phones")]
-    all.extend(dispatch_phones::typescript(cfg));
     #[cfg(feature = "routes")]
     all.extend(dispatch_routes::typescript(cfg));
     #[cfg(feature = "slack")]

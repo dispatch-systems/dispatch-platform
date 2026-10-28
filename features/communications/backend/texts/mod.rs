@@ -1,13 +1,13 @@
-//! Texting: the texts the DSP's dispatch phones relay, through whatever offers it `texting`
-//! (Phones), read by the page beside the Slack conversations and answered by text. A work phone's
-//! texts are a driver's, across days, which Today's Routes shows; any other number's are
-//! Messaging's: the number's conversation, with whoever Driver Match has the number for, else the
-//! name the DSP saved for it, else the number itself.
+//! Texting: the texts the DSP's dispatch phones relay, as the phone side keeps them (`phone`), read
+//! by the page beside the Slack conversations and answered by text. A work phone's texts are a
+//! driver's, across days, which Today's Routes shows; any other number's are Messaging's: the
+//! number's conversation, with whoever Driver Match has the number for, else the name the DSP saved
+//! for it, else the number itself.
 //!
 //! - `model`: what texting keeps: conversations by text, each text filed in one, and where a text
-//!   is filed; `storage`, keeping them, how far Phones' changes were read, the names and blocks the
-//!   DSP keeps for numbers, and the drivers picked for work phones.
-//! - `filing`: filing each text Phones relays in its conversation, and a day's again as who held
+//!   is filed; `storage`, keeping them, how far the phone side's changes were read, the names and
+//!   blocks the DSP keeps for numbers, and the drivers picked for work phones.
+//! - `filing`: filing each text the phones relay in its conversation, and a day's again as who held
 //!   its work phones settles.
 //! - `numbers`: one number written one way, how one reads, and what the DSP keeps of them.
 //! - `reading`: the conversations and their texts, as the page reads them.
@@ -33,26 +33,17 @@ pub(crate) mod storage;
 pub(crate) mod todays_routes;
 pub(crate) mod workdays;
 
-use crate::api::types::DispatchPhone;
+use crate::{api::types::DispatchPhone, backend::phone};
 use chrono::{Duration, NaiveDate, NaiveTime, TimeZone};
 use chrono_tz::Tz;
 use dispatch_core::{Error, Result, db::Store};
-use dispatch_phones_contract::{self as texting, Texting};
 
 /// The minutes in a day: how far past its midnight a day may begin, as one clocks skip whole.
 const DAY_MINUTES: i64 = 24 * 60;
 
-/// Whether the DSP texts: something offers it `texting`.
-pub fn offered(db: &Store, dsp: &str) -> Result<bool> {
-    Ok(texting::for_dsp(db, dsp)?.is_some())
-}
-/// The DSP's dispatch phones, while it texts, and whether each is online.
+/// The DSP's dispatch phones, and whether each is online: none until one is paired.
 pub fn phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
-    let Some(texting) = texting::for_dsp(db, dsp)? else {
-        return Ok(Vec::new());
-    };
-    Ok(texting
-        .phones(db, dsp)?
+    Ok(phone::phones(db, dsp)?
         .into_iter()
         .map(|phone| DispatchPhone {
             id: phone.id,
@@ -61,10 +52,6 @@ pub fn phones(db: &Store, dsp: &str) -> Result<Vec<DispatchPhone>> {
             last_seen_at: phone.last_seen_at,
         })
         .collect())
-}
-/// What offers the DSP texting, refused while nothing does.
-fn offering(db: &Store, dsp: &str) -> Result<&'static dyn Texting> {
-    texting::for_dsp(db, dsp)?.ok_or_else(|| Error::new("communications_texting_off", 409))
 }
 /// The DSP's own timezone, which its days are in.
 pub fn zone(db: &Store, dsp: &str) -> Result<Tz> {

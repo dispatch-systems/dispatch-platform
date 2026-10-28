@@ -219,7 +219,7 @@ export function ConversationPane({
           placeholder={`Message ${party.whom(shown)}`}
           writable={party.writable(shown) && !unreachable}
           instead={unreachable && <NoWorkPhone elsewhere={elsewhere} go={go} />}
-          limits={opened?.limits ?? undefined}
+          limits={opened?.limits}
           attachments={KINDS[shown.conversation.kind].attachments}
           to={about && number ? lastFour(number) : undefined}
           send={async (text, photos) => sent(await sendMessage(id, text, photos))}

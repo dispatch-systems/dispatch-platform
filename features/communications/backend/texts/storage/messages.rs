@@ -1,5 +1,5 @@
-//! Each conversation by text and the texts filed in it, how far Phones' changes were read, and
-//! whether each conversation waits, kept beside its texts each time they change.
+//! Each conversation by text and the texts filed in it, how far the phone side's changes were
+//! read, and whether each conversation waits, kept beside its texts each time they change.
 use crate::backend::{
     changes::changed_conversation,
     model::{ConversationState, TEXT_PREFIX},
@@ -63,12 +63,13 @@ pub trait TextStore {
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
     /// Of the texts `ids`, those kept already.
     fn communications_texts_kept(&self, dsp: &str, ids: &[String]) -> Result<BTreeSet<String>>;
-    /// The last of Phones' changes read: 0 before the first.
+    /// The last of the phone side's changes read: 0 before the first.
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64>;
     /// Keeps each of `texts`, one new where it's filed, one kept already where it is, as how it
     /// went or its files changed, under the name its sender was shown by as it was first kept, and
-    /// notes that Phones' changes were read up to `read_to`: the conversations changed. Where a
-    /// text is filed is decided again only as its holds settle (`refile_communications_texts`).
+    /// notes that the phone side's changes were read up to `read_to`: the conversations changed.
+    /// Where a text is filed is decided again only as its holds settle
+    /// (`refile_communications_texts`).
     /// A new one without where it's filed is refused.
     fn file_communications_texts(
         &self,

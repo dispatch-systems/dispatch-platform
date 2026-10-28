@@ -26,8 +26,8 @@ export type SectionModel = {
 
 export const SECTIONS = [
   {
-    // Today's Routes: the drivers on a route today and their work phones, while the DSP texts and
-    // has live route data, listed by its own read (todays-routes/).
+    // Today's Routes: the drivers on a route today and their work phones, while the DSP has live
+    // route data, listed by its own read (todays-routes/).
     id: 'routes',
     offered: (inbox) => inbox.routes,
     holds: (conversation) => conversation.kind === 'work',
@@ -36,7 +36,7 @@ export const SECTIONS = [
     workspaces: false,
   },
   {
-    // Messaging: the numbers that text the DSP's phones, but those blocked, while it texts.
+    // Messaging: the numbers that text the DSP's phones, but those blocked, always.
     id: 'messaging',
     offered: (inbox) => inbox.texting,
     holds: (conversation) => conversation.kind === 'number' && !conversation.blocked,
@@ -67,3 +67,13 @@ export const sectionOf = (conversation: Conversation): Section | undefined =>
   SECTIONS.find((each) => each.holds(conversation))?.id;
 /** The section the groups are listed in. */
 export const groupsSection = SECTIONS.find((each: Defined) => each.groups)!.id;
+/** The section a page opens on with none chosen: the first of those `offered` listing a
+ * conversation, or a group, in `inbox`; with none, the first offered. */
+export function openingSection(
+  offered: readonly Section[],
+  inbox: Pick<Communications, 'conversations' | 'groups'>,
+): Section | undefined {
+  const lists = ({ holds, groups }: Defined) =>
+    inbox.conversations.some(holds) || (groups && inbox.groups.length > 0);
+  return offered.find((each) => lists(sectionNamed(each))) ?? offered[0];
+}

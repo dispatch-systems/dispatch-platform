@@ -7,16 +7,24 @@ conversation on the Communications page and answers it there. A Slack answer rea
 employee's direct message under the full name and photo of whoever wrote it; a text answer goes
 from the DSP's phone as written. Slack's part works on Slack's own foundation for direct
 messages: while it's on in a workspace, Slack no longer answers what's written to the app that
-DSP Messaging is unavailable. Texts come through whatever offers `texting` ([Texts](#texts)):
-drivers' work phones on Today's Routes, and every other number in Messaging.
+DSP Messaging is unavailable. Texts come through the DSP's own dispatch phones
+([Dispatch phones](#dispatch-phones), [Texts](#texts)): drivers' work phones on Today's Routes,
+and every other number in Messaging.
 
-- **Switch:** `communications`, off for every DSP until the platform owner switches it on. Its
-  code depends on Slack (`depends_on: ["slack"]`), which a build without Slack leaves it out with;
-  for a DSP, it needs neither: without Slack on, it hears nothing of Slack, and without texting,
-  nothing of texts.
+- **Switch:** `communications`, off for every DSP until the platform owner switches it on: its
+  texting with it, as Messaging is part of it, and its phones too. Its code depends on Slack
+  (`depends_on: ["slack"]`), which a build without Slack leaves it out with; for a DSP, it needs
+  neither: without Slack on, it hears nothing of Slack, and without a phone paired, nothing of
+  texts. A DSP's switch record from when Phones was a feature of its own, `phones`, is left as it
+  was and read by nothing.
 - **Permissions:** `communications.use` (Use Communications) covers reading the DSP's
   conversations, who each is with, and answering them. Owners hold it; another role holds it once
-  the DSP's owner turns it on. Every route is behind it, but the image of someone's initials.
+  the DSP's owner turns it on. Every route is behind it, but the image of someone's initials,
+  managing the phones, and the phones' own address. `phones.manage` (Manage Phones), apart from
+  it, is for the phones' card: pairing, renaming and removing the DSP's phones, as core's
+  `connections.manage` (Manage DSP Connections) allows too, which exists while Communications is
+  on, as its phones are the DSP's own (`dsp_connection`). Owners hold it; another role holds it
+  once the DSP's owner turns it on, as it did while Phones declared it.
 - **Its integration:** `communications.messages`, under each workspace's Integrations in Slack's
   settings, on from the start (`starts_on`) in every workspace the DSP has, those it had before
   too, until someone who manages Slack switches it off there; switched off, it stays off there.
@@ -59,11 +67,12 @@ drivers' work phones on Today's Routes, and every other number in Messaging.
   or not.
 - **Sections:** the list's, at its top while there are two or more, each with how many wait in
   it: **Today's Routes** (Routes on a phone), the drivers on a route today and their work phones,
-  while the DSP texts and has live route data ([Today's Routes](#todays-routes)); **Messaging**,
-  the numbers that text the DSP's phones, while it texts; and **Slack**, its workspaces' direct
-  messages and the groups it messaged, while it has a workspace. The one shown is remembered in
-  the browser for each member at each DSP, the first to start; a conversation or group opened, as
-  from a link, shows its section.
+  while the DSP has live route data ([Today's Routes](#todays-routes)); **Messaging**, the numbers
+  that text the DSP's phones, always, empty until a phone is paired and texted; and **Slack**, its
+  workspaces' direct messages and the groups it messaged, while it has a workspace. The one shown
+  is remembered in the browser for each member at each DSP; until one is chosen, the page opens
+  on the first that lists a conversation as it first reads, else the first (Today's Routes lists
+  only those waiting); a conversation or group opened, as from a link, shows its section.
 - **Phones offline:** in the heading, a chip for each of the DSP's dispatch phones that isn't
   online, with how long since it was last seen, by its name when the DSP has several (Phone
   offline · 14m), as the overview and each update bring them.
@@ -112,10 +121,10 @@ drivers' work phones on Today's Routes, and every other number in Messaging.
   Communications works, chosen from a menu with several, for employees to write to the DSP.
   It and New message show only with such a workspace.
 - **Setting Slack up**, for those who also hold `connections.manage`, which connects and updates
-  the DSP's workspaces: while the DSP has none, and doesn't text, Connect Slack takes the inbox's
-  place; while a workspace where Communications is on hasn't approved all it uses
+  the DSP's workspaces: while the DSP has none, and no phone paired, Connect Slack takes the
+  inbox's place; while a workspace where Communications is on hasn't approved all it uses
   (`needsUpdate`), Update Slack covers the page while it shows Slack, not the sidebar, with no
-  way to close it but to Messaging, while the DSP texts; each such workspace with Update and Copy
+  way to close it but to Messaging; each such workspace with Update and Copy
   link (its own install link, for whoever approves apps in that Slack), until an update brings
   the workspaces with none needing it, within twenty seconds. Connecting or updating from here
   comes back here from Slack, which finishes it. Everyone else sees the page as it is, empty
@@ -211,22 +220,78 @@ who may or may not work for the DSP.
   app; each picture shown, as the phone keeps it. Under a text the DSP sent, the last of a run or
   one that failed: Sending, Sent, Delivered, or Not sent with **Retry**.
 - **Writing:** text, with pictures (PNG, JPEG or GIF, by their stated type), as much as one text
-  carries as whatever offers `texting` says (its `limits()`: Phones', 10,000 characters and ten
-  pictures of up to 20 MB each), Enter to send, the number's last four digits beside it while the
+  carries (`compose::TEXT`, as the phones hold one to: 10,000 characters and ten pictures of up
+  to 20 MB each), Enter to send, the number's last four digits beside it while the
   name doesn't say it; teammates see who's writing, as in Slack's. As in a driver's work
   conversation.
 
+## Dispatch phones
+
+Android phones running Dispatch's app, each paired to one DSP, relaying the texts and pictures
+its number receives and sends, and sending Dispatch's texts from that number. No service stands
+between: a phone opens its own connection to its DSP's address. The phone side
+(`backend/phone/`) knows the phones, the texts they relay, each attempt at Dispatch's and how it
+went, and their bytes; never who a text is from or which conversation it's in, which filing
+decides ([Texts](#texts)).
+
+- **The card:** on Settings' DSP Connections, for those who manage the DSP's phones or all its
+  connections (`connectionPieces`, `dsp`), while Communications is on: each phone, by its number,
+  with its name, model and the app's version, Online once it checked in in the last two minutes,
+  else Offline and for how long, read again every 30 seconds; Rename and Remove in its menu; a
+  name changed and not saved asks "Save changes?", with only Save and Discard, before the dialog
+  closes; closing the browser tab drops it silently. Its routes are refused (`not_found`) while
+  Communications is off, though managing all the DSP's connections still lets a member in. With
+  none, No phone. **Add phone** shows the code that pairs the next phone, as a QR code its app
+  reads and as its eight letters, and how long it lasts; one expired, or replaced by a newer one
+  as another session makes, gives way to a new one with New code; the dialog closes once its own
+  code paired a phone, asked after every three seconds until it paired, was replaced or expired,
+  and once more as it runs out. A code needs the DSP's own address, for the phone to reach:
+  without one, `phones_address_required`.
+- **Pairing:** a code is eight letters of 32 (no 0, O, 1 or I), made by someone who manages the
+  DSP's phones, working once, for ten minutes, one at a time: a new one replaces any not used
+  yet. Only its SHA-256 is kept, with an ID of its own, by which the card asks how it stands
+  (`GET …/phones/pairing/{id}`): waiting, paired, replaced or expired. The phone reads it with the
+  DSP's address from the QR code (`dispatch-phone:pair?site=<address>&code=<code>`) and trades
+  it, with its own number, model and the app's version, for a key: 32 random bytes in
+  hexadecimal, of which only the SHA-256 is kept. The first phone is named Dispatch, the next
+  Phone 2 and so on, until renamed.
+- **Removed:** a phone removed keeps its texts; its key works no more, and its next call is
+  refused as `phones_removed`. The texts Dispatch queued that still wait on it fail as it's
+  removed, with `phones_removed` as their error, which filing hears of.
+- **Their address:** `/api/communications/phone/…`, at the DSP's own address alone, never from a
+  browser (a request with a cookie is refused), while the DSP is active and Communications is on
+  there (`phones_off` otherwise): pairing by the code, public; every other call by
+  `Authorization: Bearer <key>`, which the route checks itself, as Slack's signed events are
+  checked (public to the server, which no session reaches). A phone waits on its outbox for what
+  Dispatch has for it (woken by its own live channel, `phones`, apart from the page's), reports
+  the texts it receives and sends from its own messaging app, each kept once by its own ID of it,
+  sends their pictures' bytes, fetches those of Dispatch's, and says how each attempt at
+  Dispatch's went. Waiting on the outbox and reporting texts or statuses count as checking in; a
+  file's bytes, either way, don't. Each call, with every payload, unit and limit, is in the
+  [protocol reference](api/phone/README.md) beside the code.
+- **Limits** (`phone::LIMITS`): what one text may carry, a body of 10,000 characters and ten
+  pictures of 20 MB each at most, which answering is held to (`compose::TEXT`), and the phones'
+  reports, before any of it is kept.
+- **Numbers** are kept one way (`phone::numbers::normal`): `+1` and ten digits in North America,
+  `+` and the digits with a country code, a short code's digits alone, so a number typed or a
+  person's matches texts'. **IDs**, of phones, texts and files, are opaque, at most 64 letters,
+  digits, `_` or `-` (`phone::model::identifier`).
+- **Demo:** a development or preview DSP has a stand-in phone, `(206) 555-0100`, which no app
+  holds, with three texts it received; a text Dispatch sends from it is delivered at once.
+- **Log:** `phones.paired`, `phones.renamed` and `phones.removed`, under Connections.
+
 ## Texts
 
-What the DSP's dispatch phones relay, through `texting` (`dispatch-phones-contract`), offered by
-Phones, while it's on for the DSP: its phones, the texts changed after a point, sending one, and
-sending again one that failed.
+What the DSP's dispatch phones relay, as the phone side keeps them: each text as it is now, in a
+feed of those changed after a point, which filing reads; and answering, or sending again one that
+failed, which queues a text for a phone.
 
-- **Filed:** as Phones says texts changed (`phones.texts_changed`), and every minute, in case a
-  hearing was missed or failed, or Communications came on after texts did, each text changed
-  since the last filed is kept (`communications_texts`, by Phones' ID), with its phone, direction,
-  number, body, when it was written, who at the DSP sent it, how it went, and its pictures as
-  Phones has them, in a conversation (`communications_text_conversations`):
+- **Filed:** as the phone side says texts changed, once it's kept a phone's report, a status, a
+  picture's bytes or a phone removed (`filing::told`), and every minute, in case filing then
+  failed, or Communications came on after texts did, each text changed since the last filed is
+  kept (`communications_texts`, by the phone side's ID), with its phone, direction, number, body,
+  when it was written, who at the DSP sent it, how it went, and its pictures as the phone side has
+  them, in a conversation (`communications_text_conversations`):
   - **A work phone's**, a driver's: a number `+1` and ten digits, held as Routes' work phones are,
     is filed under whoever held it as it was written, by their ID of the source naming who held
     the DSP's work phones: live route data's holds while its live day is the text's day
@@ -261,20 +326,19 @@ sending again one that failed.
   time who holds the work phones today changes, the work conversations waiting by their texts are
   noted changed, so the pages waiting on changes hear the day begin or end, and so is every
   driver's, so one open hears its driver take, return or lose one, their last hold withdrawn.
-- **Answering:** what someone at the DSP writes goes as written, nothing added, through
-  `texting`, from the phone that last texted that number, else the one seen last, with its
-  pictures, kept by `texting` as they're added (`add_file`), the adder's alone until they go, and
-  let go of (`remove_file`) should the adder's access end while their bytes come. A number's
-  conversation, and a work phone's nobody held, answer their number; a driver's, the work phone
-  they hold now, as live route data says, refused while they hold none
-  (`communications_no_work_phone`). Kept as Phones tells of
-  it, under the full name of whoever sent it (`sent_by`), taken as it's first filed, however it was
-  sent: from the page, or through `texting` by anything else. Retry sends again one Dispatch sent that failed, while
-  its phone is still paired. Either goes only where a text written now would: in a driver's,
-  refused while they hold no work phone (`communications_no_work_phone`) or hold another
-  (`communications_work_phone_changed`), as the one it went to may be another driver's since;
-  checked as Phones queues it (`texting.send`'s and `texting.retry`'s condition), with the
-  member's access, so a handoff, the stop or a change of their access can't come between.
+- **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone
+  that last texted that number, else the one seen last, with its pictures, kept by the phone side
+  as they're added, the adder's alone until they go, and none of one kept should the adder's
+  access end while its bytes come. A number's conversation, and a work phone's nobody held, answer
+  their number; a driver's, the work phone they hold now, as live route data says, refused while
+  they hold none (`communications_no_work_phone`). Kept as filing reads it back, under the full
+  name of whoever sent it (`sent_by`), taken as it's first filed, however it was sent. Retry sends
+  again one Dispatch sent that failed, while its phone is still paired, and only where a text
+  written now would go: in a driver's, refused while they hold no work phone
+  (`communications_no_work_phone`) or hold another (`communications_work_phone_changed`), as the
+  one it went to may be another driver's since. Either is queued in the write that checks where
+  it goes and the member's access (`phone::outbox`), so a handoff, the stop or a change of their
+  access can't come between.
 
 ## Messaging a group
 
@@ -457,7 +521,8 @@ the page's layout and the variables its parts draw by.
   whom a message goes to), and what opens one (`target.ts`).
 - `slack/`, with `groups/`: Slack's contacts and workspaces, New message, Copy chat link and
   setting Slack up; messaging a group.
-- `texting/`: Messaging's contacts, a number's actions and Save contact, and phones offline.
+- `texting/`: Messaging's contacts, a number's actions and Save contact, and phones offline;
+  `texting/phone/`, the phones' card on DSP Connections, Add phone and Rename phone.
 - `todays-routes/`: Today's Routes' read, list and board, a route's facts, a driver's workdays,
   Pick driver and No work phone.
 - `shared/`: what any of them draws with: faces, a list's rows and headings, a contact's row, a
@@ -473,22 +538,19 @@ Where to add:
   members' browsers keep once it ships. A section another feature supplies needs a slot core owns.
 - **A kind of conversation:** its kind in the API, then `conversations/kinds.ts`, its party in
   `party.tsx` and `parties.tsx`, its section's `holds`, and its chip in `Elsewhere.tsx`.
-- **A texting provider's presentation:** what the page says of the provider, as phones offline,
-  in `texting/`; the provider itself stays behind Communications' API.
+- **What the page says of the phones:** as phones offline, in `texting/`; managing them, in
+  `texting/phone/`. The phone side itself stays behind Communications' API.
 - **How new messages alert:** `alerts/`.
 
 ## What it reads of other features
 
-The profile, the groups a group message can go to, and texts read what other features expose,
-each only while the feature offering it is on for the DSP, for anyone with `communications.use`,
-who needs no permission of theirs:
+The profile, the groups a group message can go to, and texts' filing read what other features
+expose, each only while the feature offering it is on for the DSP, for anyone with
+`communications.use`, who needs no permission of theirs:
 
 - **`directory`** (Driver Match): who the member is, by their Slack ID, and the first phone
   number and email address their sources have for them (Driver Profiles' roster, Slack's
   profile); and who texts from a number, by any of their phone numbers.
-- **`texting`** (Phones): the DSP's phones and their texts, sending and sending again, and its
-  `normal`, which writes a number typed or a person's as texts' are; and it hears
-  `phones.texts_changed`.
 - **`live_route_data`** (Routes): the live day, its routes (`day`, and a driver's, `routes`), who
   holds which work phone now (`work_phones`) and its holds on the work phones; and from
   `driver_routes`, a saved day's holds, whether a number was ever a work phone, and each earlier
@@ -536,8 +598,8 @@ Behind `communications.use`:
   those before one, in the order written; by text, `ts` is `<at>:<id>`; with whom it's with's
   conversations of each kind (`elsewhere`), for a driver's, their route `today` and each of its
   days' route and van (`workdays`), and what a message written in it may carry (`limits`: its
-  text's characters, photos, each photo's bytes and their kinds; Slack's own, or as `texting`
-  says, none by text while nothing offers it).
+  text's characters, photos, each photo's bytes and their kinds; Slack's own, or as the phones
+  hold a text to).
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, a member of a
   workspace or a driver, besides the name, role and photo the conversation has: their route
   `today` (`route`, `van`, `waveAt`, `stops`, `stopsDone`, `pace`, and the work phone they hold,
@@ -550,9 +612,9 @@ Behind `communications.use`:
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.
 - `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer, its text and photos, a
   Slack one's added by `…/uploads`, a text's pictures by `…/texts/uploads`, as `limits` says; by
-  text, refused as `communications_texting_off` while the DSP doesn't text. Answers the message and the conversation
-  it's in now (`conversation`): by text, another once the number changed hands as it went, which
-  the page then opens. The member's access is checked again before it answers: once it ended as
+  text, refused as `phones_none` while no phone is paired. Answers the message and the
+  conversation it's in now (`conversation`): by text, another once the number changed hands as it
+  went, which the page then opens. The member's access is checked again before it answers: once it ended as
   the answer went, what went is kept, and the answer refused.
 - `POST …/conversations/{id}/messages/{message}/retry`: sends again a text Dispatch sent that
   failed.
@@ -563,9 +625,9 @@ Behind `communications.use`:
   conversation a text to the number written now is filed in, as filing decides (a driver's while
   they hold it as a work phone), or the driver's, to text them first.
 - `POST …/texts/uploads?name=&type=`: a picture for a text not sent yet, as its bytes, kept by
-  `texting`.
+  the phone side.
 - `GET …/texts/contacts?q=<name or digits>`: whom the DSP can text, and the numbers blocked.
-- `GET …/texts/files/{id}`: a text's picture or file, as `texting` keeps it.
+- `GET …/texts/files/{id}`: a text's picture or file, as the phone side keeps it.
 - `GET …/contacts?q=<name>&team=<id>`: whom the DSP can message, every one or those found
   by a name, in every workspace or one, each with their conversation, if any, since when it
   waits (`waitingSince`) and when it was last written in (`lastAt`).
@@ -587,7 +649,21 @@ Behind `communications.use`:
 - `GET …/workspaces/{team}/logo?v=<logo>`: a workspace's logo, the copy Slack keeps of it, read
   through Slack's `kit`; the browser keeps it until its version changes.
 
-Public, on the admin's address: `GET /communications/initials/1/{letters}.png`.
+Behind `phones.manage` or `connections.manage`, while Communications is on (`not_found`
+otherwise), the phones' card's:
+
+- `GET /api/dsp/communications/phones`: the DSP's phones, those removed left out, in the order
+  paired.
+- `POST …/phones/pairing`: a new code to pair the next phone, in place of any shown before, with
+  its picture and when it expires.
+- `GET …/phones/pairing/{id}`: how that code stands: waiting, paired, replaced or expired.
+- `POST …/phones/{id}/rename` (`name`, up to 60 characters), and `…/remove`, its access checked
+  again as it's removed.
+
+Public, on the admin's address: `GET /communications/initials/1/{letters}.png`. Public to the
+server, at a DSP's own address, by a phone's key, the phones' own:
+`/api/communications/phone/{pair,outbox,texts,statuses,files/{id}}`, as their
+[protocol reference](api/phone/README.md) says.
 
 ## Data and upkeep
 
@@ -603,16 +679,29 @@ Public, on the admin's address: `GET /communications/initials/1/{letters}.png`.
   group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
   `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
   (each a driver's, a work phone's nobody held, or a number's), `communications_texts` (each
-  text filed, by Phones' ID, its pictures as Phones keeps them, and the Done that covered it),
-  `communications_texting` (the last of Phones' changes filed), `communications_contacts` (the
-  names saved for numbers, by whom and when), `communications_blocked` (the numbers blocked, by
-  whom and when) and `communications_picked` (the driver picked for a work phone on a day, by
-  whom and when). Kept
-  until the DSP is deleted, as the rest.
+  text filed, by the phone side's ID, its pictures as the phone side keeps them, and the Done that
+  covered it), `communications_texting` (the last of the phone side's changes filed),
+  `communications_contacts` (the names saved for numbers, by whom and when),
+  `communications_blocked` (the numbers blocked, by whom and when) and `communications_picked`
+  (the driver picked for a work phone on a day, by whom and when). The phone side's, as Phones
+  made them before Communications adopted them (its migrations 7 and 8, which find them made on a
+  database Phones migrated, and leave Phones' own records of its migrations as they were):
+  `phones_devices` (each phone, by its key's SHA-256), `phones_pairings` (the code that pairs the
+  next, by its SHA-256, with its ID and when a newer one replaced it), `phones_texts` (each text,
+  with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
+  attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those
+  added for one not sent yet) and `phones_change` (the last change given); the files' bytes in
+  the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. Bytes arrive beside
+  them, and take their place, and are let go, only under the platform's write lock with the files
+  that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
   what's due to go to groups' people, filing texts not filed yet, and filing today's again where
-  they belong now, every minute; letting go of
-  photos added and never sent hourly.
+  they belong now, every minute; letting go of photos added and never sent hourly. And the phone
+  side's, hourly, in each DSP with Communications on: letting go of pictures added and never sent
+  within a day; of bytes no file keeps, as a removal that failed leaves, and of bytes left
+  arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
+  runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
+  the rest to run, and is tried again the next hour.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct
   message with the app is `D` and the rest of their ID, and holds what the app posted there, as

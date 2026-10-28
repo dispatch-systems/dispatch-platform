@@ -97,12 +97,14 @@ async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_dat
     let owner = server.member(OWNER).await;
     // A phone paired at the DSP's own address with a code the owner made.
     let pairing = server
-        .send(Call::post("/api/dsp/phones/pairing", json!({})).who(&owner))
+        .send(Call::post("/api/dsp/communications/phones/pairing", json!({})).who(&owner))
         .await;
     assert_eq!(pairing.status, 200, "{}", pairing.body);
     let phone = json!({"code":pairing.body["code"],"number":"(206) 555-0177","model":"Pixel 8a",
         "version":"1.0.0"});
-    let paired = server.phone(None, "/api/phones/pair", phone).await;
+    let paired = server
+        .phone(None, "/api/communications/phone/pair", phone)
+        .await;
     let key = s(&paired, "key").to_owned();
 
     // Routes keeps a live read of today, the Cortex fixture's day as Live Route Data reads it in
@@ -140,7 +142,11 @@ async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_dat
     let text = json!({"clientId":"sms-1","direction":"in","number":"+12065550191",
         "body":"Running ten minutes late","at":db::now()});
     server
-        .phone(Some(&key), "/api/phones/texts", json!({"texts":[text]}))
+        .phone(
+            Some(&key),
+            "/api/communications/phone/texts",
+            json!({"texts":[text]}),
+        )
         .await;
     let routes = server.get(&owner, "/api/dsp/communications/routes").await;
     assert_eq!(

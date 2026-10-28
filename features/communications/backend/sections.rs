@@ -11,7 +11,7 @@ use super::{
     model::ConversationKind,
     people::People,
     storage::CommunicationsStore,
-    texts::{self, live_day, numbers::Numbers, reading, todays_routes},
+    texts::{live_day, numbers::Numbers, reading, todays_routes},
 };
 use crate::api::types::{Conversation, Conversations, Group};
 use dispatch_core::{Error, Result, State, db::Store, ensure};
@@ -33,8 +33,8 @@ pub struct Section {
     pub found: fn(&Store, &State, &str, &Query<'_>) -> Result<Conversations>,
 }
 
-/// Today's Routes, while the DSP texts and has live route data: its drivers' conversations waiting
-/// on the live day, found by a name or a work phone's digits, never a page at a time.
+/// Today's Routes, while the DSP has live route data: its drivers' conversations waiting on the
+/// live day, found by a name or a work phone's digits, never a page at a time.
 pub const TODAYS_ROUTES: Section = Section {
     id: "routes",
     kind: ConversationKind::Work,
@@ -54,11 +54,12 @@ pub const TODAYS_ROUTES: Section = Section {
         _ => Err(Error::new("invalid_input", 400)),
     },
 };
-/// Messaging, while the DSP texts: the numbers' conversations, but blocked numbers'.
+/// Messaging, always, empty until a phone is paired and texted: the numbers' conversations, but
+/// blocked numbers'.
 pub const MESSAGING: Section = Section {
     id: "messaging",
     kind: ConversationKind::Number,
-    offered: texts::offered,
+    offered: |_, _| Ok(true),
     waiting: |db, dsp| Ok(reading::waiting_numbers(db, dsp)?.len()),
     listed: |r| {
         let waiting = reading::waiting_numbers(r.db, r.dsp)?;

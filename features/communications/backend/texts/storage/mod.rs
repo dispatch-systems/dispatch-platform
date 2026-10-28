@@ -1,5 +1,5 @@
 //! Texting's storage, in each DSP's own database, beside the Slack conversations', by concern:
-//! each conversation by text, the texts filed in it, and how far Phones' changes were read
+//! each conversation by text, the texts filed in it, and how far the phone side's changes were read
 //! (`messages`); the names and blocks the DSP keeps for numbers (`contacts`); and the drivers
 //! picked for work phones nobody held (`picks`). What each keeps is `model`'s. Each write is one
 //! transaction of its own. Whether a conversation waits follows from its texts, and is kept beside

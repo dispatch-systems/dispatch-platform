@@ -55,7 +55,7 @@ impl FromRow for TextConversation {
 /// A text, as kept.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Text {
-    /// Phones' ID of it.
+    /// The phone side's ID of it.
     pub id: String,
     pub conversation: String,
     /// The DSP's phone it went through.
@@ -92,7 +92,7 @@ impl FromRow for Text {
         })
     }
 }
-/// A text's picture or file, as Phones has it: whether its bytes are kept yet.
+/// A text's picture or file, as the phone side has it: whether its bytes are kept yet.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextFile {
     pub id: String,
@@ -111,7 +111,7 @@ pub enum Filed {
     Number(String),
 }
 
-/// A text to keep, as Phones has it now, and where it's filed, if it's new.
+/// A text to keep, as the phone side has it now, and where it's filed, if it's new.
 pub struct Incoming {
     pub id: String,
     pub phone: String,

@@ -11,22 +11,22 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-test('with its phone and no Slack, Communications opens on Today’s Routes, with no routes before live route data reads today, beside Messaging: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
+test('with its phone and no Slack, Communications opens on Messaging, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked', async ({
   page,
 }) => {
   await login(page);
   await openDsp(page, 'Northline Logistics');
   await page.getByRole('link', { name: 'Communications' }).click();
+  // It opens on the first section with conversations: Messaging, past Today's Routes.
   const sections = page.getByRole('tablist', { name: 'Sections' });
-  await expect(sections.getByRole('tab', { name: "Today's Routes" })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  const messaging = sections.getByRole('tab', { name: /Messaging/ });
+  await expect(messaging).toHaveAttribute('aria-selected', 'true');
+  await sections.getByRole('tab', { name: "Today's Routes" }).click();
   await expect(page.getByText('No routes', { exact: true })).toBeVisible();
   // Nothing of Slack.
   await expect(sections.getByRole('tab', { name: /Slack/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Connect Slack' })).toHaveCount(0);
-  await sections.getByRole('tab', { name: /Messaging/ }).click();
+  await messaging.click();
   const list = page.getByRole('region', { name: 'Conversations' });
   const stranger = list.getByRole('listitem').filter({ hasText: '(425) 555-0199' });
   await expect(stranger).toContainText('Hi is this dispatch? I start Monday');
@@ -96,6 +96,9 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
     await route.continue();
   });
   await page.getByRole('link', { name: 'Communications' }).click();
+  // It opens on Messaging, where the DSP's texts wait; Today's Routes reads as it shows.
+  const sections = page.getByRole('tablist', { name: 'Sections' });
+  await sections.getByRole('tab', { name: "Today's Routes" }).click();
   const list = page.getByRole('region', { name: 'Conversations' });
   await expect(list.getByRole('status')).toContainText('Loading');
   await expect(page.getByText('No routes', { exact: true })).toHaveCount(0);
@@ -107,7 +110,6 @@ test('Today’s Routes reads before it says No routes, a read that fails says so
   await page.route('**/api/dsp/communications/routes', (route) =>
     route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
   );
-  const sections = page.getByRole('tablist', { name: 'Sections' });
   await sections.getByRole('tab', { name: /Messaging/ }).click();
   await sections.getByRole('tab', { name: "Today's Routes" }).click();
   await expect(list.getByRole('alert')).toHaveText('Something went wrong.');

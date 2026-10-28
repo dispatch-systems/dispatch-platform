@@ -275,7 +275,7 @@ pub fn opened(
         today: None,
         elsewhere,
         workdays: Vec::new(),
-        limits: Some(compose::SLACK.into()),
+        limits: compose::SLACK.into(),
     })
 }
 /// The conversation `id` as its pages read it.

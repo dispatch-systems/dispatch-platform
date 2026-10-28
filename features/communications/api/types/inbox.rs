@@ -29,11 +29,11 @@ pub struct Communications {
     /// `conversations?kind=number&before=`.
     pub more_texts: bool,
     pub workspaces: Vec<CommunicationsWorkspace>,
-    /// Whether the DSP texts: something offers it texting, its dispatch phones.
+    /// Whether Messaging is offered: always, empty until a phone is paired and texted.
     pub texting: bool,
-    /// Whether Today's Routes is offered: the DSP texts and has live route data.
+    /// Whether Today's Routes is offered: the DSP has live route data.
     pub routes: bool,
-    /// The DSP's dispatch phones, while it texts.
+    /// The DSP's dispatch phones: none until one is paired.
     pub phones: Vec<DispatchPhone>,
     pub typing: Typing,
 }

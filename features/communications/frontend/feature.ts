@@ -21,6 +21,8 @@ const loadDisplay = () => import('./display/DisplaySettings.js');
 const DisplaySettings = lazy(() =>
   loadDisplay().then((module) => ({ default: module.DisplaySettings })),
 );
+const loadPhones = () => import('./texting/phone/PhonesCard.js');
+const PhonesCard = lazy(() => loadPhones().then((module) => ({ default: module.PhonesCard })));
 
 export const feature: FrontendFeature = {
   name: 'communications',
@@ -59,7 +61,22 @@ export const feature: FrontendFeature = {
       load: () => import('./alerts/MessageAlerts.js').then((module) => module.MessageAlerts),
     },
   ],
-  // Its switch's icon on the DSPs page.
+  // The DSP's dispatch phones, on Settings' Connections, for those who manage them or all its
+  // connections.
+  connectionPieces: [
+    {
+      id: 'phones',
+      section: 'dsp',
+      order: 100,
+      visible: (view) => can(view, 'connections.manage') || can(view, 'phones.manage'),
+      // Managing the DSP's phones alone shows it, as managing all its connections does.
+      others: (view) => can(view, 'phones.manage'),
+      reads: ['/api/dsp/communications/phones'],
+      load: loadPhones,
+      render: ({ view }) => view && createElement(PhonesCard, { view }),
+    },
+  ],
+  // Its switch's icon on the DSPs page, and how its events read in the audit log.
   platformSlots: () => import('./platform-slots.js'),
   connectionIntegrations: [messages],
   // Its page waits on changes to the DSP's conversations, and who is typing in them.

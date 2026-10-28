@@ -2,23 +2,20 @@
 //! registry, so each installs the same: Slack, Communications, and stand-ins for what other
 //! features expose that it reads, which it may not name, each by its contract: who people are
 //! (`directory`, always), their routes and each saved day's holds (`routes`, `driver_routes` while
-//! `driving` is on), today's as read live (`live`, `live_route_data` while `live` is on), the DSP's
-//! vans (`fleet`, `amazon_fleet` while `fleet` is on) and its dispatch phone (`texting`, while
-//! `phoning` is on). Each answers what a test says of its DSP, with `know`, `held`, `routed` and
-//! `texted`, and nothing else. A test starts with a platform with one DSP, every feature on for it,
-//! and one of its fixture workspaces connected, its members read: the workspace's admin has
-//! approved all the app asks for.
+//! `driving` is on), today's as read live (`live`, `live_route_data` while `live` is on) and the
+//! DSP's vans (`fleet`, `amazon_fleet` while `fleet` is on). Each answers what a test says of its
+//! DSP, with `know`, `held` and `routed`, and nothing else. A test starts with a platform with one
+//! DSP, every feature on for it, and its dispatch phone paired (`phone`), which `texted` and
+//! `reported` speak for; or with one of its fixture workspaces connected too, its members read:
+//! the workspace's admin has approved all the app asks for.
 mod directory;
 mod fleet;
 mod live;
+mod phone;
 mod routes;
-mod texting;
 
 pub use live::routed;
-pub use texting::{
-    added, failing, held_while_queuing, off_once_queued, off_while_queuing, off_while_reading,
-    reported, sent, texted,
-};
+pub use phone::{reported, sent, texted};
 
 use crate::api::types::Message;
 use crate::backend::{
@@ -65,10 +62,11 @@ const APPROVED: &[&str] = &[
     "im:read",
 ];
 
-/// A platform with one DSP, every feature on for it, and its server's state.
+/// A platform with one DSP, every feature on for it, its phone paired, and its server's state.
 pub fn started() -> (impl Drop, Arc<State>, String) {
     install();
     let (root, store, dsp) = testing::bootstrapped();
+    phone::pair(&store, &dsp);
     let config = store.config.clone();
     drop(store);
     (root, State::new(config).unwrap(), dsp)
@@ -168,15 +166,15 @@ pub fn install() {
             &routes::DRIVING,
             &live::LIVE,
             &fleet::FLEET,
-            &texting::PHONING,
         ],
     );
 }
-/// A platform with one DSP, and its server's state, with the DSP's workspace `team` connected
-/// and its members read.
+/// A platform with one DSP, its phone paired, and its server's state, with the DSP's workspace
+/// `team` connected and its members read.
 pub async fn connected(team: &str) -> (impl Drop, Arc<State>, Bot) {
     install();
     let (root, store, dsp) = testing::bootstrapped();
+    phone::pair(&store, &dsp);
     let config = store.config.clone();
     drop(store);
     let state = State::new(config).unwrap();
