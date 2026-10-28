@@ -12,3 +12,7 @@ pub use contacts::ContactStore;
 pub use messages::TextStore;
 pub(crate) use messages::add_text_done;
 pub use picks::PickStore;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/texts/storage.rs"]
+mod tests;

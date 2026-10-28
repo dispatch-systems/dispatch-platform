@@ -2,9 +2,9 @@
 //! conversations on the live day, whose own list `texts::todays_routes` reads whole; Messaging,
 //! the numbers' texts; and Slack, the workspaces' direct messages and the groups. Each is described
 //! once, in `SECTIONS`: its stable ID, whether the DSP has it, how many of its conversations wait,
-//! what the page lists of it as it opens, and how its conversations are found. The overview, its
-//! updates and the search read them; a new section is one more there, with its place in what the
-//! page reads.
+//! what the page lists of it as it opens, and how its conversations are found. `inbox`'s overview
+//! and updates, and the search, read them; a new section is one more there, with its place in what
+//! the page reads.
 use super::{
     conversations,
     groups::{self, storage::GroupStore},

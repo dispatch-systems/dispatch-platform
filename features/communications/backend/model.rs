@@ -1,13 +1,16 @@
 //! What every kind of conversation shares, as Communications keeps and reads them: what a
 //! conversation is (`ConversationKind`), the reference naming one of either transport
-//! (`Reference`), whether it waits on an answer (`ConversationState`), and who wrote a message
-//! (`Direction`).
+//! (`Reference`), whether it waits on an answer (`ConversationState`), who wrote a message
+//! (`Direction`), and how many of them are read at a time (`PAGE`).
 use dispatch_core::{Error, Result, db, text_enum};
 
 /// What a Slack conversation's ID begins with, before `_` and 32 hexadecimal digits.
 pub const SLACK_PREFIX: &str = "cv";
 /// What a conversation by text's ID begins with, as a Slack one's does.
 pub const TEXT_PREFIX: &str = "tc";
+
+/// How many answered conversations, or messages, are read at a time, of every kind.
+pub const PAGE: usize = 50;
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]

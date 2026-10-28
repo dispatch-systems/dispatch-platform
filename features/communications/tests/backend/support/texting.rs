@@ -59,9 +59,10 @@ struct Relayed {
     /// again.
     held_while_queuing: Option<Holds>,
     /// Whether Communications is switched off for the DSP while the phone next reads a file's
-    /// bytes, or as it next goes to queue a text.
+    /// bytes, as it next goes to queue a text, or once it has queued the next.
     off_while_reading: bool,
     off_while_queuing: bool,
+    off_once_queued: bool,
 }
 /// Who holds a DSP's work phones, as `held` says it.
 struct Holds {
@@ -133,6 +134,11 @@ pub fn held_while_queuing(
 /// sent again, as the platform owner might while a member's answer is under way.
 pub fn off_while_queuing(dsp: &str) {
     RELAYED.of(dsp, |phone| phone.off_while_queuing = true);
+}
+/// Has Communications switched off for the DSP once its phone has queued the next text it sends,
+/// as the platform owner might as the answer comes back.
+pub fn off_once_queued(dsp: &str) {
+    RELAYED.of(dsp, |phone| phone.off_once_queued = true);
 }
 /// Hands the DSP's work phones over as `held_while_queuing` said, and switches Communications off
 /// as `off_while_queuing` did, if they did, as its phone goes to queue a text.
@@ -247,6 +253,9 @@ impl Texting for Phoning {
                 })
                 .await?;
             events::publish(state, dsp, TextsChanged).await;
+            if RELAYED.of(dsp, |phone| std::mem::take(&mut phone.off_once_queued)) {
+                switch(state, dsp, "communications", false).await;
+            }
             Ok(text)
         })
     }

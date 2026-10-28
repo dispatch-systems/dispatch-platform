@@ -5,6 +5,7 @@
 //! hold someone each.
 use super::*;
 use crate::backend::{
+    inbox,
     model::ConversationState,
     reply,
     support::{self, DRIVERS, USE},
@@ -280,7 +281,7 @@ async fn answers_are_the_groups_until_the_dsp_writes_to_them_alone() {
     // The list: a conversation listed under a group is the group's row, the rest their own.
     let (shared, at) = (state.clone(), dsp.clone());
     let overview = state
-        .read(move |db| conversations::overview(db, &shared, &at, "nobody", None))
+        .read(move |db| inbox::overview(db, &shared, &at, "nobody", None))
         .await
         .unwrap();
     let rows: Vec<_> = overview

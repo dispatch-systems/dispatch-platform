@@ -3,9 +3,8 @@
 //! as written, with any photos they added; and someone at the DSP can message a member first.
 use super::*;
 use crate::backend::{
-    conversations,
     files::{FileStatus, FileStore},
-    initials,
+    inbox, initials,
     model::ConversationState,
     storage::CommunicationsStore,
     support::{self, USE},
@@ -36,7 +35,7 @@ async fn started(state: &Arc<State>, bot: &Bot, dm: &str) -> String {
 async fn listed(state: &Arc<State>, dsp: &str) -> usize {
     let (shared, dsp) = (state.clone(), dsp.to_owned());
     let listed = state
-        .read(move |db| conversations::overview(db, &shared, &dsp, "nobody", None))
+        .read(move |db| inbox::overview(db, &shared, &dsp, "nobody", None))
         .await
         .unwrap();
     listed.conversations.len()

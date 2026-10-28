@@ -85,7 +85,8 @@ pub fn found(db: &Store, dsp: &str, reference: &Reference) -> Result<()> {
 
 /// Sends what the member `c` wrote in the conversation `reference`, with the photos `photos` they
 /// added for it: the message, as the page reads it, and the conversation it's in now, which by text
-/// is another once the number it went to changed hands as it went.
+/// is another once the number it went to changed hands as it went. Their access is checked again
+/// before the conversation is read: what went stays kept, whether or not they may still read it.
 pub async fn send(
     state: &Arc<State>,
     c: &Context,
@@ -98,16 +99,19 @@ pub async fn send(
         Reference::Slack(id) => reply::send(state, c, access, id, written, photos).await?,
         Reference::Text(id) => texts::reply::send(state, c, access, id, written, photos).await?,
     };
-    let (shared, dsp, sent_in, sent) = (
+    let (shared, asked, sent_in, sent) = (
         state.clone(),
-        c.dsp.id.clone(),
+        c.clone(),
         reference.clone(),
         message.id.clone(),
     );
     let conversation = state
-        .read(move |db| match &sent_in {
-            Reference::Slack(id) => conversations::one(db, &shared, &dsp, id),
-            Reference::Text(_) => texts::reading::filed(db, &shared, &dsp, &sent),
+        .read(move |db| {
+            let c = access.revalidate(db, &asked)?;
+            match &sent_in {
+                Reference::Slack(id) => conversations::one(db, &shared, &c.dsp.id, id),
+                Reference::Text(_) => texts::reading::filed(db, &shared, &c.dsp.id, &sent),
+            }
         })
         .await?;
     Ok(SentMessage {
@@ -115,3 +119,7 @@ pub async fn send(
         message,
     })
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/dispatcher.rs"]
+mod tests;

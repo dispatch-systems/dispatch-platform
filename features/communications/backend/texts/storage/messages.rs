@@ -61,12 +61,15 @@ pub trait TextStore {
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
     /// Every text written from `from` until `to`, oldest first.
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
+    /// Of the texts `ids`, those kept already.
+    fn communications_texts_kept(&self, dsp: &str, ids: &[String]) -> Result<BTreeSet<String>>;
     /// The last of Phones' changes read: 0 before the first.
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64>;
     /// Keeps each of `texts`, one new where it's filed, one kept already where it is, as how it
     /// went or its files changed, under the name its sender was shown by as it was first kept, and
     /// notes that Phones' changes were read up to `read_to`: the conversations changed. Where a
     /// text is filed is decided again only as its holds settle (`refile_communications_texts`).
+    /// A new one without where it's filed is refused.
     fn file_communications_texts(
         &self,
         dsp: &str,
@@ -252,6 +255,13 @@ impl TextStore for Store {
             [from, to],
         )
     }
+    fn communications_texts_kept(&self, dsp: &str, ids: &[String]) -> Result<BTreeSet<String>> {
+        let kept: Vec<(String,)> = self.dsp(dsp)?.query_as(
+            "SELECT id FROM communications_texts WHERE id IN (SELECT value FROM json_each(?))",
+            [serde_json::to_string(ids)?],
+        )?;
+        Ok(kept.into_iter().map(|(id,)| id).collect())
+    }
     fn communications_texts_read_to(&self, dsp: &str) -> Result<i64> {
         self.dsp(dsp)?.count(
             "SELECT coalesce((SELECT read_to FROM communications_texting WHERE id=1),0)",
@@ -268,12 +278,13 @@ impl TextStore for Store {
         db.transaction(|| {
             let mut touched = BTreeSet::new();
             for text in texts {
-                let conversation = match filed_in(&db, &text.id)? {
-                    Some(kept) => kept,
-                    None => conversation(&db, &text.filed)?,
+                let conversation = match (filed_in(&db, &text.id)?, &text.filed) {
+                    (Some(kept), _) => kept,
+                    (None, Some(filed)) => conversation(&db, filed)?,
+                    (None, None) => return Err(Error::new("communications_text_unfiled", 500)),
                 };
                 // A text from a number blocked as it came never makes its conversation wait.
-                let blocked = matches!(text.filed, Filed::Number(_))
+                let blocked = matches!(text.filed, Some(Filed::Number(_)))
                     && db.count(
                         "SELECT count(*) FROM communications_blocked WHERE number=?",
                         [&text.number],

@@ -2,9 +2,10 @@ import { Component, useEffect, useState, type ComponentType, type ReactNode } fr
 import { watchers, type Watcher, type Watching } from '../runtime/slots.js';
 
 // Each watcher runs apart from the page and from every other, and its failures are logged by its
-// ID. One whose code fails to load is tried again as the browser comes back online or the page is
-// shown again, once at a time, and with the next DSP, which mounts every watcher anew; one that
-// fails as it runs stops, drawing nothing, until then.
+// ID. Its code is asked for only while the browser is online, waiting for it to come back online
+// otherwise: the browser keeps a failed download failed until the page loads again, so code that
+// fails to load stops the watcher until then. One that fails as it runs stops, drawing nothing,
+// until the next DSP, which mounts every watcher anew.
 
 const loaded = new WeakMap<Watcher, ComponentType<Watching>>();
 
@@ -14,31 +15,20 @@ function Running({ watcher, access }: { watcher: Watcher; access: Watching }) {
   useEffect(() => {
     if (Loaded) return;
     let live = true;
-    let loading = false;
     const load = () => {
-      if (loading) return;
-      loading = true;
       watcher.load().then(
         (component) => {
           loaded.set(watcher, component);
           if (live) setLoaded(() => component);
         },
-        (error: unknown) => {
-          loading = false;
-          console.error(`The watcher ${watcher.id} failed to load`, error);
-        },
+        (error: unknown) => console.error(`The watcher ${watcher.id} failed to load`, error),
       );
     };
-    const shown = () => {
-      if (document.visibilityState === 'visible') load();
-    };
-    load();
-    window.addEventListener('online', load);
-    document.addEventListener('visibilitychange', shown);
+    if (navigator.onLine) load();
+    else window.addEventListener('online', load, { once: true });
     return () => {
       live = false;
       window.removeEventListener('online', load);
-      document.removeEventListener('visibilitychange', shown);
     };
   }, [watcher, Loaded]);
   return Loaded ? <Loaded {...access} /> : null;

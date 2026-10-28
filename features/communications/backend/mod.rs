@@ -9,11 +9,12 @@
 //!   members' from Slack.
 //! - `dispatcher`: one conversation of either transport, by its reference: reading it, its
 //!   profile, sending in it, Done and who's writing.
-//! - `sections`: the page's sections, each listing a kind of conversation: whether the DSP has
-//!   it, what waits in it, what's listed of it and how it's searched.
-//! - `conversations`: the conversations as the page reads them; `people`, who each is with and who
-//!   at the DSP wrote in it, as every kind shows them; `elsewhere`, a person's conversation of each
-//!   kind; `contacts`, whom the DSP can message; `search`, finding people by a name typed;
+//! - `inbox`: the list of every kind as the page reads it, what changed in it, and what waits;
+//!   `sections`, the page's sections, each listing a kind of conversation: whether the DSP has it,
+//!   what waits in it, what's listed of it and how it's searched.
+//! - `conversations`: Slack's conversations as the page reads them; `people`, who each is with and
+//!   who at the DSP wrote in it, as every kind shows them; `elsewhere`, a person's conversation of
+//!   each kind; `contacts`, whom the DSP can message; `search`, finding people by a name typed;
 //!   `profile`, what else is known of whom a conversation is with: their route today (`today`) and
 //!   how to reach them.
 //! - `reply`: answering, and messaging someone first; `compose`, what a message may carry, checked
@@ -34,6 +35,7 @@ pub(crate) mod display;
 pub(crate) mod elsewhere;
 pub(crate) mod files;
 pub(crate) mod groups;
+pub(crate) mod inbox;
 pub(crate) mod initials;
 pub(crate) mod live;
 pub(crate) mod model;
