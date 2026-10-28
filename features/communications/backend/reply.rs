@@ -239,7 +239,9 @@ pub(crate) async fn post(bot: &Bot, args: &Value, photos: bool) -> Result<Value>
 }
 
 /// Keeps a photo the member `c` adds for a message not sent yet, named `name`, of the kind
-/// `mime`: as the page reads it. One that isn't a photo Slack shows is refused.
+/// `mime`: as the page reads it. One that isn't a photo Slack shows is refused, by how its bytes
+/// begin. Their access is checked again in the write that keeps it, once its bytes are in: one
+/// refused, or whose access ended meanwhile, keeps none of it.
 pub async fn upload(
     state: &Arc<State>,
     c: &Context,
@@ -249,25 +251,22 @@ pub async fn upload(
     upload: Upload,
 ) -> Result<CommunicationsUpload> {
     let begins = photo_kind(mime).ok_or_else(|| Error::new("communications_photo_kind", 415))?;
-    let size = upload.length as i64;
-    let sha256 = files::keep(state, &c.dsp.id, upload).await?;
-    let head = files::head(state, &c.dsp.id, &sha256, begins.len()).await?;
-    if head != begins {
-        files::discard(state, &c.dsp.id, &sha256).await?;
-        return Err(Error::new("communications_photo_kind", 415));
-    }
+    let arrived = files::BYTES
+        .receive(state, &c.dsp.id, upload, SLACK.largest)
+        .await?;
+    ensure(
+        arrived.head(begins.len()).await? == begins,
+        "communications_photo_kind",
+        415,
+    )?;
     let (c, name, mime) = (c.clone(), name.to_owned(), mime.to_owned());
     state
         .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
             let c = access.revalidate(db, &c)?;
-            let id = db.add_communications_upload(
-                &c.dsp.id,
-                &c.auth.user.id,
-                &name,
-                &mime,
-                size,
-                &sha256,
-            )?;
+            let (dsp, by, size) = (&c.dsp.id, &c.auth.user.id, arrived.size);
+            let id = files::BYTES.keep(db, dsp, &arrived, || {
+                db.add_communications_upload(dsp, by, &name, &mime, size, &arrived.sha256)
+            })?;
             Ok(CommunicationsUpload {
                 id,
                 name,

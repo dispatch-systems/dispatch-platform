@@ -32,7 +32,7 @@ use dispatch_core::{
     State,
     accounts::{Context, SessionLifetime},
     db::{
-        Store,
+        self, Store,
         migrations::{Apply, Migration},
         now,
     },
@@ -50,6 +50,7 @@ use dispatch_vans_contract::Van;
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -76,6 +77,12 @@ pub fn started() -> (impl Drop, Arc<State>, String) {
     let config = store.config.clone();
     drop(store);
     (root, State::new(config).unwrap(), dsp)
+}
+/// Where the DSP's Slack photos' and files' bytes are kept, made private as Communications makes
+/// it.
+pub fn files_kept(db: &Store, dsp: &str) -> PathBuf {
+    let owner = db::private_dir(&db.area(dsp, "data").unwrap().join("communications")).unwrap();
+    db::private_dir(&owner.join("files")).unwrap()
 }
 /// The DSP's own timezone, and its day today.
 pub async fn today(state: &Arc<State>, dsp: &str) -> (Tz, NaiveDate) {

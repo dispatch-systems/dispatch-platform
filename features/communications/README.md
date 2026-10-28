@@ -701,9 +701,9 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
   attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those
   added for one not sent yet) and `phones_change` (the last change given); the files' bytes in
-  the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. Bytes arrive beside
-  them, and take their place, and are let go, only under the platform's write lock with the files
-  that keep them. Kept until the DSP is deleted, as the rest.
+  the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
+  (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
+  platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
   what's due to go to groups' people, filing texts waiting to be filed, and filing today's again
   where they belong now, every minute; letting go of photos added and never sent hourly. And the

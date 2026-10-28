@@ -57,6 +57,16 @@ pub struct Arrived {
     pub size: i64,
     arriving: Arriving,
 }
+impl Arrived {
+    /// The first of the bytes, up to `most`.
+    pub async fn head(&self, most: usize) -> Result<Vec<u8>> {
+        let mut file = tokio::fs::File::open(&self.arriving.0).await?;
+        let mut head = vec![0; most];
+        let read = file.read(&mut head).await?;
+        head.truncate(read);
+        Ok(head)
+    }
+}
 
 /// Bytes kept, as they're read.
 pub struct Reading {
@@ -67,7 +77,7 @@ pub struct Reading {
 
 impl Folder {
     /// The DSP's folder, made private.
-    pub fn path(&self, db: &Store, dsp: &str) -> Result<PathBuf> {
+    fn path(&self, db: &Store, dsp: &str) -> Result<PathBuf> {
         let owner = db::private_dir(&db.area(dsp, "data")?.join(self.owner))?;
         db::private_dir(&owner.join("files"))
     }
@@ -127,7 +137,7 @@ impl Folder {
         })
     }
     /// Lets go of the DSP's bytes kept by `sha256`, unless a file keeps them still: inside a write.
-    fn let_go(&self, db: &Store, dsp: &str, sha256: &str) -> Result<()> {
+    pub fn let_go(&self, db: &Store, dsp: &str, sha256: &str) -> Result<()> {
         if (self.keeps)(db, dsp, sha256)? {
             return Ok(());
         }

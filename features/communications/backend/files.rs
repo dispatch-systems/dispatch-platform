@@ -5,9 +5,10 @@
 //! given up after that. Only a file Slack hosts is downloaded, up to 100 MB; one larger, or a
 //! link to elsewhere, keeps its name, type and size alone. A photo someone at the DSP adds to a
 //! message is kept as it's uploaded, before the message is sent, and let go if it isn't sent
-//! within a day.
+//! within a day. Their bytes arrive, take their place and are let go as `bytes` keeps them, with
+//! the files that keep them.
 use super::{
-    bytes::Folder,
+    bytes::{Arrived, Folder},
     changes::{ChangeStore, changed_conversation},
     live,
     storage::DOMAIN,
@@ -21,12 +22,9 @@ use dispatch_core::{
     server::http::upload::{UPLOAD_LIMIT, Upload},
 };
 use dispatch_slack::kit::{self, Bot, Bytestream, Queue};
-use futures_util::StreamExt;
 use rusqlite::params;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Every minute, the files due to download in each DSP; hourly, the photos added and never sent
 /// are let go.
@@ -263,53 +261,6 @@ impl FileStore for Store {
     }
 }
 
-/// Keeps `bytes`, as they arrive, among the DSP's files: their SHA-256, by which they're kept.
-pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<String> {
-    let at = dsp.to_owned();
-    let folder = state.read(move |db| BYTES.path(db, &at)).await?;
-    let arriving = folder.join(format!(".{}", crypto::id("arriving")?));
-    let mut written = tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&arriving)
-        .await?;
-    let mut hash = Sha256::new();
-    let mut bytes = Box::pin(bytes.stream());
-    let copied: Result<()> = async {
-        while let Some(chunk) = bytes.next().await {
-            let chunk = chunk.map_err(|_| Error::new("upload_incomplete", 400))?;
-            hash.update(&chunk);
-            written.write_all(&chunk).await?;
-        }
-        written.sync_all().await?;
-        Ok(())
-    }
-    .await;
-    if let Err(error) = copied {
-        let _ = tokio::fs::remove_file(&arriving).await;
-        return Err(error);
-    }
-    let sha256 = crypto::hex(&hash.finalize());
-    tokio::fs::rename(&arriving, folder.join(&sha256)).await?;
-    Ok(sha256)
-}
-/// Lets go of the DSP's bytes kept by `sha256`, unless a file is kept by them.
-pub async fn discard(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<()> {
-    let (at, kept) = (dsp.to_owned(), sha256.to_owned());
-    let (folder, kept) = state
-        .read(move |db| {
-            Ok((
-                BYTES.path(db, &at)?,
-                db.communications_bytes_kept(&at, &kept)?,
-            ))
-        })
-        .await?;
-    if !kept {
-        gone(tokio::fs::remove_file(folder.join(sha256)).await)?;
-    }
-    Ok(())
-}
 /// The bytes of the DSP's file kept by `sha256`, as they're read.
 pub async fn read(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<Bytestream> {
     let kept = BYTES
@@ -317,19 +268,6 @@ pub async fn read(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<Bytestr
         .await?
         .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
     Ok(kept.chunks)
-}
-/// The first bytes of the DSP's file kept by `sha256`, up to `most`.
-pub async fn head(state: &Arc<State>, dsp: &str, sha256: &str, most: usize) -> Result<Vec<u8>> {
-    let at = dsp.to_owned();
-    let path = state
-        .read(move |db| BYTES.path(db, &at))
-        .await?
-        .join(sha256);
-    let mut file = tokio::fs::File::open(path).await?;
-    let mut head = vec![0; most];
-    let read = file.read(&mut head).await?;
-    head.truncate(read);
-    Ok(head)
 }
 
 /// Downloads the DSP's files that are due now, then tells the pages waiting on its
@@ -356,30 +294,18 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
     })
 }
 
-/// Lets go of the photos added for a message and not sent within a day, and their bytes.
+/// Lets go of the photos added for a message and not sent within a day, and their bytes, in one
+/// write.
 async fn forget_unsent(state: &Arc<State>, dsp: &str) -> Result<()> {
     let at = dsp.to_owned();
-    let loose = state
+    state
         .run_scoped(dsp, DOMAIN, move |db| {
-            let loose = db.forget_unsent_communications(&at, now() - UNSENT_MS)?;
-            let folder = BYTES.path(db, &at)?;
-            Ok(loose
-                .into_iter()
-                .map(|sha256| folder.join(sha256))
-                .collect::<Vec<_>>())
+            for sha256 in db.forget_unsent_communications(&at, now() - UNSENT_MS)? {
+                BYTES.let_go(db, &at, &sha256)?;
+            }
+            Ok(())
         })
-        .await?;
-    for path in loose {
-        gone(tokio::fs::remove_file(path).await)?;
-    }
-    Ok(())
-}
-/// What removing a file came to, one already gone being as good as removed.
-fn gone(removed: std::io::Result<()>) -> Result<()> {
-    match removed {
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
-        _ => Ok(()),
-    }
+        .await
 }
 
 /// A member's file due to download: its workspace, Slack's ID of it, and how often it failed.
@@ -400,12 +326,9 @@ impl FromRow for Due {
         })
     }
 }
-/// What trying to download a file came to.
+/// What trying to download a file came to: its bytes, beside the DSP's until it's kept.
 pub enum Outcome {
-    Kept {
-        sha256: String,
-        size: i64,
-    },
+    Kept(Arrived),
     Later {
         reason: String,
         at: i64,
@@ -455,44 +378,55 @@ impl Queue for Downloads {
         }
     }
     fn finish(db: &Store, dsp: &str, item: &Due, outcome: &Outcome, _: i64) -> Result<()> {
-        let db = db.dsp(dsp)?;
-        db.transaction(|| {
-            // Its message shows it kept, or not to be: a wait changes nothing it shows.
-            let shown = !matches!(outcome, Outcome::Later { .. });
-            match outcome {
-                Outcome::Kept { sha256, size } => db.exec(
-                    "UPDATE communications_files SET status='kept',sha256=?,size=?,reason=NULL,\
-                     claimed_until=NULL WHERE id=?",
-                    params![sha256, size, item.id],
-                )?,
-                Outcome::Later {
-                    reason,
-                    at,
-                    counted,
-                } => db.exec(
-                    "UPDATE communications_files SET due_at=?,reason=?,claimed_until=NULL,\
-                     attempts=attempts+? WHERE id=?",
-                    params![at, reason, i64::from(*counted), item.id],
-                )?,
-                Outcome::Left { status, reason } => db.exec(
-                    "UPDATE communications_files SET status=?,reason=?,claimed_until=NULL \
-                     WHERE id=?",
-                    params![status, reason, item.id],
-                )?,
-            };
-            if !shown {
-                return Ok(());
+        match outcome {
+            // Its bytes take their place with the file that keeps them.
+            Outcome::Kept(arrived) => {
+                BYTES.keep(db, dsp, arrived, || finished(db, dsp, item, outcome))
             }
-            let (conversation,): (String,) = db
-                .one_as(
-                    "SELECT m.conversation_id FROM communications_files f \
-                     JOIN communications_messages m ON m.id=f.message_id WHERE f.id=?",
-                    [&item.id],
-                )?
-                .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
-            changed_conversation(&db, &conversation)
-        })
+            _ => finished(db, dsp, item, outcome),
+        }
     }
+}
+/// Keeps what trying to download `item` came to, and notes its conversation changed when its
+/// message shows it.
+fn finished(db: &Store, dsp: &str, item: &Due, outcome: &Outcome) -> Result<()> {
+    let db = db.dsp(dsp)?;
+    db.transaction(|| {
+        // Its message shows it kept, or not to be: a wait changes nothing it shows.
+        let shown = !matches!(outcome, Outcome::Later { .. });
+        match outcome {
+            Outcome::Kept(arrived) => db.exec(
+                "UPDATE communications_files SET status='kept',sha256=?,size=?,reason=NULL,\
+                 claimed_until=NULL WHERE id=?",
+                params![arrived.sha256, arrived.size, item.id],
+            )?,
+            Outcome::Later {
+                reason,
+                at,
+                counted,
+            } => db.exec(
+                "UPDATE communications_files SET due_at=?,reason=?,claimed_until=NULL,\
+                 attempts=attempts+? WHERE id=?",
+                params![at, reason, i64::from(*counted), item.id],
+            )?,
+            Outcome::Left { status, reason } => db.exec(
+                "UPDATE communications_files SET status=?,reason=?,claimed_until=NULL \
+                 WHERE id=?",
+                params![status, reason, item.id],
+            )?,
+        };
+        if !shown {
+            return Ok(());
+        }
+        let (conversation,): (String,) = db
+            .one_as(
+                "SELECT m.conversation_id FROM communications_files f \
+                 JOIN communications_messages m ON m.id=f.message_id WHERE f.id=?",
+                [&item.id],
+            )?
+            .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+        changed_conversation(&db, &conversation)
+    })
 }
 
 /// Downloads one of a member's files from Slack, while Communications is on in its workspace:
@@ -539,16 +473,10 @@ async fn download(state: &Arc<State>, dsp: &str, item: &Due) -> Result<Outcome> 
         .as_str()
         .unwrap_or("application/octet-stream");
     let bytes = bot.download(url, mime).await?;
-    let sha256 = keep(
-        state,
-        dsp,
-        Upload::streamed(size, UPLOAD_LIMIT, bytes).await?,
-    )
-    .await?;
-    Ok(Outcome::Kept {
-        sha256,
-        size: size as i64,
-    })
+    let bytes = Upload::streamed(size, UPLOAD_LIMIT, bytes).await?;
+    Ok(Outcome::Kept(
+        BYTES.receive(state, dsp, bytes, UPLOAD_LIMIT).await?,
+    ))
 }
 
 /// Waits a while, uncounted, for `reason`.
