@@ -1,7 +1,7 @@
 //! The line beginning each workday in a driver's work conversation: the route and van of each day
 //! its texts were written, however far apart, and however many days the driver drove between.
 use crate::backend::{
-    support::{self, at, driver, filed, held, hold, route, started, texted, today, van},
+    support::{self, at, driver, filed, phoned, route, saved, started, texted, today, van},
     texts::reading,
 };
 use chrono::{Days, NaiveDate};
@@ -38,13 +38,8 @@ async fn each_workday_shows_its_route_and_van_however_far_apart_and_however_many
         driven,
         vans.to_vec(),
     );
-    let saved = texted_on.map(|each| {
-        (
-            each.to_string(),
-            hold("A1", "2065550101", at(zone, each, 8, 0), None),
-        )
-    });
-    held(&state, &dsp, None, Vec::new(), saved.to_vec()).await;
+    let days = texted_on.map(|each| saved(each, &[("A1", "2065550101")]));
+    phoned(&state, &dsp, None, Vec::new(), days.to_vec()).await;
     let mut text = String::new();
     for each in texted_on {
         text = texted(

@@ -6,7 +6,7 @@ import type { Message } from "./Message";
 
 /**
  * A conversation: a direct message with a member of one of the DSP's Slack workspaces, or texts
- * with a number, or with whichever of the DSP's work phones a driver held.
+ * with a number, or with whichever of the DSP's work phones a driver had.
  */
 export type Conversation = { id: string, kind: ConversationKind,
 /**
@@ -14,12 +14,12 @@ export type Conversation = { id: string, kind: ConversationKind,
  */
 teamId: string | null,
 /**
- * The number it texts: a number's own, a work phone's nobody held, or for a driver's, the
+ * The number it texts: a number's own, a work phone's nobody had, or for a driver's, the
  * work phone last texted with.
  */
 number: string | null,
 /**
- * For a driver's work conversation, their ID of the source naming who held the DSP's work
+ * For a driver's work conversation, their ID of the source naming who had the DSP's work
  * phones.
  */
 driverId: string | null,

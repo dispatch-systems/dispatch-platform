@@ -185,14 +185,7 @@ export function ProfileShown({
             [
               Smartphone,
               'Work phone',
-              today.phone && (
-                <span className="profile-phone">
-                  {lastFour(today.phone)}
-                  {today.phoneSince !== null && (
-                    <small>Since {clock(today.phoneSince, timeZone)}</small>
-                  )}
-                </span>
-              ),
+              today.phone && lastFour(today.phone),
             ],
           ]}
         />

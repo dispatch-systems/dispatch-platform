@@ -1,6 +1,6 @@
 //! Answering by text: what's written goes as written, from the DSP's phone, under whoever wrote
 //! it on the page, as much as a text carries; one that fails leaves the conversation waiting, and
-//! Retry sends it again. Neither goes to a work phone the driver no longer holds, even as it
+//! Retry sends it again. Neither goes to a work phone that isn't the driver's alone now, even as it
 //! changed hands once it was asked for, nor once its writer's access ended, each checked in the
 //! write that queues it. A picture added for one keeps nothing once its adder's access ended while
 //! its bytes came.
@@ -8,7 +8,7 @@ use super::*;
 use crate::ConversationState;
 use crate::backend::{
     phone::{model::Status, storage::FileStore},
-    support::{self, at, filed, held, hold, reported, switch, texted, today},
+    support::{self, filed, phoned, phones, read_live, reported, saved, switch, texted, today},
     texts::{model::TextStatus, reading, reading::one, storage::TextStore},
 };
 use axum::body::Bytes;
@@ -90,11 +90,11 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
 #[tokio::test]
 async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_theirs_as_it_goes() {
     let (_root, state, dsp) = support::started();
-    let (zone, day) = today(&state, &dsp).await;
-    let (midnight, today) = (at(zone, day, 0, 0), day.to_string());
-    // Avery holds 0101 and texts; the answer through it fails.
-    let avery = vec![hold("A1", "2065550101", midnight, None)];
-    held(&state, &dsp, Some(&today), avery, Vec::new()).await;
+    let (_, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery has 0101 and texts; the answer through it fails.
+    let avery = phones(&[("A1", "2065550101")]);
+    phoned(&state, &dsp, Some(&today), avery, Vec::new()).await;
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
@@ -104,30 +104,25 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
     reported(&state, &dsp, &failed.id, Status::Failed).await;
     let retried = || retry(&state, &c, support::USE, &conversation, &failed.id);
 
-    // Once Retry is asked for, Avery hands 0101 to Blake and takes 0202: it would reach Blake.
-    let (handoff, back) = (failed.at + 1, failed.at + 2);
-    let handed = |until| {
-        vec![
-            hold("A1", "2065550101", midnight, Some(handoff)),
-            hold("A1", "2065550202", handoff, until),
-            hold("B2", "2065550101", handoff, until),
-        ]
-    };
-    held(&state, &dsp, Some(&today), handed(None), Vec::new()).await;
+    // Once Retry is asked for, a read shows Avery with 0202 and Blake with 0101, before filing
+    // hears of it: it would reach Blake.
+    let handed = phones(&[("A1", "2065550202"), ("B2", "2065550101")]);
+    read_live(&dsp, Some(&today), handed);
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_work_phone_changed"
     );
-    // Blake hands 0101 back; then, as Retry is asked for again, the stop saves the day's holds,
-    // and Avery holds none.
-    let mut holds = handed(Some(back));
-    holds.push(hold("A1", "2065550101", back, None));
-    held(&state, &dsp, Some(&today), holds.clone(), Vec::new()).await;
-    let saved = holds
-        .into_iter()
-        .map(|hold| (today.clone(), hold))
-        .collect();
-    held(&state, &dsp, None, Vec::new(), saved).await;
+    // The next shows 0101 as both Avery's and Blake's latest: it's neither's alone.
+    let both = phones(&[("A1", "2065550101"), ("B2", "2065550101")]);
+    read_live(&dsp, Some(&today), both);
+    assert_eq!(
+        retried().await.unwrap_err().code,
+        "communications_no_work_phone"
+    );
+    // Then the stop saves the day with 0101 Avery's again, and live route data empties: Avery has
+    // no work phone now.
+    let theirs = saved(day, &[("A1", "2065550101")]);
+    phoned(&state, &dsp, None, Vec::new(), vec![theirs]).await;
     assert_eq!(
         retried().await.unwrap_err().code,
         "communications_no_work_phone"
@@ -146,26 +141,21 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
 }
 
 #[tokio::test]
-async fn an_answer_goes_to_the_work_phone_its_driver_holds_as_it_is_queued() {
+async fn an_answer_goes_to_the_work_phone_its_driver_has_as_it_is_queued() {
     let (_root, state, dsp) = support::started();
-    let (zone, day) = today(&state, &dsp).await;
-    let (midnight, today) = (at(zone, day, 0, 0), day.to_string());
-    // Avery holds 0101 and texts.
-    let avery = vec![hold("A1", "2065550101", midnight, None)];
-    held(&state, &dsp, Some(&today), avery, Vec::new()).await;
+    let (_, day) = today(&state, &dsp).await;
+    let today = day.to_string();
+    // Avery has 0101 and texts.
+    let avery = phones(&[("A1", "2065550101")]);
+    phoned(&state, &dsp, Some(&today), avery, Vec::new()).await;
     let asked = texted(&state, &dsp, "+12065550101", "Which van?", now()).await;
     let conversation = filed(&state, &dsp, &asked).await.id;
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
 
-    // Once the answer is asked for, Avery hands 0101 to Blake and takes 0202: it reaches Avery,
-    // never Blake.
-    let handoff = now();
-    let handed = vec![
-        hold("A1", "2065550101", midnight, Some(handoff)),
-        hold("A1", "2065550202", handoff, None),
-        hold("B2", "2065550101", handoff, None),
-    ];
-    held(&state, &dsp, Some(&today), handed, Vec::new()).await;
+    // Once the answer is asked for, a read shows Avery with 0202 and Blake with 0101, before
+    // filing hears of it: it reaches Avery, never Blake.
+    let handed = phones(&[("A1", "2065550202"), ("B2", "2065550101")]);
+    read_live(&dsp, Some(&today), handed);
     send(&state, &c, support::USE, &conversation, "Van 214", &[])
         .await
         .unwrap();

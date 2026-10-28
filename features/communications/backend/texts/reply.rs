@@ -2,8 +2,9 @@
 //! written, with nothing added, so the other party sees only the DSP's number: from the phone that
 //! last texted that number, else the one seen last; and is kept as filing reads it back, with how
 //! it went, under the full name of whoever wrote it, as a Slack answer is (`sent_by`).
-//! A number's conversation, and a work phone's nobody held, answer their number; a driver's, the
-//! work phone they hold now, as live route data says, and none while they hold none. Its pictures
+//! A number's conversation, and a work phone's nobody had, answer their number; a driver's, the
+//! work phone they have now, as live route data says (`LiveDay::phones`), and none while they have
+//! none. Its pictures
 //! are kept by the phone side as they're added, its adder's alone until they go with it, and none
 //! of one kept should the adder's access end while its bytes come. One that failed is sent again
 //! with Retry. Either is queued in the write that checks where it goes and that the member may
@@ -69,16 +70,14 @@ pub async fn send(
 }
 
 /// Where a text written in the conversation `id` goes: a number's own number, or a work phone's
-/// nobody held; for a driver's, the work phone they hold now, refused while they hold none.
+/// nobody had; for a driver's, the work phone they have now, refused while they have none.
 fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
     let conversation = db
         .communications_text_conversation(dsp, id)?
         .ok_or_else(|| Error::new("communications_conversation_not_found", 404))?;
-    let held = match (&conversation.driver, conversation.kind) {
+    let phone = match (&conversation.driver, conversation.kind) {
         (Some((source, driver)), _) => match LiveDay::read(db, dsp)? {
-            Some(live) if live.source == *source => {
-                live.held_by(db, dsp, std::slice::from_ref(driver))?
-            }
+            Some(live) if live.source == *source => live.phones(db, dsp)?.remove(driver),
             _ => None,
         },
         (None, ConversationKind::Slack) => None,
@@ -88,12 +87,13 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
                 .ok_or_else(|| Error::new("invalid_input", 400));
         }
     };
-    held.map(|held| work_number(&held.phone))
+    phone
+        .map(|phone| work_number(&phone))
         .ok_or_else(|| Error::new("communications_no_work_phone", 409))
 }
 
 /// Refuses the text `text` unless it's the conversation `id`'s and goes where a text written there
-/// now would: not to a work phone its driver no longer holds, which may be another's since.
+/// now would: not to a work phone its driver no longer has, which may be another's since.
 fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
     let text = db
         .communications_text(dsp, text)?

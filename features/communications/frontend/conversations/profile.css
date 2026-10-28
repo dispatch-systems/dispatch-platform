@@ -18,15 +18,6 @@
 .profile-stops .stops-bar {
   flex: 0 0 80px;
 }
-.profile-phone {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-.profile-phone small {
-  color: var(--muted-foreground);
-  font-size: var(--small-size);
-}
 
 /* What's known of them: Call, and each section of facts. */
 .profile-buttons {

@@ -4,7 +4,7 @@
 use super::*;
 use crate::ConversationState;
 use crate::backend::{
-    support::{DRIVERS, at, filed, held, hold, started, texted, today},
+    support::{DRIVERS, at, filed, phoned, phones, started, texted, today},
     texts::reading,
 };
 use rusqlite::params;
@@ -14,16 +14,9 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let today = day.to_string();
-    // Avery holds 0202. From 0101, no work phone yet, texts at 6:00 and 6:30, then one at 7:30.
-    let on_0202 = hold("A1", "2065550202", at(zone, day, 0, 0), None);
-    held(
-        &state,
-        &dsp,
-        Some(&today),
-        vec![on_0202.clone()],
-        Vec::new(),
-    )
-    .await;
+    // Avery has 0202. From 0101, no work phone yet, texts at 6:00 and 6:30, then one at 7:30.
+    let on_0202 = phones(&[("A1", "2065550202")]);
+    phoned(&state, &dsp, Some(&today), on_0202, Vec::new()).await;
     let mut texts = Vec::new();
     for (body, hour, minute) in [
         ("Which van?", 6, 0),
@@ -49,17 +42,10 @@ async fn a_done_from_before_migration_6_still_covers_its_texts_once_theyre_filed
         .await
         .unwrap();
 
-    // The holds settle: Avery held 0101 from 7:00 too, so its texts are theirs. Those the Done
-    // covered stay handled; the 7:30 one waits.
-    let on_0101 = hold("A1", "2065550101", at(zone, day, 7, 0), None);
-    held(
-        &state,
-        &dsp,
-        Some(&today),
-        vec![on_0202, on_0101],
-        Vec::new(),
-    )
-    .await;
+    // A read shows Avery with 0101, so its texts are theirs. Those the Done covered stay
+    // handled; the 7:30 one waits.
+    let on_0101 = phones(&[("A1", "2065550101")]);
+    phoned(&state, &dsp, Some(&today), on_0101, Vec::new()).await;
     let avery = filed(&state, &dsp, &texts[0]).await;
     let theirs = Some((DRIVERS.as_str().to_owned(), "A1".to_owned()));
     assert_eq!(avery.driver, theirs);

@@ -68,7 +68,7 @@ pub trait TextStore {
     /// Keeps each of `texts`, one new where it's filed, one kept already where it is, as how it
     /// went or its files changed, under the name its sender was shown by as it was first kept, and
     /// notes that the phone side's changes were read up to `read_to`: the conversations changed.
-    /// Where a text is filed is decided again only as its holds settle
+    /// Where a text is filed is decided again only as its day's route data changes
     /// (`refile_communications_texts`).
     /// A new one without where it's filed is refused.
     fn file_communications_texts(
@@ -90,7 +90,7 @@ pub trait TextStore {
         source: &str,
         ids: &[String],
     ) -> Result<Vec<TextConversation>>;
-    /// The work conversations, drivers' and work phones' nobody held, holding a text written from
+    /// The work conversations, drivers' and work phones' nobody had, holding a text written from
     /// `from` on, in no order.
     fn communications_work_from(&self, dsp: &str, from: i64) -> Result<Vec<TextConversation>>;
     /// Every work conversation holding a text, in no order.
@@ -110,8 +110,8 @@ pub trait TextStore {
     ) -> Result<Vec<(String, i64)>>;
     /// Notes changed, for the pages waiting on changes, each work conversation waiting by its
     /// texts written in from `from` on, as whether it waits counts only on the live day, which
-    /// began or ended; and every driver's, texted in or not, as the work phone they hold may have
-    /// changed, one they held before as much as one they hold now.
+    /// began or ended; and every driver's, texted in or not, as the work phone they have may have
+    /// changed, one they had before as much as one they have now.
     fn changed_communications_work(&self, dsp: &str, from: i64) -> Result<()>;
     /// The conversation texts filed so would be in, made with no text if it's new.
     fn open_communications_text(&self, dsp: &str, filed: &Filed) -> Result<TextConversation>;

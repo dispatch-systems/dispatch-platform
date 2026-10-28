@@ -1,8 +1,8 @@
 //! Today's Routes, while live route data holds today: each driver its routes name, with their
-//! route as last read live and the work phone they hold now, and their work conversation; each
-//! driver holding a work phone today but gone from the day's list, once they texted today; and
-//! each work phone nobody held that texted today, as itself. At the stop it's empty, and the
-//! conversations stay. Offered while the DSP has live route data.
+//! route as last read live and the work phone they have now, and their work conversation; each
+//! driver gone from the day's list, once their conversation was written in today; and each work
+//! phone nobody had that texted today, as itself. At the stop it's empty, and the conversations
+//! stay. Offered while the DSP has live route data.
 use super::{
     live_day::LiveDay, model::TextConversation, numbers::Numbers, reading, storage::TextStore,
 };
@@ -19,7 +19,7 @@ pub fn offered(db: &Store, dsp: &str) -> Result<bool> {
     Ok(routes::live_for_dsp(db, dsp)?.is_some())
 }
 
-/// Today's Routes as it is now: its drivers by name, and the work phones nobody held, the latest
+/// Today's Routes as it is now: its drivers by name, and the work phones nobody had, the latest
 /// written in first.
 pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
     let Some(live) = LiveDay::read(db, dsp)? else {
@@ -30,14 +30,14 @@ pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
         });
     };
     let routes = today::busiest(live.reader.day(db, dsp)?.routes, today::driver);
-    let holding = live.holding(db, dsp)?;
+    let phones_now = live.phones(db, dsp)?;
     let vans = today::vans(
         db,
         dsp,
         routes.values().filter_map(|route| route.vin.as_ref()),
     )?;
     // Their work conversations, and every one written in today: those of drivers gone from the
-    // day's list, and of work phones nobody held.
+    // day's list, and of work phones nobody had.
     let ids: Vec<String> = routes.keys().cloned().collect();
     let mut kept: BTreeMap<String, TextConversation> = BTreeMap::new();
     for conversation in db
@@ -77,7 +77,11 @@ pub fn read(db: &Store, state: &State, dsp: &str) -> Result<TodaysRoutes> {
         .map(|driver| RouteDriver {
             driver_id: driver.clone(),
             person: people.routed(live.reader.source(), driver),
-            today: today::shown(routes.get(driver), &vans, holding.get(driver)),
+            today: today::shown(
+                routes.get(driver),
+                &vans,
+                phones_now.get(driver).map(String::as_str),
+            ),
             conversation: theirs.remove(driver),
         })
         .collect();

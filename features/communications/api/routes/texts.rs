@@ -1,7 +1,7 @@
 //! What only a conversation by text has: Retry, a number's contact and block, texting a number or
 //! one of today's drivers first, whom the DSP can text, a text's pictures, Today's Routes and Pick
 //! driver. A Slack conversation's ID is refused for each.
-use super::{DRIVER_ID_MOST, texting_id};
+use super::texting_id;
 use crate::backend::{model::Reference, phone::numbers::NUMBER_MOST, texts};
 use dispatch_core::{
     Result, State,
@@ -14,6 +14,7 @@ use dispatch_core::{
         upload::Upload,
     },
 };
+use dispatch_routes_contract::MOST_ID_LENGTH;
 use std::sync::Arc;
 
 /// The conversation by text the route names.
@@ -73,7 +74,7 @@ pub(super) fn text_first(db: &Store, c: &Member, input: &Input) -> Result<Reply>
     v::fields(&input.body, &["number", "driverId"])?;
     if input.body.get("driverId").is_some() {
         ensure(input.body.get("number").is_none(), "invalid_input", 400)?;
-        let driver = v::text(&input.body, "driverId", 1, DRIVER_ID_MOST)?;
+        let driver = v::text(&input.body, "driverId", 1, MOST_ID_LENGTH)?;
         return Reply::of(&texts::contacts::open_driver(
             db,
             c.state,
@@ -121,12 +122,12 @@ pub(super) fn todays_routes(db: &Store, c: &Member, input: &Input) -> Result<Rep
     v::fields(&input.query, &[])?;
     Reply::of(&texts::todays_routes::read(db, c.state, c.dsp_id())?)
 }
-/// Files the work phone of a conversation, one nobody held, under one of today's drivers,
+/// Files the work phone of a conversation, one nobody has, under one of today's drivers,
 /// `driverId`, for today.
 pub(super) fn pick_driver(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     v::fields(&input.body, &["driverId"])?;
     let conversation = texted(input)?;
-    let driver = v::text(&input.body, "driverId", 1, DRIVER_ID_MOST)?;
+    let driver = v::text(&input.body, "driverId", 1, MOST_ID_LENGTH)?;
     Reply::of(&texts::picking::pick(
         db,
         c.state,

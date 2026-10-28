@@ -149,7 +149,6 @@ export function sample(now: number) {
       stopsDone: null,
       pace: null,
       phone: null,
-      phoneSince: null,
     },
     phone: '+12065550148',
     email: 'jamal.w@example.com',

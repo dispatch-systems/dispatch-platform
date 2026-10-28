@@ -7,11 +7,11 @@ import type { ConversationKind } from "./ConversationKind";
  */
 export type Elsewhere = { kind: ConversationKind, conversationId: string | null, waiting: boolean,
 /**
- * For a work one, the work phone they hold now, if any; for a number's, the number.
+ * For a work one, the work phone they have now, if any; for a number's, the number.
  */
 number: string | null,
 /**
- * For a work one, their ID of the source naming who held the DSP's work phones.
+ * For a work one, their ID of the source naming who had the DSP's work phones.
  */
 driverId: string | null,
 /**

@@ -1,10 +1,10 @@
 //! What every Communications backend test installs, and how one starts. A test binary holds one
 //! registry, so each installs the same: Slack, Communications, and stand-ins for what other
 //! features expose that it reads, which it may not name, each by its contract: who people are
-//! (`directory`, always), their routes and each saved day's holds (`routes`, `driver_routes` while
-//! `driving` is on), today's as read live (`live`, `live_route_data` while `live` is on) and the
-//! DSP's vans (`fleet`, `amazon_fleet` while `fleet` is on). Each answers what a test says of its
-//! DSP, with `know`, `held` and `routed`, and nothing else. A test starts with a platform with one
+//! (`directory`, always), their routes and each saved day's work phones (`routes`, `driver_routes`
+//! while `driving` is on), today's as read live (`live`, `live_route_data` while `live` is on) and
+//! the DSP's vans (`fleet`, `amazon_fleet` while `fleet` is on). Each answers what a test says of
+//! its DSP, with `know`, `phoned` and `routed`, and nothing else. A test starts with a platform with one
 //! DSP, every feature on for it, and its dispatch phone paired (`phone`), which `texted` and
 //! `reported` speak for; or with one of its fixture workspaces connected too, its members read:
 //! the workspace's admin has approved all the app asks for.
@@ -14,7 +14,7 @@ mod live;
 mod phone;
 mod routes;
 
-pub use live::routed;
+pub use live::{read_live, routed};
 pub use phone::{reported, sent, texted};
 
 use crate::api::types::Message;
@@ -38,7 +38,7 @@ use dispatch_core::{
     server::http::route::Dsp,
     testing,
 };
-use dispatch_routes_contract::{RouteDay, WorkPhoneHold, WorkPhonesChanged};
+use dispatch_routes_contract::{DayPhones, DriverPhone, RouteDataChanged, RouteDay};
 use dispatch_slack::{kit::Bot, testing as slack};
 use dispatch_vans_contract::Van;
 use serde_json::json;
@@ -287,18 +287,18 @@ pub fn know(state: &State, dsp: &str, people: Vec<Person>, routes: Vec<RouteDay>
     fleet::know(dsp, vans);
     state.changed(Some(dsp));
 }
-/// Has the stand-ins answer who held the DSP's work phones: live route data's holds of its live
-/// day `live_day`, if it holds one, and each saved day's; then says, as Routes does, of which days
-/// they changed: the live day it held before, as emptying it does, the one it holds now, and each
-/// saved one.
-pub async fn held(
+/// Has the stand-ins answer each driver's latest work phone: live route data's of its live day
+/// `live_day`, if it holds one, and each saved day's, any other day not collected; then says, as
+/// Routes does, of which days the route data changed: the live day it held before, as emptying it
+/// does, the one it holds now, and each saved one.
+pub async fn phoned(
     state: &Arc<State>,
     dsp: &str,
     live_day: Option<&str>,
-    live: Vec<WorkPhoneHold>,
-    saved: Vec<(String, WorkPhoneHold)>,
+    live: Vec<DriverPhone>,
+    saved: Vec<(String, DayPhones)>,
 ) {
-    let before = live::hold(dsp, live_day, live);
+    let before = live::read_live(dsp, live_day, live);
     let changed: BTreeSet<String> = before
         .into_iter()
         .chain(live_day.map(str::to_owned))
@@ -306,18 +306,24 @@ pub async fn held(
         .collect();
     routes::save(dsp, saved);
     for day in changed {
-        events::publish(state, dsp, WorkPhonesChanged { day }).await;
+        events::publish(state, dsp, RouteDataChanged { day }).await;
     }
 }
-/// A hold on the work phone `phone`, ten digits, by the driver `driver`, from `since` until
-/// `until`.
-pub fn hold(driver: &str, phone: &str, since: i64, until: Option<i64>) -> WorkPhoneHold {
-    WorkPhoneHold {
-        driver_id: driver.to_owned(),
-        phone: phone.to_owned(),
-        since,
-        until,
-    }
+/// Each driver's latest work phone of a day, `phones` each a driver's ID and its ten digits, as
+/// Routes reads them: `shared` where it's another driver's too.
+pub fn phones(phones: &[(&str, &str)]) -> Vec<DriverPhone> {
+    let drivers = |phone: &str| phones.iter().filter(|(_, other)| *other == phone).count();
+    (phones.iter())
+        .map(|(driver, phone)| DriverPhone {
+            driver_id: (*driver).to_owned(),
+            phone: (*phone).to_owned(),
+            shared: drivers(phone) > 1,
+        })
+        .collect()
+}
+/// `day` saved, with each driver's latest work phone `of`, as `phones` has them.
+pub fn saved(day: impl ToString, of: &[(&str, &str)]) -> (String, DayPhones) {
+    (day.to_string(), DayPhones::Read(phones(of)))
 }
 /// Switches `feature`, a stand-in as `driving` or `fleet`, or Communications, on or off for the DSP.
 pub async fn switch(state: &Arc<State>, dsp: &str, feature: &'static str, on: bool) {

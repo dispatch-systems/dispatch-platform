@@ -5,7 +5,7 @@ import type { RouteDriver } from "./RouteDriver";
 /**
  * `GET /api/dsp/communications/routes`: Today's Routes, while live route data holds today: each
  * driver on a route today, by name, with their route and work conversation; and each work phone
- * nobody held that texted today, as itself.
+ * nobody had that texted today, as itself.
  */
 export type TodaysRoutes = {
 /**

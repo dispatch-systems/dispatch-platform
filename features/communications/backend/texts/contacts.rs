@@ -88,8 +88,8 @@ pub fn contacts(db: &Store, state: &State, dsp: &str, typed: Option<&str>) -> Re
 }
 
 /// The conversation a text to the number `raw` written now belongs in, as filing would place it,
-/// opened with no text if it's new, for someone at the DSP to text first: a work phone's held now
-/// is its driver's.
+/// opened with no text if it's new, for someone at the DSP to text first: a driver's latest work
+/// phone today is their conversation.
 pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversation> {
     let number = normal(raw).ok_or_else(|| Error::new("invalid_input", 400))?;
     let opened = db.open_communications_text(dsp, &filing::belongs(db, dsp, &number)?)?;
@@ -97,7 +97,7 @@ pub fn open(db: &Store, state: &State, dsp: &str, raw: &str) -> Result<Conversat
 }
 
 /// The work conversation of `driver`, one of today's drivers, opened with no text if it's new,
-/// for someone at the DSP to text them first at the work phone they hold.
+/// for someone at the DSP to text them first at the work phone they have.
 pub fn open_driver(db: &Store, state: &State, dsp: &str, driver: &str) -> Result<Conversation> {
     let live =
         LiveDay::read(db, dsp)?.ok_or_else(|| Error::new("communications_routes_over", 409))?;

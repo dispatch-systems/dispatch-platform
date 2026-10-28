@@ -3,7 +3,7 @@
 use crate::ConversationState;
 use crate::backend::{
     inbox,
-    support::{at, filed, held, hold, started, texted, today},
+    support::{at, filed, phoned, phones, saved, started, texted, today},
     texts::reading,
 };
 use dispatch_core::State;
@@ -35,12 +35,9 @@ async fn a_work_conversation_waits_only_on_the_live_day_from_before_its_first_re
     let (zone, day) = today(&state, &dsp).await;
     let yesterday = day.pred_opt().unwrap();
     let (now, then) = (|h, m| at(zone, day, h, m), |h, m| at(zone, yesterday, h, m));
-    // Yesterday, as saved: Avery held 0101, and texted at 5 PM, unanswered as the day stopped.
-    let saved = vec![(
-        yesterday.to_string(),
-        hold("A1", "2065550101", then(8, 0), None),
-    )];
-    held(&state, &dsp, None, Vec::new(), saved.clone()).await;
+    // Yesterday, as saved: Avery had 0101, and texted at 5 PM, unanswered as the day stopped.
+    let earlier = vec![saved(yesterday, &[("A1", "2065550101")])];
+    phoned(&state, &dsp, None, Vec::new(), earlier.clone()).await;
     let late = texted(
         &state,
         &dsp,
@@ -55,10 +52,10 @@ async fn a_work_conversation_waits_only_on_the_live_day_from_before_its_first_re
     texted(&state, &dsp, "+12065550101", "Which van today?", now(6, 30)).await;
     assert_eq!(counted(&state, &dsp).await, 0);
 
-    // The first live read shows Avery holding 0101 since 7:00: today's text is theirs, and they
-    // wait from it, not from yesterday's.
-    let live = vec![hold("A1", "2065550101", now(7, 0), None)];
-    held(&state, &dsp, Some(&day.to_string()), live, saved.clone()).await;
+    // The first live read shows Avery with 0101: today's text is theirs, and they wait from it,
+    // not from yesterday's.
+    let live = phones(&[("A1", "2065550101")]);
+    phoned(&state, &dsp, Some(&day.to_string()), live, earlier.clone()).await;
     assert_eq!(
         shown(&state, &dsp, &avery).await,
         (ConversationState::Waiting, Some(now(6, 30)))
@@ -66,7 +63,7 @@ async fn a_work_conversation_waits_only_on_the_live_day_from_before_its_first_re
     assert_eq!(counted(&state, &dsp).await, 1);
 
     // At the stop, live route data empties: still unanswered, it no longer waits, nor counts.
-    held(&state, &dsp, None, Vec::new(), saved).await;
+    phoned(&state, &dsp, None, Vec::new(), earlier).await;
     assert_eq!(
         shown(&state, &dsp, &avery).await,
         (ConversationState::Done, None)

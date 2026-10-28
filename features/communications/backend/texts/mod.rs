@@ -7,8 +7,8 @@
 //! - `model`: what texting keeps: conversations by text, each text filed in one, and where a text
 //!   is filed; `storage`, keeping them, how far the phone side's changes were read, the names and
 //!   blocks the DSP keeps for numbers, and the drivers picked for work phones.
-//! - `filing`: filing each text the phones relay in its conversation, and a day's again as who held
-//!   its work phones settles.
+//! - `filing`: filing each text the phones relay in its conversation, and a day's again as its
+//!   route data changes.
 //! - `numbers`: one number written one way, how one reads, and what the DSP keeps of them.
 //! - `reading`: the conversations and their texts, as the page reads them.
 //! - `reply`: answering by text, and sending again one that failed.
@@ -17,8 +17,8 @@
 //! - `live_day`: the day live route data holds, which Today's Routes lists and work conversations
 //!   wait on.
 //! - `todays_routes`: Today's Routes, the drivers on a route today with their work conversations,
-//!   and the work phones nobody held.
-//! - `picking`: Pick driver, filing a work phone nobody held under one of today's drivers.
+//!   and the work phones nobody had.
+//! - `picking`: Pick driver, filing a work phone nobody has under one of today's drivers.
 //! - `workdays`: each workday's route and van, for the line that begins it in a driver's
 //!   conversation.
 pub(crate) mod contacts;
