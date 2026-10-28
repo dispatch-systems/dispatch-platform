@@ -171,7 +171,7 @@ async function check(copied: string, logs: string) {
       .filter((name) => name.endsWith('.test.ts'))
       .sort()
       .map((name) => `app/tests/rules/${name}`),
-    ...plan.rules.filter((file) => file !== 'tooling/tests/scaffold.test.ts'),
+    ...plan.rules.filter((file) => !file.startsWith('tooling/tests/scaffold/')),
   ];
   const owners = ['features', 'collectors', 'mcp/tools']
     .flatMap((dir) => fs.readdirSync(path.join(copied, dir)).map((name) => `${dir}/${name}`))
