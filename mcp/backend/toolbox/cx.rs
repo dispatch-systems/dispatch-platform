@@ -3,12 +3,10 @@
 //! each time, as it stands then.
 use super::{Answer, AnyTool, Effect, Failure, Refusal, db_caller, has_all, permitted};
 use crate::Caller;
+#[cfg(any(feature = "driver_match", feature = "dvic"))]
+use dispatch_core::manifest::people::{self, Everyone};
 use dispatch_core::{
-    Error, State,
-    accounts::api::types::Dsp,
-    db::Store,
-    manifest::people::{self, Everyone},
-    tenancy::audit::AuditChange,
+    Error, State, accounts::api::types::Dsp, db::Store, tenancy::audit::AuditChange,
 };
 use std::sync::Arc;
 
@@ -100,7 +98,10 @@ impl Cx {
             .unwrap_or_else(|error| Err(error.into()))
     }
 
-    /// Everyone at `dsp`, as `people::everyone` keeps them, read as `read` reads.
+    /// Everyone at `dsp`, as `people::everyone` keeps them, read as `read` reads. Only the
+    /// driver and DVIC tools read it, so it is in a build only with one of them; a tool that
+    /// comes to read it adds its features here.
+    #[cfg(any(feature = "driver_match", feature = "dvic"))]
     pub(crate) async fn everyone(&self, dsp: &Dsp) -> Answer<Arc<Everyone>> {
         let (state, dsp) = (self.state.clone(), dsp.id.clone());
         self.read(move |db| Ok(people::everyone(db, &state, &dsp)?))
