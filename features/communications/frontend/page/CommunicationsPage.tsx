@@ -102,10 +102,11 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const model = sectionNamed(section);
   const shows = VIEWS[section];
   const todays = useTodaysRoutes(section === 'routes', changed, inbox);
+  // Grouped again only as Today's Routes or the list answers anew, not as the page draws again.
+  const todaysRoutes = todays.read?.value;
   const routeList = useMemo(
-    () =>
-      todays.read && inbox ? routeGroups(routeRows(todays.read.value, inbox.conversations)) : [],
-    [todays.read, inbox],
+    () => (todaysRoutes && inbox ? routeGroups(routeRows(todaysRoutes, inbox.conversations)) : []),
+    [todaysRoutes, inbox],
   );
   // Slack sends those who connected or updated it from here back here, to finish.
   const returned = useSlackReturn(async (state, code) => {
@@ -245,7 +246,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // Today's Routes as the page reads it, which its list and its board show.
   const routes: RoutesShown = {
     groups: routeList,
-    read: { routes: todays.read?.value, error: todays.error, retry: todays.refresh },
+    read: { routes: todaysRoutes, error: todays.error, retry: todays.refresh },
     choose: (row) => go(rowTarget(row)),
     driver: current?.driverId,
     view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,
