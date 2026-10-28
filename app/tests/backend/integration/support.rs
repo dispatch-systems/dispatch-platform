@@ -2,8 +2,6 @@
 //! socket, on the development fixtures; sessions written directly, so tests skip password
 //! hashing; and requests sent as a browser or an agent sends them. A test file with helpers of
 //! its own wraps `Server` in a `Server` of its own that derefs to this one.
-// A build that leaves features out drops the tests that need them, and what only they use.
-#![cfg_attr(not(feature = "default"), allow(dead_code))]
 use dispatch_core::{
     State,
     db::{self, Store, s},
@@ -100,6 +98,8 @@ impl<'a> Call<'a> {
         self.headers.push((name, value.to_owned()));
         self
     }
+    /// Only tests that need Timecard and Team send a write without its CSRF token.
+    #[cfg(all(feature = "timecard", feature = "team"))]
     pub fn without_csrf(mut self) -> Self {
         self.csrf = false;
         self
