@@ -355,6 +355,28 @@ async fn a_live_itinerary_showing_no_phone_keeps_the_one_stored_until_another_dr
 }
 
 #[tokio::test]
+async fn a_saved_live_day_gives_no_phone_back_to_the_driver_live_route_data_took_it_from() {
+    let (_root, db, dsp, state) = ready();
+    let today = day(0);
+    let (first, third) = ("2065550190", "2065550192");
+    // Today collected with the first driver on a phone; then read live, the first's record blank,
+    // the second's showing that phone, then another, then none.
+    collect(&db, &dsp, "before", read(&today, Mode::Snapshot));
+    let mut blank = phoneless(&today, Mode::Snapshot);
+    for phone in [Some(first), Some(third), None] {
+        blank.finished_at += 1;
+        blank.summaries["transporters"][1]["workPhoneNumber"] = json!(phone);
+        keep_live(&state, &dsp, blank.clone()).await;
+    }
+    let moved_on = vec![latest("driver-2", third, false)];
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(moved_on.clone()));
+    // Saved over the read collected: the first has no phone there either, as live route data has it.
+    let saved = dispatch_routes::save_live_day(&state, &dsp).await.unwrap();
+    assert_eq!(saved, Some(true));
+    assert_eq!(day_phones(&db, &dsp, &today), DayPhones::Read(moved_on));
+}
+
+#[tokio::test]
 async fn a_saved_day_read_again_showing_no_phone_keeps_its_reads_but_never_the_day_befores() {
     let (_root, db, dsp, _state) = ready();
     let own = DayPhones::Read(vec![
