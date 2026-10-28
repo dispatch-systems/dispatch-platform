@@ -1,11 +1,12 @@
 //! Each itinerary's work phone, kept in its row in both route databases: the company phone its
 //! driver's records show with it, by its last ten digits, the day's list's, else the itinerary's
-//! own response's. A saved day kept before Routes kept them has them extracted from its stored
+//! own response's; or, when a read of its day shows none, the one the day's route data last stored
+//! for it (`Stored`). A saved day kept before Routes kept them has them extracted from its stored
 //! responses by the same rule (`phone_backfill`). A day's read answers each driver's latest
 //! (`DayPhones`), and the days kept whether a number was ever one.
 use super::*;
 use dispatch_routes_contract::{DayPhones, DriverPhone};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The first adapter version whose itineraries keep their work phone. A publication shaped before
 /// keeps none in its rows until they're extracted from its stored responses (`phone_backfill`).
@@ -29,6 +30,128 @@ impl Shaper {
             digits(record["workPhoneNumber"].as_str()?)
         };
         shown(&self.people).or_else(|| shown(own.as_array().map_or(&[], Vec::as_slice)))
+    }
+}
+
+impl PreparedItinerary {
+    /// The work phone its read shows (`Shaper::work_phone`), or the one it keeps.
+    fn work_phone(&self) -> Option<&str> {
+        let (_, phone) = self.columns.iter().find(|(c, _)| c == "work_phone")?;
+        phone.as_str()
+    }
+    /// Gives it `phone`, the one it keeps.
+    fn keep_work_phone(&mut self, phone: &str) {
+        if let Some((_, kept)) = self.columns.iter_mut().find(|(c, _)| c == "work_phone") {
+            *kept = json!(phone);
+        }
+    }
+}
+
+/// Each itinerary of a publication, with its driver and the work phone it keeps, if any.
+const ITINERARIES: &str = "SELECT itinerary_id,transporter_id,work_phone FROM itineraries \
+    WHERE publication_id=?";
+
+/// The drivers some itineraries give each phone to, by its ten digits.
+struct Drivers<'a>(BTreeMap<&'a str, BTreeSet<&'a str>>);
+impl<'a> Drivers<'a> {
+    /// The drivers of `phones`, each a driver and the phone they're given, if any.
+    fn of(phones: impl IntoIterator<Item = (&'a str, Option<&'a str>)>) -> Self {
+        let mut drivers = BTreeMap::<&str, BTreeSet<&str>>::new();
+        for (driver, phone) in phones {
+            if let Some(phone) = phone {
+                drivers.entry(phone).or_default().insert(driver);
+            }
+        }
+        Self(drivers)
+    }
+    /// Whether they give `phone` to a driver other than `driver`.
+    fn other_than(&self, driver: &str, phone: &str) -> bool {
+        (self.0.get(phone)).is_some_and(|drivers| drivers.iter().any(|d| *d != driver))
+    }
+}
+
+/// What a day's route data last stored of its itineraries' work phones, by itinerary ID: each
+/// one's driver, and its phone or none. An itinerary that a later read of the same day shows no
+/// phone for keeps that phone, as when Cortex ends its driver's session; one stored with none keeps
+/// none, as once another driver showed its phone. Only the day's own, never an earlier day's:
+/// phones pass from driver to driver day by day. Across a driver's itineraries no keeping is
+/// needed: one whose later itinerary shows no phone has the latest that shows one as their latest
+/// of the day already (`of_day`).
+#[derive(Debug, Default)]
+pub(super) struct Stored(BTreeMap<String, (String, Option<String>)>);
+impl Stored {
+    /// What `publication`'s itineraries keep in `routes`, live or historical route data.
+    pub(super) fn of(routes: &Db, publication: &str) -> Result<Self> {
+        let rows = routes.all(ITINERARIES, [publication])?;
+        let stored = rows.iter().map(|row| {
+            let phone = row["work_phone"].as_str().map(str::to_owned);
+            let driver = s(row, "transporter_id").to_owned();
+            (s(row, "itinerary_id").to_owned(), (driver, phone))
+        });
+        Ok(Self(stored.collect()))
+    }
+    /// Each itinerary they store, its ID, driver and phone, if any.
+    fn itineraries(&self) -> Vec<(&str, &str, Option<&str>)> {
+        (self.0.iter())
+            .map(|(id, (driver, phone))| (id.as_str(), driver.as_str(), phone.as_deref()))
+            .collect()
+    }
+    /// These, stored more recently, and `older`'s for each itinerary these don't store: one these
+    /// store with no phone keeps none, and a phone these give a driver isn't another's by `older`.
+    pub(super) fn or(mut self, older: Self) -> Self {
+        let older: Vec<_> = {
+            let drivers = Drivers::of(self.0.values().map(|(d, p)| (d.as_str(), p.as_deref())));
+            (older.0.into_iter())
+                .filter(|(itinerary, _)| !self.0.contains_key(itinerary))
+                .map(|(itinerary, (driver, phone))| {
+                    let phone = phone.filter(|phone| !drivers.other_than(&driver, phone));
+                    (itinerary, (driver, phone))
+                })
+                .collect()
+        };
+        self.0.extend(older);
+        self
+    }
+    /// The phone each itinerary of a read that shows none keeps, by its ID: the one stored for it,
+    /// unless the read shows that phone on another driver's itinerary, whose it is now. `read` is
+    /// each of the read's itineraries, its ID, driver and the phone it shows.
+    fn kept(&self, read: &[(&str, &str, Option<&str>)]) -> BTreeMap<String, String> {
+        let shown = Drivers::of(read.iter().map(|(_, driver, phone)| (*driver, *phone)));
+        (read.iter())
+            .filter(|(_, _, phone)| phone.is_none())
+            .filter_map(|(itinerary, driver, _)| {
+                let phone = self.0.get(*itinerary)?.1.as_deref()?;
+                (!shown.other_than(driver, phone))
+                    .then(|| ((*itinerary).to_owned(), phone.to_owned()))
+            })
+            .collect()
+    }
+    /// `itineraries`, a read of the day shaped, each that shows no phone given the one it keeps.
+    pub(super) fn keep_in(&self, itineraries: &mut [PreparedItinerary]) {
+        let read: Vec<_> = (itineraries.iter())
+            .map(|i| (i.id.as_str(), i.transporter_id.as_str(), i.work_phone()))
+            .collect();
+        let kept = self.kept(&read);
+        for itinerary in itineraries {
+            if let Some(phone) = kept.get(&itinerary.id) {
+                itinerary.keep_work_phone(phone);
+            }
+        }
+    }
+    /// `publication`'s itineraries in `routes`, a read of the day staged, each that shows no phone
+    /// given the one it keeps, inside the caller's transaction.
+    pub(super) fn keep_staged(&self, routes: &Db, publication: &str) -> Result<()> {
+        if self.0.is_empty() {
+            return Ok(());
+        }
+        let read = Self::of(routes, publication)?;
+        for (itinerary, phone) in self.kept(&read.itineraries()) {
+            routes.exec(
+                "UPDATE itineraries SET work_phone=? WHERE publication_id=? AND itinerary_id=?",
+                params![phone, publication, itinerary],
+            )?;
+        }
+        Ok(())
     }
 }
 

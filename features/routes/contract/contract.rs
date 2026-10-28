@@ -169,10 +169,13 @@ pub trait LiveRouteData: Send + Sync {
 
 /// Each driver's latest work phone of a day, from the work phone each of their itineraries shows:
 /// the one on their itinerary of the day that began last, by when it started, or else was planned
-/// to depart, of those showing one; of two no time tells apart, the one whose ID sorts last. An
-/// itinerary shows the phone its driver's records show with it: the day's list's, else its own
-/// response's. A phone passes from driver to driver, so a driver's latest is the one they had last:
-/// of two who swapped phones, each has the one they swapped to.
+/// to depart, of those showing one, so a driver whose later itinerary shows none has the latest that
+/// does; of two no time tells apart, the one whose ID sorts last. An itinerary shows the phone its
+/// driver's records show with it: the day's list's, else its own response's; or, when a read of the
+/// day shows none, as once Cortex ends its driver's session, the one the day's route data last
+/// stored for it, unless that read shows the phone on another driver's itinerary, whose it is then.
+/// Never an earlier day's. A phone passes from driver to driver, so a driver's latest is the one
+/// they had last: of two who swapped phones, each has the one they swapped to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DayPhones {
     /// Route data keeps no read of the day: it wasn't collected, or isn't kept any more; or, live,

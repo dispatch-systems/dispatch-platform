@@ -1,5 +1,6 @@
 //! An itinerary's work phone as shaping takes it from a read: the day's list's record of its driver,
-//! else the itinerary's own, by its last ten digits.
+//! else the itinerary's own, by its last ten digits; and the one it keeps when a read shows none,
+//! of two stores of its day merged.
 use super::*;
 use dispatch_cortex::routes::{Collection, Request, fixture};
 
@@ -58,4 +59,40 @@ fn an_itinerarys_work_phone_is_its_drivers_on_the_days_list_else_its_own() {
     read.summaries["transporters"] = json!([]);
     own(&mut read, 1, None);
     assert_eq!(phones(&read), [shown("2065550193"), None]);
+}
+
+#[test]
+fn of_two_stores_merged_a_phone_the_newer_gives_a_driver_is_kept_by_no_other_driver() {
+    let (first, second) = ("2065550190", "2065550191");
+    let stored = |itineraries: &[(&str, &str, &str)]| {
+        let stored = itineraries.iter().map(|(itinerary, driver, phone)| {
+            let phone = Some((*phone).to_owned());
+            ((*itinerary).to_owned(), ((*driver).to_owned(), phone))
+        });
+        Stored(stored.collect())
+    };
+    // The newer store gives the first phone to the second driver. The older gives it to an
+    // itinerary of the first driver's and another of the second's, neither of which the newer
+    // holds, and the second phone to a third driver.
+    let newer = stored(&[("itinerary-2", "driver-2", first)]);
+    let older = stored(&[
+        ("itinerary-1", "driver-1", first),
+        ("itinerary-3", "driver-2", first),
+        ("itinerary-4", "driver-3", second),
+    ]);
+    // A read showing no phone keeps the first phone on the second driver's itineraries alone.
+    let read = [
+        ("itinerary-1", "driver-1", None),
+        ("itinerary-2", "driver-2", None),
+        ("itinerary-3", "driver-2", None),
+        ("itinerary-4", "driver-3", None),
+    ];
+    let kept = newer.or(older).kept(&read);
+    let want = [
+        ("itinerary-2", first),
+        ("itinerary-3", first),
+        ("itinerary-4", second),
+    ];
+    let want = want.map(|(itinerary, phone)| (itinerary.to_owned(), phone.to_owned()));
+    assert_eq!(kept, BTreeMap::from(want));
 }
