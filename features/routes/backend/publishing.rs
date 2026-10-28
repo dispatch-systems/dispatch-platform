@@ -2,7 +2,7 @@
 //! tasks and packages as `rows` flattens them, and every response whole, compressed; then
 //! making it the day's read. A day being staged has its rows added under a publication of its
 //! own; live route data's one day is kept in place, read by read.
-use super::*;
+use super::{work_phones::Stored, *};
 use rusqlite::types::Value as SqlValue;
 
 /// How rows are written: added under a publication being staged; or kept in place in the one
@@ -16,18 +16,20 @@ pub(super) enum Writes {
 
 /// Makes a staged day its scope's read, in one transaction, if it was collected later than
 /// the read the day has, in whatever order the two are published: the day's last read is
-/// left inactive, what the new one sent of the drivers and addresses the days share is
-/// written over them, and the day's work phones become `phones`, the new read's, when it
-/// read them: one that reads none, as the standard collection's, leaves the day's as they
-/// are. A day collected no later is left inactive itself, changing none of them. Either way
-/// `sweep_routes` deletes what's inactive in small steps; only flags and the day's shared
-/// rows and phones change here, so the platform lock is held for moments.
-/// Answers whether it is the day's read now.
+/// left inactive, each of the new one's itineraries that shows no work phone keeps the one
+/// `stored` keeps for it, else the one the last read stored (`work_phones`), what the new one
+/// sent of the drivers and addresses the days share is written over them, and the day's work
+/// phone holds become `phones`, the new read's, when it read them: one that reads none, as the
+/// standard collection's, leaves the day's as they are. A day collected no later is left
+/// inactive itself, changing none of them. Either way `sweep_routes` deletes what's inactive in
+/// small steps; only flags, the new read's kept phones and the day's shared rows and holds change
+/// here, so the platform lock is held for moments. Answers whether it is the day's read now.
 pub(super) fn publish_day(
     db: &Db,
     job: &str,
     staged: &Staged,
     phones: Option<&[WorkPhone]>,
+    stored: Stored,
 ) -> Result<bool> {
     db.transaction(|| {
         let row = db
@@ -57,6 +59,19 @@ pub(super) fn publish_day(
         if later.is_some() {
             return Ok(false);
         }
+        // The phones the day's read it replaces stored, after those `stored` keeps.
+        let mut kept = stored;
+        for replaced in db.all(
+            &format!("SELECT id FROM route_publications WHERE {scope}"),
+            params![
+                staged.day,
+                staged.station,
+                staged.service_area_id,
+                staged.provider
+            ],
+        )? {
+            kept = kept.or(Stored::of(db, s(&replaced, "id"))?);
+        }
         db.exec(
             &format!("UPDATE route_publications SET active=0 WHERE {scope}"),
             params![
@@ -70,6 +85,7 @@ pub(super) fn publish_day(
             "UPDATE route_publications SET active=1 WHERE id=?",
             [&staged.publication],
         )?;
+        kept.keep_staged(db, &staged.publication)?;
         share(db, &staged.publication, &staged.day)?;
         let Some(phones) = phones else {
             return Ok(true);

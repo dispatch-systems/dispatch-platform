@@ -1,7 +1,7 @@
 //! A whole read of a day that another feature collected itself, saved into historical route
 //! data as the standard collection saves its own: staged one itinerary at a time, then the
 //! day's read if it was collected later than the one the day has.
-use super::*;
+use super::{work_phones::Stored, *};
 use dispatch_core::{
     State,
     manifest::events::{self, PeopleChanged},
@@ -66,7 +66,9 @@ impl Drop for Saving {
 /// the DSP's station, in the scope its days were read in, before anything is written, then
 /// staged one itinerary at a time. It becomes the day's read only if it was collected (its
 /// `finished_at`) later than the one the day has, replacing it whole, down to the day's work
-/// phones, which become `phones`; an earlier read changes nothing and is swept. Once it's the
+/// phone holds, which become `phones`, but for the phones the one it replaces stored for its
+/// itineraries that it shows none for (`work_phones`); an earlier read changes nothing and is
+/// swept. Once it's the
 /// day's read it tells Driver Match of its drivers (`people.changed`), then every feature that
 /// hears it of the day's holds (`routes.work_phones_changed`, naming the day) and of its route data
 /// changed (`routes.data_changed`). Answers whether it is the day's read now.
@@ -87,6 +89,19 @@ pub async fn save_day(
     key: &str,
     capture: Capture,
     phones: Vec<WorkPhone>,
+) -> Result<bool> {
+    save_keeping(state, dsp, key, capture, phones, Stored::default()).await
+}
+/// Saves a read as `save_day` does, each of its itineraries that shows no work phone keeping the
+/// one `stored` keeps for it before the one the day's read it replaces stored: live route data's,
+/// as its day is saved.
+pub(super) async fn save_keeping(
+    state: &Arc<State>,
+    dsp: &str,
+    key: &str,
+    capture: Capture,
+    phones: Vec<WorkPhone>,
+    stored: Stored,
 ) -> Result<bool> {
     ensure(token(key, 128) && held(&phones), "invalid_input", 400)?;
     let _saving = Saving::start(dsp, key)?;
@@ -129,7 +144,7 @@ pub async fn save_day(
         let current = state
             .run_scoped(dsp, DOMAIN, move |db| {
                 on(db)?;
-                publish_day(&*db.routes_db(&d)?, &k, &staged, Some(&phones))
+                publish_day(&*db.routes_db(&d)?, &k, &staged, Some(&phones), stored)
             })
             .await?;
         if current {
