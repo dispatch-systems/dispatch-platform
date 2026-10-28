@@ -17,9 +17,10 @@ use std::{
     task::Poll,
 };
 
-/// Whether something has the pipe at `path` open to read from: only then may a writer open it
-/// without waiting.
-fn read_open(path: &Path) -> bool {
+/// Lets a reader waiting in its open of the pipe at `path` through, if one is: whether one was. A
+/// writer opens a pipe without waiting only once a reader is in its open, which counts itself
+/// before it waits; it waits on a writer coming, so this writer, closed at once, lets it through.
+fn release(path: &Path) -> bool {
     match OpenOptions::new()
         .write(true)
         .custom_flags(libc::O_NONBLOCK)
@@ -41,8 +42,8 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
     let added = reply::upload(&state, &c, support::USE, "door.png", "image/png", photo)
         .await
         .unwrap();
-    // Its bytes, where the phone side keeps them, become a pipe, a writer waiting on it: the phone
-    // side opening it, as it gets the picture ready, is then seen from here.
+    // Its bytes, where the phone side keeps them, become a pipe with no writer: the phone side's
+    // open of it, as it gets the picture ready, waits until this test lets it through.
     let (at_dsp, id) = (dsp.clone(), added.id.clone());
     let bytes = state
         .read(move |db| {
@@ -54,20 +55,22 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
     std::fs::remove_file(&bytes).unwrap();
     let path = CString::new(bytes.as_os_str().as_bytes()).unwrap();
     assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
-    let waiting = bytes.clone();
-    let writer = std::thread::spawn(move || OpenOptions::new().write(true).open(waiting));
 
-    // Asked for with their access standing, the picture is got ready until the phone side has it
-    // open, and held there.
+    // Asked for with their access standing, the picture is got ready until the phone side waits in
+    // its open, which no poll gets past; this test polls until then, waking itself, as nothing
+    // else would. Let through, it isn't polled again until access has ended.
     let asked = file(&state, &c, support::USE, &added.id);
     tokio::pin!(asked);
     std::future::poll_fn(|cx| {
-        if read_open(&bytes) {
+        if release(&bytes) {
             return Poll::Ready(());
         }
         match asked.as_mut().poll(cx) {
             Poll::Ready(_) => panic!("answered before the phone side opened the picture"),
-            Poll::Pending => Poll::Pending,
+            Poll::Pending => {
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
         }
     })
     .await;
@@ -79,7 +82,6 @@ async fn a_texts_picture_is_refused_once_the_members_access_ended_while_the_phon
         refused.map(|error| error.code).as_deref(),
         Some("permission_denied")
     );
-    writer.join().unwrap().unwrap();
 }
 
 #[tokio::test]
