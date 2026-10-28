@@ -5,8 +5,8 @@ use super::*;
 use crate::backend::support::{
     self, DRIVERS, at, phoned, phones, route, routed, saved, texted, today,
 };
-use dispatch_core::manifest::people::PersonRole;
-use std::collections::BTreeMap;
+use dispatch_core::{State, manifest::people::PersonRole};
+use std::{collections::BTreeMap, sync::Arc};
 
 #[tokio::test]
 async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_aliases() {
@@ -64,13 +64,12 @@ async fn the_work_chip_goes_to_the_id_with_a_work_phone_now_not_an_earlier_alias
     assert_eq!(work().await, a2);
 }
 
-#[tokio::test]
-async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person_has() {
-    let (_root, state, dsp) = support::started();
-    let (zone, day) = today(&state, &dsp).await;
+/// Avery, one person to Driver Match by more IDs than one read of their routes names, with a work
+/// phone of their own today by each; only the last linked drives the busier route. Them, and the
+/// last linked ID with its phone as texts write it.
+async fn many_ids(state: &Arc<State>, dsp: &str) -> (Person, String, String) {
+    let (zone, day) = today(state, dsp).await;
     let today = day.to_string();
-    // Avery, one person to Driver Match by more IDs than one read of their routes names, has a work
-    // phone of their own today by each; only the last linked drives the busier route.
     let most = dispatch_routes_contract::MOST_IDS;
     let ids: Vec<String> = (0..=most).map(|n| format!("A{n:02}")).collect();
     let avery = Person {
@@ -85,7 +84,7 @@ async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person
         confirmed: true,
         photo: None,
     };
-    support::know(&state, &dsp, vec![avery.clone()], Vec::new(), Vec::new());
+    support::know(state, dsp, vec![avery.clone()], Vec::new(), Vec::new());
     let wave = at(zone, day, 9, 0);
     let routed_on = |n: usize, id: &str| {
         let stops = if n == most { 100 } else { 10 };
@@ -99,7 +98,7 @@ async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person
         )
     };
     routed(
-        &dsp,
+        dsp,
         ids.iter()
             .enumerate()
             .map(|(n, id)| routed_on(n, id))
@@ -111,7 +110,14 @@ async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person
         .zip(&numbers)
         .map(|(id, phone)| (id.as_str(), phone.as_str()))
         .collect();
-    phoned(&state, &dsp, Some(&today), phones(&each), Vec::new()).await;
+    phoned(state, dsp, Some(&today), phones(&each), Vec::new()).await;
+    (avery, ids[most].clone(), format!("+1{}", numbers[most]))
+}
+
+#[tokio::test]
+async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person_has() {
+    let (_root, state, dsp) = support::started();
+    let (avery, last, phone) = many_ids(&state, &dsp).await;
 
     let at_dsp = dsp.clone();
     let found = state.read(move |db| of(db, &at_dsp, &avery)).await.unwrap();
@@ -119,9 +125,8 @@ async fn the_work_chip_weighs_every_id_with_a_work_phone_however_many_the_person
         .into_iter()
         .find(|each| each.kind == ConversationKind::Work);
     let work = work.unwrap();
-    let last = format!("+1{}", numbers[most]);
     assert_eq!(
         (work.driver_id.as_deref(), work.number.as_deref()),
-        (Some(ids[most].as_str()), Some(last.as_str()))
+        (Some(last.as_str()), Some(phone.as_str()))
     );
 }
