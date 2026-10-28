@@ -17,6 +17,8 @@ pub const SCRIPT: &str = "/assets/app-abcd1234.js";
 pub const OWNER: &str = "owner@dispatch.test";
 /// The DSP `Server::member` views.
 const NORTHLINE: &str = "Northline Logistics";
+/// How long a session a test writes lasts: ten minutes, longer than any test runs.
+const SESSION_LIFETIME_MS: i64 = 600_000;
 
 /// The router alone, without the scheduler, so nothing is collected or written down unless a
 /// test does it.
@@ -218,7 +220,7 @@ impl Server {
                         crypto::sha(&token),
                         s(&user, "id"),
                         db::n(&user, "version"),
-                        db::now() + 600000,
+                        db::now() + SESSION_LIFETIME_MS,
                         created_at
                     ],
                 )?;
