@@ -67,7 +67,7 @@ pub struct Reading {
 
 impl Folder {
     /// The DSP's folder, made private.
-    fn path(&self, db: &Store, dsp: &str) -> Result<PathBuf> {
+    pub fn path(&self, db: &Store, dsp: &str) -> Result<PathBuf> {
         let owner = db::private_dir(&db.area(dsp, "data")?.join(self.owner))?;
         db::private_dir(&owner.join("files"))
     }

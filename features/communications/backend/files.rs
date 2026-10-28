@@ -7,6 +7,7 @@
 //! message is kept as it's uploaded, before the message is sent, and let go if it isn't sent
 //! within a day.
 use super::{
+    bytes::Folder,
     changes::{ChangeStore, changed_conversation},
     live,
     storage::DOMAIN,
@@ -14,17 +15,17 @@ use super::{
 use crate::integrations::messages::ID;
 use dispatch_core::{
     Error, Result, State,
-    db::{self, FromRow, Row, Store, now},
+    db::{FromRow, Row, Store, now},
     foundation::crypto,
     manifest::{Maintenance, Upkeep},
     server::http::upload::{UPLOAD_LIMIT, Upload},
 };
 use dispatch_slack::kit::{self, Bot, Bytestream, Queue};
-use futures_util::{StreamExt, stream};
+use futures_util::StreamExt;
 use rusqlite::params;
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Every minute, the files due to download in each DSP; hourly, the photos added and never sent
@@ -50,6 +51,13 @@ const WAIT_MS: i64 = 15 * 60 * 1000;
 const UNSENT_MS: i64 = 24 * 60 * 60 * 1000;
 /// How a failure is reported.
 const FAILED: &str = "communications_download_failed";
+/// Where the DSP's photos and files are kept, and which bytes its messages' files and the photos
+/// added for them keep.
+pub const BYTES: Folder = Folder {
+    owner: "communications",
+    keeps: <Store as FileStore>::communications_bytes_kept,
+    kept: <Store as FileStore>::communications_kept_bytes,
+};
 
 dispatch_core::text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -132,6 +140,8 @@ pub trait FileStore {
     fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
     /// Whether any file is kept by the SHA-256 `sha256`.
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool>;
+    /// The SHA-256 of every bytes a file keeps.
+    fn communications_kept_bytes(&self, dsp: &str) -> Result<Vec<String>>;
 }
 impl FileStore for Store {
     fn communications_file(&self, dsp: &str, id: &str) -> Result<Option<File>> {
@@ -244,17 +254,19 @@ impl FileStore for Store {
             [sha256],
         )? > 0)
     }
+    fn communications_kept_bytes(&self, dsp: &str) -> Result<Vec<String>> {
+        let kept: Vec<(String,)> = self.dsp(dsp)?.query_as(
+            "SELECT DISTINCT sha256 FROM communications_files WHERE sha256 IS NOT NULL",
+            [],
+        )?;
+        Ok(kept.into_iter().map(|(sha256,)| sha256).collect())
+    }
 }
 
-/// The folder the DSP's files are kept in.
-fn folder(db: &Store, dsp: &str) -> Result<PathBuf> {
-    let owner = db::private_dir(&db.area(dsp, "data")?.join("communications"))?;
-    db::private_dir(&owner.join("files"))
-}
 /// Keeps `bytes`, as they arrive, among the DSP's files: their SHA-256, by which they're kept.
 pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<String> {
     let at = dsp.to_owned();
-    let folder = state.read(move |db| folder(db, &at)).await?;
+    let folder = state.read(move |db| BYTES.path(db, &at)).await?;
     let arriving = folder.join(format!(".{}", crypto::id("arriving")?));
     let mut written = tokio::fs::OpenOptions::new()
         .write(true)
@@ -286,7 +298,12 @@ pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<String
 pub async fn discard(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<()> {
     let (at, kept) = (dsp.to_owned(), sha256.to_owned());
     let (folder, kept) = state
-        .read(move |db| Ok((folder(db, &at)?, db.communications_bytes_kept(&at, &kept)?)))
+        .read(move |db| {
+            Ok((
+                BYTES.path(db, &at)?,
+                db.communications_bytes_kept(&at, &kept)?,
+            ))
+        })
         .await?;
     if !kept {
         gone(tokio::fs::remove_file(folder.join(sha256)).await)?;
@@ -295,27 +312,19 @@ pub async fn discard(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<()> 
 }
 /// The bytes of the DSP's file kept by `sha256`, as they're read.
 pub async fn read(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<Bytestream> {
-    let at = dsp.to_owned();
-    let path = state.read(move |db| folder(db, &at)).await?.join(sha256);
-    let file = tokio::fs::File::open(path)
-        .await
-        .map_err(|_| Error::new("communications_file_not_found", 404))?;
-    Ok(Box::pin(stream::unfold(file, |mut file| async move {
-        let mut chunk = vec![0; 64 * 1024];
-        match file.read(&mut chunk).await {
-            Ok(0) => None,
-            Ok(read) => {
-                chunk.truncate(read);
-                Some((Ok(chunk.into()), file))
-            }
-            Err(error) => Some((Err(error), file)),
-        }
-    })))
+    let kept = BYTES
+        .read(state, dsp, sha256)
+        .await?
+        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+    Ok(kept.chunks)
 }
 /// The first bytes of the DSP's file kept by `sha256`, up to `most`.
 pub async fn head(state: &Arc<State>, dsp: &str, sha256: &str, most: usize) -> Result<Vec<u8>> {
     let at = dsp.to_owned();
-    let path = state.read(move |db| folder(db, &at)).await?.join(sha256);
+    let path = state
+        .read(move |db| BYTES.path(db, &at))
+        .await?
+        .join(sha256);
     let mut file = tokio::fs::File::open(path).await?;
     let mut head = vec![0; most];
     let read = file.read(&mut head).await?;
@@ -353,7 +362,7 @@ async fn forget_unsent(state: &Arc<State>, dsp: &str) -> Result<()> {
     let loose = state
         .run_scoped(dsp, DOMAIN, move |db| {
             let loose = db.forget_unsent_communications(&at, now() - UNSENT_MS)?;
-            let folder = folder(db, &at)?;
+            let folder = BYTES.path(db, &at)?;
             Ok(loose
                 .into_iter()
                 .map(|sha256| folder.join(sha256))
