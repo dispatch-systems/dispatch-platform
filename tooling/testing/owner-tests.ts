@@ -128,22 +128,20 @@ function declaring(sources: Map<string, string>, roots: string[], file: string) 
   return by ? { by, module } : undefined;
 }
 /**
- * The Rust tests of one file of an owner in `dir`, in a crate: the test program it is or is a
- * module of, or the library's, filtered to the path of the module it is.
+ * The Rust tests of one file of a crate whose sources sit in `tree`: the test program it is or
+ * is a module of, or the library's, filtered to the path of the module it is.
  */
 function rustFile(
   root: string,
   crate: string,
-  dir: string,
+  tree: string,
   file: string,
   notes: string[],
 ): Command {
   const name = packageOf(root, `${crate}/Cargo.toml`)!;
   const programs = testTargets(root, `${crate}/Cargo.toml`);
   const library = libraryOf(root, crate);
-  // The crate's own, and the owner's beside it, which the app's backend mounts its tests from.
-  const found = new Set([...files(root, crate, /\.rs$/), ...files(root, dir, /\.rs$/)]);
-  const sources = new Map([...found].map((source) => [source, read(root, source)]));
+  const sources = new Map(files(root, tree, /\.rs$/).map((source) => [source, read(root, source)]));
   const roots = [library, ...programs.map((program) => program.file)];
   const modules: string[] = [];
   const seen = new Set<string>();
@@ -180,9 +178,9 @@ function rust(
   const own = `${home}/Cargo.toml`;
   if (file) {
     const crate = exists(root, own) ? home : kind === 'core' ? 'core' : undefined;
-    return crate && exists(root, `${crate}/Cargo.toml`)
-      ? [rustFile(root, crate, dir, file, notes)]
-      : [];
+    if (!crate || !exists(root, `${crate}/Cargo.toml`)) return [];
+    // The app's backend mounts its tests from beside it, in app/tests/: its sources are the app's.
+    return [rustFile(root, crate, kind === 'app' ? dir : crate, file, notes)];
   }
   if (exists(root, own)) return [cargo('Rust tests', ['-p', packageOf(root, own)!])];
   if (kind === 'core' && exists(root, 'core/Cargo.toml')) {
