@@ -21,14 +21,35 @@ pub(super) struct Read<'a> {
     pub outcome: std::result::Result<Counts, String>,
 }
 
+/// A read as its record says it went: when it began and ended, and whether it was kept.
+pub(super) struct LastRead {
+    pub at: i64,
+    /// Where its task's next slot is reckoned from: the first after it.
+    pub ended: i64,
+    pub kept: bool,
+}
+
 impl Store {
-    /// When `reader` last read for the DSP, whatever came of it.
-    pub(super) fn last_read(&self, reader: &str, dsp: &str) -> Result<Option<i64>> {
-        let last: Option<(Option<i64>,)> = self.jobs.one_as(
-            "SELECT max(at) FROM live_reads WHERE reader=? AND dsp_id=?",
+    /// How `reader` last read for the DSP, whatever came of it.
+    pub(super) fn last_read(&self, reader: &str, dsp: &str) -> Result<Option<LastRead>> {
+        let last: Option<(i64, i64, String)> = self.jobs.one_as(
+            "SELECT at,ms,outcome FROM live_reads WHERE reader=? AND dsp_id=? \
+             ORDER BY at DESC LIMIT 1",
             [reader, dsp],
         )?;
-        Ok(last.and_then(|(at,)| at))
+        Ok(last.map(|(at, ms, outcome)| LastRead {
+            at,
+            ended: at + ms,
+            kept: outcome == "kept",
+        }))
+    }
+    /// When `reader` last failed to read for the DSP, and its error's code.
+    pub(super) fn last_failed(&self, reader: &str, dsp: &str) -> Result<Option<(i64, String)>> {
+        self.jobs.one_as(
+            "SELECT at,code FROM live_reads WHERE reader=? AND dsp_id=? AND outcome='failed' \
+             ORDER BY at DESC LIMIT 1",
+            [reader, dsp],
+        )
     }
     pub(super) fn record_read(&self, read: &Read) -> Result<()> {
         let (outcome, code, counts) = match &read.outcome {

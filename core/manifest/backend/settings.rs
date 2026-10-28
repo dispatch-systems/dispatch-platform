@@ -72,6 +72,9 @@ pub struct Section {
     /// The collection of its feature's it goes with, by its schedule name: drawn with it on
     /// the Collectors page, under the permission that sets when it runs.
     pub collection: Option<&'static str>,
+    /// The live reader of its feature's whose schedule it sets: Settings shows how that
+    /// reader reads for the DSP with it, under its permission.
+    pub reader: Option<&'static str>,
     /// Its place on its page, lowest first; two at one place go by id.
     pub order: u16,
 }
@@ -98,6 +101,7 @@ pub const fn section(
         saved: None,
         part: None,
         collection: None,
+        reader: None,
         order: 0,
     }
 }
@@ -162,6 +166,13 @@ impl Section {
         Self {
             page: Page::Shared("collectors"),
             collection: Some(schedule),
+            ..self
+        }
+    }
+    /// With how the live reader `reader`, whose schedule it sets, reads for the DSP.
+    pub const fn reader(self, reader: &'static str) -> Self {
+        Self {
+            reader: Some(reader),
             ..self
         }
     }
@@ -654,7 +665,8 @@ fn snake_case(name: &str) -> bool {
 }
 /// A feature's section: named under it, under its own permission, with one of its parts, on
 /// a page of its own whose id no shared page takes; with a collection, one its feature keeps,
-/// under the permission that sets when it runs.
+/// under the permission that sets when it runs; with a live reader, one its feature declares,
+/// in a section of the DSP's that Settings draws.
 fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
     let id = section.id;
     assert!(
@@ -713,6 +725,18 @@ fn check_feature(registry: &Registry, feature: &Feature, section: &Section) {
             feature.name
         );
     }
+    if let Some(reader) = section.reader {
+        assert!(
+            feature.live_readers.iter().any(|each| each.id() == reader),
+            "{}'s section {id} shows the live reader {reader}, which it doesn't declare",
+            feature.name
+        );
+        assert!(
+            section.scope == Scope::Dsp && !section.custom,
+            "{}'s section {id} shows how {reader} reads for the DSP, so it's the DSP's, drawn by Settings",
+            feature.name
+        );
+    }
 }
 /// One of core's: named under a core part, never a feature's name, under core's own
 /// permission, on a shared page.
@@ -738,8 +762,11 @@ fn check_core(registry: &Registry, section: &Section) {
         section.permission
     );
     assert!(
-        section.page != Page::Own && section.part.is_none() && section.collection.is_none(),
-        "core's section {id} is on no feature's page and goes with no feature's part or collection"
+        section.page != Page::Own
+            && section.part.is_none()
+            && section.collection.is_none()
+            && section.reader.is_none(),
+        "core's section {id} is on no feature's page and goes with no feature's part, collection or reader"
     );
 }
 /// Why `field` doesn't hold, if it doesn't: its options are some, each once; its range is

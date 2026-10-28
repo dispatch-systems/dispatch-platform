@@ -105,22 +105,24 @@ fn listing(owner: &str) -> std::path::PathBuf {
         .join(owner)
         .join("tests/api/routes.txt")
 }
-/// What a listing writes as `<live>`, `<scheduling>` and `<collecting>`: the permissions the
-/// features' `live` fields name, those their keepers set schedules and collect under. The
-/// build's features decide them, so core's listing names none of theirs. None without any.
-static STANDS_FOR: LazyLock<[(&str, Option<String>); 3]> = LazyLock::new(|| {
+/// What a listing writes as `<live>`, `<scheduling>`, `<collecting>` and `<reading>`: the
+/// permissions the features' `live` fields name, those their keepers set schedules and collect
+/// under, and those of their sections that show a live reader. The build's features decide
+/// them, so core's listing names none of theirs. None without any.
+static STANDS_FOR: LazyLock<[(&str, Option<String>); 4]> = LazyLock::new(|| {
     use dispatch_core::collection::schedules::Scheduled;
     dispatch_backend::install();
     let features = dispatch_core::manifest::registry().features.iter();
     let joined = |permissions: Vec<&str>| {
         (!permissions.is_empty()).then(|| format!("{:?}", permissions.join("|")))
     };
-    let kept = |of: fn(Scheduled) -> &'static str| {
-        let mut permissions: Vec<&str> = Scheduled::all().map(of).collect();
+    let distinct = |mut permissions: Vec<&str>| {
         permissions.sort();
         permissions.dedup();
         joined(permissions)
     };
+    let kept = |of: fn(Scheduled) -> &'static str| distinct(Scheduled::all().map(of).collect());
+    let sections = dispatch_core::manifest::registry().sections();
     [
         (
             "<live>",
@@ -133,6 +135,15 @@ static STANDS_FOR: LazyLock<[(&str, Option<String>); 3]> = LazyLock::new(|| {
         (
             "<collecting>",
             kept(|scheduled| scheduled.keeper.permission()),
+        ),
+        (
+            "<reading>",
+            distinct(
+                sections
+                    .filter(|(_, section)| section.reader.is_some())
+                    .map(|(_, section)| section.permission)
+                    .collect(),
+            ),
         ),
     ]
 });

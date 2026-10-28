@@ -59,3 +59,74 @@ test('Live Route Data words the schedule its page of Settings refuses, and keeps
   const values = await kept();
   expect([values.days, values.every]).toEqual([['mon', 'wed'], '15']);
 });
+
+test('Live Route Data shows its last read, its next and its last error on its page of Settings', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  const switched = await owner.post(`/api/platform/dsps/${north.id}/features`, {
+    feature: 'live_route_data',
+    enabled: true,
+  });
+  expect(switched.status, switched.body).toBe(200);
+  // Tomorrow alone, so nothing reads today and its next read is tomorrow's start, chosen before
+  // it can read at all: it reads only at a station, with Cortex connected.
+  await owner.select(north.id);
+  const settings = await owner.read('/api/dsp/settings');
+  const { revision } = settings.sections.find(
+    (s: { id: string }) => s.id === 'live_route_data.collection',
+  );
+  const tomorrow = new Intl.DateTimeFormat('en-US', { timeZone: north.timezone, weekday: 'short' })
+    .format(new Date(Date.now() + 86_400_000))
+    .toLowerCase();
+  const saved = await owner.post('/api/dsp/settings/live_route_data.collection', {
+    values: { days: [tomorrow] },
+    revision,
+  });
+  expect(saved.status, saved.body).toBe(200);
+  const profile = { name: north.name, abbreviation: 'NLL', stationCode: 'TST1' };
+  expect(
+    (await owner.post('/api/dsp/profile', { ...profile, timezone: north.timezone })).status,
+  ).toBe(200);
+  await owner.select(north.id);
+  const connected = await owner.post('/api/dsp/connections/cortex', {
+    username: 'fixture@example.test',
+    password: 'fixture-password',
+  });
+  expect(connected.status, connected.body).toBe(200);
+  // Its reads today: one that failed with a code the platform words, then one kept.
+  const now = Date.now();
+  dispatch.database('data/preview/jobs.sqlite', (db) => {
+    db.exec('PRAGMA busy_timeout=5000');
+    const read = db.prepare(
+      `INSERT INTO live_reads(reader,dsp_id,day,at,ms,outcome,code,counts)
+       VALUES ('live_route_data.routes',?,date('now'),?,0,?,?,?)`,
+    );
+    read.run(north.id, now - 10 * 60_000, 'failed', 'connection_busy', null);
+    read.run(north.id, now - 5 * 60_000, 'kept', null, '{}');
+  });
+
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Live Route Data', exact: true })
+    .click();
+  const section = page.getByRole('region', { name: 'Collection', exact: true });
+  const stat = (term: string) =>
+    section
+      .locator('dl')
+      .filter({ has: page.getByRole('term').filter({ hasText: term }) })
+      .getByRole('definition');
+  await expect(stat('Last read').getByLabel('Kept', { exact: true })).toBeVisible();
+  await expect(stat('Next read')).toContainText('8:00 AM');
+  await expect(stat('Last error')).toContainText(
+    'The browser is busy. Please try again in a moment.',
+  );
+});

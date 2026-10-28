@@ -166,6 +166,8 @@ const entries = [
   'core/accounts/frontend/settings/sections.ts',
   // The wait on collection updates, for a page that follows its collections live.
   'core/collection/frontend/live-collection.ts',
+  // How a live reader reads, which Settings shows with the section that sets when it reads.
+  'core/collection/frontend/live-reading.tsx',
 ];
 
 test('an owner reaches another only through a front door or public entry', () => {

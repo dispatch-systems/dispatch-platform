@@ -18,7 +18,12 @@ custom: boolean,
  * The collection it goes with, by its schedule name: the Collectors page draws it with
  * that collection.
  */
-collection: string | null, fields: Array<SettingsField>,
+collection: string | null,
+/**
+ * The live reader whose schedule it sets, by its id: Settings shows how it reads for the
+ * DSP with it.
+ */
+reader: string | null, fields: Array<SettingsField>,
 /**
  * Every field's value by id.
  */
