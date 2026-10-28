@@ -8,7 +8,7 @@ use crate::backend::{
     changes::changed_conversation,
     model::{ConversationState, TEXT_PREFIX},
     phone::storage::FileStore,
-    texts::model::{Filed, Text, TextConversation},
+    texts::model::{Filed, Text, TextConversation, Unfiled},
 };
 use dispatch_core::{
     Error, Result,
@@ -66,18 +66,18 @@ pub trait TextStore {
     ) -> Result<Vec<Text>>;
     /// The text `id`, filed or waiting to be.
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>>;
-    /// The texts `ids`, filed or waiting to be, in no order.
-    fn communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Text>>;
+    /// Of the texts `ids`, those waiting to be filed, in no order.
+    fn unfiled_communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Unfiled>>;
     /// Every text filed that was written from `from` until `to`, oldest first.
     fn communications_texts_between(&self, dsp: &str, from: i64, to: i64) -> Result<Vec<Text>>;
     /// The texts waiting to be filed after `after`, when written and the ID, the oldest `most`,
-    /// oldest first.
+    /// oldest first: each when written and its ID.
     fn unfiled_communications_texts(
         &self,
         dsp: &str,
         after: Option<(i64, &str)>,
         most: usize,
-    ) -> Result<Vec<Text>>;
+    ) -> Result<Vec<(i64, String)>>;
     /// Files the text `id`, waiting to be, as `filed`, sent by someone at the DSP shown by
     /// `sender_name`, as their name stands now: one with a number of its own as blocked while its
     /// number is. The conversation it's in. Where a text is filed is decided again only as its
@@ -272,11 +272,10 @@ impl TextStore for Store {
     fn communications_text(&self, dsp: &str, id: &str) -> Result<Option<Text>> {
         Ok(texts(self, dsp, "SELECT * FROM phones_texts WHERE id=?", [id])?.pop())
     }
-    fn communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Text>> {
-        texts(
-            self,
-            dsp,
-            "SELECT * FROM phones_texts WHERE id IN (SELECT value FROM json_each(?))",
+    fn unfiled_communications_texts_of(&self, dsp: &str, ids: &[String]) -> Result<Vec<Unfiled>> {
+        self.dsp(dsp)?.query_as(
+            "SELECT id,number,at,sent_by FROM phones_texts \
+             WHERE id IN (SELECT value FROM json_each(?)) AND conversation_id IS NULL",
             [serde_json::to_string(ids)?],
         )
     }
@@ -294,12 +293,10 @@ impl TextStore for Store {
         dsp: &str,
         after: Option<(i64, &str)>,
         most: usize,
-    ) -> Result<Vec<Text>> {
+    ) -> Result<Vec<(i64, String)>> {
         let (at, id) = after.unwrap_or(START);
-        texts(
-            self,
-            dsp,
-            "SELECT * FROM phones_texts WHERE conversation_id IS NULL \
+        self.dsp(dsp)?.query_as(
+            "SELECT at,id FROM phones_texts WHERE conversation_id IS NULL \
              AND (at>?1 OR (at=?1 AND id>?2)) ORDER BY at,id LIMIT ?3",
             params![at, id, most as i64],
         )

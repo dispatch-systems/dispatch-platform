@@ -97,6 +97,26 @@ impl FromRow for Text {
     }
 }
 
+/// A text waiting to be filed, as placing it reads it: its number, when it was written, and who at
+/// the DSP sent it, for one Dispatch sent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unfiled {
+    pub id: String,
+    pub number: String,
+    pub at: i64,
+    pub sent_by: Option<String>,
+}
+impl FromRow for Unfiled {
+    fn from_row(row: &Row<'_>) -> Result<Self> {
+        Ok(Self {
+            id: row.get("id")?,
+            number: row.get("number")?,
+            at: row.get("at")?,
+            sent_by: row.get("sent_by")?,
+        })
+    }
+}
+
 /// Where a text is filed: under the driver whose latest work phone it was the day it was written,
 /// by their ID of a source; under a work phone nobody had then; or under its number.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

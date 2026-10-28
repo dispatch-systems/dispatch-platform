@@ -25,7 +25,7 @@
 //! driver's, whose phone may have changed.
 use super::{
     began,
-    model::{Filed, Text},
+    model::{Filed, Unfiled},
     numbers::ten_digits,
     storage::{PickStore, TextStore},
     zone,
@@ -135,8 +135,8 @@ pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
         let (last, more) = changing(state, dsp, move |db| {
             let from = from.as_ref().map(|(at, id)| (*at, id.as_str()));
             let page = db.unfiled_communications_texts(&at, from, MOST_TEXTS)?;
-            let last = page.last().map(|text| (text.at, text.id.clone()));
-            let ids = page.into_iter().map(|text| text.id).collect::<Vec<_>>();
+            let last = page.last().cloned();
+            let ids = page.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
             Ok(((last, ids.len() == MOST_TEXTS), ids))
         })
         .await?;
@@ -154,11 +154,7 @@ fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<bool> {
     if ids.is_empty() {
         return Ok(false);
     }
-    let waiting: Vec<Text> = db
-        .communications_texts_of(dsp, ids)?
-        .into_iter()
-        .filter(|text| text.conversation.is_none())
-        .collect();
+    let waiting = db.unfiled_communications_texts_of(dsp, ids)?;
     if !waiting.is_empty() {
         place(db, dsp, &waiting);
     }
@@ -167,7 +163,7 @@ fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<bool> {
 /// Places each of `texts`, waiting to be filed, where it belongs, under the name its sender, if
 /// someone at the DSP, is shown by as it's placed: each on its own, so one that can't be yet, as
 /// reading what says where failed, is logged and waits for the next upkeep, the rest placed.
-fn place(db: &Store, dsp: &str, texts: &[Text]) {
+fn place(db: &Store, dsp: &str, texts: &[Unfiled]) {
     let mut filer = match Filer::new(db, dsp) {
         Ok(filer) => filer,
         Err(error) => return failed("communications_texts_failed", &error),
