@@ -22,14 +22,21 @@ export type Command = {
 /** The commands below are consumed by both the runners and their dry-run coverage tests. */
 export function nodeTests(
   suite: 'all' | 'core' | 'dashboard' | 'rules',
-  options: { concurrency?: number; args?: string[]; env?: NodeJS.ProcessEnv } = {},
+  options: {
+    concurrency?: number;
+    args?: string[];
+    env?: NodeJS.ProcessEnv;
+    /** Only these of the suite's files, as `check:rules` runs again those its timeout cancelled. */
+    only?: string[];
+  } = {},
 ): Command {
-  const files = {
+  const suiteFiles = {
     all: allTests,
     core: coreTests,
     dashboard: () => dashboardTests,
     rules: () => ruleTests,
   }[suite]();
+  const files = suiteFiles.filter((file) => !options.only || options.only.includes(file));
   return {
     name: `${suite} tests`,
     command: process.execPath,
