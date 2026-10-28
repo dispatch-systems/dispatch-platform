@@ -709,8 +709,8 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   where they belong now, every minute; and hourly, in each DSP with Slack connected, letting go of
   photos added and never sent within a day, then of bytes no file keeps, as a failure once in
   place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
-  each on its own: one that fails, logged as `communications_download_failed`, leaves the rest to
-  go, and is tried again the next hour. And the phone side's, hourly, in each DSP with
+  each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,
+  leaves the rest to go, and is tried again the next hour. And the phone side's, hourly, in each DSP with
   Communications on: letting go of pictures added and never sent within a day; of bytes no file
   keeps, as bytes sent again in place of others and a removal that failed leave, and of bytes left
   arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs

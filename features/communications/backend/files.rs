@@ -17,7 +17,7 @@ use crate::integrations::messages::ID;
 use dispatch_core::{
     Error, Result, State,
     db::{FromRow, Row, Store, now},
-    foundation::crypto,
+    foundation::{crypto, observability},
     manifest::{Maintenance, Upkeep},
     server::http::upload::{UPLOAD_LIMIT, Upload},
 };
@@ -47,8 +47,10 @@ const RETRIES_MS: &[i64] = &[
 const WAIT_MS: i64 = 15 * 60 * 1000;
 /// How long a photo added for a message waits for it to be sent, in milliseconds.
 const UNSENT_MS: i64 = 24 * 60 * 60 * 1000;
-/// How a failure is reported.
+/// How a failure downloading is reported.
 const FAILED: &str = "communications_download_failed";
+/// How a failure tidying the photos and files is reported.
+const TIDY_FAILED: &str = "communications_tidy_failed";
 /// Where the DSP's photos and files are kept, and which bytes its messages' files and the photos
 /// added for them keep.
 pub const BYTES: Folder = Folder {
@@ -274,26 +276,36 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
             }
             let at = dsp.clone();
             let tidied = state
-                .run_scoped(dsp, DOMAIN, move |db| {
+                .run_scoped(dsp.clone(), DOMAIN, move |db| {
                     let_go(db, &at, now() - UNSENT_MS);
                     Ok(())
                 })
                 .await;
             if let Err(error) = tidied {
-                kit::failed(FAILED, &error);
+                tidy_failed(&dsp, None, &error);
             }
         }
     })
 }
-/// Lets go of the DSP's photos added before `before` and never sent, then of the bytes no file
-/// keeps or left arriving, each job on its own, and each of the bytes, so one that fails is
-/// reported and tried again the next hour, and the rest still go. Inside a write.
+/// Reports what tidying the DSP's photos and files couldn't do, by the job that failed, when there
+/// were any: tried again the next hour.
+fn tidy_failed(dsp: &str, job: Option<&str>, error: &Error) {
+    observability::event(
+        "error",
+        TIDY_FAILED,
+        json!({"dspId": dsp, "job": job, "error": error.code}),
+    );
+}
+/// Lets go of the DSP's photos added before `before` and never sent (`files`), then of the bytes
+/// no file keeps or left arriving (`bytes`), each job on its own, and each of the bytes, so one
+/// that fails is reported by its job and tried again the next hour, and the rest still go. Inside
+/// a write.
 fn let_go(db: &Store, dsp: &str, before: i64) {
     if let Err(error) = db.forget_unsent_communications(dsp, before) {
-        kit::failed(FAILED, &error);
+        tidy_failed(dsp, Some("files"), &error);
     }
     for error in BYTES.reconcile(db, dsp).unwrap_or_else(|error| vec![error]) {
-        kit::failed(FAILED, &error);
+        tidy_failed(dsp, Some("bytes"), &error);
     }
 }
 
