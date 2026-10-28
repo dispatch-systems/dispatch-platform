@@ -1,6 +1,5 @@
 import type {
   CommunicationsWorkspace,
-  ComposeLimits,
   Contact,
   Correspondent,
   GroupChoice,
@@ -14,18 +13,6 @@ import { clock } from '../../shared/format.js';
 // Today's and the roles' groups cover every workspace where Communications works; the workspaces
 // picked narrow them to those workspaces, Everyone to none; picked alone, a workspace is everyone
 // in it. Someone picked by name always gets it. Each person gets it once.
-
-/**
- * What a message to a group may carry: a Slack message's, as Communications' backend checks one
- * (`compose::SLACK`). A conversation's read offers its own (`limits`); the group endpoints don't
- * yet, so it's named here until they do.
- */
-export const GROUP_LIMITS: ComposeLimits = {
-  text: 3000,
-  photos: 10,
-  largest: 20 * 1024 * 1024,
-  kinds: ['image/png', 'image/jpeg', 'image/gif'],
-};
 
 /** Something picked in To: one of the groups to choose from, or someone by name. */
 export type Pick =

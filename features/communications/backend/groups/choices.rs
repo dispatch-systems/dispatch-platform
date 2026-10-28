@@ -8,7 +8,7 @@
 use super::GroupChoiceKind;
 use crate::{
     api::types::{GroupChoice, GroupChoices, GroupMember, Reachable},
-    backend::{people::People, storage::CommunicationsStore},
+    backend::{compose::SLACK, people::People, storage::CommunicationsStore},
     integrations::messages::ID,
 };
 use dispatch_core::{
@@ -155,6 +155,7 @@ pub fn choices(db: &Store, state: &State, dsp: &str, zone: &str) -> Result<Group
         today: held(today),
         roles: held(roles),
         workspaces: held(workspaces),
+        limits: SLACK.into(),
     })
 }
 

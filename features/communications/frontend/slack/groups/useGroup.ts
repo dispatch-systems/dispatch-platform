@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Group, GroupEntry, GroupMessages } from '../../../api/index.js';
+import type { ComposeLimits, Group, GroupEntry, GroupMessages } from '../../../api/index.js';
 import { getGroup } from '../../../api/client.js';
 import { ApiError } from '../../../../../core/shell/frontend/runtime/api.js';
 import { messageOf } from '../../../../../core/shell/frontend/lib/errors.js';
@@ -15,8 +15,16 @@ function joined(kept: readonly GroupEntry[], read: readonly GroupEntry[]) {
   return [...byId.values()].sort(written);
 }
 
-/** The group open, and how many times it's been read, which its people are read again by. */
-type Opened = { id: string; group: Group; entries: GroupEntry[]; more: boolean; read: number };
+/** The group open, what a message to it may carry, and how many times it's been read, which its
+ * people are read again by. */
+type Opened = {
+  id: string;
+  group: Group;
+  entries: GroupEntry[];
+  more: boolean;
+  limits: ComposeLimits;
+  read: number;
+};
 
 /**
  * The group open, with the DSP's messages to it and their answers: the latest as it opens, again
@@ -51,6 +59,7 @@ export function useGroup(id: string, changed: Changed) {
           group: latest.group,
           entries: joined(before?.entries ?? [], latest.entries),
           more: before ? before.more : latest.more,
+          limits: latest.limits,
           read: (before?.read ?? 0) + 1,
         });
         setError('');

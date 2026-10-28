@@ -570,11 +570,13 @@ Behind `communications.use`:
   waits (`waitingSince`) and when it was last written in (`lastAt`).
 - `GET …/groups/choices`: whom a group message can go to, each person once with their accounts
   (`people`), and the groups to choose from, each holding someone (`today`, `roles`,
-  `workspaces`), by their people's keys.
+  `workspaces`), by their people's keys; and what a message to a group may carry (`limits`, a
+  Slack message's).
 - `POST …/groups` (`name`, `people`, each `teamId` and `userId`, `text`, `photos`): messages a
   group, sent in the background.
 - `GET …/groups/{id}`, `?before=<at>:<id>`: a group and its fifty latest messages and answers, or
-  those before one, each of the DSP's with how far it has gone (`progress`).
+  those before one, each of the DSP's with how far it has gone (`progress`), and what a message
+  to its people may carry (`limits`, a Slack message's).
 - `GET …/groups/{id}/people`: who it went to, who first sent it and when, and where it stands
   with each.
 - `POST …/groups/{id}/messages` (`text`, `photos`), to the same people; `POST …/groups/{id}/done`,
