@@ -13,8 +13,8 @@ use std::time::Duration;
 
 /// When Live Route Data reads a DSP's routes, where the DSP is: on which days, from when until
 /// when, and how often; and whether the day is saved into historical route data as it stops, for
-/// those holding `live_route_data.manage`. Its id and its fields' are permanent once shipped:
-/// each DSP's values are kept under them.
+/// those holding `live_route_data.manage`, who see how its reads go with it. Its id and its
+/// fields' are permanent once shipped: each DSP's values are kept under them.
 pub const COLLECTION: Section = section(
     "live_route_data.collection",
     "Collection",
@@ -27,6 +27,7 @@ pub const COLLECTION: Section = section(
         toggle("save_to_history", "Save to historical route data", true),
     ],
 )
+.reader(super::reader::ID)
 .saved(checked);
 
 /// How often it may read, in minutes, each with its label.

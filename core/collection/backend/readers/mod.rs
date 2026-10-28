@@ -2,7 +2,9 @@
 //! than as jobs: one light task for each DSP whose reader's feature is on and whose schedule is
 //! set, which reads every interval from its window's start on each day the window opens, and
 //! holds what its reader keeps in memory between reads. No browser starts unless a hook opens one
-//! (`Reading::browser`), and at most `READS_AT_ONCE` reads run at once across the server.
+//! (`Reading::browser`), and at most `READS_AT_ONCE` reads, and days' stops, run at once across
+//! the server. How a reader reads for a DSP, Settings shows with the section that sets when it
+//! reads (`reading`).
 //!
 //! The server plans every DSP's reading as it starts, each minute, and at once when a write
 //! switches a feature or saves settings (`State::readers_wake`). A task busy too long without
@@ -10,7 +12,10 @@
 //! memory made anew, while its DSP still reads.
 mod plan;
 mod records;
+mod status;
 mod task;
+
+pub use status::reading;
 
 use crate::{
     Result, State,
@@ -36,15 +41,20 @@ use tokio::{
     task::{AbortHandle, Id, JoinSet},
 };
 
-/// How many reads run at once across the server, every reader's for every DSP: what bounds
-/// the memory reading takes, and the provider's load, however many DSPs read together. A read
-/// waits its turn for as long as its interval at most.
+/// How many reads run at once across the server, every reader's for every DSP, and the stops
+/// that save their days: what bounds the memory reading takes, and the provider's load,
+/// however many DSPs read or stop together. A read waits its turn for as long as its interval
+/// at most, and `LONGEST_WAIT`; a stop waits for as long as it takes.
 pub const READS_AT_ONCE: usize = 4;
-/// How many of its intervals a DSP's task may be busy without moving on, in a read, a hook or
-/// its turn to read, before it's stopped and started again. Each moves on within one interval
+/// How long a read waits for its turn at most, and then runs at most, though its interval is
+/// longer (`Plan::timeout`).
+const LONGEST_WAIT: Duration = Duration::from_secs(5 * 60);
+/// How many of its timeouts a DSP's task may be busy without moving on, in a read, a hook or
+/// its turn to read, before it's stopped and started again. Each moves on within one timeout
 /// when it works.
 const STALLED_AFTER: i64 = 3;
-/// A task's progress while it waits for a time, as its next slot, which is no stall.
+/// A task's progress while it waits for a time, as its next slot, or for its turn to stop a
+/// day, which is no stall.
 const WAITING: i64 = i64::MAX;
 
 /// One DSP's reading, as each hook of its reader is handed it.
@@ -90,8 +100,9 @@ fn now() -> i64 {
 /// A DSP's reading under way.
 struct Running {
     plans: watch::Sender<Option<Plan>>,
-    /// Milliseconds between its reads, by its latest plan: what its stalls are counted in.
-    every: i64,
+    /// Milliseconds its reads may wait and run, by its latest plan: what its stalls are counted
+    /// in.
+    timeout: i64,
     /// Since when its task has been busy, or `WAITING`.
     progress: Arc<AtomicI64>,
     task: AbortHandle,
@@ -179,7 +190,7 @@ async fn supervise(state: Arc<State>, mut stop: watch::Receiver<bool>) -> Result
                 Some(running) => {
                     let stops = plan.is_none() && running.plans.borrow().is_some();
                     if let Some(plan) = &plan {
-                        running.every = plan.every();
+                        running.timeout = timeout(plan);
                     }
                     running.plans.send_if_modified(|current| {
                         let changed = *current != plan;
@@ -223,23 +234,34 @@ fn plans(
     let mut planned = Vec::new();
     for dsp in db.served_dsps()? {
         for (index, (feature, reader)) in readers.iter().enumerate() {
-            let plan = (|| {
-                let on = db.feature_enabled(&dsp.id, feature.switch.id)?;
-                let schedule = if on {
-                    reader.schedule(db, &dsp.id)?
-                } else {
-                    None
-                };
-                let timezone = dsp
-                    .timezone
-                    .parse()
-                    .map_err(|_| crate::Error::new("invalid_timezone", 400))?;
-                Ok(schedule.map(|schedule| Plan { schedule, timezone }))
-            })();
+            let plan = plan(db, &dsp.id, &dsp.timezone, feature, *reader);
             planned.push(((index, dsp.id.clone()), plan));
         }
     }
     Ok(planned)
+}
+/// The DSP's plan for `reader`, where it is: none while the reader's feature is off there or its
+/// schedule isn't set.
+fn plan(
+    db: &db::Store,
+    dsp: &str,
+    timezone: &str,
+    feature: &Feature,
+    reader: &dyn Reads,
+) -> Result<Option<Plan>> {
+    let schedule = if db.feature_enabled(dsp, feature.switch.id)? {
+        reader.schedule(db, dsp)?
+    } else {
+        None
+    };
+    let timezone = timezone
+        .parse()
+        .map_err(|_| crate::Error::new("invalid_timezone", 400))?;
+    Ok(schedule.map(|schedule| Plan { schedule, timezone }))
+}
+/// How long `plan`'s reads may wait and run, in milliseconds.
+fn timeout(plan: &Plan) -> i64 {
+    plan.timeout().as_millis() as i64
 }
 
 fn spawn(
@@ -264,13 +286,13 @@ fn spawn(
     let task = tasks.spawn(State::patiently(task::run(task, receiver)));
     Running {
         plans,
-        every: plan.every(),
+        timeout: timeout(&plan),
         progress,
         task,
     }
 }
 
-/// Stops each task that has been busy for `STALLED_AFTER` of its intervals, which lets go of
+/// Stops each task that has been busy for `STALLED_AFTER` of its timeouts, which lets go of
 /// its turn to read, and starts it again, with its memory made anew, while its DSP still reads:
 /// that DSP alone.
 fn watchdog(
@@ -284,7 +306,7 @@ fn watchdog(
     let now = now();
     for (key, stalled) in running.iter_mut() {
         let (feature, reader) = readers[key.0];
-        if now - stalled.progress.load(Ordering::Acquire) <= STALLED_AFTER * stalled.every {
+        if now - stalled.progress.load(Ordering::Acquire) <= STALLED_AFTER * stalled.timeout {
             continue;
         }
         observability::event(

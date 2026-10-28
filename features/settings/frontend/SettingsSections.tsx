@@ -50,6 +50,7 @@ export function SettingsSections({
           key={section.id}
           section={section}
           whose={whose}
+          timezone={view.dsp.timezone}
           refresh={refresh}
           reveal={reveal(section.id)}
         />
@@ -76,6 +77,7 @@ export function SettingsSections({
                 key={section.id}
                 section={section}
                 whose={whose}
+                timezone={view.dsp.timezone}
                 refresh={refresh}
                 reveal={reveal(section.id)}
                 named={sections.length === 1 && section.label === label}

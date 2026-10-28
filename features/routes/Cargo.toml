@@ -41,3 +41,7 @@ path = "tests/backend/integration/routes.rs"
 [[test]]
 name = "live_route_data"
 path = "tests/backend/integration/live_route_data.rs"
+
+[[test]]
+name = "route_data_changed"
+path = "tests/backend/integration/route_data_changed.rs"

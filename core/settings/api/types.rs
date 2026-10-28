@@ -59,6 +59,9 @@ pub struct SettingsSection {
     /// The collection it goes with, by its schedule name: the Collectors page draws it with
     /// that collection.
     pub collection: Option<String>,
+    /// The live reader whose schedule it sets, by its id: Settings shows how it reads for the
+    /// DSP with it.
+    pub reader: Option<String>,
     pub fields: Vec<SettingsField>,
     /// Every field's value by id.
     #[cfg_attr(

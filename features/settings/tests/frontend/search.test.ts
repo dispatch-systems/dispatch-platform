@@ -31,6 +31,7 @@ const section = (
   scope: 'dsp',
   custom: false,
   collection: null,
+  reader: null,
   fields: [],
   values: {},
   revision: 0,

@@ -45,9 +45,11 @@ const NEVER_SAVED: &[Code] = &[
     Code::new("routes_off"),
 ];
 
-/// Reads a DSP's routes live (`live_route_data.routes`).
+/// Reads a DSP's routes live.
 pub struct Routes;
 pub static READER: Routes = Routes;
+/// Its id: permanent, as each read's record is kept under it.
+pub(crate) const ID: &str = "live_route_data.routes";
 
 /// What the reader keeps in memory for a DSP between its reads: the native reader the last
 /// browser handed back, and when the next read goes to the browser.
@@ -121,7 +123,7 @@ impl LiveReader for Routes {
     type Held = Held;
     type Read = Read;
     fn id(&self) -> &'static str {
-        "live_route_data.routes"
+        ID
     }
     /// Its settings' schedule, while Routes keeps the DSP's route data at a station and its
     /// Cortex connection is enabled: none else.

@@ -2,7 +2,10 @@
 //! it, and a module that needs features left out of a build is left out with them. One
 //! program links the product once, where a program per file linked it a dozen times.
 //! `browseros_host` and `browseros_worker` stay programs of their own, which the collector
-//! shards run on a real browser.
+//! shards run on a real browser. `support` is what they share: the real router served
+//! in-process, sessions and requests.
+mod support;
+
 mod agent_activity;
 #[cfg(all(feature = "dvic", feature = "routes"))]
 mod agent_tool_checks;

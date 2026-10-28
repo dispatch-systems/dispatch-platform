@@ -475,12 +475,13 @@ export function featureValues(root: string, argv: string[], adding = false) {
     storageExports: `{${pascal}Item, ${pascal}Store}`,
     keeps,
     people: Boolean(source),
-    peopleOrder: nextPeopleOrder(root),
+    // Each order scans every Rust source: only people, or a source of its own, need one.
+    peopleOrder: source ? nextPeopleOrder(root) : '',
     icon,
     peopleIcon: args.options.has('icon') ? icon : 'Users',
     peopleSource: ownSource ? names.label : source ? namesOf(source.id).label : '',
     ownSource,
-    sourceOrder: nextSourceOrder(root),
+    sourceOrder: ownSource ? nextSourceOrder(root) : '',
     ownTabs: Boolean(ownTabs),
     tabDefault: ownTabs?.[0] ?? '',
     tabItems: (ownTabs ?? [])

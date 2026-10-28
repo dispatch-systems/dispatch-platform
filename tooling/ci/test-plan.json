@@ -10,7 +10,10 @@
     "tooling/tests/mail-config.test.ts",
     "tooling/tests/owner-tests.test.ts",
     "tooling/tests/removability.test.ts",
-    "tooling/tests/scaffold.test.ts",
+    "tooling/tests/scaffold/add.test.ts",
+    "tooling/tests/scaffold/feature.test.ts",
+    "tooling/tests/scaffold/generators.test.ts",
+    "tooling/tests/scaffold/scripts.test.ts",
     "tooling/tests/source-lines.test.ts",
     "tooling/tests/test-plan.test.ts"
   ],

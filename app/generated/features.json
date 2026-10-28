@@ -681,12 +681,20 @@
         {
           "id": 9,
           "name": "work_phones_phone"
+        },
+        {
+          "id": 10,
+          "name": "itinerary_work_phone"
         }
       ],
       "routelive": [
         {
           "id": 1,
           "name": "baseline"
+        },
+        {
+          "id": 2,
+          "name": "itinerary_work_phone"
         }
       ]
     },
@@ -717,7 +725,12 @@
       "maintenance": [
         3600
       ],
-      "on": [],
+      "on": [
+        {
+          "event": "collection.succeeded",
+          "kind": "dispatch_core::manifest::events::CollectionSucceeded"
+        }
+      ],
       "people": [
         "routes",
         "routes_live"

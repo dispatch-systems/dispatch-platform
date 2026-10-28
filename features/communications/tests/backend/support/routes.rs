@@ -8,7 +8,7 @@ use dispatch_core::{
     manifest::{Feature, feature, optional, people::Source},
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, Driven, DriverRoutes, MOST_DAYS, RouteDay, WorkPhoneHold,
+    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, MOST_DAYS, RouteDay, WorkPhoneHold,
 };
 use std::collections::BTreeSet;
 
@@ -90,6 +90,12 @@ impl DriverRoutes for Routing {
                 .collect()
         });
         Ok(driven(routes))
+    }
+    fn day_phones(&self, _: &Store, _: &str, _: &str) -> Result<DayPhones> {
+        unreachable!("Communications reads a saved day's holds, not its phones")
+    }
+    fn ever_work_phone(&self, _: &Store, _: &str, _: &str) -> Result<bool> {
+        unreachable!("Communications asks whether a number was ever held")
     }
     /// The holds it knows of a saved day.
     fn work_phone_holds(&self, _: &Store, dsp: &str, day: &str) -> Result<Vec<WorkPhoneHold>> {
