@@ -293,5 +293,5 @@ async fn replies(
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/catch_up.rs"]
+#[path = "tests/backend/catch_up.rs"]
 mod tests;
