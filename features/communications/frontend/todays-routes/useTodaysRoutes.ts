@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Communications, TodaysRoutes } from '../../api/index.js';
+import type { Communications } from '../../api/index.js';
 import { getTodaysRoutes, todaysRoutesUrl } from '../../api/client.js';
 import { useData } from '../../../../core/shell/frontend/runtime/api.js';
 import type { Changed } from '../inbox/useInbox.js';
+import type { TodaysRead } from './todays-routes.js';
 
 // Today's Routes as live route data holds it, read while it shows: at once, again every
 // `ROUTES_READ_MS` while the page is in view, as its live reads come every few minutes and say
@@ -13,8 +14,8 @@ import type { Changed } from '../inbox/useInbox.js';
 /** How often Today's Routes is read again while it shows, for its drivers' progress. */
 export const ROUTES_READ_MS = 60_000;
 
-/** Today's Routes while `shown`, once read; whether it's still being read first, and why the
- * latest read failed, if it did. */
+/** Today's Routes while `shown`, as it last answered and when; why the latest read failed, if it
+ * did; and reading it again. */
 export function useTodaysRoutes(shown: boolean, changed: Changed, inbox?: Communications) {
   // An update changing a work conversation, or a fresh read of the list, reads it again.
   const [generation, setGeneration] = useState(0);
@@ -28,14 +29,20 @@ export function useTodaysRoutes(shown: boolean, changed: Changed, inbox?: Commun
       ids.some((id) => inbox?.conversations.some((each) => each.id === id && each.kind === 'work'));
     if (work) setGeneration((n) => n + 1);
   }, [changed, inbox]);
-  const read = useCallback((signal: AbortSignal) => getTodaysRoutes(signal), []);
-  const { data, error, loading } = useData<TodaysRoutes>(
+  const load = useCallback(
+    async (signal: AbortSignal): Promise<TodaysRead> => ({
+      value: await getTodaysRoutes(signal),
+      at: performance.now(),
+    }),
+    [],
+  );
+  const { data, error, refresh } = useData<TodaysRead>(
     shown ? todaysRoutesUrl : '',
     ROUTES_READ_MS,
     String(generation),
     undefined,
     false,
-    read,
+    load,
   );
-  return { routes: shown ? data : undefined, loading, error };
+  return { read: shown ? data : undefined, error, refresh };
 }

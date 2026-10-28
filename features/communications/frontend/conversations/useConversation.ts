@@ -6,7 +6,12 @@ import { messageOf } from '../../../../core/shell/frontend/lib/errors.js';
 import { fresh, joined } from './messages.js';
 import type { Changed } from '../inbox/useInbox.js';
 
-type Opened = Omit<ConversationMessages, 'messages'> & { id: string; messages: Message[] };
+/** The conversation open, and when its latest read answered, by the page's own clock. */
+type Opened = Omit<ConversationMessages, 'messages'> & {
+  id: string;
+  messages: Message[];
+  readAt: number;
+};
 
 /** `kept` workdays with those `read`, each day once, as last read. */
 const withDays = (kept: readonly Workday[], read: readonly Workday[]) => [
@@ -57,6 +62,7 @@ export function useConversation(id: string | undefined, changed: Changed) {
         keep({
           ...latest,
           id,
+          readAt: performance.now(),
           workdays: withDays(before?.workdays ?? [], latest.workdays),
           ...fresh(before, latest, unread),
         });
