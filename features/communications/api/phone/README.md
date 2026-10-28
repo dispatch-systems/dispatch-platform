@@ -15,9 +15,9 @@ with `{"error": "<code>", "message": "…"}`: the app acts on the code, never th
 - **Where:** at the DSP's own address alone, while the DSP is active. Anywhere else, or carrying
   a cookie (as a browser would), a call is refused `sign_in_required` (401). While
   Communications is off for the DSP, every call is refused `phones_off` (403).
-- **Pairing** takes the code someone at the DSP showed (`POST /api/communications/phone/pair`), and answers the
-  phone's key: 64 hexadecimal letters (`KEY_BYTES` in hexadecimal), given once, which the app
-  keeps.
+- **Pairing** takes the code someone at the DSP showed (`POST /api/communications/phone/pair`),
+  and answers the phone's key: 64 hexadecimal letters (`KEY_BYTES` in hexadecimal), given once,
+  which the app keeps.
 - **Every other call** carries `Authorization: Bearer <key>`, once. Without it, or with a key no
   phone holds, it's refused `sign_in_required` (401); once the phone was removed,
   `phones_removed` (401): its key works no more, so the app pairs again with a new code.
@@ -89,8 +89,8 @@ the phone is removed.
 ```
 
 Each, oldest first, is to send `body` from this phone to `number`, with each file fetched first
-(`GET /api/communications/phone/files/{id}`). A text stays in the outbox until a status of its latest
-`attempt` says it was sent or failed, so it comes again with each wait: the app keeps the
+(`GET /api/communications/phone/files/{id}`). A text stays in the outbox until a status of its
+latest `attempt` says it was sent or failed, so it comes again with each wait: the app keeps the
 `(id, attempt)` pairs it has started, and never sends one twice. A text tried again comes with a
 later `attempt`: a new one to send. Refused `platform_busy` (503) while the server holds too many
 waits: wait a moment and ask again.

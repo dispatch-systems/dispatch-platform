@@ -69,9 +69,9 @@ and every other number in Messaging.
   it: **Today's Routes** (Routes on a phone), the drivers on a route today and their work phones,
   while the DSP has live route data ([Today's Routes](#todays-routes)); **Messaging**, the numbers
   that text the DSP's phones, always, empty until a phone is paired and texted; and **Slack**, its
-  workspaces' direct messages and the groups it messaged, while it has a workspace. The one shown is remembered in
-  the browser for each member at each DSP, the first to start; a conversation or group opened, as
-  from a link, shows its section.
+  workspaces' direct messages and the groups it messaged, while it has a workspace. The one shown
+  is remembered in the browser for each member at each DSP, the first to start; a conversation or
+  group opened, as from a link, shows its section.
 - **Phones offline:** in the heading, a chip for each of the DSP's dispatch phones that isn't
   online, with how long since it was last seen, by its name when the DSP has several (Phone
   offline · 14m), as the overview and each update bring them.
@@ -611,8 +611,8 @@ Behind `communications.use`:
 - `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer, its text and photos, a
   Slack one's added by `…/uploads`, a text's pictures by `…/texts/uploads`, as `limits` says; by
   text, refused as `phones_none` while no phone is paired. Answers the message and the
-  conversation it's in now (`conversation`): by text, another once the number changed hands as it went, which
-  the page then opens. The member's access is checked again before it answers: once it ended as
+  conversation it's in now (`conversation`): by text, another once the number changed hands as it
+  went, which the page then opens. The member's access is checked again before it answers: once it ended as
   the answer went, what went is kept, and the answer refused.
 - `POST …/conversations/{id}/messages/{message}/retry`: sends again a text Dispatch sent that
   failed.
