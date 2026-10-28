@@ -1,9 +1,8 @@
 //! What Routes exposes to every other feature and agent tool: each driver's routes, day by day,
-//! read from the rows its own pages read in historical route data; and today in live route data,
-//! with the work phone each driver holds now; each driver's latest work phone of a day, today and
-//! on a saved day, and whether a number was ever one; and who held which work phone, today and on
-//! a saved day (`dispatch_routes_contract`).
-use super::{RoutesStore, phones, routes_today, work_phones};
+//! read from the rows its own pages read in historical route data; and today in live route data;
+//! each driver's latest work phone of a day, today and on a saved day, and whether a number was
+//! ever one (`dispatch_routes_contract`).
+use super::{RoutesStore, routes_today, work_phones};
 use dispatch_core::{
     Result,
     db::{Db, Store, s},
@@ -12,7 +11,7 @@ use dispatch_core::{
 };
 use dispatch_routes_contract::{
     Collected, CollectedDay, DayPhones, Driven, DriverRoutes, LiveRouteData, MOST_DAYS, MOST_IDS,
-    RouteDay, Undelivered, WorkPhone, WorkPhoneHold,
+    RouteDay, Undelivered,
 };
 use rusqlite::params;
 use serde_json::Value;
@@ -133,17 +132,6 @@ impl DriverRoutes for Exposed {
         Ok(work_phones::ever(&*db.routes_live_db(dsp)?, &phone)?
             || work_phones::ever(&*db.routes_db(dsp)?, &phone)?)
     }
-    fn work_phone_holds(&self, db: &Store, dsp: &str, day: &str) -> Result<Vec<WorkPhoneHold>> {
-        validate::days(day, day, 1)?;
-        holds(&*db.routes_db(dsp)?, day)
-    }
-    fn was_work_phone(&self, db: &Store, dsp: &str, phone: &str) -> Result<bool> {
-        let Some(phone) = work_phones::digits(phone) else {
-            return Ok(false);
-        };
-        Ok(phones::ever_held(&*db.routes_live_db(dsp)?, &phone)?
-            || phones::ever_held(&*db.routes_db(dsp)?, &phone)?)
-    }
 }
 
 impl LiveRouteData for Live {
@@ -172,30 +160,6 @@ impl LiveRouteData for Live {
         };
         let station = db.profile(dsp)?.station_code;
         work_phones::of_day(&*db.routes_live_db(dsp)?, &station, &day)
-    }
-    fn work_phones(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhone>> {
-        let Some(day) = self.live_day(db, dsp)? else {
-            return Ok(Vec::new());
-        };
-        let held = db.routes_live_db(dsp)?.all(
-            "SELECT transporter_id,phone,since FROM work_phones WHERE day=? AND until IS NULL \
-             ORDER BY transporter_id",
-            [&day],
-        )?;
-        Ok(held
-            .iter()
-            .map(|hold| WorkPhone {
-                driver_id: s(hold, "transporter_id").into(),
-                phone: s(hold, "phone").into(),
-                since: hold["since"].as_i64().unwrap_or(0),
-            })
-            .collect())
-    }
-    fn work_phone_holds(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhoneHold>> {
-        let Some(day) = self.live_day(db, dsp)? else {
-            return Ok(Vec::new());
-        };
-        holds(&*db.routes_live_db(dsp)?, &day)
     }
 }
 impl Live {
@@ -257,19 +221,6 @@ fn driven(
             routes: driven,
         })
     })
-}
-
-/// Every hold on a work phone `routes` keeps of `day`, oldest first, as the contract has them.
-fn holds(routes: &Db, day: &str) -> Result<Vec<WorkPhoneHold>> {
-    let holds = phones::holds(routes, day)?.into_iter();
-    Ok(holds
-        .map(|hold| WorkPhoneHold {
-            driver_id: hold.transporter_id,
-            phone: hold.phone,
-            since: hold.since,
-            until: hold.until,
-        })
-        .collect())
 }
 
 /// A row's text, when it has some.

@@ -8,7 +8,7 @@ use dispatch_core::manifest::people::{PersonRole, PersonTitle};
 use serde::Serialize;
 
 /// A conversation: a direct message with a member of one of the DSP's Slack workspaces, or texts
-/// with a number, or with whichever of the DSP's work phones a driver held.
+/// with a number, or with whichever of the DSP's work phones a driver had.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -21,10 +21,10 @@ pub struct Conversation {
     pub kind: ConversationKind,
     /// The workspace it's in, for a Slack one.
     pub team_id: Option<String>,
-    /// The number it texts: a number's own, a work phone's nobody held, or for a driver's, the
+    /// The number it texts: a number's own, a work phone's nobody had, or for a driver's, the
     /// work phone last texted with.
     pub number: Option<String>,
-    /// For a driver's work conversation, their ID of the source naming who held the DSP's work
+    /// For a driver's work conversation, their ID of the source naming who had the DSP's work
     /// phones.
     pub driver_id: Option<String>,
     /// Whether its number is one the DSP saved a name for.
@@ -247,9 +247,9 @@ pub struct Elsewhere {
     pub kind: ConversationKind,
     pub conversation_id: Option<String>,
     pub waiting: bool,
-    /// For a work one, the work phone they hold now, if any; for a number's, the number.
+    /// For a work one, the work phone they have now, if any; for a number's, the number.
     pub number: Option<String>,
-    /// For a work one, their ID of the source naming who held the DSP's work phones.
+    /// For a work one, their ID of the source naming who had the DSP's work phones.
     pub driver_id: Option<String>,
     /// For a Slack one, the workspace and their ID in it.
     pub team_id: Option<String>,
@@ -279,8 +279,8 @@ pub struct Profile {
 }
 
 /// Someone's route today: its code, what the DSP calls its van, when its wave starts, how many
-/// stops it has in all and how many are done, and how it keeps up; and the work phone they hold
-/// now, while live route data holds today, and since when.
+/// stops it has in all and how many are done, and how it keeps up; and the work phone they have
+/// now, while live route data holds today.
 #[derive(Clone, Debug, Default, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(
@@ -300,8 +300,6 @@ pub struct Today {
     pub pace: Option<Pace>,
     /// As texts write it.
     pub phone: Option<String>,
-    #[cfg_attr(feature = "ts", ts(type = "number | null"))]
-    pub phone_since: Option<i64>,
 }
 
 /// `GET /api/dsp/communications/contacts`: the members of the DSP's workspaces, or of one of

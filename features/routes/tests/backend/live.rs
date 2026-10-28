@@ -19,12 +19,7 @@ fn a_read_whose_day_ended_before_it_was_written_is_refused_changing_nothing() {
     let refused = keep(&db, &dsp, &mut shaped).unwrap_err();
     assert_eq!(refused.code, "routes_day_not_available");
     let live = db.routes_live_db(&dsp).unwrap();
-    for table in [
-        "route_publications",
-        "itineraries",
-        "drivers",
-        "work_phones_shown",
-    ] {
+    for table in ["route_publications", "itineraries", "drivers"] {
         let held = live
             .count(&format!("SELECT count(*) FROM {table}"), [])
             .unwrap();

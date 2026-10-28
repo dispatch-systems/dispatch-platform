@@ -3,7 +3,7 @@
 use super::*;
 use crate::backend::{
     phone::{storage::FileStore, support::kept},
-    support::{self, at, held, hold, switch, texted, today},
+    support::{self, at, phoned, phones, saved, switch, texted, today},
     texts::reply,
 };
 use axum::body::Bytes;
@@ -89,18 +89,11 @@ async fn a_drivers_work_conversation_is_found_by_the_digits_of_each_work_phone_t
     let (_root, state, dsp) = support::started();
     let (zone, day) = today(&state, &dsp).await;
     let yesterday = day.pred_opt().unwrap();
-    // Yesterday Avery held 0101, and today 0202, texting on each.
+    // Yesterday Avery had 0101, and today 0202, texting on each.
     let (midnight, then) = (at(zone, day, 0, 0), at(zone, yesterday, 9, 0));
-    let earlier = (yesterday.to_string(), hold("A1", "2065550101", then, None));
-    let now_held = vec![hold("A1", "2065550202", midnight, None)];
-    held(
-        &state,
-        &dsp,
-        Some(&day.to_string()),
-        now_held,
-        vec![earlier],
-    )
-    .await;
+    let earlier = saved(yesterday, &[("A1", "2065550101")]);
+    let now = phones(&[("A1", "2065550202")]);
+    phoned(&state, &dsp, Some(&day.to_string()), now, vec![earlier]).await;
     texted(&state, &dsp, "+12065550101", "Leaving the station", then).await;
     texted(&state, &dsp, "+12065550202", "Which van today?", midnight).await;
 

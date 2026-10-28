@@ -1,8 +1,8 @@
 //! Today's Routes from a live read to the page, over HTTP against the real router served
 //! in-process: Routes keeps a live read of the Cortex fixture's day, as Live Route Data does in
-//! fixture mode, its drivers claiming their work phones as any read's do; a text a paired phone
-//! reports from one of those phones is filed under the driver holding it; and once live route
-//! data is emptied, as at the stop, Today's Routes lists nobody.
+//! fixture mode, each driver's itinerary showing their work phone; a text a paired phone reports
+//! from one of those phones is filed under the driver whose phone it is; and once live route data
+//! is emptied, as at the stop, Today's Routes lists nobody.
 use crate::support::{self, Call, OWNER, Who};
 use dispatch_core::{
     db::{self, s},
@@ -91,7 +91,7 @@ fn listed(routes: &Value) -> Vec<(String, Option<String>, Option<String>)> {
 }
 
 #[tokio::test]
-async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_data_empties() {
+async fn a_live_reads_work_phones_file_a_drivers_texts_under_them_until_live_route_data_empties() {
     let (server, dsp) = Server::start().await;
     // The platform owner, at the admin's address, looking at Northline.
     let owner = server.member(OWNER).await;
@@ -108,7 +108,7 @@ async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_dat
     let key = s(&paired, "key").to_owned();
 
     // Routes keeps a live read of today, the Cortex fixture's day as Live Route Data reads it in
-    // fixture mode: each driver claims the work phone their record shows.
+    // fixture mode: each driver's itinerary shows the work phone their record shows.
     let (state, at) = (server.state.clone(), dsp.clone());
     let (read, revision) = server
         .state
@@ -124,7 +124,7 @@ async fn a_live_reads_holds_file_a_drivers_texts_under_them_until_live_route_dat
     let kept = dispatch_routes::keep_live(&state, &dsp, read, revision)
         .await
         .unwrap();
-    assert_eq!(kept.holding, 2);
+    assert_eq!(kept.listed, 2);
     let routes = server.get(&owner, "/api/dsp/communications/routes").await;
     let phones: Vec<_> = listed(&routes)
         .into_iter()

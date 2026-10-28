@@ -108,7 +108,7 @@ and every other number in Messaging.
   of its own covering nothing, and closes with its X or Escape. Its X and Escape put focus back
   on what opened it. Their photo, name and role; Call, while they have a phone number; Today:
   their route on the DSP's own day, its van, when its wave starts, how many stops it has and are
-  done, and its pace; and while live route data holds today, the work phone they hold;
+  done, and its pace; and while live route data holds today, the work phone they have;
   Contact: their phone number, email address and the workspace the conversation is in. Each is
   left out when nothing knows it, and Today when they have no route today. No feature has a page
   of a person to open, so it has no Full profile.
@@ -138,12 +138,12 @@ stay; the next day's drivers fill it as its live reads start.
 
 - **Who:** each driver its routes name today, with their route as last read live (of several
   itineraries, the one with the most stops), and their work conversation once they have one;
-  each driver holding a work phone today but gone from the day's list, once they texted today;
-  and each work phone nobody held that texted today, as itself (Work phone 5521).
+  each driver gone from the day's list, once their conversation was written in today; and each
+  work phone nobody had that texted today, as itself (Work phone 5521).
 - **The list:** Waiting first, the longest waiting first; then each wave by when it starts, its
-  drivers by name; then the drivers with no wave (No wave); then the work phones nobody held (No
+  drivers by name; then the drivers with no wave (No wave); then the work phones nobody had (No
   driver), the latest written in first. Each row as a conversation's in the other sections, and
-  under it the driver's route code, the work phone they hold now by its last four digits, a bar
+  under it the driver's route code, the work phone they have now by its last four digits, a bar
   of the stops done, `98/168`, in the colour of its pace, and its pace but on time: Behind, At
   risk (Amazon's `BEHIND`, `AT_RISK`), or Done, every stop of it. A driver without a conversation
   yet opens one, to text them first.
@@ -161,22 +161,23 @@ stay; the next day's drivers fill it as its live reads start.
   failed tried again, as the dashboard's reads are. Until a read answers, loading, or offline or
   paused, as the dashboard's pages say it, never No routes; a read that fails says why in Today's
   Routes, the list or the board, and nowhere else.
-- **A driver's conversation:** under its head, their route code, van and the work phone they hold
+- **A driver's conversation:** under its head, their route code, van and the work phone they have
   now, and how long it has waited; chips to their conversation of each kind, Work (by the work
-  phone they hold), Messaging (by their own number) and Slack, each marked with a dot while it
+  phone they have), Messaging (by their own number) and Slack, each marked with a dot while it
   waits, opening it or starting it ([Elsewhere](#elsewhere)). Each workday begins with a line
   across it, Today · Sun, Oct 25, Yesterday, or the date, with that day's route and van and the
   work phone its first text went through; earlier days dimmed; and where they texted from
-  another work phone that day, Switched to 7643. With no work phone now (one claimed by another
-  driver, never claimed, or once the day stopped), No work phone takes the box's place, with
+  another work phone that day, Switched to 7643. With no work phone now (none shown, theirs
+  another driver's latest too, or once the day stopped), No work phone takes the box's place, with
   chips to their other conversations; what was being written in it stays, its pictures too, and
   comes back with a work phone.
-- **A work phone nobody held:** No driver under its name, and **Pick driver**: one of today's
+- **A work phone nobody has:** No driver under its name, and **Pick driver**: one of today's
   drivers, found by name or route, each with their route and wave; picked, the phone's texts of
-  today are theirs ([Texts](#texts)), and their conversation opens. Escape closes it, focus going
+  today are theirs while the day's route data names no one driver with it ([Texts](#texts)), and
+  their conversation opens. Escape closes it, focus going
   back to Pick driver.
 - **The profile** of a driver, from their name or photo: the ways to reach them, as the chips;
-  Today: route, van, wave, stops with their bar, pace, and the work phone with since when, as the
+  Today: route, van, wave, stops with their bar, pace, and the work phone, as the
   conversation's head shows them, one source for both: whichever answered last of Today's Routes'
   read of the driver, while it shows, and the conversation's own, so a phone withdrawn shows at
   once and another driver's change takes nobody's progress back; none once Today's Routes says the
@@ -186,13 +187,15 @@ stay; the next day's drivers fill it as its live reads start.
 ## Elsewhere
 
 A person's conversation of each kind, which the page goes between: their work conversation, as a
-driver who held the DSP's work phones; the one by text with their own number, the latest written
+driver who had the DSP's work phones; the one by text with their own number, the latest written
 in of Driver Match's numbers for them, else the first; and their Slack one, in a workspace where
 Communications works, the latest written in, else their first account there. Shown, as chips,
 on each of them while they have two or more, each waiting as the page's list has it, so its dot
-follows each update, and one started since is found by whom it's with. A driver holding a work
-phone now has the work conversation of the ID holding it, as Driver Match may know them by
-several, started once they have none there; else the latest of any of their IDs.
+follows each update, and one started since is found by whom it's with. A driver with a work phone
+now has the work conversation of the ID that has it, as Driver Match may know them by several,
+started once they have none there; of several IDs with one, however many, the one whose route
+today has the most stops, the route their Today shows, else the first linked; else the latest of
+any of their IDs.
 
 ## Messaging
 
@@ -292,53 +295,54 @@ failed, which queues a text for a phone.
   kept (`communications_texts`, by the phone side's ID), with its phone, direction, number, body,
   when it was written, who at the DSP sent it, how it went, and its pictures as the phone side has
   them, in a conversation (`communications_text_conversations`):
-  - **A work phone's**, a driver's: a number `+1` and ten digits, held as Routes' work phones are,
-    is filed under whoever held it as it was written, by their ID of the source naming who held
-    the DSP's work phones: live route data's holds while its live day is the text's day
-    (`live_route_data`), else that day's saved holds (`driver_routes`). Of the number's holds that
-    day, the one covering when it was written; written before any, the day's first holder, as
-    it came before the day's first live read or before they signed in; written once nobody held
-    it, the work phone's own, with no driver. A number nobody held that day but ever held as one
-    (`was_work_phone`) is a work phone too, nobody's. A driver's conversation is theirs across
-    days, whichever phone they held. Where someone at the DSP picked a driver for the phone that
-    day (Pick driver, `communications_picked`), a text no hold covers is that driver's, before
-    the day's first holder. Both are listed in Today's Routes.
+  - **A work phone's**, a driver's: a number `+1` and ten digits, as Routes' work phones are, is
+    filed by the day it was written, where the DSP is, under the driver whose latest work phone
+    it is that day, by their ID of the source naming the drivers, as Routes reads the day
+    (`day_phones`): live route data's while it holds that day (`live_route_data`), else
+    historical route data's (`driver_routes`). The whole day's texts with a number are that
+    driver's, both ways, so a phone handed to another driver takes the day's conversation with
+    it; who had it earlier that day isn't told apart. A driver's conversation is theirs across
+    days, whichever phone they had. Where the day names no one driver with the number, nobody's
+    latest phone that day or two drivers', the driver someone at the DSP picked for it that day
+    (Pick driver, `communications_picked`); else the work phone's own, with no driver, a number
+    nobody had that day but ever had as one (`ever_work_phone`) too. Both are listed in Today's
+    Routes.
   - **Any other number's**, Messaging's, by the number.
-  - **While Routes is off** for the DSP, nothing says whether a number is a work phone: a text
-    kept already stays where it was filed, and one that comes is placed under its number until
-    holds can be read. A text is placed as it first comes; how it went, or its pictures coming,
-    never moves it.
-- **Filed again:** who held which phone settles as the day goes, and a day's holds may reach
-  historical route data after its texts, as a text a phone relayed late; so each time a day's
-  holds change (`routes.work_phones_changed`, which names the day), every text of that day, both
-  ways, is filed again where it belongs now: a text that came before the day's first live read
-  goes to whoever then holds the number. An earlier day's is filed again only while Routes keeps
-  holds of it, so a day it emptied unsaved keeps its texts where its holds had them. Today's are
-  filed again every minute too, so a change of holds nothing heard, as while Communications was
-  off or a hearing failed, is repaired by the next pass; an earlier day's only as Routes says it
-  changed, as Routes doesn't say which days had holds saved.
+  - **A day Routes can't read**, as one not collected, gone, emptied unsaved or not read since
+    Routes kept its phones, or while Routes is off for the DSP: a text kept already stays where it
+    was filed, and one that comes is placed under its number, the work phone's own while Routes
+    says it ever was one, until the day can be read. A text is placed as it first comes; how it
+    went, or its pictures coming, never moves it.
+- **Filed again:** a day's route data changes as the day goes, and may reach historical route
+  data after its texts, as a text a phone relayed late; so each time Routes says a day's route
+  data changed (`routes.data_changed`, which names the day), every text of that day, both ways,
+  is filed again where it belongs now: a text that came before the day's first live read goes to
+  the driver whose phone a read then names. A day Routes can't read keeps its texts where they
+  are. Today's are filed again every minute too, so a change nothing heard, as while
+  Communications was off or a hearing failed, is repaired by the next pass; an earlier day's only
+  as Routes says it changed.
 - **Waiting:** as a Slack conversation's: a text in after the latest text out that didn't fail,
   and not covered by a Done. Done marks each text in it covers, which stays handled wherever it's
   filed again, never handling a text it didn't cover. A failed answer leaves it waiting. A work conversation waits only on what was
   written on the live day, while live route data holds today: from the first text in on it
   after its latest answer or Done, though it came before the day's first live read; so at the
   stop, as live route data empties, none waits or counts, and the next day starts afresh. Each
-  time who holds the work phones today changes, the work conversations waiting by their texts are
-  noted changed, so the pages waiting on changes hear the day begin or end, and so is every
-  driver's, so one open hears its driver take, return or lose one, their last hold withdrawn.
-- **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone
-  that last texted that number, else the one seen last, with its pictures, kept by the phone side
-  as they're added, the adder's alone until they go, and none of one kept should the adder's
-  access end while its bytes come. A number's conversation, and a work phone's nobody held, answer
-  their number; a driver's, the work phone they hold now, as live route data says, refused while
-  they hold none (`communications_no_work_phone`). Kept as filing reads it back, under the full
-  name of whoever sent it (`sent_by`), taken as it's first filed, however it was sent. Retry sends
-  again one Dispatch sent that failed, while its phone is still paired, and only where a text
-  written now would go: in a driver's, refused while they hold no work phone
-  (`communications_no_work_phone`) or hold another (`communications_work_phone_changed`), as the
-  one it went to may be another driver's since. Either is queued in the write that checks where
-  it goes and the member's access (`phone::outbox`), so a handoff, the stop or a change of their
-  access can't come between.
+  time today's route data changes, the work conversations waiting by their texts are noted
+  changed, so the pages waiting on changes hear the day begin or end, and so is every driver's,
+  so one open hears their work phone change, or none shown any more.
+- **Answering:** what someone at the DSP writes goes as written, nothing added, from the phone that
+  last texted that number, else the one seen last, with its pictures, kept by the phone side as
+  they're added, the adder's alone until they go, and none of one kept should the adder's access end
+  while its bytes come. A number's conversation, and a work phone's nobody had, answer their number;
+  a driver's, the work phone they have now: their latest of today, as live route data reads it, but
+  one that's another driver's latest too, which is no one driver's; refused while they have none
+  (`communications_no_work_phone`). Kept as filing reads it back, under the full name of whoever
+  sent it (`sent_by`), taken as it's first filed, however it was sent. Retry sends again one
+  Dispatch sent that failed, while its phone is still paired, and only where a text written now
+  would go: in a driver's, refused while they have no work phone (`communications_no_work_phone`) or
+  have another (`communications_work_phone_changed`), as the one it went to may be another driver's
+  since. Either is queued in the write that checks where it goes and the member's access
+  (`phone::outbox`), so a handoff, the stop or a change of their access can't come between.
 
 ## Messaging a group
 
@@ -551,14 +555,15 @@ expose, each only while the feature offering it is on for the DSP, for anyone wi
 - **`directory`** (Driver Match): who the member is, by their Slack ID, and the first phone
   number and email address their sources have for them (Driver Profiles' roster, Slack's
   profile); and who texts from a number, by any of their phone numbers.
-- **`live_route_data`** (Routes): the live day, its routes (`day`, and a driver's, `routes`), who
-  holds which work phone now (`work_phones`) and its holds on the work phones; and from
-  `driver_routes`, a saved day's holds, whether a number was ever a work phone, and each earlier
-  workday's route of a driver's conversation. It hears `routes.work_phones_changed`.
+- **`live_route_data`** (Routes): the live day, its routes (`day`, and a driver's, `routes`) and
+  each driver's latest work phone today (`day_phones`); and from `driver_routes`, a saved day's
+  work phones, whether a number was ever a work phone, and each earlier workday's route of a
+  driver's conversation. It hears `routes.data_changed`, and takes the longest driver ID it
+  accepts from Routes' contract (`MOST_ID_LENGTH`).
 - **`driver_routes`** (Routes): their route today, the day it is in the DSP's timezone, read for
   their IDs of its source, today alone, as live route data last read it while it holds today,
   else as Routes last read it: its code, van, wave, stops and pace, with the work phone they
-  hold. Of several, the one with the most stops, as a rescue they drove too has fewer. And for a
+  have. Of several, the one with the most stops, as a rescue they drove too has fewer. And for a
   group
   message, every driver's routes today, read whole (`day`), mapped to people by those IDs, then
   to their Slack accounts as the profile does in reverse: who's on a route, and in which wave.
@@ -602,12 +607,12 @@ Behind `communications.use`:
   hold a text to).
 - `GET …/conversations/{id}/profile`: what the profile shows of whom it's with, a member of a
   workspace or a driver, besides the name, role and photo the conversation has: their route
-  `today` (`route`, `van`, `waveAt`, `stops`, `stopsDone`, `pace`, and the work phone they hold,
-  `phone` and `phoneSince`), `phone`, `email`, and the workspace's name (`slack`), each none
+  `today` (`route`, `van`, `waveAt`, `stops`, `stopsDone`, `pace`, and the work phone they have,
+  `phone`), `phone`, `email`, and the workspace's name (`slack`), each none
   when unknown.
 - `GET …/routes`: Today's Routes: the live day, its drivers by name, each with their route
-  `today` and work conversation, and the work phones nobody held that texted today.
-- `POST …/conversations/{id}/driver` (`driverId`): Pick driver, for a work phone nobody held: the
+  `today` and work conversation, and the work phones nobody had that texted today.
+- `POST …/conversations/{id}/driver` (`driverId`): Pick driver, for a work phone nobody has: the
   driver's conversation.
 - `POST …/conversations` (`teamId`, `userId`): opens a direct message with a member.
 - `POST …/conversations/{id}/messages` (`text`, `photos`): sends an answer, its text and photos, a
@@ -623,7 +628,7 @@ Behind `communications.use`:
   conversation's, as the number's.
 - `POST …/texts/conversations` (`number`, or `driverId` for one of today's drivers): opens the
   conversation a text to the number written now is filed in, as filing decides (a driver's while
-  they hold it as a work phone), or the driver's, to text them first.
+  it's their work phone), or the driver's, to text them first.
 - `POST …/texts/uploads?name=&type=`: a picture for a text not sent yet, as its bytes, kept by
   the phone side.
 - `GET …/texts/contacts?q=<name or digits>`: whom the DSP can text, and the numbers blocked.
@@ -678,7 +683,7 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   waiting, sent with their message, or not sent and why) and `communications_group_uploads` (a
   group message's photos as uploaded to each workspace); the files' bytes in the DSP's data,
   `data/communications/files/`, which backups keep. By text: `communications_text_conversations`
-  (each a driver's, a work phone's nobody held, or a number's), `communications_texts` (each
+  (each a driver's, a work phone's nobody had, or a number's), `communications_texts` (each
   text filed, by the phone side's ID, its pictures as the phone side keeps them, and the Done that
   covered it), `communications_texting` (the last of the phone side's changes filed),
   `communications_contacts` (the names saved for numbers, by whom and when),

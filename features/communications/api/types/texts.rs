@@ -20,7 +20,7 @@ pub struct Workday {
 
 /// `GET /api/dsp/communications/routes`: Today's Routes, while live route data holds today: each
 /// driver on a route today, by name, with their route and work conversation; and each work phone
-/// nobody held that texted today, as itself.
+/// nobody had that texted today, as itself.
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(

@@ -12,7 +12,6 @@ mod live;
 pub(crate) mod maintenance;
 pub(crate) mod people;
 mod phone_backfill;
-mod phones;
 mod publishing;
 mod rows;
 mod saving;
@@ -24,7 +23,7 @@ mod work_phones;
 pub use live::{LiveKept, clear_live, keep_live, live_request, save_and_clear_live, save_live_day};
 use publishing::*;
 use rows::*;
-pub use saving::{WorkPhone, save_day};
+pub use saving::save_day;
 pub use storage::RoutesStore;
 use storage::*;
 
@@ -136,8 +135,6 @@ pub struct PreparedItinerary {
     day: DayRow,
     addresses: Vec<Value>,
     person: Value,
-    /// The work phones its response shows its drivers with, by their ten digits.
-    work_phones: Vec<(String, String)>,
     raw_bytes: usize,
     /// The detail gzip-compressed.
     #[serde(skip)]
@@ -337,9 +334,6 @@ impl Shaper {
             },
             addresses: read.addresses.as_array().cloned().unwrap_or_default(),
             person,
-            work_phones: (phones::phones_of(read.transporters))
-                .filter_map(|(driver, phone)| Some((driver, phone?)))
-                .collect(),
             raw_bytes,
             raw,
         })
@@ -460,10 +454,7 @@ fn verify(db: &Db) -> Result<()> {
     Ok(())
 }
 fn verify_live(db: &Db) -> Result<()> {
-    for table in READ_TABLES
-        .iter()
-        .chain(&["work_phones", "work_phones_shown"])
-    {
+    for table in READ_TABLES {
         db.one(&format!("SELECT count(*) FROM {table} WHERE 0"), [])?;
     }
     Ok(())

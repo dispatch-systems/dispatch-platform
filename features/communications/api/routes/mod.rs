@@ -34,9 +34,6 @@ use serde_json::Value;
 
 /// Reading the DSP's conversations and answering them.
 const USE: Dsp = Dsp("communications.use");
-/// The most a driver's ID may be, in characters, as Routes reads them. Routes' contract documents
-/// this length but doesn't export it; once it does, this is its.
-const DRIVER_ID_MOST: usize = 128;
 /// The most a message's place may be, in characters, as `before` names it: a text's, thirteen
 /// digits, `:` and the ID the phone side gave it; a Slack message's `ts` is shorter.
 const PLACE_MOST: usize = 14 + texting::ID_MOST;

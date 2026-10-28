@@ -75,7 +75,7 @@ impl People {
     pub fn routed(&self, source: Source, id: &str) -> Correspondent {
         with(self.everyone.holding(source, id), id)
     }
-    /// A work phone nobody held, `number`, by its last four digits.
+    /// A work phone nobody had, `number`, by its last four digits.
     pub fn work_phone(&self, number: &str) -> Correspondent {
         let digits: String = number.chars().filter(char::is_ascii_digit).collect();
         with(

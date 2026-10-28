@@ -1,6 +1,6 @@
 //! A person's conversations of each kind, which the page goes between under the head of any of
-//! them: their work conversation, as a driver who held the DSP's work phones, with the work phone
-//! they hold now; the one by text with their own number, the latest written in of Driver Match's
+//! them: their work conversation, as a driver who had the DSP's work phones, with the work phone
+//! they have now; the one by text with their own number, the latest written in of Driver Match's
 //! numbers for them, else the first; and their Slack one, in a workspace
 //! where Communications works, the latest written in, else their first account there. Each with
 //! whether it waits, and what starts one they don't have yet; listed only with two or more.
@@ -33,9 +33,9 @@ pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Vec<Elsewhere>> {
     Ok(if found.len() > 1 { found } else { Vec::new() })
 }
 
-/// `person`'s work conversation, while they have one or hold a work phone now: holding one, that
-/// of the ID holding it, which a text there goes to, started if they have none by it; else the
-/// latest of any of their IDs.
+/// `person`'s work conversation, while they have one or a work phone now: with one, that of the ID
+/// that has it (`LiveDay::phone_of`), which a text there goes to, started if they have none by it;
+/// else the latest of any of their IDs.
 fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
     let live = LiveDay::read(db, dsp)?;
     let source = match &live {
@@ -54,25 +54,25 @@ fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
         dsp,
         db.communications_drivers(dsp, source.as_str(), ids)?,
     )?;
-    let holding = match &live {
-        Some(live) => live.held_by(db, dsp, ids)?,
+    let phone = match &live {
+        Some(live) => live.phone_of(db, dsp, ids, &live.routes_of(db, dsp, ids)?)?,
         None => None,
     };
-    let conversation = match &holding {
-        Some(held) => kept.into_iter().find(|each| {
+    let conversation = match &phone {
+        Some(phone) => kept.into_iter().find(|each| {
             each.driver
                 .as_ref()
-                .is_some_and(|(_, id)| *id == held.driver_id)
+                .is_some_and(|(_, id)| *id == phone.driver_id)
         }),
         None => latest(kept),
     };
-    let driver_id = match (&holding, &conversation) {
-        (Some(held), _) => Some(held.driver_id.clone()),
+    let driver_id = match (&phone, &conversation) {
+        (Some(phone), _) => Some(phone.driver_id.clone()),
         (None, Some(each)) => each.driver.as_ref().map(|(_, id)| id.clone()),
         (None, None) => return Ok(None),
     };
     Ok(Some(Elsewhere {
-        number: holding.map(|held| work_number(&held.phone)),
+        number: phone.map(|phone| work_number(&phone.phone)),
         driver_id,
         ..found(ConversationKind::Work, conversation)
     }))

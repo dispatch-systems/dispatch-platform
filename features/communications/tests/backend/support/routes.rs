@@ -1,5 +1,5 @@
 //! The stand-in for Routes' `driver_routes`, while `driving` is on: drivers' routes and each saved
-//! day's holds on the work phones, as a test says.
+//! day's work phones, as a test says.
 use super::{DRIVERS, Known, live};
 use chrono::NaiveDate;
 use dispatch_core::{
@@ -8,9 +8,9 @@ use dispatch_core::{
     manifest::{Feature, feature, optional, people::Source},
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, MOST_DAYS, RouteDay, WorkPhoneHold,
+    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, MOST_DAYS, RouteDay,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) static DRIVING: Feature = Feature {
     switch: optional("driving", "Driving", &[]),
@@ -26,20 +26,20 @@ struct Routing;
 static STAND_IN: Routing = Routing;
 /// What it keeps of each DSP.
 static KEPT: Known<Kept> = Known::new();
-/// Drivers' routes, and each saved day's holds.
+/// Drivers' routes, and each saved day's work phones, by the day.
 #[derive(Default)]
 struct Kept {
     routes: Vec<RouteDay>,
-    saved: Vec<(String, WorkPhoneHold)>,
+    saved: BTreeMap<String, DayPhones>,
 }
 
 /// Has it answer that the DSP's drivers drove `routes`.
 pub(super) fn know(dsp: &str, routes: Vec<RouteDay>) {
     KEPT.of(dsp, |kept| kept.routes = routes);
 }
-/// Has it keep `saved`, each a saved day's hold.
-pub(super) fn save(dsp: &str, saved: Vec<(String, WorkPhoneHold)>) {
-    KEPT.of(dsp, |kept| kept.saved = saved);
+/// Has it keep `saved`, each a saved day and its work phones: any other day isn't collected.
+pub(super) fn save(dsp: &str, saved: Vec<(String, DayPhones)>) {
+    KEPT.of(dsp, |kept| kept.saved = saved.into_iter().collect());
 }
 /// `routes`, with each day they're on read while under way.
 pub(super) fn driven(routes: Vec<RouteDay>) -> Driven {
@@ -91,27 +91,19 @@ impl DriverRoutes for Routing {
         });
         Ok(driven(routes))
     }
-    fn day_phones(&self, _: &Store, _: &str, _: &str) -> Result<DayPhones> {
-        unreachable!("Communications reads a saved day's holds, not its phones")
+    /// The work phones it keeps of a saved day; `Uncollected` for any other.
+    fn day_phones(&self, _: &Store, dsp: &str, day: &str) -> Result<DayPhones> {
+        let saved = KEPT.of(dsp, |kept| kept.saved.get(day).cloned());
+        Ok(saved.unwrap_or(DayPhones::Uncollected))
     }
-    fn ever_work_phone(&self, _: &Store, _: &str, _: &str) -> Result<bool> {
-        unreachable!("Communications asks whether a number was ever held")
-    }
-    /// The holds it knows of a saved day.
-    fn work_phone_holds(&self, _: &Store, dsp: &str, day: &str) -> Result<Vec<WorkPhoneHold>> {
-        Ok(KEPT.of(dsp, |kept| {
-            kept.saved
-                .iter()
-                .filter(|(saved, _)| saved == day)
-                .map(|(_, hold)| hold.clone())
-                .collect()
-        }))
-    }
-    /// Whether any hold it knows, live or saved, is on `phone`.
-    fn was_work_phone(&self, _: &Store, dsp: &str, phone: &str) -> Result<bool> {
+    /// Whether any driver's latest work phone it knows, live or saved, is `phone`.
+    fn ever_work_phone(&self, _: &Store, dsp: &str, phone: &str) -> Result<bool> {
         let saved = KEPT.of(dsp, |kept| {
-            kept.saved.iter().any(|(_, hold)| hold.phone == phone)
+            kept.saved.values().any(|day| match day {
+                DayPhones::Read(phones) => phones.iter().any(|each| each.phone == phone),
+                DayPhones::Uncollected | DayPhones::Unextracted => false,
+            })
         });
-        Ok(saved || live::holds(dsp).iter().any(|hold| hold.phone == phone))
+        Ok(saved || live::phones(dsp).iter().any(|each| each.phone == phone))
     }
 }

@@ -359,12 +359,6 @@ impl DriverRoutes for Fake {
     fn ever_work_phone(&self, _: &Store, _: &str, _: &str) -> Result<bool> {
         unreachable!("the driver tool reads no work phones")
     }
-    fn work_phone_holds(&self, _: &Store, _: &str, _: &str) -> Result<Vec<route::WorkPhoneHold>> {
-        unreachable!("the driver tool reads no work phones")
-    }
-    fn was_work_phone(&self, _: &Store, _: &str, _: &str) -> Result<bool> {
-        unreachable!("the driver tool reads no work phones")
-    }
 }
 impl timecard::Timecards for Fake {
     fn source(&self) -> Source {

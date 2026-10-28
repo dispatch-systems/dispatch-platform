@@ -2,6 +2,6 @@
 
 /**
  * What a conversation is: a Slack direct message, the texts of the work phones a driver
- * held (or of one nobody held as they were written), or a number's texts.
+ * had, each day's their latest that day (or of one nobody had then), or a number's texts.
  */
 export type ConversationKind = "slack" | "work" | "number";

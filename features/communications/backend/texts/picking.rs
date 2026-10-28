@@ -1,6 +1,7 @@
-//! Pick driver: someone at the DSP files a work phone nobody held, as live route data shows it,
+//! Pick driver: someone at the DSP files a work phone nobody had, as live route data shows it,
 //! under one of today's drivers, for the DSP's day. Its texts of today are filed again, under the
-//! driver picked but where a hold covers one (`filing`), and stay so as the day's holds settle.
+//! driver picked while the day's route data names no one driver whose latest phone it is
+//! (`filing`): once it does, the day's texts are that driver's.
 use super::{
     filing,
     live_day::LiveDay,
@@ -15,7 +16,7 @@ use crate::{
 };
 use dispatch_core::{Error, Result, State, db::Store, ensure};
 
-/// Picks `driver`, one of today's drivers, as holding the work phone of the conversation `id`
+/// Picks `driver`, one of today's drivers, as having the work phone of the conversation `id`
 /// today, as the member `by`: the driver's conversation, where the phone's texts of today are now.
 pub fn pick(
     db: &Store,

@@ -1,4 +1,4 @@
-//! Pick driver: whom someone at the DSP said held a work phone nobody held, on a day.
+//! Pick driver: whom someone at the DSP said has a work phone nobody has, on a day.
 use crate::backend::texts::model::Filed;
 use dispatch_core::{
     Error, Result,
@@ -11,7 +11,7 @@ pub trait PickStore {
     /// Each work phone a driver was picked for on `day`, by its ten digits: the driver's source
     /// and ID.
     fn communications_picked(&self, dsp: &str, day: &str) -> Result<Vec<(String, Filed)>>;
-    /// Picks the driver `driver` of the source `source` as holding the work phone `phone`, by its
+    /// Picks the driver `driver` of the source `source` as having the work phone `phone`, by its
     /// ten digits, on `day`, as the member `by`.
     fn pick_communications_driver(
         &self,

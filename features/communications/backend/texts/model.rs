@@ -29,7 +29,7 @@ pub struct TextConversation {
     pub kind: ConversationKind,
     /// For a driver's, the source of their ID and the ID.
     pub driver: Option<(String, String)>,
-    /// For a number's, its number; for a work phone's nobody held, the phone's.
+    /// For a number's, its number; for a work phone's nobody had, the phone's.
     pub number: Option<String>,
     pub state: ConversationState,
     pub waiting_since: Option<i64>,
@@ -102,8 +102,8 @@ pub struct TextFile {
     pub kept: bool,
 }
 
-/// Where a text is filed: under the driver who held the work phone it was written with, by
-/// their ID of a source; under a work phone nobody held then; or under its number.
+/// Where a text is filed: under the driver whose latest work phone it was the day it was written,
+/// by their ID of a source; under a work phone nobody had then; or under its number.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Filed {
     Driver { source: String, id: String },

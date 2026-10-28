@@ -5,11 +5,17 @@
 //! before its first live read. A Slack or number's conversation waits as its messages say,
 //! whichever day.
 use super::{began, model::TextConversation, storage::TextStore, zone};
-use crate::backend::model::{ConversationKind, ConversationState};
+use crate::backend::{
+    model::{ConversationKind, ConversationState},
+    today,
+};
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::Store};
-use dispatch_routes_contract::{self as routes, LiveRouteData, WorkPhone};
-use std::collections::HashMap;
+use dispatch_routes_contract::{self as routes, DayPhones, DriverPhone, LiveRouteData, RouteDay};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashMap},
+};
 
 /// The DSP's live day, and what reads it.
 pub struct LiveDay {
@@ -40,42 +46,63 @@ impl LiveDay {
             from,
         }))
     }
-    /// The work phone each driver holds now, by their ID: the latest they took.
-    pub fn holding(&self, db: &Store, dsp: &str) -> Result<HashMap<String, WorkPhone>> {
-        let mut holding: HashMap<String, WorkPhone> = HashMap::new();
-        for held in self.reader.work_phones(db, dsp)? {
-            if holding
-                .get(&held.driver_id)
-                .is_none_or(|kept| held.since > kept.since)
-            {
-                holding.insert(held.driver_id.clone(), held);
-            }
+    /// The work phone each driver has now, by their ID, as its ten digits: their latest of today, as
+    /// live route data reads it, but one that's another driver's latest too, which is no one
+    /// driver's, so neither has it to be texted at.
+    pub fn phones(&self, db: &Store, dsp: &str) -> Result<HashMap<String, String>> {
+        Ok(match self.reader.day_phones(db, dsp)? {
+            DayPhones::Read(phones) => phones
+                .into_iter()
+                .filter(|each| !each.shared)
+                .map(|each| (each.driver_id, each.phone))
+                .collect(),
+            DayPhones::Uncollected | DayPhones::Unextracted => HashMap::new(),
+        })
+    }
+    /// The route today of each of `ids` with the most stops, by their ID (`today::busiest`), as live
+    /// route data last read it: every one of them, as many at a time as one read of their routes
+    /// names.
+    pub fn routes_of(
+        &self,
+        db: &Store,
+        dsp: &str,
+        ids: &[String],
+    ) -> Result<BTreeMap<String, RouteDay>> {
+        let mut driven = Vec::new();
+        for some in ids.chunks(routes::MOST_IDS) {
+            driven.extend(self.reader.routes(db, dsp, some)?.routes);
         }
-        Ok(holding)
+        Ok(today::busiest(driven, today::driver))
     }
-    /// The work phone the driver holding `ids` holds now, if any: the latest they took.
-    pub fn held_by(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Option<WorkPhone>> {
-        let mut holding = self.holding(db, dsp)?;
-        Ok(ids
+    /// The work phone the driver holding `ids` has now (`phones`), with the ID that has it: of
+    /// their IDs with one, that whose route in `driven`, theirs today (`routes_of`), has the most
+    /// stops, the route their day shows (`today`), so its phone is the one shown beside it; of as
+    /// many, the first linked.
+    pub fn phone_of(
+        &self,
+        db: &Store,
+        dsp: &str,
+        ids: &[String],
+        driven: &BTreeMap<String, RouteDay>,
+    ) -> Result<Option<DriverPhone>> {
+        let mut phones = self.phones(db, dsp)?;
+        let theirs: Vec<DriverPhone> = ids
             .iter()
-            .filter_map(|id| holding.remove(id))
-            .max_by_key(|held| held.since))
+            .filter_map(|id| {
+                Some(DriverPhone {
+                    driver_id: id.clone(),
+                    phone: phones.remove(id)?,
+                    shared: false,
+                })
+            })
+            .collect();
+        let stops = |each: &DriverPhone| driven.get(&each.driver_id).map_or(0, |r| r.stops);
+        Ok(theirs.into_iter().min_by_key(|each| Reverse(stops(each))))
     }
-    /// Whether the driver `driver` is one of today's: on a route live route data names, or
-    /// holding a work phone today.
+    /// Whether the driver `driver` is one of today's: on a route live route data names.
     pub fn drives(&self, db: &Store, dsp: &str, driver: &str) -> Result<bool> {
-        let routed = self
-            .reader
-            .day(db, dsp)?
-            .routes
-            .iter()
-            .any(|route| route.driver_id == driver);
-        Ok(routed
-            || self
-                .reader
-                .work_phone_holds(db, dsp)?
-                .iter()
-                .any(|hold| hold.driver_id == driver))
+        let routes = self.reader.day(db, dsp)?.routes;
+        Ok(routes.iter().any(|route| route.driver_id == driver))
     }
 }
 

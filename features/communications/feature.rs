@@ -31,7 +31,7 @@ use dispatch_core::{
     manifest::{Audit, Feature, feature, optional, perm},
     tenancy::api::audit::AuditArea::Connections,
 };
-use dispatch_routes_contract::WorkPhonesChanged;
+use dispatch_routes_contract::RouteDataChanged;
 
 pub const FEATURE: Feature = Feature {
     place: 95,
@@ -145,9 +145,9 @@ pub const FEATURE: Feature = Feature {
         areas: &[("phones.", Connections)],
         ..Audit::NONE
     },
-    // Filing a day's texts again as who held its work phones settles.
+    // Filing a day's texts again as its route data changes.
     on: &[dispatch_core::on!(
-        WorkPhonesChanged,
+        RouteDataChanged,
         backend::texts::filing::refile
     )],
     // On from the start in every workspace, in place of Slack's answer that DSP Messaging is

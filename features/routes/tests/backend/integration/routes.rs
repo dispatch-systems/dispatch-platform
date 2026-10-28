@@ -9,7 +9,7 @@ use dispatch_cortex::{
     self as cortex,
     routes::{self, Capture, Mode, Request},
 };
-use dispatch_routes::{RoutesStore, WorkPhone, save_day};
+use dispatch_routes::{RoutesStore, save_day};
 use serde_json::{Value, json};
 
 /// Routes, and the Cortex collector whose routes it keeps.
@@ -521,63 +521,30 @@ fn a_later_read_of_a_day_replaces_an_earlier_one_in_either_order_and_keeps_share
 }
 
 #[tokio::test]
-async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when_read_later() {
+async fn another_features_read_of_a_day_is_saved_whole_when_read_later() {
     install();
     let (_root, db, id) = ready();
     let state = State::new(db.config.clone()).unwrap();
     let day = "2026-09-25";
     let capture = routes::fixture(&request(day, Mode::Final)).unwrap();
     let hour = 3_600_000;
-    let phones = vec![
-        WorkPhone {
-            transporter_id: "driver-1".into(),
-            phone: "15550000001".into(),
-            since: capture.started_at,
-            until: Some(capture.started_at + hour),
-        },
-        WorkPhone {
-            transporter_id: "driver-2".into(),
-            phone: "15550000001".into(),
-            since: capture.started_at + hour,
-            until: None,
-        },
-    ];
-    // The day's read and its phones, as `phones` holds them.
+    // The day's read, by its itineraries.
     let read = |db: &Store| {
         let days = db.route_days(&id).unwrap().days;
-        let held = db
-            .routes_db(&id)
-            .unwrap()
-            .all(
-                "SELECT transporter_id,phone,since,until FROM work_phones WHERE day=? \
-                 ORDER BY since",
-                [day],
-            )
-            .unwrap();
-        (
-            days.iter().map(|d| d.itinerary_count).collect::<Vec<_>>(),
-            held,
-        )
+        days.iter().map(|d| d.itinerary_count).collect::<Vec<_>>()
     };
-    let held: Vec<Value> = phones
-        .iter()
-        .map(|p| json!({"transporter_id":p.transporter_id,"phone":p.phone,"since":p.since,"until":p.until}))
-        .collect();
-    let save = |key: &'static str, capture: &Capture, phones: &[WorkPhone]| {
-        save_day(&state, &id, key, capture.clone(), phones.to_vec())
-    };
+    let save = |key: &'static str, capture: &Capture| save_day(&state, &id, key, capture.clone());
 
-    // Saved whole, with its phones; saved again under its key, nothing changes.
-    assert!(save("live-1", &capture, &phones).await.unwrap());
-    assert_eq!(read(&db), (vec![2], held.clone()));
-    assert!(save("live-1", &capture, &phones).await.unwrap());
+    // Saved whole; saved again under its key, nothing changes.
+    assert!(save("live-1", &capture).await.unwrap());
+    assert_eq!(read(&db), [2]);
+    assert!(save("live-1", &capture).await.unwrap());
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),
         1
     );
 
-    // The standard collection's read, collected later, replaces it whole but for its phones,
-    // which it reads none of.
+    // The standard collection's read, collected later, replaces it whole.
     let mut later = capture.clone();
     later.itineraries.truncate(1);
     later.summaries["itinerarySummaries"]
@@ -586,22 +553,16 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
         .truncate(1);
     later.finished_at += 2000;
     publish(&db, &id, "standard", day, &later);
-    assert_eq!(read(&db), (vec![1], held.clone()));
-    // One collected before it changes nothing; one collected after replaces it, phones and all.
+    assert_eq!(read(&db), [1]);
+    // One collected before it changes nothing; one collected after replaces it.
     let mut earlier = capture.clone();
     earlier.finished_at += 1000;
-    assert!(!save("live-2", &earlier, &phones[..1]).await.unwrap());
-    assert_eq!(read(&db), (vec![1], held.clone()));
+    assert!(!save("live-2", &earlier).await.unwrap());
+    assert_eq!(read(&db), [1]);
     let mut latest = capture.clone();
     latest.finished_at += 3000;
-    assert!(save("live-3", &latest, &phones[1..]).await.unwrap());
-    assert_eq!(read(&db), (vec![2], held[1..].to_vec()));
-    // A save that held no phones leaves the day none.
-    let mut idle = capture.clone();
-    idle.finished_at += 4000;
-    assert!(save("live-5", &idle, &[]).await.unwrap());
-    assert_eq!(read(&db), (vec![2], vec![]));
-    let latest = idle;
+    assert!(save("live-3", &latest).await.unwrap());
+    assert_eq!(read(&db), [2]);
     sweep(&db, &id);
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),
@@ -612,10 +573,6 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
     let mut missing = latest.clone();
     missing.finished_at += 1000;
     missing.itineraries.pop();
-    let mut twice = phones.clone();
-    twice.push(phones[0].clone());
-    let mut backwards = phones.clone();
-    backwards[0].until = Some(backwards[0].since - 1);
     let mut elsewhere = latest.clone();
     elsewhere.scope.service_area_id = "area-other".into();
     let mut another = latest.clone();
@@ -631,23 +588,21 @@ async fn another_features_read_of_a_day_is_saved_whole_with_its_work_phones_when
     unfinished.started_at = unfinished.finished_at - hour;
     let mut past = latest.clone();
     past.mode = Mode::Snapshot;
-    for (key, capture, phones, code) in [
-        ("live-4", &unfinished, &phones, "routes_day_not_available"),
-        ("live-4", &past, &phones, "routes_day_not_available"),
-        ("live-4", &missing, &phones, "routes_capture_invalid"),
-        ("live-4", &elsewhere, &phones, "routes_scope_mismatch"),
-        ("live-4", &another, &phones, "routes_scope_mismatch"),
-        ("live-4", &zoned, &phones, "routes_scope_mismatch"),
-        ("live 4", &latest, &phones, "invalid_input"),
-        ("live-4", &latest, &twice, "invalid_input"),
-        ("live-4", &latest, &backwards, "invalid_input"),
+    for (key, capture, code) in [
+        ("live-4", &unfinished, "routes_day_not_available"),
+        ("live-4", &past, "routes_day_not_available"),
+        ("live-4", &missing, "routes_capture_invalid"),
+        ("live-4", &elsewhere, "routes_scope_mismatch"),
+        ("live-4", &another, "routes_scope_mismatch"),
+        ("live-4", &zoned, "routes_scope_mismatch"),
+        ("live 4", &latest, "invalid_input"),
     ] {
-        let refused = save(key, capture, phones).await.unwrap_err();
+        let refused = save(key, capture).await.unwrap_err();
         assert_eq!(refused.code, code, "{key}");
     }
     let actor = common::a_user(&db);
     db.set_feature(&id, "routes", false, &actor).unwrap();
-    let refused = save("live-4", &latest, &phones).await.unwrap_err();
+    let refused = save("live-4", &latest).await.unwrap_err();
     assert_eq!(refused.code, "routes_off");
     assert_eq!(
         count(&db, &id, "SELECT count(*) FROM route_publications"),

@@ -44,8 +44,8 @@
       ],
       "on": [
         {
-          "event": "routes.work_phones_changed",
-          "kind": "dispatch_routes_contract::WorkPhonesChanged"
+          "event": "routes.data_changed",
+          "kind": "dispatch_routes_contract::RouteDataChanged"
         }
       ],
       "people": [],
@@ -685,6 +685,10 @@
         {
           "id": 10,
           "name": "itinerary_work_phone"
+        },
+        {
+          "id": 11,
+          "name": "drop_work_phones"
         }
       ],
       "routelive": [
@@ -695,6 +699,10 @@
         {
           "id": 2,
           "name": "itinerary_work_phone"
+        },
+        {
+          "id": 3,
+          "name": "drop_work_phones"
         }
       ]
     },
@@ -754,7 +762,7 @@
         {
           "name": "live_route_data",
           "contract": "dispatch_routes_contract::LiveRouteData",
-          "about": "Today's routes as live route data last read them, and the work phone each driver holds now."
+          "about": "Today's routes as live route data last read them, and each driver's latest work phone."
         }
       ],
       "env": [],
@@ -780,8 +788,7 @@
         "staged_drivers",
         "stops",
         "tasks",
-        "unknown_stops",
-        "work_phones"
+        "unknown_stops"
       ],
       "routelive": [
         "addresses",
@@ -794,9 +801,7 @@
         "routes",
         "stops",
         "tasks",
-        "unknown_stops",
-        "work_phones",
-        "work_phones_shown"
+        "unknown_stops"
       ]
     },
     "subfeatures": []

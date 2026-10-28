@@ -3,11 +3,11 @@ import type { Pace } from "./Pace";
 
 /**
  * Someone's route today: its code, what the DSP calls its van, when its wave starts, how many
- * stops it has in all and how many are done, and how it keeps up; and the work phone they hold
- * now, while live route data holds today, and since when.
+ * stops it has in all and how many are done, and how it keeps up; and the work phone they have
+ * now, while live route data holds today.
  */
 export type Today = { route: string | null, van: string | null, waveAt: number | null, stops: number | null, stopsDone: number | null, pace: Pace | null,
 /**
  * As texts write it.
  */
-phone: string | null, phoneSince: number | null, };
+phone: string | null, };

@@ -1,9 +1,9 @@
 //! Today's Routes: while live route data holds today, its drivers by name, each with their route,
-//! the work phone they hold now and their work conversation, and the work phones nobody held that
+//! the work phone they have now and their work conversation, and the work phones nobody had that
 //! texted today; nothing once it holds no day.
 use super::*;
 use crate::backend::support::{
-    self, at, driver, held, hold, route, routed, started, texted, today, van,
+    self, at, driver, phoned, phones, route, routed, saved, started, texted, today, van,
 };
 use crate::{ConversationState, Pace};
 use dispatch_routes_contract::RouteDay;
@@ -21,8 +21,8 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
     let (_root, state, dsp) = started();
     let (zone, day) = today(&state, &dsp).await;
     let yesterday = day.pred_opt().unwrap();
-    let (now, then) = (|h, m| at(zone, day, h, m), |h, m| at(zone, yesterday, h, m));
-    let (today, yesterday) = (day.to_string(), yesterday.to_string());
+    let now = |h, m| at(zone, day, h, m);
+    let today = day.to_string();
     support::know(
         &state,
         &dsp,
@@ -35,7 +35,7 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
         vec![van("1FTVAN214", "214")],
     );
     // Avery drives CX14 behind, beside a rescue with fewer stops; Blake drove every stop of
-    // CX09. Casey holds a work phone today but is gone from the day's list.
+    // CX09. Casey has a work phone today but is gone from the day's list.
     routed(
         &dsp,
         vec![
@@ -50,19 +50,10 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
             },
         ],
     );
-    let saved = vec![(yesterday, hold("D1", "2065550103", then(8, 0), None))];
-    held(
-        &state,
-        &dsp,
-        Some(&today),
-        vec![
-            hold("A1", "2065550101", now(8, 0), None),
-            hold("C1", "2065550104", now(8, 0), None),
-        ],
-        saved.clone(),
-    )
-    .await;
-    // Avery and Casey text; so does 0103, a work phone yesterday that nobody holds today.
+    let earlier = vec![saved(yesterday, &[("D1", "2065550103")])];
+    let live = phones(&[("A1", "2065550101"), ("C1", "2065550104")]);
+    phoned(&state, &dsp, Some(&today), live, earlier.clone()).await;
+    // Avery and Casey text; so does 0103, a work phone yesterday that nobody has today.
     texted(
         &state,
         &dsp,
@@ -144,7 +135,7 @@ async fn todays_routes_lists_the_live_days_drivers_with_their_route_phone_and_te
     assert_eq!(phones, [("Work phone 0103", Waiting)]);
 
     // Once live route data holds no day, as after the stop, it lists nothing.
-    held(&state, &dsp, None, Vec::new(), saved).await;
+    phoned(&state, &dsp, None, Vec::new(), earlier).await;
     let shown = listed(&state, &dsp).await;
     assert_eq!(
         (shown.day, shown.drivers.len(), shown.phones.len()),
@@ -174,7 +165,7 @@ async fn todays_routes_names_every_drivers_van_beyond_what_one_read_of_the_fleet
             .map(|id| route(&today, id, "CX01", &vin(id), 10, wave))
             .collect(),
     );
-    held(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
+    phoned(&state, &dsp, Some(&today), Vec::new(), Vec::new()).await;
 
     let shown = listed(&state, &dsp).await;
     assert_eq!(shown.drivers.len(), 101);

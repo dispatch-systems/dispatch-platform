@@ -1,7 +1,7 @@
 //! Live route data: today's routes as the last whole live read left them, kept in place read by
-//! read in a database of its own beside historical route data (`routelive`), with who holds
-//! which work phone (`phones`); emptied as a new day starts, and saved into historical route data
-//! as one of the day's reads. A feature reading routes live keeps its reads here.
+//! read in a database of its own beside historical route data (`routelive`); emptied as a new day
+//! starts, and saved into historical route data as one of the day's reads. A feature reading routes
+//! live keeps its reads here.
 use super::{
     work_phones::{PHONES_SINCE, Stored},
     *,
@@ -14,27 +14,20 @@ use dispatch_core::{
         events::{self, PeopleChanged},
     },
 };
-use dispatch_routes_contract::{RouteDataChanged, WorkPhonesChanged};
+use dispatch_routes_contract::RouteDataChanged;
 use std::sync::Arc;
 
-/// What keeping a live read counted, for its record: the itineraries it listed, the rows it
-/// wrote or deleted, the work phones held after it, and the holds it claimed, moved or ended.
+/// What keeping a live read counted, for its record: the itineraries it listed, and the rows it
+/// wrote or deleted.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LiveKept {
     pub listed: u64,
     pub changed: u64,
-    pub holding: u64,
-    pub phone_events: u64,
 }
 impl LiveKept {
     /// Each count under its name, as a live read's record keeps them.
     pub fn counts(&self) -> Counts {
-        vec![
-            ("listed", self.listed),
-            ("changed", self.changed),
-            ("holding", self.holding),
-            ("phoneEvents", self.phone_events),
-        ]
+        vec![("listed", self.listed), ("changed", self.changed)]
     }
 }
 
@@ -56,12 +49,11 @@ struct Kept {
 }
 
 /// A whole live read, checked and shaped, ready to keep: its lists with their responses
-/// compressed as they're stored, each itinerary's rows, and the work phones it shows.
+/// compressed as they're stored, and each itinerary's rows.
 struct Shaped {
     lists: Capture,
     responses: Vec<(&'static str, usize, Vec<u8>)>,
     itineraries: Vec<PreparedItinerary>,
-    shown: phones::Shown,
 }
 impl Shaped {
     /// `capture` checked whole against `request`, in the scope its days are read in, then shaped.
@@ -77,20 +69,12 @@ impl Shaped {
             .scope_request()
             .validate_scope(&capture.scope)
             .map_err(|_| Error::new("routes_scope_mismatch", 502))?;
-        let listed = listed(&capture.summaries, &capture.scope);
         let shaper = Shaper::new(&capture);
         // Each itinerary's response goes as its rows are made, so only one is held twice.
         let itineraries = std::mem::take(&mut capture.itineraries)
             .into_iter()
             .map(|captured| shaper.shape(&captured))
             .collect::<Result<Vec<_>>>()?;
-        let shown = phones::Shown::read(
-            &capture.summaries,
-            &listed,
-            itineraries
-                .iter()
-                .flat_map(|i| i.work_phones.iter().cloned()),
-        );
         let mut responses = Vec::new();
         for (name, list) in [
             ("summaries", &capture.summaries),
@@ -103,7 +87,6 @@ impl Shaped {
             lists: capture,
             responses,
             itineraries,
-            shown,
         })
     }
 }
@@ -128,13 +111,11 @@ fn key(day: &str, collected: i64) -> String {
 /// whole. A row new to it is inserted, one that changed is updated, one it no longer holds is
 /// deleted and one unchanged is left unwritten; an itinerary it shows no work phone for keeps the
 /// one the day's last read stored for it, unless it shows that phone on another driver's itinerary
-/// (`work_phones`); the drivers its route list assigns are named; and who holds which work phone is
-/// settled from it. A day other than the one live route data holds,
-/// or another scope, starts it afresh. A read collected no later than the one it holds changes
-/// nothing. It tells Driver Match of a driver live route data didn't name (`people.changed`), then
-/// every feature that hears it of a hold claimed, moved, handed over or withdrawn on the read's day
-/// (`routes.work_phones_changed`), and of the day's route data changed, when it changed what the
-/// day's readers read (`routes.data_changed`).
+/// (`work_phones`); and the drivers its route list assigns are named. A day other than the one live
+/// route data holds, or another scope, starts it afresh. A read collected no later than the one it
+/// holds changes nothing. It tells Driver Match of a driver live route data didn't name
+/// (`people.changed`), then every feature that hears it of the day's route data changed, when it
+/// changed what the day's readers read (`routes.data_changed`).
 ///
 /// It refuses, changing nothing, a day other than today where the DSP is
 /// (`routes_day_not_available`); a DSP without a station (`routes_station_required`); a read that
@@ -177,10 +158,6 @@ pub async fn keep_live(
         if kept.named {
             events::publish(state, dsp, PeopleChanged).await;
         }
-        if kept.counts.phone_events > 0 {
-            let day = read_day.clone();
-            events::publish(state, dsp, WorkPhonesChanged { day }).await;
-        }
         if kept.data_changed {
             events::publish(state, dsp, RouteDataChanged { day: read_day }).await;
         }
@@ -216,13 +193,8 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
         let (publication, anew) = match same {
             Some(row) => {
                 if s(row, "collected_at") >= at(lists.finished_at).as_str() {
-                    let holding = db.count(
-                        "SELECT count(*) FROM work_phones WHERE day=? AND until IS NULL",
-                        [day],
-                    )?;
                     let counts = LiveKept {
                         listed: listed.len() as u64,
-                        holding: holding as u64,
                         ..LiveKept::default()
                     };
                     return Ok(Kept {
@@ -330,12 +302,9 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
                 publication
             ],
         )?;
-        let settled = phones::settle(db, day, lists.finished_at, &read.shown)?;
         let counts = LiveKept {
             listed: listed.len() as u64,
             changed: (read_rows + shared + raw) as u64,
-            holding: settled.holding,
-            phone_events: settled.events,
         };
         Ok(Kept {
             counts,
@@ -344,8 +313,7 @@ fn keep(store: &Store, dsp: &str, read: &mut Shaped) -> Result<Kept> {
         })
     })
 }
-/// Empties live route data, inside the caller's transaction: every read, driver, address and
-/// work phone.
+/// Empties live route data, inside the caller's transaction: every read, driver and address.
 fn empty(db: &Db) -> Result<()> {
     for table in [
         "tasks",
@@ -359,8 +327,6 @@ fn empty(db: &Db) -> Result<()> {
         "route_publications",
         "addresses",
         "drivers",
-        "work_phones",
-        "work_phones_shown",
     ] {
         db.exec(&format!("DELETE FROM {table}"), [])?;
     }
@@ -368,10 +334,10 @@ fn empty(db: &Db) -> Result<()> {
 }
 
 /// Empties live route data, as a new day starts or a saved one stops, and gives back the
-/// file's space, its log's with it; then tells every feature that hears it that its holds on the
-/// work phones of the day it held are gone (`routes.work_phones_changed`), and that the day's route
-/// data changed (`routes.data_changed`), each time, so a call made again after one that couldn't
-/// give the space back tells them too, of today where the DSP is, as it holds no day by then.
+/// file's space, its log's with it; then tells every feature that hears it that the route data of
+/// the day it held changed (`routes.data_changed`), each time, so a call made again after one that
+/// couldn't give the space back tells them too, of today where the DSP is, as it holds no day by
+/// then.
 /// Refuses while Routes is off for the DSP (`routes_off`).
 pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
     let d = dsp.to_owned();
@@ -391,18 +357,15 @@ pub async fn clear_live(state: &Arc<State>, dsp: &str) -> Result<()> {
         }
     }))
     .await?;
-    let changed = day.clone();
-    events::publish(state, dsp, WorkPhonesChanged { day: changed }).await;
     events::publish(state, dsp, RouteDataChanged { day }).await;
     Ok(())
 }
 
 /// Saves the last whole read live route data holds into historical route data as one of its
-/// day's reads, with every hold of the day on the company's work phones, through `save_day`: its
-/// responses as they were read, each itinerary's work phone as live route data keeps it, kept ones
-/// too, under a key of the read's own, so saving it again, as after a restart, saves nothing
-/// twice. It is a final read only if it was read once its day had ended
-/// where the DSP is, a snapshot otherwise, as the platform has a day's reads. Live route data
+/// day's reads, through `save_day`: its responses as they were read, each itinerary's work phone as
+/// live route data keeps it, kept ones too, under a key of the read's own, so saving it again, as
+/// after a restart, saves nothing twice. It is a final read only if it was read once its day had
+/// ended where the DSP is, a snapshot otherwise, as the platform has a day's reads. Live route data
 /// keeps it. Answers whether it is the day's read now, or none when live route data holds no
 /// day; features hear of a day saved as `save_day` tells them. It refuses as `save_day` does,
 /// and while Routes is off for the DSP (`routes_off`).
@@ -426,20 +389,14 @@ pub async fn save_live_day(state: &Arc<State>, dsp: &str) -> Result<Option<bool>
                 Ok(()) => Mode::Final,
                 Err(_) => Mode::Snapshot,
             };
-            let phones = phones::holds(&live, &capture.scope.date)?;
             let stored = Stored::of(&live, s(&row, "id"))?;
-            Ok(Some((
-                s(&row, "job_id").to_owned(),
-                capture,
-                phones,
-                stored,
-            )))
+            Ok(Some((s(&row, "job_id").to_owned(), capture, stored)))
         })
         .await?;
-    let Some((key, capture, phones, stored)) = held else {
+    let Some((key, capture, stored)) = held else {
         return Ok(None);
     };
-    saving::save_keeping(state, dsp, &key, capture, phones, stored)
+    saving::save_keeping(state, dsp, &key, capture, stored)
         .await
         .map(Some)
 }

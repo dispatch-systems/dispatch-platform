@@ -31,7 +31,6 @@ const driver = (id: string, wave: number | null, conversation?: Conversation): R
     stopsDone: null,
     pace: null,
     phone: null,
-    phoneSince: null,
   };
   return {
     driverId: id,

@@ -1,13 +1,13 @@
 //! Someone's route today, as the page shows it: its code, what the DSP calls its van (Vans'
 //! `amazon_fleet`), when its wave starts, its stops and how many are done, and how it keeps up;
-//! with the work phone they hold now. From live route data while it holds today
+//! with the work phone they have now. From live route data while it holds today
 //! (`live_route_data`), else as Routes has read today so far (`driver_routes`), with no work
 //! phone. Of a driver's several itineraries, the one with the most stops, as a rescue they drove
 //! too has fewer. Each feature is asked only while it's on for the DSP.
 use super::texts::{live_day::LiveDay, numbers::work_number, zone};
 use crate::api::types::Today;
 use dispatch_core::{Result, db::Store, foundation::clock, manifest::people::Person, text_enum};
-use dispatch_routes_contract::{self as routes, RouteDay, WorkPhone};
+use dispatch_routes_contract::{self as routes, RouteDay};
 use dispatch_vans_contract::{self as fleet, MOST_VINS};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -86,12 +86,12 @@ pub fn vans<'a>(
     Ok(named)
 }
 
-/// Someone's route today, `route`, in the van the DSP calls by `vans`, holding the work phone
-/// `phone`.
+/// Someone's route today, `route`, in the van the DSP calls by `vans`, with the work phone
+/// `phone`, its ten digits.
 pub fn shown(
     route: Option<&RouteDay>,
     vans: &HashMap<String, String>,
-    phone: Option<&WorkPhone>,
+    phone: Option<&str>,
 ) -> Today {
     Today {
         route: route.and_then(|route| route.route_code.clone()),
@@ -104,16 +104,16 @@ pub fn shown(
             .filter(|route| route.stops > 0)
             .map(|route| route.stops_completed),
         pace: route.and_then(pace),
-        phone: phone.map(|held| work_number(&held.phone)),
-        phone_since: phone.map(|held| held.since),
+        phone: phone.map(work_number),
     }
 }
 
-/// The route `person` drives today, and the work phone they hold now, if anything knows either.
+/// The route `person` drives today, and the work phone they have now, if anything knows either:
+/// by every one of their IDs while live route data holds today, so the phone is the one their Work
+/// chip goes to (`LiveDay::phone_of`).
 pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
     if let Some(live) = LiveDay::read(db, dsp)? {
-        let ids = ids(person.ids_of(live.reader.source()));
-        return of_drivers(db, dsp, &live, &ids);
+        return of_drivers(db, dsp, &live, person.ids_of(live.reader.source()));
     }
     let Some(reader) = routes::for_dsp(db, dsp)? else {
         return Ok(None);
@@ -130,16 +130,20 @@ pub fn of(db: &Store, dsp: &str, person: &Person) -> Result<Option<Today>> {
 }
 
 /// The route the driver holding `ids` of the live day's source drives today, and the work phone
-/// they hold now, if they have either.
+/// they have now, if they have either.
 pub fn of_drivers(db: &Store, dsp: &str, live: &LiveDay, ids: &[String]) -> Result<Option<Today>> {
     if ids.is_empty() {
         return Ok(None);
     }
-    let driven = busiest(live.reader.routes(db, dsp, ids)?.routes, driver);
+    let driven = live.routes_of(db, dsp, ids)?;
     let route = driven.values().max_by_key(|route| route.stops);
-    let phone = live.held_by(db, dsp, ids)?;
+    let phone = live.phone_of(db, dsp, ids, &driven)?;
     let vans = vans(db, dsp, route.and_then(|route| route.vin.as_ref()))?;
-    Ok(known(shown(route, &vans, phone.as_ref())))
+    Ok(known(shown(
+        route,
+        &vans,
+        phone.as_ref().map(|each| each.phone.as_str()),
+    )))
 }
 
 /// `today`, while it says anything.
