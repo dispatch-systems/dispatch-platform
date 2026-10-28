@@ -18,20 +18,12 @@ pub(super) enum Writes {
 /// the read the day has, in whatever order the two are published: the day's last read is
 /// left inactive, each of the new one's itineraries that shows no work phone keeps the one its
 /// most recent store had for it, none if none: `stored`'s, where it stores the itinerary, else the
-/// last read's (`work_phones`), what the new one
-/// sent of the drivers and addresses the days share is written over them, and the day's work
-/// phone holds become `phones`, the new read's, when it read them: one that reads none, as the
-/// standard collection's, leaves the day's as they are. A day collected no later is left
-/// inactive itself, changing none of them. Either way `sweep_routes` deletes what's inactive in
-/// small steps; only flags, the new read's kept phones and the day's shared rows and holds change
-/// here, so the platform lock is held for moments. Answers whether it is the day's read now.
-pub(super) fn publish_day(
-    db: &Db,
-    job: &str,
-    staged: &Staged,
-    phones: Option<&[WorkPhone]>,
-    stored: Stored,
-) -> Result<bool> {
+/// last read's (`work_phones`), and what the new one sent of the drivers and addresses the days
+/// share is written over them. A day collected no later is left inactive itself, changing none of
+/// them. Either way `sweep_routes` deletes what's inactive in small steps; only flags, the new
+/// read's kept phones and the day's shared rows change here, so the platform lock is held for
+/// moments. Answers whether it is the day's read now.
+pub(super) fn publish_day(db: &Db, job: &str, staged: &Staged, stored: Stored) -> Result<bool> {
     db.transaction(|| {
         let row = db
             .one(
@@ -88,22 +80,6 @@ pub(super) fn publish_day(
         )?;
         kept.keep_staged(db, &staged.publication)?;
         share(db, &staged.publication, &staged.day)?;
-        let Some(phones) = phones else {
-            return Ok(true);
-        };
-        db.exec("DELETE FROM work_phones WHERE day=?", [&staged.day])?;
-        let mut insert = db.0.prepare_cached(
-            "INSERT INTO work_phones(day,transporter_id,phone,since,until) VALUES (?,?,?,?,?)",
-        )?;
-        for hold in phones {
-            insert.execute(params![
-                staged.day,
-                hold.transporter_id,
-                hold.phone,
-                hold.since,
-                hold.until
-            ])?;
-        }
         Ok(true)
     })
 }

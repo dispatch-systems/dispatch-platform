@@ -189,7 +189,7 @@ impl Server {
         }
         read.finished_at = now();
         read.started_at = read.finished_at - 1000;
-        let saved = dispatch_routes::save_day(&self.state, &self.dsp, "later", read, Vec::new());
+        let saved = dispatch_routes::save_day(&self.state, &self.dsp, "later", read);
         assert!(saved.await.unwrap());
     }
     /// How the first driver's route progresses in live route data: none while it holds no day.

@@ -8,6 +8,9 @@ pub use api::types::{
     RoutePackage, RoutePackageEvent, RoutePublication, RouteReprocess, RouteStop, RouteTask,
     RouteUnknownStop,
 };
+/// What a feature that depends on it saves a whole read of a day into historical route data
+/// with, as the standard collection saves its own.
+pub use backend::save_day;
 /// What the app uses: its storage and its database, and how it shapes a day's capture, which
 /// the app's Cortex route probe measures.
 pub use backend::{DATABASE, RoutesStore, prepare};
@@ -20,9 +23,6 @@ pub use backend::{
 /// What its integration tests check beside the storage: the most jobs a scheduled run queues,
 /// how a capture is shaped and how kept responses are read back.
 pub use backend::{MAX_JOBS_PER_RUN, Shaper, gunzip};
-/// What a feature that depends on it saves a whole read of a day into historical route data
-/// with, as the standard collection saves its own, the day's work phones with it.
-pub use backend::{WorkPhone, save_day};
 
 /// Core's test support, for this crate's module tests.
 #[cfg(test)]
@@ -71,7 +71,6 @@ pub const FEATURE: Feature = Feature {
                 "route_raw",
                 "breaks",
                 "unknown_stops",
-                "work_phones",
                 "staged_addresses",
                 "staged_drivers",
                 // The window chosen before Settings kept it, read once to move it there.
@@ -92,8 +91,6 @@ pub const FEATURE: Feature = Feature {
                 "route_raw",
                 "breaks",
                 "unknown_stops",
-                "work_phones",
-                "work_phones_shown",
             ],
         ),
     ],
@@ -161,6 +158,13 @@ pub const FEATURE: Feature = Feature {
                     name: "itinerary_work_phone",
                     apply: Code(backend::add_work_phone),
                 },
+                Migration {
+                    id: 11,
+                    name: "drop_work_phones",
+                    apply: Sql(include_str!(
+                        "migrations/routedata/0011_drop_work_phones.sql"
+                    )),
+                },
             ],
         },
         Migrations {
@@ -175,6 +179,13 @@ pub const FEATURE: Feature = Feature {
                     id: 2,
                     name: "itinerary_work_phone",
                     apply: Code(backend::add_live_work_phone),
+                },
+                Migration {
+                    id: 3,
+                    name: "drop_work_phones",
+                    apply: Sql(include_str!(
+                        "migrations/routelive/0003_drop_work_phones.sql"
+                    )),
                 },
             ],
         },
@@ -204,7 +215,7 @@ pub const FEATURE: Feature = Feature {
             dyn dispatch_routes_contract::LiveRouteData,
             &backend::exposed::LIVE,
             "live_route_data",
-            "Today's routes as live route data last read them, and the work phone each driver holds now.",
+            "Today's routes as live route data last read them, and each driver's latest work phone.",
         ),
     ],
     ..feature("routes")

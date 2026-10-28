@@ -67,9 +67,20 @@ fn ready() -> (tempfile::TempDir, Store, String, Arc<State>) {
     let state = State::new(db.config.clone()).unwrap();
     (root, db, dsp, state)
 }
+/// As far west and as far east as a day goes, 26 hours apart: a day read in the west is over in the
+/// east.
+const WEST: &str = "Etc/GMT+12";
+const EAST: &str = "Etc/GMT-14";
+
 /// The bootstrapped DSP's day `back` days before today: it keeps UTC.
 fn day(back: i64) -> String {
     (chrono::Utc::now().date_naive() - chrono::Duration::days(back)).to_string()
+}
+/// Moves the DSP to `zone`, as its owner might on Settings: today there.
+fn moved(db: &Store, dsp: &str, zone: &str) -> String {
+    let name = db.find_dsp(dsp).unwrap().name;
+    db.keep_dsp_profile(dsp, &name, zone, None, None).unwrap();
+    dispatch_core::foundation::clock::today(zone.parse().unwrap()).to_string()
 }
 /// The fixture's read of `day`, at the DSP's station: final, or a snapshot of today.
 fn read(day: &str, mode: Mode) -> Capture {
@@ -201,13 +212,29 @@ async fn a_live_day_is_heard_of_once_a_read_changed_it_and_as_its_emptied_or_sav
 
     // Another feature's read of the day before, saved: of that day, unless one the day has is later.
     let before = read(&day(1), Mode::Final);
-    let saved = dispatch_routes::save_day(&state, &dsp, "before", before.clone(), Vec::new());
+    let saved = dispatch_routes::save_day(&state, &dsp, "before", before.clone());
     assert!(saved.await.unwrap());
     let mut earlier = before;
     (earlier.started_at, earlier.finished_at) = (earlier.started_at - 1, earlier.finished_at - 1);
-    let saved = dispatch_routes::save_day(&state, &dsp, "earlier", earlier, Vec::new());
+    let saved = dispatch_routes::save_day(&state, &dsp, "earlier", earlier);
     assert!(!saved.await.unwrap());
     assert_eq!(heard(&dsp), [day(1)]);
+}
+
+#[tokio::test]
+async fn a_live_day_emptied_once_its_over_is_heard_of_as_the_day_it_held_then_as_today() {
+    let (_root, db, dsp, state) = ready();
+    // Read in the west, so that once the DSP moves east, the day live route data holds is over.
+    let west = moved(&db, &dsp, WEST);
+    let mut first = read(&west, Mode::Snapshot);
+    first.scope.timezone = WEST.into();
+    keep_live(&state, &dsp, first).await;
+    // Emptied once it's over where the DSP is, as the next day's first read empties it: of the day
+    // it held. Emptied again, holding none: of today there.
+    let east = moved(&db, &dsp, EAST);
+    dispatch_routes::clear_live(&state, &dsp).await.unwrap();
+    dispatch_routes::clear_live(&state, &dsp).await.unwrap();
+    assert_eq!(heard(&dsp), [west.clone(), west, east]);
 }
 
 #[tokio::test]

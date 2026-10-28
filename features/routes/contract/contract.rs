@@ -4,11 +4,9 @@
 //! so a complete day without a driver's itinerary is a day they didn't drive; a day read while
 //! under way proves nothing by what it lacks, since it may be read before dispatch; and a day
 //! outside what's collected is unknown. Routes exposes it as `driver_routes`, from historical
-//! route data; and today as live reads leave it, with the work phone each driver holds now, as
-//! `live_route_data` (`LiveRouteData`). Each driver's latest work phone of a day, today and on a
-//! saved day, is in both (`day_phones`), and `RouteDataChanged` says when a day's route data
-//! changed. Who held which work phone, from when until when, is in both too, and
-//! `WorkPhonesChanged` says when it changed, and of which day.
+//! route data; and today as live reads leave it, as `live_route_data` (`LiveRouteData`). Each
+//! driver's latest work phone of a day, today and on a saved day, is in both (`day_phones`), and
+//! `RouteDataChanged` says when a day's route data changed.
 use dispatch_core::{
     Result,
     db::Store,
@@ -47,14 +45,6 @@ pub trait DriverRoutes: Send + Sync {
     /// keeps, live or historical: a work phone nobody has today is still one. A number with fewer
     /// than ten digits never is.
     fn ever_work_phone(&self, db: &Store, dsp: &str, phone: &str) -> Result<bool>;
-    /// Every hold on a work phone historical route data keeps of `day`, YYYY-MM-DD in the DSP's
-    /// own time, ended ones too, oldest first: those of the day's saved read, kept once live route
-    /// data is emptied. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`.
-    fn work_phone_holds(&self, db: &Store, dsp: &str, day: &str) -> Result<Vec<WorkPhoneHold>>;
-    /// Whether `phone`, by its last ten digits, was ever held as a work phone in live or
-    /// historical route data: a work phone nobody holds now is still one. A number with fewer
-    /// than ten digits never was.
-    fn was_work_phone(&self, db: &Store, dsp: &str, phone: &str) -> Result<bool>;
 }
 
 /// The days collected, YYYY-MM-DD in the DSP's own time. Days between may be missing.
@@ -136,12 +126,11 @@ pub fn for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn DriverRoutes
     dispatch_core::manifest::exposes::for_dsp::<dyn DriverRoutes>(db, dsp)
 }
 
-/// Live route data: today's routes as the last whole live read left them, each driver's latest
-/// work phone, the company work phone each driver holds now and every hold of the day; nothing of
-/// another day. Apart from the historical route data
-/// `DriverRoutes` reads: a day joins it once saved there, and leaves live route data as a stop
-/// saves it (`save_and_clear_live`); a day left unsaved, as when the DSP saves none, stays until
-/// the next day's first read.
+/// Live route data: today's routes as the last whole live read left them, and each driver's latest
+/// work phone; nothing of another day. Apart from the historical route data `DriverRoutes` reads: a
+/// day joins it once saved there, and leaves live route data as a stop saves it
+/// (`save_and_clear_live`); a day left unsaved, as when the DSP saves none, stays until the next
+/// day's first read.
 pub trait LiveRouteData: Send + Sync {
     /// The source whose IDs name its drivers, to find them among the DSP's people.
     fn source(&self) -> Source;
@@ -160,11 +149,6 @@ pub trait LiveRouteData: Send + Sync {
     /// Each driver's latest work phone today, as the last whole live read left it; `Uncollected`
     /// without a live day.
     fn day_phones(&self, db: &Store, dsp: &str) -> Result<DayPhones>;
-    /// The work phone each driver holds now, and since when; none without a live day.
-    fn work_phones(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhone>>;
-    /// Every hold on a work phone of the live day, ended ones too, oldest first; none without a
-    /// live day.
-    fn work_phone_holds(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhoneHold>>;
 }
 
 /// Each driver's latest work phone of a day, from the work phone each of their itineraries shows:
@@ -199,46 +183,6 @@ pub struct DriverPhone {
     /// Whether it's another driver ID's latest phone that day too: then the day names no one
     /// driver whose phone it is, and each of them has it here.
     pub shared: bool,
-}
-
-/// A company work phone a driver holds now: a phone the DSP passes from driver to driver, so
-/// never a sign that two drivers are one person.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkPhone {
-    /// The ID that holds it: one of `LiveRouteData::source`'s.
-    pub driver_id: String,
-    /// Its ten digits.
-    pub phone: String,
-    /// When they took it, epoch milliseconds.
-    pub since: i64,
-}
-
-/// A driver's hold on a company work phone on a day: from their claim until they switched to
-/// another or someone else claimed it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkPhoneHold {
-    /// The ID that held it: one of the source's.
-    pub driver_id: String,
-    /// Its ten digits.
-    pub phone: String,
-    /// When they took it, epoch milliseconds.
-    pub since: i64,
-    /// When it ended, epoch milliseconds: none while they hold it, or on a saved day, when they
-    /// held it still as its read was taken.
-    pub until: Option<i64>,
-}
-
-/// Who held the DSP's work phones on a day changed, once it's kept: a live read claimed, moved,
-/// handed over or withdrew a hold; live route data was emptied of the day; or the day was saved
-/// into historical route data with its holds. Published after `people.changed` when both are, so
-/// the drivers it names are among the DSP's people.
-#[derive(Clone, Debug)]
-pub struct WorkPhonesChanged {
-    /// The day whose holds changed, YYYY-MM-DD in the DSP's own time.
-    pub day: String,
-}
-impl Event for WorkPhonesChanged {
-    const NAME: &'static str = "routes.work_phones_changed";
 }
 
 /// A day's route data changed, once it's kept: a live read changed what its readers read, rather

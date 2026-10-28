@@ -149,7 +149,8 @@
       [7, "staged_shared_rows", "aed480da151df28c"],
       [8, "drop_tasks_driver_day", "fc6e66099be72ce1"],
       [9, "work_phones_phone", "bd38247ffc31e0e2"],
-      [10, "itinerary_work_phone", "code"]
+      [10, "itinerary_work_phone", "code"],
+      [11, "drop_work_phones", "cd651d6b1c0ee073"]
     ]
   },
   {
@@ -158,7 +159,8 @@
     "cache_size": -8192,
     "migrations": [
       [1, "baseline", "22c1a8563eb030a9"],
-      [2, "itinerary_work_phone", "code"]
+      [2, "itinerary_work_phone", "code"],
+      [3, "drop_work_phones", "168806212d75a8dc"]
     ]
   },
   {

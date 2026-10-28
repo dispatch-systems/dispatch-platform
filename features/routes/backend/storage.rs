@@ -269,11 +269,11 @@ impl RoutesStore for Store {
         })
     }
     /// Makes a staged day the day's read if it was collected later than the one the day has
-    /// (`publish_day`), keeping the day's work phone holds: the standard collection reads none. A
-    /// day it changed is noted, to tell of (`changed`). Answers whether it is the day's read now.
+    /// (`publish_day`). A day it changed is noted, to tell of (`changed`). Answers whether it is
+    /// the day's read now.
     fn publish_routes(&self, id: &str, job: &str, staged: &Staged) -> Result<bool> {
         let routes = &*self.routes_db(id)?;
-        let current = publish_day(routes, job, staged, None, work_phones::Stored::default())?;
+        let current = publish_day(routes, job, staged, work_phones::Stored::default())?;
         if current {
             changed::note(id, &staged.day);
         }
@@ -281,9 +281,8 @@ impl RoutesStore for Store {
     }
     /// Retires the days a DSP's retention window has passed: they become inactive, and
     /// `sweep_routes` deletes them in small steps. Addresses and drivers last seen before
-    /// the window go with them, as do the days' work phones. Nothing is retired while the
-    /// routes feature is off, so switching it off never deletes. Answers how many days were
-    /// retired.
+    /// the window go with them. Nothing is retired while the routes feature is off, so switching
+    /// it off never deletes. Answers how many days were retired.
     fn expire_routes(&self, id: &str) -> Result<usize> {
         if !self.feature_enabled(id, COLLECTION)? {
             return Ok(0);
@@ -300,7 +299,6 @@ impl RoutesStore for Store {
             )?;
             db.exec("DELETE FROM addresses WHERE last_seen_day<?", [&start])?;
             db.exec("DELETE FROM drivers WHERE last_seen_day<?", [&start])?;
-            db.exec("DELETE FROM work_phones WHERE day<?", [&start])?;
             Ok(retired)
         })?;
         if retired > 0 {

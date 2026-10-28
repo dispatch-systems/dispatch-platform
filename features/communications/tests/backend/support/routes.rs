@@ -8,7 +8,7 @@ use dispatch_core::{
     manifest::{Feature, feature, optional, people::Source},
 };
 use dispatch_routes_contract::{
-    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, MOST_DAYS, RouteDay, WorkPhoneHold,
+    Collected, CollectedDay, DayPhones, Driven, DriverRoutes, MOST_DAYS, RouteDay,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -105,11 +105,5 @@ impl DriverRoutes for Routing {
             })
         });
         Ok(saved || live::phones(dsp).iter().any(|each| each.phone == phone))
-    }
-    fn work_phone_holds(&self, _: &Store, _: &str, _: &str) -> Result<Vec<WorkPhoneHold>> {
-        unreachable!("Communications reads each day's work phones, not holds")
-    }
-    fn was_work_phone(&self, _: &Store, _: &str, _: &str) -> Result<bool> {
-        unreachable!("Communications asks whether a number was ever a work phone")
     }
 }

@@ -116,8 +116,6 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     assert!(uncollected.days.is_empty() && uncollected.routes.is_empty());
     let refused = offered.day(&db, &dsp, "2026-9-25").unwrap_err();
     assert_eq!(refused.code, "invalid_date");
-    let refused = offered.work_phone_holds(&db, &dsp, "2026-9-25");
-    assert_eq!(refused.unwrap_err().code, "invalid_date");
 
     // Each refusal changes one thing from a read that's answered.
     let year = offered.routes(&db, &dsp, &driver, &day(365), &day(0));
@@ -252,18 +250,6 @@ fn route_data_is_read_through_the_indexes_made_for_each_read() {
         steps[0].starts_with("SEARCH i USING INDEX itineraries_work_phone (work_phone=?)"),
         "{steps:?}"
     );
-    // Whether a number was ever a work phone reaches only its holds, whatever the days kept.
-    let plan = historical
-        .all(
-            &format!("EXPLAIN QUERY PLAN {}", phones::EVER_HELD),
-            ["5550000000"],
-        )
-        .unwrap();
-    let steps: Vec<_> = plan.iter().map(|step| s(step, "detail")).collect();
-    assert_eq!(
-        steps,
-        ["SEARCH work_phones USING COVERING INDEX work_phones_phone (phone=?)"]
-    );
 }
 
 #[tokio::test]
@@ -315,7 +301,7 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
         .connection_revision(&dsp, dispatch_cortex::PROVIDER)
         .unwrap()
         .unwrap();
-    crate::keep_live(&state, &dsp, read.clone(), revision)
+    crate::keep_live(&state, &dsp, read, revision)
         .await
         .unwrap();
     let named = db
@@ -361,13 +347,14 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
     assert_eq!(planned.len(), 1);
     assert_eq!((planned[0].stops, planned[0].delivered), (2, 0));
     assert!(planned[0].planned_departure_at.is_some());
+    // Only the dispatched driver's itinerary shows a phone.
     assert_eq!(
-        offered.work_phones(&db, &dsp).unwrap(),
-        [WorkPhone {
+        offered.day_phones(&db, &dsp).unwrap(),
+        DayPhones::Read(vec![DriverPhone {
             driver_id: "driver-1".into(),
             phone: "2065550190".into(),
-            since: read.finished_at,
-        }]
+            shared: false,
+        }])
     );
     // Live route data is no historical route data.
     let historical = dispatch_routes_contract::for_dsp(&db, &dsp)
@@ -388,8 +375,10 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
     assert!(nothing(
         offered.routes(&db, &dsp, &ids(&["driver-1"])).unwrap()
     ));
-    assert!(offered.work_phones(&db, &dsp).unwrap().is_empty());
-    assert!(offered.work_phone_holds(&db, &dsp).unwrap().is_empty());
+    assert_eq!(
+        offered.day_phones(&db, &dsp).unwrap(),
+        DayPhones::Uncollected
+    );
 
     let owner = testing::a_user(&db);
     db.set_feature(&dsp, "routes", false, &owner).unwrap();
