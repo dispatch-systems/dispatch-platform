@@ -2,8 +2,9 @@
 //! (`data/phones/files/`) by their SHA-256, so two texts with one picture keep it once. Bytes
 //! arrive beside the folder's files, then take their place, and are let go, only under the
 //! platform's write lock, with the files that keep them: so letting go never removes the bytes of
-//! a file kept a moment before. Upkeep lets go of any bytes no file keeps, as a removal that
-//! failed leaves, and of bytes left arriving, as a restart leaves.
+//! a file kept a moment before. Upkeep lets go of any bytes no file keeps, as bytes sent again in
+//! place of others and a removal that failed leave, and of bytes left arriving, as a restart
+//! leaves.
 use super::{
     LIMITS,
     model::{Added, File},
@@ -86,6 +87,8 @@ pub async fn receive(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<Arr
 /// Keeps `arrived` as the bytes of the file `id` of a text the phone `device` reported, in place of
 /// any before them, its size what arrived: refused as `phones_file_not_found` for one of no text
 /// of its own, its bytes let go. Inside the write that authorized the phone. The text it's of.
+/// The bytes it replaces are upkeep's to let go of: the transaction keeping these may yet fail,
+/// and keep the file's bytes before.
 pub fn keep_reported(
     db: &Store,
     dsp: &str,
@@ -95,12 +98,7 @@ pub fn keep_reported(
 ) -> Result<String> {
     arrived.place(db, dsp)?;
     match db.phones_file_arrived(dsp, device, id, &arrived.sha256, arrived.size) {
-        Ok((text, before)) => {
-            if let Some(before) = before {
-                forget(db, dsp, &before)?;
-            }
-            Ok(text)
-        }
+        Ok(text) => Ok(text),
         Err(error) => {
             forget(db, dsp, &arrived.sha256)?;
             Err(error)
@@ -123,7 +121,7 @@ pub fn keep_added(db: &Store, dsp: &str, added: Added, arrived: &Arrived) -> Res
     kept
 }
 /// Lets go of the DSP's bytes kept by `sha256`, unless a file is still kept by them: inside the
-/// write that replaced them, or failed to keep the file they came for.
+/// write that failed to keep the file they came for.
 fn forget(db: &Store, dsp: &str, sha256: &str) -> Result<()> {
     if db.phones_bytes_kept(dsp, sha256)? {
         return Ok(());

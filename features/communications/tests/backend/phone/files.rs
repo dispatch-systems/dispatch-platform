@@ -1,15 +1,19 @@
 //! The bytes texts carry, as they arrive: a reported file's are kept with their own size, those
-//! cut short leave nothing behind, and those gone once upkeep listed them went already. A picture
-//! added for a text is its adder's alone until it goes, its bytes kept once however many pictures
-//! keep them, and one past what a text carries is refused before any of it is kept.
+//! sent again leave those before them kept should what keeps them fail, those cut short leave
+//! nothing behind, and those gone once upkeep listed them went already. A picture added for a text
+//! is its adder's alone until it goes, its bytes kept once however many pictures keep them, and one
+//! past what a text carries is refused before any of it is kept.
 use super::*;
 use crate::backend::{
     phone::{
         outbox::send,
+        phones,
         storage::TextStore,
         support::{kept, outgoing, paired, reported, store},
     },
     storage::DOMAIN,
+    support::started,
+    texts::filing,
 };
 use axum::body::Bytes;
 use dispatch_core::{db::now, testing};
@@ -55,6 +59,66 @@ async fn a_reported_files_size_is_what_its_bytes_are() {
         .unwrap()
         .unwrap();
     assert_eq!((stored.file.size, stored.file.kept), (4, true));
+}
+
+/// The DSP's phone `phone` sends `bytes` as those of the file `id` of a text it reported, as its
+/// app does: kept, and filed, in one write.
+async fn arrive(
+    state: &Arc<State>,
+    dsp: &str,
+    phone: &str,
+    id: &str,
+    bytes: &'static [u8],
+) -> Result<()> {
+    let arrived = receive(state, dsp, upload(bytes).await).await?;
+    let (at, phone, id) = (dsp.to_owned(), phone.to_owned(), id.to_owned());
+    filing::changing(state, dsp, move |db| {
+        let text = keep_reported(db, &at, &phone, &id, &arrived)?;
+        Ok(((), vec![text]))
+    })
+    .await
+}
+
+#[tokio::test]
+async fn bytes_sent_again_leave_those_before_them_kept_while_what_keeps_them_fails() {
+    let (_root, state, dsp) = started();
+    // The phone reports a text with a picture, filed as it comes, and sends its bytes.
+    let at = dsp.clone();
+    let (phone, file) = filing::changing(&state, &dsp, move |db| {
+        let phone = phones(db, &at)?.remove(0).id;
+        let text = reported("a", "+14255550199", now(), 1);
+        let kept = db.phones_report(&at, &phone, vec![text])?.remove(0);
+        Ok(((phone, kept.files[0].clone()), vec![kept.id]))
+    })
+    .await
+    .unwrap();
+    arrive(&state, &dsp, &phone, &file, b"door").await.unwrap();
+
+    // It sends other bytes for it, and keeping whether its conversation waits then fails, so
+    // nothing of it is kept: the picture's bytes are still those before, there to download.
+    let schema = |sql: &'static str| {
+        let at = dsp.clone();
+        state.run(move |db| db.dsp(&at)?.exec(sql, []).map(drop))
+    };
+    schema(
+        "CREATE TRIGGER settling_fails BEFORE UPDATE OF state ON communications_text_conversations \
+         BEGIN SELECT RAISE(ABORT, 'settling fails'); END",
+    )
+    .await
+    .unwrap();
+    assert!(arrive(&state, &dsp, &phone, &file, b"dock").await.is_err());
+    schema("DROP TRIGGER settling_fails").await.unwrap();
+    let (at, id) = (dsp.clone(), file.clone());
+    let bytes = state
+        .read(move |db| {
+            let sha256 = db.phones_file(&at, &id)?.unwrap().sha256.unwrap();
+            Ok(std::fs::read(kept(db, &at).join(sha256)).ok())
+        })
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_deref(), Some(&b"door"[..]));
+    let shown = super::shown(&state, &dsp, &file, "usr_other").await;
+    assert!(shown.unwrap().is_some(), "it downloads");
 }
 
 #[tokio::test]

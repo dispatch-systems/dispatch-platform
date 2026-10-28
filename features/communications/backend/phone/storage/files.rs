@@ -31,7 +31,7 @@ pub struct StoredFile {
 pub trait FileStore {
     /// Keeps the bytes of a file a phone reported, by their SHA-256, and their size as they
     /// arrived, whatever the report said: refused as `phones_file_not_found` for one not of its
-    /// own texts. Answers the text it's of, and the SHA-256 it kept before, for bytes sent again.
+    /// own texts. Answers the text it's of.
     fn phones_file_arrived(
         &self,
         dsp: &str,
@@ -39,7 +39,7 @@ pub trait FileStore {
         id: &str,
         sha256: &str,
         size: i64,
-    ) -> Result<(String, Option<String>)>;
+    ) -> Result<String>;
     /// Keeps a picture someone added for a text not sent yet.
     fn phones_add_file(
         &self,
@@ -72,12 +72,12 @@ impl FileStore for Store {
         id: &str,
         sha256: &str,
         size: i64,
-    ) -> Result<(String, Option<String>)> {
+    ) -> Result<String> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let file = db
                 .one(
-                    "SELECT f.text_id,f.sha256 FROM phones_files f \
+                    "SELECT f.text_id FROM phones_files f \
                      JOIN phones_texts t ON t.id=f.text_id \
                      WHERE f.id=? AND t.device_id=? AND t.origin='phone'",
                     params![id, device],
@@ -93,11 +93,7 @@ impl FileStore for Store {
                 "UPDATE phones_texts SET change=? WHERE id=?",
                 params![change, text],
             )?;
-            let before = file["sha256"]
-                .as_str()
-                .map(str::to_owned)
-                .filter(|before| before != sha256);
-            Ok((text, before))
+            Ok(text)
         })
     }
     fn phones_add_file(

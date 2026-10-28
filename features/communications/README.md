@@ -708,10 +708,11 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   what's due to go to groups' people, filing texts waiting to be filed, and filing today's again
   where they belong now, every minute; letting go of photos added and never sent hourly. And the
   phone side's, hourly, in each DSP with Communications on: letting go of pictures added and never
-  sent within a day; of bytes no file keeps, as a removal that failed leaves, and of bytes left
-  arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
-  runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
-  the rest to run, and is tried again the next hour.
+  sent within a day; of bytes no file keeps, as bytes sent again in place of others and a removal
+  that failed leave, and of bytes left arriving an hour, as a restart leaves, each on its own; and
+  of codes expired. Each of these jobs runs on its own too: one that fails, logged as
+  `phones_tidy_failed` with its DSP and job, leaves the rest to run, and is tried again the next
+  hour.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct
   message with the app is `D` and the rest of their ID, and holds what the app posted there, as

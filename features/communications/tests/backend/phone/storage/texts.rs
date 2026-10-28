@@ -42,7 +42,7 @@ fn a_text_reported_twice_is_kept_once() {
     );
     assert!(text.files.iter().all(|file| !file.kept), "bytes come after");
     // Its picture's bytes arrive: the text changes again, after the other, which arriving answers.
-    let (of, _) = db
+    let of = db
         .phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha", 100)
         .unwrap();
     assert_eq!(of, first[0].id);
