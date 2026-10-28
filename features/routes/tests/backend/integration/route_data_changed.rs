@@ -279,16 +279,11 @@ async fn a_day_kept_before_its_work_phones_were_has_them_extracted_from_its_stor
     // The upkeep extracts the newer's from its stored responses, telling of it once; the older
     // needs a reprocess, which shapes it whole.
     upkeep(&state).await;
-    let phone = |driver: &str, phone: &str| DriverPhone {
-        driver_id: driver.into(),
-        phone: phone.into(),
-        shared: false,
-    };
     assert_eq!(
         phones(1),
         DayPhones::Read(vec![
-            phone("driver-1", "2065550190"),
-            phone("driver-2", "2065550191"),
+            latest("driver-1", "2065550190", false),
+            latest("driver-2", "2065550191", false),
         ])
     );
     assert_eq!(phones(2), DayPhones::Unextracted);
