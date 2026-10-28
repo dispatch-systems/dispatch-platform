@@ -647,17 +647,26 @@ async fn texts_waiting_to_be_filed_are_each_filed_however_many_wait() {
         })
         .await
         .unwrap();
-    // Filed a page at a time.
+    // Filed a page at a time: each still kept, and in a conversation.
     unfiled(&state, &dsp).await.unwrap();
-    let at = dsp.clone();
-    let unfiled = state
+    let (at, asked) = (dsp.clone(), came.clone());
+    let read = state
         .read(move |db| {
-            let texts = db.communications_texts_of(&at, &came)?;
-            let unfiled = texts.into_iter().filter(|text| text.conversation.is_none());
-            Ok(unfiled.map(|text| text.id).collect::<Vec<_>>())
+            let mut read = Vec::new();
+            for id in &asked {
+                read.extend(db.communications_text(&at, id)?);
+            }
+            Ok(read)
         })
         .await
         .unwrap();
+    let kept: Vec<&String> = read.iter().map(|text| &text.id).collect();
+    assert_eq!(kept, came.iter().collect::<Vec<_>>(), "each still kept");
+    let unfiled: Vec<&str> = read
+        .iter()
+        .filter(|text| text.conversation.is_none())
+        .map(|text| text.id.as_str())
+        .collect();
     assert!(
         unfiled.is_empty(),
         "filed on while more remain: {unfiled:?}"
