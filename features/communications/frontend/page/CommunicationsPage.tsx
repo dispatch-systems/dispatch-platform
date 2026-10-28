@@ -104,8 +104,8 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const todays = useTodaysRoutes(section === 'routes', changed, inbox);
   const routeList = useMemo(
     () =>
-      todays.routes && inbox ? routeGroups(routeRows(todays.routes, inbox.conversations)) : [],
-    [todays.routes, inbox],
+      todays.read && inbox ? routeGroups(routeRows(todays.read.routes, inbox.conversations)) : [],
+    [todays.read, inbox],
   );
   // Slack sends those who connected or updated it from here back here, to finish.
   const returned = useSlackReturn(async (state, code) => {
@@ -392,7 +392,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
                   back={closed}
                   closed={closed}
                   openGroup={openGroup}
-                  todays={todays.routes}
+                  todays={todays.read}
                   open={go}
                 />
               ) : (

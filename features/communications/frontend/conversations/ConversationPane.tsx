@@ -5,7 +5,6 @@ import type {
   Elsewhere,
   Message,
   SentMessage,
-  TodaysRoutes,
   Writing,
 } from '../../api/index.js';
 import { markDone, retryText, sayTyping, sendMessage } from '../../api/client.js';
@@ -17,7 +16,7 @@ import { PaneHead } from '../shared/PaneHead.js';
 import { ThreadPending } from '../shared/ThreadFrame.js';
 import { usePanel } from '../shared/usePanel.js';
 import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
-import { driverToday } from '../todays-routes/todays-routes.js';
+import { driverToday, type TodaysRead } from '../todays-routes/todays-routes.js';
 import { Composer } from './Composer.js';
 import { ElsewhereChips } from './Elsewhere.js';
 import { elsewhereNow, targetOf } from './elsewhere.js';
@@ -86,7 +85,7 @@ export function ConversationPane({
   openGroup: (id: string) => void;
   /** Today's Routes as the page last read it, while it shows: today's drivers, whom a work phone
    * nobody held can be picked for, and their routes today. */
-  todays?: TodaysRoutes;
+  todays?: TodaysRead;
   /** Opens another conversation, as whom it's with's of another kind, or starts it. */
   open: (target: Target) => void;
 }) {
@@ -119,7 +118,7 @@ export function ConversationPane({
         : undefined,
     working,
     texting,
-    drivers: todays?.drivers ?? [],
+    drivers: todays?.routes.drivers ?? [],
     timeZone,
     show,
     follow,

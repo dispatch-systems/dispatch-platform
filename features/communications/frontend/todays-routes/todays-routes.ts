@@ -72,16 +72,23 @@ export function routeGroups(rows: readonly RouteRow[]): RouteGroup[] {
   ].filter((group) => group.rows.length > 0);
 }
 
+/** Today's Routes as the page last read it, and whether that read answers the latest change: one
+ * still to answer it, or that failed, leaves the read before, which is older. */
+export type TodaysRead = { routes: TodaysRoutes; current: boolean };
+
 /**
  * A driver's route today and the work phone they hold now, one source for all that shows them:
- * Today's Routes' latest read of them (`routes`), as it's read every minute while it shows, else
- * what their conversation's read said (`read`); none once Today's Routes says the day is over.
+ * Today's Routes' read of them (`todays`), as it's read every minute while it shows, while that
+ * read answers the latest change; none once it says the day is over; else what their
+ * conversation's read said (`read`), as an older read of Today's Routes may hold a phone since
+ * withdrawn.
  */
 export function driverToday(
   driverId: string | null,
   read: Today | null | undefined,
-  routes: TodaysRoutes | undefined,
+  todays: TodaysRead | undefined,
 ): Today | null {
-  if (routes && routes.day === null) return null;
-  return routes?.drivers.find((each) => each.driverId === driverId)?.today ?? read ?? null;
+  if (!todays?.current) return read ?? null;
+  if (todays.routes.day === null) return null;
+  return todays.routes.drivers.find((each) => each.driverId === driverId)?.today ?? read ?? null;
 }

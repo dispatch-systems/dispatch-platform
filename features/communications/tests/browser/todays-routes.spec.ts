@@ -159,16 +159,27 @@ test('a driver’s work conversation keeps what’s being written while they hol
   const profile = page.getByRole('dialog', { name: 'Fixture Driver' });
   await expect(profile.getByText('Work phone')).toBeVisible();
 
-  // The day ends: they hold no work phone, as the profile says too, left open.
+  // The day ends while Today's Routes can't be read: their conversation, read again, says they
+  // hold no work phone, as the profile left open does, though Today's Routes' last read, older,
+  // had one.
+  const routesRead = '**/api/dsp/communications/routes';
+  await page.route(routesRead, (route) =>
+    route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
+  );
   await northline.end();
   await expect(conversation.getByText('No work phone')).toBeVisible();
   await expect(profile.getByText('Work phone')).toHaveCount(0);
   await page.keyboard.press('Escape');
+  // Read again, as the page comes back into view, Today's Routes says the day is over.
+  await page.unroute(routesRead);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.getByText('No routes', { exact: true })).toBeVisible();
+  await expect(conversation.getByText('No work phone')).toBeVisible();
 
   // Today's Routes reads them holding their phone again, as the next day's first read would (a
   // day can't begin here without moving the DSP's zone, which opens its view afresh): what was
   // written is still there.
-  await page.route('**/api/dsp/communications/routes', (route) => route.fulfill({ json: routes }));
+  await page.route(routesRead, (route) => route.fulfill({ json: routes }));
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(box).toHaveValue('Gate code is 4471');
   await expect(picture).toBeVisible();
