@@ -12,6 +12,13 @@ import {
 // DSP keeps a zone of its own, chosen so its reading window is open whatever the hour the test
 // runs, with its day under way.
 
+/** The earliest the DSP's time may be as a test starts: the demo phone's text from 0190 is an
+ * hour old, so it's of today, the day being read, with half an hour to spare. */
+const EARLIEST = '01:30';
+/** The latest the DSP's time may be as a test starts: its reading window, open until 23:59, stays
+ * open for the test with an hour to spare. */
+const LATEST = '23:00';
+
 /** A picture of a single pixel, as a PNG. */
 const PIXEL = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
@@ -21,12 +28,11 @@ const PIXEL = Buffer.from(
 /** The time it is `hours` east of UTC, as Settings writes a time. */
 const timeAt = (hours: number) =>
   new Date(Date.now() + hours * 3_600_000).toISOString().slice(11, 16);
-/** Hours east of UTC where the day is under way, the text an hour old is of today, and the window
- * stays open for an hour yet. */
+/** Hours east of UTC where the time is from `EARLIEST` until `LATEST`. */
 function underWay() {
   for (let hours = -12; hours <= 14; hours++) {
     const time = timeAt(hours);
-    if (time >= '01:30' && time < '23:00') return hours;
+    if (time >= EARLIEST && time < LATEST) return hours;
   }
   throw new Error('No zone fits now');
 }
