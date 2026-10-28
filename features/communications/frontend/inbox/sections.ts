@@ -67,3 +67,13 @@ export const sectionOf = (conversation: Conversation): Section | undefined =>
   SECTIONS.find((each) => each.holds(conversation))?.id;
 /** The section the groups are listed in. */
 export const groupsSection = SECTIONS.find((each: Defined) => each.groups)!.id;
+/** The section a page opens on with none chosen: the first of those `offered` listing a
+ * conversation, or a group, in `inbox`; with none, the first offered. */
+export function openingSection(
+  offered: readonly Section[],
+  inbox: Pick<Communications, 'conversations' | 'groups'>,
+): Section | undefined {
+  const lists = ({ holds, groups }: Defined) =>
+    inbox.conversations.some(holds) || (groups && inbox.groups.length > 0);
+  return offered.find((each) => lists(sectionNamed(each))) ?? offered[0];
+}

@@ -21,6 +21,7 @@ import { dockAt, pageLook, Shown, useDisplay } from '../display/display.js';
 import { rows, waitingIn, type Row } from '../inbox/inbox.js';
 import {
   groupsSection,
+  openingSection,
   sectionNamed,
   sectionOf,
   SECTIONS,
@@ -56,10 +57,10 @@ import { ViewToggle, type RoutesView } from '../todays-routes/ViewToggle.js';
 // each of its phones offline. Those who manage the DSP's connections connect Slack here while it
 // has neither a workspace nor a phone, and, while Slack shows, update it while a workspace hasn't
 // approved what Communications uses.
-// The section shown, and Today's Routes' view, are remembered for each member, and the
-// conversation or group open is kept in the address (`?open=`, `?group=`): a link to one opens it,
-// in its section, the page open or not. It looks as the member chose in Settings' Message display,
-// which Display opens.
+// The section shown, and Today's Routes' view, are remembered for each member; until they choose
+// one, the page opens on the first section with conversations. The conversation or group open is
+// kept in the address (`?open=`, `?group=`): a link to one opens it, in its section, the page open
+// or not. It looks as the member chose in Settings' Message display, which Display opens.
 
 /** What the pane shows: a conversation or a group, by its ID, or a message being written to a
  * group. */
@@ -93,13 +94,22 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   const [chosenSection, chooseSection] = useRemembered('section', view.dsp.id, user);
   const [chosenView, chooseView] = useRemembered('routes-view', view.dsp.id, user);
   const { inbox, team, changed, error, refresh, show, showGroup, readOlder } = useInbox(chosen);
-  // The sections the DSP has, the one chosen shown, else the first; with none, Slack's, empty
-  // until it's connected.
+  // The sections the DSP has, the one chosen shown, else the one the page opened on; with none,
+  // Slack's, empty until it's connected.
   const texting = Boolean(inbox?.texting);
   const sections: Section[] = SECTIONS.filter((each) => inbox && each.offered(inbox)).map(
     (each) => each.id,
   );
-  const section = sections.find((each) => each === chosenSection) ?? sections[0] ?? 'slack';
+  // With none chosen, the page opens on the first section with conversations, as the DSP's list
+  // first reads, and stays there while it's open, though another gains some.
+  const openedOn = useRef<{ dsp: string; section?: Section }>(undefined);
+  if (inbox && openedOn.current?.dsp !== view.dsp.id)
+    openedOn.current = { dsp: view.dsp.id, section: openingSection(sections, inbox) };
+  const section =
+    sections.find((each) => each === chosenSection) ??
+    sections.find((each) => each === openedOn.current?.section) ??
+    sections[0] ??
+    'slack';
   const model = sectionNamed(section);
   const shows = VIEWS[section];
   const todays = useTodaysRoutes(section === 'routes', changed, inbox);

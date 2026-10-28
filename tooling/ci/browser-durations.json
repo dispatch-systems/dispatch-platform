@@ -71,7 +71,7 @@
   "features/communications/tests/browser/communications.spec.ts › with two workspaces, each by its logo or initials, the lists show the one chosen, still chosen later, and Contacts opens a conversation": 5.2,
   "features/communications/tests/browser/texting.spec.ts › with Slack needing an update, Messaging still works, and Update Slack covers Slack alone until closed": 4.3,
   "features/communications/tests/browser/texting.spec.ts › with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section, the board chosen or not": 5.8,
-  "features/communications/tests/browser/texting.spec.ts › with its phone and no Slack, Communications opens on Today’s Routes, with no routes before live route data reads today, beside Messaging: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked": 5.4,
+  "features/communications/tests/browser/texting.spec.ts › with its phone and no Slack, Communications opens on Messaging, where its texts wait, beside Today’s Routes, with no routes before live route data reads today: a number saved as a contact, asked before a name is left unsaved, answered by text with a picture, blocked into Contacts and unblocked": 5.4,
   "features/daily_performance/tests/browser/daily-performance.spec.ts › Daily Performance has its switch on the DSPs page, on for the seeded DSP": 3.0,
   "features/daily_performance/tests/browser/daily-performance.spec.ts › its settings are set with its collection on Collectors, where searching Settings finds them": 4.2,
   "features/documents/tests/browser/documents.spec.ts › a file only the member reaches comes in through Google's picker, signed in as them, in the tab": 6.5,

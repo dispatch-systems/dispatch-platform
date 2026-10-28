@@ -1,19 +1,29 @@
-import { test, expect, login, openDsp } from '../../../../core/shell/tests/support/fixtures.js';
+import type { Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  login,
+  openDsp,
+  type Dispatch,
+} from '../../../../core/shell/tests/support/fixtures.js';
 import { connect, event, fromSlack, install } from '../../../slack/tests/support/slack.js';
 
 // The seeded DSPs have every feature switched on, and their owner holds every permission. Fixture
 // mode's Slack sends the browser straight back from installing, to the first of its workspaces
 // no DSP has: Operations, where Jordan Ellis and Morgan Lane are members. These are Slack's, so
-// each is at Summit Delivery, which has no phone and no texts, its Slack section chosen, as its
-// owner would have it (texting.spec.ts has Northline, which texts).
-test.beforeEach(async ({ page, dispatch }) => {
+// each is at Summit Delivery, which has no phone and no texts (texting.spec.ts has Northline,
+// which texts). The page opens on the first section with conversations, Slack once one is there.
+
+/** Slack's section chosen in this browser, as Summit's owner would have it, for a test whose page
+ * opens before Slack has a conversation to open on. */
+async function slackChosen(page: Page, dispatch: Dispatch) {
   const owner = await dispatch.client();
   const summit = (owner.session.dsps as { id: string; name: string }[]).find(
     (dsp) => dsp.name === 'Summit Delivery',
   )!;
   const chosen = `dispatch-communications-section:${summit.id}:${owner.session.user.id}`;
   await page.addInitScript((key) => localStorage.setItem(key, 'slack'), chosen);
-});
+}
 
 test('Communications is on from the start in a workspace just connected', async ({ page }) => {
   await login(page);
@@ -46,6 +56,7 @@ test('an owner connects Slack from Communications, answers a member as they writ
   page,
   dispatch,
 }) => {
+  await slackChosen(page, dispatch);
   await login(page);
   await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
@@ -185,6 +196,7 @@ test('Slack needing an update covers its section alone, the sidebar still going 
     200,
   );
 
+  await slackChosen(page, dispatch);
   await login(page);
   await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
@@ -242,6 +254,13 @@ test('with two workspaces, each by its logo or initials, the lists show the one 
   await login(page);
   await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();
+  // Nothing chosen in this browser, it opens on Slack, the first section with conversations,
+  // though Today's Routes and Messaging come before it.
+  const sections = page.getByRole('tablist', { name: 'Sections' });
+  await expect(sections.getByRole('tab', { name: /Slack/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   const list = page.getByRole('region', { name: 'Conversations' });
   const jordan = list.getByRole('listitem').filter({ hasText: 'Jordan Ellis' });
   const cameron = list.getByRole('listitem').filter({ hasText: 'Cameron Hayes' });
@@ -296,6 +315,7 @@ test('an owner messages a group from New message, its answers come back together
   await owner.select(summit.id);
   expect((await connect(owner, 'T0FIXTURE2')).status).toBe(200);
 
+  await slackChosen(page, dispatch);
   await login(page);
   await openDsp(page, 'Summit Delivery');
   await page.getByRole('link', { name: 'Communications' }).click();

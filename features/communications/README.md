@@ -70,8 +70,9 @@ and every other number in Messaging.
   while the DSP has live route data ([Today's Routes](#todays-routes)); **Messaging**, the numbers
   that text the DSP's phones, always, empty until a phone is paired and texted; and **Slack**, its
   workspaces' direct messages and the groups it messaged, while it has a workspace. The one shown
-  is remembered in the browser for each member at each DSP, the first to start; a conversation or
-  group opened, as from a link, shows its section.
+  is remembered in the browser for each member at each DSP; until one is chosen, the page opens
+  on the first that lists a conversation as it first reads, else the first (Today's Routes lists
+  only those waiting); a conversation or group opened, as from a link, shows its section.
 - **Phones offline:** in the heading, a chip for each of the DSP's dispatch phones that isn't
   online, with how long since it was last seen, by its name when the DSP has several (Phone
   offline · 14m), as the overview and each update bring them.
