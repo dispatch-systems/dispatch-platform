@@ -1,13 +1,15 @@
 //! What texting keeps, as its storage reads and writes it: each conversation by text, each text
 //! filed in one with its pictures and how one Dispatch sent went, and where a text is filed
 //! (`Filed`).
-use crate::backend::model::{ConversationKind, ConversationState, Direction};
+use crate::backend::{
+    model::{ConversationKind, ConversationState, Direction},
+    phone::model::File,
+};
 use dispatch_core::{
     Result,
     db::{FromRow, Row},
     text_enum,
 };
-use serde::{Deserialize, Serialize};
 
 text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -52,12 +54,13 @@ impl FromRow for TextConversation {
     }
 }
 
-/// A text, as kept.
+/// A text, as kept: the phone side's row of it, with what filing keeps beside it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Text {
     /// The phone side's ID of it.
     pub id: String,
-    pub conversation: String,
+    /// The conversation it's filed in: none while it waits to be (`filing`).
+    pub conversation: Option<String>,
     /// The DSP's phone it went through.
     pub phone: String,
     pub direction: Direction,
@@ -71,15 +74,16 @@ pub struct Text {
     /// How one Dispatch sent went, and why it failed.
     pub status: Option<TextStatus>,
     pub error: Option<String>,
-    pub files: Vec<TextFile>,
+    /// Its pictures and files, as the phone side keeps them.
+    pub files: Vec<File>,
 }
+/// A text from its row, its files read after (`files` empty).
 impl FromRow for Text {
     fn from_row(row: &Row<'_>) -> Result<Self> {
-        let files: String = row.get("files")?;
         Ok(Self {
             id: row.get("id")?,
             conversation: row.get("conversation_id")?,
-            phone: row.get("phone")?,
+            phone: row.get("device_id")?,
             direction: row.get("direction")?,
             number: row.get("number")?,
             body: row.get("body")?,
@@ -88,18 +92,9 @@ impl FromRow for Text {
             sender_name: row.get("sender_name")?,
             status: row.get("status")?,
             error: row.get("error")?,
-            files: serde_json::from_str(&files)?,
+            files: Vec::new(),
         })
     }
-}
-/// A text's picture or file, as the phone side has it: whether its bytes are kept yet.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TextFile {
-    pub id: String,
-    pub name: String,
-    pub mime: String,
-    pub size: i64,
-    pub kept: bool,
 }
 
 /// Where a text is filed: under the driver whose latest work phone it was the day it was written,
@@ -109,24 +104,4 @@ pub enum Filed {
     Driver { source: String, id: String },
     WorkPhone(String),
     Number(String),
-}
-
-/// A text to keep, as the phone side has it now, and where it's filed, if it's new.
-pub struct Incoming {
-    pub id: String,
-    pub phone: String,
-    pub direction: Direction,
-    pub number: String,
-    pub body: String,
-    pub at: i64,
-    /// Who at the DSP sent it, for one Dispatch sent, and the name they're shown by as it's
-    /// first kept.
-    pub sent_by: Option<String>,
-    pub sender_name: Option<String>,
-    pub status: Option<TextStatus>,
-    pub error: Option<String>,
-    pub files: Vec<TextFile>,
-    /// Where it's filed, for one new to Communications: none for one kept already, which stays
-    /// where it is until its day's texts are filed again.
-    pub filed: Option<Filed>,
 }

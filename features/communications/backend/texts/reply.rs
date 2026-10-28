@@ -1,14 +1,14 @@
 //! Answering by text, with pictures, and sending again one that failed. An answer goes as
 //! written, with nothing added, so the other party sees only the DSP's number: from the phone that
-//! last texted that number, else the one seen last; and is kept as filing reads it back, with how
-//! it went, under the full name of whoever wrote it, as a Slack answer is (`sent_by`).
+//! last texted that number, else the one seen last; and is filed as it's queued, with how it went,
+//! under the full name of whoever wrote it, as a Slack answer is (`sent_by`).
 //! A number's conversation, and a work phone's nobody had, answer their number; a driver's, the
 //! work phone they have now, as live route data says (`LiveDay::phones`), and none while they have
 //! none. Its pictures
 //! are kept by the phone side as they're added, its adder's alone until they go with it, and none
 //! of one kept should the adder's access end while its bytes come. One that failed is sent again
-//! with Retry. Either is queued in the write that checks where it goes and that the member may
-//! still send it, so no handoff, stop or change of their access comes between.
+//! with Retry. Either is queued, and filed, in the write that checks where it goes and that the
+//! member may still send it, so no handoff, stop or change of their access comes between.
 use super::{
     filing, live_day::LiveDay, numbers::work_number, reading::message, storage::TextStore,
 };
@@ -47,25 +47,24 @@ pub async fn send(
 ) -> Result<Message> {
     let body = checked(written, photos, compose::TEXT)?.to_owned();
     let (asked, at, files) = (c.clone(), id.to_owned(), photos.to_vec());
-    let sent = state
-        .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            let c = access.revalidate(db, &asked)?;
-            let outgoing = Outgoing {
-                phone: None,
-                to: recipient(db, &c.dsp.id, &at)?,
-                body,
-                files,
-                by: c.auth.user.id.clone(),
-            };
-            outbox::send(db, &c.dsp.id, &outgoing, now())
-        })
-        .await?;
+    let sent = filing::changing(state, &c.dsp.id, move |db| {
+        let c = access.revalidate(db, &asked)?;
+        let outgoing = Outgoing {
+            phone: None,
+            to: recipient(db, &c.dsp.id, &at)?,
+            body,
+            files,
+            by: c.auth.user.id.clone(),
+        };
+        let sent = outbox::send(db, &c.dsp.id, &outgoing, now())?.id;
+        Ok((sent.clone(), vec![sent]))
+    })
+    .await?;
     phone::live::queued(state, &c.dsp.id);
     live::stopped(state, &c.dsp.id, id, &c.auth.user.id);
-    filing::read_on(state, &c.dsp.id).await?;
     let (shared, dsp) = (state.clone(), c.dsp.id.clone());
     state
-        .read(move |db| message(db, &shared, &dsp, &sent.id))
+        .read(move |db| message(db, &shared, &dsp, &sent))
         .await
 }
 
@@ -97,7 +96,7 @@ fn recipient(db: &Store, dsp: &str, id: &str) -> Result<String> {
 fn goes_now(db: &Store, dsp: &str, id: &str, text: &str) -> Result<()> {
     let text = db
         .communications_text(dsp, text)?
-        .filter(|text| text.conversation == id)
+        .filter(|text| text.conversation.as_deref() == Some(id))
         .ok_or_else(|| Error::new("communications_message_not_found", 404))?;
     ensure(
         recipient(db, dsp, id)? == text.number,
@@ -117,18 +116,17 @@ pub async fn retry(
     text: &str,
 ) -> Result<Message> {
     let (asked, at, wanted) = (c.clone(), id.to_owned(), text.to_owned());
-    let sent = state
-        .run_scoped(c.dsp.id.clone(), DOMAIN, move |db| {
-            let c = access.revalidate(db, &asked)?;
-            goes_now(db, &c.dsp.id, &at, &wanted)?;
-            outbox::retry(db, &c.dsp.id, &wanted, now())
-        })
-        .await?;
+    let sent = filing::changing(state, &c.dsp.id, move |db| {
+        let c = access.revalidate(db, &asked)?;
+        goes_now(db, &c.dsp.id, &at, &wanted)?;
+        let sent = outbox::retry(db, &c.dsp.id, &wanted, now())?.id;
+        Ok((sent.clone(), vec![sent]))
+    })
+    .await?;
     phone::live::queued(state, &c.dsp.id);
-    filing::read_on(state, &c.dsp.id).await?;
     let (shared, dsp) = (state.clone(), c.dsp.id.clone());
     state
-        .read(move |db| message(db, &shared, &dsp, &sent.id))
+        .read(move |db| message(db, &shared, &dsp, &sent))
         .await
 }
 

@@ -1,6 +1,6 @@
 //! What reaches a phone as it happens. A phone waits on its outbox, a long poll, which answers once
-//! Dispatch has a text for it, or twenty seconds pass. Filing hears of the texts the phone side
-//! keeps from whoever kept them, once they're kept (`texts::filing::told`).
+//! Dispatch has a text for it, or twenty seconds pass. The page hears of the texts the phone side
+//! keeps from filing, once it's filed them (`texts::filing::changing`).
 use dispatch_core::{State, server::live::Topic};
 
 /// The phones' live channel: a DSP's phones waiting on their outbox wake when it changes. Apart

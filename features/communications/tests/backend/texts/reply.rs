@@ -30,7 +30,8 @@ async fn an_answer_that_failed_leaves_it_waiting_and_retry_sends_it_again() {
     let conversation = state
         .read(move |db| Ok(db.communications_text(&at, &id)?.unwrap().conversation))
         .await
-        .unwrap();
+        .unwrap()
+        .expect("filed");
     let c = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let state_of = || {
         let (shared, at, id) = (state.clone(), dsp.clone(), conversation.clone());
@@ -135,7 +136,7 @@ async fn retry_refuses_a_drivers_answer_once_the_work_phone_it_went_to_is_not_th
         .unwrap();
     assert_eq!(
         (kept.conversation, kept.status),
-        (conversation.clone(), Some(TextStatus::Failed)),
+        (Some(conversation.clone()), Some(TextStatus::Failed)),
         "still Avery's, and never sent again"
     );
 }

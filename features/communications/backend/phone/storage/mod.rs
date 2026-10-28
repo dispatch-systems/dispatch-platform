@@ -1,8 +1,9 @@
 //! The phone side's storage, in each DSP's own database, by concern: its phones and the code that
 //! pairs the next one (`devices`), every text they relay and how Dispatch's went (`texts`), and the
-//! texts' pictures and files (`files`). Only this module writes SQL against its tables, the
-//! `phones_` ones, which Communications adopted from Phones as they were (its migrations 7
-//! and 8).
+//! texts' pictures and files (`files`). Its tables are the `phones_` ones, which Communications
+//! adopted from Phones as they were (its migrations 7 and 8). Only this module writes SQL against
+//! them but `texts::storage`, which keeps the conversation each text is filed in, and what filing
+//! keeps beside it, on the text's own row (migration 9), and reads the rest of it.
 mod devices;
 mod files;
 mod texts;

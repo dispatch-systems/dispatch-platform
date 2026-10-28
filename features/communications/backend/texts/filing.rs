@@ -1,7 +1,9 @@
 //! Filing the texts the DSP's dispatch phones relay, as the phone side keeps them (`phone`): each
-//! in its conversation, read on from the last change filed whenever the phone side says texts
-//! changed (`told`), once it's kept them, and every minute in case that failed, or Communications
-//! came on after they came; and today's filed again every minute too, as its route data may have
+//! in its conversation, on the text's own row, in the same write and transaction as the phone side
+//! keeps or changes it (`changing`), so a text and its conversation never disagree; the pages
+//! waiting on its conversation hear once both are committed. A text that can't be placed yet, as
+//! reading where it belongs failed, stays kept, waiting to be filed, and every minute's upkeep
+//! places those waiting (`unfiled`); it files today's again too, as its route data may have
 //! changed unheard (`reconcile`).
 //!
 //! A work phone passes from driver to driver, so a text with one is filed by the day it was
@@ -23,22 +25,12 @@
 //! driver's, whose phone may have changed.
 use super::{
     began,
-    model::{Filed, Incoming, TextFile, TextStatus},
+    model::{Filed, Text},
     numbers::ten_digits,
     storage::{PickStore, TextStore},
     zone,
 };
-use crate::backend::{
-    live,
-    model::Direction,
-    phone::{
-        self,
-        model::{Origin, Status, Text},
-        storage::TextStore as _,
-    },
-    sender,
-    storage::DOMAIN,
-};
+use crate::backend::{live, phone::storage::MOST_TEXTS, sender, storage::DOMAIN};
 use chrono::NaiveDate;
 use chrono_tz::Tz;
 use dispatch_core::{
@@ -61,19 +53,36 @@ use std::{
 /// looked for, further than a day can be long.
 const TWO_DAYS_MS: i64 = 2 * 24 * 60 * 60 * 1000;
 
-/// Every minute, each DSP's texts changed since they were last filed, and today's filed again
-/// where they belong now.
+/// Every minute, each DSP's texts waiting to be filed, and today's filed again where they belong
+/// now.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60),
     run: pass,
 };
 
-/// The phone side says the DSP's texts changed, once it's kept them: files them. A failure is
-/// logged, and the minute's catch-up files them instead.
-pub async fn told(state: &Arc<State>, dsp: &str) {
-    if let Err(error) = read_on(state, dsp).await {
-        failed("communications_texts_failed", &error);
+/// Makes the phone side's change `change` to the DSP's texts, and files the texts it kept or
+/// changed, in one write and one transaction, so neither is kept without the other: a text that
+/// can't be placed yet is kept waiting to be filed. Once both are committed, wakes the pages waiting
+/// on a conversation that changed. `change` answers with what the caller is answered with, and the
+/// IDs of the texts it kept or changed.
+pub async fn changing<T: Send + 'static>(
+    state: &Arc<State>,
+    dsp: &str,
+    change: impl FnOnce(&Store) -> Result<(T, Vec<String>)> + Send + 'static,
+) -> Result<T> {
+    let at = dsp.to_owned();
+    let (answer, changed) = state
+        .run_scoped(dsp, DOMAIN, move |db| {
+            db.dsp(&at)?.transaction(|| {
+                let (answer, texts) = change(db)?;
+                Ok((answer, file(db, &at, &texts)?))
+            })
+        })
+        .await?;
+    if changed {
+        live::changed(state, dsp);
     }
+    Ok(answer)
 }
 /// Routes says the DSP's route data of a day changed: files that day's texts again.
 pub fn refile(state: Arc<State>, dsp: String, changed: RouteDataChanged) -> Upkeep {
@@ -100,7 +109,7 @@ fn pass(state: Arc<State>, _: bool) -> Upkeep {
         match on {
             Ok(dsps) => {
                 for dsp in dsps {
-                    if let Err(error) = read_on(&state, &dsp).await {
+                    if let Err(error) = unfiled(&state, &dsp).await {
                         failed("communications_texts_failed", &error);
                     }
                     if let Err(error) = reconcile(&state, &dsp).await {
@@ -117,44 +126,60 @@ fn failed(event: &'static str, error: &Error) {
     observability::event("error", event, json!({"error": error.code}));
 }
 
-/// Files the DSP's texts changed since the last filed, a page at a time while the phone side says
-/// more remain, and wakes the pages waiting on its conversations once any changed.
-pub async fn read_on(state: &Arc<State>, dsp: &str) -> Result<()> {
+/// Files the DSP's texts waiting to be, oldest first, a page in each write, then wakes the pages
+/// waiting on what changed: one that can't be placed yet waits for the next pass, after the rest.
+pub async fn unfiled(state: &Arc<State>, dsp: &str) -> Result<()> {
+    let mut after: Option<(i64, String)> = None;
     loop {
-        let at = dsp.to_owned();
-        let (changed, more) = state
-            .run_scoped(dsp, DOMAIN, move |db| {
-                let after = db.communications_texts_read_to(&at)?;
-                let changes = db.phones_changes(&at, after)?;
-                if changes.next == after {
-                    return Ok((false, false));
-                }
-                let mut filer = Filer::new(db, &at)?;
-                let senders = senders(db, &changes.texts)?;
-                let ids: Vec<String> = changes.texts.iter().map(|text| text.id.clone()).collect();
-                let kept_already = db.communications_texts_kept(&at, &ids)?;
-                let incoming = changes
-                    .texts
-                    .iter()
-                    .map(|text| {
-                        // Only a text new to Communications is placed: one kept already stays
-                        // where it is until its day's texts are filed again.
-                        let filed = (!kept_already.contains(&text.id))
-                            .then(|| filer.placed(&text.number, text.at))
-                            .transpose()?;
-                        let sender = text.sent_by.as_ref().and_then(|by| senders.get(by));
-                        Ok(kept(text, filed, sender.cloned()))
-                    })
-                    .collect::<Result<Vec<_>>>()?;
-                let touched = db.file_communications_texts(&at, &incoming, changes.next)?;
-                Ok((!touched.is_empty(), changes.more))
-            })
-            .await?;
-        if changed {
-            live::changed(state, dsp);
-        }
+        let (at, from) = (dsp.to_owned(), after.take());
+        let (last, more) = changing(state, dsp, move |db| {
+            let from = from.as_ref().map(|(at, id)| (*at, id.as_str()));
+            let page = db.unfiled_communications_texts(&at, from, MOST_TEXTS)?;
+            let last = page.last().map(|text| (text.at, text.id.clone()));
+            let ids = page.into_iter().map(|text| text.id).collect::<Vec<_>>();
+            Ok(((last, ids.len() == MOST_TEXTS), ids))
+        })
+        .await?;
         if !more {
             return Ok(());
+        }
+        after = last;
+    }
+}
+
+/// Files the texts `ids`, which the phone side kept or changed in this write: places each waiting
+/// to be, then keeps whether the conversation each is filed in waits. Whether a conversation
+/// changed.
+fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<bool> {
+    if ids.is_empty() {
+        return Ok(false);
+    }
+    let waiting: Vec<Text> = db
+        .communications_texts_of(dsp, ids)?
+        .into_iter()
+        .filter(|text| text.conversation.is_none())
+        .collect();
+    if !waiting.is_empty() {
+        place(db, dsp, &waiting);
+    }
+    Ok(!db.settle_communications_texts(dsp, ids)?.is_empty())
+}
+/// Places each of `texts`, waiting to be filed, where it belongs, under the name its sender, if
+/// someone at the DSP, is shown by as it's placed: each on its own, so one that can't be yet, as
+/// reading what says where failed, is logged and waits for the next upkeep, the rest placed.
+fn place(db: &Store, dsp: &str, texts: &[Text]) {
+    let mut filer = match Filer::new(db, dsp) {
+        Ok(filer) => filer,
+        Err(error) => return failed("communications_texts_failed", &error),
+    };
+    let mut senders = HashMap::new();
+    for text in texts {
+        let placed = filer.placed(&text.number, text.at).and_then(|filed| {
+            let sender = sender_name(db, &mut senders, text.sent_by.as_deref())?;
+            db.place_communications_text(dsp, &text.id, &filed, sender.as_deref())
+        });
+        if let Err(error) = placed {
+            failed("communications_texts_failed", &error);
         }
     }
 }
@@ -229,58 +254,21 @@ pub fn belongs(db: &Store, dsp: &str, number: &str) -> Result<Filed> {
     Filer::new(db, dsp)?.placed(number, now())
 }
 
-/// The name each one at the DSP who sent a text of `texts` is shown by, by their account: their
-/// full name as they sent it, as an answer from the page goes under.
-fn senders(db: &Store, texts: &[Text]) -> Result<HashMap<String, String>> {
-    let mut senders = HashMap::new();
-    for by in texts.iter().filter_map(|text| text.sent_by.as_ref()) {
-        if !senders.contains_key(by)
-            && let Some(name) = db.platform_user_name(by)?
-        {
-            senders.insert(by.clone(), sender::full(&name));
-        }
+/// The name the one at the DSP who sent a text, `by`, is shown by, by their account: their full
+/// name as they sent it, as an answer from the page goes under. Each read once, into `senders`.
+fn sender_name(
+    db: &Store,
+    senders: &mut HashMap<String, Option<String>>,
+    by: Option<&str>,
+) -> Result<Option<String>> {
+    let Some(by) = by else {
+        return Ok(None);
+    };
+    if !senders.contains_key(by) {
+        let name = db.platform_user_name(by)?.map(|name| sender::full(&name));
+        senders.insert(by.to_owned(), name);
     }
-    Ok(senders)
-}
-
-/// `text` as Communications keeps it, filed as `filed` if it's new, sent by someone at the DSP
-/// shown by `sender_name`.
-fn kept(text: &Text, filed: Option<Filed>, sender_name: Option<String>) -> Incoming {
-    Incoming {
-        id: text.id.clone(),
-        phone: text.phone.clone(),
-        direction: match text.direction {
-            phone::model::Direction::In => Direction::In,
-            phone::model::Direction::Out => Direction::Out,
-        },
-        number: text.number.clone(),
-        body: text.body.clone(),
-        at: text.at,
-        sent_by: text.sent_by.clone(),
-        sender_name,
-        status: (text.origin == Origin::Dispatch)
-            .then_some(text.status)
-            .flatten()
-            .map(|status| match status {
-                Status::Waiting => TextStatus::Waiting,
-                Status::Sent => TextStatus::Sent,
-                Status::Delivered => TextStatus::Delivered,
-                Status::Failed => TextStatus::Failed,
-            }),
-        error: text.error.clone(),
-        files: text
-            .files
-            .iter()
-            .map(|file| TextFile {
-                id: file.id.clone(),
-                name: file.name.clone(),
-                mime: file.mime.clone(),
-                size: file.size,
-                kept: file.kept,
-            })
-            .collect(),
-        filed,
-    }
+    Ok(senders[by].clone())
 }
 
 /// Where the DSP's texts are filed, by each driver's latest work phone on the days they were

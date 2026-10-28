@@ -85,17 +85,22 @@ pub async fn receive(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<Arr
 }
 /// Keeps `arrived` as the bytes of the file `id` of a text the phone `device` reported, in place of
 /// any before them, its size what arrived: refused as `phones_file_not_found` for one of no text
-/// of its own, its bytes let go. Inside the write that authorized the phone.
+/// of its own, its bytes let go. Inside the write that authorized the phone. The text it's of.
 pub fn keep_reported(
     db: &Store,
     dsp: &str,
     device: &str,
     id: &str,
     arrived: &Arrived,
-) -> Result<()> {
+) -> Result<String> {
     arrived.place(db, dsp)?;
     match db.phones_file_arrived(dsp, device, id, &arrived.sha256, arrived.size) {
-        Ok(before) => before.map_or(Ok(()), |before| forget(db, dsp, &before)),
+        Ok((text, before)) => {
+            if let Some(before) = before {
+                forget(db, dsp, &before)?;
+            }
+            Ok(text)
+        }
         Err(error) => {
             forget(db, dsp, &arrived.sha256)?;
             Err(error)

@@ -1,7 +1,9 @@
 //! The phone side: the DSP's dispatch phones, Android phones running Dispatch's app, each relaying
 //! the texts and pictures its number receives and sends, and sending Dispatch's from that number.
 //! It knows phones, the texts they relay, each attempt at Dispatch's and how it went, and their
-//! bytes; never who a text is from or which conversation it's filed in, which is `texts`'.
+//! bytes; never who a text is from or which conversation it's filed in, which `texts` keeps on the
+//! same row of each text. Whoever changes a text here files it in the same write
+//! (`texts::filing::changing`).
 //!
 //! - `model`: what it speaks in: phones, texts, their files, and what one text may carry;
 //!   `numbers`, how it writes a number.

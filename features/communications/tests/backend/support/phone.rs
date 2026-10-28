@@ -1,13 +1,12 @@
 //! The DSP's dispatch phone, as a test says: Dispatch, (206) 555-0100, paired to the DSP each test
 //! starts with. It receives a text and says how one Dispatch sent went, as its app does through
-//! the phones' address, each kept by the phone side and then told to filing; and what Dispatch
-//! queued for it is read back as the phone side keeps it.
+//! the phones' address, each kept by the phone side and filed in the same write; and what Dispatch
+//! queued for it is read from its outbox, as its app reads it.
 use crate::backend::{
     phone::{
-        model::{Direction, Origin, Status},
+        model::{Direction, Status},
         storage::{DeviceStore, Pairing, Reported, StatusReport, TextStore},
     },
-    storage::DOMAIN,
     texts::filing,
 };
 use dispatch_core::{
@@ -56,52 +55,48 @@ pub async fn texted(state: &Arc<State>, dsp: &str, number: &str, body: &str, at:
         files: Vec::new(),
     };
     let at_dsp = dsp.to_owned();
-    let kept = state
-        .run_scoped(dsp, DOMAIN, move |db| {
-            db.phones_report(&at_dsp, &phone(db, &at_dsp)?, vec![text])
-        })
-        .await
-        .unwrap();
-    filing::told(state, dsp).await;
-    kept[0].id.clone()
+    filing::changing(state, dsp, move |db| {
+        let kept = db.phones_report(&at_dsp, &phone(db, &at_dsp)?, vec![text])?;
+        let id = kept[0].id.clone();
+        Ok((id.clone(), vec![id]))
+    })
+    .await
+    .unwrap()
 }
 /// The DSP's phone says how the text `id` Dispatch sent went, `status`, as its app does: of the
 /// attempt its outbox gave it, while it waits there; a delivery report counts from any.
 pub async fn reported(state: &Arc<State>, dsp: &str, id: &str, status: Status) {
     let (at_dsp, id) = (dsp.to_owned(), id.to_owned());
-    state
-        .run_scoped(dsp, DOMAIN, move |db| {
-            let phone = phone(db, &at_dsp)?;
-            let attempt = db
-                .phones_outbox(&at_dsp, &phone)?
-                .into_iter()
-                .find(|(text, _)| text.id == id)
-                .map_or(0, |(_, attempt)| attempt);
-            let report = StatusReport {
-                id,
-                attempt,
-                status,
-                at: now(),
-                error: (status == Status::Failed).then(|| "No service".to_owned()),
-            };
-            db.phones_status(&at_dsp, &phone, &report)
-        })
-        .await
-        .unwrap();
-    filing::told(state, dsp).await;
+    filing::changing(state, dsp, move |db| {
+        let phone = phone(db, &at_dsp)?;
+        let attempt = db
+            .phones_outbox(&at_dsp, &phone)?
+            .into_iter()
+            .find(|(text, _)| text.id == id)
+            .map_or(0, |(_, attempt)| attempt);
+        let report = StatusReport {
+            id: id.clone(),
+            attempt,
+            status,
+            at: now(),
+            error: (status == Status::Failed).then(|| "No service".to_owned()),
+        };
+        let moved = db.phones_status(&at_dsp, &phone, &report)?;
+        Ok(((), moved.then_some(id).into_iter().collect()))
+    })
+    .await
+    .unwrap();
 }
-/// What Dispatch queued for the DSP's phones, by its latest change: each text's number, body and
-/// who sent it.
+/// What waits in the DSP's phone's outbox, as its app reads it: each text's number, body and who
+/// sent it, oldest first.
 pub async fn sent(state: &Arc<State>, dsp: &str) -> Vec<(String, String, String)> {
     let dsp = dsp.to_owned();
-    let changes = state
-        .read(move |db| db.phones_changes(&dsp, 0))
+    let waiting = state
+        .read(move |db| db.phones_outbox(&dsp, &phone(db, &dsp)?))
         .await
         .unwrap();
-    changes
-        .texts
+    waiting
         .into_iter()
-        .filter(|text| text.origin == Origin::Dispatch)
-        .map(|text| (text.number, text.body, text.sent_by.unwrap_or_default()))
+        .map(|(text, _)| (text.number, text.body, text.sent_by.unwrap_or_default()))
         .collect()
 }

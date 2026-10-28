@@ -157,12 +157,12 @@ pub fn waiting(db: &Store, state: &State, dsp: &str) -> Result<CommunicationsWai
         let mut written: HashMap<String, Message> = db
             .latest_communications_texts_in(dsp, &ids)?
             .into_iter()
-            .map(|text| {
-                let of = text.conversation.clone();
-                (
+            .filter_map(|text| {
+                let of = text.conversation.clone()?;
+                Some((
                     of,
                     reading::messages(&people, &numbers, vec![text]).remove(0),
-                )
+                ))
             })
             .collect();
         for listed in reading::conversations(db, &people, &numbers, dsp, texted)? {

@@ -4,10 +4,11 @@
 //! (`directory`, always), their routes and each saved day's work phones (`routes`, `driver_routes`
 //! while `driving` is on), today's as read live (`live`, `live_route_data` while `live` is on) and
 //! the DSP's vans (`fleet`, `amazon_fleet` while `fleet` is on). Each answers what a test says of
-//! its DSP, with `know`, `phoned` and `routed`, and nothing else. A test starts with a platform with one
-//! DSP, every feature on for it, and its dispatch phone paired (`phone`), which `texted` and
-//! `reported` speak for; or with one of its fixture workspaces connected too, its members read:
-//! the workspace's admin has approved all the app asks for.
+//! its DSP, with `know`, `phoned` and `routed`, and nothing else; Routes' fails to read a day while
+//! a test says it does (`failing`). A test starts with a platform with one DSP, every feature on
+//! for it, and its dispatch phone paired (`phone`), which `texted` and `reported` speak for; or
+//! with one of its fixture workspaces connected too, its members read: the workspace's admin has
+//! approved all the app asks for.
 mod directory;
 mod fleet;
 mod live;
@@ -16,6 +17,7 @@ mod routes;
 
 pub use live::{read_live, routed};
 pub use phone::{reported, sent, texted};
+pub use routes::failing;
 
 use crate::api::types::Message;
 use crate::backend::{
@@ -99,8 +101,9 @@ pub async fn filed(state: &Arc<State>, dsp: &str, id: &str) -> TextConversation 
     state
         .read(move |db| {
             let text = db.communications_text(&dsp, &id)?.unwrap();
+            let conversation = text.conversation.expect("filed");
             Ok(db
-                .communications_text_conversation(&dsp, &text.conversation)?
+                .communications_text_conversation(&dsp, &conversation)?
                 .unwrap())
         })
         .await

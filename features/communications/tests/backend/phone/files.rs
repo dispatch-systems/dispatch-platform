@@ -41,19 +41,20 @@ async fn a_reported_files_size_is_what_its_bytes_are() {
     let state = State::new(config).unwrap();
     let arrived = receive(&state, &dsp, upload(b"door").await).await.unwrap();
     let (at, file) = (dsp.clone(), kept[0].files[0].clone());
-    state
+    let of = state
         .run_scoped(dsp.clone(), DOMAIN, move |db| {
             keep_reported(db, &at, &phone.id, &file, &arrived)
         })
         .await
         .unwrap();
-    let at = dsp.clone();
-    let changes = state
-        .read(move |db| db.phones_changes(&at, 0))
+    assert_eq!(of, kept[0].id, "the text it's of, for filing");
+    let (at, file) = (dsp.clone(), kept[0].files[0].clone());
+    let stored = state
+        .read(move |db| db.phones_file(&at, &file))
         .await
+        .unwrap()
         .unwrap();
-    let file = &changes.texts[0].files[0];
-    assert_eq!((file.size, file.kept), (4, true));
+    assert_eq!((stored.file.size, stored.file.kept), (4, true));
 }
 
 #[tokio::test]

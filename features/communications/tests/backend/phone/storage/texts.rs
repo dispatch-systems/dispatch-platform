@@ -1,5 +1,5 @@
 //! The texts the DSP's phones relay, against a real store in a temporary directory: the texts a
-//! phone reports, how Dispatch's texts go, and the order readers find changes in.
+//! phone reports, each kept once, and how Dispatch's texts go.
 use super::*;
 use crate::backend::phone::{
     model::{Direction, Origin, Status},
@@ -32,21 +32,24 @@ fn a_text_reported_twice_is_kept_once() {
     assert_eq!(again[0].id, first[0].id);
     assert_eq!(again[0].files, first[0].files);
     assert_eq!(first[0].files.len(), 2);
-    let changes = db.phones_changes(&dsp, 0).unwrap();
-    let ids: Vec<_> = changes.texts.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(ids, [first[0].id.as_str(), again[1].id.as_str()]);
-    let text = &changes.texts[0];
+    // Only what a report keeps anew is new, for filing.
+    let new: Vec<_> = first.iter().chain(&again).map(|kept| kept.new).collect();
+    assert_eq!(new, [true, false, true]);
+    let text = db.phones_text(&dsp, &first[0].id).unwrap().unwrap();
     assert_eq!(
         (text.direction, text.origin),
         (Direction::In, Origin::Phone)
     );
     assert!(text.files.iter().all(|file| !file.kept), "bytes come after");
-    // Its picture's bytes arrive: the text changes again, after the other.
-    db.phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha", 100)
+    // Its picture's bytes arrive: the text changes again, after the other, which arriving answers.
+    let (of, _) = db
+        .phones_file_arrived(&dsp, &phone.id, &first[0].files[0], "sha", 100)
         .unwrap();
-    let later = db.phones_changes(&dsp, changes.next).unwrap();
-    assert_eq!(later.texts.len(), 1);
-    assert!(later.texts[0].files[0].kept);
+    assert_eq!(of, first[0].id);
+    let later = db.phones_text(&dsp, &first[0].id).unwrap().unwrap();
+    let other = db.phones_text(&dsp, &again[1].id).unwrap().unwrap();
+    assert!(later.files[0].kept);
+    assert!(later.change > other.change);
     // Another phone can't send bytes for it.
     db.phones_new_pairing(&dsp, &testing::a_user(&db), "other", 7_000)
         .unwrap();
@@ -208,37 +211,4 @@ fn a_text_goes_from_the_phone_that_last_texted_its_number() {
         12_000,
     );
     assert_eq!(twice.unwrap_err().code.as_str(), "phones_file_not_found");
-}
-
-#[test]
-fn readers_page_through_every_change_in_order() {
-    let (_root, db, dsp) = store();
-    let phone = paired(&db, &dsp, "key", "2065550100");
-    for batch in 0..3 {
-        let texts = (0..MOST_TEXTS)
-            .map(|index| reported(&format!("{batch}-{index}"), "+14255550199", 1_000, 0))
-            .collect();
-        db.phones_report(&dsp, &phone.id, texts).unwrap();
-    }
-    db.phones_report(
-        &dsp,
-        &phone.id,
-        vec![reported("last", "+14255550199", 2_000, 0)],
-    )
-    .unwrap();
-    // Read on while more remain, as each page says.
-    let (mut after, mut read, mut pages) = (0, Vec::new(), 0);
-    loop {
-        let page = db.phones_changes(&dsp, after).unwrap();
-        read.extend(page.texts.iter().map(|text| text.change));
-        (after, pages) = (page.next, pages + 1);
-        if !page.more {
-            break;
-        }
-    }
-    assert_eq!(read.len(), 3 * MOST_TEXTS + 1, "none missed between pages");
-    assert_eq!(pages, 4, "the last page says none remain");
-    assert!(read.windows(2).all(|pair| pair[0] < pair[1]));
-    let after_all = db.phones_changes(&dsp, after).unwrap();
-    assert!(after_all.texts.is_empty() && !after_all.more);
 }

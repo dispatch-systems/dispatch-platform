@@ -1,6 +1,6 @@
 //! The texts' pictures and files, each by the SHA-256 of its bytes: one a phone reported, waiting
 //! for its bytes, and one someone at the DSP added for a text not sent yet, theirs alone until it
-//! goes. The bytes themselves are `backend::files`'.
+//! goes. The bytes themselves are `phone::files`'.
 use super::next_change;
 use crate::backend::phone::model::File;
 use dispatch_core::{
@@ -10,6 +10,7 @@ use dispatch_core::{
 };
 use rusqlite::params;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// A picture or file as it's said to be, before its bytes are measured.
 pub struct ReportedFile {
@@ -30,7 +31,7 @@ pub struct StoredFile {
 pub trait FileStore {
     /// Keeps the bytes of a file a phone reported, by their SHA-256, and their size as they
     /// arrived, whatever the report said: refused as `phones_file_not_found` for one not of its
-    /// own texts. Answers the SHA-256 it kept before, for bytes sent again.
+    /// own texts. Answers the text it's of, and the SHA-256 it kept before, for bytes sent again.
     fn phones_file_arrived(
         &self,
         dsp: &str,
@@ -38,7 +39,7 @@ pub trait FileStore {
         id: &str,
         sha256: &str,
         size: i64,
-    ) -> Result<Option<String>>;
+    ) -> Result<(String, Option<String>)>;
     /// Keeps a picture someone added for a text not sent yet.
     fn phones_add_file(
         &self,
@@ -49,6 +50,8 @@ pub trait FileStore {
         at: i64,
     ) -> Result<File>;
     fn phones_file(&self, dsp: &str, id: &str) -> Result<Option<StoredFile>>;
+    /// The pictures and files of each of the texts `texts`, by the text, in the order added.
+    fn phones_files_of(&self, dsp: &str, texts: &[String]) -> Result<HashMap<String, Vec<File>>>;
     /// Lets go of pictures added and never sent before `before`, whose bytes upkeep then lets go
     /// of once no file keeps them.
     fn phones_tidy_files(&self, dsp: &str, before: i64) -> Result<()>;
@@ -69,7 +72,7 @@ impl FileStore for Store {
         id: &str,
         sha256: &str,
         size: i64,
-    ) -> Result<Option<String>> {
+    ) -> Result<(String, Option<String>)> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let file = db
@@ -84,15 +87,17 @@ impl FileStore for Store {
                 "UPDATE phones_files SET sha256=?, size=? WHERE id=?",
                 params![sha256, size, id],
             )?;
+            let text = s(&file, "text_id").to_owned();
             let change = next_change(&db)?;
             db.exec(
                 "UPDATE phones_texts SET change=? WHERE id=?",
-                params![change, s(&file, "text_id")],
+                params![change, text],
             )?;
-            Ok(file["sha256"]
+            let before = file["sha256"]
                 .as_str()
                 .map(str::to_owned)
-                .filter(|before| before != sha256))
+                .filter(|before| before != sha256);
+            Ok((text, before))
         })
     }
     fn phones_add_file(
@@ -127,6 +132,21 @@ impl FileStore for Store {
                 text_id: row["text_id"].as_str().map(str::to_owned),
                 added_by: row["added_by"].as_str().map(str::to_owned),
             }))
+    }
+    fn phones_files_of(&self, dsp: &str, texts: &[String]) -> Result<HashMap<String, Vec<File>>> {
+        let rows = self.dsp(dsp)?.all(
+            "SELECT * FROM phones_files WHERE text_id IN (SELECT value FROM json_each(?)) \
+             ORDER BY added_at,rowid",
+            [serde_json::to_string(texts)?],
+        )?;
+        let mut files: HashMap<String, Vec<File>> = HashMap::new();
+        for row in &rows {
+            files
+                .entry(s(row, "text_id").to_owned())
+                .or_default()
+                .push(file_of(row));
+        }
+        Ok(files)
     }
     fn phones_tidy_files(&self, dsp: &str, before: i64) -> Result<()> {
         self.dsp(dsp)?.exec(
@@ -171,7 +191,7 @@ impl FileStore for Store {
 }
 
 /// A file from its row.
-pub(super) fn file_of(row: &Value) -> File {
+fn file_of(row: &Value) -> File {
     File {
         id: s(row, "id").into(),
         name: s(row, "name").into(),
