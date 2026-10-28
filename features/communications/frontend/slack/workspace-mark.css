@@ -1,0 +1,32 @@
+/* A workspace's mark, its logo or initials, and its name beside it. */
+.workspace-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: calc(var(--field-height) - 14px);
+  height: calc(var(--field-height) - 14px);
+  border-radius: 7px;
+  font-size: calc(var(--ui-size) - 3px);
+  font-weight: 700;
+}
+.workspace-mark.all {
+  border: 1px solid var(--border);
+  background: #fff;
+}
+.workspace-mark svg {
+  width: 58%;
+  height: 58%;
+}
+/* Beside a line of text, as the profile's workspace. */
+.workspace-mark.small {
+  width: calc(var(--ui-size) + 6px);
+  height: calc(var(--ui-size) + 6px);
+  border-radius: 5px;
+  font-size: calc(var(--ui-size) - 5px);
+}

@@ -14,6 +14,7 @@ pub(crate) mod send;
 pub(crate) mod storage;
 
 use super::{
+    compose::SLACK,
     conversations,
     files::FileStore,
     model::PAGE,
@@ -221,6 +222,7 @@ pub fn opened(
         group: listed(db, &people, dsp, vec![kept])?.remove(0),
         entries,
         more,
+        limits: SLACK.into(),
     })
 }
 

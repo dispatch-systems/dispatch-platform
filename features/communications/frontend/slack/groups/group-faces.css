@@ -1,0 +1,33 @@
+/* A group: two of its people, one over the other, where one person's photo would be. */
+.group-faces {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--group-face);
+  height: var(--group-face);
+}
+.group-faces-list {
+  --group-face: var(--face-list);
+}
+.group-faces-head {
+  --group-face: var(--face-head);
+}
+.group-faces-profile {
+  --group-face: var(--face-profile);
+}
+.communications .group-faces > .face {
+  --face: calc(var(--group-face) * 0.64);
+  position: absolute;
+  box-shadow: 0 0 0 2px var(--background);
+}
+.group-faces > .face:first-child {
+  top: 0;
+  left: 0;
+}
+.group-faces > .face:last-child {
+  right: 0;
+  bottom: 0;
+}
+.convo.selected .group-faces > .face,
+.thread-head .who.open .group-faces > .face {
+  box-shadow: 0 0 0 2px var(--selection);
+}

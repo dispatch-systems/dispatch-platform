@@ -83,6 +83,51 @@ test('with its phone and no Slack, Communications opens on Today’s Routes, wit
   );
 });
 
+test('Today’s Routes reads before it says No routes, a read that fails says so in Today’s Routes alone, and offline it waits to read', async ({
+  page,
+}) => {
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  // Its first read waits until the test lets it go.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/dsp/communications/routes', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.getByRole('link', { name: 'Communications' }).click();
+  const list = page.getByRole('region', { name: 'Conversations' });
+  await expect(list.getByRole('status')).toContainText('Loading');
+  await expect(page.getByText('No routes', { exact: true })).toHaveCount(0);
+  release();
+  await expect(page.getByText('No routes', { exact: true })).toBeVisible();
+
+  // Read again, as it is each time it shows, it fails: Today's Routes says so, Messaging doesn't.
+  await page.unroute('**/api/dsp/communications/routes');
+  await page.route('**/api/dsp/communications/routes', (route) =>
+    route.fulfill({ status: 500, json: { error: 'internal', message: 'Something went wrong.' } }),
+  );
+  const sections = page.getByRole('tablist', { name: 'Sections' });
+  await sections.getByRole('tab', { name: /Messaging/ }).click();
+  await sections.getByRole('tab', { name: "Today's Routes" }).click();
+  await expect(list.getByRole('alert')).toHaveText('Something went wrong.');
+  await sections.getByRole('tab', { name: /Messaging/ }).click();
+  await expect(list).toContainText('(425) 555-0199');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+
+  // Opened again on Messaging, as chosen, then offline before Today's Routes was ever read: it says
+  // it'll read on reconnecting, never No routes, and reads once back online.
+  await page.unroute('**/api/dsp/communications/routes');
+  await page.reload();
+  await expect(list).toContainText('(425) 555-0199');
+  await page.context().setOffline(true);
+  await sections.getByRole('tab', { name: "Today's Routes" }).click();
+  await expect(list.getByRole('status')).toContainText('offline');
+  await expect(page.getByText('No routes', { exact: true })).toHaveCount(0);
+  await page.context().setOffline(false);
+  await expect(page.getByText('No routes', { exact: true })).toBeVisible();
+});
+
 test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section, the board chosen or not', async ({
   page,
   dispatch,
@@ -161,6 +206,46 @@ test('with Slack too, the sections switch, each with how many wait, stay as chos
   await page.goto(toText);
   await expect(page.getByRole('region', { name: '(425) 555-0199' })).toBeVisible();
   await expect(messaging).toHaveAttribute('aria-selected', 'true');
+});
+
+test('the section switch keeps its three tabs on one line, each whole, whichever of Settings and Communications opens first', async ({
+  page,
+  dispatch,
+}) => {
+  const owner = await dispatch.client();
+  const north = (owner.session.dsps as { id: string; name: string }[]).find(
+    (dsp) => dsp.name === 'Northline Logistics',
+  )!;
+  await owner.select(north.id);
+  expect((await connect(owner, 'T0FIXTURE1')).status).toBe(200);
+  const communications = `/#dsp/${north.id}/communications`;
+  // Message display draws the page's own parts, so its page loads their stylesheets too.
+  const display = `/#dsp/${north.id}/settings?tab=display`;
+  /** Each of the three section tabs on one line with the others, its label whole. */
+  const inLine = async () => {
+    const tabs = page.getByRole('tablist', { name: 'Sections' }).getByRole('tab');
+    await expect(tabs).toHaveCount(3);
+    const drawn = await tabs.evaluateAll((all) =>
+      all.map((tab) => ({
+        top: Math.round(tab.getBoundingClientRect().top),
+        whole: tab.scrollWidth <= tab.clientWidth,
+      })),
+    );
+    expect(drawn).toEqual(drawn.map(() => ({ top: drawn[0]!.top, whole: true })));
+  };
+
+  await login(page);
+  await page.goto(display);
+  await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
+  await page.goto(communications);
+  await inLine();
+  // Opened afresh, Communications first, then Message display, then back.
+  await page.reload();
+  await inLine();
+  await page.goto(display);
+  await expect(page.getByRole('heading', { name: 'Display', level: 1 })).toBeVisible();
+  await page.goto(communications);
+  await inLine();
 });
 
 test('with Slack needing an update, Messaging still works, and Update Slack covers Slack alone until closed', async ({

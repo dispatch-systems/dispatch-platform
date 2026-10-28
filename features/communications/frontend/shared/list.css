@@ -1,0 +1,29 @@
+/* A list's section headings, what it says holding nobody, and its rows. */
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--gap) * 0.8) calc(var(--gap) + 6px) 4px;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+  font-weight: 600;
+}
+.list-head span {
+  padding: 0 7px;
+  border-radius: 10px;
+  background: var(--muted);
+  font-size: var(--small-size);
+}
+.list-empty {
+  padding: 18px;
+  color: var(--muted-foreground);
+  font-size: var(--ui-size);
+  text-align: center;
+}
+.convos {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 calc(var(--gap) * 0.6);
+  list-style: none;
+}

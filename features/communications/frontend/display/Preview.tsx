@@ -1,10 +1,12 @@
 import { useId, useMemo, useRef } from 'react';
-import { Composer } from '../page/Composer.js';
-import { ConversationHead } from '../page/ConversationHead.js';
+import { slackAttachments } from '../../api/client.js';
+import { Composer } from '../conversations/Composer.js';
 import { ListPane } from '../page/ListPane.js';
-import { roleText } from '../page/parts.js';
-import { ProfileShown } from '../page/Profile.js';
-import { Thread } from '../page/Thread.js';
+import { roleText } from '../shared/format.js';
+import { PartyFace } from '../conversations/party.js';
+import { PaneHead } from '../shared/PaneHead.js';
+import { ProfileShown } from '../conversations/Profile.js';
+import { Thread } from '../conversations/Thread.js';
 import { useLayout } from '../page/useLayout.js';
 import { dockAt, pageLook, Shown, type Display } from './display.js';
 import { sample } from './sample.js';
@@ -33,7 +35,14 @@ export function Preview({
   timeZone: string;
 }) {
   const now = useMemo(() => Date.now(), []);
-  const { inbox, open, messages, profile: known, workspace } = useMemo(() => sample(now), [now]);
+  const {
+    inbox,
+    open,
+    messages,
+    profile: known,
+    workspace,
+    limits,
+  } = useMemo(() => sample(now), [now]);
   const title = useId();
   const page = useRef<HTMLDivElement>(null);
   const docked =
@@ -56,7 +65,7 @@ export function Preview({
             <div className="chat-frame">
               <ListPane
                 inbox={inbox}
-                routes={{ groups: [], choose: nothing }}
+                routes={{ groups: [], read: { error: '', retry: nothing }, choose: nothing }}
                 sections={['slack']}
                 section="slack"
                 chooseSection={nothing}
@@ -64,8 +73,7 @@ export function Preview({
                 choose={nothing}
                 current={open}
                 readOlder={nothing}
-                pick={() => Promise.resolve()}
-                pickNumber={() => Promise.resolve()}
+                reach={() => Promise.resolve()}
                 show={nothing}
                 open={open.id}
                 typing={[]}
@@ -80,9 +88,12 @@ export function Preview({
                 className={profile ? 'pane-thread profiled' : 'pane-thread'}
                 aria-label={open.with.name}
               >
-                <ConversationHead
-                  conversation={open}
+                <PaneHead
+                  face={<PartyFace conversation={open} size="head" />}
+                  name={open.with.name}
                   about={about}
+                  waits={open.state === 'waiting'}
+                  waitingSince={open.waitingSince}
                   now={now}
                   open={profile}
                   opens={{}}
@@ -90,7 +101,7 @@ export function Preview({
                   done={{ busy: false, run: nothing }}
                 />
                 {profile && (
-                  <aside className="profile" aria-labelledby={title}>
+                  <aside className="panel profile" aria-labelledby={title}>
                     <ProfileShown
                       title={title}
                       person={open.with}
@@ -115,6 +126,8 @@ export function Preview({
                 <Composer
                   placeholder={`Message ${open.with.name.split(' ')[0]}`}
                   writable
+                  limits={limits}
+                  attachments={slackAttachments}
                   send={() => Promise.resolve()}
                 />
               </section>

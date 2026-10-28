@@ -1,0 +1,28 @@
+/* How Today's Routes shows: the list or the board, as two segments. */
+.view-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--muted);
+}
+.view-toggle button {
+  justify-content: center;
+  width: calc(var(--field-height) - 2px);
+  min-height: calc(var(--field-height) - 6px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.view-toggle button[aria-pressed='true'] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px var(--shadow-color);
+}
+.view-toggle svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
+}

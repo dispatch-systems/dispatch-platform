@@ -6,7 +6,7 @@ import { useSettings } from '../../../../core/settings/api/client.js';
 // How the page looks to the member: what they chose in Settings' Message display, their own,
 // which the page and its preview there draw by. A desktop and a phone each have their own: on a
 // phone, the choices that apply on one, kept as `phone_<choice>`. Sizes go by the text size; the
-// rest are classes of the page's own (`data-*`), which communications.css draws.
+// rest are classes of the page's own (`data-*`), which each part's stylesheet draws.
 
 /** Its section of Settings, as Communications' backend declares it. */
 export const section = 'communications.display';
@@ -183,8 +183,8 @@ export function dockAt(display: Display) {
 }
 
 /**
- * What the page sets on itself to look as `display` has it: its sizes, and the classes
- * communications.css draws the rest by.
+ * What the page sets on itself to look as `display` has it: its sizes, and the classes its parts'
+ * stylesheets draw the rest by.
  */
 export function pageLook(display: Display) {
   const { list, profile } = widths(display);

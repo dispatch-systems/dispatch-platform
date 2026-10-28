@@ -1,0 +1,16 @@
+/* Today's Routes with nobody on it, as after the stop. */
+.no-routes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 60%;
+  color: var(--muted-foreground);
+  font-size: var(--ui-size);
+}
+.no-routes svg {
+  width: calc(var(--ui-size) + 8px);
+  height: calc(var(--ui-size) + 8px);
+}

@@ -1,0 +1,74 @@
+/* A panel beside what's open, a profile or a group's people, over it; on a wide page beside it
+   (below). It
+   slides in from the window's edge, and closed, slides back out before it goes (`leaving`),
+   turning back from wherever it is when opened or closed mid-slide, as the conversation does. */
+.panel {
+  --profile-pad: calc(var(--pad) + 4px);
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) + 4px);
+  width: min(var(--profile-width), 100%);
+  padding: calc(var(--profile-pad) + 4px) var(--profile-pad);
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  box-shadow: -18px 0 44px var(--shadow-color);
+  transition: transform var(--profile-slide);
+}
+@starting-style {
+  .panel {
+    transform: translateX(100%);
+  }
+}
+.panel.leaving {
+  transform: translateX(100%);
+}
+/* Kept open from the last conversation, it's there at once. */
+.panel.still {
+  transition: none;
+}
+/* Its X stays in reach while it scrolls, 12px from its corner (sticking within its padding),
+   taking no room from what's below. */
+.panel .close {
+  position: sticky;
+  top: calc(8px - var(--profile-pad));
+  z-index: 1;
+  align-self: flex-end;
+  margin: calc(8px - var(--profile-pad)) calc(12px - var(--profile-pad))
+    calc(var(--profile-pad) - var(--gap) - 48px) 0;
+}
+.panel .me {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.panel .me h2 {
+  font-size: calc(var(--title-size) + 1px);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.panel .me small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: var(--ui-size);
+}
+
+/* Docked, open, it's a column of its own beside the conversation, which it no longer covers. */
+.communications[data-docked] .panel {
+  box-shadow: none;
+}
+@container communications (width < 680px) {
+  .panel {
+    width: 100%;
+    border-left: 0;
+    box-shadow: none;
+  }
+}

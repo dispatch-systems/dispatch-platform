@@ -1,0 +1,79 @@
+/* A conversation's messages: each day's together, a driver's earlier days dimmed; a message to a
+   group by its sender's name; a text that didn't go, with Retry; and those writing in it now. */
+.day-messages {
+  display: flex;
+  flex-direction: column;
+}
+.day-messages.past .msg-group {
+  opacity: 0.62;
+}
+/* A message to a group: the group beside its sender's name, which opens it, and how far it has
+   gone. */
+.sender .to-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  margin-left: 6px;
+  padding: 1px 8px 1px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--selection);
+  color: var(--primary);
+  font-size: inherit;
+  font-weight: 600;
+}
+/* A text that didn't go, and sending it again. */
+.meta .failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: bottom;
+  color: var(--destructive);
+  font-weight: 550;
+}
+.meta .retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  vertical-align: bottom;
+}
+.typing {
+  display: inline-flex;
+  gap: 0.3em;
+  padding: 0.85em 1em;
+  border-radius: var(--bubble-radius) var(--bubble-radius) var(--tail) var(--bubble-radius);
+  background: var(--bubble-in);
+  font-size: var(--text-size);
+}
+.typing i {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  opacity: 0.55;
+  animation: communications-typing 1.2s infinite ease-in-out;
+}
+.typing i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes communications-typing {
+  30% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing i {
+    animation: none;
+  }
+}

@@ -1,0 +1,12 @@
+/* How many wait. */
+.communications .count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: calc(var(--small-size) - 0.5px);
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+}

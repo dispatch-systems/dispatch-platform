@@ -1,0 +1,82 @@
+/* One message: its text in a bubble, marked if edited, then its photos and files. */
+.bubble {
+  padding: 0.55em 0.95em;
+  border-radius: var(--bubble-radius);
+  background: var(--bubble-in);
+  font-size: var(--text-size);
+  line-height: var(--line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.msg-group.out .bubble {
+  background: var(--bubble-out);
+  color: var(--bubble-out-foreground);
+}
+.bubble .edited {
+  margin-left: 8px;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+.photo {
+  display: block;
+  overflow: hidden;
+  width: var(--photo-width);
+  max-width: 100%;
+  aspect-ratio: 232 / 164;
+  border-radius: var(--bubble-radius);
+  background: var(--muted);
+}
+.photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.file {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75em;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0.75em 1em;
+  border: 1px solid var(--border);
+  border-radius: var(--text-size);
+  background: var(--card);
+  color: var(--foreground);
+  font-size: var(--ui-size);
+  font-weight: 400;
+}
+.file svg {
+  width: 1.4em;
+  height: 1.4em;
+}
+.file .file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file small {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+}
+.file.unkept {
+  border-style: dashed;
+  color: var(--muted-foreground);
+}
+/* A text that didn't go. */
+.bubble.failed {
+  opacity: 0.6;
+}
+
+/* Plain, as the member chose in Message display: no bubble, as Slack shows them. */
+.communications[data-style='plain'] .bubble {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--foreground);
+}
+.communications[data-style='plain'] .photo {
+  margin-top: 4px;
+}

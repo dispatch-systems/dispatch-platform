@@ -1,0 +1,6 @@
+/* The letters of a name that matched what was searched. */
+.communications mark {
+  background: none;
+  color: var(--primary);
+  font-weight: 650;
+}

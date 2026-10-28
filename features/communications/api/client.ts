@@ -1,5 +1,10 @@
 import { useCallback } from 'react';
-import { useCachedData, useData, wordedApi } from '../../../core/shell/frontend/runtime/api.js';
+import {
+  api as call,
+  ApiError,
+  useCachedData,
+  useData,
+} from '../../../core/shell/frontend/runtime/api.js';
 import { upload } from '../../../core/shell/frontend/runtime/transfer.js';
 import type {
   Communications,
@@ -25,8 +30,12 @@ import type {
 
 // Communications' endpoints, as its screens call them.
 
-/** What its error codes say. Only its screens make the calls that raise them, so they load with them. */
-const api = wordedApi({
+/**
+ * What its error codes say: its own, which only its screens make the calls that raise, so they load
+ * with them; and of texting's, which Phones words, those Communications' screens say more of, as
+ * sending from no phone or a picture let go of as it's written.
+ */
+const wording: Readonly<Record<string, string>> = {
   communications_conversation_not_found: 'This conversation is no longer here. Refresh the page.',
   communications_message_not_found: 'This text is no longer here. Refresh the page.',
   communications_texting_off: 'Texting is off for this DSP.',
@@ -36,7 +45,6 @@ const api = wordedApi({
   communications_driver_not_found: "This driver isn't on today's routes.",
   phones_none: 'No phone is paired to send from.',
   phones_file_not_found: 'A picture is no longer attached. Add it again.',
-  phones_text_not_found: "This text can't be sent again.",
   communications_group_not_found: 'This group is no longer here. Refresh the page.',
   communications_contact_not_found: 'This person is no longer in your Slack workspace.',
   communications_off: 'Communications is off in this Slack workspace.',
@@ -50,7 +58,17 @@ const api = wordedApi({
   slack_unreachable: "Slack didn't answer. Try again in a minute.",
   slack_rate_limited: 'Slack is busy. Try again in a minute.',
   slack_refused: "Slack didn't take the message. Try again.",
-});
+};
+/** A refusal as Communications words it, its code, status and request ID as they were. */
+function worded(error: unknown) {
+  const words = error instanceof ApiError && wording[error.code];
+  return words ? new ApiError(error.code, words, error.status, error.requestId) : error;
+}
+/** One of its calls, a refusal worded as Communications words it. */
+const api = <T>(...asked: Parameters<typeof call>) =>
+  call<T>(...asked).catch((error: unknown) => {
+    throw worded(error);
+  });
 
 export const communicationsUrl = '/api/dsp/communications';
 /** `path` asking `asked`, what's left empty left out: as `team`, for one workspace's alone. */
@@ -138,25 +156,44 @@ export const textFirst = (number: string) =>
 export const textDriver = (driverId: string) =>
   api<Conversation>(`${communicationsUrl}/texts/conversations`, { driverId });
 /** Today's Routes: the drivers on a route today, and the work phones nobody held. */
+export const todaysRoutesUrl = `${communicationsUrl}/routes`;
 export const getTodaysRoutes = (signal?: AbortSignal) =>
-  api<TodaysRoutes>(`${communicationsUrl}/routes`, undefined, signal);
+  api<TodaysRoutes>(todaysRoutesUrl, undefined, signal);
 /** Files a work phone nobody held under one of today's drivers: their conversation. */
 export const pickDriver = (id: string, driverId: string) =>
   api<Conversation>(`${communicationsUrl}/conversations/${id}/driver`, { driverId });
 /** Whom the DSP can text, or those found by a name or number typed, and the numbers blocked. */
 export const getTextContacts = (typed = '') =>
   api<TextContacts>(address(`${communicationsUrl}/texts/contacts`, { q: typed }));
-/** Adds a photo for a message not sent yet: by text, through the DSP's phones (`texted`). */
-export const addPhoto = (photo: File, texted: boolean, signal?: AbortSignal) =>
+/**
+ * How a message carries photos and files, by the way it goes: a photo added before it's sent, and
+ * where a photo or file attached to one is read from once it's kept.
+ */
+export type Attachments = {
+  add: (photo: File, signal?: AbortSignal) => Promise<CommunicationsUpload>;
+  address: (id: string) => string;
+};
+/** Adds `photo` through the upload route `path`, for a message not sent yet: a refusal worded as
+ * its calls' are. */
+const adding = (path: string) => (photo: File, signal?: AbortSignal) =>
   upload<CommunicationsUpload>(
-    `${communicationsUrl}/${texted ? 'texts/uploads' : 'uploads'}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
+    `${communicationsUrl}/${path}?name=${encodeURIComponent(photo.name)}&type=${encodeURIComponent(photo.type)}`,
     photo,
     undefined,
     signal,
-  );
-/** Where a photo or file attached to a message is read from: a text's, as its phone keeps it. */
-export const fileUrl = (id: string, texted = false) =>
-  `${communicationsUrl}/${texted ? 'texts/files' : 'files'}/${id}`;
+  ).catch((error: unknown) => {
+    throw worded(error);
+  });
+/** A Slack message's, kept in Dispatch. */
+export const slackAttachments: Attachments = {
+  add: adding('uploads'),
+  address: (id) => `${communicationsUrl}/files/${id}`,
+};
+/** A text's, kept by the DSP's phones, as what offers texting keeps them. */
+export const textAttachments: Attachments = {
+  add: adding('texts/uploads'),
+  address: (id) => `${communicationsUrl}/texts/files/${id}`,
+};
 /** The address of the workspace `team`'s logo, at its `version`, which it carries. */
 export const workspaceLogoUrl = (team: string, version: string) =>
   `${communicationsUrl}/workspaces/${encodeURIComponent(team)}/logo?v=${version}`;

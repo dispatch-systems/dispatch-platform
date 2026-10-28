@@ -1,0 +1,92 @@
+/* New message: whom to write to. */
+.modal:has(.new-message) {
+  width: calc(var(--list-width) + 240px);
+}
+.new-message .new-search {
+  width: 100%;
+}
+.new-message .new-search > svg {
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
+}
+.new-message .new-search input {
+  min-height: calc(var(--field-height) + 6px);
+  padding-left: calc(var(--ui-size) + 22px);
+  font-size: calc(var(--name-size) + 1px);
+}
+.new-message .results {
+  display: flex;
+  flex-direction: column;
+  max-height: min(calc(var(--face-list) * 10.5), calc(100dvh - 260px));
+  margin: 10px -8px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.new-message .result {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: calc(var(--gap) * 0.8) var(--gap);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.new-message .result.active {
+  background: var(--accent);
+}
+.new-message .result-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.new-message .result-body strong {
+  font-size: var(--name-size);
+  font-weight: 500;
+}
+.new-message .result-body small {
+  color: var(--muted-foreground);
+  font-size: calc(var(--small-size) + 1px);
+}
+.new-message .result > svg {
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
+  color: var(--muted-foreground);
+}
+/* Message a group, first, apart from everyone below it. */
+.new-message .result.group {
+  position: relative;
+  margin-bottom: 13px;
+}
+.new-message .result.group::after {
+  content: '';
+  position: absolute;
+  right: var(--gap);
+  bottom: -7px;
+  left: var(--gap);
+  border-top: 1px solid var(--border);
+}
+.new-message .result.group strong {
+  font-weight: 600;
+}
+.new-message .lead {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--face-list);
+  height: var(--face-list);
+  border-radius: 50%;
+  background: var(--selection);
+  color: var(--primary);
+}
+.new-message .lead svg {
+  width: 45%;
+  height: 45%;
+}
+
+/* On a touch screen, what's typed in is 16px, so a phone's browser doesn't zoom in on it. */
+@media (pointer: coarse) {
+  .new-message .new-search input {
+    font-size: 16px;
+  }
+}

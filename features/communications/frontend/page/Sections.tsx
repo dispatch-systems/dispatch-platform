@@ -1,28 +1,11 @@
-import type { ReactNode } from 'react';
-import { Phone, Route } from 'lucide-react';
-import { SlackLogo } from '../../../slack/frontend/index.js';
-import { Tabs } from '../../../../core/shell/frontend/ui/index.js';
-import type { Section } from '../inbox.js';
+import { Count } from '../shared/Count.js';
+import { Segments } from '../shared/Segments.js';
+import type { Section } from '../inbox/sections.js';
+import { VIEWS } from './section-views.js';
 import './sections.css';
 
-// The sections of the list, at its top while there are two or more: Today's Routes, the work
-// phones of the drivers on a route today; Messaging, the numbers that text the DSP's phones; and
-// Slack, its workspaces' direct messages, each with how many wait in it. On a phone, or with all
-// three in a narrow list, Today's Routes goes by Routes.
-
-const shown: Record<Section, { label: ReactNode; icon: ReactNode }> = {
-  routes: {
-    label: (
-      <>
-        <span className="long">Today's Routes</span>
-        <span className="short">Routes</span>
-      </>
-    ),
-    icon: <Route size={14} aria-hidden="true" />,
-  },
-  messaging: { label: 'Messaging', icon: <Phone size={14} aria-hidden="true" /> },
-  slack: { label: 'Slack', icon: <SlackLogo size={14} /> },
-};
+// The switch between the list's sections, at its top while there are two or more, each by its
+// mark and label (`section-views.tsx`), with how many wait in it.
 
 export function Sections({
   sections,
@@ -37,20 +20,19 @@ export function Sections({
   choose: (section: Section) => void;
 }) {
   return (
-    <div className="sections" data-count={sections.length}>
-      <Tabs
-        label="Sections"
-        value={section}
-        onChange={(value) => choose(value as Section)}
-        items={sections.map((each) => [
-          each,
-          <>
-            {shown[each].icon}
-            {shown[each].label}
-            {waiting[each] > 0 && <span className="count">{waiting[each]}</span>}
-          </>,
-        ])}
-      />
-    </div>
+    <Segments
+      className="sections"
+      label="Sections"
+      value={section}
+      onChange={(value) => choose(value as Section)}
+      items={sections.map((each) => [
+        each,
+        <>
+          {VIEWS[each].icon}
+          {VIEWS[each].label}
+          <Count waiting={waiting[each]} />
+        </>,
+      ])}
+    />
   );
 }

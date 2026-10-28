@@ -1,0 +1,56 @@
+/* The list beside the conversation: its tools above it, and its rows scrolling on their own,
+   the list's own width a container its sections go by. */
+.pane-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  container: list / inline-size;
+}
+.pane-list .list-tools {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) * 0.65);
+  padding: var(--gap) var(--gap) 6px;
+}
+.pane-list .search {
+  width: 100%;
+}
+.pane-list .search > svg {
+  left: calc(var(--field-height) * 0.3);
+  width: calc(var(--ui-size) + 3px);
+  height: calc(var(--ui-size) + 3px);
+}
+.pane-list .search input {
+  min-height: var(--field-height);
+  padding-left: calc(var(--field-height) * 0.3 + var(--ui-size) + 11px);
+  font-size: var(--name-size);
+}
+/* Search, and in Today's Routes beside it, the list or the board. */
+.pane-list .tools-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pane-list .tools-row .search {
+  flex: 1;
+  min-width: 0;
+}
+.list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+@container communications (width < 680px) {
+  .pane-list {
+    border-right: 0;
+  }
+}
+/* On a touch screen, what's typed in is 16px, so a phone's browser doesn't zoom in on it. */
+@media (pointer: coarse) {
+  .pane-list .search input {
+    font-size: 16px;
+  }
+}

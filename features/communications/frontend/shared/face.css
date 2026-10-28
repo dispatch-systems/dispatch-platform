@@ -1,0 +1,56 @@
+/* People: a photo, or initials in their tone, as large as where they're shown. */
+.communications .face {
+  width: var(--face);
+  height: var(--face);
+  font-size: calc(var(--face) * 0.36);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.communications .face-list {
+  --face: var(--face-list);
+}
+.communications .face-contact {
+  --face: calc(var(--face-list) - 6px);
+}
+.communications .face-sender {
+  --face: calc(var(--small-size) + 6.5px);
+}
+.communications .face-head {
+  --face: var(--face-head);
+}
+.communications .face-message {
+  --face: var(--face-message);
+}
+.communications .face-profile {
+  --face: var(--face-profile);
+}
+.communications .tone-violet {
+  color: var(--violet);
+  background: var(--violet-surface);
+}
+.communications .tone-sage {
+  color: var(--sage);
+  background: var(--sage-surface);
+}
+.communications .tone-slate {
+  color: var(--slate);
+  background: var(--slate-surface);
+}
+.communications .tone-steel {
+  color: var(--steel);
+  background: var(--steel-surface);
+}
+/* A phone in a person's place: a number no one is known by, or the DSP's own phone. */
+.communications .face-phone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.communications .face-phone svg {
+  width: 46%;
+  height: 46%;
+}

@@ -1,0 +1,59 @@
+/* A group's people, in the profile's place: each with what they do and where it stands. */
+.recipients {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 calc(var(--gap) * -0.5);
+  padding-top: calc(var(--gap) + 4px);
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+.recipient {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: calc(var(--gap) * 0.8);
+  width: 100%;
+  min-height: 0;
+  padding: 6px calc(var(--gap) * 0.5);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 400;
+  text-align: left;
+}
+.recipient:hover {
+  background: var(--accent);
+}
+.recipient-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.recipient strong {
+  overflow: hidden;
+  font-size: var(--ui-size);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recipient small {
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+}
+.recipient .state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-size: var(--small-size);
+}
+.recipient .state.replied {
+  color: var(--primary);
+  font-weight: 600;
+}
+.recipient .state.not_sent {
+  color: var(--late);
+}

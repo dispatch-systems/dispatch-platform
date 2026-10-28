@@ -1,0 +1,138 @@
+/* Slack not connected: connecting it, in place of the inbox. */
+.setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--gap) + 10px);
+  flex: 1;
+  min-height: 0;
+  padding: 24px;
+  text-align: center;
+}
+.setup-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--face-profile) + 4px);
+  height: calc(var(--face-profile) + 4px);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--face-profile) * 0.27);
+  background: var(--background);
+  box-shadow: 0 6px 18px var(--shadow-color);
+}
+.setup-mark svg {
+  width: 50%;
+  height: 50%;
+}
+.setup-why {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: calc(var(--text-size) * 30);
+}
+.setup-why h2 {
+  font-size: calc(var(--title-size) + 3px);
+  font-weight: 600;
+}
+.setup-why p {
+  color: var(--muted-foreground);
+  font-size: var(--text-size);
+}
+.setup button {
+  min-height: calc(var(--field-height) + 6px);
+  padding: 0 20px;
+  font-size: calc(var(--ui-size) + 2px);
+}
+
+/* Slack needing an update: over the page, a row for each workspace. */
+.modal:has(.update-workspaces) {
+  width: calc(var(--list-width) + 140px);
+  padding: calc(var(--pad) + 8px);
+}
+.update-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.update-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--field-height);
+  height: var(--field-height);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+}
+.update-mark svg {
+  width: 53%;
+  height: 53%;
+}
+.update-why {
+  margin: -14px 0 18px calc(var(--field-height) + 12px);
+  color: var(--muted-foreground);
+  font-size: var(--text-size);
+}
+.update-workspaces {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+}
+.update-workspace {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap) var(--gap) var(--gap) calc(var(--gap) + 2px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.update-workspace strong {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-size);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.update-buttons {
+  display: flex;
+  gap: 8px;
+}
+.update-buttons button {
+  gap: 7px;
+  min-height: calc(var(--field-height) - 2px);
+  font-size: calc(var(--ui-size) + 0.5px);
+}
+.update-buttons svg {
+  width: calc(var(--ui-size) + 2px);
+  height: calc(var(--ui-size) + 2px);
+}
+.update-buttons input {
+  width: calc(var(--list-width) * 0.56);
+  min-height: calc(var(--field-height) - 2px);
+  font-size: calc(var(--small-size) + 0.5px);
+}
+/* The Update popup, over a phone's window. */
+@media (width <= 760px) {
+  .update-why {
+    margin-left: 0;
+  }
+  .update-workspace {
+    flex-wrap: wrap;
+  }
+  /* Its buttons a line of their own, under its mark and name. */
+  .update-buttons {
+    flex-basis: 100%;
+  }
+  .update-buttons > * {
+    flex: 1;
+  }
+}
+/* On a touch screen, what's typed in is 16px, so a phone's browser doesn't zoom in on it. */
+@media (pointer: coarse) {
+  .update-buttons input {
+    font-size: 16px;
+  }
+}

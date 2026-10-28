@@ -1,0 +1,31 @@
+/* An answer: who wrote it, which opens their conversation, as Reply does beside it. */
+button.sender {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+}
+.reply-to {
+  display: none;
+  align-self: center;
+  gap: 6px;
+  min-height: 30px;
+  margin-bottom: calc(var(--small-size) * 1.5 + 2px);
+  padding: 0 11px;
+  border: 0;
+  border-radius: 15px;
+  background: var(--card);
+  font-size: var(--small-size);
+  font-weight: 600;
+  box-shadow: 0 2px 6px var(--shadow-color);
+}
+@container communications (width >= 680px) {
+  .msg-group.answer:hover .reply-to,
+  .msg-group.answer:focus-within .reply-to {
+    display: inline-flex;
+  }
+  .msg-group.answer:hover .bubble {
+    background: color-mix(in srgb, var(--bubble-in) 82%, var(--foreground));
+  }
+}

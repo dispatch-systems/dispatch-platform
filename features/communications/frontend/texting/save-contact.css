@@ -1,0 +1,30 @@
+/* Save contact: the name to save for a number, asked for under the head's right end. */
+.contact-panel {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: var(--pad);
+  z-index: 20;
+  width: min(300px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 4px 18px var(--shadow-color);
+}
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.contact-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--ui-size);
+  font-weight: 600;
+}
+.contact-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

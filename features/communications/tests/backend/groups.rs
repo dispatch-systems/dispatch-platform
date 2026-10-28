@@ -1,10 +1,12 @@
 //! Messaging a group: each person gets it once, in their own direct message, under the sender's
 //! name; their answers are the group's until the DSP writes to them alone, and their
 //! conversations are listed under it while nothing they wait on is older; sending picks up after
-//! a restart without a second copy; one that can't go isn't sent; and the groups to choose from
-//! hold someone each.
+//! a restart without a second copy; one that can't go isn't sent; the groups to choose from
+//! hold someone each; and what a message to a group may carry is offered with them, as Slack's.
 use super::*;
+use crate::api::types::ComposeLimits;
 use crate::backend::{
+    compose::SLACK,
     inbox,
     model::ConversationState,
     reply,
@@ -382,6 +384,30 @@ async fn one_that_cant_go_is_not_sent() {
         .unwrap();
     assert_eq!(panel.people[0].state, GroupPersonState::NotSent);
     assert_eq!(panel.sent_by, "Test Owner");
+}
+
+#[tokio::test(start_paused = true)]
+async fn writing_to_a_group_and_a_group_open_say_what_a_message_may_carry_as_slacks() {
+    let (_root, state, bot) = support::connected(DRIVERS_TEAM).await;
+    let dsp = bot.dsp.clone();
+    let c = owner(&state, &dsp).await;
+    let picked = [(DRIVERS_TEAM, "U0FIXJORDAN")];
+    let group = sent(&state, &c, "Drivers", &picked, "Pick up your vests").await;
+    let (shared, at, id) = (state.clone(), dsp.clone(), group.id.clone());
+    let (choices, open) = state
+        .read(move |db| {
+            let zone = db.find_dsp(&at)?.timezone;
+            Ok((
+                choices::choices(db, &shared, &at, &zone)?,
+                opened(db, &shared, &at, &id, None)?,
+            ))
+        })
+        .await
+        .unwrap();
+    let carries = |limits: ComposeLimits| (limits.text, limits.photos, limits.largest);
+    let slacks = (SLACK.text, SLACK.photos, SLACK.largest);
+    assert_eq!(carries(choices.limits), slacks);
+    assert_eq!(carries(open.limits), slacks);
 }
 
 #[tokio::test]

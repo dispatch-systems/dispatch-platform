@@ -1,7 +1,8 @@
 //! What messaging a group is answered with: a group, its messages and answers, its people, and
 //! whom a group message can go to.
 use super::{
-    ConversationState, Correspondent, GroupChoiceKind, GroupPersonState, MessageFile, Sender,
+    ComposeLimits, ConversationState, Correspondent, GroupChoiceKind, GroupPersonState,
+    MessageFile, Sender,
 };
 use dispatch_core::manifest::people::PersonRole;
 use serde::Serialize;
@@ -91,6 +92,8 @@ pub struct GroupMessages {
     pub entries: Vec<GroupEntry>,
     /// Whether older ones are left to read.
     pub more: bool,
+    /// What a message to its people may carry, as a Slack message may.
+    pub limits: ComposeLimits,
 }
 
 /// `GET /api/dsp/communications/groups/{id}/people`: who a group went to, who sent it first and
@@ -142,6 +145,8 @@ pub struct GroupChoices {
     pub today: Vec<GroupChoice>,
     pub roles: Vec<GroupChoice>,
     pub workspaces: Vec<GroupChoice>,
+    /// What a message to a group may carry, as a Slack message may.
+    pub limits: ComposeLimits,
 }
 
 /// Someone a group message can go to: one person, by their key (their person's code, else their

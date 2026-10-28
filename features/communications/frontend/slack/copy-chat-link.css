@@ -1,0 +1,41 @@
+/* Copy chat link, with several workspaces a menu of them. */
+.chat-link-menu {
+  position: relative;
+}
+.chat-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  font-size: 14px;
+  font-weight: 500;
+  list-style: none;
+  cursor: pointer;
+}
+.chat-link-button::-webkit-details-marker {
+  display: none;
+}
+.chat-link-button:hover {
+  background: var(--accent);
+}
+.chat-link-menu .account-popover {
+  inset: calc(100% + 6px) 0 auto auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(280px, calc(100vw - 32px));
+  max-height: min(320px, calc(100dvh - 96px));
+  overflow-y: auto;
+}
+
+@container communications (width < 680px) {
+  .chat-link-button > span {
+    display: none;
+  }
+  .chat-link-button {
+    padding: 8px 10px;
+  }
+}

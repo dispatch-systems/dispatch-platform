@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Conversation, RouteDriver, Today } from '../../api/index.js';
-import { routeGroups, routeRows } from '../../frontend/todays-routes.js';
+import { routeGroups, routeRows } from '../../frontend/todays-routes/todays-routes.js';
 
 /** A driver's work conversation, or a work phone's nobody held, waiting since `since` or
  * answered, last written in at `at`. */

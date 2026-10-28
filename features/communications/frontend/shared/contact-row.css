@@ -1,0 +1,22 @@
+/* A contact: who they are, and how long they've waited or when they last wrote. */
+.contact strong {
+  overflow: hidden;
+  font-size: var(--name-size);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contact .convo-open {
+  align-items: center;
+  padding-block: calc(var(--gap) * 0.5);
+}
+.contact .convo-body {
+  gap: 0;
+}
+.contact small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: calc(var(--name-size) - 1.5px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
