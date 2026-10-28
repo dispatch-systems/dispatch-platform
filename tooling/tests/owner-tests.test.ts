@@ -6,8 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { ownerTests, shell } from '../testing/owner-tests.js';
 
-// test:feature, test:collector, test:core, test:mcp and test:app, listed rather than run: the
-// commands they would run name the owner's tests of every kind, found by the folder each sits in.
+// test:feature, test:collector, test:core, test:integration, test:mcp and test:app, listed rather
+// than run: the commands they would run name the owner's tests of every kind, found by the folder
+// each sits in.
 
 const root = path.resolve(import.meta.dirname, '../..');
 const list = (...args: string[]) => {
@@ -148,6 +149,15 @@ test("the app's list, which takes no name, names its backend's tests and the res
   assert.match(notes.join('\n'), /app\/tests\/rules\/ run with npm run check:rules/);
 });
 
+test("an integration's list, found in the feature holding it, is its modules' tests in the feature's crate", () => {
+  const { status, commands } = list('integration', 'import_files');
+  assert.equal(status, 0);
+  // Its tests are mounted from its modules; Slack's own API and browser tests aren't its.
+  assert.deepEqual(commands, [
+    'cargo test --locked -p dispatch-slack --lib -- integrations::import_files::',
+  ]);
+});
+
 test('--only keeps one kind of tests and the build it needs, --file one test, --debug the debug package', () => {
   const api = owned('features/dvic/tests/api', /\.test\.ts$/);
   assert.deepEqual(list('feature', 'dvic', '--only', 'api').commands, [
@@ -279,6 +289,48 @@ test("one of the app's Rust test files runs as the module it is of its backend's
     assert.deepEqual(run('audit.rs'), [`${cargo} --lib -- audit_areas::`]);
     // The program's root sits in app/tests/, outside the crate's folder.
     assert.deepEqual(run('integration/oauth.rs'), [`${cargo} --test integration -- oauth::`]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("one of an integration's Rust test files runs as the module it is of its feature's library", () => {
+  const dir = repository({
+    'features/parking/Cargo.toml':
+      '[package]\nname = "dispatch-parking"\n\n[lib]\npath = "feature.rs"\n',
+    'features/parking/feature.rs': 'mod integrations;\n',
+    'features/parking/integrations/mod.rs': 'pub(crate) mod permits;\n',
+    'features/parking/integrations/permits/mod.rs': 'mod queue;\n',
+    'features/parking/integrations/permits/queue.rs':
+      '#[cfg(test)]\n#[path = "tests/backend/permits.rs"]\nmod tests;\n',
+    'features/parking/integrations/permits/tests/backend/permits.rs': '',
+  });
+  try {
+    const { commands } = ownerTests(dir, 'integration', 'permits', {
+      file: 'features/parking/integrations/permits/tests/backend/permits.rs',
+    });
+    assert.deepEqual(commands.map(shell), [
+      'cargo test --locked -p dispatch-parking --lib -- integrations::permits::queue::tests::',
+    ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an integration's name is refused, naming what it matches, unless one feature holds it", () => {
+  const dir = repository({
+    'features/parking/integrations/permits/mod.rs': '',
+    'features/shifts/integrations/permits/mod.rs': '',
+    'features/shifts/integrations/swaps/mod.rs': '',
+  });
+  try {
+    assert.throws(() => ownerTests(dir, 'integration', 'permits'), {
+      message:
+        /permits: features\/parking\/integrations\/permits, features\/shifts\/integrations\/permits$/,
+    });
+    assert.throws(() => ownerTests(dir, 'integration', 'tolls'), {
+      message: /^No integration named tolls: permits, swaps$/,
+    });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

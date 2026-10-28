@@ -86,19 +86,33 @@ export function named(wanted: string, owner: string) {
   const [kind, name] = owner.split(':');
   return owner === wanted || (!wanted.includes(':') && (name === wanted || kind === wanted));
 }
+/**
+ * The folders of the features' integrations, `features/<feature>/integrations/<name>`, as `todo`
+ * and `dispatchdev test --owner integration:<name>` find them: those named `name`, or every one.
+ */
+export function integrations(root: string, name?: string) {
+  const folders = (dir: string) =>
+    fs.existsSync(path.join(root, dir))
+      ? fs
+          .readdirSync(path.join(root, dir), { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => `${dir}/${entry.name}`)
+          .sort()
+      : [];
+  return folders('features')
+    .flatMap((feature) => folders(`${feature}/integrations`))
+    .filter((dir) => !name || path.posix.basename(dir) === name);
+}
 /** Whether `wanted` names an owner the checkout has, as `named` reads it. */
 export function known(root: string, wanted: string) {
   if (KINDS.includes(wanted)) return true;
   const [kind, name = ''] = wanted.includes(':') ? wanted.split(':') : ['', wanted];
   if (!/^[a-z][a-z0-9_]*$/.test(name)) return false;
-  const features = path.join(root, 'features');
   const folders: Record<string, string[]> = {
     feature: [`features/${name}`],
     collector: [`collectors/${name}`],
     core: [`core/${name}`],
-    integration: (fs.existsSync(features) ? fs.readdirSync(features) : []).map(
-      (feature) => `features/${feature}/integrations/${name}`,
-    ),
+    integration: integrations(root, name),
   };
   const candidates = kind ? (folders[kind] ?? []) : [name, ...Object.values(folders).flat()];
   return candidates.some((dir) => fs.existsSync(path.join(root, dir)));

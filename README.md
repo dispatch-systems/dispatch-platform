@@ -31,9 +31,9 @@ The preview prints a private fixture URL. `npm run check:rules` runs the structu
 other source checks before a push. `npm run check:ci` runs full validation;
 `npm run check:ci -- checks` runs the dashboard checks against a build. Every owner keeps its
 tests in `tests/<kind>/`: `npm test` discovers the TypeScript tests, and
-`npm run test:feature -- <name>`, `test:collector -- <site>`, `test:core -- <part>`, `test:mcp`
-and `test:app` run one owner's tests of every kind. Python tests use
-`python3 -m unittest discover -s tooling/tests -p '*_test.py'` and `-s ops/tests`.
+`npm run test:feature -- <name>`, `test:collector -- <site>`, `test:core -- <part>`,
+`test:integration -- <name>`, `test:mcp` and `test:app` run one owner's tests of every kind.
+Python tests use `python3 -m unittest discover -s tooling/tests -p '*_test.py'` and `-s ops/tests`.
 `dispatchdev new feature <name>` and `dispatchdev new collector <site>` start a feature or a
 collector that already builds and passes its checks, and `dispatchdev new tool <name>` a tool
 agents can use, in `mcp/tools/`. `dispatchdev list` and `dispatchdev explain <owner>` say what

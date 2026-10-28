@@ -2,16 +2,18 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Command } from '../ci/execution-plan.js';
+import { integrations } from '../scaffold/todo.js';
 
-// `npm run test:feature <name>`, `test:collector <site>`, `test:core <part>`, `test:mcp` and
-// `test:app`: one owner's tests of every kind, found by the folder they sit in, and run as CI runs
-// them. Each command is printed before it runs; `--list` prints them and runs nothing,
-// `--no-build` skips the builds. `--only` keeps one kind of them, `--file` one test file;
-// `--debug` packages the browser tests' runtime with the debug backend, as
-// `dispatchdev test --owner` runs them.
+// `npm run test:feature <name>`, `test:collector <site>`, `test:core <part>`,
+// `test:integration <name>`, `test:mcp` and `test:app`: one owner's tests of every kind, found by
+// the folder they sit in, and run as CI runs them. Each command is printed before it runs;
+// `--list` prints them and runs nothing, `--no-build` skips the builds. `--only` keeps one kind of
+// them, `--file` one test file; `--debug` packages the browser tests' runtime with the debug
+// backend, as `dispatchdev test --owner` runs them.
 //
 //   Rust      its crate's tests, `cargo test -p <crate>`, the app's its backend's. A core part's
-//             are the core crate's, filtered to the part; one file's, its module's.
+//             are the core crate's, filtered to the part, and a feature's integration's its
+//             feature crate's, filtered to the integration's modules; one file's, its module's.
 //   node      tests/api/ and tests/frontend/, and tests/native/ suites no native shard holds,
 //             the API and native ones against the debug backend.
 //   browser   tests/browser/ through `npm run test:ui`, against the built artifact.
@@ -20,6 +22,7 @@ import type { Command } from '../ci/execution-plan.js';
 const usage = `Usage: npm run test:feature -- <name> [options]
        npm run test:collector -- <site> [options]
        npm run test:core -- <part> [options]
+       npm run test:integration -- <name> [options]
        npm run test:mcp -- [options]
        npm run test:app -- [options]
 
@@ -32,14 +35,23 @@ const homes = {
   feature: 'features',
   collector: 'collectors',
   core: 'core',
+  // An integration's folder is in its feature's, `features/<feature>/integrations/<name>`.
+  integration: 'features',
   mcp: 'mcp',
   app: 'app',
 } as const;
 export type Kind = keyof typeof homes;
 /** The owners that are one folder each, with no name of their own. */
 const unnamed = (kind: string) => kind === 'mcp' || kind === 'app';
-/** The folder of an owner's own crate: the app's is its backend, beside its tests. */
-const crateOf = (kind: Kind, dir: string) => (kind === 'app' ? `${dir}/backend` : dir);
+/**
+ * The folder of an owner's own crate: the app's is its backend, beside its tests, and an
+ * integration's its feature's.
+ */
+function crateOf(kind: Kind, dir: string) {
+  if (kind === 'app') return `${dir}/backend`;
+  if (kind === 'integration') return path.posix.dirname(path.posix.dirname(dir));
+  return dir;
+}
 /** `at` as the file system resolves it, through any link, or as given when it doesn't exist. */
 const real = (at: string) => {
   try {
@@ -163,8 +175,8 @@ function rustFile(
 }
 
 /**
- * The Rust tests: the owner's crate, the app's backend, or the core crate's part; only `file`'s if
- * it names one.
+ * The Rust tests: the owner's crate, the app's backend, the core crate's part, or the
+ * integration's modules of its feature's crate; only `file`'s if it names one.
  */
 function rust(
   root: string,
@@ -182,6 +194,9 @@ function rust(
     // The app's backend mounts its tests from beside it, in app/tests/: its sources are the app's.
     return [rustFile(root, crate, kind === 'app' ? dir : crate, file, notes)];
   }
+  // An integration is a module of its feature's crate, its folder's: its tests are that module's.
+  if (kind === 'integration' && exists(root, own))
+    return [rustFile(root, home, home, `${dir}/mod.rs`, notes)];
   if (exists(root, own)) return [cargo('Rust tests', ['-p', packageOf(root, own)!])];
   if (kind === 'core' && exists(root, 'core/Cargo.toml')) {
     const crate = packageOf(root, 'core/Cargo.toml')!;
@@ -237,6 +252,30 @@ export type Options = {
   file?: string;
 };
 
+/**
+ * The folders `kind` and `name` name: one, none when there is no such owner, or more than one
+ * when features' integrations share the name.
+ */
+function folders(root: string, kind: Kind, name: string) {
+  // The MCP and the app are each one owner in one folder, with no name of their own.
+  if (unnamed(kind)) return [homes[kind]].filter((dir) => exists(root, dir));
+  if (!/^[a-z][a-z0-9_]*$/.test(name)) return [];
+  // An integration is in whichever feature holds it, found as `dispatchdev todo` finds it.
+  if (kind === 'integration') return integrations(root, name);
+  return [`${homes[kind]}/${name}`].filter((dir) => exists(root, dir));
+}
+/** The names of the owners of `kind` there are. */
+function owners(root: string, kind: Kind) {
+  const names =
+    kind === 'integration'
+      ? integrations(root).map((dir) => path.posix.basename(dir))
+      : fs
+          .readdirSync(path.join(root, homes[kind]), { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name);
+  return [...new Set(names)].sort();
+}
+
 /** The kind of test `file` is, by the folder of the owner's tests/ it sits in. */
 function layerOf(root: string, dir: string, file: string) {
   const folder = file.startsWith(`${dir}/tests/`) ? file.split('/')[dir.split('/').length + 1] : '';
@@ -253,16 +292,11 @@ export function ownerTests(
   name: string,
   { build = true, debug = false, only, file }: Options = {},
 ) {
-  // The MCP and the app are each one owner in one folder, with no name of their own.
-  const dir = unnamed(kind) ? homes[kind] : `${homes[kind]}/${name}`;
-  if ((!unnamed(kind) && !/^[a-z][a-z0-9_]*$/.test(name)) || !exists(root, dir)) {
-    const known = fs
-      .readdirSync(path.join(root, homes[kind]), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-    throw new Error(`No ${kind} named ${name}: ${known.join(', ')}`);
-  }
+  const found = folders(root, kind, name);
+  if (found.length > 1)
+    throw new Error(`More than one ${kind} is named ${name}: ${found.join(', ')}`);
+  const dir = found[0];
+  if (!dir) throw new Error(`No ${kind} named ${name}: ${owners(root, kind).join(', ')}`);
   if (only && file) throw new Error('Choose --only or --file.');
   const layers = Object.keys(LAYERS);
   if (only && !layers.includes(only))
