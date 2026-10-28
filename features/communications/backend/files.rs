@@ -369,10 +369,11 @@ impl Queue for Downloads {
     }
     fn finish(db: &Store, dsp: &str, item: &Due, outcome: &Outcome, _: i64) -> Result<()> {
         match outcome {
-            // Its bytes take their place with the file that keeps them.
-            Outcome::Kept(arrived) => {
-                BYTES.keep(db, dsp, arrived, || finished(db, dsp, item, outcome))
-            }
+            // Its bytes take their place with the file that keeps them: should either fail, it's
+            // tried again later, or given up, as a download that failed is.
+            Outcome::Kept(arrived) => BYTES
+                .keep(db, dsp, arrived, || finished(db, dsp, item, outcome))
+                .or_else(|error| finished(db, dsp, item, &failure(item, &error))),
             _ => finished(db, dsp, item, outcome),
         }
     }
