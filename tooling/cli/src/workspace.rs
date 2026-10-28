@@ -236,14 +236,7 @@ pub fn worktrees_free(root: &Path) -> Result<u64> {
 }
 /// Bytes free on the file system holding `path`, or what it links to.
 pub fn free_bytes(path: &Path) -> Result<u64> {
-    use std::{ffi::CString, os::unix::ffi::OsStrExt};
-    let path = CString::new(path.as_os_str().as_bytes())?;
-    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-    require(
-        unsafe { libc::statvfs(path.as_ptr(), &mut stat) } == 0,
-        "Couldn't read the free disk space",
-    )?;
-    Ok(stat.f_bavail * stat.f_frsize)
+    fs2::available_space(path).map_err(|_| "Couldn't read the free disk space".into())
 }
 /// The size of everything under `path`, or none if it doesn't exist.
 pub fn size(runner: &dyn Runner, path: &Path) -> Option<u64> {
