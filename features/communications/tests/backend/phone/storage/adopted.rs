@@ -1,7 +1,7 @@
-//! The phones' tables as Communications adopts them: a DSP's database Phones migrated, with a
-//! phone paired, a text Dispatch queued for it and the picture it carries, upgrades with nothing
-//! lost. That the runner leaves Phones' own records of its migrations as they were is core's to
-//! prove.
+//! The phones' tables as Communications adopts them: a DSP's database with Phones' tables as Dev
+//! had them before the move (`schema/phones.sql`), a phone paired, a text Dispatch queued for it
+//! and the picture it carries, upgrades with nothing lost. That the runner leaves Phones' own
+//! records of its migrations as they were is core's to prove.
 use super::*;
 use crate::{
     api::types::PairingStatus,
@@ -26,8 +26,22 @@ fn migration(id: u32) -> &'static Migration {
 fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_picture_working() {
     let (_root, db, dsp) = store();
     let owner = testing::a_user(&db);
-    // As Phones left it, its tables made as Communications' are: a phone paired, and a text
-    // Dispatch queued for it with a picture, its bytes kept.
+    // Phones' tables as Dev had them, in place of those Communications made.
+    let before = db.dsp(&dsp).unwrap();
+    before
+        .0
+        .execute_batch(
+            "DROP TABLE phones_files; DROP TABLE phones_texts; DROP TABLE phones_pairings; \
+             DROP TABLE phones_devices; DROP TABLE phones_change;",
+        )
+        .unwrap();
+    before
+        .0
+        .execute_batch(include_str!("schema/phones.sql"))
+        .unwrap();
+    drop(before);
+    // As Phones left them: a phone paired, and a text Dispatch queued for it with a picture, its
+    // bytes kept.
     let key = crypto::sha("phone-key");
     let phone = paired(&db, &dsp, &key, "2065550100");
     let bytes = b"door";
