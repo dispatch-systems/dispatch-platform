@@ -6,7 +6,9 @@ use dispatch_core::{
     db::Store,
     manifest::{Feature, feature, optional, people::Source},
 };
-use dispatch_routes_contract::{Driven, LiveRouteData, RouteDay, WorkPhone, WorkPhoneHold};
+use dispatch_routes_contract::{
+    DayPhones, Driven, LiveRouteData, RouteDay, WorkPhone, WorkPhoneHold,
+};
 
 pub(super) static LIVE: Feature = Feature {
     switch: optional("live", "Live", &[]),
@@ -69,6 +71,9 @@ impl LiveRouteData for Live {
         let mut day = LiveRouteData::day(self, db, dsp)?;
         day.routes.retain(|route| ids.contains(&route.driver_id));
         Ok(day)
+    }
+    fn day_phones(&self, _: &Store, _: &str) -> Result<DayPhones> {
+        unreachable!("Communications reads the live day's holds, not its phones")
     }
     /// The work phones the live day's holds that haven't ended hold.
     fn work_phones(&self, _: &Store, dsp: &str) -> Result<Vec<WorkPhone>> {

@@ -1,11 +1,16 @@
 //! Each driver's routes, as a feature or agent tool reads them: only while Routes is on for the
 //! DSP, the right driver's days for the IDs given, found by driver, every driver's on a day,
-//! and the days collected apart from the rest; and today as live route data holds it.
+//! and the days collected apart from the rest; and today as live route data holds it; and each
+//! driver's latest work phone of a day.
 use super::*;
-use crate::backend::{routes_today, tests::publish};
+use crate::backend::{
+    day_request, routes_today,
+    tests::{publish, publish_edited},
+};
 use chrono::Duration;
 use dispatch_core::testing;
-use dispatch_cortex::routes::Mode;
+use dispatch_cortex::routes::{Capture, ItineraryCapture, Mode};
+use dispatch_routes_contract::{DriverPhone, MOST_ID_LENGTH};
 use serde_json::json;
 
 #[test]
@@ -117,6 +122,13 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
     // Each refusal changes one thing from a read that's answered.
     let year = offered.routes(&db, &dsp, &driver, &day(365), &day(0));
     assert!(year.is_ok());
+    let longest = vec!["d".repeat(MOST_ID_LENGTH)];
+    assert!(
+        offered
+            .routes(&db, &dsp, &longest, &day(3), &day(0))
+            .is_ok()
+    );
+    let longer = vec!["d".repeat(MOST_ID_LENGTH + 1)];
     let seventeen: Vec<String> = (0..17).map(|n| format!("driver-{n}")).collect();
     for (asked, from, to, code) in [
         (
@@ -127,6 +139,7 @@ fn driver_routes_reads_a_drivers_days_only_while_routes_is_on() {
         ),
         (driver.clone(), day(366), day(0), "invalid_input"),
         (seventeen, day(3), day(0), "invalid_input"),
+        (longer, day(3), day(0), "invalid_input"),
     ] {
         let refused = offered.routes(&db, &dsp, &asked, &from, &to).unwrap_err();
         assert_eq!(refused.code, code, "{asked:?} {from} {to}");
@@ -226,6 +239,19 @@ fn route_data_is_read_through_the_indexes_made_for_each_read() {
             "{table}: {steps:?}"
         );
     }
+    // Whether a number was ever a work phone reaches only the itineraries showing it, whatever the
+    // days kept.
+    let plan = historical
+        .all(
+            &format!("EXPLAIN QUERY PLAN {}", work_phones::EVER),
+            ["5550000000"],
+        )
+        .unwrap();
+    let steps: Vec<_> = plan.iter().map(|step| s(step, "detail")).collect();
+    assert!(
+        steps[0].starts_with("SEARCH i USING INDEX itineraries_work_phone (work_phone=?)"),
+        "{steps:?}"
+    );
     // Whether a number was ever a work phone reaches only its holds, whatever the days kept.
     let plan = historical
         .all(
@@ -372,4 +398,129 @@ async fn live_route_data_reads_today_with_its_assigned_routes_and_phones_only_wh
             .unwrap()
             .is_none()
     );
+}
+
+/// `read` with its list showing no driver's phone, so each itinerary shows its own response's.
+fn unlisted(read: &mut Capture) {
+    for driver in read.summaries["transporters"].as_array_mut().unwrap() {
+        driver.as_object_mut().unwrap().remove("workPhoneNumber");
+    }
+}
+/// `read` with another itinerary of `driver`'s, begun an hour after the day's first, whose response
+/// shows them on `phone`.
+fn later(read: &mut Capture, driver: &str, phone: &str) {
+    let id = format!("itinerary-{}", read.itineraries.len() + 1);
+    let mut summary = read.summaries["itinerarySummaries"][0].clone();
+    let began = summary["itineraryStartTime"].as_i64().unwrap() + 3_600_000;
+    summary["itineraryId"] = json!(id);
+    summary["transporterId"] = json!(driver);
+    summary["itineraryStartTime"] = json!(began);
+    let summaries = read.summaries["itinerarySummaries"].as_array_mut();
+    summaries.unwrap().push(summary);
+    let mut response: Value = serde_json::from_str(&read.itineraries[0].detail).unwrap();
+    response["itineraryDetails"]["itineraryId"] = json!(id);
+    response["itineraryDetails"]["transporterId"] = json!(driver);
+    response["transporters"] = json!([{"transporterId":driver,"workPhoneNumber":phone}]);
+    read.itineraries.push(ItineraryCapture {
+        id,
+        transporter_id: driver.into(),
+        detail: response.to_string(),
+    });
+}
+
+#[tokio::test]
+async fn a_days_work_phones_are_each_drivers_latest_saying_when_two_share_one() {
+    testing::install(&[&dispatch_cortex::COLLECTOR], &[&crate::FEATURE]);
+    let (_root, db, dsp) = testing::bootstrapped();
+    db.set_profile(
+        &dsp,
+        json!({"stationCode":"TST1","abbreviation":"NLOG","setupRequired":false}),
+    )
+    .unwrap();
+    testing::ready_connection(&db, &dsp, dispatch_cortex::PROVIDER).unwrap();
+    let state = dispatch_core::State::new(db.config.clone()).unwrap();
+    let routes = dispatch_routes_contract::for_dsp(&db, &dsp)
+        .unwrap()
+        .expect("Routes is on");
+    let today = routes_today(&db, &dsp).unwrap();
+    let day = |back: i64| (today - Duration::days(back)).to_string();
+    let phones = |back| routes.day_phones(&db, &dsp, &day(back)).unwrap();
+    let phone = |driver: &str, phone: &str, shared| DriverPhone {
+        driver_id: driver.into(),
+        phone: phone.into(),
+        shared,
+    };
+    let (first, second) = ("2065550190", "2065550191");
+
+    // The fixture's day: each driver on a phone of their own all day.
+    publish(&db, &dsp, &day(1), Mode::Final);
+    let own = vec![
+        phone("driver-1", first, false),
+        phone("driver-2", second, false),
+    ];
+    assert_eq!(phones(1), DayPhones::Read(own.clone()));
+    // Swapped later in the day, each driver's next itinerary showing the other's phone: each has
+    // the one they swapped to.
+    publish_edited(&db, &dsp, &day(2), Mode::Final, |read| {
+        unlisted(read);
+        later(read, "driver-1", second);
+        later(read, "driver-2", first);
+    });
+    let swapped = vec![
+        phone("driver-1", second, false),
+        phone("driver-2", first, false),
+    ];
+    assert_eq!(phones(2), DayPhones::Read(swapped));
+    // The first driver's next showing the second's phone, who has it still: it's both drivers'
+    // latest, and neither's alone.
+    publish_edited(&db, &dsp, &day(3), Mode::Final, |read| {
+        unlisted(read);
+        later(read, "driver-1", second);
+    });
+    let both = vec![
+        phone("driver-1", second, true),
+        phone("driver-2", second, true),
+    ];
+    assert_eq!(phones(3), DayPhones::Read(both));
+    // A day whose records show no phone is read, with none; one not collected isn't.
+    publish_edited(&db, &dsp, &day(4), Mode::Final, |read| {
+        unlisted(read);
+        for itinerary in &mut read.itineraries {
+            let mut response: Value = serde_json::from_str(&itinerary.detail).unwrap();
+            response["transporters"] = json!([]);
+            itinerary.detail = response.to_string();
+        }
+    });
+    assert_eq!(phones(4), DayPhones::Read(Vec::new()));
+    assert_eq!(phones(5), DayPhones::Uncollected);
+    let refused = routes.day_phones(&db, &dsp, "2026-9-25").unwrap_err();
+    assert_eq!(refused.code, "invalid_date");
+
+    // Live: nothing without a live day; then today as its last read left it, the first driver on a
+    // phone no saved day shows, which is a work phone from then on.
+    let live = dispatch_routes_contract::live_for_dsp(&db, &dsp)
+        .unwrap()
+        .expect("Routes is on");
+    assert_eq!(live.day_phones(&db, &dsp).unwrap(), DayPhones::Uncollected);
+    let request = day_request(&db, &dsp, &today.to_string(), Mode::Snapshot).unwrap();
+    let mut read = dispatch_cortex::routes::fixture(&request).unwrap();
+    read.summaries["transporters"][0]["workPhoneNumber"] = json!("+1 555 010 0009");
+    let ever = |phone: &str| routes.ever_work_phone(&db, &dsp, phone).unwrap();
+    assert!(!ever("5550100009"));
+    let revision = db
+        .connection_revision(&dsp, dispatch_cortex::PROVIDER)
+        .unwrap()
+        .unwrap();
+    crate::keep_live(&state, &dsp, read, revision)
+        .await
+        .unwrap();
+    assert_eq!(
+        live.day_phones(&db, &dsp).unwrap(),
+        DayPhones::Read(vec![
+            phone("driver-1", "5550100009", false),
+            phone("driver-2", second, false),
+        ])
+    );
+    assert!(ever("(555) 010-0009") && ever(first), "live and saved");
+    assert!(!ever("5550100008") && !ever("0100009"));
 }

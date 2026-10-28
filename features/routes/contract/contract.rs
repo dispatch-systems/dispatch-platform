@@ -5,8 +5,10 @@
 //! under way proves nothing by what it lacks, since it may be read before dispatch; and a day
 //! outside what's collected is unknown. Routes exposes it as `driver_routes`, from historical
 //! route data; and today as live reads leave it, with the work phone each driver holds now, as
-//! `live_route_data` (`LiveRouteData`). Who held which work phone, today and on a saved day, is
-//! in both, and `WorkPhonesChanged` says when it changed, and of which day.
+//! `live_route_data` (`LiveRouteData`). Each driver's latest work phone of a day, today and on a
+//! saved day, is in both (`day_phones`), and `RouteDataChanged` says when a day's route data
+//! changed. Who held which work phone, from when until when, is in both too, and
+//! `WorkPhonesChanged` says when it changed, and of which day.
 use dispatch_core::{
     Result,
     db::Store,
@@ -15,6 +17,8 @@ use dispatch_core::{
 
 /// The most IDs one read of a driver's routes names.
 pub const MOST_IDS: usize = 16;
+/// The longest ID a read of a driver's routes names, in characters.
+pub const MOST_ID_LENGTH: usize = 128;
 /// The most days one read of a driver's routes covers, its first and last among them.
 pub const MOST_DAYS: i64 = 366;
 
@@ -28,13 +32,21 @@ pub trait DriverRoutes: Send + Sync {
     /// time, and which of those days were collected; no IDs answer the days alone. An ID is
     /// matched exactly. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`; and
     /// with `invalid_input`, `from` after `to`, more than `MOST_DAYS` days, more than `MOST_IDS`
-    /// IDs, or an ID that's empty or over 128 characters.
+    /// IDs, or an ID that's empty or over `MOST_ID_LENGTH` characters.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String], from: &str, to: &str)
     -> Result<Driven>;
     /// What every driver drove on `day`, YYYY-MM-DD in the DSP's own time, each itinerary by
     /// the ID that drove it, and whether the day was collected. Routes refuses a day that isn't
     /// YYYY-MM-DD with `invalid_date`.
     fn day(&self, db: &Store, dsp: &str, day: &str) -> Result<Driven>;
+    /// Each driver's latest work phone on `day`, YYYY-MM-DD in the DSP's own time, as historical
+    /// route data keeps the day's read. Routes refuses a day that isn't YYYY-MM-DD with
+    /// `invalid_date`.
+    fn day_phones(&self, db: &Store, dsp: &str, day: &str) -> Result<DayPhones>;
+    /// Whether `phone`, by its last ten digits, is an itinerary's work phone on a day route data
+    /// keeps, live or historical: a work phone nobody has today is still one. A number with fewer
+    /// than ten digits never is.
+    fn ever_work_phone(&self, db: &Store, dsp: &str, phone: &str) -> Result<bool>;
     /// Every hold on a work phone historical route data keeps of `day`, YYYY-MM-DD in the DSP's
     /// own time, ended ones too, oldest first: those of the day's saved read, kept once live route
     /// data is emptied. Routes refuses a day that isn't YYYY-MM-DD with `invalid_date`.
@@ -124,8 +136,9 @@ pub fn for_dsp(db: &Store, dsp: &str) -> Result<Option<&'static dyn DriverRoutes
     dispatch_core::manifest::exposes::for_dsp::<dyn DriverRoutes>(db, dsp)
 }
 
-/// Live route data: today's routes as the last whole live read left them, the company work phone
-/// each driver holds now and every hold of the day; nothing of another day. Apart from the historical route data
+/// Live route data: today's routes as the last whole live read left them, each driver's latest
+/// work phone, the company work phone each driver holds now and every hold of the day; nothing of
+/// another day. Apart from the historical route data
 /// `DriverRoutes` reads: a day joins it once saved there, and leaves live route data as a stop
 /// saves it (`save_and_clear_live`); a day left unsaved, as when the DSP saves none, stays until
 /// the next day's first read.
@@ -141,13 +154,48 @@ pub trait LiveRouteData: Send + Sync {
     fn day(&self, db: &Store, dsp: &str) -> Result<Driven>;
     /// The itineraries today of the drivers holding `ids` as last read live, and the routes
     /// they're assigned to without one yet. An ID is matched exactly. Routes refuses more than
-    /// `MOST_IDS` IDs, or one that's empty or over 128 characters, with `invalid_input`.
+    /// `MOST_IDS` IDs, or one that's empty or over `MOST_ID_LENGTH` characters, with
+    /// `invalid_input`.
     fn routes(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Driven>;
+    /// Each driver's latest work phone today, as the last whole live read left it; `Uncollected`
+    /// without a live day.
+    fn day_phones(&self, db: &Store, dsp: &str) -> Result<DayPhones>;
     /// The work phone each driver holds now, and since when; none without a live day.
     fn work_phones(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhone>>;
     /// Every hold on a work phone of the live day, ended ones too, oldest first; none without a
     /// live day.
     fn work_phone_holds(&self, db: &Store, dsp: &str) -> Result<Vec<WorkPhoneHold>>;
+}
+
+/// Each driver's latest work phone of a day, from the work phone each of their itineraries shows:
+/// the one on their itinerary of the day that began last, by when it started, or else was planned
+/// to depart, of those showing one; of two no time tells apart, the one whose ID sorts last. An
+/// itinerary shows the phone its driver's records show with it: the day's list's, else its own
+/// response's. A phone passes from driver to driver, so a driver's latest is the one they had last:
+/// of two who swapped phones, each has the one they swapped to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DayPhones {
+    /// Route data keeps no read of the day: it wasn't collected, or isn't kept any more; or, live,
+    /// it holds no read of today.
+    Uncollected,
+    /// The day's read was kept before Routes kept its itineraries' work phones, and they aren't
+    /// extracted from its stored responses yet; or, live, today hasn't been read again since.
+    Unextracted,
+    /// Each driver's latest work phone of the day, one each, by their ID: none when no itinerary
+    /// showed one.
+    Read(Vec<DriverPhone>),
+}
+
+/// A driver's latest work phone of a day.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DriverPhone {
+    /// The ID that had it: one of the source's.
+    pub driver_id: String,
+    /// Its ten digits.
+    pub phone: String,
+    /// Whether it's another driver ID's latest phone that day too: then the day names no one
+    /// driver whose phone it is, and each of them has it here.
+    pub shared: bool,
 }
 
 /// A company work phone a driver holds now: a phone the DSP passes from driver to driver, so
@@ -188,6 +236,23 @@ pub struct WorkPhonesChanged {
 }
 impl Event for WorkPhonesChanged {
     const NAME: &'static str = "routes.work_phones_changed";
+}
+
+/// A day's route data changed, once it's kept: a live read changed what its readers read, rather
+/// than only the responses it keeps whole; live route data was emptied of it, or emptied holding
+/// none, of today; a read of it became the day's in historical route data, saved, collected or
+/// reprocessed; or its itineraries' work phones were extracted from its stored responses. Published
+/// after `people.changed` when a live read or a save names drivers anew. A collected or reprocessed
+/// day is published once Routes hears `collection.succeeded` of its collection, before the features
+/// after it in the registry hear it, or by the next minute's upkeep, whichever is first: until then
+/// it's noted only in the server's memory, so a restart before then publishes none.
+#[derive(Clone, Debug)]
+pub struct RouteDataChanged {
+    /// The day whose route data changed, YYYY-MM-DD in the DSP's own time.
+    pub day: String,
+}
+impl Event for RouteDataChanged {
+    const NAME: &'static str = "routes.data_changed";
 }
 
 /// What reads the DSP's live route data: only while Routes is on there.

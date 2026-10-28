@@ -1,5 +1,6 @@
-//! Routes' upkeep: retiring route data past each DSP's retention window, and deleting what
-//! no reader sees any more.
+//! Routes' upkeep: retiring route data past each DSP's retention window, deleting what no
+//! reader sees any more, telling of the days whose route data changed that nothing told of, and
+//! extracting the work phones of saved days kept before Routes kept them.
 use crate::backend::RoutesStore;
 use dispatch_core::{
     Error, State,
@@ -10,7 +11,9 @@ use serde_json::json;
 use std::{sync::Arc, time::Duration};
 
 /// Retires route data past each DSP's retention window, hourly, and deletes what no
-/// reader sees any more in small steps, so the platform lock is never held for long.
+/// reader sees any more in small steps, so the platform lock is never held for long; tells of
+/// each day noted changed and not told of yet (`changed`); and extracts a few saved days' work
+/// phones from their stored responses (`phone_backfill`).
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60 * 60),
     run: clean,
@@ -28,6 +31,10 @@ fn clean(state: Arc<State>, expire: bool) -> Upkeep {
             Err(error) => return failed("routes_cleanup_failed", &error),
         };
         for dsp in dsps {
+            super::changed::tell(&state, &dsp).await;
+            if let Err(error) = super::phone_backfill::extract(&state, &dsp).await {
+                failed("routes_phones_failed", &error);
+            }
             if expire {
                 let id = dsp.clone();
                 if let Err(error) = state
