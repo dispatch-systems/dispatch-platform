@@ -65,7 +65,7 @@ export function Preview({
             <div className="chat-frame">
               <ListPane
                 inbox={inbox}
-                routes={{ groups: [], read: { pending: false, error: '' }, choose: nothing }}
+                routes={{ groups: [], read: { error: '', retry: nothing }, choose: nothing }}
                 sections={['slack']}
                 section="slack"
                 chooseSection={nothing}

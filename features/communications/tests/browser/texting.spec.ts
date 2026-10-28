@@ -83,7 +83,7 @@ test('with its phone and no Slack, Communications opens on Today’s Routes, wit
   );
 });
 
-test('Today’s Routes reads before it says No routes, and a read that fails says so in Today’s Routes alone', async ({
+test('Today’s Routes reads before it says No routes, a read that fails says so in Today’s Routes alone, and offline it waits to read', async ({
   page,
 }) => {
   await login(page);
@@ -114,6 +114,18 @@ test('Today’s Routes reads before it says No routes, and a read that fails say
   await sections.getByRole('tab', { name: /Messaging/ }).click();
   await expect(list).toContainText('(425) 555-0199');
   await expect(page.getByRole('alert')).toHaveCount(0);
+
+  // Opened again on Messaging, as chosen, then offline before Today's Routes was ever read: it says
+  // it'll read on reconnecting, never No routes, and reads once back online.
+  await page.unroute('**/api/dsp/communications/routes');
+  await page.reload();
+  await expect(list).toContainText('(425) 555-0199');
+  await page.context().setOffline(true);
+  await sections.getByRole('tab', { name: "Today's Routes" }).click();
+  await expect(list.getByRole('status')).toContainText('offline');
+  await expect(page.getByText('No routes', { exact: true })).toHaveCount(0);
+  await page.context().setOffline(false);
+  await expect(page.getByText('No routes', { exact: true })).toBeVisible();
 });
 
 test('with Slack too, the sections switch, each with how many wait, stay as chosen, and a link opens its section, the board chosen or not', async ({

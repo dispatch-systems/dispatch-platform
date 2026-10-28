@@ -245,7 +245,7 @@ export function CommunicationsPage({ view, user }: { view: DspView; user: string
   // Today's Routes as the page reads it, which its list and its board show.
   const routes: RoutesShown = {
     groups: routeList,
-    read: { pending: todays.loading, error: todays.error },
+    read: { routes: todays.read?.routes, error: todays.error, retry: todays.refresh },
     choose: (row) => go(rowTarget(row)),
     driver: current?.driverId,
     view: boardable ? { shown: 'list', choose: chooseRoutesView } : undefined,

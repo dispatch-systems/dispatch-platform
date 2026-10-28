@@ -14,8 +14,8 @@ import type { TodaysRead } from './todays-routes.js';
 /** How often Today's Routes is read again while it shows, for its drivers' progress. */
 export const ROUTES_READ_MS = 60_000;
 
-/** Today's Routes while `shown`, once read, and whether that read answers the latest change;
- * whether it's still being read first, and why the latest read failed, if it did. */
+/** Today's Routes while `shown`, once read, and whether that read answers the latest change; why
+ * the latest read failed, if it did; and reading it again. */
 export function useTodaysRoutes(shown: boolean, changed: Changed, inbox?: Communications) {
   // An update changing a work conversation, or a fresh read of the list, reads it again.
   const [generation, setGeneration] = useState(0);
@@ -31,7 +31,7 @@ export function useTodaysRoutes(shown: boolean, changed: Changed, inbox?: Commun
   }, [changed, inbox]);
   const load = useCallback((signal: AbortSignal) => getTodaysRoutes(signal), []);
   const key = String(generation);
-  const { data, error, loading, validatedKey } = useData<TodaysRoutes>(
+  const { data, error, refresh, validatedKey } = useData<TodaysRoutes>(
     shown ? todaysRoutesUrl : '',
     ROUTES_READ_MS,
     key,
@@ -41,5 +41,5 @@ export function useTodaysRoutes(shown: boolean, changed: Changed, inbox?: Commun
   );
   const read: TodaysRead | undefined =
     shown && data ? { routes: data, current: validatedKey === key } : undefined;
-  return { read, loading, error };
+  return { read, error, refresh };
 }
