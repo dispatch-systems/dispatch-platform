@@ -1,8 +1,8 @@
 //! The bytes texts carry, as they arrive: a reported file's are kept with their own size, those
-//! sent again leave those before them kept should what keeps them fail, those cut short leave
-//! nothing behind, and those gone once upkeep listed them went already. A picture added for a text
-//! is its adder's alone until it goes, its bytes kept once however many pictures keep them, and one
-//! past what a text carries is refused before any of it is kept.
+//! sent again leave those before them kept should what keeps them fail, and those cut short leave
+//! nothing behind. A picture added for a text is its adder's alone until it goes, its bytes kept
+//! once however many pictures keep them, and one past what a text carries is refused before any of
+//! it is kept.
 use super::*;
 use crate::backend::{
     phone::{
@@ -148,17 +148,6 @@ async fn bytes_cut_short_as_they_arrive_leave_nothing_behind() {
     // The upload ends there, as a request cancelled does.
     drop(receiving);
     assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
-}
-
-#[test]
-fn bytes_gone_once_upkeep_listed_them_went_already() {
-    let (_root, db, dsp) = store();
-    let folder = kept(&db, &dsp);
-    // Upkeep lists an upload's bytes as they arrive; it's cancelled before upkeep looks at them.
-    std::fs::write(folder.join(".arriving_cancelled"), b"do").unwrap();
-    let listed = std::fs::read_dir(&folder).unwrap().next().unwrap().unwrap();
-    std::fs::remove_file(listed.path()).unwrap();
-    assert!(!unkept(&listed, &HashSet::new(), i64::MAX).unwrap());
 }
 
 /// The picture `bytes`, as `by` adds it for a text.

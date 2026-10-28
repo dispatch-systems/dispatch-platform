@@ -1,9 +1,10 @@
 //! Answering from Dispatch: each answer goes to the member's direct message in Slack under the
 //! full name of whoever wrote it and their Slack profile photo, or the image of their initials,
-//! as written, with any photos they added; and someone at the DSP can message a member first.
+//! as written, with any photos they added, a photo refused for its kind taking nothing from the
+//! same photo added meanwhile; and someone at the DSP can message a member first.
 use super::*;
 use crate::backend::{
-    files::{FileStatus, FileStore},
+    files::{self, FileStatus, FileStore},
     inbox, initials,
     model::ConversationState,
     storage::CommunicationsStore,
@@ -13,8 +14,9 @@ use crate::integrations::messages::incoming;
 use axum::body::Bytes;
 use dispatch_core::db::now;
 use dispatch_slack::{kit::Bot, testing as slack};
-use futures_util::stream;
+use futures_util::{TryStreamExt, stream};
 use serde_json::json;
+use std::task::Poll;
 
 const TEAM: &str = "T0FIXTURE1";
 
@@ -29,6 +31,15 @@ async fn started(state: &Arc<State>, bot: &Bot, dm: &str) -> String {
         .await
         .unwrap()
         .id
+}
+
+/// `bytes`, as an upload of a photo brings them.
+async fn photo(bytes: Vec<u8>) -> Upload {
+    let length = bytes.len() as u64;
+    let chunks = stream::iter([Ok::<_, std::io::Error>(Bytes::from(bytes))]);
+    Upload::streamed(length, SLACK.largest, chunks)
+        .await
+        .unwrap()
 }
 
 /// How many of the DSP's conversations its page lists.
@@ -115,17 +126,7 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
     let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
     let add = |name: &'static str, mime: &'static str, bytes: Vec<u8>| {
         let (state, owner) = (state.clone(), owner.clone());
-        async move {
-            let length = bytes.len() as u64;
-            let photo = Upload::streamed(
-                length,
-                SLACK.largest,
-                stream::iter([Ok::<_, std::io::Error>(Bytes::from(bytes))]),
-            )
-            .await
-            .unwrap();
-            upload(&state, &owner, USE, name, mime, photo).await
-        }
+        async move { upload(&state, &owner, USE, name, mime, photo(bytes).await).await }
     };
     let png = initials::image("PH.png").unwrap().to_vec();
     let photo = add("Dashboard.png", "image/png", png).await.unwrap();
@@ -181,6 +182,73 @@ async fn an_answer_carries_the_photos_added_for_it_shown_in_slack() {
         .await
         .unwrap_err();
     assert_eq!(again.code, "communications_upload_not_found");
+}
+
+#[tokio::test]
+async fn a_photo_refused_for_its_kind_takes_nothing_from_the_same_photo_added_meanwhile() {
+    let (_root, state, dsp) = support::started();
+    let owner = support::member(&state, &dsp, "Test", "Owner", "owner@example.test").await;
+    let at = dsp.clone();
+    let folder = state
+        .read(move |db| Ok(support::files_kept(db, &at)))
+        .await
+        .unwrap();
+    let placed = || {
+        std::fs::read_dir(&folder).unwrap().any(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with('.')
+        })
+    };
+    let png = initials::image("PH.png").unwrap().to_vec();
+    // A PNG being added is let through until its bytes are among the DSP's, this test polling it,
+    // waking itself, as nothing else would.
+    let adding = upload(
+        &state,
+        &owner,
+        USE,
+        "Dashboard.png",
+        "image/png",
+        photo(png.clone()).await,
+    );
+    tokio::pin!(adding);
+    let added = std::future::poll_fn(|cx| {
+        if placed() {
+            return Poll::Ready(None);
+        }
+        match adding.as_mut().poll(cx) {
+            Poll::Ready(added) => Poll::Ready(Some(added)),
+            Poll::Pending => {
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+        }
+    })
+    .await;
+    // Meanwhile the same bytes, said to be a JPEG, are refused.
+    let jpeg = photo(png.clone()).await;
+    let refused = upload(&state, &owner, USE, "Dashboard.jpg", "image/jpeg", jpeg).await;
+    assert_eq!(refused.unwrap_err().code, "communications_photo_kind");
+    // The PNG is added all the same, its bytes there to send.
+    let added = match added {
+        Some(added) => added,
+        None => adding.await,
+    };
+    let (at, id) = (dsp.clone(), added.expect("the PNG is added").id);
+    let sha256 = state
+        .read(move |db| Ok(db.communications_file(&at, &id)?.unwrap().sha256.unwrap()))
+        .await
+        .unwrap();
+    let kept = files::read(&state, &dsp, &sha256).await;
+    let bytes: Vec<u8> = kept
+        .expect("its bytes are kept")
+        .map_ok(|chunk| chunk.to_vec())
+        .try_concat()
+        .await
+        .unwrap();
+    assert_eq!(bytes, png);
 }
 
 #[tokio::test]

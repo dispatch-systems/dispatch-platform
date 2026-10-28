@@ -74,7 +74,10 @@ fn let_go(db: &Store, dsp: &str, before: i64) {
     if let Err(error) = db.phones_tidy_files(dsp, before) {
         job_failed("files", &error);
     }
-    for error in files::reconcile(db, dsp).unwrap_or_else(|error| vec![error]) {
+    for error in files::BYTES
+        .reconcile(db, dsp)
+        .unwrap_or_else(|error| vec![error])
+    {
         job_failed("bytes", &error);
     }
     if let Err(error) = db.phones_tidy_pairings(dsp, db::now()) {

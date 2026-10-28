@@ -700,18 +700,21 @@ server, at a DSP's own address, by a phone's key, the phones' own:
   with its phone, direction, origin, the other party's number, how one Dispatch sent went, each
   attempt at it, and its latest change), `phones_files` (each text's pictures and files, and those
   added for one not sent yet) and `phones_change` (the last change given); the files' bytes in
-  the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. Bytes arrive beside
-  them, and take their place, and are let go, only under the platform's write lock with the files
-  that keep them. Kept until the DSP is deleted, as the rest.
+  the DSP's data, `data/phones/files/`, by their SHA-256, which backups keep. In either folder
+  (`bytes`), bytes arrive beside those kept, and take their place, and are let go, only under the
+  platform's write lock with the files that keep them. Kept until the DSP is deleted, as the rest.
 - **Upkeep:** catching up hourly and as the server starts; downloading what's due, sending
   what's due to go to groups' people, filing texts waiting to be filed, and filing today's again
-  where they belong now, every minute; letting go of photos added and never sent hourly. And the
-  phone side's, hourly, in each DSP with Communications on: letting go of pictures added and never
-  sent within a day; of bytes no file keeps, as bytes sent again in place of others and a removal
-  that failed leave, and of bytes left arriving an hour, as a restart leaves, each on its own; and
-  of codes expired. Each of these jobs runs on its own too: one that fails, logged as
-  `phones_tidy_failed` with its DSP and job, leaves the rest to run, and is tried again the next
-  hour.
+  where they belong now, every minute; and hourly, in each DSP with Slack connected, letting go of
+  photos added and never sent within a day, then of bytes no file keeps, as a failure once in
+  place or a removal that failed leaves, and of bytes left arriving an hour, as a restart leaves,
+  each on its own: one that fails, logged as `communications_tidy_failed` with its DSP and job,
+  leaves the rest to go, and is tried again the next hour. And the phone side's, hourly, in each DSP with
+  Communications on: letting go of pictures added and never sent within a day; of bytes no file
+  keeps, as bytes sent again in place of others and a removal that failed leave, and of bytes left
+  arriving an hour, as a restart leaves, each on its own; and of codes expired. Each of these jobs
+  runs on its own too: one that fails, logged as `phones_tidy_failed` with its DSP and job, leaves
+  the rest to run, and is tried again the next hour.
 - **Fixture mode** never calls Slack: Slack's fixture answers what Slack itself calls, and
   `integrations/messages/fixture.rs` what only Communications does. Each member's direct
   message with the app is `D` and the rest of their ID, and holds what the app posted there, as

@@ -5,8 +5,10 @@
 //! given up after that. Only a file Slack hosts is downloaded, up to 100 MB; one larger, or a
 //! link to elsewhere, keeps its name, type and size alone. A photo someone at the DSP adds to a
 //! message is kept as it's uploaded, before the message is sent, and let go if it isn't sent
-//! within a day.
+//! within a day. Their bytes arrive, take their place and are let go as `bytes` keeps them, with
+//! the files that keep them.
 use super::{
+    bytes::{Arrived, Folder},
     changes::{ChangeStore, changed_conversation},
     live,
     storage::DOMAIN,
@@ -14,21 +16,18 @@ use super::{
 use crate::integrations::messages::ID;
 use dispatch_core::{
     Error, Result, State,
-    db::{self, FromRow, Row, Store, now},
-    foundation::crypto,
+    db::{FromRow, Row, Store, now},
+    foundation::{crypto, observability},
     manifest::{Maintenance, Upkeep},
     server::http::upload::{UPLOAD_LIMIT, Upload},
 };
 use dispatch_slack::kit::{self, Bot, Bytestream, Queue};
-use futures_util::{StreamExt, stream};
 use rusqlite::params;
 use serde_json::json;
-use sha2::{Digest, Sha256};
-use std::{path::PathBuf, sync::Arc, time::Duration};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::{sync::Arc, time::Duration};
 
 /// Every minute, the files due to download in each DSP; hourly, the photos added and never sent
-/// are let go.
+/// are let go, then the bytes no file keeps or left arriving.
 pub const MAINTENANCE: Maintenance = Maintenance {
     every: Duration::from_secs(60 * 60),
     run: pass,
@@ -48,8 +47,17 @@ const RETRIES_MS: &[i64] = &[
 const WAIT_MS: i64 = 15 * 60 * 1000;
 /// How long a photo added for a message waits for it to be sent, in milliseconds.
 const UNSENT_MS: i64 = 24 * 60 * 60 * 1000;
-/// How a failure is reported.
+/// How a failure downloading is reported.
 const FAILED: &str = "communications_download_failed";
+/// How a failure tidying the photos and files is reported.
+const TIDY_FAILED: &str = "communications_tidy_failed";
+/// Where the DSP's photos and files are kept, and which bytes its messages' files and the photos
+/// added for them keep.
+pub const BYTES: Folder = Folder {
+    owner: "communications",
+    keeps: <Store as FileStore>::communications_bytes_kept,
+    kept: <Store as FileStore>::communications_kept_bytes,
+};
 
 dispatch_core::text_enum! {
     #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -128,10 +136,12 @@ pub trait FileStore {
     /// Lets go of the photos `ids` names, claimed for a message Slack didn't take.
     fn release_communications_uploads(&self, dsp: &str, ids: &[String]) -> Result<()>;
     /// Lets go of the photos added before `before` for a message never sent, but one going with
-    /// a message now: the SHA-256 of each whose bytes nothing keeps now.
-    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>>;
+    /// a message now, whose bytes upkeep then lets go of once no file keeps them.
+    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()>;
     /// Whether any file is kept by the SHA-256 `sha256`.
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool>;
+    /// The SHA-256 of every bytes a file keeps.
+    fn communications_kept_bytes(&self, dsp: &str) -> Result<Vec<String>>;
 }
 impl FileStore for Store {
     fn communications_file(&self, dsp: &str, id: &str) -> Result<Option<File>> {
@@ -211,32 +221,14 @@ impl FileStore for Store {
         )?;
         Ok(())
     }
-    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<Vec<String>> {
-        let db = self.dsp(dsp)?;
-        db.transaction(|| {
-            // Not one going to Slack with a message now, nor a group message's.
-            const UNSENT: &str = "message_id IS NULL AND group_message_id IS NULL \
-                AND added_at<?1 AND coalesce(claimed_until,0)<?2";
-            let unsent: Vec<(String,)> = db.query_as(
-                &format!("SELECT DISTINCT sha256 FROM communications_files WHERE {UNSENT}"),
-                params![before, now()],
-            )?;
-            db.exec(
-                &format!("DELETE FROM communications_files WHERE {UNSENT}"),
-                params![before, now()],
-            )?;
-            let mut loose = Vec::new();
-            for (sha256,) in unsent {
-                let kept = db.count(
-                    "SELECT count(*) FROM communications_files WHERE sha256=?",
-                    [&sha256],
-                )?;
-                if kept == 0 {
-                    loose.push(sha256);
-                }
-            }
-            Ok(loose)
-        })
+    fn forget_unsent_communications(&self, dsp: &str, before: i64) -> Result<()> {
+        // Not one going to Slack with a message now, nor a group message's.
+        self.dsp(dsp)?.exec(
+            "DELETE FROM communications_files WHERE message_id IS NULL \
+             AND group_message_id IS NULL AND added_at<? AND coalesce(claimed_until,0)<?",
+            params![before, now()],
+        )?;
+        Ok(())
     }
     fn communications_bytes_kept(&self, dsp: &str, sha256: &str) -> Result<bool> {
         Ok(self.dsp(dsp)?.count(
@@ -244,83 +236,22 @@ impl FileStore for Store {
             [sha256],
         )? > 0)
     }
+    fn communications_kept_bytes(&self, dsp: &str) -> Result<Vec<String>> {
+        let kept: Vec<(String,)> = self.dsp(dsp)?.query_as(
+            "SELECT DISTINCT sha256 FROM communications_files WHERE sha256 IS NOT NULL",
+            [],
+        )?;
+        Ok(kept.into_iter().map(|(sha256,)| sha256).collect())
+    }
 }
 
-/// The folder the DSP's files are kept in.
-fn folder(db: &Store, dsp: &str) -> Result<PathBuf> {
-    let owner = db::private_dir(&db.area(dsp, "data")?.join("communications"))?;
-    db::private_dir(&owner.join("files"))
-}
-/// Keeps `bytes`, as they arrive, among the DSP's files: their SHA-256, by which they're kept.
-pub async fn keep(state: &Arc<State>, dsp: &str, bytes: Upload) -> Result<String> {
-    let at = dsp.to_owned();
-    let folder = state.read(move |db| folder(db, &at)).await?;
-    let arriving = folder.join(format!(".{}", crypto::id("arriving")?));
-    let mut written = tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&arriving)
-        .await?;
-    let mut hash = Sha256::new();
-    let mut bytes = Box::pin(bytes.stream());
-    let copied: Result<()> = async {
-        while let Some(chunk) = bytes.next().await {
-            let chunk = chunk.map_err(|_| Error::new("upload_incomplete", 400))?;
-            hash.update(&chunk);
-            written.write_all(&chunk).await?;
-        }
-        written.sync_all().await?;
-        Ok(())
-    }
-    .await;
-    if let Err(error) = copied {
-        let _ = tokio::fs::remove_file(&arriving).await;
-        return Err(error);
-    }
-    let sha256 = crypto::hex(&hash.finalize());
-    tokio::fs::rename(&arriving, folder.join(&sha256)).await?;
-    Ok(sha256)
-}
-/// Lets go of the DSP's bytes kept by `sha256`, unless a file is kept by them.
-pub async fn discard(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<()> {
-    let (at, kept) = (dsp.to_owned(), sha256.to_owned());
-    let (folder, kept) = state
-        .read(move |db| Ok((folder(db, &at)?, db.communications_bytes_kept(&at, &kept)?)))
-        .await?;
-    if !kept {
-        gone(tokio::fs::remove_file(folder.join(sha256)).await)?;
-    }
-    Ok(())
-}
 /// The bytes of the DSP's file kept by `sha256`, as they're read.
 pub async fn read(state: &Arc<State>, dsp: &str, sha256: &str) -> Result<Bytestream> {
-    let at = dsp.to_owned();
-    let path = state.read(move |db| folder(db, &at)).await?.join(sha256);
-    let file = tokio::fs::File::open(path)
-        .await
-        .map_err(|_| Error::new("communications_file_not_found", 404))?;
-    Ok(Box::pin(stream::unfold(file, |mut file| async move {
-        let mut chunk = vec![0; 64 * 1024];
-        match file.read(&mut chunk).await {
-            Ok(0) => None,
-            Ok(read) => {
-                chunk.truncate(read);
-                Some((Ok(chunk.into()), file))
-            }
-            Err(error) => Some((Err(error), file)),
-        }
-    })))
-}
-/// The first bytes of the DSP's file kept by `sha256`, up to `most`.
-pub async fn head(state: &Arc<State>, dsp: &str, sha256: &str, most: usize) -> Result<Vec<u8>> {
-    let at = dsp.to_owned();
-    let path = state.read(move |db| folder(db, &at)).await?.join(sha256);
-    let mut file = tokio::fs::File::open(path).await?;
-    let mut head = vec![0; most];
-    let read = file.read(&mut head).await?;
-    head.truncate(read);
-    Ok(head)
+    let kept = BYTES
+        .read(state, dsp, sha256)
+        .await?
+        .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+    Ok(kept.chunks)
 }
 
 /// Downloads the DSP's files that are due now, then tells the pages waiting on its
@@ -340,36 +271,41 @@ fn pass(state: Arc<State>, due: bool) -> Upkeep {
     Box::pin(async move {
         for dsp in kit::dsps(&state, FAILED).await {
             download_due(&state, &dsp).await;
-            if due && let Err(error) = forget_unsent(&state, &dsp).await {
-                kit::failed(FAILED, &error);
+            if !due {
+                continue;
+            }
+            let at = dsp.clone();
+            let tidied = state
+                .run_scoped(dsp.clone(), DOMAIN, move |db| {
+                    let_go(db, &at, now() - UNSENT_MS);
+                    Ok(())
+                })
+                .await;
+            if let Err(error) = tidied {
+                tidy_failed(&dsp, None, &error);
             }
         }
     })
 }
-
-/// Lets go of the photos added for a message and not sent within a day, and their bytes.
-async fn forget_unsent(state: &Arc<State>, dsp: &str) -> Result<()> {
-    let at = dsp.to_owned();
-    let loose = state
-        .run_scoped(dsp, DOMAIN, move |db| {
-            let loose = db.forget_unsent_communications(&at, now() - UNSENT_MS)?;
-            let folder = folder(db, &at)?;
-            Ok(loose
-                .into_iter()
-                .map(|sha256| folder.join(sha256))
-                .collect::<Vec<_>>())
-        })
-        .await?;
-    for path in loose {
-        gone(tokio::fs::remove_file(path).await)?;
-    }
-    Ok(())
+/// Reports what tidying the DSP's photos and files couldn't do, by the job that failed, when there
+/// were any: tried again the next hour.
+fn tidy_failed(dsp: &str, job: Option<&str>, error: &Error) {
+    observability::event(
+        "error",
+        TIDY_FAILED,
+        json!({"dspId": dsp, "job": job, "error": error.code}),
+    );
 }
-/// What removing a file came to, one already gone being as good as removed.
-fn gone(removed: std::io::Result<()>) -> Result<()> {
-    match removed {
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
-        _ => Ok(()),
+/// Lets go of the DSP's photos added before `before` and never sent (`files`), then of the bytes
+/// no file keeps or left arriving (`bytes`), each job on its own, and each of the bytes, so one
+/// that fails is reported by its job and tried again the next hour, and the rest still go. Inside
+/// a write.
+fn let_go(db: &Store, dsp: &str, before: i64) {
+    if let Err(error) = db.forget_unsent_communications(dsp, before) {
+        tidy_failed(dsp, Some("files"), &error);
+    }
+    for error in BYTES.reconcile(db, dsp).unwrap_or_else(|error| vec![error]) {
+        tidy_failed(dsp, Some("bytes"), &error);
     }
 }
 
@@ -391,12 +327,10 @@ impl FromRow for Due {
         })
     }
 }
-/// What trying to download a file came to.
+/// What trying to download a file came to: its bytes arrived, beside the DSP's until finishing
+/// keeps the file with them; it's to be tried again later; or it's never to be kept, and why.
 pub enum Outcome {
-    Kept {
-        sha256: String,
-        size: i64,
-    },
+    Arrived(Arrived),
     Later {
         reason: String,
         at: i64,
@@ -446,44 +380,56 @@ impl Queue for Downloads {
         }
     }
     fn finish(db: &Store, dsp: &str, item: &Due, outcome: &Outcome, _: i64) -> Result<()> {
-        let db = db.dsp(dsp)?;
-        db.transaction(|| {
-            // Its message shows it kept, or not to be: a wait changes nothing it shows.
-            let shown = !matches!(outcome, Outcome::Later { .. });
-            match outcome {
-                Outcome::Kept { sha256, size } => db.exec(
-                    "UPDATE communications_files SET status='kept',sha256=?,size=?,reason=NULL,\
-                     claimed_until=NULL WHERE id=?",
-                    params![sha256, size, item.id],
-                )?,
-                Outcome::Later {
-                    reason,
-                    at,
-                    counted,
-                } => db.exec(
-                    "UPDATE communications_files SET due_at=?,reason=?,claimed_until=NULL,\
-                     attempts=attempts+? WHERE id=?",
-                    params![at, reason, i64::from(*counted), item.id],
-                )?,
-                Outcome::Left { status, reason } => db.exec(
-                    "UPDATE communications_files SET status=?,reason=?,claimed_until=NULL \
-                     WHERE id=?",
-                    params![status, reason, item.id],
-                )?,
-            };
-            if !shown {
-                return Ok(());
-            }
-            let (conversation,): (String,) = db
-                .one_as(
-                    "SELECT m.conversation_id FROM communications_files f \
-                     JOIN communications_messages m ON m.id=f.message_id WHERE f.id=?",
-                    [&item.id],
-                )?
-                .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
-            changed_conversation(&db, &conversation)
-        })
+        match outcome {
+            // Its bytes take their place with the file that keeps them: should either fail, it's
+            // tried again later, or given up, as a download that failed is.
+            Outcome::Arrived(arrived) => BYTES
+                .keep(db, dsp, arrived, || finished(db, dsp, item, outcome))
+                .or_else(|error| finished(db, dsp, item, &failure(item, &error))),
+            _ => finished(db, dsp, item, outcome),
+        }
     }
+}
+/// Keeps what trying to download `item` came to, and notes its conversation changed when its
+/// message shows it.
+fn finished(db: &Store, dsp: &str, item: &Due, outcome: &Outcome) -> Result<()> {
+    let db = db.dsp(dsp)?;
+    db.transaction(|| {
+        // Its message shows it kept, or not to be: a wait changes nothing it shows.
+        let shown = !matches!(outcome, Outcome::Later { .. });
+        match outcome {
+            Outcome::Arrived(arrived) => db.exec(
+                "UPDATE communications_files SET status='kept',sha256=?,size=?,reason=NULL,\
+                 claimed_until=NULL WHERE id=?",
+                params![arrived.sha256, arrived.size, item.id],
+            )?,
+            Outcome::Later {
+                reason,
+                at,
+                counted,
+            } => db.exec(
+                "UPDATE communications_files SET due_at=?,reason=?,claimed_until=NULL,\
+                 attempts=attempts+? WHERE id=?",
+                params![at, reason, i64::from(*counted), item.id],
+            )?,
+            Outcome::Left { status, reason } => db.exec(
+                "UPDATE communications_files SET status=?,reason=?,claimed_until=NULL \
+                 WHERE id=?",
+                params![status, reason, item.id],
+            )?,
+        };
+        if !shown {
+            return Ok(());
+        }
+        let (conversation,): (String,) = db
+            .one_as(
+                "SELECT m.conversation_id FROM communications_files f \
+                 JOIN communications_messages m ON m.id=f.message_id WHERE f.id=?",
+                [&item.id],
+            )?
+            .ok_or_else(|| Error::new("communications_file_not_found", 404))?;
+        changed_conversation(&db, &conversation)
+    })
 }
 
 /// Downloads one of a member's files from Slack, while Communications is on in its workspace:
@@ -530,16 +476,10 @@ async fn download(state: &Arc<State>, dsp: &str, item: &Due) -> Result<Outcome> 
         .as_str()
         .unwrap_or("application/octet-stream");
     let bytes = bot.download(url, mime).await?;
-    let sha256 = keep(
-        state,
-        dsp,
-        Upload::streamed(size, UPLOAD_LIMIT, bytes).await?,
-    )
-    .await?;
-    Ok(Outcome::Kept {
-        sha256,
-        size: size as i64,
-    })
+    let bytes = Upload::streamed(size, UPLOAD_LIMIT, bytes).await?;
+    Ok(Outcome::Arrived(
+        BYTES.receive(state, dsp, bytes, UPLOAD_LIMIT).await?,
+    ))
 }
 
 /// Waits a while, uncounted, for `reason`.
@@ -577,3 +517,7 @@ fn failure(item: &Due, error: &Error) -> Outcome {
         None => left(FileStatus::Failed, &error.code),
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/backend/files.rs"]
+mod tests;
