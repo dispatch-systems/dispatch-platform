@@ -342,10 +342,21 @@ async fn a_live_itinerary_showing_no_phone_keeps_the_one_stored_until_another_dr
     // second's alone.
     blank.finished_at += 1;
     blank.summaries["transporters"][1]["workPhoneNumber"] = json!(first);
-    keep_live(&state, &dsp, blank).await;
+    keep_live(&state, &dsp, blank.clone()).await;
     let handed = vec![latest("driver-2", first, false)];
-    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(handed));
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(handed.clone()));
     assert_eq!(heard(&dsp), [today.as_str()], "a phone handed over");
+
+    // Both records blank, then the day saved over the read saved before, which had the first on
+    // that phone: it's the second's alone there too, as live route data has it.
+    blank.finished_at += 1;
+    let record = blank.summaries["transporters"][1].as_object_mut().unwrap();
+    record.remove("workPhoneNumber");
+    keep_live(&state, &dsp, blank).await;
+    assert_eq!(live_phones(&db, &dsp), DayPhones::Read(handed.clone()));
+    let saved = dispatch_routes::save_live_day(&state, &dsp).await.unwrap();
+    assert_eq!(saved, Some(true));
+    assert_eq!(day_phones(&db, &dsp, &today), DayPhones::Read(handed));
 }
 
 #[tokio::test]

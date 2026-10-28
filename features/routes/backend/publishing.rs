@@ -16,8 +16,9 @@ pub(super) enum Writes {
 
 /// Makes a staged day its scope's read, in one transaction, if it was collected later than
 /// the read the day has, in whatever order the two are published: the day's last read is
-/// left inactive, each of the new one's itineraries that shows no work phone keeps the one
-/// `stored` keeps for it, else the one the last read stored (`work_phones`), what the new one
+/// left inactive, each of the new one's itineraries that shows no work phone keeps the one its
+/// most recent store had for it, none if none: `stored`'s, where it stores the itinerary, else the
+/// last read's (`work_phones`), what the new one
 /// sent of the drivers and addresses the days share is written over them, and the day's work
 /// phone holds become `phones`, the new read's, when it read them: one that reads none, as the
 /// standard collection's, leaves the day's as they are. A day collected no later is left

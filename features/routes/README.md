@@ -59,15 +59,16 @@ it is live route data, in a database of its own, `routelive`.
   has no phone. An itinerary a read of its day shows no phone for, as once Cortex ends its driver's
   session, keeps the one the day's route data last stored for it, unless the same read shows that
   phone on another driver's itinerary, whose it is then; never an earlier day's, as phones pass
-  from driver to driver day by day. A live read keeps the one the day's last read kept; a read
-  collected or saved, the one the day's read it replaces kept, and a live day saved, live route
-  data's first; a reprocess, the one the rows it rebuilds kept. A phone kept changes nothing the
-  day's readers read. A day's read is shaped with them from adapter version 3; a saved day kept by the
-  version before has them extracted from its stored responses by the minute's upkeep
-  (`backend/phone_backfill.rs`), four days a DSP at a time, newest first, a day whose stored
-  responses can't be read among them, logged and left as it was; it writes only the phones and the
-  version, so the drivers and addresses the days share are left as they are; an older day waits for
-  a reprocess, which shapes it whole. A driver's latest of a day is the one on their itinerary that
+  from driver to driver day by day. What its most recent store kept is kept, none if none, as once
+  another driver showed it: a live read, the day's last read's; a read collected or saved, the
+  day's read it replaces; a live day saved, live route data's, which holds each of its itineraries;
+  a reprocess, the rows it rebuilds. A phone kept changes nothing the day's readers read. A day's
+  read is shaped with them from adapter version 3; a saved day kept by the version before has them
+  extracted from its stored responses by the minute's upkeep (`backend/phone_backfill.rs`), four
+  days a DSP at a time, newest first, a day whose stored responses can't be read among them,
+  logged and left as it was; it writes only the phones and the version, so the drivers and
+  addresses the days share are left as they are; an older day waits for a reprocess, which shapes
+  it whole. A driver's latest of a day is the one on their itinerary that
   began last, by when it started, or else was planned to depart, of those showing or keeping one,
   so one whose later itinerary shows none has the latest that does; of two no time tells apart, the
   one whose ID sorts last. Nothing is tracked over time: of two drivers who swapped phones, each

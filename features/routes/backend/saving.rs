@@ -93,8 +93,8 @@ pub async fn save_day(
     save_keeping(state, dsp, key, capture, phones, Stored::default()).await
 }
 /// Saves a read as `save_day` does, each of its itineraries that shows no work phone keeping the
-/// one `stored` keeps for it before the one the day's read it replaces stored: live route data's,
-/// as its day is saved.
+/// one `stored` had for it, none if none, where it stores the itinerary, else the one the day's
+/// read it replaces stored: `stored` is live route data's, as its day is saved.
 pub(super) async fn save_keeping(
     state: &Arc<State>,
     dsp: &str,
