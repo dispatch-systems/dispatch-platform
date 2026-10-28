@@ -10,7 +10,7 @@
 //! - `pairing`: the codes that pair a phone, and the key it's given.
 //! - `outbox`: queuing a text Dispatch sends, or one that failed again, inside the write that
 //!   checks it may go; `live`, waking the phones waiting on their outbox.
-//! - `files`: the bytes of the texts' pictures and files, kept in the DSP's own data.
+//! - `files`: the bytes of the texts' pictures and files, kept in the DSP's own data (`bytes`).
 //! - `storage`: its phones, the codes that pair them, the texts and their files, in each DSP's
 //!   own database.
 //! - `tidy`: its upkeep; `demo`, a development DSP's stand-in phone.

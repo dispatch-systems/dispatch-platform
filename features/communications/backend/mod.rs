@@ -7,6 +7,8 @@
 //!   `changes`, each change to a conversation of either kind, in order, for the pages waiting on
 //!   them; `files`, the photos and files attached, kept in the DSP's own data, and downloading
 //!   members' from Slack.
+//! - `bytes`: the bytes of every kind's files, kept by their SHA-256 in a folder of the DSP's own
+//!   data for each store of them: how they arrive, take their place, are read and let go.
 //! - `dispatcher`: one conversation of either transport, by its reference: reading it, its
 //!   profile, sending in it, Done and who's writing.
 //! - `inbox`: the list of every kind as the page reads it, what changed in it, and what waits;
@@ -27,6 +29,7 @@
 //!   Dispatch's queued for them, and their bytes, knowing nothing of conversations.
 //! - `text`: Slack's markup, as Communications keeps and sends text.
 //! - `display`: how the page looks to each member, their own in Settings.
+pub(crate) mod bytes;
 pub(crate) mod changes;
 pub(crate) mod compose;
 pub(crate) mod contacts;
