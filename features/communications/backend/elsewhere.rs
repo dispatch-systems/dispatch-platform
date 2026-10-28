@@ -55,7 +55,7 @@ fn work(db: &Store, dsp: &str, person: &Person) -> Result<Option<Elsewhere>> {
         db.communications_drivers(dsp, source.as_str(), ids)?,
     )?;
     let phone = match &live {
-        Some(live) => live.phone_of(db, dsp, ids)?,
+        Some(live) => live.phone_of(db, dsp, ids, &live.routes_of(db, dsp, ids)?)?,
         None => None,
     };
     let conversation = match &phone {

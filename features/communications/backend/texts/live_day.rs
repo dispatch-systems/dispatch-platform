@@ -11,8 +11,11 @@ use crate::backend::{
 };
 use chrono::NaiveDate;
 use dispatch_core::{Error, Result, db::Store};
-use dispatch_routes_contract::{self as routes, DayPhones, DriverPhone, LiveRouteData};
-use std::{cmp::Reverse, collections::HashMap};
+use dispatch_routes_contract::{self as routes, DayPhones, DriverPhone, LiveRouteData, RouteDay};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashMap},
+};
 
 /// The DSP's live day, and what reads it.
 pub struct LiveDay {
@@ -56,10 +59,32 @@ impl LiveDay {
             DayPhones::Uncollected | DayPhones::Unextracted => HashMap::new(),
         })
     }
+    /// The route today of each of `ids` with the most stops, by their ID (`today::busiest`), as live
+    /// route data last read it: every one of them, as many at a time as one read of their routes
+    /// names.
+    pub fn routes_of(
+        &self,
+        db: &Store,
+        dsp: &str,
+        ids: &[String],
+    ) -> Result<BTreeMap<String, RouteDay>> {
+        let mut driven = Vec::new();
+        for some in ids.chunks(routes::MOST_IDS) {
+            driven.extend(self.reader.routes(db, dsp, some)?.routes);
+        }
+        Ok(today::busiest(driven, today::driver))
+    }
     /// The work phone the driver holding `ids` has now (`phones`), with the ID that has it: of
-    /// their IDs with one, that whose route today has the most stops, the route their day shows
-    /// (`today`), so its phone is the one shown beside it; of as many, the first linked.
-    pub fn phone_of(&self, db: &Store, dsp: &str, ids: &[String]) -> Result<Option<DriverPhone>> {
+    /// their IDs with one, that whose route in `driven`, theirs today (`routes_of`), has the most
+    /// stops, the route their day shows (`today`), so its phone is the one shown beside it; of as
+    /// many, the first linked.
+    pub fn phone_of(
+        &self,
+        db: &Store,
+        dsp: &str,
+        ids: &[String],
+        driven: &BTreeMap<String, RouteDay>,
+    ) -> Result<Option<DriverPhone>> {
         let mut phones = self.phones(db, dsp)?;
         let theirs: Vec<DriverPhone> = ids
             .iter()
@@ -71,17 +96,7 @@ impl LiveDay {
                 })
             })
             .collect();
-        if theirs.len() < 2 {
-            return Ok(theirs.into_iter().next());
-        }
-        // Every one of them, as many at a time as one read of their routes names.
-        let with: Vec<String> = theirs.iter().map(|each| each.driver_id.clone()).collect();
-        let mut driven = Vec::new();
-        for some in with.chunks(routes::MOST_IDS) {
-            driven.extend(self.reader.routes(db, dsp, some)?.routes);
-        }
-        let routes = today::busiest(driven, today::driver);
-        let stops = |each: &DriverPhone| routes.get(&each.driver_id).map_or(0, |r| r.stops);
+        let stops = |each: &DriverPhone| driven.get(&each.driver_id).map_or(0, |r| r.stops);
         Ok(theirs.into_iter().min_by_key(|each| Reverse(stops(each))))
     }
     /// Whether the driver `driver` is one of today's: on a route live route data names.

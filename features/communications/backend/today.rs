@@ -134,9 +134,9 @@ pub fn of_drivers(db: &Store, dsp: &str, live: &LiveDay, ids: &[String]) -> Resu
     if ids.is_empty() {
         return Ok(None);
     }
-    let driven = busiest(live.reader.routes(db, dsp, ids)?.routes, driver);
+    let driven = live.routes_of(db, dsp, ids)?;
     let route = driven.values().max_by_key(|route| route.stops);
-    let phone = live.phone_of(db, dsp, ids)?;
+    let phone = live.phone_of(db, dsp, ids, &driven)?;
     let vans = vans(db, dsp, route.and_then(|route| route.vin.as_ref()))?;
     Ok(known(shown(
         route,
