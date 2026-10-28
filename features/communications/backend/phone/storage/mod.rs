@@ -27,3 +27,7 @@ fn next_change(db: &Db) -> Result<i64> {
         .ok_or_else(|| Error::new("phones_change_missing", 500))?;
     Ok(n(&row, "last"))
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/phone/storage/adopted.rs"]
+mod adopted;
