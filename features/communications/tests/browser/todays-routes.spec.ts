@@ -145,9 +145,11 @@ test('a driver’s work conversation keeps what’s being written while they hol
     .click();
   const conversation = page.getByRole('region', { name: 'Fixture Driver' });
 
-  // A message and a picture, written and not sent.
+  // A message of a few lines and a picture, written and not sent.
   const box = conversation.getByRole('textbox', { name: 'Message' });
-  await box.fill('Gate code is 4471');
+  const draft = 'Gate code is 4471\nSide door, by the dock\nCall if it sticks';
+  await box.fill(draft);
+  const height = await box.evaluate((field) => field.getBoundingClientRect().height);
   const choosing = page.waitForEvent('filechooser');
   await conversation.getByRole('button', { name: 'Attach photos' }).click();
   await (await choosing).setFiles({ name: 'gate.png', mimeType: 'image/png', buffer: PIXEL });
@@ -178,9 +180,12 @@ test('a driver’s work conversation keeps what’s being written while they hol
 
   // Today's Routes reads them holding their phone again, as the next day's first read would (a
   // day can't begin here without moving the DSP's zone, which opens its view afresh): what was
-  // written is still there.
+  // written is still there, as high as it was written.
   await page.route(routesRead, (route) => route.fulfill({ json: routes }));
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-  await expect(box).toHaveValue('Gate code is 4471');
+  await expect(box).toHaveValue(draft);
   await expect(picture).toBeVisible();
+  await expect
+    .poll(() => box.evaluate((field) => field.getBoundingClientRect().height))
+    .toBe(height);
 });
