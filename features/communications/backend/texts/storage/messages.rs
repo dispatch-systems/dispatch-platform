@@ -90,8 +90,8 @@ pub trait TextStore {
         sender_name: Option<&str>,
     ) -> Result<String>;
     /// Keeps whether the conversation each of the texts `ids` is filed in waits, as they changed:
-    /// the conversations.
-    fn settle_communications_texts(&self, dsp: &str, ids: &[String]) -> Result<BTreeSet<String>>;
+    /// whether any is filed in one.
+    fn settle_communications_texts(&self, dsp: &str, ids: &[String]) -> Result<bool>;
     /// Moves each text filed to where it's filed now, by its ID: the conversations changed.
     fn refile_communications_texts(
         &self,
@@ -330,7 +330,7 @@ impl TextStore for Store {
             Ok(conversation)
         })
     }
-    fn settle_communications_texts(&self, dsp: &str, ids: &[String]) -> Result<BTreeSet<String>> {
+    fn settle_communications_texts(&self, dsp: &str, ids: &[String]) -> Result<bool> {
         let db = self.dsp(dsp)?;
         db.transaction(|| {
             let filed: Vec<(String,)> = db.query_as(
@@ -341,10 +341,7 @@ impl TextStore for Store {
             for (conversation,) in &filed {
                 settle(&db, conversation)?;
             }
-            Ok(filed
-                .into_iter()
-                .map(|(conversation,)| conversation)
-                .collect())
+            Ok(!filed.is_empty())
         })
     }
     fn refile_communications_texts(

@@ -158,7 +158,7 @@ fn file(db: &Store, dsp: &str, ids: &[String]) -> Result<bool> {
     if !waiting.is_empty() {
         place(db, dsp, &waiting);
     }
-    Ok(!db.settle_communications_texts(dsp, ids)?.is_empty())
+    db.settle_communications_texts(dsp, ids)
 }
 /// Places each of `texts`, waiting to be filed, where it belongs, under the name its sender, if
 /// someone at the DSP, is shown by as it's placed: each on its own, so one that can't be yet, as
