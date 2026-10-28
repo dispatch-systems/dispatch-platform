@@ -5,22 +5,12 @@
 use super::*;
 use crate::{
     api::types::PairingStatus,
-    backend::phone::support::{CODE, kept, outgoing, paired, store},
+    backend::{
+        phone::support::{CODE, kept, outgoing, paired, store},
+        support::migrate,
+    },
 };
-use dispatch_core::{
-    db::migrations::{Apply, Migration},
-    foundation::crypto,
-    testing,
-};
-
-/// Communications' migration `id`, as its manifest declares it.
-fn migration(id: u32) -> &'static Migration {
-    crate::FEATURE.own_migrations[0]
-        .list
-        .iter()
-        .find(|migration| migration.id == id)
-        .unwrap()
-}
+use dispatch_core::{foundation::crypto, testing};
 
 #[test]
 fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_picture_working() {
@@ -64,15 +54,8 @@ fn a_database_phones_migrated_upgrades_with_its_phone_its_waiting_text_and_its_p
         .unwrap();
 
     // The server starts on a build where Communications owns them: its migrations 7 and 8 run
-    // over it, as the runner runs what a database hasn't recorded.
-    let upgraded = db.dsp(&dsp).unwrap();
-    for id in [7, 8] {
-        match migration(id).apply {
-            Apply::Sql(sql) => upgraded.0.execute_batch(sql).unwrap(),
-            Apply::Code(code) => code(&upgraded).unwrap(),
-        }
-    }
-    drop(upgraded);
+    // over it.
+    migrate(&db, &dsp, &[7, 8]);
 
     // The phone's key still works, its text still waits for it with its picture, and the
     // picture's bytes are still there to fetch.

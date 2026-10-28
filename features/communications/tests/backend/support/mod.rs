@@ -29,7 +29,11 @@ use chrono_tz::Tz;
 use dispatch_core::{
     State,
     accounts::{Context, SessionLifetime},
-    db::now,
+    db::{
+        Store,
+        migrations::{Apply, Migration},
+        now,
+    },
     foundation::{clock, config::Site},
     manifest::{
         events,
@@ -155,6 +159,22 @@ pub fn van(vin: &str, name: &str) -> Van {
     }
 }
 
+/// Runs Communications' migrations `ids` over the DSP's database, as its manifest declares them,
+/// as the runner runs those a database hasn't recorded: a server starting on a newer build.
+pub fn migrate(db: &Store, dsp: &str, ids: &[u32]) {
+    let database = db.dsp(dsp).unwrap();
+    for id in ids {
+        let declared: &Migration = crate::FEATURE.own_migrations[0]
+            .list
+            .iter()
+            .find(|migration| migration.id == *id)
+            .unwrap();
+        match declared.apply {
+            Apply::Sql(sql) => database.0.execute_batch(sql).unwrap(),
+            Apply::Code(code) => code(&database).unwrap(),
+        }
+    }
+}
 /// Installs Slack, Communications and the stand-ins.
 pub fn install() {
     testing::install(
