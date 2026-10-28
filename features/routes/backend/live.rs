@@ -280,6 +280,7 @@ fn keep(store: &Store, dsp: &str, read: &Shaped) -> Result<Kept> {
         for itinerary in &read.itineraries {
             let name = format!("itinerary:{}", itinerary.id);
             read_rows += write_itinerary(db, Writes::InPlace, &publication, day, itinerary)?;
+            read_rows += write_shared(db, Writes::InPlace, &publication, day, itinerary)?;
             raw += write_raw(
                 db,
                 Writes::InPlace,

@@ -248,6 +248,7 @@ impl RoutesStore for Store {
                 502,
             )?;
             write_itinerary(&db, Writes::Staged, &staged.publication, &staged.day, itinerary)?;
+            write_shared(&db, Writes::Staged, &staged.publication, &staged.day, itinerary)?;
             write_raw(
                 &db,
                 Writes::Staged,
@@ -353,6 +354,7 @@ impl RoutesStore for Store {
                 write_routes(&db, Writes::Staged, &publication, day, &routes)?;
                 for itinerary in &prepared {
                     write_itinerary(&db, Writes::Staged, &publication, day, itinerary)?;
+                    write_shared(&db, Writes::Staged, &publication, day, itinerary)?;
                 }
                 share(&db, &publication, day)?;
                 db.exec(

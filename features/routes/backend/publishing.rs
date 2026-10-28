@@ -450,10 +450,9 @@ pub(super) fn write_raw(
         body
     ])?)
 }
-/// One shaped itinerary's rows under `publication`, inside the caller's transaction, with what
-/// it sends of the drivers and addresses the days share: staged beside them until `share`, or in
-/// place written over the shared rows where they changed. Answers the rows written. Its
-/// compressed response is stored beside them by staging, and kept by a reprocess.
+/// One shaped itinerary's rows under `publication`, inside the caller's transaction: what it sends
+/// of the drivers and addresses the days share is written apart (`write_shared`). Answers the rows
+/// written. Its compressed response is stored beside them by staging, and kept by a reprocess.
 pub(super) fn write_itinerary(
     db: &Db,
     write: Writes,
@@ -588,6 +587,20 @@ pub(super) fn write_itinerary(
             u.exit_longitude
         ])?;
     }
+    Ok(written)
+}
+/// What one shaped itinerary sends of the drivers and addresses the days share, inside the caller's
+/// transaction: staged under `publication` until `share`, or in place written over the shared rows
+/// where they changed, as seen on `day`. Answers the rows written.
+pub(super) fn write_shared(
+    db: &Db,
+    write: Writes,
+    publication: &str,
+    day: &str,
+    itinerary: &PreparedItinerary,
+) -> Result<usize> {
+    let connection = &db.0;
+    let mut written = 0;
     let (mut write_address, mut write_driver) = match write {
         Writes::Staged => (
             connection.prepare_cached(
