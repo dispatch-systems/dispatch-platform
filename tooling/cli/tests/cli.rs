@@ -130,3 +130,33 @@ fn generate_runs_in_a_worktree_on_a_disk_of_its_own() {
         "{error}"
     );
 }
+
+#[test]
+fn the_scaffolder_keeps_its_temporary_files_in_the_checkouts_scratch_folder_by_its_real_path() {
+    // A checkout whose scaffolder, run by node as the checkout's tsx is, writes down the
+    // TMPDIR it was given.
+    let name = "scaffolder-scratch";
+    let workspace = tempfile::tempdir().unwrap();
+    let checkout = workspace.path().join("worktrees").join(name);
+    std::fs::create_dir_all(checkout.join("tooling/scaffold")).unwrap();
+    std::fs::write(checkout.join("tooling/scaffold/cli.ts"), "").unwrap();
+    std::fs::create_dir_all(checkout.join("node_modules/tsx/dist")).unwrap();
+    std::fs::write(
+        checkout.join("node_modules/tsx/dist/cli.mjs"),
+        "import { writeFileSync } from 'node:fs';\n\
+         writeFileSync('tmpdir', process.env.TMPDIR ?? '');\n",
+    )
+    .unwrap();
+    let (ok, _, error) = run(&["generate", "--check", "--root", checkout.to_str().unwrap()]);
+    assert!(ok, "{error}");
+    // The scratch folder by its real path, made before the scaffolder ran.
+    let scratch = std::fs::canonicalize("/tmp")
+        .unwrap()
+        .join(format!("dispatch-{name}"));
+    assert_eq!(
+        std::fs::read_to_string(checkout.join("tmpdir")).unwrap(),
+        scratch.to_str().unwrap()
+    );
+    assert!(scratch.is_dir());
+    std::fs::remove_dir_all(scratch).unwrap();
+}
