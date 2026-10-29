@@ -94,7 +94,7 @@ test('the rule test files the timeout cancelled run again alone, and a failure r
 /** A test file whose one test outlives its timeout while it holds a timer open. */
 const holdsOpen = 'tooling/tests/support/times-out-holding-a-timer.ts';
 
-test('a test file whose test timed out ends though it holds a timer open, and runs again alone', async (t) => {
+test('a test file whose test timed out ends though it holds a timer open, and is picked to run again', async (t) => {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-timeouts-'));
   t.after(() => fs.rmSync(scratch, { recursive: true, force: true }));
   const record = path.join(scratch, 'failures.jsonl');
