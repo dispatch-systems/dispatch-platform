@@ -1,8 +1,9 @@
 use dispatchdev_cli::{
     Native, Result, Runner, api, build,
     change::Change,
-    check, ci, finish, logs, observation, pr, preview, require, review, scaffold, ship, shot,
-    start, status, test, verify,
+    check, ci, finish, logs,
+    machine::Machine,
+    observation, pr, preview, require, review, scaffold, ship, shot, start, status, test, verify,
     workspace::{Retried, Workspace},
 };
 use std::{collections::BTreeMap, path::PathBuf};
@@ -196,18 +197,19 @@ const COMMANDS: &[Spec] = &[
         "What stops the branch, then the rule checks, the TypeScript linter and clippy side by \
          side, clippy in the checkout's own build. They pass again without running on a \
          committed tree they passed on, as clippy does on Rust inputs it passed on; ci and the \
-         merge queue run the tests. --plan only names them.",
+         merge queue run the tests. --plan only names them. It runs on Linux alone: elsewhere, \
+         ci runs every check on GitHub.",
     )
     .flags(&["--plan", "--allow-concurrent"]),
     spec(
         "ci",
         &["ci <name> [--rerun-failed]", "   [--removability <feature>]"],
         "The full checks on GitHub on its committed branch, while its preview is tried: push \
-         it, run them without the gate with the rule checks here beside them, and follow them \
-         to the end, listing every failed job. Jobs GitHub stopped itself run again once. ship \
-         stops on a head they failed and cancels them if still running. --rerun-failed runs \
-         the failed jobs again, for a failure that isn't the change's own. --removability runs \
-         the weekly removability check instead, for that feature alone.",
+         it, run them without the gate with the rule checks here beside them on Linux, and \
+         follow them to the end, listing every failed job. Jobs GitHub stopped itself run again \
+         once. ship stops on a head they failed and cancels them if still running. \
+         --rerun-failed runs the failed jobs again, for a failure that isn't the change's own. \
+         --removability runs the weekly removability check instead, for that feature alone.",
     )
     .flags(&["--rerun-failed"])
     .options(&["--removability"])
@@ -240,9 +242,9 @@ const COMMANDS: &[Spec] = &[
         &["ship <name>"],
         "Once told to merge it, by its name or its PR's number: check its PR body and that it \
          merges cleanly, push it, open or update its PR from pr-body.md, queue it as soon as \
-         GitHub admits it and wait until it merges, the rule checks running here meanwhile \
-         unless the checks on GitHub passed on this commit, then remove what the change made \
-         as finish does, and wait for Dev. Run again after a stop, it picks up where it \
+         GitHub admits it and wait until it merges, the rule checks running here meanwhile on \
+         Linux unless the checks on GitHub passed on this commit, then remove what the change \
+         made as finish does, and wait for Dev. Run again after a stop, it picks up where it \
          stopped. It exits with 1 to fix and ship again, 2 for the owner to decide, and 3 once \
          merged.",
     )
@@ -619,6 +621,7 @@ fn run() -> Result<()> {
             }
         }
         "check" => {
+            check::here(Machine::THIS)?;
             let root = line.root()?;
             let plan = check::plan(&root, line.flag("--allow-concurrent"), &Native)?;
             if line.flag("--plan") {

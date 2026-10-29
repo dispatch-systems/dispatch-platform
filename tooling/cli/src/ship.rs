@@ -2,10 +2,10 @@
 //! takes seconds first: the PR's body in the change's scratch folder, the branch, that it
 //! merges cleanly into main, and the push. It opens or updates the PR, adds it to the merge
 //! queue as soon as GitHub admits it and waits until GitHub merges it, the rule checks running
-//! here beside it unless the checks on GitHub passed on this commit already; their failure
-//! takes it out of the queue. Then it removes all the change made, and waits until Dev runs the
-//! merge. Run again after a stop, it picks up where it stopped: a
-//! change whose PR merged with what its worktree holds goes straight to the clean-up.
+//! here beside it on a machine that runs the local checks, unless the checks on GitHub passed
+//! on this commit already; their failure takes it out of the queue. Then it removes all the
+//! change made, and waits until Dev runs the merge. Run again after a stop, it picks up where it
+//! stopped: a change whose PR merged with what its worktree holds goes straight to the clean-up.
 //!
 //! The queue runs the checks on the exact squash commit it will push, so nothing but the
 //! admission check runs on the PR itself. A head that failed the checks `dispatchdev ci` ran on
@@ -104,7 +104,8 @@ pub fn change(
                 &["push", "-q", "--force-with-lease", "-u", "origin", name],
             )?;
             // The queue runs every check again on the squash commit: here, only the rule
-            // checks, beside it, unless the checks on GitHub passed on this very commit.
+            // checks, beside it, on a machine that runs them, unless the checks on GitHub
+            // passed on this very commit.
             let passed = matches!(
                 branch_run(runner, &head),
                 Some(run) if run["conclusion"] == "success"
@@ -115,10 +116,16 @@ pub fn change(
                     &head[..head.len().min(7)]
                 ));
             }
+            let rules = if passed {
+                None
+            } else {
+                check::beside(ws.machine)
+            };
             let number = pr::run(ws, name, None, &body, runner)?;
             let queued = Instant::now();
+            let path = &change.path;
             let merge = std::thread::scope(|scope| {
-                let mut local = (!passed).then(|| scope.spawn(|| check::rules(&change.path)));
+                let mut local = rules.map(|rules| scope.spawn(move || rules(path)));
                 run(number, &mut local, runner, pause, say)
             })?;
             say(&format!(

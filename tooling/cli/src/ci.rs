@@ -1,7 +1,8 @@
 //! `dispatchdev ci <name>`: the full checks on a change's branch while its preview is tried,
 //! so what they find is fixed before the PR is queued. It pushes the committed branch at once,
 //! starts `checks.yml` on it without the gate, and follows the run to its end, listing every
-//! failed job, while the rule checks run here beside it: their failure cancels the run. Jobs
+//! failed job, while the rule checks run here beside it on a machine that runs the local
+//! checks: their failure cancels the run. Elsewhere, as on a Mac, the run decides alone. Jobs
 //! GitHub stopped itself, past their time limit or on a runner that never started, run again
 //! once. A head that has a run going or passed already is followed or reported, not run again.
 //! A newer run of the branch replaces an older one; `ship` stops on a head whose run failed and
@@ -117,7 +118,7 @@ pub fn run(
             &path,
             name,
             &Workflow::checks(),
-            &|| check::rules(&path),
+            check::beside(ws.machine),
             runner,
             pause,
             say,
@@ -142,7 +143,7 @@ pub fn removability(
         path,
         name,
         &Workflow::removability(feature),
-        &|| Ok(()),
+        None,
         runner,
         pause,
         say,
@@ -181,11 +182,13 @@ fn again(
         &run, attempt, false, &workflow, name, short, &mut None, runner, pause, say,
     )
 }
+/// Push the checkout at `path`, on its branch `name`, and follow `workflow` on its head with the
+/// check here, `local`, beside it; returns the verdict.
 fn follow(
     path: &Path,
     name: &str,
     workflow: &Workflow,
-    local: &(dyn Fn() -> Result<()> + Sync),
+    local: Option<fn(&Path) -> Result<()>>,
     runner: &dyn Runner,
     pause: &dyn Fn(u64),
     say: &mut dyn FnMut(&str),
@@ -216,7 +219,7 @@ fn follow(
         ));
     }
     std::thread::scope(|scope| {
-        let mut local = Some(scope.spawn(local));
+        let mut local = local.map(|local| scope.spawn(move || local(path)));
         let run = match reused {
             Some(run) => run.clone(),
             None => start(runner, workflow, name, &head, &earlier, pause)?,
@@ -417,6 +420,7 @@ fn cancel(runner: &dyn Runner, id: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::machine::Machine;
     use serde_json::json;
     use std::cell::RefCell;
 
@@ -550,13 +554,13 @@ mod tests {
                 asked: RefCell::default(),
             }
         }
-        fn follow(&self, local: &(dyn Fn() -> Result<()> + Sync)) -> Result<String> {
+        fn follow(&self, local: fn(&Path) -> Result<()>) -> Result<String> {
             let pause = |_| std::thread::sleep(std::time::Duration::from_millis(5));
             follow(
                 Path::new("/lean"),
                 "lean",
                 &Workflow::checks(),
-                local,
+                Some(local),
                 self,
                 &pause,
                 &mut |_| {},
@@ -611,7 +615,7 @@ mod tests {
     }
     #[test]
     fn a_run_is_followed_to_its_end_and_what_github_stopped_itself_runs_again_once() {
-        let passed = || Ok(());
+        let passed = |_: &Path| Ok(());
         // The job past its time limit runs again; until the new attempt starts, the run still
         // shows the old one's end.
         let core = json!({"jobs": [{"id": 5, "name": "core", "conclusion": "cancelled"}]});
@@ -624,13 +628,13 @@ mod tests {
             core.clone(),
         );
         assert_eq!(
-            checks.follow(&passed).unwrap(),
+            checks.follow(passed).unwrap(),
             "The checks passed on 2222222 of lean."
         );
         assert_eq!(*checks.asked.borrow(), ["run", "rerun 9"]);
         // Once only.
         let checks = Checks::new(vec![ended("cancelled", 1), ended("cancelled", 2)], core);
-        assert!(checks.follow(&passed).is_err());
+        assert!(checks.follow(passed).is_err());
         assert_eq!(*checks.asked.borrow(), ["run", "rerun 9"]);
         // One cancelled by hand isn't run again, and every failed job is listed.
         let jobs = json!({"jobs": [
@@ -639,7 +643,7 @@ mod tests {
             {"id": 8, "name": "smoke", "conclusion": "success"},
         ]});
         let checks = Checks::new(vec![ended("failure", 1)], jobs);
-        let error = checks.follow(&passed).unwrap_err().to_string();
+        let error = checks.follow(passed).unwrap_err().to_string();
         assert!(error.contains("\n- api: failure") && error.contains("\n- browser (3): failure"));
         assert!(error.contains("dispatchdev ci lean --rerun-failed"));
         assert!(!error.contains("smoke"));
@@ -652,7 +656,7 @@ mod tests {
             json!({"jobs": []}),
         );
         let error = checks
-            .follow(&|| Err("The rule checks failed.".into()))
+            .follow(|_| Err("The rule checks failed.".into()))
             .unwrap_err()
             .to_string();
         assert!(error.starts_with("The rule checks failed. Fix it"));
@@ -663,5 +667,27 @@ mod tests {
                 format!("POST repos/{REPOSITORY}/actions/runs/9/cancel")
             ]
         );
+    }
+    #[test]
+    fn on_a_mac_the_checks_on_github_decide_alone() {
+        // The rule checks would fail in this empty worktree, and cancel the run, if they ran.
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join("worktrees/lean")).unwrap();
+        let ws = Workspace {
+            root: temp.path().to_path_buf(),
+            machine: Machine::Mac,
+        };
+        let checks = Checks::new(
+            vec![
+                json!({"id": 9, "status": "in_progress", "run_attempt": 1}),
+                ended("success", 1),
+            ],
+            json!({"jobs": []}),
+        );
+        assert_eq!(
+            run(&ws, "lean", None, false, &checks, &|_| {}, &mut |_| {}).unwrap(),
+            "The checks passed on 2222222 of lean."
+        );
+        assert_eq!(*checks.asked.borrow(), ["run"]);
     }
 }

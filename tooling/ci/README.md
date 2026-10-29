@@ -78,9 +78,9 @@ again at once; `--plan` only names them.
 `dispatchdev ci <name>` runs the full checks earlier, on a change's committed branch while its
 preview is tried, so the queue run is rarely the first to fail. It pushes the branch at once
 and starts `checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed
-so it reports no `platform` check on the PR's head, is skipped. The rule checks run here beside
-it, and their failure cancels the run. It follows the run every 10 seconds to its end and lists
-every failed job; jobs GitHub stopped itself, past their time limit or on a runner that never
+so it reports no `platform` check on the PR's head, is skipped. On Linux the rule checks run here
+beside it, and their failure cancels the run. It follows the run every 10 seconds to its end and
+lists every failed job; jobs GitHub stopped itself, past their time limit or on a runner that never
 started, run again once. A newer run of the branch replaces it. `--rerun-failed` runs the failed
 jobs of the head's run again and follows them, for a failure that isn't the change's own.
 `--removability <feature>` starts and follows `removability.yml` the same way, for that
@@ -90,8 +90,8 @@ runs the check in a copy of the checkout, built in a folder of its own.
 seconds first: the PR's body in the scratch folder's `pr-body.md`, whose first line is the
 title, that the branch merges cleanly into `main`, and the push. It then opens or updates the
 PR, reads it from GitHub's API every 10 seconds, adds it to the merge queue once its admission
-check passed and GitHub knows it merges cleanly, and waits until GitHub merges it. The rule
-checks run here meanwhile, unless the checks on GitHub passed on that very commit: the queue
+check passed and GitHub knows it merges cleanly, and waits until GitHub merges it. On Linux the
+rule checks run here meanwhile, unless the checks on GitHub passed on that very commit: the queue
 runs them again, so their failure here takes the PR out of the queue rather than wait for its
 run to fail. A newer push is queued in its turn. A head whose branch run failed isn't queued,
 and a branch run still going is cancelled when the PR is, since the queue runs the checks

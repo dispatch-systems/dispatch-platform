@@ -1,6 +1,7 @@
 use crate::{
     REPOSITORY, Result, Runner,
     build::{self, Environment, frontend},
+    machine::Machine,
     require,
     slot::{self, Slot},
     workspace,
@@ -411,11 +412,23 @@ pub fn print(plan: &Plan) {
     }
     println!("{}", next_step(plan));
 }
+/// Refuses `dispatchdev check` at once on a machine that runs no local checks.
+pub fn here(machine: Machine) -> Result<()> {
+    require(
+        machine.checks(),
+        "The local check runs on Linux alone: dispatchdev ci <name> runs every check on GitHub.",
+    )
+}
 /// The rule checks: everything a push can fail on without a build, side by side, in about a
 /// minute. What `dispatchdev check` adds, the TypeScript linter and clippy, the queue runs too.
 pub const RULES: &str = "npm run check:rules";
-/// The check `ci` and `ship` run before a push: the rule checks alone.
-pub fn rules(root: &Path) -> Result<()> {
+/// The check `ci` and `ship` run here beside the checks on GitHub, whose failure stops them: the
+/// rule checks alone, on a machine that runs the local checks. Elsewhere none, since they'd fail
+/// there and cancel the checks on GitHub, which decide by themselves.
+pub fn beside(machine: Machine) -> Option<fn(&Path) -> Result<()>> {
+    machine.checks().then_some(rules)
+}
+fn rules(root: &Path) -> Result<()> {
     let env = std::env::vars().collect();
     require(
         side_by_side(root, &[RULES.to_owned()], &env)?,
@@ -1315,5 +1328,13 @@ mod tests {
         assert!(!answer("[]"));
         assert!(!answer("not json"));
         assert!(!merge_queue(&|_: &[&str]| Err("offline".into())));
+    }
+    #[test]
+    fn on_a_mac_the_local_check_refuses_and_names_ci() {
+        assert_eq!(
+            here(Machine::Mac).unwrap_err().to_string(),
+            "The local check runs on Linux alone: dispatchdev ci <name> runs every check on GitHub."
+        );
+        assert!(here(Machine::Linux).is_ok());
     }
 }
