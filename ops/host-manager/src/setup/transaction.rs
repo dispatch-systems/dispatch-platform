@@ -148,7 +148,7 @@ pub(super) fn publish(journal: &Journal) -> Result<()> {
                 "Prepared setup files changed; preserve them for inspection",
             )?;
             if source.exists() {
-                management::rename(&source, &destination, libc::RENAME_NOREPLACE)?;
+                management::rename(&source, &destination, management::Rename::NoReplace)?;
                 fs::File::open(destination.parent().ok_or("Destination parent required")?)?
                     .sync_all()?;
                 fs::File::open(&staging)?.sync_all()?;
