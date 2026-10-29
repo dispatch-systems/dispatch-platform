@@ -92,6 +92,17 @@ pub fn valid_name(name: &str) -> Result<()> {
 pub fn scratch(name: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/dispatch-{name}"))
 }
+/// The name of the checkout at `root`: its folder's, which is its change's.
+pub fn checkout_name(root: &Path) -> Result<&str> {
+    root.file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "A checkout without a folder name".into())
+}
+/// The scratch folder of the checkout at `root`, made private if it is new, by its real path:
+/// the stores tests make refuse a path through a symlink, and macOS keeps `/tmp` behind one.
+pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
+    Ok(fs::canonicalize(scratch_dir(checkout_name(root)?)?)?)
+}
 /// The change's scratch folder, made private if it is new.
 pub fn scratch_dir(name: &str) -> Result<PathBuf> {
     let dir = scratch(name);

@@ -488,11 +488,7 @@ pub fn execute(root: &Path, plan: &Plan, env: &Environment, runner: &dyn Runner)
 /// a line for each as it ends, with the lines saying why under one that failed. A command that
 /// builds waits for a build slot, and passes it on to what it starts. Whether all passed.
 fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<bool> {
-    let name = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("A checkout without a folder name")?;
-    let scratch = workspace::scratch_dir(name)?;
+    let scratch = workspace::checkout_scratch(root)?;
     // Each run's logs apart, so runs side by side never write over each other's.
     let logs = scratch.join("check").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;

@@ -202,11 +202,7 @@ pub fn run(
         workspace::has_feature(root, feature),
         &format!("This checkout has no feature named {feature}: features/{feature} isn't there."),
     )?;
-    let name = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("A checkout without a folder name")?;
-    let scratch = workspace::scratch_dir(name)?;
+    let scratch = workspace::checkout_scratch(root)?;
     let logs: PathBuf = scratch.join("verify").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
     let (mut passed, mut failed) = (0, Vec::<String>::new());
@@ -331,7 +327,8 @@ pub fn run(
     }
     if next.is_empty() {
         next.push(format!(
-            "Commit it, then `dispatchdev check` and `dispatchdev ci {name}`."
+            "Commit it, then `dispatchdev check` and `dispatchdev ci {}`.",
+            workspace::checkout_name(root)?
         ));
         if !removability {
             next.push(format!(

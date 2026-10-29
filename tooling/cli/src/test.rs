@@ -402,11 +402,7 @@ pub fn explain(log: &Path) {
 /// its build folder, and the release build and package it made for the browser tests, unless
 /// `keep`.
 pub fn run_commands(root: &Path, commands: &[String], keep: bool) -> Result<bool> {
-    let name = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("A checkout without a folder name")?;
-    let scratch = workspace::scratch_dir(name)?;
+    let scratch = workspace::checkout_scratch(root)?;
     // Each run's logs apart, so runs side by side never write over each other's.
     let logs = scratch.join("test").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
