@@ -8,40 +8,62 @@ import type { TestEvent } from 'node:test/reporters';
 import { nodeTests } from '../ci/execution-plan.js';
 import failures, { cancelled } from '../ci/timeouts.js';
 
-// Events as node's test runner reports them: a file its timeout cancelled fails under its own
-// name, at the file's whole time; a test that fails is named for itself, in its file. Either
-// error wraps what was thrown, and says which kind of failure it was.
+// Events as Node 26's runner reports them, taken from a run of a file whose three tests pass,
+// assert wrongly and hang: each test under its own name, in its file, a timed-out one too. A
+// failure's error is the runner's, wrapping what ended the test, what it threw or its timeout,
+// and saying which kind of failure that was.
+/** The `testNumber`th test of `file`, named `name`, at `line`. */
+const located = (file: string, name: string, testNumber: number, line: number) => ({
+  name,
+  nesting: 0,
+  testNumber,
+  testId: testNumber,
+  parentId: 0,
+  tags: [],
+  line,
+  column: 1,
+  file: path.resolve(file),
+  entryFile: path.resolve(file),
+});
 const passed = (file: string): TestEvent => ({
   type: 'test:pass',
-  data: {
-    name: 'passes',
-    nesting: 0,
-    testNumber: 1,
-    testId: 1,
-    parentId: 0,
-    tags: [],
-    file: path.resolve(file),
-    details: { duration_ms: 5 },
-  },
+  data: { ...located(file, 'passes', 1, 3), details: { duration_ms: 1.57, type: 'test' } },
 });
-const failed = (file: string, name: string, failureType: string): TestEvent => ({
+/** The test `at` failed after `duration_ms`, of the kind `failureType`, ended by `cause`. */
+const failed = (
+  at: ReturnType<typeof located>,
+  duration_ms: number,
+  failureType: string,
+  cause: Error,
+): TestEvent => ({
   type: 'test:fail',
   data: {
-    name,
-    nesting: 0,
-    testNumber: 1,
-    testId: 1,
-    parentId: 0,
-    tags: [],
-    file: path.resolve(file),
+    ...at,
     details: {
-      duration_ms: 60_000,
-      error: Object.assign(new Error(failureType), { failureType, cause: new Error(name) }),
+      duration_ms,
+      type: 'test',
+      error: Object.assign(new Error(cause.message), {
+        code: 'ERR_TEST_FAILURE',
+        failureType,
+        cause,
+      }),
     },
   },
 });
-const timedOut = (file: string) => failed(file, file, 'testTimeoutFailure');
-const broken = (file: string) => failed(file, 'asserts', 'testCodeFailure');
+const broken = (file: string) =>
+  failed(
+    located(file, 'asserts', 2, 4),
+    2.73,
+    'testCodeFailure',
+    new assert.AssertionError({ actual: 1, expected: 2, operator: 'strictEqual' }),
+  );
+const timedOut = (file: string) =>
+  failed(
+    located(file, 'hangs', 3, 5),
+    60_000.36,
+    'testTimeoutFailure',
+    new Error('test timed out after 60000ms'),
+  );
 
 async function* reported(events: TestEvent[]) {
   yield* events;
