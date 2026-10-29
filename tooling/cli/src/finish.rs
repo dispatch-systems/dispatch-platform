@@ -135,11 +135,7 @@ fn public(origin: &str, commit: &str, runner: &dyn Runner, pause: &dyn Fn(u64)) 
     let health = format!("{origin}/api/health");
     let mut last = None;
     for _ in 0..ship::looks(INSTALL) {
-        let runs = workspace::text(runner, &["curl", "-sSf", &health], None)
-            .ok()
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .and_then(|health| Some(health["source"]["commit"].as_str()?.to_owned()));
-        if let Some(runs) = runs {
+        if let Some(runs) = look(&health, runner) {
             if runs == commit || contains(runner, &runs, commit) {
                 return Ok(runs);
             }
@@ -158,6 +154,20 @@ fn public(origin: &str, commit: &str, runner: &dyn Runner, pause: &dyn Fn(u64)) 
         None => format!("{health} didn't answer within {} minutes.", INSTALL / 60),
     }
     .into())
+}
+
+/// The commit Dev runs, as its public health names it: none where the workspace names no
+/// address for Dev, or while Dev doesn't answer. `status` reads it where the workspace holds no
+/// Dev of its own.
+pub fn public_commit(ws: &Workspace, runner: &dyn Runner) -> Option<String> {
+    look(&format!("{}/api/health", origin(ws).ok()?), runner)
+}
+
+/// The commit Dev's health, at `health`, names; none while Dev doesn't answer.
+fn look(health: &str, runner: &dyn Runner) -> Option<String> {
+    let text = workspace::text(runner, &["curl", "-sSf", health], None).ok()?;
+    let health: Value = serde_json::from_str(&text).ok()?;
+    Some(health["source"]["commit"].as_str()?.to_owned())
 }
 
 /// Whether `later` contains `commit`, as GitHub compares them; no answer counts as no.
