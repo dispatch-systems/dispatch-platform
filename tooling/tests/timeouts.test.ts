@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { TestEvent } from 'node:test/reporters';
+import { nodeTests } from '../ci/execution-plan.js';
 import failures, { cancelled } from '../ci/timeouts.js';
 
 // Events as node's test runner reports them: a file its timeout cancelled fails under its own
@@ -63,4 +67,36 @@ test('the rule test files the timeout cancelled run again alone, and a failure r
   assert.deepEqual(await runAgain(broken('a.test.ts')), []);
   assert.deepEqual(await runAgain(timedOut('a.test.ts'), broken('b.test.ts')), []);
   assert.deepEqual(await runAgain(broken('a.test.ts'), timedOut('a.test.ts')), []);
+});
+
+/** A test file whose one test outlives its timeout while it holds a timer open. */
+const holdsOpen = 'tooling/tests/support/times-out-holding-a-timer.ts';
+
+test('a test file whose test timed out ends though it holds a timer open, and runs again alone', async (t) => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-timeouts-'));
+  t.after(() => fs.rmSync(scratch, { recursive: true, force: true }));
+  const record = path.join(scratch, 'failures.jsonl');
+  // The rule tests' run as `check:rules` starts it, recording its failures, with none of the
+  // suite's files but that one alone, and a timeout it reaches at once.
+  const { command, args } = nodeTests('rules', {
+    only: [],
+    args: [
+      '--test-timeout=1',
+      '--test-reporter=./tooling/ci/timeouts.ts',
+      `--test-reporter-destination=${record}`,
+      holdsOpen,
+    ],
+  });
+  // A run of its own, not one reporting to this run, in a process group of its own.
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const run = spawn(command, args, { env, detached: true, stdio: 'ignore' });
+  const ended = new Promise((resolve) => run.once('exit', resolve));
+  // Should the file never end, the suite's timeout fails this test and ends all the run started.
+  const end = () => process.kill(-run.pid!, 'SIGKILL');
+  t.signal.addEventListener('abort', end);
+  const code = await ended;
+  t.signal.removeEventListener('abort', end);
+  assert.equal(code, 1);
+  assert.deepEqual(cancelled(fs.readFileSync(record, 'utf8')), [holdsOpen]);
 });
