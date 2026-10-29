@@ -26,7 +26,10 @@ export function nodeTests(
     concurrency?: number;
     args?: string[];
     env?: NodeJS.ProcessEnv;
-    /** Only these of the suite's files, as `check:rules` runs again those its timeout cancelled. */
+    /**
+     * Only these of the suite's files, as `check:rules` runs again those with a test its timeout
+     * cancelled.
+     */
     only?: string[];
   } = {},
 ): Command {
@@ -43,10 +46,12 @@ export function nodeTests(
     args: [
       'node_modules/tsx/dist/cli.mjs',
       '--test',
-      // A hung file fails by name instead of running out its job. The 60 s is each file's in all,
-      // from its loading to its last test, since the runner times each file's own process. Only a
-      // test a run opts in to, such as a native one, sets a longer timeout of its own.
+      // A hung test fails by name instead of running out its job. The 60 s is each test's and
+      // each hook's, and a file's process ends once its tests have, a timed-out one too, whatever
+      // it still holds open. Only a test a run opts in to, such as a native one, sets a longer
+      // timeout of its own.
       '--test-timeout=60000',
+      '--test-force-exit',
       ...(options.concurrency === undefined ? [] : [`--test-concurrency=${options.concurrency}`]),
       ...(options.args ?? []),
       ...files,

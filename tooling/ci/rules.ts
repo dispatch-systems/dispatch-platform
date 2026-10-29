@@ -54,8 +54,9 @@ const run = ({ command, args, env }: Command) =>
     child.once('exit', (code) => resolve(code === 0));
   });
 const passed = await Promise.all(checks.map(run));
-// A busy machine can slow a rule test file past its timeout: once the other checks have ended,
-// the files it cancelled run again alone, and only a failure or a second timeout fails them.
+// A busy machine can slow a rule test past its timeout: once the other checks have ended, the
+// files with a test it cancelled run again alone, and only a failure or a second timeout fails
+// them.
 const again = fs.existsSync(record) ? cancelled(fs.readFileSync(record, 'utf8')) : [];
 fs.rmSync(record, { force: true });
 const tests = checks.indexOf(ruleTests);

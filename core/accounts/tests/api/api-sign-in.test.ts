@@ -210,7 +210,7 @@ test('host-issued observation sign-in cannot mutate or fall back to a human sess
       ...canonical,
       cookie: `${invalidCookie}; ${owner.headers.cookie}`,
     });
-    assert.equal(answer.status, 401, invalidCookie.split('=')[0]);
+    assert.equal(answer.status, 401, invalidCookie.split('=')[0]!);
   }
   assert.equal(
     (await f.request('/api/session', undefined, { cookie })).status,

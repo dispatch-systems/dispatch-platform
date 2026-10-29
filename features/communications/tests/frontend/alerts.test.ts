@@ -98,57 +98,6 @@ const chose = (notifications: boolean) =>
 const turns = () => new Promise((resolve) => setImmediate(resolve));
 
 /**
- * Web Locks as a browser has them, for the one lock the member's tabs take turns with, which
- * Node 22 lacks: held by one tab at a time, the others waiting in line unless they give up their
- * place; a tab stealing it takes it at once, the one holding it losing it.
- */
-function lockManager() {
-  let holding: object | undefined;
-  const line: (() => void)[] = [];
-  const lost = (reject: (error: unknown) => void) => () =>
-    reject(new DOMException('The lock was taken', 'AbortError'));
-  let losing = () => {};
-  return {
-    request(
-      _name: string,
-      options: { steal?: boolean; signal?: AbortSignal },
-      held: () => unknown,
-    ) {
-      return new Promise((resolve, reject) => {
-        const grant = () => {
-          const holder = {};
-          holding = holder;
-          losing = lost(reject);
-          queueMicrotask(() => {
-            if (holding !== holder) return;
-            void Promise.resolve(held())
-              .finally(() => {
-                if (holding !== holder) return;
-                holding = undefined;
-                line.shift()?.();
-              })
-              .then(resolve, reject);
-          });
-        };
-        if (options.steal) {
-          if (holding) losing();
-          grant();
-        } else if (!holding) grant();
-        else {
-          line.push(grant);
-          options.signal?.addEventListener('abort', () => {
-            const place = line.indexOf(grant);
-            if (place < 0) return;
-            line.splice(place, 1);
-            reject(new DOMException('Its place was given up', 'AbortError'));
-          });
-        }
-      });
-    },
-  };
-}
-
-/**
  * A tab of `user`'s at a DSP, in front of them if `focused`, in a browser the test holds: its
  * clock, which the test moves; the server, answering Settings and what waits as `server` says,
  * or holding back the next answer to `url` till the test gives it (`hold`); the notifications it
@@ -199,17 +148,11 @@ function tab(t: TestContext, user: string, focused: boolean) {
     },
   };
   Object.assign(globalThis, browser);
-  const node = Object.getOwnPropertyDescriptor(globalThis, 'navigator')!;
-  Object.defineProperty(globalThis, 'navigator', {
-    value: { locks: lockManager() },
-    configurable: true,
-  });
   // What the test opened, closed the last first, before the browser goes.
   const opened: (() => void)[] = [];
   t.after(() => {
     for (const close of opened.reverse()) close();
     for (const each of Object.keys(browser)) delete (globalThis as Record<string, unknown>)[each];
-    Object.defineProperty(globalThis, 'navigator', node);
     dataCache.clear();
   });
   const access = { view: { dsp: { id: dsp } }, session: { user: { id: user } } } as Watching;
@@ -226,6 +169,8 @@ function tab(t: TestContext, user: string, focused: boolean) {
       window.addEventListener('seen', looked);
       looked();
     });
+  // The tabs take turns with Node's own Web Locks, as a browser's do. Each test file runs in a
+  // process of its own, and each test's member is named apart, so each test has its own lock.
   const other = (focused: boolean) =>
     new Promise<() => void>((taken) => {
       void navigator.locks.request(
