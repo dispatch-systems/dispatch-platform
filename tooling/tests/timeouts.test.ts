@@ -10,8 +10,8 @@ import failures, { cancelled } from '../ci/timeouts.js';
 
 // Events as Node 26's runner reports them, taken from a run of a file whose three tests pass,
 // assert wrongly and hang: each test under its own name, in its file, a timed-out one too. A
-// failure's error is the runner's, wrapping what ended the test, what it threw or its timeout,
-// and saying which kind of failure that was.
+// failure's error is the runner's, saying which kind of failure it was, its cause what the test
+// threw or, for a timeout, the timeout's message.
 /** The `testNumber`th test of `file`, named `name`, at `line`. */
 const located = (file: string, name: string, testNumber: number, line: number) => ({
   name,
@@ -34,7 +34,7 @@ const failed = (
   at: ReturnType<typeof located>,
   duration_ms: number,
   failureType: string,
-  cause: Error,
+  cause: Error | string,
 ): TestEvent => ({
   type: 'test:fail',
   data: {
@@ -42,7 +42,7 @@ const failed = (
     details: {
       duration_ms,
       type: 'test',
-      error: Object.assign(new Error(cause.message), {
+      error: Object.assign(new Error(typeof cause === 'string' ? cause : cause.message), {
         code: 'ERR_TEST_FAILURE',
         failureType,
         cause,
@@ -62,7 +62,7 @@ const timedOut = (file: string) =>
     located(file, 'hangs', 3, 5),
     60_000.36,
     'testTimeoutFailure',
-    new Error('test timed out after 60000ms'),
+    'test timed out after 60000ms',
   );
 
 async function* reported(events: TestEvent[]) {
