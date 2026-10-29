@@ -4,9 +4,12 @@
 //! own tests of every kind, built in a folder of the run's own (`crate::test`). `--removability`
 //! then leaves it out as the weekly check does: on GitHub when the branch is pushed as it is
 //! (`crate::ci`), else in a copy of the checkout, so neither the worktree nor its preview is
-//! touched. A line a step, then what failed and what to do next.
+//! touched. A line a step, then what failed and what to do next. It runs on Linux alone, as the
+//! local checks do.
 use crate::{
-    Result, Runner, ci, require,
+    Result, Runner, ci,
+    machine::Machine,
+    require,
     slot::{self, Slot},
     test, workspace,
 };
@@ -189,10 +192,12 @@ pub fn run(
     root: &Path,
     feature: &str,
     removability: bool,
+    machine: Machine,
     runner: &dyn Runner,
     pause: &dyn Fn(u64),
     say: &mut dyn FnMut(&str),
 ) -> Result<bool> {
+    crate::check::here(machine, "verify")?;
     require(
         workspace::has_feature(root, feature),
         &format!("This checkout has no feature named {feature}: features/{feature} isn't there."),

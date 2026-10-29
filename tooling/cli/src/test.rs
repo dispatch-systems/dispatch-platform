@@ -1,8 +1,11 @@
 //! `dispatchdev test [--all | --owner <owner>] [--keep]`: the tests a change needs, or one
 //! owner's, built in a folder of the run's own and deleted when it ends, so a worktree keeps no
 //! test build and several can test at once. Each command runs below Dev (`workspace::logged`).
+//! They run on Linux alone, as the local checks do.
 use crate::{
-    Result, Runner, check, require,
+    Result, Runner, check,
+    machine::Machine,
+    require,
     slot::{self, Slot},
     workspace,
 };
@@ -446,7 +449,14 @@ pub enum Tests<'a> {
     },
 }
 /// `dispatchdev test`.
-pub fn run(root: &Path, tests: Tests<'_>, keep: bool, runner: &dyn Runner) -> Result<bool> {
+pub fn run(
+    root: &Path,
+    tests: Tests<'_>,
+    keep: bool,
+    machine: Machine,
+    runner: &dyn Runner,
+) -> Result<bool> {
+    check::here(machine, "test")?;
     let commands = match tests {
         Tests::All => everything(root, runner)?,
         Tests::Affected => affected(root, runner)?,
@@ -599,5 +609,38 @@ mod tests {
         assert!(run_commands(&root, &command("true"), false).unwrap());
         assert!(!dead.exists() && !root.join(BUILDS).exists());
         let _ = fs::remove_dir_all(workspace::scratch("run-test-checkout"));
+    }
+    #[test]
+    fn on_a_mac_the_tests_and_verify_refuse_at_once() {
+        /// Any command fails the test: nothing runs before the refusal.
+        struct Nothing;
+        impl Runner for Nothing {
+            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                panic!("ran {args:?}")
+            }
+        }
+        let root = Path::new("/checkout");
+        let refusal = |command: &str| {
+            format!(
+                "dispatchdev {command} runs on Linux alone: dispatchdev ci <name> runs every \
+                 check on GitHub."
+            )
+        };
+        assert_eq!(
+            run(root, Tests::Affected, false, Machine::Mac, &Nothing)
+                .unwrap_err()
+                .to_string(),
+            refusal("test")
+        );
+        let verified = crate::verify::run(
+            root,
+            "communications",
+            false,
+            Machine::Mac,
+            &Nothing,
+            &|_| {},
+            &mut |_| {},
+        );
+        assert_eq!(verified.unwrap_err().to_string(), refusal("verify"));
     }
 }

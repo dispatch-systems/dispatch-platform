@@ -412,11 +412,15 @@ pub fn print(plan: &Plan) {
     }
     println!("{}", next_step(plan));
 }
-/// Refuses `dispatchdev check` at once on a machine that runs no local checks.
-pub fn here(machine: Machine) -> Result<()> {
+/// Refuses `dispatchdev <command>`, the local check or tests, at once on a machine that runs
+/// none: `check`, `test` and `verify` ask it before anything else.
+pub fn here(machine: Machine, command: &str) -> Result<()> {
     require(
         machine.checks(),
-        "The local check runs on Linux alone: dispatchdev ci <name> runs every check on GitHub.",
+        &format!(
+            "dispatchdev {command} runs on Linux alone: dispatchdev ci <name> runs every check on \
+             GitHub."
+        ),
     )
 }
 /// The rule checks: everything a push can fail on without a build, side by side, in about a
@@ -1332,9 +1336,10 @@ mod tests {
     #[test]
     fn on_a_mac_the_local_check_refuses_and_names_ci() {
         assert_eq!(
-            here(Machine::Mac).unwrap_err().to_string(),
-            "The local check runs on Linux alone: dispatchdev ci <name> runs every check on GitHub."
+            here(Machine::Mac, "check").unwrap_err().to_string(),
+            "dispatchdev check runs on Linux alone: dispatchdev ci <name> runs every check on \
+             GitHub."
         );
-        assert!(here(Machine::Linux).is_ok());
+        assert!(here(Machine::Linux, "check").is_ok());
     }
 }

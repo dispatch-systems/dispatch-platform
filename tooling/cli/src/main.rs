@@ -180,7 +180,7 @@ const COMMANDS: &[Spec] = &[
          every kind, as feature:<name>, collector:<site>, core:<part>, integration:<name>, app, \
          mcp or a name alone, or --only its rust, api, frontend, browser or native ones, or one \
          --file of them. Each run builds in a folder of its own, deleted when it ends unless \
-         --keep.",
+         --keep. It runs on Linux alone: elsewhere, ci runs every check on GitHub.",
     )
     .flags(&["--all", "--keep"])
     .options(&["--owner", "--only", "--file"]),
@@ -191,7 +191,7 @@ const COMMANDS: &[Spec] = &[
          what a generator left to write, the rules, TypeScript, the changed files' format and \
          lint, then its own tests as test --owner runs them. --removability also leaves it \
          out as the weekly check does: on GitHub once the branch is pushed as it is, else in a \
-         copy of the checkout.",
+         copy of the checkout. It runs on Linux alone: elsewhere, ci runs every check on GitHub.",
     )
     .flags(&["--removability"])
     .arguments(1),
@@ -604,7 +604,13 @@ fn run() -> Result<()> {
                 (true, None) => test::Tests::All,
                 (false, None) => test::Tests::Affected,
             };
-            match test::run(&line.root()?, tests, line.flag("--keep"), &Native)? {
+            match test::run(
+                &line.root()?,
+                tests,
+                line.flag("--keep"),
+                Machine::THIS,
+                &Native,
+            )? {
                 true => Ok(()),
                 false => Err("A test failed.".into()),
             }
@@ -615,6 +621,7 @@ fn run() -> Result<()> {
                 &line.root()?,
                 feature,
                 line.flag("--removability"),
+                Machine::THIS,
                 &Native,
                 &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
                 &mut |text| println!("{text}"),
@@ -625,7 +632,7 @@ fn run() -> Result<()> {
             }
         }
         "check" => {
-            check::here(Machine::THIS)?;
+            check::here(Machine::THIS, "check")?;
             let root = line.root()?;
             let plan = check::plan(&root, line.flag("--allow-concurrent"), &Native)?;
             if line.flag("--plan") {

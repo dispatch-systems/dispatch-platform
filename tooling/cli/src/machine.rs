@@ -17,7 +17,7 @@ impl Machine {
     } else {
         Self::Mac
     };
-    /// Whether the local checks run here. Their rules, lint and clippy cover the Linux hosts'
+    /// Whether the local checks and tests run here. They build, lint and test the Linux hosts'
     /// own code, which macOS fails: the host manager swaps files with `renameat2`, the ops
     /// tests expect a temporary folder that isn't macOS's symlinked `/private/tmp`, and the
     /// server multiplies `statvfs` fields that macOS types otherwise.
