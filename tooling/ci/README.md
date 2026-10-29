@@ -102,8 +102,10 @@ again. It
 stops with the reason when the PR conflicts with `main`, is a draft, closes, leaves the queue
 unmerged, with GitHub's reason and the failed jobs of its own queue run, or has not merged
 after 90 minutes. Once merged, it removes what the change made, as `finish` does, and waits
-until Dev runs the merge. Run again, it picks up where it stopped. It exits with 1 for a stop to
-fix and ship again, 2 for one the owner decides, such as a closed PR, and 3 once the PR merged
+until Dev runs the merge: through Dev's host manager where the workspace holds Dev, or else by
+Dev's public `/api/health`, at the `DISPATCH_ORIGIN` of the workspace's `dev/config/platform.env`,
+which `ship` checks before it pushes. Run again, it picks up where it stopped. It exits with 1 for a stop
+to fix and ship again, 2 for one the owner decides, such as a closed PR, and 3 once the PR merged
 but the clean-up or Dev's install didn't finish, which `finish` completes.
 
 Caches: only `main`'s reach every branch, since the queue's branches are deleted after each

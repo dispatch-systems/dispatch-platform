@@ -721,6 +721,7 @@ fn run() -> Result<()> {
             line.name()?,
             line.flag("--abandon"),
             &Native,
+            &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
         ),
         "status" => {
             let status = status::read(&line.workspace()?, &Native)?;

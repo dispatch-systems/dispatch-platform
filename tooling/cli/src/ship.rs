@@ -1,6 +1,6 @@
 //! `dispatchdev ship <name>`: a change from its committed worktree to Dev. It checks what
-//! takes seconds first: the PR's body in the change's scratch folder, the branch, that it
-//! merges cleanly into main, and the push. It opens or updates the PR, adds it to the merge
+//! takes seconds first: the PR's body in the change's scratch folder, that it can wait for Dev
+//! once merged, the branch, that it merges cleanly into main, and the push. It opens or updates the PR, adds it to the merge
 //! queue as soon as GitHub admits it and waits until GitHub merges it, the rule checks running
 //! here beside it on a machine that runs the local checks, unless the checks on GitHub passed
 //! on this commit already; their failure takes it out of the queue. Then it removes all the
@@ -83,6 +83,7 @@ pub fn change(
         None => {
             // What stops it in seconds comes before what takes a minute.
             pr::check_body(&title, rest)?;
+            finish::ready(ws)?;
             require(
                 change.branch(runner)? == name,
                 &format!("worktrees/{name} isn't on its branch."),
@@ -153,7 +154,7 @@ pub fn change(
         say(&format!("Removed: {}.", removed.join(", ")));
     }
     let waited = Instant::now();
-    let live = finish::live(ws, &merge, runner)
+    let live = finish::live(ws, &merge, runner, pause)
         .map_err(|error| merged(format!("Dev didn't install it: {error}")))?;
     say(&format!(
         "Live on Dev at {live} after {}.",
@@ -165,7 +166,7 @@ pub fn change(
 /// Seconds between looks at the PR.
 pub(crate) const PAUSE: u64 = 10;
 /// The looks that fit in `seconds`.
-const fn looks(seconds: u64) -> u32 {
+pub(crate) const fn looks(seconds: u64) -> u32 {
     (seconds / PAUSE) as u32
 }
 /// Looks that bound the whole wait: 90 minutes.
