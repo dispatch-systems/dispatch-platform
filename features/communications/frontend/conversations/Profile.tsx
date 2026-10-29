@@ -22,7 +22,7 @@ import { useProfile } from '../../api/client.js';
 import { phoneText } from '../../../../core/shell/frontend/lib/format.js';
 import { ErrorBox, Loading } from '../../../../core/shell/frontend/ui/index.js';
 import { clock, lastFour } from '../shared/format.js';
-import { ElsewhereChip } from './Elsewhere.js';
+import { ElsewhereChip } from './ElsewhereChips.js';
 import { Face } from '../shared/Face.js';
 import { Panel } from '../shared/Panel.js';
 import { roleText } from '../shared/format.js';

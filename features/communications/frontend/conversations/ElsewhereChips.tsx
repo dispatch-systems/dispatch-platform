@@ -3,7 +3,7 @@ import { Phone, Smartphone } from 'lucide-react';
 import type { ConversationKind, Elsewhere } from '../../api/index.js';
 import { SlackLogo } from '../../../slack/frontend/index.js';
 import { lastFour } from '../shared/format.js';
-import './elsewhere.css';
+import './elsewhere-chips.css';
 
 // Whom a conversation is with's conversation of each kind: their work conversation, by the work
 // phone they hold now; their own number's, in Messaging; and their Slack one. As chips under its

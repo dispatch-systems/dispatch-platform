@@ -1,6 +1,6 @@
 import { PhoneOff } from 'lucide-react';
 import type { Elsewhere } from '../../api/index.js';
-import { ElsewhereChip } from '../conversations/Elsewhere.js';
+import { ElsewhereChip } from '../conversations/ElsewhereChips.js';
 import './no-work-phone.css';
 
 // In place of the box to write in, for a driver holding no work phone now, as one returned or never

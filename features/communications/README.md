@@ -544,7 +544,7 @@ Where to add:
   (label, icon, contacts, its own rows, what's beside Search, a board), both by its ID, which
   members' browsers keep once it ships. A section another feature supplies needs a slot core owns.
 - **A kind of conversation:** its kind in the API, then `conversations/kinds.ts`, its party in
-  `party.tsx` and `parties.tsx`, its section's `holds`, and its chip in `Elsewhere.tsx`.
+  `party.tsx` and `parties.tsx`, its section's `holds`, and its chip in `ElsewhereChips.tsx`.
 - **What the page says of the phones:** as phones offline, in `texting/`; managing them, in
   `texting/phone/`. The phone side itself stays behind Communications' API.
 - **How new messages alert:** `alerts/`.
