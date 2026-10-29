@@ -154,7 +154,11 @@ pub fn change(
         say(&format!("Removed: {}.", removed.join(", ")));
     }
     let waited = Instant::now();
-    let live = dev::live(ws, &merge, runner, pause)
+    let clock = dev::Clock {
+        now: &Instant::now,
+        pause,
+    };
+    let live = dev::live(ws, &merge, runner, &clock)
         .map_err(|error| merged(format!("Dev didn't install it: {error}")))?;
     say(&format!(
         "Live on Dev at {live} after {}.",
@@ -166,7 +170,7 @@ pub fn change(
 /// Seconds between looks at the PR.
 pub(crate) const PAUSE: u64 = 10;
 /// The looks that fit in `seconds`.
-pub(crate) const fn looks(seconds: u64) -> u32 {
+const fn looks(seconds: u64) -> u32 {
     (seconds / PAUSE) as u32
 }
 /// Looks that bound the whole wait: 90 minutes.

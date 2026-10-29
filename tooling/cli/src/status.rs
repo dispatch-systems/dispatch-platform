@@ -291,11 +291,18 @@ mod tests {
         impl Runner for Public {
             fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
                 match (args, self.0) {
-                    (["curl", "-sSf", "https://dev.test/api/health"], Some(commit)) => {
-                        Ok(json!({"status": "ready", "source": {"commit": commit}})
-                            .to_string()
-                            .into_bytes())
-                    }
+                    (
+                        [
+                            "curl",
+                            "-sSf",
+                            "--max-time",
+                            _,
+                            "https://dev.test/api/health",
+                        ],
+                        Some(commit),
+                    ) => Ok(json!({"status": "ready", "source": {"commit": commit}})
+                        .to_string()
+                        .into_bytes()),
                     _ => Err(format!("{args:?} failed").into()),
                 }
             }

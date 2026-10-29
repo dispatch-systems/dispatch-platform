@@ -48,7 +48,15 @@ pub fn run(
         println!(
             "#{} is live on Dev at {}.",
             pr.number,
-            dev::live(ws, pr.merge.as_deref().unwrap_or(""), runner, pause)?
+            dev::live(
+                ws,
+                pr.merge.as_deref().unwrap_or(""),
+                runner,
+                &dev::Clock {
+                    now: &std::time::Instant::now,
+                    pause,
+                },
+            )?
         );
     }
     Ok(())
