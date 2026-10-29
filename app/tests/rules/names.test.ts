@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import { holds } from './support/holds.js';
 import { collectorManifests, declared, featureManifests } from './support/manifests.js';
@@ -82,8 +83,10 @@ test("core's product code names no collector", () => {
 // A Mac's disk doesn't tell names apart by case: two paths that differ only in it are one file
 // there, and an import of `./Elsewhere.js` can load `elsewhere.ts` rather than `Elsewhere.tsx`.
 // So no two files, and no two modules by the path an import gives them, differ only in case.
-test('no two files or modules differ only in case', () => {
-  const module = /\.(?:d\.ts|[cm]?[jt]sx?)$/;
+const module = /\.(?:d\.[cm]?ts|[cm]?[jt]sx?)$/;
+/** The paths among `files`, and the modules among them by the path an import gives them, that
+ * differ only in case. */
+function caseClashes(files: readonly string[]): string[] {
   const clashes = (paths: readonly string[]) => {
     const cases = new Map<string, Set<string>>();
     for (const path of paths) {
@@ -94,8 +97,25 @@ test('no two files or modules differ only in case', () => {
       .filter((same) => same.size > 1)
       .map((same) => `${[...same].sort().join(' and ')} differ only in case`);
   };
-  holds('names', 'case', [
+  return [
     ...clashes(files),
     ...clashes(files.filter((file) => module.test(file)).map((file) => file.replace(module, ''))),
-  ]);
+  ];
+}
+
+test('no two files or modules differ only in case', () => {
+  holds('names', 'case', caseClashes(files));
+});
+
+test('modules clash by the path an import gives them, declarations too', () => {
+  for (const [types, code] of [
+    ['Foo.d.ts', 'foo.ts'],
+    ['Foo.d.mts', 'foo.mts'],
+    ['Foo.d.cts', 'foo.cts'],
+    ['Foo.tsx', 'foo.ts'],
+  ])
+    assert.deepEqual(caseClashes([`a/${types}`, `a/${code}`]), [
+      'a/Foo and a/foo differ only in case',
+    ]);
+  assert.deepEqual(caseClashes(['a/Foo.tsx', 'a/foo.css', 'a/Foo.ts', 'b/foo.ts']), []);
 });
