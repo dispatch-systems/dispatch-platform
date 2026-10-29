@@ -17,7 +17,7 @@ use crate::{
     REPOSITORY, Result, Runner,
     change::Change,
     check, dev, pr, require,
-    workspace::{self, Workspace},
+    workspace::{self, Clock, Workspace},
 };
 use serde_json::Value;
 use std::{thread::ScopedJoinHandle, time::Instant};
@@ -46,7 +46,7 @@ pub fn change(
     ws: &Workspace,
     name: &str,
     runner: &dyn Runner,
-    pause: &dyn Fn(u64),
+    clock: &Clock,
     say: &mut dyn FnMut(&str),
 ) -> Result<()> {
     let change = Change::existing(ws, name)?;
@@ -127,7 +127,7 @@ pub fn change(
             let path = &change.path;
             let merge = std::thread::scope(|scope| {
                 let mut local = rules.map(|rules| scope.spawn(move || rules(path)));
-                run(number, &mut local, runner, pause, say)
+                run(number, &mut local, runner, clock.pause, say)
             })?;
             say(&format!(
                 "Merged #{number} {title} as {} after {} in the queue.",
@@ -154,11 +154,7 @@ pub fn change(
         say(&format!("Removed: {}.", removed.join(", ")));
     }
     let waited = Instant::now();
-    let clock = dev::Clock {
-        now: &Instant::now,
-        pause,
-    };
-    let live = dev::live(ws, &merge, runner, &clock)
+    let live = dev::live(ws, &merge, runner, clock)
         .map_err(|error| merged(format!("Dev didn't install it: {error}")))?;
     say(&format!(
         "Live on Dev at {live} after {}.",

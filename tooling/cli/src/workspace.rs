@@ -137,26 +137,43 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim()
         .to_owned())
 }
+/// Time as a wait keeps to it: the time now, on a monotonic clock, and a pause of some seconds
+/// on it.
+pub struct Clock<'a> {
+    pub now: &'a dyn Fn() -> Instant,
+    pub pause: &'a dyn Fn(u64),
+}
+/// Seconds before a `gh` call GitHub answered with a passing server error is made again.
+const RETRY: u64 = 5;
 /// `runner`, with a `gh` call GitHub answered with a passing server error, HTTP 502, 503 or 504,
-/// made again up to twice, `pause` five seconds before each.
+/// made again up to twice, `RETRY` seconds after each, all within the time the call was given,
+/// on `clock`: a try gets what is left of it, and none starts without some left after its pause.
 pub struct Retried<'a> {
     pub runner: &'a dyn Runner,
-    pub pause: &'a dyn Fn(u64),
+    pub clock: &'a Clock<'a>,
 }
 impl Runner for Retried<'_> {
     fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
-        let mut tries = 0;
+        let deadline = (self.clock.now)() + Duration::from_secs(timeout);
+        let left = || {
+            deadline
+                .saturating_duration_since((self.clock.now)())
+                .as_secs()
+        };
+        let (mut tries, mut given) = (0, timeout);
         loop {
-            match self.runner.command(args, cwd, timeout) {
+            match self.runner.command(args, cwd, given) {
                 Err(error)
                     if args.first() == Some(&"gh")
                         && tries < 2
+                        && left() > RETRY
                         && ["HTTP 502", "HTTP 503", "HTTP 504"]
                             .iter()
                             .any(|code| error.to_string().contains(code)) =>
                 {
                     tries += 1;
-                    (self.pause)(5);
+                    (self.clock.pause)(RETRY);
+                    given = left();
                 }
                 answer => return answer,
             }
@@ -329,11 +346,15 @@ mod tests {
             calls: std::cell::Cell::new(0),
         };
         let paused = std::cell::Cell::new(0);
-        let pause = |seconds| paused.set(paused.get() + seconds);
+        let start = Instant::now();
+        let clock = Clock {
+            now: &|| start,
+            pause: &|seconds| paused.set(paused.get() + seconds),
+        };
         let call = |runner: &Flaky, args: &[&str]| {
             Retried {
                 runner,
-                pause: &pause,
+                clock: &clock,
             }
             .command(args, None, 60)
         };

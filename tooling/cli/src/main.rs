@@ -4,9 +4,22 @@ use dispatchdev_cli::{
     check, ci, finish, logs,
     machine::Machine,
     observation, pr, preview, require, review, scaffold, ship, shot, start, status, test, verify,
-    workspace::{Retried, Workspace},
+    workspace::{Clock, Retried, Workspace},
 };
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
+/// Time as it passes: the monotonic clock, and a pause that sleeps.
+const CLOCK: Clock = Clock {
+    now: &Instant::now,
+    pause: &pause,
+};
+fn pause(seconds: u64) {
+    std::thread::sleep(Duration::from_secs(seconds));
+}
 
 /// A command: how it is written, what it does, and what it takes. The help is written from
 /// these, and each command's line is read by its own.
@@ -623,7 +636,7 @@ fn run() -> Result<()> {
                 line.flag("--removability"),
                 Machine::THIS,
                 &Native,
-                &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
+                &pause,
                 &mut |text| println!("{text}"),
             )?;
             match passed {
@@ -686,16 +699,15 @@ fn run() -> Result<()> {
         }
         "ship" => {
             let named = line.name()?;
-            let pause = |seconds| std::thread::sleep(std::time::Duration::from_secs(seconds));
             let github = Retried {
                 runner: &Native,
-                pause: &pause,
+                clock: &CLOCK,
             };
             let name = match named.parse::<u64>() {
                 Ok(number) => pr::branch(number, &github)?,
                 Err(_) => named.to_owned(),
             };
-            ship::change(&line.workspace()?, &name, &github, &pause, &mut |text| {
+            ship::change(&line.workspace()?, &name, &github, &CLOCK, &mut |text| {
                 println!("{text}")
             })
         }
@@ -707,7 +719,6 @@ fn run() -> Result<()> {
                 removability.is_none() || !again,
                 "Choose --removability or --rerun-failed.",
             )?;
-            let pause = |seconds| std::thread::sleep(std::time::Duration::from_secs(seconds));
             let verdict = ci::run(
                 &ws,
                 name,
@@ -715,7 +726,7 @@ fn run() -> Result<()> {
                 again,
                 &Retried {
                     runner: &Native,
-                    pause: &pause,
+                    clock: &CLOCK,
                 },
                 &pause,
                 &mut |text| println!("{text}"),
@@ -728,7 +739,7 @@ fn run() -> Result<()> {
             line.name()?,
             line.flag("--abandon"),
             &Native,
-            &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
+            &CLOCK,
         ),
         "status" => {
             let status = status::read(&line.workspace()?, &Native)?;

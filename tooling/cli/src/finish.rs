@@ -1,13 +1,18 @@
 //! `dispatchdev finish <name>`: after a change merged, everything it made goes, then Dev is
 //! waited for until it runs the merge. A change that didn't merge goes only with `--abandon`.
-use crate::{Result, Runner, change::Change, dev, require, workspace::Workspace};
+use crate::{
+    Result, Runner,
+    change::Change,
+    dev, require,
+    workspace::{Clock, Workspace},
+};
 
 pub fn run(
     ws: &Workspace,
     name: &str,
     abandon: bool,
     runner: &dyn Runner,
-    pause: &dyn Fn(u64),
+    clock: &Clock,
 ) -> Result<()> {
     let change = Change::named(ws, name)?;
     if change.path.exists() {
@@ -48,15 +53,7 @@ pub fn run(
         println!(
             "#{} is live on Dev at {}.",
             pr.number,
-            dev::live(
-                ws,
-                pr.merge.as_deref().unwrap_or(""),
-                runner,
-                &dev::Clock {
-                    now: &std::time::Instant::now,
-                    pause,
-                },
-            )?
+            dev::live(ws, pr.merge.as_deref().unwrap_or(""), runner, clock)?
         );
     }
     Ok(())

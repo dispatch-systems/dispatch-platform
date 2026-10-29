@@ -2,12 +2,13 @@
 //! runtime, as on dispatch-dev, or else by Dev's public health, at the address Dev's
 //! configuration in the workspace names, as on a Mac. `ship` and `finish` wait here for Dev to
 //! run a merge, and `status` reads what it runs.
-use crate::{REPOSITORY, Result, Runner, preview, ship::PAUSE, workspace::Workspace};
-use serde_json::Value;
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
+use crate::{
+    REPOSITORY, Result, Runner, preview,
+    ship::PAUSE,
+    workspace::{Clock, Workspace},
 };
+use serde_json::Value;
+use std::{path::PathBuf, time::Duration};
 
 /// Where a workspace without Dev's host manager, as on a Mac, finds Dev's public address, whose
 /// `/api/health` names the commit Dev runs: `ORIGIN` in Dev's own configuration, this file of
@@ -19,13 +20,6 @@ const ORIGIN: &str = "DISPATCH_ORIGIN";
 const INSTALL: u64 = 16 * 60;
 /// Seconds a look at Dev's health may take outside a wait, as `status`'s.
 const LOOK: u64 = 10;
-
-/// The time a wait for Dev keeps to: the time now, on a monotonic clock, and a pause of some
-/// seconds on it.
-pub struct Clock<'a> {
-    pub now: &'a dyn Fn() -> Instant,
-    pub pause: &'a dyn Fn(u64),
-}
 
 /// Refuses a workspace that couldn't wait for Dev once a change merged: one without Dev's host
 /// manager whose configuration names no address for Dev. `ship` asks it before pushing.
@@ -153,6 +147,7 @@ mod tests {
         collections::VecDeque,
         fs,
         path::Path,
+        time::Instant,
     };
 
     const MERGE: &str = "3333333333333333333333333333333333333333";
@@ -293,6 +288,44 @@ mod tests {
                 .unwrap_err()
                 .to_string(),
             format!("{HEALTH} didn't answer within 16 minutes.")
+        );
+        assert_eq!(time.past.get(), INSTALL);
+    }
+
+    #[test]
+    fn githubs_retries_keep_to_the_wait_too() {
+        /// Dev running a later commit, and GitHub answering each comparison with a passing
+        /// server error after half a minute, or at the request's bound.
+        struct Busy<'a>(&'a Time);
+        impl Runner for Busy<'_> {
+            fn command(&self, args: &[&str], _: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
+                match args {
+                    ["curl", ..] => Ok(serde_json::to_vec(&serde_json::json!({
+                        "status": "ready",
+                        "source": {"version": null, "commit": LATER},
+                    }))?),
+                    ["gh", "api", _] => {
+                        self.0.pass(timeout.min(30));
+                        Err("gh: HTTP 502: Bad Gateway".into())
+                    }
+                    other => panic!("unexpected {other:?}"),
+                }
+            }
+        }
+        let (_temp, ws) = workspace(Some(CONFIG));
+        let time = Time::new();
+        let clock = Clock {
+            now: &|| time.now(),
+            pause: &|seconds| time.pass(seconds),
+        };
+        // As `ship` asks GitHub: through the runner that makes a passing server error again.
+        let github = crate::workspace::Retried {
+            runner: &Busy(&time),
+            clock: &clock,
+        };
+        assert_eq!(
+            live(&ws, MERGE, &github, &clock).unwrap_err().to_string(),
+            "Dev didn't run 33333333 within 16 minutes; it runs 44444444."
         );
         assert_eq!(time.past.get(), INSTALL);
     }
