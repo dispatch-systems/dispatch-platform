@@ -155,7 +155,7 @@ pub fn read(ws: &Workspace, runner: &dyn Runner) -> Result<Status> {
     let dev = Dev {
         runs: file(".build/tooling/build-info.json")
             .and_then(|info| Some(info["commit"].as_str()?.to_owned()))
-            .or_else(|| crate::finish::public_commit(ws, runner))
+            .or_else(|| crate::dev::public_commit(ws, runner))
             .and_then(|commit| Some(commit.get(..8)?.to_owned()))
             .unwrap_or_else(|| "unknown".into()),
         update: file("data/platform/dev-update.json")

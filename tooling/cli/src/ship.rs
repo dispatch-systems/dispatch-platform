@@ -16,7 +16,7 @@
 use crate::{
     REPOSITORY, Result, Runner,
     change::Change,
-    check, finish, pr, require,
+    check, dev, pr, require,
     workspace::{self, Workspace},
 };
 use serde_json::Value;
@@ -83,7 +83,7 @@ pub fn change(
         None => {
             // What stops it in seconds comes before what takes a minute.
             pr::check_body(&title, rest)?;
-            finish::ready(ws)?;
+            dev::ready(ws)?;
             require(
                 change.branch(runner)? == name,
                 &format!("worktrees/{name} isn't on its branch."),
@@ -154,7 +154,7 @@ pub fn change(
         say(&format!("Removed: {}.", removed.join(", ")));
     }
     let waited = Instant::now();
-    let live = finish::live(ws, &merge, runner, pause)
+    let live = dev::live(ws, &merge, runner, pause)
         .map_err(|error| merged(format!("Dev didn't install it: {error}")))?;
     say(&format!(
         "Live on Dev at {live} after {}.",

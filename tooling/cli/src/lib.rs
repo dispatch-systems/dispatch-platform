@@ -7,6 +7,7 @@ pub mod build;
 pub mod change;
 pub mod check;
 pub mod ci;
+pub mod dev;
 pub mod finish;
 pub mod logs;
 pub mod machine;
