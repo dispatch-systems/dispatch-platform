@@ -52,7 +52,10 @@ PNG of a page of it, signed in once for each account), `check` and `ci`, `review
 asked for (each pass's brief, for a reviewer started through T3 with the model `review.rs`
 names) and `pr` to `ship`, which merges it, removes what it made and waits for Dev; `finish`
 does the last two for a change `ship` didn't see through, or drops one with `--abandon`.
-`status` shows the workspace, and `status --json` writes it as JSON. `dispatchdev build`
+`status` shows the workspace, and `status --json` writes it as JSON. A Mac runs neither the
+previews nor the local checks and tests (`tooling/cli/src/machine.rs` says why): there
+`start --preview`, `preview`, `api`, `shot`, `logs`, `check`, `test` and `verify` refuse, GitHub's
+checks alone decide for `ci` and `ship`, and `status` reads what Dev runs from its public health. `dispatchdev build`
 builds the package's two executables, the backend and the support worker, in one Cargo pass,
 through a cache keyed by their exact inputs and the compiler's fingerprint.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
@@ -78,9 +81,9 @@ again at once; `--plan` only names them.
 `dispatchdev ci <name>` runs the full checks earlier, on a change's committed branch while its
 preview is tried, so the queue run is rarely the first to fail. It pushes the branch at once
 and starts `checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed
-so it reports no `platform` check on the PR's head, is skipped. The rule checks run here beside
-it, and their failure cancels the run. It follows the run every 10 seconds to its end and lists
-every failed job; jobs GitHub stopped itself, past their time limit or on a runner that never
+so it reports no `platform` check on the PR's head, is skipped. On Linux the rule checks run here
+beside it, and their failure cancels the run. It follows the run every 10 seconds to its end and
+lists every failed job; jobs GitHub stopped itself, past their time limit or on a runner that never
 started, run again once. A newer run of the branch replaces it. `--rerun-failed` runs the failed
 jobs of the head's run again and follows them, for a failure that isn't the change's own.
 `--removability <feature>` starts and follows `removability.yml` the same way, for that
@@ -90,8 +93,8 @@ runs the check in a copy of the checkout, built in a folder of its own.
 seconds first: the PR's body in the scratch folder's `pr-body.md`, whose first line is the
 title, that the branch merges cleanly into `main`, and the push. It then opens or updates the
 PR, reads it from GitHub's API every 10 seconds, adds it to the merge queue once its admission
-check passed and GitHub knows it merges cleanly, and waits until GitHub merges it. The rule
-checks run here meanwhile, unless the checks on GitHub passed on that very commit: the queue
+check passed and GitHub knows it merges cleanly, and waits until GitHub merges it. On Linux the
+rule checks run here meanwhile, unless the checks on GitHub passed on that very commit: the queue
 runs them again, so their failure here takes the PR out of the queue rather than wait for its
 run to fail. A newer push is queued in its turn. A head whose branch run failed isn't queued,
 and a branch run still going is cancelled when the PR is, since the queue runs the checks
@@ -99,8 +102,10 @@ again. It
 stops with the reason when the PR conflicts with `main`, is a draft, closes, leaves the queue
 unmerged, with GitHub's reason and the failed jobs of its own queue run, or has not merged
 after 90 minutes. Once merged, it removes what the change made, as `finish` does, and waits
-until Dev runs the merge. Run again, it picks up where it stopped. It exits with 1 for a stop to
-fix and ship again, 2 for one the owner decides, such as a closed PR, and 3 once the PR merged
+until Dev runs the merge: through Dev's host manager where the workspace holds Dev, or else by
+Dev's public `/api/health`, at the `DISPATCH_ORIGIN` of the workspace's `dev/config/platform.env`,
+which `ship` checks before it pushes. Run again, it picks up where it stopped. It exits with 1 for a stop
+to fix and ship again, 2 for one the owner decides, such as a closed PR, and 3 once the PR merged
 but the clean-up or Dev's install didn't finish, which `finish` completes.
 
 Caches: only `main`'s reach every branch, since the queue's branches are deleted after each

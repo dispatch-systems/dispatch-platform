@@ -1,7 +1,8 @@
 //! The workspace: the folder holding `dev/`, the live Dev checkout, and `worktrees/`, one per
-//! change. Every checkout shares Git's data in `dev/.git`, so the workspace is found from any
-//! of them, or from the workspace folder itself.
-use crate::{Result, Runner, require};
+//! change, on the machine that decides what runs there beside GitHub. Every checkout shares
+//! Git's data in `dev/.git`, so the workspace is found from any of them, or from the workspace
+//! folder itself.
+use crate::{Result, Runner, machine::Machine, require};
 use std::{
     fs,
     io::Write,
@@ -13,6 +14,7 @@ use std::{
 
 pub struct Workspace {
     pub root: PathBuf,
+    pub machine: Machine,
 }
 impl Workspace {
     /// The workspace `from` is in: a checkout's, or the folder holding `dev/` and `worktrees/`.
@@ -37,7 +39,10 @@ impl Workspace {
             .chain(from.ancestors().map(Path::to_path_buf));
         for root in candidates {
             if root.join("dev/.git").is_dir() && root.join("worktrees").is_dir() {
-                return Ok(Self { root });
+                return Ok(Self {
+                    root,
+                    machine: Machine::THIS,
+                });
             }
         }
         Err("Run dispatchdev in the workspace: the folder holding dev/ and worktrees/, or a checkout in it.".into())
@@ -87,6 +92,17 @@ pub fn valid_name(name: &str) -> Result<()> {
 pub fn scratch(name: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/dispatch-{name}"))
 }
+/// The name of the checkout at `root`: its folder's, which is its change's.
+pub fn checkout_name(root: &Path) -> Result<&str> {
+    root.file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "A checkout without a folder name".into())
+}
+/// The scratch folder of the checkout at `root`, made private if it is new, by its real path:
+/// the stores tests make refuse a path through a symlink, and macOS keeps `/tmp` behind one.
+pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
+    Ok(fs::canonicalize(scratch_dir(checkout_name(root)?)?)?)
+}
 /// The change's scratch folder, made private if it is new.
 pub fn scratch_dir(name: &str) -> Result<PathBuf> {
     let dir = scratch(name);
@@ -121,26 +137,43 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim()
         .to_owned())
 }
+/// Time as a wait keeps to it: the time now, on a monotonic clock, and a pause of some seconds
+/// on it.
+pub struct Clock<'a> {
+    pub now: &'a dyn Fn() -> Instant,
+    pub pause: &'a dyn Fn(u64),
+}
+/// Seconds before a `gh` call GitHub answered with a passing server error is made again.
+const RETRY: u64 = 5;
 /// `runner`, with a `gh` call GitHub answered with a passing server error, HTTP 502, 503 or 504,
-/// made again up to twice, `pause` five seconds before each.
+/// made again up to twice, `RETRY` seconds after each, all within the time the call was given,
+/// on `clock`: a try gets what is left of it, and none starts without some left after its pause.
 pub struct Retried<'a> {
     pub runner: &'a dyn Runner,
-    pub pause: &'a dyn Fn(u64),
+    pub clock: &'a Clock<'a>,
 }
 impl Runner for Retried<'_> {
     fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
-        let mut tries = 0;
+        let deadline = (self.clock.now)() + Duration::from_secs(timeout);
+        let left = || {
+            deadline
+                .saturating_duration_since((self.clock.now)())
+                .as_secs()
+        };
+        let (mut tries, mut given) = (0, timeout);
         loop {
-            match self.runner.command(args, cwd, timeout) {
+            match self.runner.command(args, cwd, given) {
                 Err(error)
                     if args.first() == Some(&"gh")
                         && tries < 2
+                        && left() > RETRY
                         && ["HTTP 502", "HTTP 503", "HTTP 504"]
                             .iter()
                             .any(|code| error.to_string().contains(code)) =>
                 {
                     tries += 1;
-                    (self.pause)(5);
+                    (self.clock.pause)(RETRY);
+                    given = left();
                 }
                 answer => return answer,
             }
@@ -236,14 +269,7 @@ pub fn worktrees_free(root: &Path) -> Result<u64> {
 }
 /// Bytes free on the file system holding `path`, or what it links to.
 pub fn free_bytes(path: &Path) -> Result<u64> {
-    use std::{ffi::CString, os::unix::ffi::OsStrExt};
-    let path = CString::new(path.as_os_str().as_bytes())?;
-    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-    require(
-        unsafe { libc::statvfs(path.as_ptr(), &mut stat) } == 0,
-        "Couldn't read the free disk space",
-    )?;
-    Ok(stat.f_bavail * stat.f_frsize)
+    fs2::available_space(path).map_err(|_| "Couldn't read the free disk space".into())
 }
 /// The size of everything under `path`, or none if it doesn't exist.
 pub fn size(runner: &dyn Runner, path: &Path) -> Option<u64> {
@@ -320,11 +346,15 @@ mod tests {
             calls: std::cell::Cell::new(0),
         };
         let paused = std::cell::Cell::new(0);
-        let pause = |seconds| paused.set(paused.get() + seconds);
+        let start = Instant::now();
+        let clock = Clock {
+            now: &|| start,
+            pause: &|seconds| paused.set(paused.get() + seconds),
+        };
         let call = |runner: &Flaky, args: &[&str]| {
             Retried {
                 runner,
-                pause: &pause,
+                clock: &clock,
             }
             .command(args, None, 60)
         };
@@ -386,10 +416,11 @@ mod tests {
             root
         );
         assert!(Workspace::find(elsewhere.path(), &Fake(none)).is_err());
-        assert_eq!(
-            Workspace { root: root.clone() }.worktrees().unwrap(),
-            ["one"]
-        );
+        let ws = Workspace {
+            root: root.clone(),
+            machine: Machine::Linux,
+        };
+        assert_eq!(ws.worktrees().unwrap(), ["one"]);
     }
     #[test]
     fn a_command_is_bound_to_the_unit_of_this_users_manager_running_it() {

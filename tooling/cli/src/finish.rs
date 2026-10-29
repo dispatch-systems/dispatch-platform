@@ -1,9 +1,19 @@
 //! `dispatchdev finish <name>`: after a change merged, everything it made goes, then Dev is
 //! waited for until it runs the merge. A change that didn't merge goes only with `--abandon`.
-use crate::{Result, Runner, change::Change, require, workspace::Workspace};
-use serde_json::Value;
+use crate::{
+    Result, Runner,
+    change::Change,
+    dev, require,
+    workspace::{Clock, Workspace},
+};
 
-pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Result<()> {
+pub fn run(
+    ws: &Workspace,
+    name: &str,
+    abandon: bool,
+    runner: &dyn Runner,
+    clock: &Clock,
+) -> Result<()> {
     let change = Change::named(ws, name)?;
     if change.path.exists() {
         require(
@@ -43,34 +53,8 @@ pub fn run(ws: &Workspace, name: &str, abandon: bool, runner: &dyn Runner) -> Re
         println!(
             "#{} is live on Dev at {}.",
             pr.number,
-            live(ws, pr.merge.as_deref().unwrap_or(""), runner)?
+            dev::live(ws, pr.merge.as_deref().unwrap_or(""), runner, clock)?
         );
     }
     Ok(())
-}
-
-/// Waits until Dev runs `commit`, or one containing it, and returns the commit it runs, short.
-pub fn live(ws: &Workspace, commit: &str, runner: &dyn Runner) -> Result<String> {
-    let dev = ws.dev();
-    let host = dev.join(".runtime/management/dispatch-host");
-    require(
-        host.is_file(),
-        "Dev's host manager is missing; check Dev by hand.",
-    )?;
-    let live = runner.command(
-        &[
-            host.to_str().ok_or("Non-UTF8 path")?,
-            "host",
-            "dev",
-            "--root",
-            dev.to_str().ok_or("Non-UTF8 path")?,
-            "--wait",
-            commit,
-        ],
-        None,
-        16 * 60,
-    )?;
-    let status: Value = serde_json::from_slice(&live).unwrap_or(Value::Null);
-    let runs = status["commit"].as_str().unwrap_or(commit);
-    Ok(runs.get(..8).unwrap_or(runs).to_owned())
 }

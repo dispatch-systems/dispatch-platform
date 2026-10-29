@@ -1,12 +1,8 @@
 use super::*;
 use std::{
-    ffi::CString,
     fs::File,
     io::{Read, Write},
-    os::unix::{
-        ffi::OsStrExt,
-        fs::{MetadataExt, PermissionsExt},
-    },
+    os::unix::fs::{MetadataExt, PermissionsExt},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -266,20 +262,11 @@ impl Release<'_> {
             File::open(staging.path().join(name))?.sync_all()?;
         }
         File::open(staging.path())?.sync_all()?;
-        let from = CString::new(staging.path().as_os_str().as_bytes())?;
-        let to = CString::new(self.output.as_os_str().as_bytes())?;
-        let result = unsafe {
-            libc::renameat2(
-                libc::AT_FDCWD,
-                from.as_ptr(),
-                libc::AT_FDCWD,
-                to.as_ptr(),
-                libc::RENAME_NOREPLACE,
-            )
-        };
-        if result != 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
+        crate::management::rename(
+            staging.path(),
+            &self.output,
+            crate::management::Rename::NoReplace,
+        )?;
         File::open(&self.directory)?.sync_all()?;
         say(format!(
             "Prepared {} from checked main commit {commit}: {}",

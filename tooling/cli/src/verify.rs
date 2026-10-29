@@ -4,9 +4,12 @@
 //! own tests of every kind, built in a folder of the run's own (`crate::test`). `--removability`
 //! then leaves it out as the weekly check does: on GitHub when the branch is pushed as it is
 //! (`crate::ci`), else in a copy of the checkout, so neither the worktree nor its preview is
-//! touched. A line a step, then what failed and what to do next.
+//! touched. A line a step, then what failed and what to do next. It runs on Linux alone, as the
+//! local checks do.
 use crate::{
-    Result, Runner, ci, require,
+    Result, Runner, ci,
+    machine::Machine,
+    require,
     slot::{self, Slot},
     test, workspace,
 };
@@ -189,19 +192,17 @@ pub fn run(
     root: &Path,
     feature: &str,
     removability: bool,
+    machine: Machine,
     runner: &dyn Runner,
     pause: &dyn Fn(u64),
     say: &mut dyn FnMut(&str),
 ) -> Result<bool> {
+    crate::check::here(machine, "verify")?;
     require(
         workspace::has_feature(root, feature),
         &format!("This checkout has no feature named {feature}: features/{feature} isn't there."),
     )?;
-    let name = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("A checkout without a folder name")?;
-    let scratch = workspace::scratch_dir(name)?;
+    let scratch = workspace::checkout_scratch(root)?;
     let logs: PathBuf = scratch.join("verify").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
     let (mut passed, mut failed) = (0, Vec::<String>::new());
@@ -326,7 +327,8 @@ pub fn run(
     }
     if next.is_empty() {
         next.push(format!(
-            "Commit it, then `dispatchdev check` and `dispatchdev ci {name}`."
+            "Commit it, then `dispatchdev check` and `dispatchdev ci {}`.",
+            workspace::checkout_name(root)?
         ));
         if !removability {
             next.push(format!(

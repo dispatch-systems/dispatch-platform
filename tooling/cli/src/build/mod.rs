@@ -7,7 +7,7 @@ mod key;
 mod store;
 #[cfg(test)]
 mod tests;
-use crate::{Result, Runner, require, slot::Slot};
+use crate::{Result, Runner, machine::Machine, require, slot::Slot};
 pub use key::{Environment, eligible, fingerprint, frontend, key};
 use std::{
     fs,
@@ -132,7 +132,7 @@ fn build_with_limit(
         runner.command(args, Some(root), 1200)?;
         return Ok(());
     }
-    let compiler = key::compiler(root, runner)?;
+    let compiler = key::compiler(root, Machine::THIS, runner)?;
     let key = fingerprint(root, profile, &compiler, env)?;
     require(
         !ci || env

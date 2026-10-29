@@ -174,29 +174,53 @@ pub fn install_bundle(updater: &Updater<'_>) -> Result<()> {
     if target.exists() {
         artifact::real_directory(&target)?;
         let retained = temp.keep();
-        rename(&staged, &target, libc::RENAME_EXCHANGE)?;
+        rename(&staged, &target, Rename::Exchange)?;
         fs::rename(&staged, retained.join("previous-management"))?;
         fs::File::open(&retained)?.sync_all()?;
         eprintln!("Previous manager retained in {}", retained.display());
     } else {
-        rename(&staged, &target, libc::RENAME_NOREPLACE)?;
+        rename(&staged, &target, Rename::NoReplace)?;
     }
     fs::File::open(target.parent().ok_or("Management parent required")?)?.sync_all()?;
     Ok(())
 }
-pub(super) fn rename(from: &Path, to: &Path, flags: libc::c_uint) -> Result<()> {
+/// What an atomic rename does with its destination.
+pub(super) enum Rename {
+    /// Swaps the two, both of which exist.
+    Exchange,
+    /// Refuses a destination that exists.
+    NoReplace,
+}
+/// Renames `from` to `to` atomically, by each OS's own call: `renameat2` on Linux, where the
+/// host manager runs, and `renamex_np` on macOS, so what depends on it builds on a Mac too.
+pub(super) fn rename(from: &Path, to: &Path, how: Rename) -> Result<()> {
     let from = std::ffi::CString::new(from.as_os_str().as_encoded_bytes())?;
     let to = std::ffi::CString::new(to.as_os_str().as_encoded_bytes())?;
-    if unsafe {
-        libc::renameat2(
-            libc::AT_FDCWD,
-            from.as_ptr(),
-            libc::AT_FDCWD,
-            to.as_ptr(),
-            flags,
-        )
-    } != 0
-    {
+    #[cfg(target_os = "linux")]
+    let renamed = {
+        let flags = match how {
+            Rename::Exchange => libc::RENAME_EXCHANGE,
+            Rename::NoReplace => libc::RENAME_NOREPLACE,
+        };
+        unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                from.as_ptr(),
+                libc::AT_FDCWD,
+                to.as_ptr(),
+                flags,
+            )
+        }
+    };
+    #[cfg(target_os = "macos")]
+    let renamed = {
+        let flags = match how {
+            Rename::Exchange => libc::RENAME_SWAP,
+            Rename::NoReplace => libc::RENAME_EXCL,
+        };
+        unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), flags) }
+    };
+    if renamed != 0 {
         return Err(std::io::Error::last_os_error().into());
     }
     Ok(())

@@ -1,6 +1,7 @@
 use crate::{
     REPOSITORY, Result, Runner,
     build::{self, Environment, frontend},
+    machine::Machine,
     require,
     slot::{self, Slot},
     workspace,
@@ -411,11 +412,27 @@ pub fn print(plan: &Plan) {
     }
     println!("{}", next_step(plan));
 }
+/// Refuses `dispatchdev <command>`, the local check or tests, at once on a machine that runs
+/// none: `check`, `test` and `verify` ask it before anything else.
+pub fn here(machine: Machine, command: &str) -> Result<()> {
+    require(
+        machine.checks(),
+        &format!(
+            "dispatchdev {command} runs on Linux alone: dispatchdev ci <name> runs every check on \
+             GitHub."
+        ),
+    )
+}
 /// The rule checks: everything a push can fail on without a build, side by side, in about a
 /// minute. What `dispatchdev check` adds, the TypeScript linter and clippy, the queue runs too.
 pub const RULES: &str = "npm run check:rules";
-/// The check `ci` and `ship` run before a push: the rule checks alone.
-pub fn rules(root: &Path) -> Result<()> {
+/// The check `ci` and `ship` run here beside the checks on GitHub, whose failure stops them: the
+/// rule checks alone, on a machine that runs the local checks. Elsewhere none, since they'd fail
+/// there and cancel the checks on GitHub, which decide by themselves.
+pub fn beside(machine: Machine) -> Option<fn(&Path) -> Result<()>> {
+    machine.checks().then_some(rules)
+}
+fn rules(root: &Path) -> Result<()> {
     let env = std::env::vars().collect();
     require(
         side_by_side(root, &[RULES.to_owned()], &env)?,
@@ -471,11 +488,7 @@ pub fn execute(root: &Path, plan: &Plan, env: &Environment, runner: &dyn Runner)
 /// a line for each as it ends, with the lines saying why under one that failed. A command that
 /// builds waits for a build slot, and passes it on to what it starts. Whether all passed.
 fn side_by_side(root: &Path, commands: &[String], env: &Environment) -> Result<bool> {
-    let name = root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("A checkout without a folder name")?;
-    let scratch = workspace::scratch_dir(name)?;
+    let scratch = workspace::checkout_scratch(root)?;
     // Each run's logs apart, so runs side by side never write over each other's.
     let logs = scratch.join("check").join(std::process::id().to_string());
     fs::create_dir_all(&logs)?;
@@ -1315,5 +1328,14 @@ mod tests {
         assert!(!answer("[]"));
         assert!(!answer("not json"));
         assert!(!merge_queue(&|_: &[&str]| Err("offline".into())));
+    }
+    #[test]
+    fn on_a_mac_the_local_check_refuses_and_names_ci() {
+        assert_eq!(
+            here(Machine::Mac, "check").unwrap_err().to_string(),
+            "dispatchdev check runs on Linux alone: dispatchdev ci <name> runs every check on \
+             GitHub."
+        );
+        assert!(here(Machine::Linux, "check").is_ok());
     }
 }

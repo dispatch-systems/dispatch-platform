@@ -130,3 +130,34 @@ fn generate_runs_in_a_worktree_on_a_disk_of_its_own() {
         "{error}"
     );
 }
+
+#[test]
+fn the_scaffolder_keeps_its_temporary_files_in_the_checkouts_scratch_folder_by_its_real_path() {
+    // A checkout of a name of its own, whose scaffolder, run by node as the checkout's tsx is,
+    // writes down the TMPDIR it was given.
+    let name = format!("scaffolder-scratch-{}", std::process::id());
+    let workspace = tempfile::tempdir().unwrap();
+    let checkout = workspace.path().join(&name);
+    std::fs::create_dir_all(checkout.join("tooling/scaffold")).unwrap();
+    std::fs::write(checkout.join("tooling/scaffold/cli.ts"), "").unwrap();
+    std::fs::create_dir_all(checkout.join("node_modules/tsx/dist")).unwrap();
+    std::fs::write(
+        checkout.join("node_modules/tsx/dist/cli.mjs"),
+        "import { writeFileSync } from 'node:fs';\n\
+         writeFileSync('tmpdir', process.env.TMPDIR ?? '');\n",
+    )
+    .unwrap();
+    // Its scratch folder is a link to a folder of the test's own, as macOS keeps /tmp behind
+    // one; made here, so it is no one else's, and the only thing removed.
+    let target = workspace.path().join("scratch");
+    std::fs::create_dir(&target).unwrap();
+    let scratch = std::path::PathBuf::from(format!("/tmp/dispatch-{name}"));
+    std::os::unix::fs::symlink(&target, &scratch).unwrap();
+    let (ok, _, error) = run(&["generate", "--check", "--root", checkout.to_str().unwrap()]);
+    std::fs::remove_file(&scratch).unwrap();
+    assert!(ok, "{error}");
+    assert_eq!(
+        std::fs::read_to_string(checkout.join("tmpdir")).unwrap(),
+        std::fs::canonicalize(&target).unwrap().to_str().unwrap()
+    );
+}

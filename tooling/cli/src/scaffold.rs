@@ -3,7 +3,10 @@
 //! what the product has. The checkout's own `tooling/scaffold/cli.ts` runs each, with its own
 //! options; here a change's worktree is required of what writes, since Dev's checkout stays as
 //! main has it.
-use crate::{Native, Result, require, workspace::Workspace};
+use crate::{
+    Native, Result, require,
+    workspace::{self, Workspace},
+};
 use std::{path::Path, process::Command};
 
 const CLI: &str = "tooling/scaffold/cli.ts";
@@ -23,8 +26,9 @@ pub fn writes(command: &str, args: &[String]) -> bool {
     }
 }
 
-/// Runs `command` in the checkout `root`, its scaffolder taking `args` as they were given. It
-/// answers whether it passed.
+/// Runs `command` in the checkout `root`, its scaffolder taking `args` as they were given, with
+/// its temporary files, and those of the tests `generate` runs, in the checkout's scratch
+/// folder. It answers whether it passed.
 pub fn run(root: &Path, command: &str, args: &[String]) -> Result<bool> {
     if writes(command, args) {
         let ws = Workspace::find(root, &Native)?;
@@ -44,6 +48,7 @@ pub fn run(root: &Path, command: &str, args: &[String]) -> Result<bool> {
         .args(["node_modules/tsx/dist/cli.mjs", CLI, command])
         .args(args)
         .current_dir(root)
+        .env("TMPDIR", workspace::checkout_scratch(root)?)
         .status()?;
     Ok(status.success())
 }

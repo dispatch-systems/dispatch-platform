@@ -79,7 +79,8 @@ struct Open {
 }
 #[derive(Serialize)]
 struct Dev {
-    /// The commit Dev runs, and its updater's state.
+    /// The commit Dev runs, from its public health where the workspace holds no Dev of its own,
+    /// as on a Mac, and its updater's state, which only Dev's own workspace knows.
     runs: String,
     update: String,
     /// `origin/main`'s commit.
@@ -90,7 +91,7 @@ struct Dev {
 
 /// Everything `status` shows, read once.
 pub fn read(ws: &Workspace, runner: &dyn Runner) -> Result<Status> {
-    let previews = crate::preview::running(runner).unwrap_or_default();
+    let previews = crate::preview::running(ws.machine, runner).unwrap_or_default();
     let runs = branch_runs(runner);
     let pulls: Option<Vec<Open>> = workspace::text(
         runner,
@@ -153,7 +154,9 @@ pub fn read(ws: &Workspace, runner: &dyn Runner) -> Result<Status> {
     };
     let dev = Dev {
         runs: file(".build/tooling/build-info.json")
-            .and_then(|info| Some(info["commit"].as_str()?.get(..8)?.to_owned()))
+            .and_then(|info| Some(info["commit"].as_str()?.to_owned()))
+            .or_else(|| crate::dev::public_commit(ws, runner))
+            .and_then(|commit| Some(commit.get(..8)?.to_owned()))
             .unwrap_or_else(|| "unknown".into()),
         update: file("data/platform/dev-update.json")
             .and_then(|status| Some(status["status"].as_str()?.to_owned()))
@@ -260,7 +263,9 @@ pub fn print(status: &Status) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::machine::Machine;
     use serde_json::json;
+    use std::{fs, path::Path};
 
     #[test]
     fn a_worktree_shows_its_branch_newest_run_and_whether_it_checked_the_head() {
@@ -276,5 +281,54 @@ mod tests {
         );
         assert_eq!(ci_note(&runs, "b", "x").as_deref(), Some("ci running"));
         assert_eq!(ci_note(&runs, "c", "y"), None);
+    }
+
+    #[test]
+    fn without_devs_build_info_dev_is_read_from_its_public_health() {
+        /// Dev's public health naming `0` as the commit it runs, or nothing while Dev doesn't
+        /// answer; GitHub and git answer nothing either.
+        struct Public(Option<&'static str>);
+        impl Runner for Public {
+            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                match (args, self.0) {
+                    (
+                        [
+                            "curl",
+                            "-sSf",
+                            "--max-time",
+                            _,
+                            "https://dev.test/api/health",
+                        ],
+                        Some(commit),
+                    ) => Ok(json!({"status": "ready", "source": {"commit": commit}})
+                        .to_string()
+                        .into_bytes()),
+                    _ => Err(format!("{args:?} failed").into()),
+                }
+            }
+        }
+        // A workspace without Dev's build, as on a Mac.
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("worktrees")).unwrap();
+        fs::create_dir_all(temp.path().join("dev/config")).unwrap();
+        let config = temp.path().join("dev/config/platform.env");
+        fs::write(&config, "DISPATCH_ORIGIN=\"https://dev.test\"\n").unwrap();
+        let ws = Workspace {
+            root: temp.path().to_path_buf(),
+            machine: Machine::Mac,
+        };
+        let dev = |answer| read(&ws, &Public(answer)).unwrap().dev;
+        let read = dev(Some("3333333333333333333333333333333333333333"));
+        assert_eq!(
+            (read.runs.as_str(), read.update.as_str()),
+            ("33333333", "unknown")
+        );
+        // Dev not answering, or no address for it, leaves it unknown.
+        assert_eq!(dev(None).runs, "unknown");
+        fs::remove_file(&config).unwrap();
+        assert_eq!(
+            dev(Some("3333333333333333333333333333333333333333")).runs,
+            "unknown"
+        );
     }
 }

@@ -535,7 +535,7 @@ fn runner_image_builds_share_entries_but_the_toolchain_and_distribution_do_not()
         base
     );
     // The toolchain is named by version, so a linker update changes the key directly.
-    let toolchain = key::compiler(&f.root, &f).unwrap();
+    let toolchain = key::compiler(&f.root, Machine::Linux, &f).unwrap();
     assert_eq!(toolchain, "pinned rustc\npinned cc\npinned ld");
     assert_ne!(
         fingerprint(&f.root, "release", &toolchain, &f.env).unwrap(),
@@ -546,5 +546,34 @@ fn runner_image_builds_share_entries_but_the_toolchain_and_distribution_do_not()
             &f.env
         )
         .unwrap()
+    );
+}
+#[test]
+fn a_macs_linker_is_asked_for_its_version_as_apples_answers() {
+    /// A Mac's toolchain, whose linker, Apple's, refuses `--version` and prints its version,
+    /// the one given, with `-version_details`.
+    struct Apple<'a>(&'a str);
+    impl Runner for Apple<'_> {
+        fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+            match args {
+                ["ld", "-version_details"] => {
+                    Ok(format!("{{\"version\":\"{}\"}}", self.0).into_bytes())
+                }
+                ["ld", flag, ..] => Err(format!("ld: unknown option: {flag}").into()),
+                [tool, ..] => Ok(format!("pinned {tool}").into_bytes()),
+                [] => Err("no command".into()),
+            }
+        }
+    }
+    let f = Fixture::new();
+    let toolchain = |version| key::compiler(&f.root, Machine::Mac, &Apple(version)).unwrap();
+    assert_eq!(
+        toolchain("1167.5"),
+        "pinned rustc\npinned cc\n{\"version\":\"1167.5\"}"
+    );
+    // Its version reaches the key, so a linker update changes it.
+    assert_ne!(
+        fingerprint(&f.root, "release", &toolchain("1167.5"), &f.env).unwrap(),
+        fingerprint(&f.root, "release", &toolchain("1200"), &f.env).unwrap()
     );
 }

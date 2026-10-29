@@ -25,7 +25,7 @@ if [[ ! -x $binary ]]; then
   install -m 755 "$cache/target/debug/dispatchdev" "$binary.$$"
   mv -f "$binary.$$" "$binary"
   # The three newest versions stay; an older one is rebuilt if its source comes back.
-  find "$cache" -mindepth 1 -maxdepth 1 -type d -not -name target -printf '%T@ %p\n' |
-    sort -rn | tail -n +4 | cut -d' ' -f2- | xargs -r rm -rf
+  find "$cache" -mindepth 1 -maxdepth 1 -type d -not -name target -exec ls -dt {} + |
+    tail -n +4 | xargs -r rm -rf
 fi
 exec "$binary" "$@"

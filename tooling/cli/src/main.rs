@@ -1,11 +1,25 @@
 use dispatchdev_cli::{
     Native, Result, Runner, api, build,
     change::Change,
-    check, ci, finish, logs, observation, pr, preview, require, review, scaffold, ship, shot,
-    start, status, test, verify,
-    workspace::{Retried, Workspace},
+    check, ci, finish, logs,
+    machine::Machine,
+    observation, pr, preview, require, review, scaffold, ship, shot, start, status, test, verify,
+    workspace::{Clock, Retried, Workspace},
 };
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
+/// Time as it passes: the monotonic clock, and a pause that sleeps.
+const CLOCK: Clock = Clock {
+    now: &Instant::now,
+    pause: &pause,
+};
+fn pause(seconds: u64) {
+    std::thread::sleep(Duration::from_secs(seconds));
+}
 
 /// A command: how it is written, what it does, and what it takes. The help is written from
 /// these, and each command's line is read by its own.
@@ -100,7 +114,8 @@ const COMMANDS: &[Spec] = &[
         &["start <name> [--from <ref>]", "      [--preview]"],
         "A worktree and branch for the change from origin/main, its packages installed and its \
          scratch folder made, once the changes whose PRs merged are removed as finish would; \
-         --preview also starts its preview's build without waiting for it.",
+         --preview, on dispatch-dev alone, also starts its preview's build without waiting for \
+         it.",
     )
     .flags(&["--preview"])
     .options(&["--from"])
@@ -116,7 +131,8 @@ const COMMANDS: &[Spec] = &[
         ],
         "Start its preview, or with --restart after a backend edit, and print the link that \
          signs in by itself: to --page, in the fixture's DSP or the one --dsp names by its name \
-         or id, or with --platform on the platform owner's own pages, on the page's --tab.",
+         or id, or with --platform on the platform owner's own pages, on the page's --tab. It \
+         runs on dispatch-dev alone.",
     )
     .flags(&["--platform", "--restart", "--stop"])
     .options(&["--page", "--dsp", "--tab"])
@@ -129,7 +145,7 @@ const COMMANDS: &[Spec] = &[
             "    [--data <json>]",
         ],
         "One signed-in call to its preview: as the owner, or --as a demo account; --dsp opens \
-         a DSP by its name or id.",
+         a DSP by its name or id. It runs on dispatch-dev alone.",
     )
     .options(&["--dsp", "--as", "--data"])
     .arguments(3),
@@ -146,7 +162,8 @@ const COMMANDS: &[Spec] = &[
         "A PNG of a page of its preview, saved in its scratch folder, whose path it prints: \
          opened as preview's link opens it, as the owner, or --as a demo account at the address \
          of the DSP --dsp names, signed in as api signs in, once a run of the preview. The \
-         window is --size, 1440x1000 unless told, in --theme, light unless told.",
+         window is --size, 1440x1000 unless told, in --theme, light unless told. It runs on \
+         dispatch-dev alone.",
     )
     .flags(&["--platform"])
     .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme"])
@@ -158,7 +175,8 @@ const COMMANDS: &[Spec] = &[
             "     [--since <time>] [--follow]",
         ],
         "What its preview, or Dev, logged in its current run, an event a line and without the \
-         build's output; --since 10m reads across runs, --errors keeps warnings and failures.",
+         build's output; --since 10m reads across runs, --errors keeps warnings and failures. \
+         It runs on dispatch-dev alone.",
     )
     .flags(&["--errors", "--follow"])
     .options(&["--since"])
@@ -175,7 +193,7 @@ const COMMANDS: &[Spec] = &[
          every kind, as feature:<name>, collector:<site>, core:<part>, integration:<name>, app, \
          mcp or a name alone, or --only its rust, api, frontend, browser or native ones, or one \
          --file of them. Each run builds in a folder of its own, deleted when it ends unless \
-         --keep.",
+         --keep. It runs on Linux alone: elsewhere, ci runs every check on GitHub.",
     )
     .flags(&["--all", "--keep"])
     .options(&["--owner", "--only", "--file"]),
@@ -186,7 +204,7 @@ const COMMANDS: &[Spec] = &[
          what a generator left to write, the rules, TypeScript, the changed files' format and \
          lint, then its own tests as test --owner runs them. --removability also leaves it \
          out as the weekly check does: on GitHub once the branch is pushed as it is, else in a \
-         copy of the checkout.",
+         copy of the checkout. It runs on Linux alone: elsewhere, ci runs every check on GitHub.",
     )
     .flags(&["--removability"])
     .arguments(1),
@@ -196,18 +214,19 @@ const COMMANDS: &[Spec] = &[
         "What stops the branch, then the rule checks, the TypeScript linter and clippy side by \
          side, clippy in the checkout's own build. They pass again without running on a \
          committed tree they passed on, as clippy does on Rust inputs it passed on; ci and the \
-         merge queue run the tests. --plan only names them.",
+         merge queue run the tests. --plan only names them. It runs on Linux alone: elsewhere, \
+         ci runs every check on GitHub.",
     )
     .flags(&["--plan", "--allow-concurrent"]),
     spec(
         "ci",
         &["ci <name> [--rerun-failed]", "   [--removability <feature>]"],
         "The full checks on GitHub on its committed branch, while its preview is tried: push \
-         it, run them without the gate with the rule checks here beside them, and follow them \
-         to the end, listing every failed job. Jobs GitHub stopped itself run again once. ship \
-         stops on a head they failed and cancels them if still running. --rerun-failed runs \
-         the failed jobs again, for a failure that isn't the change's own. --removability runs \
-         the weekly removability check instead, for that feature alone.",
+         it, run them without the gate with the rule checks here beside them on Linux, and \
+         follow them to the end, listing every failed job. Jobs GitHub stopped itself run again \
+         once. ship stops on a head they failed and cancels them if still running. \
+         --rerun-failed runs the failed jobs again, for a failure that isn't the change's own. \
+         --removability runs the weekly removability check instead, for that feature alone.",
     )
     .flags(&["--rerun-failed"])
     .options(&["--removability"])
@@ -240,9 +259,9 @@ const COMMANDS: &[Spec] = &[
         &["ship <name>"],
         "Once told to merge it, by its name or its PR's number: check its PR body and that it \
          merges cleanly, push it, open or update its PR from pr-body.md, queue it as soon as \
-         GitHub admits it and wait until it merges, the rule checks running here meanwhile \
-         unless the checks on GitHub passed on this commit, then remove what the change made \
-         as finish does, and wait for Dev. Run again after a stop, it picks up where it \
+         GitHub admits it and wait until it merges, the rule checks running here meanwhile on \
+         Linux unless the checks on GitHub passed on this commit, then remove what the change \
+         made as finish does, and wait for Dev. Run again after a stop, it picks up where it \
          stopped. It exits with 1 to fix and ship again, 2 for the owner to decide, and 3 once \
          merged.",
     )
@@ -582,7 +601,7 @@ fn run() -> Result<()> {
                 since: line.option("--since"),
                 follow: line.flag("--follow"),
             };
-            logs::run(line.name()?, &options, &Native)
+            logs::run(line.name()?, &options, Machine::THIS, &Native)
         }
         "test" => {
             let (only, file) = (line.option("--only"), line.option("--file"));
@@ -598,7 +617,13 @@ fn run() -> Result<()> {
                 (true, None) => test::Tests::All,
                 (false, None) => test::Tests::Affected,
             };
-            match test::run(&line.root()?, tests, line.flag("--keep"), &Native)? {
+            match test::run(
+                &line.root()?,
+                tests,
+                line.flag("--keep"),
+                Machine::THIS,
+                &Native,
+            )? {
                 true => Ok(()),
                 false => Err("A test failed.".into()),
             }
@@ -609,8 +634,9 @@ fn run() -> Result<()> {
                 &line.root()?,
                 feature,
                 line.flag("--removability"),
+                Machine::THIS,
                 &Native,
-                &|seconds| std::thread::sleep(std::time::Duration::from_secs(seconds)),
+                &pause,
                 &mut |text| println!("{text}"),
             )?;
             match passed {
@@ -619,6 +645,7 @@ fn run() -> Result<()> {
             }
         }
         "check" => {
+            check::here(Machine::THIS, "check")?;
             let root = line.root()?;
             let plan = check::plan(&root, line.flag("--allow-concurrent"), &Native)?;
             if line.flag("--plan") {
@@ -672,16 +699,15 @@ fn run() -> Result<()> {
         }
         "ship" => {
             let named = line.name()?;
-            let pause = |seconds| std::thread::sleep(std::time::Duration::from_secs(seconds));
             let github = Retried {
                 runner: &Native,
-                pause: &pause,
+                clock: &CLOCK,
             };
             let name = match named.parse::<u64>() {
                 Ok(number) => pr::branch(number, &github)?,
                 Err(_) => named.to_owned(),
             };
-            ship::change(&line.workspace()?, &name, &github, &pause, &mut |text| {
+            ship::change(&line.workspace()?, &name, &github, &CLOCK, &mut |text| {
                 println!("{text}")
             })
         }
@@ -693,7 +719,6 @@ fn run() -> Result<()> {
                 removability.is_none() || !again,
                 "Choose --removability or --rerun-failed.",
             )?;
-            let pause = |seconds| std::thread::sleep(std::time::Duration::from_secs(seconds));
             let verdict = ci::run(
                 &ws,
                 name,
@@ -701,7 +726,7 @@ fn run() -> Result<()> {
                 again,
                 &Retried {
                     runner: &Native,
-                    pause: &pause,
+                    clock: &CLOCK,
                 },
                 &pause,
                 &mut |text| println!("{text}"),
@@ -714,6 +739,7 @@ fn run() -> Result<()> {
             line.name()?,
             line.flag("--abandon"),
             &Native,
+            &CLOCK,
         ),
         "status" => {
             let status = status::read(&line.workspace()?, &Native)?;

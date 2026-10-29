@@ -1,6 +1,8 @@
 //! Credential transfer, environment binding and destination privacy through the real command
 //! entry point. The host stand-in only mints a fixture; the wrapper owns validation and storage.
-use dispatchdev_cli::{Native, Result, Runner, observation, workspace::Workspace};
+use dispatchdev_cli::{
+    Native, Result, Runner, machine::Machine, observation, workspace::Workspace,
+};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -91,6 +93,7 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     let summary = observation::run(
         &Workspace {
             root: root.path().into(),
+            machine: Machine::Linux,
         },
         "dev",
         &output,
@@ -129,6 +132,7 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     let error = observation::run(
         &Workspace {
             root: root.path().into(),
+            machine: Machine::Linux,
         },
         "dev",
         &mismatched,
@@ -146,6 +150,7 @@ fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_
     let root = private_root();
     let workspace = Workspace {
         root: root.path().into(),
+        machine: Machine::Linux,
     };
     let valid = credential("https://admin.dspdispatch.com");
     let output = root.path().join("session.json");
@@ -187,6 +192,7 @@ fn unsafe_destinations_are_refused_before_minting_and_existing_files_are_preserv
     let root = private_root();
     let workspace = Workspace {
         root: root.path().into(),
+        machine: Machine::Linux,
     };
     let host = Host::new(credential("https://admin.dspdispatch.com"));
     let existing = root.path().join("existing.json");
@@ -226,6 +232,7 @@ fn failed_mints_hide_subprocess_diagnostics_and_do_not_save_credentials() {
     let error = observation::run(
         &Workspace {
             root: root.path().into(),
+            machine: Machine::Linux,
         },
         "production",
         &output,
