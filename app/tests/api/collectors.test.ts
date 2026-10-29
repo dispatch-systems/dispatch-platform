@@ -116,7 +116,7 @@ test("a collection's schedule is set by those its keeper names, at the revision 
   for (const [action, field] of [
     ['schedule.updated', 'rules'],
     ['schedule.toggled', 'enabled'],
-  ])
+  ] as const)
     assert(
       events.some(
         (e: any) =>
