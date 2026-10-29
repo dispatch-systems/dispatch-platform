@@ -1,7 +1,8 @@
 //! The workspace: the folder holding `dev/`, the live Dev checkout, and `worktrees/`, one per
-//! change. Every checkout shares Git's data in `dev/.git`, so the workspace is found from any
-//! of them, or from the workspace folder itself.
-use crate::{Result, Runner, require};
+//! change, on the machine that decides what runs there beside GitHub. Every checkout shares
+//! Git's data in `dev/.git`, so the workspace is found from any of them, or from the workspace
+//! folder itself.
+use crate::{Result, Runner, machine::Machine, require};
 use std::{
     fs,
     io::Write,
@@ -13,6 +14,7 @@ use std::{
 
 pub struct Workspace {
     pub root: PathBuf,
+    pub machine: Machine,
 }
 impl Workspace {
     /// The workspace `from` is in: a checkout's, or the folder holding `dev/` and `worktrees/`.
@@ -37,7 +39,10 @@ impl Workspace {
             .chain(from.ancestors().map(Path::to_path_buf));
         for root in candidates {
             if root.join("dev/.git").is_dir() && root.join("worktrees").is_dir() {
-                return Ok(Self { root });
+                return Ok(Self {
+                    root,
+                    machine: Machine::THIS,
+                });
             }
         }
         Err("Run dispatchdev in the workspace: the folder holding dev/ and worktrees/, or a checkout in it.".into())
@@ -379,10 +384,11 @@ mod tests {
             root
         );
         assert!(Workspace::find(elsewhere.path(), &Fake(none)).is_err());
-        assert_eq!(
-            Workspace { root: root.clone() }.worktrees().unwrap(),
-            ["one"]
-        );
+        let ws = Workspace {
+            root: root.clone(),
+            machine: Machine::Linux,
+        };
+        assert_eq!(ws.worktrees().unwrap(), ["one"]);
     }
     #[test]
     fn a_command_is_bound_to_the_unit_of_this_users_manager_running_it() {

@@ -9,6 +9,7 @@ pub mod check;
 pub mod ci;
 pub mod finish;
 pub mod logs;
+pub mod machine;
 pub mod observation;
 pub mod pr;
 pub mod preview;

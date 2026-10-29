@@ -174,6 +174,7 @@ impl Change {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::machine::Machine;
     use std::path::Path;
 
     struct GitHub(&'static str);
@@ -189,6 +190,7 @@ mod tests {
     fn a_change_is_found_by_its_name_and_its_pr_by_its_branch() {
         let ws = Workspace {
             root: PathBuf::from("/workspace"),
+            machine: Machine::Linux,
         };
         let change = Change::named(&ws, "fix-week").unwrap();
         assert_eq!(change.path, Path::new("/workspace/worktrees/fix-week"));
@@ -243,6 +245,7 @@ mod tests {
         }
         let ws = Workspace {
             root: PathBuf::from("/workspace"),
+            machine: Machine::Linux,
         };
         let change = Change::named(&ws, "clean-raced").unwrap();
         let raced = |kept| Raced {
