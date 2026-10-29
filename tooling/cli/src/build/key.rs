@@ -291,13 +291,19 @@ pub fn eligible(root: &Path, env: &Environment, allow_ci: bool) -> Result<bool> 
     }
     Ok(true)
 }
+/// How the linker prints its version on stdout: Apple's has no `--version`.
+const LINKER_VERSION: &str = if cfg!(target_os = "macos") {
+    "-version_details"
+} else {
+    "--version"
+};
 /// The toolchain that shapes the binary: Rust, the C compiler and the linker, by version.
 pub(super) fn compiler(root: &Path, runner: &dyn Runner) -> Result<String> {
     Ok(format!(
         "{}\n{}\n{}",
         String::from_utf8(runner.command(&["rustc", "-vV"], Some(root), 30)?)?.trim(),
         String::from_utf8(runner.command(&["cc", "--version"], Some(root), 30)?)?.trim(),
-        String::from_utf8(runner.command(&["ld", "--version"], Some(root), 30)?)?.trim()
+        String::from_utf8(runner.command(&["ld", LINKER_VERSION], Some(root), 30)?)?.trim()
     ))
 }
 pub fn key(root: &Path, profile: &str, env: &Environment, runner: &dyn Runner) -> Result<String> {
