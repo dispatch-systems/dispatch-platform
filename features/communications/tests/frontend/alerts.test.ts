@@ -98,9 +98,9 @@ const chose = (notifications: boolean) =>
 const turns = () => new Promise((resolve) => setImmediate(resolve));
 
 /**
- * Web Locks as a browser has them, for the one lock the member's tabs take turns with, which
- * Node 22 lacks: held by one tab at a time, the others waiting in line unless they give up their
- * place; a tab stealing it takes it at once, the one holding it losing it.
+ * Web Locks as a browser has them, for the one lock the member's tabs take turns with: held by
+ * one tab at a time, the others waiting in line unless they give up their place; a tab stealing
+ * it takes it at once, the one holding it losing it.
  */
 function lockManager() {
   let holding: object | undefined;
