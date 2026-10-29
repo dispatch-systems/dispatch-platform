@@ -18,7 +18,7 @@ import { usePanel } from '../shared/usePanel.js';
 import { NoWorkPhone } from '../todays-routes/NoWorkPhone.js';
 import { driverToday, type TodaysRead } from '../todays-routes/todays-routes.js';
 import { Composer } from './Composer.js';
-import { ElsewhereChips } from './Elsewhere.js';
+import { ElsewhereChips } from './ElsewhereChips.js';
 import { elsewhereNow, targetOf } from './elsewhere.js';
 import { KINDS } from './kinds.js';
 import { PARTIES, type Open } from './parties.js';

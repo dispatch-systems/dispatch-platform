@@ -78,3 +78,24 @@ test("core's product code names no collector", () => {
   );
   holds('names', 'collectors', named(collectors));
 });
+
+// A Mac's disk doesn't tell names apart by case: two paths that differ only in it are one file
+// there, and an import of `./Elsewhere.js` can load `elsewhere.ts` rather than `Elsewhere.tsx`.
+// So no two files, and no two modules by the path an import gives them, differ only in case.
+test('no two files or modules differ only in case', () => {
+  const module = /\.(?:d\.ts|[cm]?[jt]sx?)$/;
+  const clashes = (paths: readonly string[]) => {
+    const cases = new Map<string, Set<string>>();
+    for (const path of paths) {
+      const key = path.toLowerCase();
+      cases.set(key, (cases.get(key) ?? new Set()).add(path));
+    }
+    return [...cases.values()]
+      .filter((same) => same.size > 1)
+      .map((same) => `${[...same].sort().join(' and ')} differ only in case`);
+  };
+  holds('names', 'case', [
+    ...clashes(files),
+    ...clashes(files.filter((file) => module.test(file)).map((file) => file.replace(module, ''))),
+  ]);
+});
