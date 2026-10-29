@@ -210,6 +210,7 @@ pub(crate) fn sign_in(
 }
 
 pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
+    crate::preview::here(ws.machine)?;
     let running = Running::find(ws, name, runner)?;
     let (site, session) = sign_in(&running, call.who.unwrap_or(OWNER), call.dsp, runner)?;
     let csrf = session["csrf"]

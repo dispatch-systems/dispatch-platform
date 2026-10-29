@@ -77,6 +77,7 @@ fn file_name(shot: &Shot<'_>) -> String {
 }
 
 pub fn run(ws: &Workspace, name: &str, shot: &Shot<'_>, runner: &dyn Runner) -> Result<()> {
+    preview::here(ws.machine)?;
     let change = Change::existing(ws, name)?;
     let open = &shot.open;
     open.check()?;

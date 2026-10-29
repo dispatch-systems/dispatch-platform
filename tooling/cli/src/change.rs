@@ -111,7 +111,7 @@ impl Change {
             |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&dev));
         let mut done = vec![];
         let unit = preview::unit(name);
-        if preview::running(runner)?
+        if preview::running(ws.machine, runner)?
             .iter()
             .any(|running| running == name)
         {
@@ -119,8 +119,10 @@ impl Change {
             done.push("its preview stopped".to_owned());
         }
         // A preview that failed stays listed as failed until told otherwise, which a unit that
-        // never failed refuses.
-        let _ = runner.command(&["systemctl", "--user", "reset-failed", &unit], None, 120);
+        // never failed refuses. A machine that runs no previews has none.
+        if ws.machine.previews() {
+            let _ = runner.command(&["systemctl", "--user", "reset-failed", &unit], None, 120);
+        }
         if fs::remove_file(preview::env_file(name)?).is_ok() {
             done.push("its port released".to_owned());
         }
@@ -257,5 +259,26 @@ mod tests {
             Vec::<String>::new()
         );
         assert!(change.clean(&ws, &raced(true)).is_err());
+    }
+
+    #[test]
+    fn a_mac_has_no_preview_to_stop() {
+        /// Git, with no branch to delete; anything else, as systemctl, fails the test.
+        struct Git;
+        impl Runner for Git {
+            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
+                assert_eq!(args[0], "git", "{args:?}");
+                match args {
+                    ["git", "rev-parse", ..] => Err("no such branch here".into()),
+                    _ => Ok(vec![]),
+                }
+            }
+        }
+        let ws = Workspace {
+            root: PathBuf::from("/workspace"),
+            machine: Machine::Mac,
+        };
+        let change = Change::named(&ws, "clean-on-a-mac").unwrap();
+        assert_eq!(change.clean(&ws, &Git).unwrap(), Vec::<String>::new());
     }
 }

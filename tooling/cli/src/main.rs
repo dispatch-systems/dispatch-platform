@@ -101,7 +101,8 @@ const COMMANDS: &[Spec] = &[
         &["start <name> [--from <ref>]", "      [--preview]"],
         "A worktree and branch for the change from origin/main, its packages installed and its \
          scratch folder made, once the changes whose PRs merged are removed as finish would; \
-         --preview also starts its preview's build without waiting for it.",
+         --preview, on dispatch-dev alone, also starts its preview's build without waiting for \
+         it.",
     )
     .flags(&["--preview"])
     .options(&["--from"])
@@ -117,7 +118,8 @@ const COMMANDS: &[Spec] = &[
         ],
         "Start its preview, or with --restart after a backend edit, and print the link that \
          signs in by itself: to --page, in the fixture's DSP or the one --dsp names by its name \
-         or id, or with --platform on the platform owner's own pages, on the page's --tab.",
+         or id, or with --platform on the platform owner's own pages, on the page's --tab. It \
+         runs on dispatch-dev alone.",
     )
     .flags(&["--platform", "--restart", "--stop"])
     .options(&["--page", "--dsp", "--tab"])
@@ -130,7 +132,7 @@ const COMMANDS: &[Spec] = &[
             "    [--data <json>]",
         ],
         "One signed-in call to its preview: as the owner, or --as a demo account; --dsp opens \
-         a DSP by its name or id.",
+         a DSP by its name or id. It runs on dispatch-dev alone.",
     )
     .options(&["--dsp", "--as", "--data"])
     .arguments(3),
@@ -147,7 +149,8 @@ const COMMANDS: &[Spec] = &[
         "A PNG of a page of its preview, saved in its scratch folder, whose path it prints: \
          opened as preview's link opens it, as the owner, or --as a demo account at the address \
          of the DSP --dsp names, signed in as api signs in, once a run of the preview. The \
-         window is --size, 1440x1000 unless told, in --theme, light unless told.",
+         window is --size, 1440x1000 unless told, in --theme, light unless told. It runs on \
+         dispatch-dev alone.",
     )
     .flags(&["--platform"])
     .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme"])
@@ -159,7 +162,8 @@ const COMMANDS: &[Spec] = &[
             "     [--since <time>] [--follow]",
         ],
         "What its preview, or Dev, logged in its current run, an event a line and without the \
-         build's output; --since 10m reads across runs, --errors keeps warnings and failures.",
+         build's output; --since 10m reads across runs, --errors keeps warnings and failures. \
+         It runs on dispatch-dev alone.",
     )
     .flags(&["--errors", "--follow"])
     .options(&["--since"])
@@ -584,7 +588,7 @@ fn run() -> Result<()> {
                 since: line.option("--since"),
                 follow: line.flag("--follow"),
             };
-            logs::run(line.name()?, &options, &Native)
+            logs::run(line.name()?, &options, Machine::THIS, &Native)
         }
         "test" => {
             let (only, file) = (line.option("--only"), line.option("--file"));

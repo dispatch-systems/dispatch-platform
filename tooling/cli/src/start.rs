@@ -1,7 +1,7 @@
 //! `dispatchdev start <name>`: a worktree for one change, on a branch of the same name from
 //! `origin/main` (or `--from`), with its packages installed and its scratch folder made, and with
-//! `--preview` its preview building. First, the changes that merged go, as `finish` would remove
-//! them.
+//! `--preview` its preview building, on dispatch-dev alone. First, the changes that merged go, as
+//! `finish` would remove them.
 use crate::{
     REPOSITORY, Result, Runner,
     change::Change,
@@ -23,7 +23,9 @@ pub fn run(
 ) -> Result<()> {
     let change = Change::named(ws, name)?;
     if preview {
-        // Missing, the preview's address stops it before anything is made.
+        // Previews run on dispatch-dev alone, and there, a missing address stops it before
+        // anything is made.
+        crate::preview::here(ws.machine)?;
         crate::preview::host()?;
     }
     let path = &change.path;
@@ -71,7 +73,7 @@ pub fn run(
     );
     println!("Scratch: {}", scratch.display());
     if preview {
-        let port = crate::preview::begin(name, false, runner)?;
+        let port = crate::preview::begin(ws, name, false, runner)?;
         println!(
             "Its preview is building on port {port}; dispatchdev preview {name} --page <page> \
              prints its link once it's up."

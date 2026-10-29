@@ -1,9 +1,10 @@
 //! `dispatchdev preview <name>`: the change's preview, a user service serving its worktree on
 //! this machine's Tailscale address with demo data. Each change keeps one port, so its link
-//! survives restarts.
+//! survives restarts. Previews, and the logs they and Dev write, are dispatch-dev's alone.
 use crate::{
     Result, Runner,
     change::Change,
+    machine::Machine,
     require, slot,
     workspace::{self, Workspace},
 };
@@ -24,6 +25,14 @@ pub enum Action {
     Start,
     Restart,
     Stop,
+}
+/// Refuses on a machine that runs no previews: `preview`, `shot`, `api`, `logs` and
+/// `start --preview` ask it before anything else.
+pub fn here(machine: Machine) -> Result<()> {
+    require(
+        machine.previews(),
+        "Previews and logs run on dispatch-dev alone.",
+    )
 }
 pub fn unit(name: &str) -> String {
     format!("dispatch-preview@{name}")
@@ -78,8 +87,11 @@ fn kept_ports() -> Result<BTreeSet<u16>> {
         .filter_map(|text| read_env(&text).get("DISPATCH_DEV_PORT")?.parse().ok())
         .collect())
 }
-/// The changes whose previews are running.
-pub fn running(runner: &dyn Runner) -> Result<Vec<String>> {
+/// The changes whose previews are running: none on a machine that runs no previews.
+pub fn running(machine: Machine, runner: &dyn Runner) -> Result<Vec<String>> {
+    if !machine.previews() {
+        return Ok(vec![]);
+    }
     let units = workspace::text(
         runner,
         &[
@@ -227,12 +239,12 @@ fn encoded(value: &str) -> String {
 
 /// Starts the change's preview, or with `restart` starts it afresh, on the port it keeps or the
 /// first free one, without waiting for its build; returns the port.
-pub fn begin(name: &str, restart: bool, runner: &dyn Runner) -> Result<u16> {
+pub fn begin(ws: &Workspace, name: &str, restart: bool, runner: &dyn Runner) -> Result<u16> {
     let active = state(name, runner)? == "active";
     let port = match port(name)? {
         Some(port) => port,
         None => {
-            let others = running(runner)?;
+            let others = running(ws.machine, runner)?;
             require(
                 others.len() < MOST,
                 &format!(
@@ -264,6 +276,7 @@ pub fn run(
     open: &Open<'_>,
     runner: &dyn Runner,
 ) -> Result<()> {
+    here(ws.machine)?;
     Change::existing(ws, name)?;
     open.check()?;
     let systemctl = |verb: &str| {
@@ -280,7 +293,7 @@ pub fn run(
         return Ok(());
     }
     let host = host()?;
-    let port = begin(name, matches!(action, Action::Restart), runner)?;
+    let port = begin(ws, name, matches!(action, Action::Restart), runner)?;
     let started = Instant::now();
     let mut waiting = false;
     let link = loop {
@@ -352,5 +365,60 @@ mod tests {
         );
         assert_eq!(fragment(None, Some("dsp_2"), None), "#dsp/dsp_2/");
         assert_eq!(fragment(None, None, None), "");
+    }
+    #[test]
+    fn previews_and_logs_refuse_at_once_on_a_mac() {
+        /// Any command fails the test: nothing runs before the refusal.
+        struct Nothing;
+        impl Runner for Nothing {
+            fn command(
+                &self,
+                args: &[&str],
+                _: Option<&std::path::Path>,
+                _: u64,
+            ) -> Result<Vec<u8>> {
+                panic!("ran {args:?}")
+            }
+        }
+        let ws = Workspace {
+            root: PathBuf::from("/workspace"),
+            machine: Machine::Mac,
+        };
+        let open = || Open {
+            page: None,
+            dsp: None,
+            platform: false,
+            tab: None,
+        };
+        let shot = crate::shot::Shot {
+            open: open(),
+            who: None,
+            size: "1440x1000",
+            theme: "light",
+        };
+        let call = crate::api::Call {
+            method: "GET",
+            path: "/api/session",
+            dsp: None,
+            who: None,
+            data: None,
+        };
+        let logs = crate::logs::Options {
+            errors: false,
+            since: None,
+            follow: false,
+        };
+        for refused in [
+            run(&ws, "fix-week", Action::Start, &open(), &Nothing),
+            crate::shot::run(&ws, "fix-week", &shot, &Nothing),
+            crate::api::run(&ws, "fix-week", call, &Nothing).map(|_| ()),
+            crate::logs::run("dev", &logs, Machine::Mac, &Nothing),
+            crate::start::run(&ws, "fix-week", "origin/main", true, &Nothing),
+        ] {
+            assert_eq!(
+                refused.unwrap_err().to_string(),
+                "Previews and logs run on dispatch-dev alone."
+            );
+        }
     }
 }

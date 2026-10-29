@@ -1,7 +1,7 @@
 //! `dispatchdev logs <name>`: what a change's preview, or Dev, has logged, the server's events a
-//! line each and without the build output around them. It reads this machine's journal only;
-//! Production's logs hold real data and stay there.
-use crate::{Result, Runner, preview, workspace};
+//! line each and without the build output around them. It reads this machine's journal only, on
+//! dispatch-dev; Production's logs hold real data and stay there.
+use crate::{Result, Runner, machine::Machine, preview, workspace};
 use serde_json::Value;
 use std::{
     io::{BufRead, BufReader, Write},
@@ -163,7 +163,8 @@ fn query(name: &str, options: &Options, runner: &dyn Runner) -> Result<Option<Ve
     }
     Ok(Some(args))
 }
-pub fn run(name: &str, options: &Options, runner: &dyn Runner) -> Result<()> {
+pub fn run(name: &str, options: &Options, machine: Machine, runner: &dyn Runner) -> Result<()> {
+    preview::here(machine)?;
     if name != "dev" {
         workspace::valid_name(name)?;
     }

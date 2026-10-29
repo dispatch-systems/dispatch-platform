@@ -90,7 +90,7 @@ struct Dev {
 
 /// Everything `status` shows, read once.
 pub fn read(ws: &Workspace, runner: &dyn Runner) -> Result<Status> {
-    let previews = crate::preview::running(runner).unwrap_or_default();
+    let previews = crate::preview::running(ws.machine, runner).unwrap_or_default();
     let runs = branch_runs(runner);
     let pulls: Option<Vec<Open>> = workspace::text(
         runner,

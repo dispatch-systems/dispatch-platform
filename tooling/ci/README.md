@@ -52,7 +52,10 @@ PNG of a page of it, signed in once for each account), `check` and `ci`, `review
 asked for (each pass's brief, for a reviewer started through T3 with the model `review.rs`
 names) and `pr` to `ship`, which merges it, removes what it made and waits for Dev; `finish`
 does the last two for a change `ship` didn't see through, or drops one with `--abandon`.
-`status` shows the workspace, and `status --json` writes it as JSON. `dispatchdev build`
+`status` shows the workspace, and `status --json` writes it as JSON. A Mac runs neither the
+previews nor the local checks (`tooling/cli/src/machine.rs` says why): there `start --preview`,
+`preview`, `api`, `shot`, `logs` and `check` refuse, and GitHub's checks alone decide for `ci`
+and `ship`. `dispatchdev build`
 builds the package's two executables, the backend and the support worker, in one Cargo pass,
 through a cache keyed by their exact inputs and the compiler's fingerprint.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
