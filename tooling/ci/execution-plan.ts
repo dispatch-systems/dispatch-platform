@@ -26,7 +26,10 @@ export function nodeTests(
     concurrency?: number;
     args?: string[];
     env?: NodeJS.ProcessEnv;
-    /** Only these of the suite's files, as `check:rules` runs again those its timeout cancelled. */
+    /**
+     * Only these of the suite's files, as `check:rules` runs again those with a test its timeout
+     * cancelled.
+     */
     only?: string[];
   } = {},
 ): Command {
