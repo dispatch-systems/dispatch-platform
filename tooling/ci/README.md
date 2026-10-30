@@ -1,13 +1,9 @@
 # CI tooling
 
-Each change is checked in the merge queue, on the exact squash commit the queue will push, and
-before that on its branch while its preview is tried (`dispatchdev ci`, below). Every standard
-suite runs every time; nothing runs on the PR itself. The one real wall-clock
-native timeout sentinel runs separately each week and on manual dispatch through
-`.github/workflows/native-timeouts.yml`, which fails if that case is absent or skipped.
-`.github/workflows/checks.yml` is the
-whole pipeline, and `tooling/ci/checks.ts` runs one of its jobs by name, or locally the whole
-suite in sequence:
+`.github/workflows/checks.yml` is the whole pipeline. It runs every suite on every PR, and again
+on each push to `main`, on the squash commit the PR became. `platform` is the one required
+check: a PR merges once it passes. `tooling/ci/checks.ts` runs one of its jobs by name, or
+locally the whole suite in sequence:
 
 | Job             | `npm run check:ci -- …`                    | What it proves                                                                            |
 | --------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
@@ -15,7 +11,6 @@ suite in sequence:
 | checks          | `checks`                                   | Source privacy/secrets, types, formatting, the linter, bundle budget and dashboard logic. |
 | browser ×6      | `browser <n>/6 [spec]`                     | The browser suite against the packaged runtime.                                           |
 | smoke           | `smoke`                                    | The package starts, signs in and serves, as a release asks.                               |
-| benchmark       | `benchmark`                                | The Rust workload budget; a break is rechecked beside the base's build.                   |
 | core            | `core`                                     | Rust formatting, lints, default tests and compile-only operator probes.                   |
 | api             | `api`                                      | The API tests, the Python tooling tests, the npm audit.                                   |
 | scaffold        | `scaffold`                                 | What every generator writes builds, lints, keeps the rules and passes its Rust tests.     |
@@ -23,26 +18,16 @@ suite in sequence:
 | rust-advisories |                                            | `cargo audit`, denying yanked crates but those `cargo-audit.py` allows.                   |
 | platform        |                                            | The gate: the one required check.                                                         |
 
-The gate passes only when every job passed. It then verifies the package's inventory and
-source commit (`ci-verify.py`, which runs `dispatch-host ci verify`) and publishes it as
-`dispatch-main-<sha>` for 90 days. The Dev updater installs that build, and a release stamps
-its version into it. A manual run of one suite has no gate, so nothing partial is published;
-the release tool accepts only runs whose `core` and `platform` jobs succeeded.
+The gate passes only when every job passed and the package carries the run's own commit and a
+complete inventory (`ci-verify.py`, which runs `dispatch-host ci verify`). Outside a PR it then
+attests the package and publishes it as `dispatch-main-<sha>` for 90 days: the Dev updater
+installs `main`'s, and a release stamps its version into it. A release of a commit whose build
+expired dispatches a run on a temporary branch at that commit, which publishes it again.
 
-When a job the gate needs fails in the queue, `fail-queue-entry` reports the `platform` check
-failed on the queue's commit at once, so GitHub removes the PR without waiting for the rest of
-the run, which goes on. Behind another entry, the run also tests that entry's change, which
-may be what failed, so there the gate judges at the end. GitHub's removal is a one-line
-timeline event with nothing that leads to the run. The Dispatch bot, the `dispatch-systems`
-GitHub App in its own repository, keeps one comment per queue entry on the PR: its position,
-the squash commit, the jobs as they run, and at the end the merge, the removal's reason, or
-the failed jobs with their logs and the first failure's output, kept current until the run
-ends.
-
-The ruleset expects the `platform` check on a PR head before the queue admits it, so
-`queue-admission.yml` reports one on every PR head, usually within a minute. It proves
-nothing; the queue's own gate decides, and a PR queued before it passed is dropped as an
-invalid merge commit.
+A PR's newer push cancels its older run; each commit of `main` keeps its own. A failure that
+isn't the change's own gets its failed jobs run again: `gh run rerun <id> --failed`.
+`caches.yml` refills `main`'s caches on every push to it and each Monday, and `security.yml`
+audits the dependencies nightly and runs CodeQL on each push to `main`; neither gates a merge.
 
 `dispatchdev` (`tooling/cli/`) holds what runs on a developer's machine, and `dispatchdev help`
 lists it. `check`, `test` and `verify` look at a branch before its PR; `api` (signed-in calls)
@@ -75,8 +60,8 @@ folder, for the Rust inputs it ran on, so clippy passes again without running un
 changes, and a whole pass is kept for the committed tree it ran on, so the same tree passes
 again at once; `--plan` only names them.
 
-Caches: only `main`'s reach every branch, since the queue's branches are deleted after each
-run. `caches.yml` refreshes them on every push to `main`: the release executables keyed by
+Caches: only `main`'s reach every branch, since a PR's run saves caches only that PR reads.
+`caches.yml` refreshes them on every push to `main`: the release executables keyed by
 their inputs, the CI and host tools, the assessment fixture, the Playwright browser and the
 BrowserOS package. A run's own `tools` job builds what its inputs lack for the jobs that start
 later in that run. `tooling/cli/dispatchdev` runs a restored copy only on CI and only from the
@@ -114,33 +99,8 @@ shards, so the API job does not launch them merely to skip their browser cases.
 `tooling/tests/test-plan.test.ts` checks complete, disjoint file coverage against the commands
 the runners actually use. Real compiler/manager modules are listed under `pythonIntegration`
 in `test-plan.json`; the default unittest discovery command above still runs every module.
-
-The native timeout lane can be run with `npm run test:browseros -- --real-timeouts`, or by
-dispatching `native-timeouts.yml` with its optional exact `ref`. It selects only the sentinel,
-sets both native and real-timeout gates, and requires a passing JUnit case. Normal collector
-runs leave real wall-clock waits out. Live Rust operator probes require the explicit
-`operator-probes` feature; core CI typechecks them without executing them.
-
-`removability.yml` proves weekly, and on manual dispatch, that each feature can be removed:
-one job per feature in `app/generated/features.json`, named for it. Dispatched with its
-`feature` input, it runs that feature's job alone, in a run named `Removability without
-<feature>`, which a run of another feature on the branch doesn't cancel. Each feature is a Cargo
-feature of the app, on by default. A job leaves its feature out, with every feature that
-declares it: their directories are moved aside and the app's manifest drops their crates
-(unlocked, so `Cargo.lock` loses them too), so nothing, product or test, can still use
-them. Then it builds the app, writes the TypeScript for that build (so the generated
-`app/frontend/features.ts` omits them), runs the app's tests, typechecks the frontend and
-builds it with Vite. The typecheck (`removability.tsconfig.json`) leaves out the app's
-cross-owner tests and the tooling, which name every feature. The app's Rust tests say which
-features they need with `cfg(feature = …)` on their modules; those about the whole
-product ask for `default`. A build that leaves features out runs its tests with core's
-stand-in for what they would bring, as each owner's own tests do. One more job leaves every
-feature out, with the workspace's `features/*` member, proving core and the collectors stand
-alone: they build, the server starts, signs in and opens a DSP in the tests that remain, and
-the frontend bundles with no feature's pages. A failure names the step and the files or tests
-that reached into what was left out. `npm run check:removability -- --feature <name>`, or
-`--every`, runs one job's steps locally, and `--dry-run` prints them; it puts the checkout back
-as it was, the manifests and lock included.
+Live Rust operator probes require the explicit `operator-probes` feature; core CI typechecks
+them without executing them.
 
 `npm run check:privacy` scans publishable working files, also through `check:rules` before
 pushes and the required `checks` job. It downloads the checksum-pinned Gitleaks release in
