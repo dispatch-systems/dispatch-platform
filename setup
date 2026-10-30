@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Sets up this clone for developing Dispatch, on Linux or macOS: the Node and Rust it pins, its
-# packages, the browser `dispatchdev shot` drives and its first build, then the private agent
-# docs, linked where Claude and Codex read them. Run it again at any time: it does only what's
-# missing, and updates the agent docs.
+# packages, the browser `dispatchdev shot` drives, its first build and `dispatchdev` on PATH, then
+# the private agent docs, linked where Claude and Codex read them. Run it again at any time: it
+# does only what's missing, and updates the agent docs.
 set -euo pipefail
 cd "$(dirname "$0")"
+shell_path=$PATH
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 fail() {
@@ -87,6 +88,29 @@ if [[ ! -f node_modules/.package-lock.json || package-lock.json -nt node_modules
 fi
 npx playwright install chromium
 tooling/cli/dispatchdev build
+
+# `dispatchdev` on PATH, in ~/.local/bin: it runs the dispatchdev of the checkout the current
+# directory is in, so a worktree runs its own, or this clone's outside one. Setup replaces only
+# a link or a script of its own there.
+clone=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+command=$HOME/.local/bin/dispatchdev
+marker="Installed by dispatch-platform's ./setup"
+if [[ -L $command || ! -e $command ]] || grep -qF "$marker" "$command"; then
+  mkdir -p "$HOME/.local/bin"
+  rm -f "$command"
+  cat > "$command" <<SCRIPT
+#!/usr/bin/env bash
+# $marker: runs the dispatchdev of the checkout the current directory is in, or of $clone.
+top=\$(git rev-parse --show-toplevel 2>/dev/null)
+[[ -x \$top/tooling/cli/dispatchdev ]] || top=$(printf %q "$clone")
+exec "\$top/tooling/cli/dispatchdev" "\$@"
+SCRIPT
+  chmod 755 "$command"
+  [[ $(PATH=$shell_path command -v dispatchdev) == "$command" ]] ||
+    say "Put ~/.local/bin on your PATH, so your shell finds dispatchdev."
+else
+  say "Left $command as it is: move it aside and run setup again to put dispatchdev on PATH."
+fi
 
 # The agent docs: the private dispatch-agents repo, in $DISPATCH_AGENTS or ~/dispatch-agents.
 # Claude reads ~/.claude, Codex ~/.codex and ~/.agents; setup replaces only a link of its own or
