@@ -2,7 +2,7 @@
 
 `.github/workflows/checks.yml` is the whole pipeline. It runs every suite on every PR, and again
 on each push to `main`, on the squash commit the PR became. `platform` is the one required
-check: a PR merges once it passes. `tooling/ci/checks.ts` runs one of its jobs by name, or
+check: a PR can merge once it passes. `tooling/ci/checks.ts` runs one of its jobs by name, or
 locally the whole suite in sequence:
 
 | Job             | `npm run check:ci -- …`                    | What it proves                                                                            |

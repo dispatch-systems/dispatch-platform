@@ -39,11 +39,11 @@ cd dispatch-platform && ./setup
 npm run dev            # the dashboard on demo data, at the link it prints
 git switch -c <name>   # then change it, and commit
 dispatchdev check      # the rule checks, the linter and clippy, side by side
-gh pr create && gh pr merge --auto --squash
+gh pr create           # then, once its checks pass: gh pr merge --squash
 ```
 
-The PR's checks run every suite on GitHub, and it squash-merges itself once they pass; Dev
-installs each merge. Its title and body become the squash commit, and the release notes take
+The PR's checks run every suite on GitHub, and it's squash-merged once they pass; Dev installs
+each merge. Its title and body become the squash commit, and the release notes take
 its Summary. While `npm run dev` runs, `dispatchdev shot --page <page>` saves a PNG of a page
 and `dispatchdev api GET /api/session` makes a signed-in call; a backend change needs
 `npm run dev` started again.
