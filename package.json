@@ -11,7 +11,7 @@
     "dev": "tsx tooling/dev/dev.ts",
     "build": "tsx tooling/build/build.ts",
     "check": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ .",
     "check:ci": "tsx tooling/ci/checks.ts",
     "check:rules": "tsx tooling/ci/rules.ts",
     "check:scaffold": "tsx tooling/scaffold/smoke.ts",

@@ -31,7 +31,8 @@ import frontend code.
 `./setup` makes a clone ready on Linux or macOS: the Node `.node-version` pins, the Rust
 `rust-toolchain.toml` names, the packages, the first build, and the private agent docs, linked
 where Claude and Codex read them. It needs git, Python 3 and a C compiler, and runs again at any
-time. `dispatchdev` is `tooling/cli/dispatchdev`, built on its first run.
+time. It puts `dispatchdev` on PATH, which runs the current checkout's own
+`tooling/cli/dispatchdev`, built on its first run.
 
 ```sh
 git clone https://github.com/dispatch-systems/dispatch-platform.git repo
