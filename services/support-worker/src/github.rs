@@ -9,7 +9,7 @@ use dispatch_core::support::api::types::SupportJob;
 use serde_json::{Value, json};
 use std::fs;
 
-const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid} autoMergeRequest{enabledAt}}}}";
+const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid}}}}";
 
 /// Redact known identities before any public GitHub mutation, including case variations.
 pub fn redact_identities(summary: &str, identities: &[&str]) -> String {
@@ -281,7 +281,6 @@ pub async fn cancel(config: &Config, job: &SupportJob, checkpoint: &Value) -> Re
     if status["state"] == "CLOSED" {
         return Ok(());
     }
-    hold(&tree, &status).await?;
     if status["isDraft"] != true {
         command(
             &tree.path,
@@ -316,8 +315,8 @@ pub async fn ready(config: &Config, tree: &Worktree, number: u64) -> Result<()> 
     Ok(())
 }
 
-/// Sets the verified head to squash-merge once the PR's required checks pass.
-pub async fn merge_when_checks_pass(tree: &Worktree, status: &Value, head: &str) -> Result<()> {
+/// Squash-merges the verified head, once the PR's checks passed on it.
+pub async fn merge(tree: &Worktree, status: &Value, head: &str) -> Result<()> {
     require(
         is_sha(head) && status["headRefOid"] == head,
         "Cannot merge a different or unverified head",
@@ -328,26 +327,12 @@ pub async fn merge_when_checks_pass(tree: &Worktree, status: &Value, head: &str)
             && status["mergeable"] == "MERGEABLE",
         "PR is not ready to merge",
     )?;
-    let query = "mutation($id:ID!,$head:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,expectedHeadOid:$head,mergeMethod:SQUASH}){pullRequest{number}}}";
+    let query = "mutation($id:ID!,$head:GitObjectID!){mergePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head,mergeMethod:SQUASH}){pullRequest{number}}}";
     let id = status["id"].as_str().ok_or("PR node id missing")?;
     let result = graphql(tree, query, &[("id", id), ("head", head)]).await?;
     require(
         result["errors"].is_null(),
-        "GitHub did not set the verified support PR to merge",
-    )
-}
-
-/// Takes the PR's merge back, so nothing merges until the worker sets it again.
-pub async fn hold(tree: &Worktree, status: &Value) -> Result<()> {
-    if status["autoMergeRequest"].is_null() {
-        return Ok(());
-    }
-    let query = "mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){clientMutationId}}";
-    let id = status["id"].as_str().ok_or("PR node id missing")?;
-    let result = graphql(tree, query, &[("id", id)]).await?;
-    require(
-        result["errors"].is_null(),
-        "GitHub did not take back the support PR's merge",
+        "GitHub did not merge the verified support PR",
     )
 }
 
@@ -367,13 +352,16 @@ async fn graphql(tree: &Worktree, query: &str, variables: &[(&str, &str)]) -> Re
     )?)
 }
 
-/// The newest run of the checks on the PR's `head`, if it failed: the run, and the end of its
-/// failed jobs' logs. None while there is none, it runs, or it passed.
-pub async fn failed_checks(
-    config: &Config,
-    tree: &Worktree,
-    head: &str,
-) -> Result<Option<(u64, String)>> {
+/// Where the newest run of the checks on the PR's `head` stands.
+pub enum Checks {
+    /// None yet, or one still going.
+    Running,
+    Passed,
+    /// Failed: the run, and the end of its failed jobs' logs.
+    Failed(u64, String),
+}
+
+pub async fn checks(config: &Config, tree: &Worktree, head: &str) -> Result<Checks> {
     let output = command(
         &tree.path,
         "gh",
@@ -396,12 +384,14 @@ pub async fn failed_checks(
     )
     .await?;
     let runs: Vec<Value> = serde_json::from_str(&output)?;
-    let Some(run) = runs
-        .first()
-        .filter(|run| run["status"] == "completed" && run["conclusion"] == "failure")
-    else {
-        return Ok(None);
+    let Some(run) = runs.first().filter(|run| run["status"] == "completed") else {
+        return Ok(Checks::Running);
     };
+    match run["conclusion"].as_str() {
+        Some("success") => return Ok(Checks::Passed),
+        Some("failure") => {}
+        _ => return Ok(Checks::Running),
+    }
     let id = run["databaseId"].as_u64().ok_or("Checks run id missing")?;
     let logs = command(
         &tree.path,
@@ -416,7 +406,7 @@ pub async fn failed_checks(
         ],
     )
     .await?;
-    Ok(Some((
+    Ok(Checks::Failed(
         id,
         logs.chars()
             .rev()
@@ -425,5 +415,5 @@ pub async fn failed_checks(
             .chars()
             .rev()
             .collect(),
-    )))
+    ))
 }

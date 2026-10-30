@@ -770,7 +770,6 @@ async fn implement(
                 "Support PR was closed without merging; owner action is needed",
             )?;
             if status["headRefOid"] != head {
-                github::hold(&tree, &status).await?;
                 return Err(
                     "The PR changed outside the verified support worktree; owner action is needed"
                         .into(),
@@ -800,26 +799,29 @@ async fn implement(
                 .await?;
                 continue 'correction;
             }
-            if let Some((run, logs)) = github::failed_checks(config, &tree, &head).await?
-                && run > saved(checkpoint)["lastHandledRun"].as_u64().unwrap_or(0)
-            {
-                failure = format!("The PR's required checks failed in run {run}:\n{logs}");
-                progress(
-                    platform,
-                    job,
-                    checkpoint,
-                    "implementing",
-                    "Fixing the PR's required checks",
-                    json!({"phase":"build","failure":failure,"lastHandledRun":run}),
-                )
-                .await?;
-                continue 'correction;
-            }
-            if status["autoMergeRequest"].is_null() && status["mergeable"] == "MERGEABLE" {
-                platform
-                    .update(job, "heartbeat", json!({"checkpoint":saved(checkpoint)}))
+            match github::checks(config, &tree, &head).await? {
+                github::Checks::Failed(run, logs)
+                    if run > saved(checkpoint)["lastHandledRun"].as_u64().unwrap_or(0) =>
+                {
+                    failure = format!("The PR's required checks failed in run {run}:\n{logs}");
+                    progress(
+                        platform,
+                        job,
+                        checkpoint,
+                        "implementing",
+                        "Fixing the PR's required checks",
+                        json!({"phase":"build","failure":failure,"lastHandledRun":run}),
+                    )
                     .await?;
-                github::merge_when_checks_pass(&tree, &status, &head).await?;
+                    continue 'correction;
+                }
+                github::Checks::Passed if status["mergeable"] == "MERGEABLE" => {
+                    platform
+                        .update(job, "heartbeat", json!({"checkpoint":saved(checkpoint)}))
+                        .await?;
+                    github::merge(&tree, &status, &head).await?;
+                }
+                _ => {}
             }
             // Remote CI does not monopolize the local supervisor. The exact verified head
             // and PR remain checkpointed while other tickets can be investigated/answered.
