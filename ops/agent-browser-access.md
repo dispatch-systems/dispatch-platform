@@ -5,8 +5,7 @@ dashboard. The reusable authority is this machine's existing local/SSH operator 
 there is no automation password or permanent owner cookie. A checkout's own `npm run dev`
 prints the link that signs it in, which `dispatchdev shot` and `api` use.
 
-From the Dispatch workspace, request a credential into the current change's private
-scratch folder:
+Request a credential into the current change's private scratch folder:
 
 ```sh
 dispatchdev browser dev --out /tmp/dispatch-<name>/browser-dev.json

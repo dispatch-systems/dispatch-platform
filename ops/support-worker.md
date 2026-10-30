@@ -41,8 +41,9 @@ The first supporting artifact needs a compatible host manager: older managers an
 Python startup guards reject its new resource paths. From the trusted checkout of the merged,
 checked supporting commit, build a standalone manager. A temporary, uniquely named service
 drop-in replaces the legacy artifact-verification startup command with that manager's full
-verification. It keeps the ordinary update lock, queue validation, artifact hashing, service
-health check and rollback path. The live checkout changes only through that updater.
+verification. It keeps the ordinary update lock, the check that `main`'s run passed, artifact
+hashing, service health check and rollback path. The live checkout changes only through that
+updater.
 
 For the installed Dev unit whose only `ExecStartPre` is the legacy verification command:
 
