@@ -564,12 +564,15 @@ fn run() -> Result<()> {
             println!("{}", serde_json::to_string(&summary)?);
             Ok(())
         }
-        "start" => start::run(
-            &line.workspace()?,
-            line.name()?,
-            line.option("--from").unwrap_or("origin/main"),
-            &Native,
-        ),
+        "start" => {
+            let name = line.name()?;
+            start::run(
+                &line.workspace()?,
+                name,
+                line.option("--from").unwrap_or("origin/main"),
+                &Native,
+            )
+        }
         "pr" => {
             let name = line.name()?;
             let ws = line.workspace()?;
@@ -587,13 +590,16 @@ fn run() -> Result<()> {
                 }
             }
         }
-        "finish" => finish::run(
-            &line.workspace()?,
-            line.name()?,
-            line.flag("--abandon"),
-            &Native,
-            &CLOCK,
-        ),
+        "finish" => {
+            let name = line.name()?;
+            finish::run(
+                &line.workspace()?,
+                name,
+                line.flag("--abandon"),
+                &Native,
+                &CLOCK,
+            )
+        }
         "build" => {
             let root = line.root()?;
             let env = std::env::vars().collect();
