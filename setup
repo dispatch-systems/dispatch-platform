@@ -117,5 +117,4 @@ if [[ -d $agents/skills ]]; then
 fi
 
 command -v gh >/dev/null || say "Install GitHub's gh to open PRs from here."
-tooling/cli/dispatchdev doctor
 say "Ready: npm run dev serves the dashboard on demo data."
