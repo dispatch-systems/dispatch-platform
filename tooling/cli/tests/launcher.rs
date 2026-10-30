@@ -153,3 +153,31 @@ fn each_version_of_the_source_is_built_once() {
         .unwrap();
     assert_eq!(said(&output), "built 5 status");
 }
+
+#[test]
+fn each_checkout_builds_in_its_own_target() {
+    // Cargo copies out only a binary it rebuilt, so a target shared by checkouts of different
+    // sources would hand one of them the other's binary.
+    let (temp, root) = checkout();
+    git(&root, &["add", "-A"]);
+    git(
+        &root,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-qm",
+            "first",
+        ],
+    );
+    let tree = temp.path().join("tree");
+    git(&root, &["worktree", "add", "-q", tree.to_str().unwrap()]);
+    fs::write(tree.join("tooling/cli/src/main.rs"), "second").unwrap();
+    assert_eq!(said(&launch(temp.path(), &root, &[])), "built 1 check");
+    assert_eq!(said(&launch(temp.path(), &tree, &[])), "built 2 check");
+    for checkout in [&root, &tree] {
+        assert!(checkout.join("target/debug/dispatchdev").is_file());
+    }
+}

@@ -2,7 +2,9 @@
 # Runs the dispatchdev of the checkout this script is in, on the checkout the current
 # directory is in. On CI, the tools job's copy runs when it was restored into this
 # workspace's own .ci-tools. Anywhere else the binary is built once for each version of its
-# source, kept beside the repository's shared Git data, and reused by every worktree.
+# source, kept beside the repository's shared Git data, and reused by every worktree. It builds
+# in the checkout's own target folder: Cargo copies out only a binary it rebuilt, so a target
+# shared by checkouts of different sources hands one of them the other's binary.
 set -euo pipefail
 source=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd -P)
 prebuilt="$source/.ci-tools/tools/dispatchdev"
@@ -20,12 +22,12 @@ version=$(
 )
 binary="$cache/$version/dispatchdev"
 if [[ ! -x $binary ]]; then
-  (cd "$source" && cargo build --quiet --locked -p dispatchdev-cli --bin dispatchdev --target-dir "$cache/target") >&2
+  (cd "$source" && cargo build --quiet --locked -p dispatchdev-cli --bin dispatchdev --target-dir "$source/target") >&2
   mkdir -p "$cache/$version"
-  install -m 755 "$cache/target/debug/dispatchdev" "$binary.$$"
+  install -m 755 "$source/target/debug/dispatchdev" "$binary.$$"
   mv -f "$binary.$$" "$binary"
   # The three newest versions stay; an older one is rebuilt if its source comes back.
-  find "$cache" -mindepth 1 -maxdepth 1 -type d -not -name target -exec ls -dt {} + |
+  find "$cache" -mindepth 1 -maxdepth 1 -type d -exec ls -dt {} + |
     tail -n +4 | xargs -r rm -rf
 fi
 exec "$binary" "$@"
