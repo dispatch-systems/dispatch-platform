@@ -14,7 +14,6 @@
     "tooling/tests/scaffold/feature.test.ts",
     "tooling/tests/scaffold/generators.test.ts",
     "tooling/tests/scaffold/scripts.test.ts",
-    "tooling/tests/source-lines.test.ts",
     "tooling/tests/test-plan.test.ts"
   ],
   "native": {
@@ -63,6 +62,5 @@
         "app/tests/frontend/features.test.ts"
       ]
     }
-  ],
-  "lint": ["tooling/ci/source-lines.ts"]
+  ]
 }

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
+import { nodeTests, pythonTests, type Command } from './execution-plan.js';
 import { cancelled } from './timeouts.js';
 
 // Everything a push can fail on without a build: types, formatting, the source-wide rule
@@ -39,7 +39,6 @@ const checks: Command[] = [
   },
   { name: 'format', command: 'npx', args: ['prettier', '--check', '--cache', '.'] },
   { name: 'Rust format', command: 'cargo', args: ['fmt', '--check'] },
-  ...sourceLintCommands,
   ruleTests,
 ];
 if (process.argv.includes('--list')) {

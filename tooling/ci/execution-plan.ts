@@ -4,7 +4,6 @@ import {
   coreTests,
   dashboardTests,
   ruleTests,
-  sourceLints,
   allPythonTests,
   pythonRuleTests,
   pythonIntegrationTests,
@@ -76,9 +75,3 @@ export function pythonTests(suite: 'all' | 'rules' | 'integration'): Command {
     },
   };
 }
-
-export const sourceLintCommands: Command[] = sourceLints.map((file) => ({
-  name: file,
-  command: process.execPath,
-  args: ['node_modules/tsx/dist/cli.mjs', file],
-}));

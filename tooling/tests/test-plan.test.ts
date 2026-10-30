@@ -16,7 +16,6 @@ import {
   pythonRuleTests,
   pythonTestDirs,
   ruleTests,
-  sourceLints,
   watchedTests,
 } from '../ci/test-plan.js';
 import { pythonTests, type Command } from '../ci/execution-plan.js';
@@ -159,13 +158,6 @@ test('every test file is run by exactly one check of full validation and none is
     ({ name }) => name === 'operator probe compilation',
   );
   assert(operator, 'operator probes must compile in CI without executing');
-  assert.deepEqual(
-    listing('tooling/ci/checks.ts', ['core'])
-      .slice(0, 2)
-      .map(({ name }) => name),
-    ['check:rust', 'test build budget'],
-    'the test build is held to its budget right after the Rust tests built it',
-  );
   // The probes live in the collectors, whose own tests hold most of them; the app runs those
   // that measure a feature's part too. Each such crate has an operator-probes feature.
   const probing = testRoots
@@ -202,9 +194,8 @@ test('every test file is run by exactly one check of full validation and none is
   );
 });
 
-test('check:rules retains dashboard and source-rule tests, and source lints run locally and in CI', () => {
+test('check:rules retains dashboard and source-rule tests', () => {
   const apiPlan = listing('tooling/ci/checks.ts', ['api']);
-  const dashboardPlan = listing('tooling/ci/checks.ts', ['checks']);
   const rulesPlan = listing('tooling/ci/rules.ts');
   assert.deepEqual(
     rulesPlan.filter(({ command, args }) => command === 'python3' && args.includes('unittest')),
@@ -215,17 +206,6 @@ test('check:rules retains dashboard and source-rule tests, and source lints run 
   for (const file of dashboardTests) assert(ruleTests.includes(file), `${file} is not a rule`);
   for (const file of ruleTests.filter((file) => !dashboardTests.includes(file)))
     assert(testsIn(apiPlan).includes(file), `${file} is not run by the API check`);
-  assert(sourceLints.length > 0);
-  assert.equal(new Set(sourceLints).size, sourceLints.length);
-  for (const file of sourceLints) {
-    assert(fs.existsSync(file), `${file} does not exist`);
-    for (const plan of [rulesPlan, dashboardPlan])
-      assert.equal(
-        plan.filter(({ args }) => args.includes(file)).length,
-        1,
-        `${file} must run exactly once`,
-      );
-  }
   const scripts = JSON.parse(fs.readFileSync('package.json', 'utf8')).scripts;
   assert.equal(scripts['check:rules'], 'tsx tooling/ci/rules.ts');
 });

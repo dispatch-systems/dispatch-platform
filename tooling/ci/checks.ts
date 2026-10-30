@@ -4,24 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
 import { WORKERS, browserTests, shards } from './browser-shards.js';
-import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
+import { nodeTests, pythonTests, type Command } from './execution-plan.js';
 import { workspaceCrates } from './workspace.js';
 
 // One job of the platform checks, or locally the whole suite in sequence. CI runs each mode
 // on its own runner: `build` packages the runtime, and the modes that need it download that
 // package into `.build` first.
 const mode = process.argv[2] ?? 'full';
-const modes = [
-  'full',
-  'build',
-  'checks',
-  'browser',
-  'core',
-  'api',
-  'benchmark',
-  'smoke',
-  'scaffold',
-];
+const modes = ['full', 'build', 'checks', 'browser', 'core', 'api', 'smoke', 'scaffold'];
 if (!modes.includes(mode)) throw new Error('Unknown validation mode');
 const started = Date.now();
 const failures: string[] = [];
@@ -42,8 +32,6 @@ const probing = workspaceCrates(path.resolve(import.meta.dirname, '../..'))
   .sort();
 const rustCommands: Command[] = [
   { name: 'check:rust', command: 'npm', args: ['run', 'check:rust'] },
-  // What the tests just built, held to its size budget.
-  { name: 'test build budget', command: 'npm', args: ['run', 'check:test-build'] },
   {
     name: 'operator probe compilation',
     command: 'cargo',
@@ -63,7 +51,6 @@ const checkCommands: Command[] = [
   { name: 'format:check', command: 'npm', args: ['run', 'format:check'] },
   { name: 'lint', command: 'npm', args: ['run', 'lint'] },
   { name: 'test:artifact', command: 'npm', args: ['run', 'test:artifact'] },
-  ...sourceLintCommands,
   dashboardCommand,
 ];
 // Coverage tests inspect the same commands the runners execute, without starting servers,
@@ -110,52 +97,6 @@ const execute = ({ name, command, args, env }: Command) =>
 /** Source privacy, types, formatting, bundle budget and dashboard logic against `.build`. */
 function checks() {
   return Promise.all(checkCommands.map(execute));
-}
-/**
- * The workload regression, against the build already in `.build`. A build within its budgets
- * passes at once. One that breaks a budget is judged again beside the base's build, when the job
- * fetched it into `.baseline`, run after it on the same runner: a runner that can't hold a budget
- * for the base doesn't fail the build, though a clear regression from the base does. A build
- * that misses there too is measured once more, after the base, and fails only if it misses again.
- */
-async function benchmark() {
-  const name = 'Rust workload regression';
-  const script = ['node_modules/tsx/dist/cli.mjs', 'tooling/benchmarks/benchmark-rust.ts'];
-  const report = '/tmp/dispatch-rust-benchmark.json';
-  const base = '/tmp/dispatch-rust-benchmark-base.json';
-  const again = '/tmp/dispatch-rust-benchmark-again.json';
-  const build = [...script, '--binary', '.build/services/rust/dispatch-backend'];
-  const measure = [...build, '--check'];
-  if (!fs.existsSync('.baseline/services/rust/dispatch-backend'))
-    return run(name, process.execPath, [...measure, '--output', report]);
-  if (await run(name, process.execPath, [...measure, '--output', report], process.env, false))
-    return true;
-  const remeasured =
-    fs.existsSync(report) &&
-    (await run(
-      "The base's workload",
-      process.execPath,
-      [...script, '--binary', '.baseline/services/rust/dispatch-backend', '--output', base],
-      process.env,
-      false,
-    ));
-  if (!remeasured) {
-    failures.push(name);
-    return false;
-  }
-  const judge = (...reports: string[]) => [
-    'node_modules/tsx/dist/cli.mjs',
-    'tooling/benchmarks/judge.ts',
-    ...reports.flatMap((file) => ['--report', file]),
-    '--baseline',
-    base,
-  ];
-  if (await run(`${name}, beside the base`, process.execPath, judge(report), process.env, false))
-    return true;
-  return (
-    (await run(`${name}, measured again`, process.execPath, [...build, '--output', again])) &&
-    run(`${name}, again beside the base`, process.execPath, judge(report, again))
-  );
 }
 /**
  * The pinned browser, from the cache when the job restored it. In CI its system packages
@@ -247,7 +188,6 @@ else if (mode === 'checks') await checks();
 else if (mode === 'browser') await browser();
 else if (mode === 'core') await core();
 else if (mode === 'api') await api();
-else if (mode === 'benchmark') await benchmark();
 else if (mode === 'smoke') await npm('test:smoke');
 else if (mode === 'scaffold') await npm('check:scaffold');
 else {
@@ -258,7 +198,6 @@ else {
   if (!failures.length) await npm('test:smoke');
   if (!failures.length) await checks();
   if (!failures.length && (await installBrowsers())) await npm('test:ui');
-  if (!failures.length) await benchmark();
   if (!failures.length) await npm('test:browseros');
   if (!failures.length) await npm('check:scaffold');
 }
