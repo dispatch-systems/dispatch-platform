@@ -221,16 +221,13 @@ export function report(generated: Generated, check = false) {
   return lines.join('\n');
 }
 
-/** The change a checkout is: its worktree's name, or a stand-in outside worktrees/. */
-export const changeOf = (root: string) =>
-  path.basename(path.dirname(root)) === 'worktrees' ? path.basename(root) : '<name>';
 /** Whether a file changed is one the backend is built from, rather than its tests'. */
 const backend = (file: string) =>
   /\.(rs|sql)$|(^|\/)Cargo\.(toml|lock)$/.test(file) && !/(^|\/)tests\//.test(file);
 /**
  * What to do after a standalone run, given every file the checkout now has changed: write what
- * would change after a check; after writing, restart a preview of a changed backend, then commit
- * and check.
+ * would change after a check; after writing, restart the dev server on a changed backend, then
+ * commit and check.
  */
 export function followUp(root: string, generated: Generated, check = false) {
   if (check)
@@ -240,7 +237,7 @@ export function followUp(root: string, generated: Generated, check = false) {
   if (!generated.ok) return [];
   return [
     ...([...changes(root).keys()].some(backend)
-      ? [`The backend changed: \`dispatchdev preview ${changeOf(root)} --restart\` serves it.`]
+      ? ['The backend changed: restart `npm run dev` to serve it.']
       : []),
     'Commit it with the change, then `dispatchdev check`.',
   ];

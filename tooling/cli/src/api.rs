@@ -1,14 +1,11 @@
-//! `dispatchdev api <name> <method> <path>`: one signed-in call to the change's preview, as the
-//! owner at the admin's address or as any demo account at its DSP's, with the session's CSRF
-//! token and, for a DSP's routes, its view. Sessions are kept in the change's scratch folder.
-use crate::{
-    Result, Runner,
-    change::Change,
-    require,
-    workspace::{self, Workspace},
-};
+//! `dispatchdev api <method> <path>`: one signed-in call to the dev server `npm run dev` runs in
+//! the checkout, as the owner at the admin's address or as any demo account at its DSP's, with
+//! the session's CSRF token and, for a DSP's routes, its view. Sessions are kept in the
+//! checkout's scratch folder.
+use crate::{Result, Runner, require, workspace};
+use serde::Deserialize;
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct Call<'a> {
     pub method: &'a str,
@@ -68,13 +65,13 @@ pub fn dsp<'a>(dsps: &'a [Value], wanted: &str) -> Result<&'a Value> {
 
 pub(crate) const OWNER: &str = "owner@dispatch.test";
 
-/// Where the preview is reached: its address, the `curl` arguments that reach it there, and
+/// Where the dev server is reached: its address, the `curl` arguments that reach it there, and
 /// the jar its session is kept in. The platform owner's is the admin's; a member's is their
-/// DSP's own, a name under `localhost` that `--resolve` sends to the preview's host.
+/// DSP's own, a name under `localhost` that `--resolve` sends to the server's host.
 pub(crate) struct Site {
     pub(crate) origin: String,
     reach: Vec<String>,
-    pub(crate) jar: std::path::PathBuf,
+    pub(crate) jar: PathBuf,
 }
 impl Site {
     fn curl(&self, runner: &dyn Runner, args: &[&str]) -> Result<Answer> {
@@ -82,21 +79,17 @@ impl Site {
         curl(runner, &self.jar, &[&reach[..], args].concat())
     }
     /// The session of `who` here: kept from an earlier call, or signed in now, the owner by
-    /// the preview's own link and anyone else with the demo password.
-    fn session(&self, runner: &dyn Runner, log: &str, who: &str) -> Result<Value> {
+    /// the server's own link and anyone else with the demo password.
+    fn session(&self, runner: &dyn Runner, server: &Server, who: &str) -> Result<Value> {
         let url = format!("{}/api/session", self.origin);
         let mut answer = self.curl(runner, &[&url])?;
         if answer.status == 401 || answer.status == 403 {
-            // A session from an earlier run of the preview, or none yet.
+            // A session from an earlier run of the server, or none yet.
             let _ = std::fs::remove_file(&self.jar);
             if who == OWNER {
-                let link =
-                    crate::preview::link(log).ok_or("The preview printed no sign-in link yet.")?;
-                self.curl(runner, &["-o", "/dev/null", &link])?;
+                self.curl(runner, &["-o", "/dev/null", &server.link])?;
             } else {
-                let password =
-                    crate::preview::password(log).ok_or("The preview printed no demo password.")?;
-                let body = json!({"email": who, "password": password}).to_string();
+                let body = json!({"email": who, "password": server.password}).to_string();
                 let signed = self.curl(
                     runner,
                     &[
@@ -129,31 +122,43 @@ impl Site {
     }
 }
 
-/// A running preview, as a call reaches it: its host and port, what its current run logged, and
-/// the change's scratch folder, where sessions are kept.
-pub(crate) struct Running {
+/// Where `npm run dev` records the server it runs in its checkout, for as long as it runs.
+pub const RECORD: &str = ".runtime/dev-server.json";
+
+/// The dev server running in a checkout, as `npm run dev` records it in `RECORD`: its process,
+/// its address, the link that signs the owner in, and the demo accounts' password.
+#[derive(Deserialize)]
+struct Record {
+    pid: i32,
+    origin: String,
+    link: String,
+    password: String,
+}
+/// The dev server running in a checkout, as a call reaches it: its host and port, how its
+/// accounts sign in, and the checkout's scratch folder, where sessions are kept.
+pub(crate) struct Server {
     pub(crate) host: String,
     port: u16,
-    log: String,
-    pub(crate) scratch: std::path::PathBuf,
+    link: String,
+    password: String,
+    pub(crate) scratch: PathBuf,
 }
-impl Running {
-    pub(crate) fn find(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Self> {
-        let change = Change::existing(ws, name)?;
-        let port = crate::preview::port(name)?.ok_or_else(|| {
-            format!("{name} has no preview. Start it with dispatchdev preview {name}.")
-        })?;
-        let host = crate::preview::host()?;
-        let log = crate::preview::journal(name, runner)?;
-        require(
-            !log.is_empty(),
-            &format!("{name}'s preview isn't running. Start it with dispatchdev preview {name}."),
-        )?;
+impl Server {
+    /// The server `npm run dev` runs in the checkout at `root`, or what to do without one.
+    pub(crate) fn find(root: &Path) -> Result<Self> {
+        let start = "No dev server runs in this checkout: start npm run dev in it first.";
+        let text = std::fs::read_to_string(root.join(RECORD)).map_err(|_| start)?;
+        let record: Record = serde_json::from_str(&text)?;
+        // A server that was killed leaves its record behind.
+        require(unsafe { libc::kill(record.pid, 0) } == 0, start)?;
+        let (host, port) = address(&record.origin)
+            .ok_or_else(|| format!("{RECORD} names no address: {}.", record.origin))?;
         Ok(Self {
             host,
             port,
-            log,
-            scratch: change.scratch_dir()?,
+            link: record.link,
+            password: record.password,
+            scratch: workspace::checkout_scratch(root)?,
         })
     }
     /// The admin's address, where the platform owner signs in.
@@ -165,18 +170,17 @@ impl Running {
         }
     }
 }
-/// The DSPs on `name`'s preview, as its platform owner's session lists them.
-pub fn dsps(ws: &Workspace, name: &str, runner: &dyn Runner) -> Result<Vec<Value>> {
-    let running = Running::find(ws, name, runner)?;
-    let session = running.admin().session(runner, &running.log, OWNER)?;
-    Ok(session["dsps"].as_array().cloned().unwrap_or_default())
+/// The host and port of an origin, `http://<host>:<port>`.
+fn address(origin: &str) -> Option<(String, u16)> {
+    let (host, port) = origin.strip_prefix("http://")?.rsplit_once(':')?;
+    Some((host.to_owned(), port.parse().ok()?))
 }
 
-/// Where `who` is signed in on the running preview, and their session there, kept from an
-/// earlier call or signed in now: the owner at the admin's address, and anyone else at the
-/// address of the DSP `wanted` names, which the owner's list gives.
+/// Where `who` is signed in on the dev server, and their session there, kept from an earlier
+/// call or signed in now: the owner at the admin's address, and anyone else at the address of
+/// the DSP `wanted` names, which the owner's list gives.
 pub(crate) fn sign_in(
-    running: &Running,
+    server: &Server,
     who: &str,
     wanted: Option<&str>,
     runner: &dyn Runner,
@@ -186,33 +190,32 @@ pub(crate) fn sign_in(
             .all(|b| b.is_ascii_alphanumeric() || b"@.-_+".contains(&b)),
         "An account is an email address.",
     )?;
-    let admin = running.admin();
+    let admin = server.admin();
     if who == OWNER {
-        let session = admin.session(runner, &running.log, OWNER)?;
+        let session = admin.session(runner, server, OWNER)?;
         return Ok((admin, session));
     }
     let wanted =
         wanted.ok_or("A member signs in at their DSP's address: name the DSP with --dsp.")?;
-    let listed = admin.session(runner, &running.log, OWNER)?["dsps"].clone();
+    let listed = admin.session(runner, server, OWNER)?["dsps"].clone();
     let all = listed.as_array().map(Vec::as_slice).unwrap_or(&[]);
     let code = dsp(all, wanted)?["code"]
         .as_str()
         .ok_or("That DSP has no short code, so no address of its own yet.")?
         .to_owned();
-    let address = format!("{code}.localhost:{}", running.port);
+    let address = format!("{code}.localhost:{}", server.port);
     let site = Site {
         origin: format!("http://{address}"),
-        reach: vec!["--resolve".into(), format!("{address}:{}", running.host)],
-        jar: running.scratch.join(format!("api-{who}.cookies")),
+        reach: vec!["--resolve".into(), format!("{address}:{}", server.host)],
+        jar: server.scratch.join(format!("api-{who}.cookies")),
     };
-    let session = site.session(runner, &running.log, who)?;
+    let session = site.session(runner, server, who)?;
     Ok((site, session))
 }
 
-pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
-    crate::preview::here(ws.machine)?;
-    let running = Running::find(ws, name, runner)?;
-    let (site, session) = sign_in(&running, call.who.unwrap_or(OWNER), call.dsp, runner)?;
+pub fn run(root: &Path, call: Call<'_>, runner: &dyn Runner) -> Result<bool> {
+    let server = Server::find(root)?;
+    let (site, session) = sign_in(&server, call.who.unwrap_or(OWNER), call.dsp, runner)?;
     let csrf = session["csrf"]
         .as_str()
         .ok_or("The session has no CSRF token")?;
@@ -289,6 +292,33 @@ pub fn run(ws: &Workspace, name: &str, call: Call<'_>, runner: &dyn Runner) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_record_names_where_the_server_listens() {
+        assert_eq!(
+            address("http://127.0.0.1:41733"),
+            Some(("127.0.0.1".to_owned(), 41733))
+        );
+        assert_eq!(
+            address("http://localhost:5173"),
+            Some(("localhost".to_owned(), 5173))
+        );
+        assert_eq!(address("https://127.0.0.1:41733"), None);
+        assert_eq!(address("http://127.0.0.1"), None);
+    }
+    #[test]
+    fn without_a_live_server_a_call_says_to_start_one() {
+        let temp = tempfile::tempdir().unwrap();
+        let refused = || Server::find(temp.path()).err().unwrap().to_string();
+        let start = "No dev server runs in this checkout: start npm run dev in it first.";
+        assert_eq!(refused(), start);
+        // A record left by a server that was killed is as good as none.
+        let record = temp.path().join(RECORD);
+        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+        let dead = json!({"pid": i32::MAX, "origin": "http://127.0.0.1:41733",
+            "link": "http://127.0.0.1:41733/__preview/x", "password": "p"});
+        std::fs::write(&record, dead.to_string()).unwrap();
+        assert_eq!(refused(), start);
+    }
     #[test]
     fn a_dsp_is_named_by_its_id_or_a_unique_part_of_its_name() {
         let dsps = vec![

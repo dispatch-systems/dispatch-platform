@@ -141,25 +141,6 @@ pub fn skeleton(title: &str, path: &Path) -> Result<&'static [&'static str]> {
     file.write_all(text.join("\n").as_bytes())?;
     Ok(wanted)
 }
-/// The branch of PR `number`, which is its change's name.
-pub fn branch(number: u64, runner: &dyn Runner) -> Result<String> {
-    workspace::text(
-        runner,
-        &[
-            "gh",
-            "pr",
-            "view",
-            &number.to_string(),
-            "--repo",
-            REPOSITORY,
-            "--json",
-            "headRefName",
-            "--jq",
-            ".headRefName",
-        ],
-        None,
-    )
-}
 /// Where a change's PR body is written, its title on the first line.
 pub fn body_file(change: &Change) -> std::path::PathBuf {
     change.scratch().join("pr-body.md")
@@ -174,7 +155,7 @@ pub fn titled(text: &str) -> (Option<&str>, &str) {
 }
 
 /// `dispatchdev pr <name> --skeleton --title <title>`: the body's title and sections, in the
-/// change's scratch folder, where `pr` and `ship` read it from.
+/// change's scratch folder, where `pr` reads it from.
 pub fn start_body(ws: &Workspace, name: &str, title: &str) -> Result<()> {
     let change = Change::existing(ws, name)?;
     change.scratch_dir()?;
@@ -184,8 +165,7 @@ pub fn start_body(ws: &Workspace, name: &str, title: &str) -> Result<()> {
     println!(
         "{}",
         workspace::next(&[format!(
-            "Write each section; then `dispatchdev pr {name}` opens the PR, or `dispatchdev ship \
-             {name}` opens and merges it."
+            "Write each section; then `dispatchdev pr {name}` opens the PR."
         )])
     );
     Ok(())

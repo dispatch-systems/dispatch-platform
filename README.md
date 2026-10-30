@@ -26,18 +26,33 @@ its `index.ts` lazily, and the platform owner's pages from `frontend/platform-sl
 `core/shell/frontend/styles.css` sets the global import order. API types and tooling never
 import frontend code.
 
-Use an isolated worktree branched from `origin/main`, then `npm ci` and `npm run dev`.
-The preview prints a private fixture URL. `npm run check:rules` runs the structure rules and the
-other source checks before a push. `npm run check:ci` runs full validation;
-`npm run check:ci -- checks` runs the dashboard checks against a build. Every owner keeps its
-tests in `tests/<kind>/`: `npm test` discovers the TypeScript tests, and
-`npm run test:feature -- <name>`, `test:collector -- <site>`, `test:core -- <part>`,
-`test:integration -- <name>`, `test:mcp` and `test:app` run one owner's tests of every kind.
-Python tests use `python3 -m unittest discover -s tooling/tests -p '*_test.py'` and `-s ops/tests`.
-`dispatchdev new feature <name>` and `dispatchdev new collector <site>` start a feature or a
-collector that already builds and passes its checks, and `dispatchdev new tool <name>` a tool
-agents can use, in `mcp/tools/`. `dispatchdev list` and `dispatchdev explain <owner>` say what
-the product has and what an owner is made of.
+## Development
+
+It needs git, Node 26, rustup, which installs the Rust that `rust-toolchain.toml` names, and
+Python 3. `dispatchdev` is `tooling/cli/dispatchdev`, built on its first run.
+
+```sh
+git clone https://github.com/dispatch-systems/dispatch-platform.git
+cd dispatch-platform && npm ci
+npm run dev            # the dashboard on demo data, at the link it prints
+git switch -c <name>   # then change it, and commit
+dispatchdev check      # the rule checks, the linter and clippy, side by side
+gh pr create && gh pr merge --auto --squash
+```
+
+The PR's checks run every suite on GitHub, and it squash-merges itself once they pass; Dev
+installs each merge. Its title and body become the squash commit, and the release notes take
+its Summary. While `npm run dev` runs, `dispatchdev shot --page <page>` saves a PNG of a page
+and `dispatchdev api GET /api/session` makes a signed-in call; a backend change needs
+`npm run dev` started again.
+
+Every owner keeps its tests in `tests/<kind>/`. `dispatchdev test` runs the ones a change
+touches, `--owner <owner>` one owner's of every kind; `npm test` discovers the TypeScript tests,
+and the Python tests run with `python3 -m unittest discover -s tooling/tests -p '*_test.py'` and
+`-s ops/tests`. `dispatchdev new feature <name>` and `dispatchdev new collector <site>` start a
+feature or a collector that already builds and passes its checks, and `dispatchdev new tool
+<name>` a tool agents can use, in `mcp/tools/`. `dispatchdev list` and `dispatchdev explain
+<owner>` say what the product has and what an owner is made of.
 
 `dispatchdev generate` lists the features in `app/`, then writes each owner's API types from
 Rust into its `api/generated/`, which the owner's `api/` narrows and checks, and the snapshots
@@ -45,11 +60,10 @@ the app's tests hold. Normal Rust tests verify them without rewriting
 files. Generated types, schema snapshots and approved artwork remain with their owners.
 
 Installed hosts run their installed copies of `ops/launchers/` and the built artifact, never
-repository paths. Building the backend, checking a branch before a push and shipping a PR run
-through `dispatchdev` (`tooling/cli/`), and artifact verification, releases, fresh setup and
-the updaters through the Rust host manager (`ops/host-manager/`); what both use is in
-`tooling/shared/`. See [tooling/ci/README.md](tooling/ci/README.md) for the pipeline. The
-development workflow lives outside Git, in the workspace’s `dispatch-development` skill.
+repository paths. Building the backend and checking a branch before its PR run through
+`dispatchdev` (`tooling/cli/`), and artifact verification, releases, fresh setup and the
+updaters through the Rust host manager (`ops/host-manager/`); what both use is in
+`tooling/shared/`. See [tooling/ci/README.md](tooling/ci/README.md) for the pipeline.
 
 ## License
 

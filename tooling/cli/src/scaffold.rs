@@ -1,12 +1,8 @@
 //! `dispatchdev new`, `generate`, `list` and `explain`: making a feature, a collector, an agent
 //! tool or a kind of slot, writing what is generated from what the owners declare, and reading
 //! what the product has. The checkout's own `tooling/scaffold/cli.ts` runs each, with its own
-//! options; here a change's worktree is required of what writes, since Dev's checkout stays as
-//! main has it.
-use crate::{
-    Native, Result, require,
-    workspace::{self, Workspace},
-};
+//! options; what writes needs a branch, since `main` changes only by a merged PR.
+use crate::{Native, Result, require, workspace};
 use std::{path::Path, process::Command};
 
 const CLI: &str = "tooling/scaffold/cli.ts";
@@ -31,13 +27,14 @@ pub fn writes(command: &str, args: &[String]) -> bool {
 /// folder. It answers whether it passed.
 pub fn run(root: &Path, command: &str, args: &[String]) -> Result<bool> {
     if writes(command, args) {
-        let ws = Workspace::find(root, &Native)?;
-        // By their real paths: worktrees/ may link to a disk of its own, where git finds the
-        // checkout.
-        let worktrees = std::fs::canonicalize(ws.root.join("worktrees"))?;
+        let branch = workspace::text(
+            &Native,
+            &["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            Some(root),
+        )?;
         require(
-            std::fs::canonicalize(root)?.starts_with(worktrees),
-            "Make it in a change's worktree: dispatchdev start <name>, then run this there.",
+            !matches!(branch.as_str(), "main" | "HEAD"),
+            "Make it on a branch of its own: git switch -c <name>, then run this again.",
         )?;
     }
     require(
@@ -57,7 +54,7 @@ pub fn run(root: &Path, command: &str, args: &[String]) -> Result<bool> {
 mod tests {
     use super::*;
     #[test]
-    fn only_what_writes_needs_a_worktree() {
+    fn only_what_writes_needs_a_branch() {
         let args = |line: &str| {
             line.split_whitespace()
                 .map(String::from)

@@ -1,4 +1,4 @@
-"""The host setup launchers, the collector shards and what the ship command knows of the gate."""
+"""The host setup launchers and the collector shards."""
 import importlib.util
 import io
 from pathlib import Path
@@ -118,36 +118,6 @@ class PipelineTests(unittest.TestCase):
             else:
                 self.assertNotIn("DISPATCH_TEST_REAL_TIMEOUTS", env)
                 self.assertNotIn("--test-reporter=junit", command)
-
-    def test_ship_knows_every_job_the_gate_lets_fail(self):
-        # dispatchdev ship stops at a queue run's first failed job unless the gate lets that job fail.
-        workflow = (ROOT / ".github/workflows/checks.yml").read_text()
-        jobs = mapping_fields(mapping_fields(workflow)["jobs"][1])
-        advisory = {job for job, (_, body) in jobs.items()
-                    if mapping_fields(body).get("continue-on-error", ("false", ""))[0] == "true"}
-        listed = re.search(r"\bconst\s+ADVISORY\b[^=]*=\s*&\s*\[([^\]]*)\]",
-                           (ROOT / "tooling/cli/src/ship.rs").read_text())
-        self.assertIsNotNone(listed)
-        self.assertEqual(set(re.findall(r'"([a-z-]+)"', listed.group(1))), advisory)
-        self.assertTrue(advisory)
-
-
-def mapping_fields(source):
-    """The direct fields of a YAML block mapping, independent of indentation width."""
-    lines = source.splitlines()
-    significant = [(i, line) for i, line in enumerate(lines)
-                   if line.strip() and not line.lstrip().startswith("#")]
-    if not significant:
-        return {}
-    indent = min(len(line) - len(line.lstrip()) for _, line in significant)
-    fields = [(i, line) for i, line in significant if len(line) - len(line.lstrip()) == indent]
-    result = {}
-    for at, (i, line) in enumerate(fields):
-        match = re.fullmatch(r"\s*([a-zA-Z_-]+):\s*(.*)", line)
-        if match:
-            end = fields[at + 1][0] if at + 1 < len(fields) else len(lines)
-            result[match[1]] = (match[2], "\n".join(lines[i + 1:end]))
-    return result
 
 
 if __name__ == "__main__":

@@ -146,7 +146,7 @@ test("a standalone generate's next steps restart the preview only after a backen
       'Commit it with the change, then `dispatchdev check`.',
     ]);
     write('features/desk/backend/storage.rs');
-    assert.match(followUp(checkout, generated)[0]!, /`dispatchdev preview <name> --restart`/);
+    assert.match(followUp(checkout, generated)[0]!, /restart `npm run dev`/);
     assert.deepEqual(followUp(checkout, { ...generated, ok: false }), []);
   } finally {
     fs.rmSync(checkout, { recursive: true, force: true });

@@ -1,9 +1,10 @@
 //! The workspace: the folder holding `dev/`, the live Dev checkout, and `worktrees/`, one per
-//! change, on the machine that decides what runs there beside GitHub. Every checkout shares
-//! Git's data in `dev/.git`, so the workspace is found from any of them, or from the workspace
-//! folder itself.
-use crate::{Result, Runner, machine::Machine, require};
+//! change, where `start`, `pr` and `finish` keep their changes. Every checkout shares Git's data
+//! in `dev/.git`, so the workspace is found from any of them, or from the workspace folder
+//! itself. The helpers below serve every command, in any checkout.
+use crate::{Result, Runner, require};
 use std::{
+    collections::BTreeMap,
     fs,
     io::Write,
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
@@ -14,7 +15,6 @@ use std::{
 
 pub struct Workspace {
     pub root: PathBuf,
-    pub machine: Machine,
 }
 impl Workspace {
     /// The workspace `from` is in: a checkout's, or the folder holding `dev/` and `worktrees/`.
@@ -39,10 +39,7 @@ impl Workspace {
             .chain(from.ancestors().map(Path::to_path_buf));
         for root in candidates {
             if root.join("dev/.git").is_dir() && root.join("worktrees").is_dir() {
-                return Ok(Self {
-                    root,
-                    machine: Machine::THIS,
-                });
+                return Ok(Self { root });
             }
         }
         Err("Run dispatchdev in the workspace: the folder holding dev/ and worktrees/, or a checkout in it.".into())
@@ -131,6 +128,13 @@ pub fn write_private(path: &Path, text: &str) -> Result<()> {
     fs::rename(partial, path)?;
     Ok(())
 }
+/// The `KEY=value` lines of an environment file.
+pub fn read_env(text: &str) -> BTreeMap<String, String> {
+    text.lines()
+        .filter_map(|line| line.trim().split_once('='))
+        .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
+        .collect()
+}
 /// A command's output, trimmed.
 pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<String> {
     Ok(String::from_utf8(runner.command(args, cwd, 120)?)?
@@ -142,43 +146,6 @@ pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<St
 pub struct Clock<'a> {
     pub now: &'a dyn Fn() -> Instant,
     pub pause: &'a dyn Fn(u64),
-}
-/// Seconds before a `gh` call GitHub answered with a passing server error is made again.
-const RETRY: u64 = 5;
-/// `runner`, with a `gh` call GitHub answered with a passing server error, HTTP 502, 503 or 504,
-/// made again up to twice, `RETRY` seconds after each, all within the time the call was given,
-/// on `clock`: a try gets what is left of it, and none starts without some left after its pause.
-pub struct Retried<'a> {
-    pub runner: &'a dyn Runner,
-    pub clock: &'a Clock<'a>,
-}
-impl Runner for Retried<'_> {
-    fn command(&self, args: &[&str], cwd: Option<&Path>, timeout: u64) -> Result<Vec<u8>> {
-        let deadline = (self.clock.now)() + Duration::from_secs(timeout);
-        let left = || {
-            deadline
-                .saturating_duration_since((self.clock.now)())
-                .as_secs()
-        };
-        let (mut tries, mut given) = (0, timeout);
-        loop {
-            match self.runner.command(args, cwd, given) {
-                Err(error)
-                    if args.first() == Some(&"gh")
-                        && tries < 2
-                        && left() > RETRY
-                        && ["HTTP 502", "HTTP 503", "HTTP 504"]
-                            .iter()
-                            .any(|code| error.to_string().contains(code)) =>
-                {
-                    tries += 1;
-                    (self.clock.pause)(RETRY);
-                    given = left();
-                }
-                answer => return answer,
-            }
-        }
-    }
 }
 /// The slice every command `logged` runs goes in, from every worktree at once. Between them they
 /// have a low CPU weight and one memory ceiling: at `MemoryMax` they swap, and past the swap
@@ -211,8 +178,8 @@ fn unit_of(cgroup: &str) -> Option<&str> {
 }
 /// Runs `command` through the shell in `cwd` with `env` added, its output going to `log`, and
 /// answers whether it passed and how long it took. It runs below Dev, in a scope of `SLICE`, and
-/// first in line for the out-of-memory killer, ahead of the agents' sessions and the previews:
-/// a command that fails can run again. The scope is bound to the unit running this, so an agent's
+/// first in line for the out-of-memory killer, ahead of the agents' sessions: a command that
+/// fails can run again. The scope is bound to the unit running this, so an agent's
 /// session that ends, even one killed for memory, ends the commands it started.
 pub fn logged(
     command: &str,
@@ -324,54 +291,6 @@ pub fn quote(arg: &str) -> String {
 mod tests {
     use super::*;
     #[test]
-    fn a_passing_server_error_from_github_is_tried_again_twice() {
-        /// Fails each command with `error` its first `fails` times.
-        struct Flaky {
-            error: &'static str,
-            fails: u32,
-            calls: std::cell::Cell<u32>,
-        }
-        impl Runner for Flaky {
-            fn command(&self, _: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
-                self.calls.set(self.calls.get() + 1);
-                if self.calls.get() <= self.fails {
-                    return Err(self.error.into());
-                }
-                Ok(b"done".to_vec())
-            }
-        }
-        let flaky = |error, fails| Flaky {
-            error,
-            fails,
-            calls: std::cell::Cell::new(0),
-        };
-        let paused = std::cell::Cell::new(0);
-        let start = Instant::now();
-        let clock = Clock {
-            now: &|| start,
-            pause: &|seconds| paused.set(paused.get() + seconds),
-        };
-        let call = |runner: &Flaky, args: &[&str]| {
-            Retried {
-                runner,
-                clock: &clock,
-            }
-            .command(args, None, 60)
-        };
-        let gateway = "gh workflow run failed: HTTP 504: Gateway Timeout";
-        let runner = flaky(gateway, 2);
-        assert_eq!(call(&runner, &["gh", "workflow", "run"]).unwrap(), b"done");
-        assert_eq!((runner.calls.get(), paused.get()), (3, 10));
-        // A third in a row is the answer, and so is any other error, or one from git.
-        assert!(call(&flaky(gateway, 3), &["gh", "workflow", "run"]).is_err());
-        let missing = flaky("gh api failed: HTTP 404: Not Found", 1);
-        assert!(call(&missing, &["gh", "api", "x"]).is_err());
-        assert_eq!(missing.calls.get(), 1);
-        let git = flaky("git push failed: HTTP 503", 1);
-        assert!(call(&git, &["git", "push"]).is_err());
-        assert_eq!(git.calls.get(), 1);
-    }
-    #[test]
     fn names_are_folders_branches_and_units_at_once() {
         for good in ["audit-driver-match", "fix2", "a"] {
             assert!(valid_name(good).is_ok(), "{good}");
@@ -416,10 +335,7 @@ mod tests {
             root
         );
         assert!(Workspace::find(elsewhere.path(), &Fake(none)).is_err());
-        let ws = Workspace {
-            root: root.clone(),
-            machine: Machine::Linux,
-        };
+        let ws = Workspace { root: root.clone() };
         assert_eq!(ws.worktrees().unwrap(), ["one"]);
     }
     #[test]

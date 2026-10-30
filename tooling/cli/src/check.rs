@@ -1,5 +1,5 @@
 use crate::{
-    REPOSITORY, Result, Runner,
+    Result, Runner,
     build::{self, Environment, frontend},
     machine::Machine,
     require,
@@ -14,33 +14,15 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-/// Problems that stop a push. With a merge queue on `main`, the queue validates the actual
-/// merged state, so a moved `main` and other ready PRs no longer block.
-pub fn blockers(
-    branch: &str,
-    dirty: bool,
-    current: bool,
-    pulls: &[Value],
-    concurrent: bool,
-    queued: bool,
-) -> Vec<String> {
+/// Problems that stop a push: the checks judge a committed branch, and its PR's checks on GitHub
+/// judge it merged into `main` as `main` is then.
+pub fn blockers(branch: &str, dirty: bool) -> Vec<String> {
     let mut problems = vec![];
     if matches!(branch, "main" | "HEAD") {
-        problems.push("Use an isolated feature branch.".into());
+        problems.push("Use a branch of its own: git switch -c <name>.".into());
     }
     if dirty {
-        problems.push("Commit the completed changes before starting final validation.".into());
-    }
-    if !current && !queued {
-        problems.push("origin/main has advanced. Incorporate it once, review the combined change, then run dispatchdev check again.".into());
-    }
-    let others: Vec<_> = pulls
-        .iter()
-        .filter(|pr| pr["headRefName"] != branch && pr["isDraft"] != true)
-        .map(|pr| format!("#{}", pr["number"]))
-        .collect();
-    if !concurrent && !queued && !others.is_empty() {
-        problems.push(format!("Finish the ready PRs first, or leave this PR as a draft: {}. Use --allow-concurrent when overlap is intentional.",others.join(", ")));
+        problems.push("Commit the changes first: the checks judge what is committed.".into());
     }
     problems
 }
@@ -301,18 +283,15 @@ pub fn affected(changed: &[String], plan: &Value, workspace: &Workspace) -> Vec<
     }
     commands
 }
-/// What a branch needs before it is pushed: the lints its diff touches, and the state of `main`
-/// and of its PR. The tests run in the merge queue, in parallel on its runners, faster than
-/// here; `dispatchdev test` runs them here while fixing one.
+/// What a branch needs before it is pushed: the lints its diff touches, against `origin/main`.
+/// The tests run on its PR, in parallel on GitHub's runners, faster than here; `dispatchdev
+/// test` runs them here while fixing one.
 pub struct Plan {
     pub commands: Vec<String>,
     pub base: String,
-    pub queued: bool,
-    /// The branch's PR is being checked in the queue already.
-    pub running: bool,
 }
 /// The branch's plan, or what stops it from being pushed.
-pub fn plan(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<Plan> {
+pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
     let command = |args: &[&str]| -> Result<String> {
         Ok(String::from_utf8(runner.command(args, Some(root), 120)?)?
             .trim()
@@ -320,25 +299,7 @@ pub fn plan(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<Plan> 
     };
     let branch = command(&["git", "rev-parse", "--abbrev-ref", "HEAD"])?;
     let dirty = !command(&["git", "status", "--porcelain"])?.is_empty();
-    command(&["git", "fetch", "origin", "main"])?;
-    // Compare object IDs instead of treating arbitrary Git failures as ancestry results.
-    let base = command(&["git", "rev-parse", "origin/main"])?;
-    let ancestor = command(&["git", "merge-base", "origin/main", "HEAD"])?;
-    let pulls: Vec<Value> = serde_json::from_str(&command(&[
-        "gh",
-        "pr",
-        "list",
-        "--repo",
-        REPOSITORY,
-        "--base",
-        "main",
-        "--state",
-        "open",
-        "--json",
-        "number,headRefName,isDraft,statusCheckRollup",
-    ])?)?;
-    let queued = merge_queue(&command);
-    let problems = blockers(&branch, dirty, base == ancestor, &pulls, concurrent, queued);
+    let problems = blockers(&branch, dirty);
     if !problems.is_empty() {
         return Err(format!(
             "The branch needs attention before it is pushed:\n- {}",
@@ -367,50 +328,26 @@ pub fn plan(root: &Path, concurrent: bool, runner: &dyn Runner) -> Result<Plan> 
         .into_iter()
         .filter(|command| command.starts_with("cargo clippy"))
         .collect();
-    let running = pulls
-        .iter()
-        .find(|pr| pr["headRefName"] == branch)
-        .is_some_and(|pr| {
-            pr["statusCheckRollup"].as_array().is_some_and(|checks| {
-                checks.iter().any(|check| {
-                    matches!(
-                        check["status"].as_str(),
-                        Some("QUEUED" | "IN_PROGRESS" | "PENDING")
-                    )
-                })
-            })
-        });
     Ok(Plan {
         commands,
         base: command(&["git", "rev-parse", "--short", "origin/main"])?,
-        queued,
-        running,
     })
 }
 /// What follows a passing check.
-pub fn next_step(plan: &Plan) -> &'static str {
-    if plan.running {
-        "This PR is already being checked in the queue. Avoid another push unless there is a necessary correction."
-    } else {
-        "Next, once told to merge it, dispatchdev ship <name> takes it to Dev. To show it first, dispatchdev ci <name> runs the full checks on GitHub while it's tried."
-    }
-}
+pub const NEXT: &str = "Next, push the branch and open its PR with gh pr create, then gh pr \
+     merge --auto --squash: it merges once its checks on GitHub pass.";
 /// `dispatchdev check --plan`: what to run, without running it.
 pub fn print(plan: &Plan) {
     println!(
-        "Run npm run check:rules{} before pushing. dispatchdev ci runs the tests on the branch, and the merge queue on the squash commit; nothing runs on the PR itself.",
+        "Run npm run check:rules and npm run lint{} before pushing, against {}. The tests run on \
+         the PR.",
         plan.commands
             .iter()
             .map(|command| format!(" and {command}"))
-            .collect::<String>()
+            .collect::<String>(),
+        plan.base
     );
-    println!("Ready for final validation against {}.", plan.base);
-    if plan.queued {
-        println!(
-            "main has a merge queue: merging enqueues the PR, and the queue validates the actual merged state."
-        );
-    }
-    println!("{}", next_step(plan));
+    println!("{NEXT}");
 }
 /// Refuses `dispatchdev <command>`, the local check or tests, at once on a machine that runs
 /// none: `check`, `test` and `verify` ask it before anything else.
@@ -418,27 +355,15 @@ pub fn here(machine: Machine, command: &str) -> Result<()> {
     require(
         machine.checks(),
         &format!(
-            "dispatchdev {command} runs on Linux alone: dispatchdev ci <name> runs every check on \
-             GitHub."
+            "dispatchdev {command} runs on Linux alone: the checks on the branch's PR run every \
+             check on GitHub."
         ),
     )
 }
 /// The rule checks: everything a push can fail on without a build, side by side, in about a
-/// minute. What `dispatchdev check` adds, the TypeScript linter and clippy, the queue runs too.
+/// minute. What `dispatchdev check` adds, the TypeScript linter and clippy, the PR's checks run
+/// too.
 pub const RULES: &str = "npm run check:rules";
-/// The check `ci` and `ship` run here beside the checks on GitHub, whose failure stops them: the
-/// rule checks alone, on a machine that runs the local checks. Elsewhere none, since they'd fail
-/// there and cancel the checks on GitHub, which decide by themselves.
-pub fn beside(machine: Machine) -> Option<fn(&Path) -> Result<()>> {
-    machine.checks().then_some(rules)
-}
-fn rules(root: &Path) -> Result<()> {
-    let env = std::env::vars().collect();
-    require(
-        side_by_side(root, &[RULES.to_owned()], &env)?,
-        "The rule checks failed.",
-    )
-}
 /// `dispatchdev check`: the rule checks and the lints the plan names, side by side, a line for
 /// each as it ends; clippy builds in the checkout's own `target`, where its last run left it.
 /// A committed tree they all passed on passes again without running, and so does clippy on
@@ -759,17 +684,6 @@ fn plain(line: &str) -> String {
     }
     out
 }
-/// Whether `main` requires a merge queue. Any failure or unexpected answer counts as no queue.
-fn merge_queue(command: &dyn Fn(&[&str]) -> Result<String>) -> bool {
-    let (owner, name) = REPOSITORY.split_once('/').unwrap_or((REPOSITORY, ""));
-    let query = format!(
-        "query={{ repository(owner: \"{owner}\", name: \"{name}\") {{ mergeQueue(branch: \"main\") {{ id }} }} }}"
-    );
-    command(&["gh", "api", "graphql", "-f", &query])
-        .ok()
-        .and_then(|reply| serde_json::from_str::<Value>(&reply).ok())
-        .is_some_and(|reply| reply["data"]["repository"]["mergeQueue"]["id"].is_string())
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -911,23 +825,12 @@ mod tests {
         assert!(Pass::of(&root, &commands, &own, &tree).unwrap().is_none());
     }
     #[test]
-    fn a_check_coordinates_ready_branches_without_blocking_drafts() {
-        let mut pull = json!({"number":1,"headRefName":"another","isDraft":true});
-        assert!(blockers("feature", false, true, &[pull.clone()], false, false).is_empty());
-        pull["isDraft"] = false.into();
-        assert!(!blockers("feature", false, true, &[pull.clone()], false, false).is_empty());
-        assert!(blockers("feature", false, true, &[pull.clone()], true, false).is_empty());
-        assert!(blockers("another", false, true, &[pull.clone()], false, false).is_empty());
+    fn a_check_needs_a_committed_branch_of_its_own() {
+        assert!(blockers("feature", false).is_empty());
         for branch in ["main", "HEAD"] {
-            assert!(!blockers(branch, false, true, &[], false, false).is_empty());
+            assert!(!blockers(branch, false).is_empty());
         }
-        assert!(!blockers("feature", true, true, &[], true, false).is_empty());
-        assert!(!blockers("feature", false, false, &[], true, false).is_empty());
-        // A merge queue validates the merged state: a moved main and other ready PRs are fine,
-        // but the branch and a dirty tree still block.
-        assert!(blockers("feature", false, false, &[pull], false, true).is_empty());
-        assert!(!blockers("feature", true, true, &[], true, true).is_empty());
-        assert!(!blockers("main", false, true, &[], true, true).is_empty());
+        assert!(!blockers("feature", true).is_empty());
     }
     /// A file of `text` in the directory `root`, with the directories it needs.
     fn write(root: &Path, file: &str, text: &str) {
@@ -1313,28 +1216,11 @@ mod tests {
         );
     }
     #[test]
-    fn merge_queue_is_detected_only_from_a_well_formed_answer() {
-        let answer = |reply: &'static str| {
-            merge_queue(&|args: &[&str]| {
-                assert_eq!(&args[..3], ["gh", "api", "graphql"]);
-                assert!(args[4].contains("mergeQueue(branch: \"main\")"));
-                Ok(reply.into())
-            })
-        };
-        assert!(answer(
-            r#"{"data":{"repository":{"mergeQueue":{"id":"MQ_1"}}}}"#
-        ));
-        assert!(!answer(r#"{"data":{"repository":{"mergeQueue":null}}}"#));
-        assert!(!answer("[]"));
-        assert!(!answer("not json"));
-        assert!(!merge_queue(&|_: &[&str]| Err("offline".into())));
-    }
-    #[test]
-    fn on_a_mac_the_local_check_refuses_and_names_ci() {
+    fn on_a_mac_the_local_check_refuses_and_names_the_prs_checks() {
         assert_eq!(
             here(Machine::Mac, "check").unwrap_err().to_string(),
-            "dispatchdev check runs on Linux alone: dispatchdev ci <name> runs every check on \
-             GitHub."
+            "dispatchdev check runs on Linux alone: the checks on the branch's PR run every check \
+             on GitHub."
         );
         assert!(here(Machine::Linux, "check").is_ok());
     }

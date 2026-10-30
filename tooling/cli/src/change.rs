@@ -1,8 +1,8 @@
 //! A change, as `dispatchdev` finds it by its name: the name is its worktree's folder under
-//! `worktrees/`, its branch, its preview's unit and its scratch folder's, and its PR is the
-//! newest one GitHub has from that branch.
+//! `worktrees/`, its branch and its scratch folder's, and its PR is the newest one GitHub has
+//! from that branch.
 use crate::{
-    REPOSITORY, Result, Runner, preview, require,
+    REPOSITORY, Result, Runner, require,
     workspace::{self, Workspace},
 };
 use serde_json::Value;
@@ -102,30 +102,14 @@ impl Change {
             merge: pr["mergeCommit"]["oid"].as_str().map(str::to_owned),
         }))
     }
-    /// Everything the change made goes: its preview and port, its worktree with its build, its
-    /// branch here and on GitHub, and its scratch folder. Returns what went, in that order.
+    /// Everything the change made goes: its worktree with its build, its branch here and on
+    /// GitHub, and its scratch folder. Returns what went, in that order.
     pub fn clean(&self, ws: &Workspace, runner: &dyn Runner) -> Result<Vec<String>> {
         let name = &self.name;
         let dev = ws.dev();
         let git =
             |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(&dev));
         let mut done = vec![];
-        let unit = preview::unit(name);
-        if preview::running(ws.machine, runner)?
-            .iter()
-            .any(|running| running == name)
-        {
-            runner.command(&["systemctl", "--user", "stop", &unit], None, 120)?;
-            done.push("its preview stopped".to_owned());
-        }
-        // A preview that failed stays listed as failed until told otherwise, which a unit that
-        // never failed refuses. A machine that runs no previews has none.
-        if ws.machine.previews() {
-            let _ = runner.command(&["systemctl", "--user", "reset-failed", &unit], None, 120);
-        }
-        if fs::remove_file(preview::env_file(name)?).is_ok() {
-            done.push("its port released".to_owned());
-        }
         if self.path.exists() {
             let build = workspace::size(runner, &self.path.join("target"));
             git(&[
@@ -176,7 +160,6 @@ impl Change {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::machine::Machine;
     use std::path::Path;
 
     struct GitHub(&'static str);
@@ -192,7 +175,6 @@ mod tests {
     fn a_change_is_found_by_its_name_and_its_pr_by_its_branch() {
         let ws = Workspace {
             root: PathBuf::from("/workspace"),
-            machine: Machine::Linux,
         };
         let change = Change::named(&ws, "fix-week").unwrap();
         assert_eq!(change.path, Path::new("/workspace/worktrees/fix-week"));
@@ -247,7 +229,6 @@ mod tests {
         }
         let ws = Workspace {
             root: PathBuf::from("/workspace"),
-            machine: Machine::Linux,
         };
         let change = Change::named(&ws, "clean-raced").unwrap();
         let raced = |kept| Raced {
@@ -259,26 +240,5 @@ mod tests {
             Vec::<String>::new()
         );
         assert!(change.clean(&ws, &raced(true)).is_err());
-    }
-
-    #[test]
-    fn a_mac_has_no_preview_to_stop() {
-        /// Git, with no branch to delete; anything else, as systemctl, fails the test.
-        struct Git;
-        impl Runner for Git {
-            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
-                assert_eq!(args[0], "git", "{args:?}");
-                match args {
-                    ["git", "rev-parse", ..] => Err("no such branch here".into()),
-                    _ => Ok(vec![]),
-                }
-            }
-        }
-        let ws = Workspace {
-            root: PathBuf::from("/workspace"),
-            machine: Machine::Mac,
-        };
-        let change = Change::named(&ws, "clean-on-a-mac").unwrap();
-        assert_eq!(change.clean(&ws, &Git).unwrap(), Vec::<String>::new());
     }
 }
