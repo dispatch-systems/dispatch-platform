@@ -344,7 +344,7 @@ impl Fixture {
     }
     fn merging(migration: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("dev");
+        let root = temp.path().join("live");
         fs::create_dir(&root).unwrap();
         git(&root, &["init", "-b", "main"]);
         git(&root, &["config", "user.name", "Test"]);

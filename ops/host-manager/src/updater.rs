@@ -81,7 +81,7 @@ impl<'a> Updater<'a> {
         require(
             root.file_name().and_then(|s| s.to_str())
                 == Some(if environment == Environment::Dev {
-                    "dev"
+                    "live"
                 } else {
                     "public"
                 }),
