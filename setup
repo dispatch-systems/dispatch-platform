@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Sets up this clone for developing Dispatch, on Linux or macOS: the Node and Rust it pins, its
+# packages, the browser `dispatchdev shot` drives and its first build, then the private agent
+# docs, linked where Claude and Codex read them. Run it again at any time: it does only what's
+# missing, and updates the agent docs.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+say() { printf '\033[1m%s\033[0m\n' "$*"; }
+fail() {
+  printf 'setup: %s\n' "$*" >&2
+  exit 1
+}
+# Whether version $1 is at least $2, both written x.y.z.
+at_least() {
+  local IFS=.
+  local have=($1) want=($2) i
+  for i in 0 1 2; do
+    ((${have[i]:-0} > ${want[i]:-0})) && return 0
+    ((${have[i]:-0} < ${want[i]:-0})) && return 1
+  done
+  return 0
+}
+sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+
+# The toolchains. Rust needs a C compiler to link, which takes an administrator to install.
+command -v git >/dev/null || fail "Install git first."
+command -v python3 >/dev/null || fail "Install Python 3 first."
+if ! command -v cc >/dev/null; then
+  case $(uname -s) in
+    Darwin) fail "Install Apple's command line tools first: xcode-select --install" ;;
+    *) fail "Install your distribution's compiler tools first (build-essential, base-devel)." ;;
+  esac
+fi
+
+# Node: the version .node-version names, or a later one of its major. When the node on PATH
+# isn't one, the official build goes in ~/.local/lib/nodejs, linked from ~/.local/bin.
+node_version=$(cat .node-version)
+usable_node() {
+  local have
+  have=$(node --version 2>/dev/null) || return 1
+  have=${have#v}
+  [[ ${have%%.*} == "${node_version%%.*}" ]] && at_least "$have" "$node_version"
+}
+if ! usable_node; then
+  case $(uname -s)-$(uname -m) in
+    Linux-x86_64) platform=linux-x64 ;;
+    Linux-aarch64) platform=linux-arm64 ;;
+    Darwin-x86_64) platform=darwin-x64 ;;
+    Darwin-arm64) platform=darwin-arm64 ;;
+    *) fail "Install Node $node_version first: there's no official build for $(uname -sm)." ;;
+  esac
+  name=node-v$node_version-$platform
+  say "Installing Node $node_version in ~/.local/lib/nodejs/$name"
+  download=$(mktemp -d)
+  trap 'rm -rf "$download"' EXIT
+  curl -fsSL "https://nodejs.org/dist/v$node_version/$name.tar.xz" -o "$download/$name.tar.xz"
+  curl -fsSL "https://nodejs.org/dist/v$node_version/SHASUMS256.txt" -o "$download/SHASUMS256.txt"
+  (cd "$download" && grep " $name.tar.xz\$" SHASUMS256.txt | sha256 -c - >/dev/null) ||
+    fail "Node's download doesn't match its published checksum."
+  mkdir -p "$HOME/.local/lib/nodejs" "$HOME/.local/bin"
+  tar -xf "$download/$name.tar.xz" -C "$HOME/.local/lib/nodejs"
+  for tool in node npm npx; do ln -sfn "$HOME/.local/lib/nodejs/$name/bin/$tool" "$HOME/.local/bin/$tool"; done
+  shell_node=$(command -v node || true)
+  export PATH=$HOME/.local/bin:$PATH
+  if [[ $shell_node != "$HOME/.local/bin/node" ]]; then
+    say "Put ~/.local/bin ahead of ${shell_node%/node} on your PATH, so your shell finds this Node."
+  fi
+fi
+
+# Rust: rustup installs the toolchain rust-toolchain.toml names.
+if ! command -v rustup >/dev/null; then
+  if [[ ! -x $HOME/.cargo/bin/rustup ]]; then
+    say "Installing rustup"
+    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs |
+      sh -s -- -y --profile minimal --default-toolchain none
+  fi
+  export PATH=$HOME/.cargo/bin:$PATH
+fi
+rustup toolchain install --no-self-update >/dev/null
+
+# The packages, the browser `dispatchdev shot` drives, and the first build: the CLI, then the
+# backend `npm run dev` serves.
+if [[ ! -f node_modules/.package-lock.json || package-lock.json -nt node_modules/.package-lock.json ]]; then
+  say "Installing packages"
+  npm ci --no-audit --no-fund
+fi
+npx playwright install chromium
+tooling/cli/dispatchdev build
+
+# The agent docs: the private dispatch-agents repo, in $DISPATCH_AGENTS or ~/dispatch-agents.
+# Claude reads ~/.claude, Codex ~/.codex and ~/.agents; setup replaces only a link of its own or
+# an empty file there.
+agents=${DISPATCH_AGENTS:-$HOME/dispatch-agents}
+link() {
+  mkdir -p "$(dirname "$2")"
+  if [[ -L $2 || ! -e $2 || (-f $2 && ! -s $2) ]]; then
+    ln -sfn "$1" "$2"
+  else
+    say "Left $2 as it is: move it aside and run setup again to link the agent docs there."
+  fi
+}
+if [[ -d $agents/.git ]]; then
+  git -C "$agents" pull -q --ff-only || say "Couldn't update $agents; linking it as it is."
+elif ! gh repo clone dispatch-systems/dispatch-agents "$agents" -- -q 2>/dev/null &&
+  ! git clone -q https://github.com/dispatch-systems/dispatch-agents.git "$agents"; then
+  say "Couldn't clone dispatch-systems/dispatch-agents: the agent docs aren't linked."
+fi
+if [[ -d $agents/skills ]]; then
+  link "$agents/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+  link "$agents/AGENTS.md" "$HOME/.codex/AGENTS.md"
+  for skill in "$agents"/skills/*/; do
+    skill=${skill%/}
+    link "$skill" "$HOME/.claude/skills/${skill##*/}"
+    link "$skill" "$HOME/.agents/skills/${skill##*/}"
+  done
+fi
+
+command -v gh >/dev/null || say "Install GitHub's gh to open PRs from here."
+tooling/cli/dispatchdev doctor
+say "Ready: npm run dev serves the dashboard on demo data."
