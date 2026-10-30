@@ -1,6 +1,6 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build, check, machine::Machine, observation, scaffold, shot, test,
-    verify,
+    Native, Result, Runner, api, build, change, check, machine::Machine, observation, pr, scaffold,
+    shot, test, verify,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -92,6 +92,33 @@ const USAGE: usize = 35;
 const ABOUT: usize = 60;
 
 const COMMANDS: &[Spec] = &[
+    spec(
+        "start",
+        &["start <name> [--from <ref>]"],
+        "A worktree for the change beside the clone, in worktrees/<name>, on a branch of its \
+         name off origin/main or --from, with its packages installed and its scratch folder, \
+         /tmp/dispatch-<name>, made for its decisions and its PR's body.",
+    )
+    .options(&["--from"])
+    .arguments(1),
+    spec(
+        "pr",
+        &["pr [--skeleton --title <title>]"],
+        "Check the PR's title and body against the sections its type needs: the scratch \
+         folder's pr-body.md, whose first line is # <title>. Then push the branch and open its \
+         PR, or update the one open. --skeleton --title instead starts pr-body.md with the \
+         title and those sections, unless it's there already.",
+    )
+    .flags(&["--skeleton"])
+    .options(&["--title"]),
+    spec(
+        "finish",
+        &["finish <name> [--abandon]"],
+        "Once the change's PR merged, or with --abandon for one that never will, its worktree, \
+         its branches and its scratch folder go.",
+    )
+    .flags(&["--abandon"])
+    .arguments(1),
     spec(
         "check",
         &["check [--plan]"],
@@ -238,6 +265,10 @@ const COMMANDS: &[Spec] = &[
 ];
 /// The help's sections, each with its commands in order.
 const SECTIONS: &[(&str, &[&str])] = &[
+    (
+        "A change, from start to finish:",
+        &["start", "pr", "finish"],
+    ),
     ("Checking a branch:", &["check", "test", "verify"]),
     ("Trying it:", &["api", "shot", "browser"]),
     (
@@ -410,6 +441,23 @@ fn run() -> Result<()> {
     }
     let line = parse(spec, rest)?;
     match spec.name {
+        "start" => {
+            let name = line.name()?;
+            let base = line.option("--from").unwrap_or("origin/main");
+            change::start(&line.root()?, name, base, &Native)
+        }
+        "pr" => match (line.flag("--skeleton"), line.option("--title")) {
+            (true, Some(title)) => pr::start_body(&line.root()?, title),
+            (true, None) => Err("--skeleton needs the --title it starts with.".into()),
+            (false, Some(_)) => {
+                Err("--title goes with --skeleton: then the body's first line gives it.".into())
+            }
+            (false, None) => pr::run(&line.root()?, &Native),
+        },
+        "finish" => {
+            let name = line.name()?;
+            change::finish(&line.root()?, name, line.flag("--abandon"), &Native)
+        }
         "check" => {
             check::here(Machine::THIS, "check")?;
             let root = line.root()?;

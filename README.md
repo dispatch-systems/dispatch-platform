@@ -34,16 +34,19 @@ where Claude and Codex read them. It needs git, Python 3 and a C compiler, and r
 time. `dispatchdev` is `tooling/cli/dispatchdev`, built on its first run.
 
 ```sh
-git clone https://github.com/dispatch-systems/dispatch-platform.git
-cd dispatch-platform && ./setup
-npm run dev            # the dashboard on demo data, at the link it prints
-git switch -c <name>   # then change it, and commit
-dispatchdev check      # the rule checks, the linter and clippy, side by side
-gh pr create           # then, once its checks pass: gh pr merge --squash
+git clone https://github.com/dispatch-systems/dispatch-platform.git repo
+cd repo && ./setup
+dispatchdev start <name>   # a worktree for the change in ../worktrees/<name>, off origin/main
+npm run dev                # in it: the dashboard on demo data, at the link it prints
+dispatchdev check          # once it's committed: the rule checks, the linter and clippy
+dispatchdev pr --skeleton --title "<title>"   # starts the PR's body; write it, then:
+dispatchdev pr             # checks the title and body, pushes, and opens or updates the PR
+gh pr merge <n> --squash   # once its checks pass
+dispatchdev finish <name>  # once it merged: the worktree, its branches and scratch folder go
 ```
 
-The PR's checks run every suite on GitHub, and it's squash-merged once they pass; Dev installs
-each merge. Its title and body become the squash commit, and the release notes take
+The PR's checks run every suite on GitHub, and it's squash-merged by hand once they pass; Dev
+installs each merge. Its title and body become the squash commit, and the release notes take
 its Summary. While `npm run dev` runs, `dispatchdev shot --page <page>` saves a PNG of a page
 and `dispatchdev api GET /api/session` makes a signed-in call; a backend change needs
 `npm run dev` started again.
