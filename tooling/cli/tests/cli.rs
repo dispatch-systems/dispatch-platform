@@ -22,6 +22,21 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["deploy"]);
     assert!(!ok);
     assert!(error.contains("Unknown command deploy"), "{error}");
+    // A change's name is read, and refused, before anything asks git or GitHub.
+    for command in ["start", "finish"] {
+        let (ok, _, error) = run(&[command]);
+        assert!(!ok);
+        assert!(
+            error.contains(&format!("Usage: dispatchdev {command} <name>")),
+            "{error}"
+        );
+        let (ok, _, error) = run(&[command, "Fix_Week"]);
+        assert!(!ok);
+        assert!(error.contains("A change's name is lowercase"), "{error}");
+    }
+    let (ok, _, error) = run(&["pr", "--skeleton"]);
+    assert!(!ok);
+    assert!(error.contains("--skeleton needs the --title"), "{error}");
     let (ok, _, error) = run(&["browser"]);
     assert!(!ok);
     assert!(

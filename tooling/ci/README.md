@@ -30,7 +30,9 @@ isn't the change's own gets its failed jobs run again: `gh run rerun <id> --fail
 audits the dependencies nightly and runs CodeQL on each push to `main`; neither gates a merge.
 
 `dispatchdev` (`tooling/cli/`) holds what runs on a developer's machine, and `dispatchdev help`
-lists it. `check`, `test` and `verify` look at a branch before its PR; `api` (signed-in calls)
+lists it. `start` makes a change's worktree beside the clone, `pr` checks its PR's title and
+body before opening it, and `finish` removes the change once it merged. `check`, `test` and
+`verify` look at a branch before its PR; `api` (signed-in calls)
 and `shot` (a PNG of a page, signed in once for each account) reach the dev server `npm run dev`
 runs in the checkout, which records itself in `.runtime/dev-server.json` while it runs. A Mac
 runs none of the local checks and tests (`tooling/cli/src/machine.rs`
