@@ -28,12 +28,14 @@ import frontend code.
 
 ## Development
 
-It needs git, Node 26, rustup, which installs the Rust that `rust-toolchain.toml` names, and
-Python 3. `dispatchdev` is `tooling/cli/dispatchdev`, built on its first run.
+`./setup` makes a clone ready on Linux or macOS: the Node `.node-version` pins, the Rust
+`rust-toolchain.toml` names, the packages, the first build, and the private agent docs, linked
+where Claude and Codex read them. It needs git, Python 3 and a C compiler, and runs again at any
+time. `dispatchdev` is `tooling/cli/dispatchdev`, built on its first run.
 
 ```sh
 git clone https://github.com/dispatch-systems/dispatch-platform.git
-cd dispatch-platform && npm ci
+cd dispatch-platform && ./setup
 npm run dev            # the dashboard on demo data, at the link it prints
 git switch -c <name>   # then change it, and commit
 dispatchdev check      # the rule checks, the linter and clippy, side by side

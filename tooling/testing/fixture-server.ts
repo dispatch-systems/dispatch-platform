@@ -54,7 +54,8 @@ export async function prepare(options: boolean | FixtureOptions = true) {
   let binary = typeof options === 'boolean' ? defaultBinary : (options.binary ?? defaultBinary);
   const seed = typeof options === 'boolean' ? options : (options.seed ?? true);
   const overrides = typeof options === 'boolean' ? {} : (options.env ?? {});
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-fixture-'));
+  // The backend refuses state reached through a link, and macOS's temporary folder is one.
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'dispatch-fixture-'));
   const cleanup = () => fs.rmSync(root, { recursive: true, force: true });
   try {
     if (overrides.DISPATCH_FIXTURE_PROVIDER_URL) {
