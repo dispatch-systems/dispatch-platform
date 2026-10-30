@@ -114,7 +114,7 @@ struct Fixture {
 impl Fixture {
     fn new(production: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join(if production { "public" } else { "dev" });
+        let root = temp.path().join(if production { "public" } else { "live" });
         io::private_directory(&root).unwrap();
         let source = if production {
             temp.path().join("source")

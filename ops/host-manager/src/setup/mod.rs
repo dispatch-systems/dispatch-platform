@@ -48,7 +48,7 @@ impl Options {
     fn validate(&self) -> Result<()> {
         require(
             self.root.file_name().and_then(|s| s.to_str())
-                == Some(if self.production { "public" } else { "dev" }),
+                == Some(if self.production { "public" } else { "live" }),
             "Real environment root required",
         )?;
         let canonical = |address: &str| {

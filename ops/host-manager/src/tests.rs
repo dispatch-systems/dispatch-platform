@@ -348,7 +348,7 @@ impl Fixture {
     fn new(environment: Environment) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join(if environment == Environment::Dev {
-            "dev"
+            "live"
         } else {
             "public"
         });

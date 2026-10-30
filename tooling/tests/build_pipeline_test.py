@@ -76,7 +76,7 @@ class PipelineTests(unittest.TestCase):
         )
 
     def test_setup_launchers_use_trusted_host_and_preserve_paths_and_owner_names(self):
-        args = ["--root", "/private path/dev", "--first-name", "Two Names"]
+        args = ["--root", "/private path/live", "--first-name", "Two Names"]
         for environment in ["dev", "production"]:
             launcher = module(f"setup_{environment}", f"ops/launchers/setup-{environment}.py")
             with patch.object(launcher, "host_binary", return_value=Path("/trusted path/dispatch-host")), \
