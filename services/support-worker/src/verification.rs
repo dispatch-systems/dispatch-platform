@@ -385,7 +385,10 @@ pub async fn collect(
             // The trusted bridge derives the configured Dev verification account and isolated DSP.
             // No provider credential or vault file is supplied to a Hermes process.
             let mut command = Command::new("/usr/bin/python3");
-            command.arg("-I").arg(&config.collection_bridge);
+            command
+                .arg("-I")
+                .arg(&config.collection_bridge)
+                .env("SUPPORT_WORKTREES", &config.worktrees);
             let request = serde_json::to_string(&request)?;
             command.args([
                 "--worktree",

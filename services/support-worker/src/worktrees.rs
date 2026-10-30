@@ -3,6 +3,15 @@ use dispatch_core::support::api::types::SupportJob;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
+/// Below this, a new worktree's build could fill the disk: a debug build takes about 3 GB, and
+/// 7 GB once tested.
+const LOW_DISK: u64 = 20_000_000_000;
+
+/// Bytes free where support worktrees build: the worktrees folder, or the disk it links to.
+fn free(config: &Config) -> Result<u64> {
+    fs2::available_space(&config.worktrees).map_err(|_| "Couldn't read the free disk space".into())
+}
+
 #[derive(Clone)]
 pub struct Worktree {
     pub name: String,
@@ -45,23 +54,31 @@ impl Worktree {
         )?;
         let suffix = if source.is_some() { "-analysis" } else { "" };
         let name = format!("support-{}-{identifier}{suffix}", job.environment);
-        let path = config.workspace_root.join("worktrees").join(&name);
-        let root = config.workspace_root.join("dev");
+        let path = config.worktrees.join(&name);
         if !path.exists() {
             require(
-                dispatchdev_cli::workspace::worktrees_free(&config.workspace_root)?
-                    >= dispatchdev_cli::start::LOW_DISK,
+                free(config)? >= LOW_DISK,
                 "Host disk capacity must be restored before creating an isolated support build",
             )?;
-            command(&root, "dispatchdev", &["start", &name]).await?;
+            // A worktree of its own on a new branch from current main, with its packages.
+            let at = path.to_str().ok_or("Non-UTF8 worktree path")?;
+            command(&config.checkout, "git", &["fetch", "-q", "origin", "main"]).await?;
+            command(
+                &config.checkout,
+                "git",
+                &["worktree", "add", "-q", "-b", &name, at, "origin/main"],
+            )
+            .await?;
+            command(&path, "npm", &["ci", "--silent"]).await?;
             if let Some(sha) = source {
                 require(is_sha(sha), "Source commit is not an immutable Git SHA")?;
                 command(&path, "git", &["fetch", "origin", sha]).await?;
                 command(&path, "git", &["switch", "-C", &name, sha]).await?;
             }
         }
-        // Offline source checks use only the scanner archive pinned by trusted installed Dev.
-        let source_cache = root.join(".ci-tools/privacy");
+        // Offline source checks use the clone's cached secret scanner, which the scan holds to
+        // its pinned checksum.
+        let source_cache = config.checkout.join(".ci-tools/privacy");
         let target = path.join(".ci-tools/privacy");
         if source_cache.is_dir() {
             std::fs::create_dir_all(&target)?;
@@ -161,22 +178,47 @@ impl Worktree {
         command(&self.path, "git", &["merge", "--no-edit", "origin/main"]).await
     }
 
+    /// Once its PR merged, or for analysis that never will: the worktree, its branch here and on
+    /// GitHub, and its scratch folder go. A worktree holding uncommitted changes stays.
     pub async fn cleanup(&self, config: &Config) -> Result<()> {
-        command(
-            &config.workspace_root.join("dev"),
-            "dispatchdev",
-            &["finish", &self.name],
-        )
-        .await?;
+        let clone = &config.checkout;
+        if self.path.exists() {
+            let at = self.path.to_str().ok_or("Non-UTF8 worktree path")?;
+            command(clone, "git", &["worktree", "remove", at]).await?;
+        }
+        command(clone, "git", &["worktree", "prune"]).await?;
+        let branch = format!("refs/heads/{}", self.name);
+        if command(clone, "git", &["rev-parse", "--verify", "--quiet", &branch])
+            .await
+            .is_ok()
+        {
+            command(clone, "git", &["branch", "-D", &self.name]).await?;
+        }
+        // GitHub deletes a merged PR's branch itself; this catches the rest. One GitHub deleted
+        // meanwhile refuses the push, and is gone all the same.
+        let remote = ["ls-remote", "--heads", "origin", &self.name];
+        if !command(clone, "git", &remote).await?.is_empty()
+            && let Err(error) = command(
+                clone,
+                "git",
+                &["push", "-q", "origin", "--delete", &self.name],
+            )
+            .await
+            && !command(clone, "git", &remote).await?.is_empty()
+        {
+            return Err(error);
+        }
+        let scratch = PathBuf::from(format!("/tmp/dispatch-{}", self.name));
+        if scratch.exists() {
+            std::fs::remove_dir_all(scratch)?;
+        }
         Ok(())
     }
 
     /// Keep an unmerged implementation intact while making room for another ticket's
     /// investigation. Only ignored, reproducible build products can be discarded.
     pub async fn relieve_disk_pressure(&self, config: &Config) -> Result<()> {
-        if dispatchdev_cli::workspace::worktrees_free(&config.workspace_root)?
-            >= dispatchdev_cli::start::LOW_DISK
-        {
+        if free(config)? >= LOW_DISK {
             return Ok(());
         }
         for name in ["target", ".build"] {
@@ -196,16 +238,6 @@ impl Worktree {
         Ok(())
     }
 
-    pub async fn cleanup_analysis(&self, config: &Config) -> Result<()> {
-        command(
-            &config.workspace_root.join("dev"),
-            "dispatchdev",
-            &["finish", &self.name, "--abandon"],
-        )
-        .await?;
-        Ok(())
-    }
-
     pub async fn cleanup_analysis_job(config: &Config, job: &SupportJob) -> Result<()> {
         let id = job
             .detail
@@ -221,11 +253,11 @@ impl Worktree {
         )?;
         let name = format!("support-{}-{id}-analysis", job.environment);
         let tree = Self {
-            path: config.workspace_root.join("worktrees").join(&name),
+            path: config.worktrees.join(&name),
             name,
         };
         if tree.path.exists() {
-            tree.cleanup_analysis(config).await?;
+            tree.cleanup(config).await?;
         }
         Ok(())
     }

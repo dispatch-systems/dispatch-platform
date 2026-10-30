@@ -57,7 +57,7 @@ class SupportCollectionTests(unittest.TestCase):
         (self.root / "worktrees").symlink_to(elsewhere)
         argv = ["support-collection.py", "--worktree", str(self.root / "worktrees" / worktree.name),
                 "--ticket", ticket, "--provider", "paycom", "--request", "{}"]
-        with unittest.mock.patch.dict(os.environ, {"SUPPORT_WORKSPACE_ROOT": str(self.root)}), \
+        with unittest.mock.patch.dict(os.environ, {"SUPPORT_WORKTREES": str(self.root / "worktrees")}), \
                 unittest.mock.patch("sys.argv", argv), \
                 unittest.mock.patch.object(module.subprocess, "check_output", return_value="elsewhere\n"):
             # Past the worktree's check, to its branch, which isn't the ticket's.

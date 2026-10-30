@@ -27,7 +27,7 @@ Investigations select source inspection, a read-only browser or an isolated repr
 preview according to the evidence needed. A preview is built only when reproduction needs
 to change data. Source-only stages cannot invoke the browser tool. Skipped browser work is
 recorded as skipped, never as successful verification. Approved implementations retain their
-independent browser verification and normal merge-queue gates.
+independent browser verification, and merge only once their PR's required checks pass.
 
 Vague bug reports and feature requests receive a best-effort investigation. If the intended
 issue or feature remains unclear, the ticket becomes **Unclear Bug Report** or **Unclear

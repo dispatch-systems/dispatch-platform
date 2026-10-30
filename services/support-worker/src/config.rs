@@ -8,7 +8,12 @@ use url::Url;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Config {
     pub origins: Vec<Origin>,
-    pub workspace_root: PathBuf,
+    /// The platform's clone, each support branch's worktree starts from.
+    pub checkout: PathBuf,
+    /// The folder support branches' worktrees go in.
+    pub worktrees: PathBuf,
+    /// The private agent docs, `dispatch-systems/dispatch-agents`, whose rules every agent follows.
+    pub agents: PathBuf,
     pub runtime_root: PathBuf,
     pub hermes_source: PathBuf,
     pub hermes_python: PathBuf,
@@ -89,7 +94,9 @@ impl Config {
             "Each support environment needs a single configured origin",
         )?;
         require(
-            self.workspace_root.is_absolute()
+            self.checkout.is_absolute()
+                && self.worktrees.is_absolute()
+                && self.agents.is_absolute()
                 && self.runtime_root.is_absolute()
                 && self.hermes_source.is_absolute()
                 && self.hermes_python.is_absolute()
