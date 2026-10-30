@@ -673,7 +673,7 @@ export const settingsNote = (name: string, slug: string) =>
  * The commands that show what the feature shows on the dev server, as the fixtures' Dev DSP has
  * it, once `npm run dev` restarts on the backend the feature changed.
  */
-export function previewNote(values: Values) {
+export function devServerNote(values: Values) {
   const { slug, hostPage, hostLabel } = values;
   const opens = (
     [
@@ -747,8 +747,8 @@ export async function planFeature(root: string, argv: string[]) {
       `Its people are Driver Match's \`${name}\` kind of data; the app's people test reads them ` +
         'from a new DSP, so its queries are tried without a test of its own.',
     );
-  const preview = previewNote(values);
-  if (preview) plan.notes.push(preview);
+  const devServer = devServerNote(values);
+  if (devServer) plan.notes.push(devServer);
   plan.notes.push(`\`dispatchdev test --owner feature:${name}\` runs its tests of every kind.`);
   return { plan, args };
 }

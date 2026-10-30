@@ -9,7 +9,7 @@ const { values } = parseArgs({
     url: { type: 'string' },
     /** The session, as a Playwright storage state file. */
     storage: { type: 'string' },
-    /** The preview's host, which answers every DSP's own address under localhost. */
+    /** The dev server's host, which answers every DSP's own address under localhost. */
     host: { type: 'string' },
     size: { type: 'string' },
     theme: { type: 'string' },
