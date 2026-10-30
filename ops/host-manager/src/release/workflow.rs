@@ -238,19 +238,14 @@ impl Release<'_> {
         };
         Ok(passed("core") && passed("platform"))
     }
-    /// The newest run that passed the full suite on exactly `commit`: its merge queue group,
-    /// which published the build, a dispatched run, or the push run of history before the
-    /// queue published builds.
+    /// The newest run that passed the full suite on exactly `commit`: its push to main, which
+    /// published the build, or a dispatched run.
     pub(super) fn fully_validated(&self, commit: &str) -> Result<Option<Value>> {
         let runs = io::github(
             self.system,
             &format!("actions/workflows/checks.yml/runs?head_sha={commit}&per_page=100"),
         )?;
-        for (event, branch) in [
-            ("merge_group", None),
-            ("push", Some("main")),
-            ("workflow_dispatch", None),
-        ] {
+        for (event, branch) in [("push", Some("main")), ("workflow_dispatch", None)] {
             if let Some(run) =
                 releases::latest_run(&runs["workflow_runs"], commit, event, branch, false)
                 && releases::passed(run)
@@ -261,8 +256,8 @@ impl Release<'_> {
         }
         Ok(None)
     }
-    /// Requires the full suite on exactly `commit`. Every queue run is one, so only a build
-    /// that expired or a commit that reached `main` another way gets a run dispatched on a
+    /// Requires the full suite on exactly `commit`. Every push to main runs it, so only a build
+    /// that expired, or a commit main's run never published, gets a run dispatched on a
     /// temporary branch at the commit and awaited.
     pub(super) fn full_suite(&self, commit: &str) -> Result<()> {
         let url = match self.fully_validated(commit)? {

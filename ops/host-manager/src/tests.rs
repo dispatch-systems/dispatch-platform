@@ -297,9 +297,9 @@ impl System for Fake {
         self.elapsed.set(self.elapsed.get() + d);
     }
 }
-fn queue_url(commit: &str) -> String {
+fn runs_url(commit: &str) -> String {
     format!(
-        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=merge_group&head_sha={commit}&per_page=20"
+        "repos/{REPOSITORY}/actions/workflows/checks.yml/runs?event=push&branch=main&head_sha={commit}&per_page=20"
     )
 }
 fn git(root: &Path, args: &[&str]) -> String {
@@ -386,8 +386,8 @@ impl Fixture {
         let system = Fake::default();
         system.root.replace(Some((root.clone(), environment)));
         if environment == Environment::Dev {
-            // Unless a test queues it, a commit reached main without the merge queue.
-            system.reply(&queue_url(&new), vec![json!({"workflow_runs":[]})]);
+            // Unless a test runs the checks on it, a commit on main has no run yet.
+            system.reply(&runs_url(&new), vec![json!({"workflow_runs":[]})]);
         }
         let updater = Updater::new(&root, environment, &system).unwrap();
         let old_manifest = artifact(&updater.active, &old, "0.1.0", false);
@@ -431,12 +431,12 @@ impl Fixture {
             json!({"oldDigest":self.old_manifest.digest,"newDigest":self.new_manifest.digest})
         }
     }
-    /// The queue run that landed `new` on main and published its build as run 17.
+    /// The push run of `new` on main, which published its build as run 17.
     fn run(&self) -> Value {
-        json!({"id":17,"head_sha":self.new,"head_branch":format!("gh-readonly-queue/main/pr-7-{}",self.old),"event":"merge_group","status":"completed","conclusion":"success","head_repository":{"full_name":REPOSITORY},"run_attempt":1})
+        json!({"id":17,"head_sha":self.new,"head_branch":"main","event":"push","status":"completed","conclusion":"success","head_repository":{"full_name":REPOSITORY},"run_attempt":1})
     }
     fn run_url(&self) -> String {
-        queue_url(&self.new)
+        runs_url(&self.new)
     }
     fn package(&self) -> Vec<u8> {
         let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(
@@ -445,9 +445,6 @@ impl Fixture {
         ));
         tar.append_dir_all(".", &self.candidate).unwrap();
         tar.into_inner().unwrap().finish().unwrap()
-    }
-    fn queue_run(&self) -> Value {
-        json!({"id":23,"head_sha":self.new,"head_branch":format!("gh-readonly-queue/main/pr-7-{}",self.old),"event":"merge_group","status":"completed","conclusion":"success","head_repository":{"full_name":REPOSITORY},"run_attempt":1})
     }
     fn dev_download(&self) {
         self.publish(17, &format!("dispatch-main-{}", self.new), 42);
@@ -680,7 +677,7 @@ fn latest_workflow_rerun_supersedes_green_validation() {
     bad["run_attempt"] = json!(2);
     bad["conclusion"] = json!("failure");
     let runs = json!([f.run(), bad]);
-    let selected = releases::latest_run(&runs, &f.new, "merge_group", None, false).unwrap();
+    let selected = releases::latest_run(&runs, &f.new, "push", Some("main"), false).unwrap();
     assert!(!releases::passed(selected));
     f.system
         .reply(&f.run_url(), vec![json!({"workflow_runs":runs})]);
@@ -718,19 +715,19 @@ fn dev_download_installs_only_with_still_current_validation() {
     }
 }
 #[test]
-fn a_pending_or_failed_queue_run_keeps_the_old_runtime() {
+fn a_pending_or_failed_push_run_keeps_the_old_runtime() {
     for failed in [false, true] {
         let f = Fixture::new(Environment::Dev);
-        f.publish(23, &format!("dispatch-main-{}", f.new), 43);
-        let mut queued = f.queue_run();
+        f.dev_download();
+        let mut run = f.run();
         if failed {
-            queued["conclusion"] = json!("failure");
+            run["conclusion"] = json!("failure");
         } else {
-            queued["status"] = json!("in_progress");
-            queued["conclusion"] = Value::Null;
+            run["status"] = json!("in_progress");
+            run["conclusion"] = Value::Null;
         }
         f.system
-            .reply(&queue_url(&f.new), vec![json!({"workflow_runs":[queued]})]);
+            .reply(&f.run_url(), vec![json!({"workflow_runs":[run]})]);
         f.updater().run_locked().unwrap();
         f.assert_old();
         assert!(f.system.actions().is_empty());
@@ -745,14 +742,14 @@ fn a_pending_or_failed_queue_run_keeps_the_old_runtime() {
     }
 }
 #[test]
-fn only_a_queue_run_into_main_with_its_build_installs() {
-    // A group merged into another branch is not main's: the commit waits.
+fn only_a_push_run_on_main_with_its_build_installs() {
+    // A push to another branch is not main's: the commit waits.
     let f = Fixture::new(Environment::Dev);
-    f.publish(23, &format!("dispatch-main-{}", f.new), 43);
-    let mut foreign = f.queue_run();
-    foreign["head_branch"] = json!(format!("gh-readonly-queue/other/pr-7-{}", f.old));
+    f.dev_download();
+    let mut foreign = f.run();
+    foreign["head_branch"] = json!("other");
     f.system
-        .reply(&queue_url(&f.new), vec![json!({"workflow_runs":[foreign]})]);
+        .reply(&f.run_url(), vec![json!({"workflow_runs":[foreign]})]);
     f.updater().run_locked().unwrap();
     f.assert_old();
     assert_eq!(
@@ -762,15 +759,13 @@ fn only_a_queue_run_into_main_with_its_build_installs() {
     // A passed run whose build expired is an error, not a wait: nothing else can supply it.
     let f = Fixture::new(Environment::Dev);
     f.system.reply(
-        &format!("repos/{REPOSITORY}/actions/runs/23/artifacts"),
+        &format!("repos/{REPOSITORY}/actions/runs/17/artifacts"),
         vec![
-            json!({"artifacts":[{"id":43,"name":format!("dispatch-main-{}", f.new),"expired":true}]}),
+            json!({"artifacts":[{"id":42,"name":format!("dispatch-main-{}", f.new),"expired":true}]}),
         ],
     );
-    f.system.reply(
-        &queue_url(&f.new),
-        vec![json!({"workflow_runs":[f.queue_run()]})],
-    );
+    f.system
+        .reply(&f.run_url(), vec![json!({"workflow_runs":[f.run()]})]);
     let error = f.updater().run_locked().unwrap_err().to_string();
     assert!(error.contains("build unavailable"), "{error}");
     f.assert_old();

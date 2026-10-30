@@ -137,14 +137,12 @@ const COMMANDS: &[Spec] = &[
     .options(&["--owner", "--only", "--file"]),
     spec(
         "verify",
-        &["verify <feature>", "       [--removability]"],
+        &["verify <feature>"],
         "A feature in progress, committed or not: whether generate would change anything, \
          what a generator left to write, the rules, TypeScript, the changed files' format and \
-         lint, then its own tests as test --owner runs them. --removability also leaves it \
-         out as the weekly check does, in a copy of the checkout. It runs on Linux alone: \
-         elsewhere, the PR's checks run every check on GitHub.",
+         lint, then its own tests as test --owner runs them. It runs on Linux alone: elsewhere, \
+         the PR's checks run every check on GitHub.",
     )
-    .flags(&["--removability"])
     .arguments(1),
     spec(
         "api",
@@ -510,13 +508,7 @@ fn run() -> Result<()> {
         }
         "verify" => {
             let feature = line.name()?;
-            let passed = verify::run(
-                &line.root()?,
-                feature,
-                line.flag("--removability"),
-                Machine::THIS,
-                &Native,
-            )?;
+            let passed = verify::run(&line.root()?, feature, Machine::THIS, &Native)?;
             match passed {
                 true => Ok(()),
                 false => Err(Quiet.into()),

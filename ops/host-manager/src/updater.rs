@@ -559,30 +559,19 @@ impl<'a> Updater<'a> {
         );
         Ok(())
     }
-    /// The passed queue run of `commit` and the build it published, or the run still deciding.
-    /// The queue tests exactly the commit it then pushes to the branch, so its run decides; a
-    /// commit without one waits.
+    /// The passed push run of `commit` on `branch` and the build it published, or the run still
+    /// deciding. The push run tests exactly the commit the branch moved to, so its run decides;
+    /// a commit without one waits.
     fn validated_build(&self, branch: &str, commit: &str) -> Result<Checked> {
-        let queued = io::github(
+        let runs = io::github(
             self.system,
             &format!(
-                "actions/workflows/checks.yml/runs?event=merge_group&head_sha={commit}&per_page=20"
+                "actions/workflows/checks.yml/runs?event=push&branch={branch}&head_sha={commit}&per_page=20"
             ),
         )?;
-        let prefix = format!("gh-readonly-queue/{branch}/");
-        let groups: Vec<Value> = queued["workflow_runs"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|run| {
-                run["head_branch"]
-                    .as_str()
-                    .is_some_and(|name| name.starts_with(&prefix))
-            })
-            .cloned()
-            .collect();
-        let groups = Value::Array(groups);
-        let Some(run) = releases::latest_run(&groups, commit, "merge_group", None, false) else {
+        let Some(run) =
+            releases::latest_run(&runs["workflow_runs"], commit, "push", Some(branch), false)
+        else {
             return Ok(Checked::Pending(Value::Null));
         };
         if !releases::passed(run) {

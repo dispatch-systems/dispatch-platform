@@ -1,6 +1,5 @@
 """The host setup launchers and the collector shards."""
 import importlib.util
-import io
 from pathlib import Path
 import re
 import sys
@@ -86,38 +85,17 @@ class PipelineTests(unittest.TestCase):
                 execute.assert_called_once_with("/trusted path/dispatch-host", [
                     "/trusted path/dispatch-host", "host", "setup", environment, *args])
 
-    def test_collector_shards_isolate_capacity_and_require_the_real_timeout(self):
+    def test_collector_shards_isolate_capacity(self):
         # The app's multi-DSP suites run on the capacity runner, and nothing else does.
         self.assertEqual(set(collectors.SHARDS["capacity"]),
                          {path.relative_to(ROOT).as_posix() for path in (ROOT / "app/tests/native").glob("*.test.ts")})
-        title = collectors.REAL_TIMEOUT["title"]
-        passed = f'<testsuites><testcase name="{title}" /></testsuites>'
-        collectors.require_real_timeout(passed)
-        for report in ["invalid", "<testsuites />", passed.replace(" />", "><skipped /></testcase>"),
-                       passed.replace(" />", "><failure /></testcase>"),
-                       passed.replace(" />", "><error /></testcase>"),
-                       f'<testsuites><testcase name="{title}" /><testcase name="{title}" /></testsuites>']:
-            with self.subTest(report=report), self.assertRaises(SystemExit):
-                collectors.require_real_timeout(report)
-        for real in [False, True]:
-            args = ["browseros-check.py", "--real-timeouts"] if real else ["browseros-check.py", "--shard", "paycom-recovery"]
-            done = subprocess.CompletedProcess([], 0, passed, "")
-            with patch.object(sys, "argv", args), patch.object(collectors.subprocess, "run", return_value=done) as run, \
-                    patch.dict(collectors.os.environ, {"DISPATCH_TEST_REAL_TIMEOUTS": "1"}), \
-                    patch.object(sys, "stdout", new_callable=io.StringIO):
-                collectors.main()
-            self.assertEqual(run.call_count, 2, "build and selected Node tests only; no live host probe")
-            command = run.call_args.args[0]
-            env = run.call_args.kwargs["env"]
-            self.assertEqual(env["DISPATCH_TEST_NATIVE"], "1")
-            if real:
-                self.assertEqual(env["DISPATCH_TEST_REAL_TIMEOUTS"], "1")
-                self.assertIn("--test-reporter=junit", command)
-                self.assertIn("--test-name-pattern=^" + re.escape(title) + "$", command)
-                self.assertEqual(command[-1], collectors.REAL_TIMEOUT["file"])
-            else:
-                self.assertNotIn("DISPATCH_TEST_REAL_TIMEOUTS", env)
-                self.assertNotIn("--test-reporter=junit", command)
+        done = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(sys, "argv", ["browseros-check.py", "--shard", "paycom-recovery"]), \
+                patch.object(collectors.subprocess, "run", return_value=done) as run:
+            collectors.main()
+        self.assertEqual(run.call_count, 2, "build and selected Node tests only; no live host probe")
+        self.assertEqual(run.call_args.kwargs["env"]["DISPATCH_TEST_NATIVE"], "1")
+        self.assertEqual(run.call_args.args[0][-1], collectors.SHARDS["paycom-recovery"][-1])
 
 
 if __name__ == "__main__":

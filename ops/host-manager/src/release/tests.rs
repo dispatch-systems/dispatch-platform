@@ -294,7 +294,7 @@ fn git(root: &Path, args: &[&str]) -> String {
     .trim()
     .into()
 }
-/// Merges a PR's change into main through a merge commit, as the queue does.
+/// Merges a PR's change into main through a merge commit.
 fn merge_to_main(root: &Path, name: &str) -> String {
     git(root, &["checkout", "-q", "-b", name, "main"]);
     fs::write(root.join(name), name).unwrap();

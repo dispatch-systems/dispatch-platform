@@ -1,8 +1,8 @@
 name: Dependency security
-# Nightly, so new advisories against unchanged dependencies surface; every queue run audits
+# Nightly, so new advisories against unchanged dependencies surface; every checks run audits
 # too. CodeQL analyses each push to main as well. Its alerts go to code scanning and gate no
-# merge, so it runs after the merge instead of holding up the queue; a newer push to main
-# replaces an analysis still running.
+# merge, so it runs after the merge instead of holding up a PR; a newer push to main replaces
+# an analysis still running.
 on:
   push:
     branches: [main]

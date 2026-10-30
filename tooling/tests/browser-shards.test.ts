@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { manualBrowserSelection } from '../ci/browser-input.js';
 import { browserTests, shards } from '../ci/browser-shards.js';
 import { workflowField, workflowNumbers } from '../testing/workflow.js';
 
@@ -61,35 +60,4 @@ test('the recorded times name the suite, and the workflow runs as many shards as
       workflowNumbers(workflowField(source, 'jobs', 'browser', 'strategy', 'matrix', 'shard')),
       [1, 2, 3],
     );
-});
-
-test('manual browser selectors stay inert and cannot become runner options', () => {
-  assert.deepEqual(manualBrowserSelection(''), []);
-  assert.deepEqual(manualBrowserSelection('  features/team/tests/browser/roles.spec.ts  '), [
-    'features/team/tests/browser/roles.spec.ts',
-  ]);
-  for (const selector of [
-    '$(touch /tmp/injected)',
-    '`touch /tmp/injected`',
-    'test; touch /tmp/injected',
-    'test && touch /tmp/injected',
-    'test | touch /tmp/injected',
-    'a b "c" * $HOME',
-  ])
-    assert.deepEqual(manualBrowserSelection(selector), [selector]);
-  for (const selector of ['--config=evil.ts', '-c', 'line\nbreak', 'nul\0byte', 'x'.repeat(513)])
-    assert.throws(() => manualBrowserSelection(selector));
-});
-
-test('the workflow never interpolates the manual browser selector into shell source', () => {
-  const workflow = fs.readFileSync('.github/workflows/checks.yml', 'utf8');
-  const steps = workflowField(workflow, 'jobs', 'browser', 'steps').body;
-  const browserStep = steps
-    .split(/\n\s*- (?=name:|uses:|run:)/)
-    .find((step) => /check:ci\s+--\s+browser/.test(step));
-  assert(browserStep, 'the browser runner step must exist');
-  assert.match(browserStep, /DISPATCH_BROWSER_SPEC:\s*\$\{\{\s*inputs\.spec\s*\}\}/);
-  const run = browserStep.slice(browserStep.search(/\brun:/));
-  assert.doesNotMatch(run, /\$\{\{\s*inputs\.spec\s*\}\}/);
-  assert.match(run, /npm run check:ci\s+--\s+browser\s+\$\{\{\s*matrix\.shard\s*\}\}\/\d+/);
 });

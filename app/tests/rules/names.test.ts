@@ -43,7 +43,7 @@ test("core's product code names no feature's permission", () => {
 // that leaves another feature out has no such permission, so the frontend no longer
 // typechecks against the permissions it has, and the listing no longer matches the routes.
 // The app lists every feature, so it may name any. Feature and page ids, words routes and
-// tables use too, are left to the weekly removability check.
+// tables use too, are left alone.
 test("each owner's code and route listing name only its permissions and what it declares", () => {
   const owners = new Map(
     featureManifests().flatMap(({ owner, permissions }) =>

@@ -1,8 +1,8 @@
 name: Shared caches
-# Only main's caches reach every branch: a merge queue run saves to a branch GitHub deletes.
-# This refills, on every push to main, everything the platform checks only restore, and
-# nothing waits on it. Early each Monday it fills the week's new generation of Cargo's
-# caches (setup-tools), so the week's first queue run does not compile from nothing.
+# Only main's caches reach every branch: a PR's run saves caches only that PR reads. This
+# refills, on every push to main, everything the platform checks only restore, and nothing
+# waits on it. Early each Monday it fills the week's new generation of Cargo's caches
+# (setup-tools), so the week's first run does not compile from nothing.
 on:
   push:
     branches: [main]

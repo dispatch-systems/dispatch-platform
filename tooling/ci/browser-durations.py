@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Refresh browser-durations.json, the time each browser test takes in the merge queue.
+"""Refresh browser-durations.json, the time each browser test takes in main's runs of the checks.
 
 The browser shards split the suite by these times, so each shard takes about as long as the
-others. Each entry is the median over the newest passing queue runs, read from the browser
+others. Each entry is the median over main's newest passing runs, read from the browser
 jobs' logs. A test missing from the file counts as the median of the rest, so the file only
 needs refreshing when the split drifts: `python3 tooling/ci/browser-durations.py [runs]`.
 """
@@ -40,7 +40,7 @@ def times(log):
 def main(argv=None):
     count = int((argv if argv is not None else sys.argv[1:] or ["10"])[0])
     runs = api(f"repos/{REPOSITORY}/actions/workflows/checks.yml/runs"
-               f"?event=merge_group&status=success&per_page={count}")["workflow_runs"]
+               f"?event=push&branch=main&status=success&per_page={count}")["workflow_runs"]
     samples = {}
     for run in runs:
         jobs = api(f"repos/{REPOSITORY}/actions/runs/{run['id']}/jobs?per_page=100")["jobs"]
@@ -52,10 +52,10 @@ def main(argv=None):
             for test, seconds in times(log).items():
                 samples.setdefault(test, []).append(seconds)
     if not samples:
-        raise SystemExit("No passing browser tests found in the queue runs' logs")
+        raise SystemExit("No passing browser tests found in main's runs' logs")
     medians = {test: round(statistics.median(values), 1) for test, values in sorted(samples.items())}
     OUTPUT.write_text(json.dumps(medians, indent=2, ensure_ascii=False) + "\n")
-    print(f"{len(medians)} browser tests from {len(runs)} queue runs written to {OUTPUT}")
+    print(f"{len(medians)} browser tests from {len(runs)} runs on main written to {OUTPUT}")
 
 
 if __name__ == "__main__":

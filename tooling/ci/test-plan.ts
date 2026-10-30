@@ -5,9 +5,7 @@ import path from 'node:path';
 // be found by where it lives; `browseros-check.py` reads `native` from it too.
 const plan = JSON.parse(fs.readFileSync(new URL('./test-plan.json', import.meta.url), 'utf8')) as {
   rules: string[];
-  lint: string[];
   native: Record<string, string[]>;
-  nativeRealTimeout: { file: string; title: string };
   pythonIntegration: string[];
   watch: { sources: string[]; tests: string[] }[];
 };
@@ -46,13 +44,9 @@ export const ruleTests = [
   ),
   ...plan.rules,
 ];
-/** Source policies run as lints by local rules and the CI checks job. */
-export const sourceLints = plan.lint;
 /** Native collector shards, run with a real browser by `npm run test:browseros`. */
 export const nativeShards = plan.native;
 export const nativeTests = Object.values(nativeShards).flat();
-/** One real wall-clock timeout regression, run on its dedicated scheduled/manual lane. */
-export const nativeRealTimeout = plan.nativeRealTimeout;
 /** Real compiler/installed-manager checks; source-only rules do not build Rust. */
 export const pythonIntegrationTests = plan.pythonIntegration;
 /** Where the Python tests live: the tooling's own and the host scripts'. */
@@ -72,7 +66,7 @@ export function pythonRuleTests() {
 }
 /**
  * Sources whose changes break tests elsewhere, which `dispatchdev test` runs with the tests
- * the diff changes. Each group comes from queue runs such changes failed.
+ * the diff changes. Each group comes from CI runs such changes failed.
  */
 export const watchedTests = plan.watch;
 

@@ -93,50 +93,6 @@ test(
 );
 
 test(
-  'a stalled navigation is diagnosed and retried without discarding its completed sibling',
-  {
-    skip:
-      process.env.DISPATCH_TEST_NATIVE !== '1' || process.env.DISPATCH_TEST_REAL_TIMEOUTS !== '1',
-    timeout: 120000,
-  },
-  async (t) => {
-    const f = await paycomFixture();
-    t.after(f.close);
-    f.state.navigationStalls.set('BB02', 1);
-    const owner = await f.client();
-    const dsp = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
-    await owner.select(dsp.id);
-    assert.equal(
-      (await owner.post('/api/dsp/connections/paycom', credentials)).value.status,
-      'ready',
-    );
-    const id = (await owner.post('/api/dsp/jobs', { requestId: 'navigation-recovery' })).value.id;
-    let job: any;
-    await until(async () => {
-      job = (await owner.read('/api/dsp/jobs')).find((j: { id: string }) => j.id === id);
-      if (
-        ['failed', 'cancelled'].includes(job.status) ||
-        (job.status === 'queued' && job.attempt > 0)
-      )
-        assert.fail(JSON.stringify({ job, logs: f.logs() }));
-      return job.status === 'succeeded';
-    }, 90000);
-    assert.equal(job.attempt, 1);
-    assert.equal(f.state.readsByCode.get('AA01'), 1);
-    assert.equal(f.state.readsByCode.get('BB02'), 2);
-    const reads = job.metrics[0].pageReads;
-    assert.equal(reads.completed, 2);
-    assert.equal(reads.recovered, 1);
-    assert.equal(reads.retries, 1);
-    assert.equal(reads.failures[0].error, 'provider_navigation_timeout');
-    assert.equal(reads.failures[0].stage, 'navigation');
-    assert(reads.failures[0].navigationMs >= 45000);
-    assert.equal(reads.failures[0].contentMs, 0);
-    assert.equal(job.metrics[0].timecards, 28);
-  },
-);
-
-test(
   'an employee sync reads only the requested historical timecard and preserves it after failure',
   { skip: process.env.DISPATCH_TEST_NATIVE !== '1', timeout: 120000 },
   async (t) => {

@@ -334,8 +334,8 @@ pub fn plan(root: &Path, runner: &dyn Runner) -> Result<Plan> {
     })
 }
 /// What follows a passing check.
-pub const NEXT: &str = "Next, push the branch and open its PR with gh pr create, then gh pr \
-     merge --auto --squash: it merges once its checks on GitHub pass.";
+pub const NEXT: &str = "Next, push the branch and open its PR with gh pr create; once its \
+     checks on GitHub pass, gh pr merge --squash merges it.";
 /// `dispatchdev check --plan`: what to run, without running it.
 pub fn print(plan: &Plan) {
     println!(

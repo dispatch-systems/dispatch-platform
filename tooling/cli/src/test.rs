@@ -61,12 +61,10 @@ pub fn steps(commands: &[String]) -> Vec<Step> {
         .collect()
 }
 /// Whether a step builds, and so waits its turn for a build slot (`crate::slot`): Cargo, the
-/// debug backend's and the fixture's builds, packaging, and leaving a feature out, which builds
-/// the app without it. A step that only runs tests takes none.
+/// debug backend's and the fixture's builds, and packaging. A step that only runs tests takes
+/// none.
 fn builds(command: &str) -> bool {
-    command.starts_with("cargo ")
-        || [BUILD, FIXTURE, PACKAGE, RELEASE_PACKAGE].contains(&command)
-        || command.starts_with("npm run check:removability ")
+    command.starts_with("cargo ") || [BUILD, FIXTURE, PACKAGE, RELEASE_PACKAGE].contains(&command)
 }
 /// Every file the checkout changed from where it left `origin/main`, committed or not, deleted
 /// files aside.
@@ -264,7 +262,7 @@ pub fn label(command: &str) -> String {
 }
 /// Removes the folders of runs that ended without cleaning up, killed or interrupted, each named
 /// for its run's process.
-pub(crate) fn sweep(builds: &Path) {
+fn sweep(builds: &Path) {
     let Ok(entries) = fs::read_dir(builds) else {
         return;
     };
@@ -325,16 +323,6 @@ impl Run {
         log: &Path,
         env: &[(&str, &OsStr)],
     ) -> Result<(bool, std::time::Duration)> {
-        self.step_in(&self.root, step, log, env)
-    }
-    /// Runs `step` as `step` does, in the folder `cwd`, such as a copy of the checkout.
-    pub fn step_in(
-        &self,
-        cwd: &Path,
-        step: &Step,
-        log: &Path,
-        env: &[(&str, &OsStr)],
-    ) -> Result<(bool, std::time::Duration)> {
         let fixture = &crate::build::built(&self.build, &crate::build::FIXTURE)[0];
         // A checkout from before the debug package packages the release build in the checkout
         // itself, where the build cache serves it.
@@ -371,7 +359,7 @@ impl Run {
             }
             None => command.to_owned(),
         };
-        let (ok, took) = workspace::logged(&command, cwd, log, &[&own[..], env].concat())?;
+        let (ok, took) = workspace::logged(&command, &self.root, log, &[&own[..], env].concat())?;
         if ok && step.command == FIXTURE {
             self.fixture.set(true);
         }
@@ -628,7 +616,7 @@ mod tests {
                 .to_string(),
             refusal("test")
         );
-        let verified = crate::verify::run(root, "communications", false, Machine::Mac, &Nothing);
+        let verified = crate::verify::run(root, "communications", Machine::Mac, &Nothing);
         assert_eq!(verified.unwrap_err().to_string(), refusal("verify"));
     }
 }

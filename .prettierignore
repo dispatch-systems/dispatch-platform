@@ -6,7 +6,6 @@ target/
 Cargo.lock
 
 .build-staging-*/
-.removability/
 .test-build/
 **/generated/
 
