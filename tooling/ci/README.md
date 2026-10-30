@@ -44,20 +44,16 @@ The ruleset expects the `platform` check on a PR head before the queue admits it
 nothing; the queue's own gate decides, and a PR queued before it passed is dropped as an
 invalid merge commit.
 
-`dispatchdev` (`tooling/cli/`) holds what runs on this machine, and `dispatchdev help` lists
-it. A change goes from `start` (its worktree, branch and scratch folder, once the changes whose
-PRs merged are removed, and with `--preview` its preview's build) through `preview` (its link,
-into the fixture's DSP unless told otherwise), `api` (signed-in calls to the preview), `shot` (a
-PNG of a page of it, signed in once for each account), `check` and `ci`, `review` when one is
-asked for (each pass's brief, for a reviewer started through T3 with the model `review.rs`
-names) and `pr` to `ship`, which merges it, removes what it made and waits for Dev; `finish`
-does the last two for a change `ship` didn't see through, or drops one with `--abandon`.
-`status` shows the workspace, and `status --json` writes it as JSON. A Mac runs neither the
-previews nor the local checks and tests (`tooling/cli/src/machine.rs` says why): there
-`start --preview`, `preview`, `api`, `shot`, `logs`, `check`, `test` and `verify` refuse, GitHub's
-checks alone decide for `ci` and `ship`, and `status` reads what Dev runs from its public health. `dispatchdev build`
-builds the package's two executables, the backend and the support worker, in one Cargo pass,
-through a cache keyed by their exact inputs and the compiler's fingerprint.
+`dispatchdev` (`tooling/cli/`) holds what runs on a developer's machine, and `dispatchdev help`
+lists it. `check`, `test` and `verify` look at a branch before its PR; `api` (signed-in calls)
+and `shot` (a PNG of a page, signed in once for each account) reach the dev server `npm run dev`
+runs in the checkout, which records itself in `.runtime/dev-server.json` while it runs. On
+dispatch-dev, `start`, `pr` and `finish` keep a change in a worktree of its own beside Dev's
+checkout, as the support worker does: `finish` removes what the change made once its PR merged,
+and waits for Dev. A Mac runs none of the local checks and tests (`tooling/cli/src/machine.rs`
+says why): there `check`, `test` and `verify` refuse, and the checks on the PR decide alone.
+`dispatchdev build` builds the package's two executables, the backend and the support worker,
+in one Cargo pass, through a cache keyed by their exact inputs and the compiler's fingerprint.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
 API tests, one at a time, a line each. Each run builds in a folder of its own under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
@@ -71,42 +67,13 @@ ends, before the agents' sessions, and stop when the session that started them e
 `--only` keeps one kind and `--file` one file. `dispatchdev verify <feature>` looks at a feature
 in progress, committed or not: `generate --check`, what a generator left to write, the rules,
 TypeScript, the changed files' format and lint, then its own tests as `test --owner` runs them.
-`dispatchdev check` stops a branch that isn't ready to push, then runs the rule checks
-(`npm run check:rules`, everything a push can fail on without a build), the TypeScript linter
-and clippy side by side; clippy builds in the checkout's own `target`, so a
-run after a small change takes seconds. A clippy pass is kept, in the repository's shared Git
+`dispatchdev check` stops a branch that isn't ready to push, on `main` or with changes not yet
+committed, then runs the rule checks (`npm run check:rules`, everything a push can fail on
+without a build), the TypeScript linter and clippy side by side; clippy builds in the
+checkout's own `target`, so a run after a small change takes seconds. A clippy pass is kept, in the repository's shared Git
 folder, for the Rust inputs it ran on, so clippy passes again without running until one of them
 changes, and a whole pass is kept for the committed tree it ran on, so the same tree passes
 again at once; `--plan` only names them.
-`dispatchdev ci <name>` runs the full checks earlier, on a change's committed branch while its
-preview is tried, so the queue run is rarely the first to fail. It pushes the branch at once
-and starts `checks.yml` on it with `gate=false`: the build isn't attested, and the gate, renamed
-so it reports no `platform` check on the PR's head, is skipped. On Linux the rule checks run here
-beside it, and their failure cancels the run. It follows the run every 10 seconds to its end and
-lists every failed job; jobs GitHub stopped itself, past their time limit or on a runner that never
-started, run again once. A newer run of the branch replaces it. `--rerun-failed` runs the failed
-jobs of the head's run again and follows them, for a failure that isn't the change's own.
-`--removability <feature>` starts and follows `removability.yml` the same way, for that
-feature alone, and `verify --removability` does when the branch is pushed as it is, or else
-runs the check in a copy of the checkout, built in a folder of its own.
-`dispatchdev ship <name>`, or the PR's number, takes a change to Dev. It checks what takes
-seconds first: the PR's body in the scratch folder's `pr-body.md`, whose first line is the
-title, that the branch merges cleanly into `main`, and the push. It then opens or updates the
-PR, reads it from GitHub's API every 10 seconds, adds it to the merge queue once its admission
-check passed and GitHub knows it merges cleanly, and waits until GitHub merges it. On Linux the
-rule checks run here meanwhile, unless the checks on GitHub passed on that very commit: the queue
-runs them again, so their failure here takes the PR out of the queue rather than wait for its
-run to fail. A newer push is queued in its turn. A head whose branch run failed isn't queued,
-and a branch run still going is cancelled when the PR is, since the queue runs the checks
-again. It
-stops with the reason when the PR conflicts with `main`, is a draft, closes, leaves the queue
-unmerged, with GitHub's reason and the failed jobs of its own queue run, or has not merged
-after 90 minutes. Once merged, it removes what the change made, as `finish` does, and waits
-until Dev runs the merge: through Dev's host manager where the workspace holds Dev, or else by
-Dev's public `/api/health`, at the `DISPATCH_ORIGIN` of the workspace's `dev/config/platform.env`,
-which `ship` checks before it pushes. Run again, it picks up where it stopped. It exits with 1 for a stop
-to fix and ship again, 2 for one the owner decides, such as a closed PR, and 3 once the PR merged
-but the clean-up or Dev's install didn't finish, which `finish` completes.
 
 Caches: only `main`'s reach every branch, since the queue's branches are deleted after each
 run. `caches.yml` refreshes them on every push to `main`: the release executables keyed by
