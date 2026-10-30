@@ -9,7 +9,7 @@ import { replaceBuild } from './build-output.js';
 const root = process.cwd(),
   out = path.join(root, '.build'),
   // For browser tests on this machine only: the debug backend, built through the cache in seconds
-  // where a release build takes minutes. The merge queue tests the release build.
+  // where a release build takes minutes. The checks on GitHub test the release build.
   debug = process.argv.includes('--debug');
 if (fs.existsSync(path.join(root, '.runtime')))
   throw new Error(

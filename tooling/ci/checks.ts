@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { assessmentFixture } from '../testing/ci-tools.js';
-import { manualBrowserSelection } from './browser-input.js';
 import { WORKERS, browserTests, shards } from './browser-shards.js';
 import { nodeTests, pythonTests, sourceLintCommands, type Command } from './execution-plan.js';
 import { workspaceCrates } from './workspace.js';
@@ -196,19 +195,15 @@ async function installBrowsers() {
 }
 /**
  * One shard of the browser suite against the build already in `.build`, as `browser 3/6`.
- * A manual lane names a spec or test after the shard; shards it leaves empty still pass.
+ * Playwright's own arguments may follow, as a spec or test to run alone; shards it leaves empty
+ * still pass.
  */
 async function browser() {
   const shard = /^([1-9]\d*)\/([1-9]\d*)$/.exec(process.argv[3] ?? '');
   if (!shard || Number(shard[1]) > Number(shard[2]))
     throw new Error('Browser shard required, as 1/6');
   const [index, count] = [Number(shard[1]), Number(shard[2])];
-  // workflow_dispatch passes its selector through the environment so a shell never parses it.
-  // Local callers can still pass normal Playwright arguments after the shard.
-  const only =
-    process.env.DISPATCH_BROWSER_SPEC === undefined
-      ? process.argv.slice(4).filter(Boolean)
-      : manualBrowserSelection(process.env.DISPATCH_BROWSER_SPEC);
+  const only = process.argv.slice(4).filter(Boolean);
   // The browser downloads and installs its system packages while Cargo compiles the
   // fixture; test:ui then finds the fixture already built.
   const fixture = assessmentFixture(process.env, process.cwd())

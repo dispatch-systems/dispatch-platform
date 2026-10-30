@@ -43,7 +43,7 @@ runs:
         echo "DISPATCH_CI_TOOLS=$GITHUB_WORKSPACE/.ci-tools" >> "$GITHUB_ENV"
         # Cargo's dependency caches only grow: each restores the last and saves what both
         # hold. A new generation every ISO week starts them clean; caches.yml fills it on
-        # Monday, before the week's first queue run.
+        # Monday, before the week's first run.
         echo "DISPATCH_RUST_CACHE=v0-rust-$(date -u +%G-W%V)" >> "$GITHUB_ENV"
     - name: Restore the CI and host tools
       id: tools

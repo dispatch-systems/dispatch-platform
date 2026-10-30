@@ -1,40 +1,21 @@
 name: Platform checks
-# One run per change, in the merge queue, on the exact squash commit the queue will push:
-# every regular suite, every time; the real timeout sentinel has its own weekly/manual lane.
-# Nothing runs on the PR itself. The gate publishes the tested build, which Dev installs and a
-# release stamps. A job that fails the gate tells the queue at once (fail-queue-entry), so the
-# PR leaves it without waiting for the rest of the run. Manual runs check a branch, or one
-# suite of it, on GitHub instead of on the machine that serves Dev. `dispatchdev ci` runs one
-# on a change's branch while its preview is tried, without the gate: so it publishes nothing,
-# and its PR's head carries no `platform` check but the one queue admission reads.
+# Every suite on every PR, and again on each push to main: the squash commit the PR became. The
+# `platform` gate is the one required check. On a PR it only judges; on main it also attests and
+# publishes the tested build, which Dev installs and a release stamps. A manual run publishes the
+# build of the commit it ran on the same way, as a release asks for a commit whose build expired.
 on:
-  merge_group:
-    types: [checks_requested]
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      suite:
-        description: What to run. Anything but "all" skips the gate, so the run publishes nothing.
-        type: choice
-        default: all
-        options: [all, build, checks, browser, core, api, collectors, benchmark, smoke, scaffold]
-      spec:
-        description: 'Browser suite only: spec files or a test name to run alone, as for npm run test:ui'
-        type: string
-        default: ''
-      gate:
-        description: Attest the build and judge the run with the gate, which publishes it. A change's branch run has neither.
-        type: boolean
-        default: true
 permissions:
   contents: read
   actions: read
-  # A failed job reports the failed gate to the merge queue at once.
-  checks: write
 concurrency:
-  # Every queue commit keeps its own run: it publishes the build Dev installs. Manual runs of
-  # one branch replace each other.
-  group: platform-checks-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+  # A PR's newer push replaces its run. Every commit of main keeps its own: each publishes the
+  # build Dev installs.
+  group: platform-checks-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_DEV_DEBUG: '0'
@@ -44,12 +25,10 @@ jobs:
   # exact-input cache when their sources are unchanged, and the dashboard from Vite.
   # Everything that tests the runtime downloads this package instead of building again.
   build:
-    if: contains('all build checks browser benchmark smoke', inputs.suite || 'all')
     permissions:
       contents: read
       id-token: write
       attestations: write
-      checks: write
     outputs:
       # Named by the attempt that built it. Rerunning only failed jobs keeps this job's
       # outputs, so the other jobs still find the bytes this job uploaded.
@@ -74,7 +53,7 @@ jobs:
           tar -czf dispatch-dev.tar.gz -C .build .
           echo "name=dispatch-candidate-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
       - name: Attest the runtime package
-        if: github.event_name != 'workflow_dispatch' || inputs.gate
+        if: github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
         with:
           subject-path: dispatch-dev.tar.gz
@@ -84,13 +63,10 @@ jobs:
           path: dispatch-dev.tar.gz
           if-no-files-found: error
           retention-days: 2
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # Types, formatting, the bundle budget and the dashboard logic tests, against the package.
   # The bundle test verifies the package through the host tool, which setup-tools restores.
   checks:
     needs: build
-    if: contains('all checks', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -108,13 +84,10 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- checks
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # The browser suite in six shards of about equal time, three workers each, every test with
   # its own server, port, database and mail. Failed shards upload their traces.
   browser:
     needs: build
-    if: contains('all browser', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -180,8 +153,6 @@ jobs:
       - name: Browser suite shard ${{ matrix.shard }} of 6
         env:
           DISPATCH_BROWSER_PACKAGES: ${{ runner.temp }}/browser-packages
-          # Manual text is data, never part of the runner's shell program.
-          DISPATCH_BROWSER_SPEC: ${{ inputs.spec }}
         run: npm run check:ci -- browser ${{ matrix.shard }}/6
       - name: Preserve failure traces
         if: failure()
@@ -199,13 +170,10 @@ jobs:
           path: test-results/**/attachments/documents-performance*.json
           if-no-files-found: ignore
           retention-days: 30
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # The packaged runtime starts, signs in and serves: what a release's smoke test asks of the
   # same bytes, so a release never finds out first. It speaks HTTP only, so it needs no browser.
   smoke:
     needs: build
-    if: contains('all smoke', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -223,73 +191,8 @@ jobs:
           name: ${{ needs.build.outputs.candidate }}
       - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
       - run: npm run check:ci -- smoke
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
-  # The workload regression measures the packaged build on a runner of its own. A build that
-  # breaks a budget is judged again beside the base's build on the same runner, so a runner that
-  # can't hold the budget for the base doesn't fail it. One that misses there too is measured
-  # once more, and fails only if it misses again.
-  benchmark:
-    needs: build
-    if: contains('all benchmark', inputs.suite || 'all')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 26.13.0
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: ${{ needs.build.outputs.candidate }}
-      - run: mkdir .build && tar -xzf dispatch-dev.tar.gz -C .build
-      # The base's package: the one its queue run published once it passed, or else that run's
-      # build. A manual run's base is where its branch left `main`. Without one, as for a base
-      # still building, the budgets alone judge.
-      - name: Fetch the base's build
-        env:
-          GH_TOKEN: ${{ github.token }}
-          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
-        run: |
-          api() { gh api "repos/$GITHUB_REPOSITORY/$1" "${@:2}"; }
-          BASE=${QUEUE_BASE:-$(api "compare/main...$GITHUB_SHA" --jq .merge_base_commit.sha || true)}
-          [ -n "$BASE" ] || { echo "No base found: the budgets alone judge."; exit 0; }
-          runs=$(api "actions/workflows/checks.yml/runs?event=merge_group&head_sha=$BASE&per_page=20" \
-            --jq '.workflow_runs[] | select(.head_branch | startswith("gh-readonly-queue/main/")) | .id' || true)
-          for run in $runs; do
-            id=$(api "actions/runs/$run/artifacts?per_page=100" --jq "[.artifacts[] | select(.expired | not)
-              | select(.name == \"dispatch-main-$BASE\" or (.name | startswith(\"dispatch-candidate-\")))]
-              | sort_by(.name) | last | .id // empty" || true)
-            if [ -n "$id" ] && api "actions/artifacts/$id/zip" > /tmp/base.zip \
-              && python3 -m zipfile -e /tmp/base.zip /tmp/base && mkdir .baseline \
-              && tar -xzf /tmp/base/dispatch-dev.tar.gz -C .baseline; then
-              echo "Measuring beside the build of the base $BASE, from run $run."
-              exit 0
-            fi
-            rm -rf .baseline
-          done
-          echo "No build of the base $BASE to measure beside: the budgets alone judge."
-      - run: npm run check:ci -- benchmark
-      - name: Preserve workload measurements
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: dispatch-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            /tmp/dispatch-rust-benchmark.json
-            /tmp/dispatch-rust-benchmark-base.json
-            /tmp/dispatch-rust-benchmark-again.json
-          if-no-files-found: ignore
-          retention-days: 30
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # Rust formatting, lints and tests.
   core:
-    if: contains('all core', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -303,12 +206,9 @@ jobs:
           profile: debug
           save: 'false'
       - run: npm run check:ci -- core
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # What every generator writes, made in a copy of the checkout: it builds, passes clippy,
   # TypeScript, the linter and the rules, and its Rust tests and agent tools' tests pass.
   scaffold:
-    if: contains('all scaffold', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -324,11 +224,8 @@ jobs:
       # generators update the lock offline: fetch the crates it names first.
       - run: cargo fetch --locked
       - run: npm run check:ci -- scaffold
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # The API tests against a debug backend, the Python tooling tests and the npm audit.
   api:
-    if: contains('all api', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -342,11 +239,8 @@ jobs:
           profile: debug
           save: 'false'
       - run: npm run check:ci -- api
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # The native collectors against their fixtures, with a real isolated browser.
   collectors:
-    if: contains('all collectors', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -365,12 +259,9 @@ jobs:
       - uses: ./.github/actions/setup-browseros
       - name: Native collector verification
         run: npm run test:browseros -- --shard ${{ matrix.shard }}
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # `cargo audit`, denying every warning but the yanked versions `cargo-audit.py` allows, each
   # with its reason.
   rust-advisories:
-    if: contains('all core', inputs.suite || 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -387,8 +278,6 @@ jobs:
         if: steps.audit-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
       - run: python3 tooling/ci/cargo-audit.py
-      - uses: ./.github/actions/fail-queue-entry
-        if: failure() && github.event_name == 'merge_group'
   # Builds the tools and fixture this ref's inputs lack, off the critical path, and saves
   # them to this ref's cache: the jobs that start later restore them instead of compiling.
   # `main`'s copies come from caches.yml. Every other job builds with Cargo when a tool is
@@ -445,15 +334,12 @@ jobs:
         with:
           path: .ci-tools/fixture/
           key: ${{ steps.restore.outputs.fixture-key }}
-  # The one required check. It passes only when every suite passed, then publishes the
-  # verified build under the commit's name: Dev installs it and a release stamps it. A
-  # manual run of one suite has no gate, so nothing partial is ever published.
+  # The one required check. It passes only when every suite passed and the build carries the
+  # run's own commit and a complete inventory. Outside a PR it then publishes that build under
+  # the commit's name: Dev installs it and a release stamps it.
   platform:
-    # Named apart in a run without the gate, since even skipped it would report a check.
-    name: ${{ (github.event_name != 'workflow_dispatch' || (inputs.gate && inputs.suite == 'all')) && 'platform' || 'no gate' }}
-    needs:
-      [build, checks, browser, smoke, benchmark, core, api, collectors, rust-advisories, scaffold]
-    if: always() && (inputs.suite || 'all') == 'all' && (github.event_name != 'workflow_dispatch' || inputs.gate)
+    needs: [build, checks, browser, smoke, core, api, collectors, rust-advisories, scaffold]
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -478,6 +364,7 @@ jobs:
       - name: Verify the build's source commit and inventory
         run: python3 tooling/ci/ci-verify.py dispatch-dev.tar.gz
       - name: Publish the verified build
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dispatch-main-${{ github.sha }}

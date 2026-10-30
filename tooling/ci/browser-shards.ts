@@ -11,7 +11,7 @@ type Suite = {
 /** The workers a shard runs its tests on. */
 export const WORKERS = 3;
 
-/** Median seconds per browser test in the merge queue, by `file › title`. */
+/** Median seconds per browser test in main's runs of the checks, by `file › title`. */
 const durations: Record<string, number> = JSON.parse(
   fs.readFileSync(new URL('./browser-durations.json', import.meta.url), 'utf8'),
 );
