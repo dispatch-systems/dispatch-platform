@@ -20,8 +20,7 @@ test = false
 
 [features]
 # The product is every feature. A build may leave one out, with every feature that declares
-# it, to prove nothing else needs it: tooling/ci/removability.ts. A test that needs the
-# whole product asks for `default`. A feature's own lists the features its crate uses.
+# it. A test that needs the whole product asks for `default`. A feature's own lists the features its crate uses.
 # Every feature: written from features/ by `npm run contracts:generate`, to the blank line.
 default = [
     "communications",

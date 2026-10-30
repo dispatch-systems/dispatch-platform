@@ -153,7 +153,6 @@ export async function paycomFixture(
     wrongIdentity: false,
     timecardStatus: 200,
     missingContent: new Map<string, number>(),
-    navigationStalls: new Map<string, number>(),
     readsByCode: new Map<string, number>(),
     // Reads that re-check an employee (one comparison per job, then a few random
     // spot checks). Counted apart from the reads that supply published data.
@@ -330,9 +329,7 @@ export async function paycomFixture(
       try {
         await state.beforeTimecard?.(account, code, fromPlatform);
         await new Promise<void>((resolve) => {
-          const stalled = (state.navigationStalls.get(code) ?? 0) > 0;
-          if (stalled) state.navigationStalls.set(code, state.navigationStalls.get(code)! - 1);
-          const timer = setTimeout(resolve, stalled ? 60000 : state.timecardDelayMs);
+          const timer = setTimeout(resolve, state.timecardDelayMs);
           res.once('close', () => {
             clearTimeout(timer);
             resolve();

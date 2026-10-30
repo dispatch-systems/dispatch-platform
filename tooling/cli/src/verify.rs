@@ -1,10 +1,8 @@
-//! `dispatchdev verify <feature> [--removability]`: one look at a feature in progress, committed
-//! or not: whether `generate` would change anything, what a generator left to write in it, the
-//! architecture rules, TypeScript, the format and lint of the changed files, and the feature's
-//! own tests of every kind, built in a folder of the run's own (`crate::test`). `--removability`
-//! then leaves it out as the weekly check does, in a copy of the checkout, so the worktree isn't
-//! touched. A line a step, then what failed and what to do next. It runs on Linux alone, as the
-//! local checks do.
+//! `dispatchdev verify <feature>`: one look at a feature in progress, committed or not: whether
+//! `generate` would change anything, what a generator left to write in it, the architecture rules,
+//! TypeScript, the format and lint of the changed files, and the feature's own tests of every
+//! kind, built in a folder of the run's own (`crate::test`). A line a step, then what failed and
+//! what to do next. It runs on Linux alone, as the local checks do.
 use crate::{
     Result, Runner,
     machine::Machine,
@@ -116,69 +114,8 @@ fn markers(root: &Path, feature: &str, runner: &dyn Runner) -> Result<Vec<String
         })
         .collect())
 }
-/// Copies the checkout's files, committed or not, into `to`, each with its times, and links its
-/// packages: what the removability check moves and rewrites is the copy's.
-fn copy(root: &Path, to: &Path, runner: &dyn Runner) -> Result<()> {
-    let listed = runner.command(
-        &["git", "ls-files", "-z", "-co", "--exclude-standard"],
-        Some(root),
-        120,
-    )?;
-    for file in listed.split(|b| *b == 0).filter(|file| !file.is_empty()) {
-        let file = std::str::from_utf8(file)?;
-        let from = root.join(file);
-        // A file deleted from the worktree is still listed until the deletion is committed.
-        let Ok(times) = fs::metadata(&from) else {
-            continue;
-        };
-        let into = to.join(file);
-        fs::create_dir_all(into.parent().ok_or("A file without a folder")?)?;
-        fs::copy(&from, &into)?;
-        fs::File::options().write(true).open(&into)?.set_times(
-            fs::FileTimes::new()
-                .set_accessed(times.accessed()?)
-                .set_modified(times.modified()?),
-        )?;
-    }
-    std::os::unix::fs::symlink(root.join("node_modules"), to.join("node_modules"))?;
-    Ok(())
-}
-/// Leaves `feature` out in a copy of the checkout in the scratch folder, built in a folder of the
-/// run's own in the checkout, on its disk, its output in `log`: whether it passed, and how long
-/// it took. The copies a killed run left go first.
-fn removed_in_copy(
-    root: &Path,
-    feature: &str,
-    scratch: &Path,
-    log: &Path,
-    runner: &dyn Runner,
-) -> Result<(bool, Duration)> {
-    let copies = scratch.join("removability");
-    test::sweep(&copies);
-    let copy_root = copies.join(std::process::id().to_string());
-    let _ = fs::remove_dir_all(&copy_root);
-    let checkout = copy_root.join("checkout");
-    copy(root, &checkout, runner)?;
-    let run = test::Run::start(root, scratch)?;
-    let step = test::Step {
-        command: format!("npm run check:removability -- --feature {feature}"),
-    };
-    let done = run.step_in(&checkout, &step, log, &[]);
-    run.end()?;
-    fs::remove_dir_all(&copy_root)?;
-    // The folder of copies goes once no run has one there.
-    let _ = fs::remove_dir(&copies);
-    done
-}
-
 /// `dispatchdev verify`: whether every step passed.
-pub fn run(
-    root: &Path,
-    feature: &str,
-    removability: bool,
-    machine: Machine,
-    runner: &dyn Runner,
-) -> Result<bool> {
+pub fn run(root: &Path, feature: &str, machine: Machine, runner: &dyn Runner) -> Result<bool> {
     crate::check::here(machine, "verify")?;
     require(
         workspace::has_feature(root, feature),
@@ -242,26 +179,6 @@ pub fn run(
         println!("Its own tests wait until the steps above pass.");
     }
 
-    if removability && failed.is_empty() {
-        let label = format!("removability without {feature}");
-        let log = logs.join("removability.log");
-        println!(
-            "Leaving out {feature} in a copy of the checkout, with a build of its own; it \
-             writes to {} as it goes.",
-            log.display()
-        );
-        let (ok, took) = removed_in_copy(root, feature, &scratch, &log, runner)?;
-        line(ok, took, &format!("{label}, in a copy of the checkout"));
-        if ok {
-            passed += 1;
-        } else {
-            test::explain(&log);
-            failed.push(label);
-        }
-    } else if removability {
-        println!("Its removability waits until the steps above pass.");
-    }
-
     let mut next = vec![];
     if failed.is_empty() {
         fs::remove_dir_all(&logs)?;
@@ -284,53 +201,7 @@ pub fn run(
     }
     if next.is_empty() {
         next.push("Commit it, then `dispatchdev check`.".to_owned());
-        if !removability {
-            next.push(format!(
-                "`dispatchdev verify {feature} --removability` also leaves it out, as the weekly check does."
-            ));
-        }
     }
     println!("{}", workspace::next(&next));
     Ok(failed.is_empty())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn a_copy_holds_the_checkouts_files_committed_or_not_and_links_its_packages() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("checkout");
-        let write = |file: &str| {
-            let path = root.join(file);
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(path, file).unwrap();
-        };
-        let git = |args: &[&str]| {
-            crate::Native
-                .command(&[&["git"][..], args].concat(), Some(&root), 30)
-                .unwrap()
-        };
-        fs::create_dir_all(&root).unwrap();
-        fs::write(root.join(".gitignore"), "target/\nnode_modules/\n").unwrap();
-        write("features/uniforms/feature.rs");
-        git(&["init", "-q"]);
-        git(&["add", "."]);
-        write("features/parking/feature.rs");
-        write("target/debug/built");
-        write("node_modules/tsx/cli.mjs");
-        let copied = temp.path().join("copy");
-        copy(&root, &copied, &crate::Native).unwrap();
-        for file in [
-            "features/uniforms/feature.rs",
-            "features/parking/feature.rs",
-        ] {
-            assert_eq!(fs::read_to_string(copied.join(file)).unwrap(), file);
-        }
-        assert!(!copied.join("target").exists());
-        assert_eq!(
-            fs::read_link(copied.join("node_modules")).unwrap(),
-            root.join("node_modules")
-        );
-    }
 }

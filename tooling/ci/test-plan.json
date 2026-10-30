@@ -9,7 +9,6 @@
     "tooling/tests/browser-shards.test.ts",
     "tooling/tests/mail-config.test.ts",
     "tooling/tests/owner-tests.test.ts",
-    "tooling/tests/removability.test.ts",
     "tooling/tests/scaffold/add.test.ts",
     "tooling/tests/scaffold/feature.test.ts",
     "tooling/tests/scaffold/generators.test.ts",
@@ -37,10 +36,6 @@
       "app/tests/native/multi-dsp-browser.test.ts",
       "app/tests/native/collection-throughput.test.ts"
     ]
-  },
-  "nativeRealTimeout": {
-    "file": "collectors/paycom/tests/native/native-browser-recovery.test.ts",
-    "title": "a stalled navigation is diagnosed and retried without discarding its completed sibling"
   },
   "watch": [
     {

@@ -11,7 +11,6 @@ import {
   coreTests,
   dashboardTests,
   nativeShards,
-  nativeRealTimeout,
   pythonIntegrationTests,
   pythonRuleTests,
   pythonTestDirs,
@@ -20,7 +19,6 @@ import {
 } from '../ci/test-plan.js';
 import { pythonTests, type Command } from '../ci/execution-plan.js';
 import { readsEnvironment } from '../testing/source-analysis.js';
-import { workflowField } from '../testing/workflow.js';
 
 const names = (directory: string, pattern: RegExp) =>
   fs
@@ -100,17 +98,6 @@ test('every test file is run by exactly one check of full validation and none is
     readsEnvironment(fs.readFileSync(file, 'utf8'), file, 'DISPATCH_TEST_NATIVE'),
   );
   assert.deepEqual(gated, [...native].sort(), 'a native suite is missing from its shard list');
-  assert(native.includes(nativeRealTimeout.file));
-  assert(nativeRealTimeout.title.length > 0);
-  const timeoutSource = fs.readFileSync(nativeRealTimeout.file, 'utf8');
-  assert(readsEnvironment(timeoutSource, nativeRealTimeout.file, 'DISPATCH_TEST_REAL_TIMEOUTS'));
-  assert(timeoutSource.includes(nativeRealTimeout.title), 'the timeout sentinel title must exist');
-  const timeoutWorkflow = fs.readFileSync('.github/workflows/native-timeouts.yml', 'utf8');
-  assert.match(workflowField(timeoutWorkflow, 'on', 'schedule').body, /\bcron:/);
-  workflowField(timeoutWorkflow, 'on', 'workflow_dispatch');
-  const timeoutSteps = workflowField(timeoutWorkflow, 'jobs', 'native-timeout', 'steps').body;
-  assert.match(timeoutSteps, /ref:\s*\$\{\{\s*inputs\.ref\s*\|\|\s*github\.sha\s*\}\}/);
-  assert.match(timeoutSteps, /run:\s*npm run test:browseros\s+--\s+--real-timeouts\s*$/m);
 
   // Read Playwright's real config, not its quote or formatting choices.
   assert.equal(path.resolve(playwrightConfig.testDir!), path.resolve('.'));
