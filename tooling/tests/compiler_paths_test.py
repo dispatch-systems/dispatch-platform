@@ -54,6 +54,33 @@ class CompilerPathTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             remap.mappings(ROOT, {"HOME": "/"})
 
+    def test_only_a_compile_that_can_name_the_checkout_maps_it_and_sccache_runs_it_if_there(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "operator"
+            root = home / "checkout"
+            registry = home / ".cargo/registry/src/serde"
+            for path in [root / "target/debug/build/ring/out", registry]:
+                path.mkdir(parents=True)
+            env = {"HOME": str(home)}
+            source = f"--remap-path-prefix={root}=/dispatch-build/source"
+            def run(cwd, cache=None, **extra):
+                return remap.command(root, "rustc", ["src/lib.rs"], {**env, **extra}, cwd, cache)
+            # The checkout's own crates, and a crate whose build script writes into it, map it.
+            self.assertIn(source, run(root))
+            self.assertIn(source, run(registry, OUT_DIR=str(root / "target/debug/build/ring/out")))
+            # A registry crate names nothing in it, so every checkout compiles it alike.
+            plain = run(registry)
+            self.assertNotIn(source, plain)
+            self.assertIn(f"--remap-path-prefix={home / '.cargo'}=/dispatch-build/cargo", plain)
+            self.assertEqual(plain[:2], ["rustc", "src/lib.rs"])
+            self.assertEqual(run(registry, cache="/bin/sccache")[:3], ["/bin/sccache", "rustc", "src/lib.rs"])
+
+    def test_cargo_settings_rustc_never_reads_leave_the_compile_alone(self):
+        kept = remap.environment({"CARGO_TARGET_DIR": "/run/1", "CARGO_INCREMENTAL": "0",
+                                  "CARGO_PKG_NAME": "serde", "PATH": "/bin"})
+        self.assertEqual(kept, {"CARGO_PKG_NAME": "serde", "PATH": "/bin",
+                                "SCCACHE_IGNORE_SERVER_IO_ERROR": "1"})
+
     def test_artifact_gate_rejects_home_and_custom_build_paths_without_printing_them(self):
         env = {"HOME": "/private/operator", "CARGO_HOME": "/cache/private-registry"}
         for mapped in [b"/dispatch-build/cargo/registry/a.rs", b"/dispatch-build/home/folder/a.rs"]:
