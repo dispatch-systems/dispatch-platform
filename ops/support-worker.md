@@ -58,17 +58,17 @@ install -m 700 "$manager_target/release/dispatch-host" "$bootstrap/dispatch-host
 unit_directory="$HOME/.config/systemd/user/dispatch-dev.service.d"
 mkdir -p "$unit_directory"
 dropin=$(mktemp --suffix=.conf "$unit_directory/99-ai-support-bootstrap-XXXXXX")
-printf '[Service]\nExecStartPre=\nExecStartPre="%s" host dev --root %%h/dispatch-platform/dev --verify\n' \
+printf '[Service]\nExecStartPre=\nExecStartPre="%s" host dev --root %%h/dispatch-platform/live --verify\n' \
   "$bootstrap/dispatch-host" > "$dropin"
 systemctl --user daemon-reload
-"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev"
-"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --wait "$checked_commit"
-"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --install-management
-"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --verify-management
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/live"
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/live" --wait "$checked_commit"
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/live" --install-management
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/live" --verify-management
 rm -- "$dropin"
 systemctl --user daemon-reload
 systemctl --user restart dispatch-dev.service
-"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/dev" --wait "$checked_commit"
+"$bootstrap/dispatch-host" host dev --root "$HOME/dispatch-platform/live" --wait "$checked_commit"
 rm -- "$bootstrap/dispatch-host"
 rmdir -- "$bootstrap"
 ```
@@ -95,7 +95,7 @@ retained previous management bundle. The updater still requires the immutable pu
 release, provenance, attestation, archive digest and source binding. This procedure publishes
 no release and authorizes no Production change. Production never enables a worker.
 
-Run the installed host manager's `host support --root $HOME/dispatch-platform/dev
+Run the installed host manager's `host support --root $HOME/dispatch-platform/live
 --install-unit` to install the unit from a verified active artifact. The command installs
 only on Dev and does not enable a worker without its private configuration. The Dev updater
 uses `try-restart` after successful activation, so an existing worker adopts the checked

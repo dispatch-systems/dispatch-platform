@@ -85,7 +85,7 @@ fn mint_script(active: &str, config: &str, environment: &str, origin: Option<&st
 
 /// Where Dev is installed on dispatch-dev, as Production is in `~/dispatch-platform/public`.
 pub fn dev_root() -> Result<PathBuf> {
-    Ok(PathBuf::from(std::env::var("HOME")?).join("dispatch-platform/dev"))
+    Ok(PathBuf::from(std::env::var("HOME")?).join("dispatch-platform/live"))
 }
 
 /// Mint access for the Dev installed at `dev` or for Production, then save it without replacing
