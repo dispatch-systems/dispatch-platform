@@ -1,7 +1,7 @@
-//! Contracts guarding queue admission and private service configuration.
+//! Contracts guarding private service configuration and what agents and GitHub are shown.
 use dispatch_support_worker::{
     config::{Config, Origin, ProductionReader, read_private},
-    github::{admitted, redact_identities},
+    github::redact_identities,
     hermes::{production_server, safe_job},
     intake::{Analysis, Decision},
     verification::cortex_collections,
@@ -16,7 +16,9 @@ fn config() -> Config {
             url: "https://dispatch.example".into(),
             token_file: PathBuf::from("/private/support.token"),
         }],
-        workspace_root: "/workspace".into(),
+        checkout: "/workspace/repo".into(),
+        worktrees: "/workspace/worktrees".into(),
+        agents: "/workspace/agents".into(),
         runtime_root: "/runtime".into(),
         hermes_source: "/hermes/hermes-agent".into(),
         hermes_python: "/hermes/python".into(),
@@ -89,20 +91,6 @@ fn service_origin_cannot_redirect_worker_authority_or_expose_it_in_a_url() {
         value.origins[0].url = origin.into();
         assert!(value.validate().is_err(), "{origin}");
     }
-}
-
-#[test]
-fn only_the_required_admission_success_permits_queuing() {
-    for (name, conclusion, expected) in [
-        ("platform", "SUCCESS", true),
-        ("platform", "FAILURE", false),
-        ("platform", "", false),
-        ("some-unrelated-check", "SUCCESS", false),
-    ] {
-        let status = json!({"commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"nodes":[{"name":name,"conclusion":conclusion}]}}}}]}});
-        assert_eq!(admitted(&status), expected);
-    }
-    assert!(!admitted(&json!({})));
 }
 
 #[test]

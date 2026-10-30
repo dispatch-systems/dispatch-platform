@@ -9,7 +9,7 @@ use dispatch_core::support::api::types::SupportJob;
 use serde_json::{Value, json};
 use std::fs;
 
-const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid} mergeQueueEntry{state position} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name conclusion status} ...on StatusContext{context state}}}}}}} timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{...on RemovedFromMergeQueueEvent{reason}}}}}}";
+const LOOK: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){id state isDraft headRefOid mergeable mergeCommit{oid}}}}";
 
 /// Redact known identities before any public GitHub mutation, including case variations.
 pub fn redact_identities(summary: &str, identities: &[&str]) -> String {
@@ -124,27 +124,88 @@ pub async fn publish(
     fs::create_dir_all(&scratch)?;
     let file = scratch.join("pr-body.md");
     fs::write(&file, body)?;
+    let file = file.to_str().ok_or("Non UTF8 PR body path")?;
+    // The branch's PR: opened the first time, its title and body kept current after a correction.
     command(
         &tree.path,
-        "dispatchdev",
+        "git",
         &[
-            "pr",
+            "push",
+            "-q",
+            "--force-with-lease",
+            "-u",
+            "origin",
             &tree.name,
-            "--title",
-            &title,
-            "--body",
-            file.to_str().ok_or("Non UTF8 PR body path")?,
         ],
     )
     .await?;
+    let repository = &config.repository;
+    let open = command(
+        &tree.path,
+        "gh",
+        &[
+            "pr",
+            "list",
+            "--repo",
+            repository,
+            "--head",
+            &tree.name,
+            "--state",
+            "open",
+            "--json",
+            "number",
+            "--jq",
+            ".[0].number // empty",
+        ],
+    )
+    .await?;
+    if open.is_empty() {
+        command(
+            &tree.path,
+            "gh",
+            &[
+                "pr",
+                "create",
+                "--repo",
+                repository,
+                "--base",
+                "main",
+                "--head",
+                &tree.name,
+                "--title",
+                &title,
+                "--body-file",
+                file,
+            ],
+        )
+        .await?;
+    } else {
+        command(
+            &tree.path,
+            "gh",
+            &[
+                "pr",
+                "edit",
+                &open,
+                "--repo",
+                repository,
+                "--title",
+                &title,
+                "--body-file",
+                file,
+            ],
+        )
+        .await?;
+    }
     let result = command(
         &tree.path,
         "gh",
         &[
             "pr",
             "view",
+            &tree.name,
             "--repo",
-            &config.repository,
+            repository,
             "--json",
             "number,url,headRefOid",
         ],
@@ -203,7 +264,7 @@ pub async fn cancel(config: &Config, job: &SupportJob, checkpoint: &Value) -> Re
         .ok_or("Cancellation branch missing")?
         .to_owned();
     let tree = Worktree {
-        path: config.workspace_root.join("worktrees").join(&name),
+        path: config.worktrees.join(&name),
         name,
     };
     let status = look(config, &tree, number).await?;
@@ -219,23 +280,6 @@ pub async fn cancel(config: &Config, job: &SupportJob, checkpoint: &Value) -> Re
     }
     if status["state"] == "CLOSED" {
         return Ok(());
-    }
-    if status["mergeQueueEntry"].is_object() {
-        let id = status["id"].as_str().ok_or("PR node id missing")?;
-        let query = "mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}";
-        command(
-            &tree.path,
-            "gh",
-            &[
-                "api",
-                "graphql",
-                "-f",
-                &format!("query={query}"),
-                "-f",
-                &format!("id={id}"),
-            ],
-        )
-        .await?;
     }
     if status["isDraft"] != true {
         command(
@@ -271,70 +315,53 @@ pub async fn ready(config: &Config, tree: &Worktree, number: u64) -> Result<()> 
     Ok(())
 }
 
-pub async fn enqueue(tree: &Worktree, status: &Value, head: &str) -> Result<()> {
+/// Squash-merges the verified head, once the PR's checks passed on it.
+pub async fn merge(tree: &Worktree, status: &Value, head: &str) -> Result<()> {
     require(
         is_sha(head) && status["headRefOid"] == head,
-        "Cannot queue a different or unverified head",
+        "Cannot merge a different or unverified head",
     )?;
     require(
         status["state"] == "OPEN"
             && status["isDraft"] == false
             && status["mergeable"] == "MERGEABLE",
-        "PR is not ready for the merge queue",
+        "PR is not ready to merge",
     )?;
-    let query = "mutation($id:ID!,$head:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head}){mergeQueueEntry{position}}}";
+    let query = "mutation($id:ID!,$head:GitObjectID!){mergePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head,mergeMethod:SQUASH}){pullRequest{number}}}";
     let id = status["id"].as_str().ok_or("PR node id missing")?;
-    let output = command(
-        &tree.path,
-        "gh",
-        &[
-            "api",
-            "graphql",
-            "-f",
-            &format!("query={query}"),
-            "-f",
-            &format!("id={id}"),
-            "-f",
-            &format!("head={head}"),
-        ],
-    )
-    .await?;
-    let result: Value = serde_json::from_str(&output)?;
+    let result = graphql(tree, query, &[("id", id), ("head", head)]).await?;
     require(
         result["errors"].is_null(),
-        "GitHub did not admit the verified support PR",
+        "GitHub did not merge the verified support PR",
     )
 }
 
-pub fn admitted(status: &Value) -> bool {
-    status["commits"]["nodes"]
-        .as_array()
-        .is_some_and(|commits| {
-            commits.iter().any(|commit| {
-                commit["commit"]["statusCheckRollup"]["contexts"]["nodes"]
-                    .as_array()
-                    .is_some_and(|checks| {
-                        checks.iter().any(|check| {
-                            (check["name"] == "platform" && check["conclusion"] == "SUCCESS")
-                                || (check["context"] == "platform" && check["state"] == "SUCCESS")
-                        })
-                    })
-            })
-        })
+async fn graphql(tree: &Worktree, query: &str, variables: &[(&str, &str)]) -> Result<Value> {
+    let mut args = vec![
+        "api".to_owned(),
+        "graphql".to_owned(),
+        "-f".to_owned(),
+        format!("query={query}"),
+    ];
+    for (name, value) in variables {
+        args.extend(["-f".to_owned(), format!("{name}={value}")]);
+    }
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    Ok(serde_json::from_str(
+        &command(&tree.path, "gh", &args).await?,
+    )?)
 }
 
-/// Where the PR's newest queue run stands.
-pub enum QueueRun {
-    /// None yet, or one that ended without failing.
-    Clear,
-    /// Still going. GitHub takes a PR out on its run's first failure, so a PR out of the queue
-    /// may have one still failing.
-    Going,
+/// Where the newest run of the checks on the PR's `head` stands.
+pub enum Checks {
+    /// None yet, or one still going.
+    Running,
+    Passed,
     /// Failed: the run, and the end of its failed jobs' logs.
     Failed(u64, String),
 }
 
-pub async fn queue_run(config: &Config, tree: &Worktree, number: u64) -> Result<QueueRun> {
+pub async fn checks(config: &Config, tree: &Worktree, head: &str) -> Result<Checks> {
     let output = command(
         &tree.path,
         "gh",
@@ -343,52 +370,50 @@ pub async fn queue_run(config: &Config, tree: &Worktree, number: u64) -> Result<
             "list",
             "--repo",
             &config.repository,
+            "--workflow",
+            "checks.yml",
             "--event",
-            "merge_group",
+            "pull_request",
+            "--commit",
+            head,
             "--limit",
-            "100",
+            "1",
             "--json",
-            "databaseId,headBranch,status,conclusion",
+            "databaseId,status,conclusion",
         ],
     )
     .await?;
     let runs: Vec<Value> = serde_json::from_str(&output)?;
-    let prefix = format!("gh-readonly-queue/main/pr-{number}-");
-    let Some(run) = runs.iter().find(|run| {
-        run["headBranch"]
-            .as_str()
-            .is_some_and(|branch| branch.starts_with(&prefix))
-    }) else {
-        return Ok(QueueRun::Clear);
+    let Some(run) = runs.first().filter(|run| run["status"] == "completed") else {
+        return Ok(Checks::Running);
     };
-    if run["status"] != "completed" {
-        return Ok(QueueRun::Going);
+    match run["conclusion"].as_str() {
+        Some("success") => return Ok(Checks::Passed),
+        Some("failure") => {}
+        _ => return Ok(Checks::Running),
     }
-    if run["conclusion"] == "failure" {
-        let id = run["databaseId"].as_u64().ok_or("Queue run id missing")?;
-        let logs = command(
-            &tree.path,
-            "gh",
-            &[
-                "run",
-                "view",
-                &id.to_string(),
-                "--repo",
-                &config.repository,
-                "--log-failed",
-            ],
-        )
-        .await?;
-        return Ok(QueueRun::Failed(
-            id,
-            logs.chars()
-                .rev()
-                .take(100_000)
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect(),
-        ));
-    }
-    Ok(QueueRun::Clear)
+    let id = run["databaseId"].as_u64().ok_or("Checks run id missing")?;
+    let logs = command(
+        &tree.path,
+        "gh",
+        &[
+            "run",
+            "view",
+            &id.to_string(),
+            "--repo",
+            &config.repository,
+            "--log-failed",
+        ],
+    )
+    .await?;
+    Ok(Checks::Failed(
+        id,
+        logs.chars()
+            .rev()
+            .take(100_000)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect(),
+    ))
 }

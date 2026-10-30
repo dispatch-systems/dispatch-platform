@@ -10,7 +10,7 @@ Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=SUPPORT_WORKER_CONFIG=%h/dispatch-platform/.runtime/support-worker/config.json
 Environment=SUPPORT_WORKER_RESOURCES=%h/dispatch-platform/dev/.build/services/support-worker/hermes
-Environment=SUPPORT_WORKSPACE_ROOT=%h/dispatch-platform
+Environment=SUPPORT_DEV_ROOT=%h/dispatch-platform/dev
 Environment=SUPPORT_COLLECTION_REFERENCE_FILE=%h/dispatch-platform/.runtime/support-worker/collection-reference.json
 ExecStart=%h/dispatch-platform/dev/.build/services/rust/dispatch-support-worker
 Restart=on-failure

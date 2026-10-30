@@ -247,10 +247,9 @@ def main():
     parser.add_argument("--state-root", type=Path)
     args = parser.parse_args()
     os.umask(0o077)
-    workspace = Path(os.environ.get("SUPPORT_WORKSPACE_ROOT", str(Path.home() / "dispatch-platform"))).resolve(strict=True)
     worktree = args.worktree.resolve(strict=True)
-    # By its real path: worktrees/ may link to a disk of its own.
-    worktrees = (workspace / "worktrees").resolve(strict=True)
+    # The worker's worktrees folder by its real path: it may link to a disk of its own.
+    worktrees = Path(os.environ["SUPPORT_WORKTREES"]).resolve(strict=True)
     if worktree.parent != worktrees or not re.fullmatch(r"support_[0-9a-f]{32}", args.ticket):
         raise ValueError("Assigned support worktree and ticket required")
     branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=worktree, text=True).strip()
@@ -264,7 +263,7 @@ def main():
         raise ValueError("Invalid credential reference")
     source = Path(reference["sourceRoot"]).resolve(strict=True)
     dsp = reference["sourceDsp"]
-    if source != workspace / "dev" or not re.fullmatch(r"dsp_[0-9a-f]{32}", dsp):
+    if source != Path(os.environ["SUPPORT_DEV_ROOT"]).resolve(strict=True) or not re.fullmatch(r"dsp_[0-9a-f]{32}", dsp):
         raise ValueError("Configured Dev verification account required")
     request = json.loads(args.request)
     if not isinstance(request, dict) or set(request) - {"date", "week", "collection"}:

@@ -1,25 +1,8 @@
 use dispatchdev_cli::{
-    Native, Result, Runner, api, build,
-    change::Change,
-    check, finish,
-    machine::Machine,
-    observation, pr, scaffold, shot, start, test, verify,
-    workspace::{Clock, Workspace},
+    Native, Result, Runner, api, build, check, machine::Machine, observation, scaffold, shot, test,
+    verify,
 };
-use std::{
-    collections::BTreeMap,
-    path::PathBuf,
-    time::{Duration, Instant},
-};
-
-/// Time as it passes: the monotonic clock, and a pause that sleeps.
-const CLOCK: Clock = Clock {
-    now: &Instant::now,
-    pause: &pause,
-};
-fn pause(seconds: u64) {
-    std::thread::sleep(Duration::from_secs(seconds));
-}
+use std::{collections::BTreeMap, path::PathBuf};
 
 /// A command: how it is written, what it does, and what it takes. The help is written from
 /// these, and each command's line is read by its own.
@@ -187,36 +170,6 @@ const COMMANDS: &[Spec] = &[
     .options(&["--out"])
     .arguments(1),
     spec(
-        "start",
-        &["start <name> [--from <ref>]"],
-        "A worktree and branch for the change from origin/main, its packages installed and its \
-         scratch folder made, once the changes whose PRs merged are removed as finish would.",
-    )
-    .options(&["--from"])
-    .arguments(1),
-    spec(
-        "pr",
-        &[
-            "pr <name> [--title <title>]",
-            "   [--body <file> | --skeleton]",
-        ],
-        "Check the title and body, push the branch, and open the PR or update it. The body is \
-         the scratch folder's pr-body.md, or --body's file, and its first line, # <title>, \
-         gives the title unless --title does. --skeleton --title instead starts pr-body.md with \
-         the title and the sections its type needs, unless it's there already.",
-    )
-    .flags(&["--skeleton"])
-    .options(&["--title", "--body"])
-    .arguments(1),
-    spec(
-        "finish",
-        &["finish <name> [--abandon]"],
-        "Once its PR merged, or with --abandon for one that never will: its worktree, build, \
-         branches and scratch folder go; then wait for Dev to run the merge.",
-    )
-    .flags(&["--abandon"])
-    .arguments(1),
-    spec(
         "new",
         &["new <kind> <name> [options]", "    [--dry-run] [--json]"],
         "On a branch, a feature, collector, Slack integration, agent tool or kind of slot that \
@@ -288,10 +241,6 @@ const SECTIONS: &[(&str, &[&str])] = &[
     ("Checking a branch:", &["check", "test", "verify"]),
     ("Trying it:", &["api", "shot", "browser"]),
     (
-        "A change in a worktree of its own, beside Dev's checkout:",
-        &["start", "pr", "finish"],
-    ),
-    (
         "Making things, and reading what the product has:",
         &[
             "new", "add", "generate", "list", "explain", "doctor", "todo",
@@ -316,8 +265,8 @@ fn help() -> String {
     }
     lines.push(String::new());
     lines.push(
-        "All but start, pr, finish and browser work on the checkout the current directory is in,\n\
-         or on --root <directory>. dispatchdev <command> --help shows one."
+        "All but browser work on the checkout the current directory is in, or on --root\n\
+         <directory>. dispatchdev <command> --help shows one."
             .to_owned(),
     );
     lines.join("\n")
@@ -381,7 +330,7 @@ impl Line {
     fn usage(&self) -> Box<dyn std::error::Error + Send + Sync> {
         format!("Usage: dispatchdev {}", self.spec.line()).into()
     }
-    /// The change a command names.
+    /// The one argument a command takes.
     fn name(&self) -> Result<&str> {
         self.arguments
             .first()
@@ -391,9 +340,6 @@ impl Line {
     /// The checkout to work on: `--root`, or the one the current directory is in.
     fn root(&self) -> Result<PathBuf> {
         checkout(self.option("--root"))
-    }
-    fn workspace(&self) -> Result<Workspace> {
-        Workspace::find(&std::env::current_dir()?, &Native)
     }
 }
 /// The checkout to work on: `root`, or the one the current directory is in, by its real path, as
@@ -548,49 +494,13 @@ fn run() -> Result<()> {
             let target = line.name()?;
             let output = line.option("--out").ok_or_else(|| line.usage())?;
             let summary = observation::run(
-                &line.workspace()?,
+                &observation::dev_root()?,
                 target,
                 std::path::Path::new(output),
                 &Native,
             )?;
             println!("{}", serde_json::to_string(&summary)?);
             Ok(())
-        }
-        "start" => {
-            let name = line.name()?;
-            start::run(
-                &line.workspace()?,
-                name,
-                line.option("--from").unwrap_or("origin/main"),
-                &Native,
-            )
-        }
-        "pr" => {
-            let name = line.name()?;
-            let ws = line.workspace()?;
-            let title = line.option("--title");
-            match (line.option("--body"), line.flag("--skeleton"), title) {
-                (Some(_), true, _) => Err("Choose --body or --skeleton.".into()),
-                (None, true, Some(title)) => pr::start_body(&ws, name, title),
-                (None, true, None) => Err("--skeleton needs the --title it starts with.".into()),
-                (body, false, title) => {
-                    let body = match body {
-                        Some(body) => PathBuf::from(body),
-                        None => pr::body_file(&Change::existing(&ws, name)?),
-                    };
-                    pr::run(&ws, name, title, &body, &Native).map(|_| ())
-                }
-            }
-        }
-        "finish" => {
-            let name = line.name()?;
-            finish::run(
-                &line.workspace()?,
-                name,
-                line.flag("--abandon"),
-                &Native,
-                &CLOCK,
-            )
         }
         "build" => {
             let root = line.root()?;
@@ -645,24 +555,21 @@ mod tests {
     }
     #[test]
     fn options_take_their_value_after_them_or_after_an_equals_sign() {
-        let start = find("start").unwrap();
-        for args in [
-            vec!["fix", "--from", "origin/x"],
-            vec!["fix", "--from=origin/x"],
-        ] {
-            let line = parse(start, args.into_iter().map(String::from).collect()).unwrap();
-            assert_eq!(line.option("--from"), Some("origin/x"));
-            assert_eq!(line.name().unwrap(), "fix");
+        let browser = find("browser").unwrap();
+        for args in [vec!["dev", "--out", "/x"], vec!["dev", "--out=/x"]] {
+            let line = parse(browser, args.into_iter().map(String::from).collect()).unwrap();
+            assert_eq!(line.option("--out"), Some("/x"));
+            assert_eq!(line.name().unwrap(), "dev");
         }
         let refused = |args: &[&str]| {
-            parse(start, args.iter().map(|arg| arg.to_string()).collect())
+            parse(browser, args.iter().map(|arg| arg.to_string()).collect())
                 .err()
                 .unwrap()
                 .to_string()
         };
-        assert!(refused(&["fix", "--keep"]).starts_with("start takes no --keep"));
-        assert!(refused(&["fix", "more"]).starts_with("start takes no more"));
-        assert_eq!(refused(&["fix", "--from"]), "--from needs a value");
+        assert!(refused(&["dev", "--keep"]).starts_with("browser takes no --keep"));
+        assert!(refused(&["dev", "more"]).starts_with("browser takes no more"));
+        assert_eq!(refused(&["dev", "--out"]), "--out needs a value");
     }
     #[test]
     fn the_help_fits_its_columns() {

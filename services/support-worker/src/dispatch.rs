@@ -164,21 +164,22 @@ async fn execute(
     }
 }
 
+/// How we work, then the development and feature docs a change follows, from the agent docs.
 fn rules(config: &Config) -> Result<String> {
-    let root = &config.workspace_root;
-    let mut instructions = fs::read_to_string(root.join("AGENTS.md"))?;
-    let skill = root.join(".agents/skills/dispatch-development");
+    let mut instructions = String::new();
     for file in [
-        "SKILL.md",
-        "references/workflow.md",
-        "references/writing-tests.md",
-        "references/feature-creation.md",
-        "references/mcp-tools.md",
+        "AGENTS.md",
+        "skills/dispatch-development/SKILL.md",
+        "skills/dispatch-development/references/workflow.md",
+        "skills/dispatch-development/references/writing-tests.md",
+        "skills/dispatch-features/SKILL.md",
+        "skills/dispatch-features/references/workflow.md",
+        "skills/dispatch-features/references/mcp.md",
     ] {
+        instructions.push_str(&fs::read_to_string(config.agents.join(file))?);
         instructions.push_str("\n\n");
-        instructions.push_str(&fs::read_to_string(skill.join(file))?);
     }
-    instructions.push_str("\n\nThe approved AI Support policy overrides interactive workflow steps: owner approval authorizes implementation, agent browser verification, PR creation and automatic existing-queue merge without another user preview or code review. Production releases remain separately authorized. Do not message other users via external channels.");
+    instructions.push_str("The approved AI Support policy overrides interactive workflow steps: owner approval authorizes implementation, agent browser verification, PR creation and its automatic merge once the PR's checks pass, without another user preview or code review. Production releases remain separately authorized. Do not message other users via external channels.");
     Ok(instructions)
 }
 
@@ -546,7 +547,7 @@ async fn investigate(
                     .await?;
                 drop(preview);
                 if let Some(tree) = tree {
-                    tree.cleanup_analysis(config).await?;
+                    tree.cleanup(config).await?;
                 }
                 return Ok(());
             }
@@ -586,10 +587,11 @@ async fn implement(
         .to_owned();
     'correction: loop {
         let current = saved(checkpoint);
-        let resume_queue = current["phase"] == "queued"
+        // `queued` is the platform's status for a published PR waiting to merge.
+        let merging = current["phase"] == "queued"
             && current["headSha"] == tree.head().await?
             && current["prNumber"].is_u64();
-        let (number, pr_url, head) = if resume_queue {
+        let (number, pr_url, head) = if merging {
             (
                 current["prNumber"].as_u64().ok_or("PR number missing")?,
                 current["prUrl"]
@@ -743,7 +745,7 @@ async fn implement(
                 .update(job, "github", json!({"prUrl":url,"headSha":head}))
                 .await?;
             github::register(config, job, &tree, number, &url).await?;
-            progress(platform, job, checkpoint, "queued", "The verified change is entering the existing merge queue", json!({"phase":"queued","headSha":head,"prNumber":number,"prUrl":url,"failure":null})).await?;
+            progress(platform, job, checkpoint, "queued", "The verified change merges once its checks pass", json!({"phase":"queued","headSha":head,"prNumber":number,"prUrl":url,"failure":null})).await?;
             (number, url, head)
         };
         {
@@ -767,10 +769,12 @@ async fn implement(
                 status["state"] == "OPEN",
                 "Support PR was closed without merging; owner action is needed",
             )?;
-            require(
-                status["headRefOid"] == head,
-                "The PR changed outside the verified support worktree; owner action is needed",
-            )?;
+            if status["headRefOid"] != head {
+                return Err(
+                    "The PR changed outside the verified support worktree; owner action is needed"
+                        .into(),
+                );
+            }
             if status["isDraft"] == true {
                 platform
                     .update(job, "github", json!({"prUrl":pr_url,"headSha":head}))
@@ -795,38 +799,34 @@ async fn implement(
                 .await?;
                 continue 'correction;
             }
-            let queue_run = github::queue_run(config, &tree, number).await?;
-            if let github::QueueRun::Failed(run, logs) = &queue_run
-                && *run > saved(checkpoint)["lastHandledRun"].as_u64().unwrap_or(0)
-            {
-                let run = *run;
-                failure = format!("Merge queue required checks failed in run {run}:\n{logs}");
-                progress(
-                    platform,
-                    job,
-                    checkpoint,
-                    "implementing",
-                    "Fixing required merge-queue checks",
-                    json!({"phase":"build","failure":failure,"lastHandledRun":run}),
-                )
-                .await?;
-                continue 'correction;
-            }
-            // Out of the queue with its run still going, it waits for that run's verdict.
-            if status["mergeQueueEntry"].is_null()
-                && !matches!(queue_run, github::QueueRun::Going)
-                && github::admitted(&status)
-                && status["mergeable"] == "MERGEABLE"
-            {
-                platform
-                    .update(job, "heartbeat", json!({"checkpoint":saved(checkpoint)}))
+            match github::checks(config, &tree, &head).await? {
+                github::Checks::Failed(run, logs)
+                    if run > saved(checkpoint)["lastHandledRun"].as_u64().unwrap_or(0) =>
+                {
+                    failure = format!("The PR's required checks failed in run {run}:\n{logs}");
+                    progress(
+                        platform,
+                        job,
+                        checkpoint,
+                        "implementing",
+                        "Fixing the PR's required checks",
+                        json!({"phase":"build","failure":failure,"lastHandledRun":run}),
+                    )
                     .await?;
-                github::enqueue(&tree, &status, &head).await?;
+                    continue 'correction;
+                }
+                github::Checks::Passed if status["mergeable"] == "MERGEABLE" => {
+                    platform
+                        .update(job, "heartbeat", json!({"checkpoint":saved(checkpoint)}))
+                        .await?;
+                    github::merge(&tree, &status, &head).await?;
+                }
+                _ => {}
             }
             // Remote CI does not monopolize the local supervisor. The exact verified head
             // and PR remain checkpointed while other tickets can be investigated/answered.
             tree.relieve_disk_pressure(config).await?;
-            platform.update(job, "wait", json!({"reason":"Waiting for the existing merge queue checks","checkpoint":saved(checkpoint),"retryAfterMs":15_000})).await?;
+            platform.update(job, "wait", json!({"reason":"Waiting for the PR's checks","checkpoint":saved(checkpoint),"retryAfterMs":15_000})).await?;
             return Ok(());
         }
     }
@@ -861,15 +861,11 @@ async fn release(
         is_sha(source) && is_sha(merge),
         "Release correlation requires immutable source and merge commits",
     )?;
-    let root = config.workspace_root.join("dev");
-    command(&root, "git", &["fetch", "origin", source]).await?;
-    if command(
-        &root,
-        "git",
-        &["merge-base", "--is-ancestor", merge, source],
-    )
-    .await
-    .is_err()
+    let root = &config.checkout;
+    command(root, "git", &["fetch", "origin", source]).await?;
+    if command(root, "git", &["merge-base", "--is-ancestor", merge, source])
+        .await
+        .is_err()
     {
         platform.update(job, "wait", json!({"reason":"The merged change is awaiting a production release","checkpoint":saved(checkpoint),"retryAfterMs":60_000})).await?;
         return Ok(());
@@ -938,6 +934,6 @@ async fn release(
         )
         .await?;
     drop(counterpart);
-    tree.cleanup_analysis(config).await?;
+    tree.cleanup(config).await?;
     Ok(())
 }

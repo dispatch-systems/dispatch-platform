@@ -22,7 +22,9 @@ core directly, avoiding the personal gateway and the updating CLI wrapper.
       "tokenFile": "/private/production-support.token"
     }
   ],
-  "workspaceRoot": "/opt/dispatch/workspace",
+  "checkout": "/opt/dispatch/repo",
+  "worktrees": "/opt/dispatch/worktrees",
+  "agents": "/opt/dispatch/agents",
   "runtimeRoot": "/var/lib/dispatch/support-worker",
   "hermesSource": "/opt/hermes/hermes-agent",
   "hermesPython": "/opt/hermes/tools/managed-python/bin/python3",
@@ -32,6 +34,8 @@ core directly, avoiding the personal gateway and the updating CLI wrapper.
 }
 ```
 
+`checkout` is the platform's clone each support branch's worktree starts from, `worktrees` the
+folder those worktrees go in, and `agents` the private agent docs whose rules every agent follows.
 Installed runtime resources are selected by `SUPPORT_WORKER_RESOURCES`. Profile instances live
 under `~/.hermes/profiles/dispatch-support-<environment>-<ticket>-<role>` so Hermes's supported
 root-auth fallback refreshes the single shared OAuth store. Refresh tokens are never copied.
@@ -80,14 +84,15 @@ regular account runs share a provider lock. Authentication/MFA failure waits rat
 Changed build and check scripts also run in bubblewrap, with no host network, a projected Git
 index and refs, and isolated build caches. Preview servers see only their artifact and private
 fixture or verified collection state. A private Unix relay exposes a loopback browser origin;
-the server cannot reach host or production services. Browser tooling is loaded from the trusted
-installed Dev dependency tree, never from agent-modifiable dependencies.
+the server cannot reach host or production services. Browser tooling is loaded from the clone's
+dependency tree, which no agent changes, never from a worktree's.
 
-The trusted publisher rechecks approval, uses the existing `dispatchdev` PR workflow, stores
-the accepted PR/head in the platform, then registers correlation with the Dispatch bot.
-GitHub admission and the existing merge queue remain mandatory.
-Failures and conflicts return to implementation and independent verification until GitHub
-confirms the merge. The ticket then waits for a separately authorized production release;
+Each ticket's branch gets a worktree of its own from current `main`. The trusted publisher
+rechecks approval, pushes the verified head and opens or updates its PR, stores the accepted
+PR/head in the platform, registers correlation with the Dispatch bot, then sets that exact head
+to squash-merge once the PR's required checks pass. A failed run of those checks and conflicts
+return to implementation and independent verification until GitHub confirms the merge; a head
+changed outside the worker has its merge taken back for the owner. The ticket then waits for a separately authorized production release;
 production source ancestry and read-only browser evidence determine resolution.
 
 Focused checks:

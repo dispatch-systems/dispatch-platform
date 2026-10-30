@@ -1,13 +1,13 @@
 //! Host-authorized observation access. Credentials travel through private files and captured
 //! subprocess output; the command's only public output is its origin, expiry and access mode.
-use crate::{Result, Runner, require, workspace::Workspace};
+use crate::{Result, Runner, require};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     fs,
     io::Write,
     os::unix::fs::{MetadataExt, PermissionsExt},
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -83,9 +83,14 @@ fn mint_script(active: &str, config: &str, environment: &str, origin: Option<&st
     )
 }
 
-/// Mint access for the installed Dev or Production instance, then save it without replacing
+/// Where Dev is installed on dispatch-dev, as Production is in `~/dispatch-platform/public`.
+pub fn dev_root() -> Result<PathBuf> {
+    Ok(PathBuf::from(std::env::var("HOME")?).join("dispatch-platform/dev"))
+}
+
+/// Mint access for the Dev installed at `dev` or for Production, then save it without replacing
 /// anything. The returned summary deliberately cannot contain the exchange credential.
-pub fn run(ws: &Workspace, target: &str, output: &Path, runner: &dyn Runner) -> Result<Value> {
+pub fn run(dev: &Path, target: &str, output: &Path, runner: &dyn Runner) -> Result<Value> {
     let (environment, origin) = match target {
         "dev" => ("preview", None),
         "production" => ("production", Some("https://admin.dspdispatch.com")),
@@ -93,12 +98,11 @@ pub fn run(ws: &Workspace, target: &str, output: &Path, runner: &dyn Runner) -> 
     };
     let parent = output_parent(output)?;
     let bytes = if target == "dev" {
-        let dev = ws.dev();
         let active = dev.join(".build");
         let config = dev.join("config/platform.env");
         let script = mint_script(
-            &quote(active.to_str().ok_or("Non-UTF8 workspace path")?),
-            &quote(config.to_str().ok_or("Non-UTF8 workspace path")?),
+            &quote(active.to_str().ok_or("Non-UTF8 Dev path")?),
+            &quote(config.to_str().ok_or("Non-UTF8 Dev path")?),
             environment,
             origin,
         );

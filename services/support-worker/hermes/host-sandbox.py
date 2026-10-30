@@ -115,8 +115,8 @@ def project_git(root, destination):
     destination.mkdir(parents=True, exist_ok=True, mode=0o700)
     common = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     index = Path(git(root, "rev-parse", "--path-format=absolute", "--git-path", "index"))
-    workspace = root.parent.parent
-    target = workspace / "dev/.git"
+    # The sandbox sees a Git folder of the branch alone where the clone's shared one is.
+    target = common
     branch = git(root, "symbolic-ref", "--short", "HEAD")
     if any(c not in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in branch):
         raise ValueError("Unsupported assigned branch")

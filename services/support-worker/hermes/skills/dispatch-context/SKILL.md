@@ -16,9 +16,9 @@ Preserve that scope and tenant isolation. Production is read-only. UI changes th
 run against the isolated preview. Do not expose private reports, credentials, cookies or
 screenshots in Git.
 
-Follow the injected repository AGENTS.md and Dispatch development instructions. In this
-workflow owner approval expressly covers implementation, independent browser verification,
-PR creation and the existing merge queue without a separate manual preview or code review.
+Follow the injected AGENTS.md and Dispatch development instructions. In this workflow owner
+approval expressly covers implementation, independent browser verification, PR creation and its
+merge once the PR's checks pass, without a separate manual preview or code review.
 No Fast mode, usage quota or arbitrary correction limit is authorized.
 
 Respond with valid JSON in the requested result contract. Unavailable credentials, MFA,

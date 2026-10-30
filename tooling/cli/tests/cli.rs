@@ -22,9 +22,12 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["deploy"]);
     assert!(!ok);
     assert!(error.contains("Unknown command deploy"), "{error}");
-    let (ok, _, error) = run(&["start"]);
+    let (ok, _, error) = run(&["browser"]);
     assert!(!ok);
-    assert!(error.contains("Usage: dispatchdev start <name>"), "{error}");
+    assert!(
+        error.contains("Usage: dispatchdev browser <dev | production>"),
+        "{error}"
+    );
     let (ok, _, error) = run(&["build", "--scope", "full"]);
     assert!(!ok);
     assert!(error.contains("build takes no --scope"), "{error}");
@@ -34,10 +37,10 @@ fn dispatchdev_shows_its_usage_and_refuses_what_it_does_not_take() {
     let (ok, _, error) = run(&["build", "--scope=full"]);
     assert!(!ok);
     assert!(error.contains("build takes no --scope=full"), "{error}");
-    let (ok, help, _) = run(&["start", "--help"]);
+    let (ok, help, _) = run(&["browser", "--help"]);
     assert!(ok);
     assert!(
-        help.starts_with("Usage: dispatchdev start <name>"),
+        help.starts_with("Usage: dispatchdev browser <dev | production>"),
         "{help}"
     );
     let (ok, _, error) = run(&["api", "GET"]);

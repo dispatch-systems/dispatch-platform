@@ -1,10 +1,7 @@
-//! The workspace: the folder holding `dev/`, the live Dev checkout, and `worktrees/`, one per
-//! change, where `start`, `pr` and `finish` keep their changes. Every checkout shares Git's data
-//! in `dev/.git`, so the workspace is found from any of them, or from the workspace folder
-//! itself. The helpers below serve every command, in any checkout.
-use crate::{Result, Runner, require};
+//! What every command shares, in any checkout: its scratch folder, private files, the commands
+//! it runs and how it reports them.
+use crate::{Result, Runner};
 use std::{
-    collections::BTreeMap,
     fs,
     io::Write,
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
@@ -12,55 +9,6 @@ use std::{
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
-
-pub struct Workspace {
-    pub root: PathBuf,
-}
-impl Workspace {
-    /// The workspace `from` is in: a checkout's, or the folder holding `dev/` and `worktrees/`.
-    pub fn find(from: &Path, runner: &dyn Runner) -> Result<Self> {
-        let common = runner
-            .command(
-                &[
-                    "git",
-                    "rev-parse",
-                    "--path-format=absolute",
-                    "--git-common-dir",
-                ],
-                Some(from),
-                30,
-            )
-            .ok()
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-            .map(|text| PathBuf::from(text.trim()));
-        let candidates = common
-            .iter()
-            .filter_map(|git| git.parent()?.parent().map(Path::to_path_buf))
-            .chain(from.ancestors().map(Path::to_path_buf));
-        for root in candidates {
-            if root.join("dev/.git").is_dir() && root.join("worktrees").is_dir() {
-                return Ok(Self { root });
-            }
-        }
-        Err("Run dispatchdev in the workspace: the folder holding dev/ and worktrees/, or a checkout in it.".into())
-    }
-    pub fn dev(&self) -> PathBuf {
-        self.root.join("dev")
-    }
-    pub fn worktree(&self, name: &str) -> PathBuf {
-        self.root.join("worktrees").join(name)
-    }
-    /// Every worktree's folder name, in order.
-    pub fn worktrees(&self) -> Result<Vec<String>> {
-        let mut names: Vec<String> = fs::read_dir(self.root.join("worktrees"))?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.path().join(".git").exists())
-            .filter_map(|entry| entry.file_name().into_string().ok())
-            .collect();
-        names.sort();
-        Ok(names)
-    }
-}
 
 /// Whether `feature` names one of the checkout's features at `root`: a folder of `features/`
 /// whose name is lowercase letters, digits and underscores.
@@ -72,24 +20,11 @@ pub fn has_feature(root: &Path, feature: &str) -> bool {
         && root.join("features").join(feature).is_dir()
 }
 
-/// A change's name, which is its worktree's folder, its branch and its preview's unit: lowercase
-/// letters, digits and hyphens.
-pub fn valid_name(name: &str) -> Result<()> {
-    require(
-        !name.is_empty()
-            && name.len() <= 60
-            && !name.starts_with('-')
-            && name
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
-        "A change's name is lowercase letters, digits and hyphens, such as audit-driver-match.",
-    )
-}
-/// Where a change keeps everything it makes outside its worktree.
+/// Where the checkout named `name` keeps everything it makes outside itself.
 pub fn scratch(name: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/dispatch-{name}"))
 }
-/// The name of the checkout at `root`: its folder's, which is its change's.
+/// The name of the checkout at `root`: its folder's.
 pub fn checkout_name(root: &Path) -> Result<&str> {
     root.file_name()
         .and_then(|name| name.to_str())
@@ -100,8 +35,8 @@ pub fn checkout_name(root: &Path) -> Result<&str> {
 pub fn checkout_scratch(root: &Path) -> Result<PathBuf> {
     Ok(fs::canonicalize(scratch_dir(checkout_name(root)?)?)?)
 }
-/// The change's scratch folder, made private if it is new.
-pub fn scratch_dir(name: &str) -> Result<PathBuf> {
+/// The scratch folder of the checkout named `name`, made private if it is new.
+fn scratch_dir(name: &str) -> Result<PathBuf> {
     let dir = scratch(name);
     fs::DirBuilder::new()
         .recursive(true)
@@ -128,24 +63,11 @@ pub fn write_private(path: &Path, text: &str) -> Result<()> {
     fs::rename(partial, path)?;
     Ok(())
 }
-/// The `KEY=value` lines of an environment file.
-pub fn read_env(text: &str) -> BTreeMap<String, String> {
-    text.lines()
-        .filter_map(|line| line.trim().split_once('='))
-        .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
-        .collect()
-}
 /// A command's output, trimmed.
 pub fn text(runner: &dyn Runner, args: &[&str], cwd: Option<&Path>) -> Result<String> {
     Ok(String::from_utf8(runner.command(args, cwd, 120)?)?
         .trim()
         .to_owned())
-}
-/// Time as a wait keeps to it: the time now, on a monotonic clock, and a pause of some seconds
-/// on it.
-pub struct Clock<'a> {
-    pub now: &'a dyn Fn() -> Instant,
-    pub pause: &'a dyn Fn(u64),
 }
 /// The slice every command `logged` runs goes in, from every worktree at once. Between them they
 /// have a low CPU weight and one memory ceiling: at `MemoryMax` they swap, and past the swap
@@ -230,14 +152,6 @@ pub fn logged(
         .status()?;
     Ok((status.success(), started.elapsed()))
 }
-/// Bytes free where the workspace `root`'s worktrees build: `worktrees/`, or the disk it links to.
-pub fn worktrees_free(root: &Path) -> Result<u64> {
-    free_bytes(&root.join("worktrees"))
-}
-/// Bytes free on the file system holding `path`, or what it links to.
-pub fn free_bytes(path: &Path) -> Result<u64> {
-    fs2::available_space(path).map_err(|_| "Couldn't read the free disk space".into())
-}
 /// The size of everything under `path`, or none if it doesn't exist.
 pub fn size(runner: &dyn Runner, path: &Path) -> Option<u64> {
     if !path.exists() {
@@ -290,54 +204,6 @@ pub fn quote(arg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn names_are_folders_branches_and_units_at_once() {
-        for good in ["audit-driver-match", "fix2", "a"] {
-            assert!(valid_name(good).is_ok(), "{good}");
-        }
-        for bad in [
-            "",
-            "-x",
-            "Audit",
-            "a b",
-            "a/b",
-            "a.b",
-            "a_b",
-            &"a".repeat(61),
-        ] {
-            assert!(valid_name(bad).is_err(), "{bad}");
-        }
-    }
-    #[test]
-    fn the_workspace_is_found_from_it_or_any_checkout_in_it() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = fs::canonicalize(temp.path()).unwrap();
-        fs::create_dir_all(root.join("dev/.git")).unwrap();
-        fs::create_dir_all(root.join("worktrees/one/src")).unwrap();
-        fs::write(root.join("worktrees/one/.git"), "gitdir: elsewhere").unwrap();
-        let none = |_: &[&str]| -> Result<Vec<u8>> { Err("no git".into()) };
-        struct Fake<F: Fn(&[&str]) -> Result<Vec<u8>>>(F);
-        impl<F: Fn(&[&str]) -> Result<Vec<u8>>> Runner for Fake<F> {
-            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
-                (self.0)(args)
-            }
-        }
-        for from in [root.clone(), root.join("worktrees/one/src")] {
-            assert_eq!(Workspace::find(&from, &Fake(none)).unwrap().root, root);
-        }
-        let git = root.join("dev/.git");
-        let shared = move |_: &[&str]| Ok(format!("{}\n", git.display()).into_bytes());
-        let elsewhere = tempfile::tempdir().unwrap();
-        assert_eq!(
-            Workspace::find(elsewhere.path(), &Fake(shared))
-                .unwrap()
-                .root,
-            root
-        );
-        assert!(Workspace::find(elsewhere.path(), &Fake(none)).is_err());
-        let ws = Workspace { root: root.clone() };
-        assert_eq!(ws.worktrees().unwrap(), ["one"]);
-    }
     #[test]
     fn a_command_is_bound_to_the_unit_of_this_users_manager_running_it() {
         let uid = 1001;

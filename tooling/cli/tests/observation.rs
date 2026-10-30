@@ -1,6 +1,6 @@
 //! Credential transfer, environment binding and destination privacy through the real command
 //! entry point. The host stand-in only mints a fixture; the wrapper owns validation and storage.
-use dispatchdev_cli::{Native, Result, Runner, observation, workspace::Workspace};
+use dispatchdev_cli::{Native, Result, Runner, observation};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -88,15 +88,7 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     .unwrap();
     fs::set_permissions(&backend, fs::Permissions::from_mode(0o700)).unwrap();
     let output = root.path().join("session.json");
-    let summary = observation::run(
-        &Workspace {
-            root: root.path().into(),
-        },
-        "dev",
-        &output,
-        &Native,
-    )
-    .unwrap();
+    let summary = observation::run(&root.path().join("dev"), "dev", &output, &Native).unwrap();
     assert_eq!(
         serde_json::from_slice::<Value>(&fs::read(&output).unwrap()).unwrap(),
         expected
@@ -126,16 +118,9 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
     )
     .unwrap();
     let mismatched = root.path().join("mismatched.json");
-    let error = observation::run(
-        &Workspace {
-            root: root.path().into(),
-        },
-        "dev",
-        &mismatched,
-        &Native,
-    )
-    .unwrap_err()
-    .to_string();
+    let error = observation::run(&root.path().join("dev"), "dev", &mismatched, &Native)
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("unexpected origin"));
     assert!(!error.contains("fixtureClaims"));
     assert!(!mismatched.exists());
@@ -144,9 +129,7 @@ fn dev_mints_using_installed_config_saves_private_access_and_cleans_host_tempora
 #[test]
 fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_them() {
     let root = private_root();
-    let workspace = Workspace {
-        root: root.path().into(),
-    };
+    let dev = root.path().join("dev");
     let valid = credential("https://admin.dspdispatch.com");
     let output = root.path().join("session.json");
     let change = |key: &str, value: Value| {
@@ -167,7 +150,7 @@ fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_
         change("extra", json!("secret")),
     ] {
         let host = Host::new(bad);
-        let error = observation::run(&workspace, "production", &output, &host)
+        let error = observation::run(&dev, "production", &output, &host)
             .unwrap_err()
             .to_string();
         assert!(!error.contains("fixtureClaims"));
@@ -175,7 +158,7 @@ fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_
         assert!(!output.exists());
     }
     let host = Host::new(valid.clone());
-    observation::run(&workspace, "production", &output, &host).unwrap();
+    observation::run(&dev, "production", &output, &host).unwrap();
     assert_eq!(
         serde_json::from_slice::<Value>(&fs::read(&output).unwrap()).unwrap(),
         valid
@@ -185,9 +168,7 @@ fn production_rejects_wrong_host_writable_or_expired_credentials_without_saving_
 #[test]
 fn unsafe_destinations_are_refused_before_minting_and_existing_files_are_preserved() {
     let root = private_root();
-    let workspace = Workspace {
-        root: root.path().into(),
-    };
+    let dev = root.path().join("dev");
     let host = Host::new(credential("https://admin.dspdispatch.com"));
     let existing = root.path().join("existing.json");
     fs::write(&existing, "keep this").unwrap();
@@ -207,7 +188,7 @@ fn unsafe_destinations_are_refused_before_minting_and_existing_files_are_preserv
         root.path().join("missing/session.json"),
         root.path().join("public/../session.json"),
     ] {
-        assert!(observation::run(&workspace, "production", &output, &host).is_err());
+        assert!(observation::run(&dev, "production", &output, &host).is_err());
     }
     assert_eq!(host.calls.load(Ordering::SeqCst), 0);
     assert_eq!(fs::read_to_string(existing).unwrap(), "keep this");
@@ -223,16 +204,9 @@ fn failed_mints_hide_subprocess_diagnostics_and_do_not_save_credentials() {
     }
     let root = private_root();
     let output = root.path().join("session.json");
-    let error = observation::run(
-        &Workspace {
-            root: root.path().into(),
-        },
-        "production",
-        &output,
-        &Failed,
-    )
-    .unwrap_err()
-    .to_string();
+    let error = observation::run(&root.path().join("dev"), "production", &output, &Failed)
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("Could not mint production browser access"));
     assert!(!error.contains("sensitive-credential"));
     assert!(!output.exists());

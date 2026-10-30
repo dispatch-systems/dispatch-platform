@@ -145,7 +145,7 @@ async fn run_private(
     }
     let safe_job = safe_job(job)?;
     // The reader's key and host stay outside `context`, which is all the model is shown.
-    let request = json!({"profile":profile,"role":role,"stage":stage,"instructions":instructions,"context":context,"job":safe_job,"worktree":worktree.map(|tree| &tree.path),"home":home,"resources":resources(),"node":config.node,"trustedNodeModules":config.workspace_root.join("dev/node_modules"),"productionServer":server});
+    let request = json!({"profile":profile,"role":role,"stage":stage,"instructions":instructions,"context":context,"job":safe_job,"worktree":worktree.map(|tree| &tree.path),"home":home,"resources":resources(),"node":config.node,"trustedNodeModules":config.checkout.join("node_modules"),"productionServer":server});
     let input = home.join("request.json");
     atomic_json(&input, &request)?;
     let result = home.join("result.json");
