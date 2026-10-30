@@ -14,7 +14,7 @@ import tseslint from 'typescript-eslint';
 const tests = ['**/tests/**', '**/test/**', 'tooling/**', 'services/**', 'ops/**'];
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/', '**/generated/', '**/dist/', 'target/', 'dev/', 'worktrees/'] },
+  { ignores: ['**/node_modules/', '**/generated/', '**/dist/', 'target/'] },
   {
     files: ['**/*.ts', '**/*.tsx'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

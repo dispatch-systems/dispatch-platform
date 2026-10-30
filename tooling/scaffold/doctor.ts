@@ -95,7 +95,7 @@ export const CHECKS: Check[] = [
       const gb = (free / 1e9).toFixed(1);
       return free > 10e9
         ? { ok: true, detail: [`${gb} GB free`] }
-        : { ok: false, fix: 'dispatchdev finish a merged change', detail: [`${gb} GB free`] };
+        : { ok: false, fix: "remove a merged change's worktree", detail: [`${gb} GB free`] };
     },
   },
 ];

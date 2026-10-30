@@ -32,10 +32,8 @@ audits the dependencies nightly and runs CodeQL on each push to `main`; neither 
 `dispatchdev` (`tooling/cli/`) holds what runs on a developer's machine, and `dispatchdev help`
 lists it. `check`, `test` and `verify` look at a branch before its PR; `api` (signed-in calls)
 and `shot` (a PNG of a page, signed in once for each account) reach the dev server `npm run dev`
-runs in the checkout, which records itself in `.runtime/dev-server.json` while it runs. On
-dispatch-dev, `start`, `pr` and `finish` keep a change in a worktree of its own beside Dev's
-checkout, as the support worker does: `finish` removes what the change made once its PR merged,
-and waits for Dev. A Mac runs none of the local checks and tests (`tooling/cli/src/machine.rs`
+runs in the checkout, which records itself in `.runtime/dev-server.json` while it runs. A Mac
+runs none of the local checks and tests (`tooling/cli/src/machine.rs`
 says why): there `check`, `test` and `verify` refuse, and the checks on the PR decide alone.
 `dispatchdev build` builds the package's two executables, the backend and the support worker,
 in one Cargo pass, through a cache keyed by their exact inputs and the compiler's fingerprint.
