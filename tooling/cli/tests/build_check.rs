@@ -89,7 +89,7 @@ fn native_build_shares_verified_copies_across_worktrees_and_rebuilds_changed_inp
     assert_eq!(fs::read(&builds).unwrap(), b"xx");
 }
 #[test]
-fn native_check_fetches_actual_base_and_refuses_dirty_or_stale_work() {
+fn native_check_needs_a_committed_branch_and_asks_github_nothing() {
     let temp = tempfile::tempdir().unwrap();
     let remote = temp.path().join("remote");
     let checkout = temp.path().join("checkout");
@@ -119,8 +119,8 @@ fn native_check_fetches_actual_base_and_refuses_dirty_or_stale_work() {
             checkout.to_str().unwrap(),
         ],
     );
-    git(&checkout, &["checkout", "-qb", "feature/test"]);
-    executable(&bin.join("gh"), "#!/bin/sh\nprintf '[]'\n");
+    // A gh that fails: the check passes without asking GitHub anything.
+    executable(&bin.join("gh"), "#!/bin/sh\nexit 1\n");
     let run = || {
         Command::new(env!("CARGO_BIN_EXE_dispatchdev"))
             .args(["check", "--plan", "--root", checkout.to_str().unwrap()])
@@ -128,30 +128,13 @@ fn native_check_fetches_actual_base_and_refuses_dirty_or_stale_work() {
             .output()
             .unwrap()
     };
+    let main = run();
+    assert!(!main.status.success());
+    assert!(String::from_utf8_lossy(&main.stderr).contains("Use a branch of its own"));
+    git(&checkout, &["checkout", "-qb", "feature/test"]);
     assert!(run().status.success());
     fs::write(checkout.join("uncommitted"), "change").unwrap();
     let dirty = run();
     assert!(!dirty.status.success());
-    assert!(String::from_utf8_lossy(&dirty.stderr).contains("Commit the completed changes"));
-    fs::remove_file(checkout.join("uncommitted")).unwrap();
-    git(
-        &remote,
-        &[
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "--allow-empty",
-            "-qm",
-            "advance",
-        ],
-    );
-    let stale = run();
-    assert!(!stale.status.success());
-    assert!(String::from_utf8_lossy(&stale.stderr).contains("origin/main has advanced"));
-    git(&checkout, &["merge", "--ff-only", "origin/main"]);
-    assert!(run().status.success());
-    executable(&bin.join("gh"), "#!/bin/sh\nexit 1\n");
-    assert!(!run().status.success(), "API failure cannot allow a push");
+    assert!(String::from_utf8_lossy(&dirty.stderr).contains("Commit the changes first"));
 }

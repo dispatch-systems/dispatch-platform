@@ -1,7 +1,6 @@
 //! `dispatchdev start <name>`: a worktree for one change, on a branch of the same name from
-//! `origin/main` (or `--from`), with its packages installed and its scratch folder made, and with
-//! `--preview` its preview building, on dispatch-dev alone. First, the changes that merged go, as
-//! `finish` would remove them.
+//! `origin/main` (or `--from`), with its packages installed and its scratch folder made. First,
+//! the changes that merged go, as `finish` would remove them.
 use crate::{
     REPOSITORY, Result, Runner,
     change::Change,
@@ -10,24 +9,12 @@ use crate::{
 };
 use serde_json::Value;
 
-/// Below this, a new worktree's build could fill the disk: a preview's takes about 3 GB, and
+/// Below this, a new worktree's build could fill the disk: a debug build takes about 3 GB, and
 /// 7 GB once tested.
 pub const LOW_DISK: u64 = 20_000_000_000;
 
-pub fn run(
-    ws: &Workspace,
-    name: &str,
-    from: &str,
-    preview: bool,
-    runner: &dyn Runner,
-) -> Result<()> {
+pub fn run(ws: &Workspace, name: &str, from: &str, runner: &dyn Runner) -> Result<()> {
     let change = Change::named(ws, name)?;
-    if preview {
-        // Previews run on dispatch-dev alone, and there, a missing address stops it before
-        // anything is made.
-        crate::preview::here(ws.machine)?;
-        crate::preview::host()?;
-    }
     let path = &change.path;
     require(!path.exists(), &format!("worktrees/{name} exists already."))?;
     sweep(ws, runner);
@@ -72,13 +59,6 @@ pub fn run(
         workspace::duration(took)
     );
     println!("Scratch: {}", scratch.display());
-    if preview {
-        let port = crate::preview::begin(ws, name, false, runner)?;
-        println!(
-            "Its preview is building on port {port}; dispatchdev preview {name} --page <page> \
-             prints its link once it's up."
-        );
-    }
     disk(ws, runner)?;
     // A change's name with hyphens is a feature's with underscores.
     let feature = name.replace('-', "_");
@@ -114,7 +94,7 @@ pub fn disk(ws: &Workspace, runner: &dyn Runner) -> Result<()> {
 }
 
 /// Removes each change whose PR merged with exactly what its worktree holds, committed, so a
-/// change that merged without `finish` keeps no build or preview. The support worker finishes
+/// change that merged without `finish` keeps no build. The support worker finishes
 /// its own `support-*` changes. Any trouble is said and skipped: the new change starts anyway.
 fn sweep(ws: &Workspace, runner: &dyn Runner) {
     let merged = workspace::text(

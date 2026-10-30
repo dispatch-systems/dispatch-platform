@@ -1,10 +1,10 @@
 use dispatchdev_cli::{
     Native, Result, Runner, api, build,
     change::Change,
-    check, ci, finish, logs,
+    check, finish,
     machine::Machine,
-    observation, pr, preview, require, review, scaffold, ship, shot, start, status, test, verify,
-    workspace::{Clock, Retried, Workspace},
+    observation, pr, scaffold, shot, start, test, verify,
+    workspace::{Clock, Workspace},
 };
 use std::{
     collections::BTreeMap,
@@ -66,7 +66,7 @@ impl Spec {
         self.passed = true;
         self
     }
-    /// Its usage on one line: `preview <name> [--page <page>] [--restart | --stop]`.
+    /// Its usage on one line: `shot [--page <page>] [--tab <tab>]`.
     fn line(&self) -> String {
         self.usage
             .iter()
@@ -110,77 +110,15 @@ const ABOUT: usize = 60;
 
 const COMMANDS: &[Spec] = &[
     spec(
-        "start",
-        &["start <name> [--from <ref>]", "      [--preview]"],
-        "A worktree and branch for the change from origin/main, its packages installed and its \
-         scratch folder made, once the changes whose PRs merged are removed as finish would; \
-         --preview, on dispatch-dev alone, also starts its preview's build without waiting for \
-         it.",
+        "check",
+        &["check [--plan]"],
+        "What stops the branch, then the rule checks, the TypeScript linter and clippy side by \
+         side, clippy in the checkout's own build. They pass again without running on a \
+         committed tree they passed on, as clippy does on Rust inputs it passed on; the checks \
+         on the branch's PR run the tests. --plan only names them. It runs on Linux alone: \
+         elsewhere, the PR's checks run every check on GitHub.",
     )
-    .flags(&["--preview"])
-    .options(&["--from"])
-    .arguments(1),
-    spec(
-        "preview",
-        &[
-            "preview <name> [--page <page>]",
-            "        [--tab <tab>]",
-            "        [--dsp <dsp>]",
-            "        [--platform]",
-            "        [--restart | --stop]",
-        ],
-        "Start its preview, or with --restart after a backend edit, and print the link that \
-         signs in by itself: to --page, in the fixture's DSP or the one --dsp names by its name \
-         or id, or with --platform on the platform owner's own pages, on the page's --tab. It \
-         runs on dispatch-dev alone.",
-    )
-    .flags(&["--platform", "--restart", "--stop"])
-    .options(&["--page", "--dsp", "--tab"])
-    .arguments(1),
-    spec(
-        "api",
-        &[
-            "api <name> <method> <path>",
-            "    [--dsp <dsp>] [--as <email>]",
-            "    [--data <json>]",
-        ],
-        "One signed-in call to its preview: as the owner, or --as a demo account; --dsp opens \
-         a DSP by its name or id. It runs on dispatch-dev alone.",
-    )
-    .options(&["--dsp", "--as", "--data"])
-    .arguments(3),
-    spec(
-        "shot",
-        &[
-            "shot <name> [--page <page>]",
-            "     [--tab <tab>]",
-            "     [--dsp <dsp> | --platform]",
-            "     [--as <email>]",
-            "     [--size <w>x<h>]",
-            "     [--theme <light | dark>]",
-        ],
-        "A PNG of a page of its preview, saved in its scratch folder, whose path it prints: \
-         opened as preview's link opens it, as the owner, or --as a demo account at the address \
-         of the DSP --dsp names, signed in as api signs in, once a run of the preview. The \
-         window is --size, 1440x1000 unless told, in --theme, light unless told. It runs on \
-         dispatch-dev alone.",
-    )
-    .flags(&["--platform"])
-    .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme"])
-    .arguments(1),
-    spec(
-        "logs",
-        &[
-            "logs <name | dev> [--errors]",
-            "     [--since <time>] [--follow]",
-        ],
-        "What its preview, or Dev, logged in its current run, an event a line and without the \
-         build's output; --since 10m reads across runs, --errors keeps warnings and failures. \
-         It runs on dispatch-dev alone.",
-    )
-    .flags(&["--errors", "--follow"])
-    .options(&["--since"])
-    .arguments(1),
+    .flags(&["--plan"]),
     spec(
         "test",
         &[
@@ -189,11 +127,11 @@ const COMMANDS: &[Spec] = &[
             "     [--file <path>] [--keep]",
         ],
         "The tests the diff touches, or --all of them, one line each, stopping at the first \
-         failure: for fixing a test, as the merge queue runs them. --owner runs one owner's of \
-         every kind, as feature:<name>, collector:<site>, core:<part>, integration:<name>, app, \
-         mcp or a name alone, or --only its rust, api, frontend, browser or native ones, or one \
-         --file of them. Each run builds in a folder of its own, deleted when it ends unless \
-         --keep. It runs on Linux alone: elsewhere, ci runs every check on GitHub.",
+         failure: for fixing a test, as the checks on GitHub run them. --owner runs one owner's \
+         of every kind, as feature:<name>, collector:<site>, core:<part>, integration:<name>, \
+         app, mcp or a name alone, or --only its rust, api, frontend, browser or native ones, or \
+         one --file of them. Each run builds in a folder of its own, deleted when it ends unless \
+         --keep. It runs on Linux alone: elsewhere, the PR's checks run every check on GitHub.",
     )
     .flags(&["--all", "--keep"])
     .options(&["--owner", "--only", "--file"]),
@@ -203,85 +141,42 @@ const COMMANDS: &[Spec] = &[
         "A feature in progress, committed or not: whether generate would change anything, \
          what a generator left to write, the rules, TypeScript, the changed files' format and \
          lint, then its own tests as test --owner runs them. --removability also leaves it \
-         out as the weekly check does: on GitHub once the branch is pushed as it is, else in a \
-         copy of the checkout. It runs on Linux alone: elsewhere, ci runs every check on GitHub.",
+         out as the weekly check does, in a copy of the checkout. It runs on Linux alone: \
+         elsewhere, the PR's checks run every check on GitHub.",
     )
     .flags(&["--removability"])
     .arguments(1),
     spec(
-        "check",
-        &["check [--plan]", "      [--allow-concurrent]"],
-        "What stops the branch, then the rule checks, the TypeScript linter and clippy side by \
-         side, clippy in the checkout's own build. They pass again without running on a \
-         committed tree they passed on, as clippy does on Rust inputs it passed on; ci and the \
-         merge queue run the tests. --plan only names them. It runs on Linux alone: elsewhere, \
-         ci runs every check on GitHub.",
+        "api",
+        &[
+            "api <method> <path>",
+            "    [--dsp <dsp>] [--as <email>]",
+            "    [--data <json>]",
+        ],
+        "One signed-in call to the dev server npm run dev runs in the checkout: as the owner, or \
+         --as a demo account; --dsp opens a DSP by its name or id. The body goes to stdout and \
+         its HTTP status to stderr.",
     )
-    .flags(&["--plan", "--allow-concurrent"]),
+    .options(&["--dsp", "--as", "--data"])
+    .arguments(2),
     spec(
-        "ci",
-        &["ci <name> [--rerun-failed]", "   [--removability <feature>]"],
-        "The full checks on GitHub on its committed branch, while its preview is tried: push \
-         it, run them without the gate with the rule checks here beside them on Linux, and \
-         follow them to the end, listing every failed job. Jobs GitHub stopped itself run again \
-         once. ship stops on a head they failed and cancels them if still running. \
-         --rerun-failed runs the failed jobs again, for a failure that isn't the change's own. \
-         --removability runs the weekly removability check instead, for that feature alone.",
+        "shot",
+        &[
+            "shot [--page <page>]",
+            "     [--tab <tab>]",
+            "     [--dsp <dsp> | --platform]",
+            "     [--as <email>]",
+            "     [--size <w>x<h>]",
+            "     [--theme <light | dark>]",
+        ],
+        "A PNG of a page of the dev server npm run dev runs in the checkout, saved in the \
+         checkout's scratch folder, whose path it prints: as the owner, in the fixture's DSP or \
+         the one --dsp names, or on the platform owner's own pages with --platform, or --as a \
+         demo account at the address of the DSP --dsp names, signed in as api signs in. The \
+         window is --size, 1440x1000 unless told, in --theme, light unless told.",
     )
-    .flags(&["--rerun-failed"])
-    .options(&["--removability"])
-    .arguments(1),
-    spec(
-        "pr",
-        &["pr <name> [--title <title>]", "   [--body <file> | --skeleton]"],
-        "Check the title and body, push the branch, and open the PR or update it. The body is \
-         the scratch folder's pr-body.md, or --body's file, and its first line, # <title>, \
-         gives the title unless --title does. --skeleton --title instead starts pr-body.md with \
-         the title and the sections its type needs, unless it's there already.",
-    )
-    .flags(&["--skeleton"])
-    .options(&["--title", "--body"])
-    .arguments(1),
-    spec(
-        "review",
-        &["review <name> [--passes <n>]", "       [--done]"],
-        "Only when a review is asked for: the brief of its next pass, on its committed head, \
-         for the reviewer started through T3 (GPT-6 Astra, xhigh, Fast). Another pass follows \
-         only one that found something to fix, and reviews only the fixes; --passes sets the \
-         most, two unless told. --done, once the reviewer answered, checks it left the worktree \
-         as it found it and counts its findings.",
-    )
-    .flags(&["--done"])
-    .options(&["--passes"])
-    .arguments(1),
-    spec(
-        "ship",
-        &["ship <name>"],
-        "Once told to merge it, by its name or its PR's number: check its PR body and that it \
-         merges cleanly, push it, open or update its PR from pr-body.md, queue it as soon as \
-         GitHub admits it and wait until it merges, the rule checks running here meanwhile on \
-         Linux unless the checks on GitHub passed on this commit, then remove what the change \
-         made as finish does, and wait for Dev. Run again after a stop, it picks up where it \
-         stopped. It exits with 1 to fix and ship again, 2 for the owner to decide, and 3 once \
-         merged.",
-    )
-    .arguments(1),
-    spec(
-        "finish",
-        &["finish <name> [--abandon]"],
-        "What ship does after the merge, for a change it didn't see through, or with --abandon \
-         for one that never merged: its preview, port, worktree, build, branches and scratch \
-         folder go; then wait for Dev.",
-    )
-    .flags(&["--abandon"])
-    .arguments(1),
-    spec(
-        "status",
-        &["status [--json]"],
-        "Worktrees with their previews, PRs and reviews, open PRs, what Dev runs, free disk; \
-         --json writes the same as JSON, to pick a change up after a break.",
-    )
-    .flags(&["--json"]),
+    .flags(&["--platform"])
+    .options(&["--page", "--tab", "--dsp", "--as", "--size", "--theme"]),
     spec(
         "browser",
         &[
@@ -294,12 +189,42 @@ const COMMANDS: &[Spec] = &[
     .options(&["--out"])
     .arguments(1),
     spec(
+        "start",
+        &["start <name> [--from <ref>]"],
+        "A worktree and branch for the change from origin/main, its packages installed and its \
+         scratch folder made, once the changes whose PRs merged are removed as finish would.",
+    )
+    .options(&["--from"])
+    .arguments(1),
+    spec(
+        "pr",
+        &[
+            "pr <name> [--title <title>]",
+            "   [--body <file> | --skeleton]",
+        ],
+        "Check the title and body, push the branch, and open the PR or update it. The body is \
+         the scratch folder's pr-body.md, or --body's file, and its first line, # <title>, \
+         gives the title unless --title does. --skeleton --title instead starts pr-body.md with \
+         the title and the sections its type needs, unless it's there already.",
+    )
+    .flags(&["--skeleton"])
+    .options(&["--title", "--body"])
+    .arguments(1),
+    spec(
+        "finish",
+        &["finish <name> [--abandon]"],
+        "Once its PR merged, or with --abandon for one that never will: its worktree, build, \
+         branches and scratch folder go; then wait for Dev to run the merge.",
+    )
+    .flags(&["--abandon"])
+    .arguments(1),
+    spec(
         "new",
         &["new <kind> <name> [options]", "    [--dry-run] [--json]"],
-        "In a change's worktree, a feature, collector, Slack integration, agent tool or kind of slot that works as \
-         written, listed where it is read, then what is generated from it, if anything is: \
-         dispatchdev new lists the kinds, new <kind> a kind's options. --dry-run prints what it \
-         would write, from any checkout.",
+        "On a branch, a feature, collector, Slack integration, agent tool or kind of slot that \
+         works as written, listed where it is read, then what is generated from it, if anything \
+         is: dispatchdev new lists the kinds, new <kind> a kind's options. --dry-run prints what \
+         it would write, from any checkout.",
     )
     .passed(),
     spec(
@@ -316,7 +241,7 @@ const COMMANDS: &[Spec] = &[
         &["generate [--check] [--json]"],
         "Write everything generated from what the owners declare: the app's and the MCP's \
          lists, the API types and the snapshots the app's tests hold, from one incremental \
-         build in the worktree's own target folder. It names each file it changed; after a \
+         build in the checkout's own target folder. It names each file it changed; after a \
          failure, fix it and run it again. --check writes nothing, and fails naming what would \
          change.",
     )
@@ -362,12 +287,11 @@ const COMMANDS: &[Spec] = &[
 ];
 /// The help's sections, each with its commands in order.
 const SECTIONS: &[(&str, &[&str])] = &[
+    ("Checking a branch:", &["check", "test", "verify"]),
+    ("Trying it:", &["api", "shot", "browser"]),
     (
-        "A change, from start to finish:",
-        &[
-            "start", "preview", "api", "shot", "logs", "verify", "test", "check", "ci", "review",
-            "pr", "ship", "finish", "status", "browser",
-        ],
+        "A change in a worktree of its own, beside Dev's checkout:",
+        &["start", "pr", "finish"],
     ),
     (
         "Making things, and reading what the product has:",
@@ -394,9 +318,8 @@ fn help() -> String {
     }
     lines.push(String::new());
     lines.push(
-        "verify, test, check, build, new, add, generate, list, explain, doctor and todo work on the\n\
-         checkout the current directory is in, or on --root <directory>. dispatchdev <command>\n\
-         --help shows one."
+        "All but start, pr, finish and browser work on the checkout the current directory is in,\n\
+         or on --root <directory>. dispatchdev <command> --help shows one."
             .to_owned(),
     );
     lines.join("\n")
@@ -543,65 +466,22 @@ fn run() -> Result<()> {
     }
     let line = parse(spec, rest)?;
     match spec.name {
-        "start" => start::run(
-            &line.workspace()?,
-            line.name()?,
-            line.option("--from").unwrap_or("origin/main"),
-            line.flag("--preview"),
-            &Native,
-        ),
-        "preview" => {
-            let action = match (line.flag("--restart"), line.flag("--stop")) {
-                (true, true) => return Err("Choose --restart or --stop.".into()),
-                (true, false) => preview::Action::Restart,
-                (false, true) => preview::Action::Stop,
-                (false, false) => preview::Action::Start,
-            };
-            let open = preview::Open {
-                page: line.option("--page"),
-                dsp: line.option("--dsp"),
-                platform: line.flag("--platform"),
-                tab: line.option("--tab"),
-            };
-            preview::run(&line.workspace()?, line.name()?, action, &open, &Native)
-        }
-        "api" => {
-            let [name, method, path] = line.arguments.as_slice() else {
-                return Err(line.usage());
-            };
-            let call = api::Call {
-                method,
-                path,
-                dsp: line.option("--dsp"),
-                who: line.option("--as"),
-                data: line.option("--data"),
-            };
-            match api::run(&line.workspace()?, name, call, &Native)? {
-                true => Ok(()),
-                false => Err("The call failed.".into()),
+        "check" => {
+            check::here(Machine::THIS, "check")?;
+            let root = line.root()?;
+            let plan = check::plan(&root, &Native)?;
+            if line.flag("--plan") {
+                check::print(&plan);
+                return Ok(());
             }
-        }
-        "shot" => {
-            let shot = shot::Shot {
-                open: preview::Open {
-                    page: line.option("--page"),
-                    dsp: line.option("--dsp"),
-                    platform: line.flag("--platform"),
-                    tab: line.option("--tab"),
-                },
-                who: line.option("--as"),
-                size: line.option("--size").unwrap_or("1440x1000"),
-                theme: line.option("--theme").unwrap_or("light"),
-            };
-            shot::run(&line.workspace()?, line.name()?, &shot, &Native)
-        }
-        "logs" => {
-            let options = logs::Options {
-                errors: line.flag("--errors"),
-                since: line.option("--since"),
-                follow: line.flag("--follow"),
-            };
-            logs::run(line.name()?, &options, Machine::THIS, &Native)
+            let env = std::env::vars().collect();
+            match check::execute(&root, &plan, &env, &Native)? {
+                true => {
+                    println!("{}", check::NEXT);
+                    Ok(())
+                }
+                false => Err("A check failed.".into()),
+            }
         }
         "test" => {
             let (only, file) = (line.option("--only"), line.option("--file"));
@@ -636,31 +516,60 @@ fn run() -> Result<()> {
                 line.flag("--removability"),
                 Machine::THIS,
                 &Native,
-                &pause,
-                &mut |text| println!("{text}"),
             )?;
             match passed {
                 true => Ok(()),
                 false => Err(Quiet.into()),
             }
         }
-        "check" => {
-            check::here(Machine::THIS, "check")?;
-            let root = line.root()?;
-            let plan = check::plan(&root, line.flag("--allow-concurrent"), &Native)?;
-            if line.flag("--plan") {
-                check::print(&plan);
-                return Ok(());
-            }
-            let env = std::env::vars().collect();
-            match check::execute(&root, &plan, &env, &Native)? {
-                true => {
-                    println!("{}", check::next_step(&plan));
-                    Ok(())
-                }
-                false => Err("A check failed.".into()),
+        "api" => {
+            let [method, path] = line.arguments.as_slice() else {
+                return Err(line.usage());
+            };
+            let call = api::Call {
+                method,
+                path,
+                dsp: line.option("--dsp"),
+                who: line.option("--as"),
+                data: line.option("--data"),
+            };
+            match api::run(&line.root()?, call, &Native)? {
+                true => Ok(()),
+                false => Err("The call failed.".into()),
             }
         }
+        "shot" => {
+            let shot = shot::Shot {
+                open: shot::Open {
+                    page: line.option("--page"),
+                    dsp: line.option("--dsp"),
+                    platform: line.flag("--platform"),
+                    tab: line.option("--tab"),
+                },
+                who: line.option("--as"),
+                size: line.option("--size").unwrap_or("1440x1000"),
+                theme: line.option("--theme").unwrap_or("light"),
+            };
+            shot::run(&line.root()?, &shot, &Native)
+        }
+        "browser" => {
+            let target = line.name()?;
+            let output = line.option("--out").ok_or_else(|| line.usage())?;
+            let summary = observation::run(
+                &line.workspace()?,
+                target,
+                std::path::Path::new(output),
+                &Native,
+            )?;
+            println!("{}", serde_json::to_string(&summary)?);
+            Ok(())
+        }
+        "start" => start::run(
+            &line.workspace()?,
+            line.name()?,
+            line.option("--from").unwrap_or("origin/main"),
+            &Native,
+        ),
         "pr" => {
             let name = line.name()?;
             let ws = line.workspace()?;
@@ -678,62 +587,6 @@ fn run() -> Result<()> {
                 }
             }
         }
-        "review" => {
-            let name = line.name()?;
-            let ws = line.workspace()?;
-            let passes = line
-                .option("--passes")
-                .map(|passes| {
-                    passes
-                        .parse::<u32>()
-                        .ok()
-                        .filter(|passes| *passes > 0)
-                        .ok_or("--passes is a number of passes, 1 or more.")
-                })
-                .transpose()?;
-            match (line.flag("--done"), passes) {
-                (true, Some(_)) => Err("Choose --passes or --done.".into()),
-                (true, None) => review::done(&ws, name, &Native),
-                (false, passes) => review::start(&ws, name, passes, &Native),
-            }
-        }
-        "ship" => {
-            let named = line.name()?;
-            let github = Retried {
-                runner: &Native,
-                clock: &CLOCK,
-            };
-            let name = match named.parse::<u64>() {
-                Ok(number) => pr::branch(number, &github)?,
-                Err(_) => named.to_owned(),
-            };
-            ship::change(&line.workspace()?, &name, &github, &CLOCK, &mut |text| {
-                println!("{text}")
-            })
-        }
-        "ci" => {
-            let (ws, name) = (line.workspace()?, line.name()?);
-            let (removability, again) =
-                (line.option("--removability"), line.flag("--rerun-failed"));
-            require(
-                removability.is_none() || !again,
-                "Choose --removability or --rerun-failed.",
-            )?;
-            let verdict = ci::run(
-                &ws,
-                name,
-                removability,
-                again,
-                &Retried {
-                    runner: &Native,
-                    clock: &CLOCK,
-                },
-                &pause,
-                &mut |text| println!("{text}"),
-            )?;
-            println!("{verdict}");
-            Ok(())
-        }
         "finish" => finish::run(
             &line.workspace()?,
             line.name()?,
@@ -741,27 +594,6 @@ fn run() -> Result<()> {
             &Native,
             &CLOCK,
         ),
-        "status" => {
-            let status = status::read(&line.workspace()?, &Native)?;
-            if line.flag("--json") {
-                println!("{}", serde_json::to_string_pretty(&status)?);
-            } else {
-                status::print(&status);
-            }
-            Ok(())
-        }
-        "browser" => {
-            let target = line.name()?;
-            let output = line.option("--out").ok_or_else(|| line.usage())?;
-            let summary = observation::run(
-                &line.workspace()?,
-                target,
-                std::path::Path::new(output),
-                &Native,
-            )?;
-            println!("{}", serde_json::to_string(&summary)?);
-            Ok(())
-        }
         "build" => {
             let root = line.root()?;
             let env = std::env::vars().collect();
@@ -794,11 +626,7 @@ fn main() {
         if !message.is_empty() {
             eprintln!("{message}");
         }
-        std::process::exit(
-            error
-                .downcast_ref::<ship::Exit>()
-                .map_or(1, |exit| exit.code),
-        );
+        std::process::exit(1);
     }
 }
 

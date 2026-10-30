@@ -1,18 +1,75 @@
-//! `dispatchdev shot <name>`: a PNG of a page of the change's preview, kept in its scratch
-//! folder. The account is signed in as `dispatchdev api` signs it in, once a run of the
-//! preview, and the checkout's own `tooling/dev/shot.ts` opens the page with that session in
-//! the browser tests' Chromium.
+//! `dispatchdev shot`: a PNG of a page of the dev server `npm run dev` runs in the checkout,
+//! kept in the checkout's scratch folder. The account is signed in as `dispatchdev api` signs it
+//! in, once a run of the server, and the checkout's own `tooling/dev/shot.ts` opens the page with
+//! that session in the browser tests' Chromium.
 use crate::{
     Result, Runner,
-    api::{self, OWNER},
-    change::Change,
-    preview::{self, Open},
-    require,
-    workspace::{self, Workspace},
+    api::{self, OWNER, Server},
+    require, workspace,
 };
 use serde_json::{Value, json};
+use std::path::Path;
 
 const SCRIPT: &str = "tooling/dev/shot.ts";
+
+/// Where the page opens: a page, in a DSP or on the platform owner's own pages, on a tab of the
+/// page.
+pub struct Open<'a> {
+    pub page: Option<&'a str>,
+    /// The DSP, by its id or a unique part of its name: the fixture's own unless named.
+    pub dsp: Option<&'a str>,
+    /// The platform owner's own pages, outside any DSP, in place of a DSP's.
+    pub platform: bool,
+    pub tab: Option<&'a str>,
+}
+impl Open<'_> {
+    /// Refuses what can't be opened together.
+    pub fn check(&self) -> Result<()> {
+        require(
+            self.tab.is_none() || self.page.is_some(),
+            "--tab is a tab of a page: name the page with --page too.",
+        )?;
+        require(
+            self.dsp.is_none() || !self.platform,
+            "Choose --dsp or --platform.",
+        )
+    }
+    /// The id of the DSP it opens, of those a session lists: the one it names, else the first,
+    /// which is the fixture's own, as the owner's list puts it first.
+    pub fn dsp_id(&self, dsps: &[Value]) -> Result<String> {
+        let dsp = match self.dsp {
+            Some(wanted) => api::dsp(dsps, wanted)?,
+            None => dsps.first().ok_or("The dev server has no DSP to open.")?,
+        };
+        Ok(dsp["id"].as_str().ok_or("A DSP without an id")?.to_owned())
+    }
+}
+/// The page's fragment, as the app reads its address: `#<page>`, or a DSP's page
+/// `#dsp/<id>/<page>`, with `?tab=<tab>` for a tab of it.
+pub fn fragment(page: Option<&str>, dsp: Option<&str>, tab: Option<&str>) -> String {
+    let page = page.map(|page| page.trim_start_matches('#'));
+    let mut fragment = match (dsp, page) {
+        (Some(id), page) => format!("#dsp/{}/{}", encoded(id), page.unwrap_or("")),
+        (None, Some(page)) => format!("#{page}"),
+        (None, None) => String::new(),
+    };
+    if let Some(tab) = tab {
+        fragment.push_str(&format!("?tab={}", encoded(tab)));
+    }
+    fragment
+}
+/// A value as an address holds it, each byte but the unreserved ones escaped.
+fn encoded(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
 
 pub struct Shot<'a> {
     pub open: Open<'a>,
@@ -76,9 +133,7 @@ fn file_name(shot: &Shot<'_>) -> String {
     format!("{}.png", name.to_lowercase())
 }
 
-pub fn run(ws: &Workspace, name: &str, shot: &Shot<'_>, runner: &dyn Runner) -> Result<()> {
-    preview::here(ws.machine)?;
-    let change = Change::existing(ws, name)?;
+pub fn run(root: &Path, shot: &Shot<'_>, runner: &dyn Runner) -> Result<()> {
     let open = &shot.open;
     open.check()?;
     let who = shot.who.unwrap_or(OWNER);
@@ -101,11 +156,11 @@ pub fn run(ws: &Workspace, name: &str, shot: &Shot<'_>, runner: &dyn Runner) -> 
         "--theme is light or dark.",
     )?;
     require(
-        change.path.join(SCRIPT).is_file(),
+        root.join(SCRIPT).is_file(),
         "This checkout predates dispatchdev shot: rebase it onto origin/main.",
     )?;
-    let running = api::Running::find(ws, name, runner)?;
-    let (site, session) = api::sign_in(&running, who, open.dsp, runner)?;
+    let server = Server::find(root)?;
+    let (site, session) = api::sign_in(&server, who, open.dsp, runner)?;
     // A member's DSP is the address they signed in at; the owner's, the link's fragment names.
     let dsp = if who == OWNER && !open.platform {
         let dsps = session["dsps"].as_array().map(Vec::as_slice).unwrap_or(&[]);
@@ -113,16 +168,16 @@ pub fn run(ws: &Workspace, name: &str, shot: &Shot<'_>, runner: &dyn Runner) -> 
     } else {
         None
     };
-    let fragment = preview::fragment(open.page, dsp.as_deref(), open.tab);
+    let fragment = fragment(open.page, dsp.as_deref(), open.tab);
     let url = format!("{}/{fragment}", site.origin);
     // The browser takes the session in a file of its own kind, as private as the jar.
-    let storage = running.scratch.join(format!("shot-{who}.json"));
+    let storage = server.scratch.join(format!("shot-{who}.json"));
     let jar = std::fs::read_to_string(&site.jar)?;
     workspace::write_private(
         &storage,
         &json!({ "cookies": cookies(&jar), "origins": [] }).to_string(),
     )?;
-    let png = running.scratch.join("shots").join(file_name(shot));
+    let png = server.scratch.join("shots").join(file_name(shot));
     let (storage, png) = (
         storage.to_str().ok_or("Non-UTF8 path")?,
         png.to_str().ok_or("Non-UTF8 path")?,
@@ -136,9 +191,9 @@ pub fn run(ws: &Workspace, name: &str, shot: &Shot<'_>, runner: &dyn Runner) -> 
             &url,
             "--storage",
             storage,
-            // A DSP's own address is a name under localhost, which the preview's host answers.
+            // A DSP's own address is a name under localhost, which the server's host answers.
             "--host",
-            &running.host,
+            &server.host,
             "--size",
             shot.size,
             "--theme",
@@ -146,7 +201,7 @@ pub fn run(ws: &Workspace, name: &str, shot: &Shot<'_>, runner: &dyn Runner) -> 
             "--out",
             png,
         ],
-        Some(&change.path),
+        Some(root),
         120,
     )?;
     println!("{png}");
@@ -156,6 +211,16 @@ pub fn run(ws: &Workspace, name: &str, shot: &Shot<'_>, runner: &dyn Runner) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_page_opens_in_a_dsp_on_its_tab_as_the_app_reads_its_address() {
+        assert_eq!(fragment(Some("dvic"), None, None), "#dvic");
+        assert_eq!(
+            fragment(Some("settings"), Some("dsp_2"), Some("uniform data")),
+            "#dsp/dsp_2/settings?tab=uniform%20data"
+        );
+        assert_eq!(fragment(None, Some("dsp_2"), None), "#dsp/dsp_2/");
+        assert_eq!(fragment(None, None, None), "");
+    }
     #[test]
     fn the_browser_takes_the_session_curl_keeps() {
         let jar = "# Netscape HTTP Cookie File\n\n\

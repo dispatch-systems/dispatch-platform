@@ -21,8 +21,8 @@ use std::{
 const BUILDS: &str = ".test-build";
 
 /// Packages the runtime for the browser tests with the debug backend, which the run's own Rust
-/// builds share or the build cache holds, where a release build takes minutes. The merge queue
-/// tests the release build.
+/// builds share or the build cache holds, where a release build takes minutes. The checks on
+/// GitHub test the release build.
 pub const PACKAGE: &str = "npm run build -- --debug";
 /// What a checkout from before the debug package runs instead: the release build, through the
 /// build cache in the checkout.
@@ -95,7 +95,7 @@ pub fn affected(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
         .collect())
 }
 /// Every Rust test, and every Node test the CI api job runs: the browser and collector suites
-/// stay in the merge queue.
+/// stay on GitHub.
 pub fn everything(root: &Path, runner: &dyn Runner) -> Result<Vec<String>> {
     let listed: Vec<Value> = serde_json::from_str(&workspace::text(
         runner,
@@ -618,8 +618,8 @@ mod tests {
         let root = Path::new("/checkout");
         let refusal = |command: &str| {
             format!(
-                "dispatchdev {command} runs on Linux alone: dispatchdev ci <name> runs every \
-                 check on GitHub."
+                "dispatchdev {command} runs on Linux alone: the checks on the branch's PR run \
+                 every check on GitHub."
             )
         };
         assert_eq!(
@@ -628,15 +628,7 @@ mod tests {
                 .to_string(),
             refusal("test")
         );
-        let verified = crate::verify::run(
-            root,
-            "communications",
-            false,
-            Machine::Mac,
-            &Nothing,
-            &|_| {},
-            &mut |_| {},
-        );
+        let verified = crate::verify::run(root, "communications", false, Machine::Mac, &Nothing);
         assert_eq!(verified.unwrap_err().to_string(), refusal("verify"));
     }
 }

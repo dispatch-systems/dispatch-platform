@@ -415,10 +415,10 @@ test('--page and --tab-of write frontend/feature.ts, the screen and a browser te
   );
   // The export writes the frontend's list from the registry, with the feature in its place.
   assert.match(page.notes.join('\n'), /`dispatchdev generate` writes [^\n]*the frontend's list/);
-  // Its preview, rebuilt, opens on its page.
+  // Once the dev server restarts on its backend, a screenshot shows its page.
   assert.match(
     page.notes.join('\n'),
-    /`dispatchdev preview \S+ --dsp dev --page parking --restart` rebuilds its preview and opens its page\./,
+    /Restart `npm run dev` for its backend; then `dispatchdev shot --dsp dev --page parking` shows its page\./,
   );
 
   const open = file(
@@ -438,7 +438,7 @@ test('--page and --tab-of write frontend/feature.ts, the screen and a browser te
   assert.match(file(tab, 'features/notes/tests/browser/notes.spec.ts'), /name: 'Timecard'/);
   assert.match(
     tab.notes.join('\n'),
-    /`dispatchdev preview \S+ --dsp dev --page paycom --tab notes --restart`/,
+    /`dispatchdev shot --dsp dev --page paycom --tab notes` shows its tab of Timecard/,
   );
   assert.match(
     file(tab, 'features/notes/frontend/NotesTab.tsx'),
@@ -487,7 +487,7 @@ test('--settings declares a section its backend reads, which Settings draws: no 
   assert.match(frontend, /^ {2}\/\/ The icon its page of Settings shows\.\n {2}icon: Truck,$/m);
   assert.match(
     plan.notes.join('\n'),
-    /`dispatchdev preview \S+ --dsp dev --page settings --tab notes --restart` rebuilds its preview and opens its page of Settings\./,
+    /`dispatchdev shot --dsp dev --page settings --tab notes` shows its page of Settings\./,
   );
   // Its page gives it, once its switch gates the page; else its manifest still does.
   const manifestIcon = /^ {2}icon: /m;
@@ -596,7 +596,7 @@ test('--sidebar writes a sidebar of pages, each a page under it, and refuses ids
     file(rota, 'features/rota/tests/browser/rota.spec.ts'),
     /getByRole\('navigation', \{ name: 'Rota', exact: true \}\)/,
   );
-  assert.match(rota.notes.join('\n'), /--page shifts --restart` rebuilds its preview/);
+  assert.match(rota.notes.join('\n'), /--page shifts` shows the first page of its sidebar/);
 
   await refused(/--sidebar and --page/, 'rota', '--sidebar', 'shifts', '--page');
   await refused(/--sidebar and --tab-of/, 'rota', '--sidebar', 'shifts', '--tab-of', 'timecard');

@@ -120,7 +120,7 @@ impl Worktree {
     pub async fn check(&self, config: &Config) -> Result<String> {
         let root = self.path.clone();
         let plan = tokio::task::spawn_blocking(move || {
-            dispatchdev_cli::check::plan(&root, true, &dispatchdev_cli::Native)
+            dispatchdev_cli::check::plan(&root, &dispatchdev_cli::Native)
         })
         .await??;
         let scripts: Vec<_> = ["npm run check:rules".to_owned()]

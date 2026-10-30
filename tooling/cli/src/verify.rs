@@ -2,12 +2,11 @@
 //! or not: whether `generate` would change anything, what a generator left to write in it, the
 //! architecture rules, TypeScript, the format and lint of the changed files, and the feature's
 //! own tests of every kind, built in a folder of the run's own (`crate::test`). `--removability`
-//! then leaves it out as the weekly check does: on GitHub when the branch is pushed as it is
-//! (`crate::ci`), else in a copy of the checkout, so neither the worktree nor its preview is
+//! then leaves it out as the weekly check does, in a copy of the checkout, so the worktree isn't
 //! touched. A line a step, then what failed and what to do next. It runs on Linux alone, as the
 //! local checks do.
 use crate::{
-    Result, Runner, ci,
+    Result, Runner,
     machine::Machine,
     require,
     slot::{self, Slot},
@@ -117,21 +116,6 @@ fn markers(root: &Path, feature: &str, runner: &dyn Runner) -> Result<Vec<String
         })
         .collect())
 }
-/// The branch the checkout is on, when origin has it as it is here: committed and pushed.
-fn pushed(root: &Path, runner: &dyn Runner) -> Option<String> {
-    let git =
-        |args: &[&str]| workspace::text(runner, &[&["git"][..], args].concat(), Some(root)).ok();
-    if !git(&["status", "--porcelain"])?.is_empty() {
-        return None;
-    }
-    let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"])?;
-    if matches!(branch.as_str(), "HEAD" | "main") {
-        return None;
-    }
-    let head = git(&["rev-parse", "HEAD"])?;
-    let theirs = git(&["ls-remote", "origin", &format!("refs/heads/{branch}")])?;
-    (theirs.split_whitespace().next() == Some(head.as_str())).then_some(branch)
-}
 /// Copies the checkout's files, committed or not, into `to`, each with its times, and links its
 /// packages: what the removability check moves and rewrites is the copy's.
 fn copy(root: &Path, to: &Path, runner: &dyn Runner) -> Result<()> {
@@ -194,8 +178,6 @@ pub fn run(
     removability: bool,
     machine: Machine,
     runner: &dyn Runner,
-    pause: &dyn Fn(u64),
-    say: &mut dyn FnMut(&str),
 ) -> Result<bool> {
     crate::check::here(machine, "verify")?;
     require(
@@ -262,44 +244,19 @@ pub fn run(
 
     if removability && failed.is_empty() {
         let label = format!("removability without {feature}");
-        match pushed(root, runner) {
-            Some(branch) => {
-                let started = std::time::Instant::now();
-                let verdict = ci::removability(root, &branch, feature, runner, pause, say);
-                line(
-                    verdict.is_ok(),
-                    started.elapsed(),
-                    &format!("{label}, on GitHub"),
-                );
-                match verdict {
-                    Ok(verdict) => {
-                        println!("      {verdict}");
-                        passed += 1;
-                    }
-                    Err(error) => {
-                        for why in error.to_string().lines() {
-                            println!("      {why}");
-                        }
-                        failed.push(label);
-                    }
-                }
-            }
-            None => {
-                let log = logs.join("removability.log");
-                println!(
-                    "Leaving out {feature} in a copy of the checkout, with a build of its own; it \
-                     writes to {} as it goes.",
-                    log.display()
-                );
-                let (ok, took) = removed_in_copy(root, feature, &scratch, &log, runner)?;
-                line(ok, took, &format!("{label}, in a copy of the checkout"));
-                if ok {
-                    passed += 1;
-                } else {
-                    test::explain(&log);
-                    failed.push(label);
-                }
-            }
+        let log = logs.join("removability.log");
+        println!(
+            "Leaving out {feature} in a copy of the checkout, with a build of its own; it \
+             writes to {} as it goes.",
+            log.display()
+        );
+        let (ok, took) = removed_in_copy(root, feature, &scratch, &log, runner)?;
+        line(ok, took, &format!("{label}, in a copy of the checkout"));
+        if ok {
+            passed += 1;
+        } else {
+            test::explain(&log);
+            failed.push(label);
         }
     } else if removability {
         println!("Its removability waits until the steps above pass.");
@@ -326,10 +283,7 @@ pub fn run(
         ));
     }
     if next.is_empty() {
-        next.push(format!(
-            "Commit it, then `dispatchdev check` and `dispatchdev ci {}`.",
-            workspace::checkout_name(root)?
-        ));
+        next.push("Commit it, then `dispatchdev check`.".to_owned());
         if !removability {
             next.push(format!(
                 "`dispatchdev verify {feature} --removability` also leaves it out, as the weekly check does."
@@ -343,33 +297,6 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn removability_runs_on_github_only_for_a_branch_pushed_as_it_is() {
-        struct Git {
-            status: &'static str,
-            theirs: &'static str,
-        }
-        impl Runner for Git {
-            fn command(&self, args: &[&str], _: Option<&Path>, _: u64) -> Result<Vec<u8>> {
-                Ok(match args[1] {
-                    "status" => self.status,
-                    "rev-parse" if args[2] == "--abbrev-ref" => "lean\n",
-                    "rev-parse" => "2222222222222222\n",
-                    "ls-remote" => self.theirs,
-                    other => panic!("unexpected git {other}"),
-                }
-                .as_bytes()
-                .to_vec())
-            }
-        }
-        let pushed_as = |status, theirs| pushed(Path::new("/checkout"), &Git { status, theirs });
-        let there = "2222222222222222\trefs/heads/lean\n";
-        assert_eq!(pushed_as("", there).as_deref(), Some("lean"));
-        // Uncommitted work, a head GitHub hasn't got, and a branch it hasn't got are tried here.
-        assert_eq!(pushed_as(" M features/uniforms/feature.rs\n", there), None);
-        assert_eq!(pushed_as("", "1111111111111111\trefs/heads/lean\n"), None);
-        assert_eq!(pushed_as("", ""), None);
-    }
     #[test]
     fn a_copy_holds_the_checkouts_files_committed_or_not_and_links_its_packages() {
         let temp = tempfile::tempdir().unwrap();
