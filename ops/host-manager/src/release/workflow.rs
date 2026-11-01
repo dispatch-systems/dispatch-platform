@@ -84,22 +84,12 @@ impl Release<'_> {
     }
     /// The newest published stable release before this one.
     pub(super) fn previous(&self) -> Result<Option<String>> {
-        Ok(self
-            .previous_release()?
-            .map(|release| io::text(&release, "tag_name")))
-    }
-    /// GitHub's record of the newest published stable release before this one.
-    pub(super) fn previous_release(&self) -> Result<Option<Value>> {
         let listed: Vec<_> = all_releases(self.system)?
             .into_iter()
             .filter(|r| r["tag_name"] != self.tag)
             .collect();
         let latest = latest_version(&listed);
-        if latest == "0.0.0" {
-            return Ok(None);
-        }
-        let tag = format!("v{latest}");
-        Ok(listed.into_iter().find(|r| r["tag_name"] == tag))
+        Ok((latest != "0.0.0").then(|| format!("v{latest}")))
     }
     /// The commit `--commit` names, or main's head.
     pub(super) fn resolve(&self, requested: Option<&str>) -> Result<String> {

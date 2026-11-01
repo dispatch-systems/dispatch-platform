@@ -530,8 +530,10 @@ impl Release<'_> {
         self.checked_source(&prepared.commit)?;
         self.smoke(prepared)?;
         let release = self.ensure_draft(prepared)?;
-        // Recheck after uploads/smoke: a newer failed or pending run must stop publication.
+        // Recheck after uploads/smoke: a newer failed or pending run must stop publication,
+        // as must a release published since this one was prepared that its app no longer follows.
         self.checked_source(&prepared.commit)?;
+        self.app_follows()?;
         self.api(
             &format!("releases/{}", release["id"]),
             &[

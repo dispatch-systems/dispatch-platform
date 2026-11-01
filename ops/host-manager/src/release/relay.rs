@@ -1,8 +1,9 @@
 //! DSP Dispatch: Relay in a release ([Android apps](../../../../android/README.md#releases)).
-//! The last released app is the `production` entry of the `relay.json` the latest release
-//! attaches. A release whose commit changed `android/` since then asks its checks for the app's
-//! next version, which they build and sign; any other has them carry the last released app
-//! unchanged. Once an app exists, each release attaches its package's `relay.json` and
+//! The last released app is the `production` entry of the `relay.json` GitHub's latest release
+//! attaches: the release Production installs and the checks carry from, whatever the highest
+//! version is. A release whose commit changed `android/` since then asks its checks for the
+//! app's next version, which they build and sign; any other has them carry the last released
+//! app unchanged. Once an app exists, each release attaches its package's `relay.json` and
 //! Production's APK, which the next release's checks and main's Dev builds read.
 use super::*;
 
@@ -17,6 +18,9 @@ const FIRST: &str = "0.0.1";
 const FILE_MOST: u64 = 64 * 1024;
 /// The largest APK taken, as the build takes it.
 const APK_MOST: u64 = 200 * 1024 * 1024;
+
+/// Why a release carrying an app unlike the last released one is refused.
+const CARRIES_ANOTHER: &str = "carries another DSP Dispatch: Relay than the last released one";
 
 /// One build of the app, as `relay.json` names it.
 #[derive(Debug, PartialEq, Eq, Deserialize)]
@@ -90,7 +94,7 @@ pub(super) fn packed_app(
     if wanted.is_empty() {
         require(
             app.as_ref() == last,
-            "The release's build carries another DSP Dispatch: Relay than the last released one",
+            &format!("The release's build {CARRIES_ANOTHER}"),
         )?;
     } else {
         require(
@@ -111,11 +115,33 @@ pub(super) fn packed_app(
     Ok(app)
 }
 
+/// Refuses `version`, a new app's, unless it's above `last`, the last released one.
+fn above(version: &str, last: Option<&Build>) -> Result<()> {
+    let Some(last) = last else {
+        return Ok(());
+    };
+    require(
+        releases::version(version)? > releases::version(&last.version)?,
+        &format!(
+            "DSP Dispatch: Relay {version} is not above {}, the last released",
+            last.version
+        ),
+    )
+}
+
 impl Release<'_> {
-    /// The app the latest release before this one carries: Production's entry in its
-    /// `relay.json`, none before a release carried one.
+    /// GitHub's latest release, none before any.
+    fn latest_release(&self) -> Result<Option<Value>> {
+        match io::github(self.system, "releases/latest") {
+            Ok(release) => Ok(Some(release)),
+            Err(error) if error.to_string().contains("HTTP 404") => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+    /// The last released app: Production's entry in the `relay.json` GitHub's latest release
+    /// attaches, none before a release carried one.
     pub(super) fn released_app(&self) -> Result<Option<Build>> {
-        let Some(release) = self.previous_release()? else {
+        let Some(release) = self.latest_release()? else {
             return Ok(None);
         };
         let Some(attached) = release["assets"]
@@ -150,16 +176,8 @@ impl Release<'_> {
                 version
             }
         };
-        if let Some(last) = last
-            && !version.is_empty()
-        {
-            require(
-                releases::version(&version)? > releases::version(&last.version)?,
-                &format!(
-                    "DSP Dispatch: Relay {version} is not above {}, the last released",
-                    last.version
-                ),
-            )?;
+        if !version.is_empty() {
+            above(&version, last)?;
         }
         say(match (version.as_str(), last) {
             ("", None) => "No DSP Dispatch: Relay to release".into(),
@@ -188,6 +206,26 @@ impl Release<'_> {
             (false, Some(last)) => next_version(&last.version, &self.bump)?,
             (false, None) => FIRST.into(),
         })
+    }
+    /// Refuses publishing the prepared release unless its app still follows the last released
+    /// one, which a release published since it was prepared may have changed: a new version
+    /// still above it, or a carried app still exactly it.
+    pub(super) fn app_follows(&self) -> Result<()> {
+        let last = self.released_app()?;
+        let wanted = self.journal()?.relay_version.unwrap_or_default();
+        if !wanted.is_empty() {
+            return above(&wanted, last.as_ref());
+        }
+        let record = self.output.join(FILE);
+        let app = if record.try_exists()? {
+            production(&fs::read(record)?)?
+        } else {
+            None
+        };
+        require(
+            app == last,
+            &format!("The prepared release {CARRIES_ANOTHER}"),
+        )
     }
     /// The app's assets the release prepared in `directory` attaches, each the file its
     /// runtime's manifest names: `relay.json` and Production's APK once an app exists.

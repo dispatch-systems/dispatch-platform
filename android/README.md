@@ -75,9 +75,9 @@ CI builds and signs both apps (`.github/workflows/checks.yml`, with `tooling/ci/
   `release-checks/v<version>`, with `relay-version`, the app version it releases. Given one,
   `relay-production` builds Production's app at that commit, named that version and signed with
   the Production key, and `build` packs it beside Dev's. Empty, as for a release without app
-  changes, `build` packs the Production APK the latest release carries, byte for byte, checked
-  against its entry and GitHub's digest of it (`relay.py carry`); none before any release carried
-  one. The release stamps that run's package, which Production installs.
+  changes, `build` packs the Production APK GitHub's latest release carries, byte for byte,
+  checked against its entry and GitHub's digest of it (`relay.py carry`); none before any release
+  carried one. The release stamps that run's package, which Production installs.
 - **A PR:** only the debug builds (`android`), unsigned, and no app packed.
 
 `dispatchdev build` packs the builds of the folder `DISPATCH_RELAY_APPS` names, each entry
@@ -120,14 +120,17 @@ The format's fixture is `tooling/cli/src/build/relay/relay.json`.
 The release command (`ops/host-manager/src/release/`, the app's part in `relay.rs`) carries the
 app into each release:
 
-- **The last released app:** the `production` entry of the `relay.json` attached to the latest
-  published release; without one, none was released.
+- **The last released app:** the `production` entry of the `relay.json` attached to GitHub's
+  latest release (`releases/latest`), which Production installs and `relay.py` reads, whatever
+  the highest version is; without one, none was released.
 - **Its version:** the app changed when `git diff <production.commit> <commit> -- android` isn't
   empty, or none was released and `android/` exists. Then `relay-version` is the last released
   app version's next patch (or more, with the release's `--bump`), `0.0.1` first; otherwise it's
   empty and the release carries the last released app. It's decided once for the release's
   commit and kept in the release's journal, so a rerun asks for the same, and refused at or
-  below the last released version.
+  below the last released version. Just before publishing, it's checked again against the last
+  released app, which a release published meanwhile may have changed: a new version must still
+  be above it, and a carried app still exactly it.
 - **Its checks:** every release runs
   `gh workflow run checks.yml --ref release-checks/v<version> -f relay-version=<X.Y.Z or empty>`
   and stamps that run's package, never `main`'s push run's, which carries no Production app. The

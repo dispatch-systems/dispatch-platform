@@ -16,6 +16,8 @@ const WORKFLOW: &str = ".github/workflows/checks.yml";
 struct Fake {
     calls: RefCell<Vec<Vec<String>>>,
     listed: RefCell<Vec<Value>>,
+    /// The release GitHub calls the latest, none before any.
+    latest: RefCell<Option<Value>>,
     runs: RefCell<Value>,
     /// The build the release's own checks publish, and its bytes.
     artifact: RefCell<Value>,
@@ -114,6 +116,11 @@ impl System for Fake {
                 } else {
                     json!([self.listed.borrow().clone()])
                 }
+            } else if endpoint == "releases/latest" {
+                self.latest
+                    .borrow()
+                    .clone()
+                    .ok_or("gh failed: gh: Not Found (HTTP 404)")?
             } else if endpoint.starts_with("actions/workflows/") {
                 json!({"workflow_runs":self.runs.borrow().clone()})
             } else if endpoint.starts_with("compare/") {
@@ -179,6 +186,7 @@ impl System for Fake {
             } else if endpoint == "releases/9" && args.contains(&"PATCH") {
                 self.listed.borrow_mut()[0]["draft"] = json!(false);
                 self.listed.borrow_mut()[0]["published_at"] = json!("2026-09-21T00:00:00Z");
+                self.latest.replace(Some(self.listed.borrow()[0].clone()));
                 self.maybe_fail("publication")?;
                 self.listed.borrow()[0].clone()
             } else {
@@ -443,6 +451,7 @@ impl Fixture {
         let system = Fake {
             calls: RefCell::new(vec![]),
             listed: RefCell::new(vec![]),
+            latest: RefCell::new(None),
             runs: RefCell::new(json!([run])),
             artifact: RefCell::new(Value::Null),
             download: RefCell::new(vec![]),
@@ -526,13 +535,20 @@ impl Fixture {
         self.system.download.replace(download);
         built
     }
-    /// Publishes v0.9.0 at the commit before the release's, attaching `app` as Production's
-    /// relay app once it's given.
+    /// Publishes v0.9.0 at the commit before the release's, GitHub's latest release, attaching
+    /// `app` as Production's relay app once it's given.
     fn released(&self, app: Option<&Apk>) {
         git(
             &self.root,
             &["tag", "v0.9.0", &format!("{}^1", self.system.commit)],
         );
+        let release = self.published("v0.9.0", app);
+        self.system.listed.replace(vec![release.clone()]);
+        self.system.latest.replace(Some(release));
+    }
+    /// GitHub's record of the published release `tag`, attaching `app` as Production's relay
+    /// app once it's given.
+    fn published(&self, tag: &str, app: Option<&Apk>) -> Value {
         let mut assets = vec![];
         if let Some(app) = app {
             let record = json!({ "production": app.entry }).to_string().into_bytes();
@@ -540,16 +556,13 @@ impl Fixture {
                 ("relay.json".to_owned(), record),
                 (app.asset(), app.bytes.clone()),
             ] {
-                let url =
-                    format!("https://github.com/{REPOSITORY}/releases/download/v0.9.0/{name}");
+                let url = format!("https://github.com/{REPOSITORY}/releases/download/{tag}/{name}");
                 assets.push(json!({"name":name,"state":"uploaded","size":bytes.len(),
                     "digest":format!("sha256:{}",artifact::hash(&bytes)),"browser_download_url":url}));
                 self.system.attached.borrow_mut().insert(url, bytes);
             }
         }
-        self.system.listed.replace(vec![
-            json!({"tag_name":"v0.9.0","draft":false,"prerelease":false,"assets":assets}),
-        ]);
+        json!({"tag_name":tag,"draft":false,"prerelease":false,"assets":assets})
     }
     /// The commit before the release's, which v0.9.0 released.
     fn previous(&self) -> String {
@@ -1580,6 +1593,56 @@ fn a_release_without_app_changes_carries_the_last_released_app() {
 }
 
 #[test]
+fn the_last_released_app_is_githubs_latest_release_not_the_highest_version() {
+    let f = Fixture::with_app(App::Unchanged);
+    let latest = Apk::production("0.0.1", &f.previous());
+    f.released(Some(&latest));
+    // A higher version GitHub doesn't call the latest, as an older draft published later leaves.
+    let higher = f.published("v0.9.5", Some(&Apk::production("0.0.2", &f.previous())));
+    f.system.listed.borrow_mut().push(higher);
+    f.build(Some(&latest));
+    let release = f.release();
+    release.prepare(&f.system.commit).unwrap();
+    assert!(f.system.has_call(&["-f", "relay-version="]));
+    assert_eq!(
+        release.app_assets(&release.output).unwrap(),
+        ["relay.json".to_owned(), latest.asset()]
+    );
+}
+
+#[test]
+fn a_prepared_release_whose_app_a_release_since_overtook_is_never_published() {
+    for (app, refusal) in [
+        (App::Changed, "Relay 0.0.2 is not above 0.0.2"),
+        (
+            App::Unchanged,
+            "The prepared release carries another DSP Dispatch: Relay",
+        ),
+    ] {
+        let f = Fixture::with_app(app);
+        let last = Apk::production("0.0.1", &f.previous());
+        f.released(Some(&last));
+        f.build(Some(&match app {
+            App::Changed => Apk::production("0.0.2", &f.system.commit),
+            _ => last,
+        }));
+        let release = f.release();
+        io::private_directory(&release.directory).unwrap();
+        release.pin(None).unwrap();
+        f.prepare();
+        // Another release, published while this one waited, released app 0.0.2.
+        let since = f.published("v0.9.5", Some(&Apk::production("0.0.2", &f.previous())));
+        f.system.latest.replace(Some(since));
+        let error = release
+            .execute(Stage::Publish, None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(refusal), "{error}");
+        assert!(!f.system.has_call(&["-F", "draft=false"]));
+    }
+}
+
+#[test]
 fn app_changes_release_its_next_version_as_the_release_bumps() {
     for (bump, version) in [("patch", "0.0.2"), ("minor", "0.1.0"), ("major", "1.0.0")] {
         let f = Fixture::with_app(App::Changed);
@@ -1611,6 +1674,28 @@ fn app_changes_release_its_next_version_as_the_release_bumps() {
         let release = f.release();
         let error = release.prepare(&f.system.commit).unwrap_err().to_string();
         assert!(error.contains("lacks DSP Dispatch: Relay 0.0.2"), "{error}");
+        assert!(!release.output.exists());
+    }
+}
+
+#[test]
+fn a_packed_app_unlike_its_entry_is_refused() {
+    let f = Fixture::with_app(App::Changed);
+    f.released(Some(&Apk::production("0.0.1", &f.previous())));
+    // Its entry names another size, or the same size of other bytes; the package's runtime
+    // manifest stays valid.
+    let mut longer = Apk::production("0.0.2", &f.system.commit);
+    longer.entry["size"] = json!(longer.bytes.len() + 1);
+    let mut other = Apk::production("0.0.2", &f.system.commit);
+    other.bytes.reverse();
+    for app in [longer, other] {
+        f.build(Some(&app));
+        let release = f.release();
+        let error = release.prepare(&f.system.commit).unwrap_err().to_string();
+        assert!(
+            error.contains("dsp-dispatch-relay-0.0.2.apk differs from relay.json"),
+            "{error}"
+        );
         assert!(!release.output.exists());
     }
 }
