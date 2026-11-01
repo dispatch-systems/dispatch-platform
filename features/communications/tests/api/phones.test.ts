@@ -1,9 +1,17 @@
-import test from 'node:test';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { demo, fixture } from '../../../../core/shell/tests/support/support.js';
+import { demo, fixture, until } from '../../../../core/shell/tests/support/support.js';
 
 // A phone pairs at its DSP's own address with a code someone who manages the DSP's connections
-// made, and then speaks only with the key it was given, there and nowhere else.
+// made, and then speaks only with the key it was given, there and nowhere else. The app it runs
+// is anyone's to download there.
+
+type Fixture = Awaited<ReturnType<typeof fixture>>;
 
 test('A phone pairs once with a code, then calls with its key at its DSP alone', async (t) => {
   const f = await fixture();
@@ -117,4 +125,146 @@ test("Only those who manage the DSP's phones or connections see or pair them", a
   await member.select(north.id);
   assert.equal((await member.get('/api/dsp/communications/phones')).status, 403);
   assert.equal((await member.post('/api/dsp/communications/phones/pairing')).status, 403);
+});
+
+/** Each build's APK, as a runtime's build packs them. */
+const APKS = { dev: 'dev apk', production: 'production apk' };
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+/** A runtime with the app packed in `dashboard/relay/`, as `dispatchdev build` packs it. */
+function packed(t: TestContext) {
+  const runtime = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'dispatch-relay-'));
+  t.after(() => fs.rmSync(runtime, { recursive: true, force: true }));
+  const relay = path.join(runtime, 'dashboard/relay');
+  fs.mkdirSync(relay, { recursive: true });
+  const builds = Object.fromEntries(
+    Object.entries(APKS).map(([build, bytes]) => {
+      const asset = `dsp-dispatch-relay-${build}-1.4.0.apk`;
+      fs.writeFileSync(path.join(relay, asset), bytes);
+      return [build, { asset, sha256: sha256(bytes), size: bytes.length }];
+    }),
+  );
+  fs.writeFileSync(
+    path.join(relay, 'release.json'),
+    JSON.stringify({ version: '1.4.0', versionCode: 14, builds }),
+  );
+  return runtime;
+}
+/** A GET at the server, its body as bytes. */
+const fetched = (f: Fixture, url: string, headers: Record<string, string>) =>
+  new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }>(
+    (resolve, reject) => {
+      http
+        .get(`http://127.0.0.1:${f.env.PORT}${url}`, { headers }, (response) => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk: Buffer) => chunks.push(chunk));
+          response.on('end', () =>
+            resolve({
+              status: response.statusCode!,
+              headers: response.headers,
+              body: Buffer.concat(chunks),
+            }),
+          );
+        })
+        .once('error', reject);
+    },
+  );
+
+test("A DSP's address hands out its server's build of the app to anyone, and phones hear of each version", async (t) => {
+  const f = await fixture({ env: { DISPATCH_ARTIFACT_ROOT: packed(t) } });
+  t.after(f.close);
+  const owner = await f.client();
+  const north = owner.session.dsps.find((d: { name: string }) => d.name === 'Northline Logistics');
+  await owner.select(north.id);
+  const at = f.at(demo.memberDsp);
+
+  // The card links to its download at the DSP's own address, with that as a QR code.
+  const { app } = await owner.read('/api/dsp/communications/phones');
+  assert.deepEqual(
+    [app.name, app.version, app.link],
+    ['DSP Dispatch: Relay Dev', '1.4.0', `http://${at.host}/api/communications/phone/app/download`],
+  );
+  assert.match(app.picture, /^data:image\/svg\+xml;base64,/);
+
+  // Anyone at the address reads it, a browser too, as a phone installs it before it's paired: a
+  // preview server's is Dev's build.
+  for (const headers of [at, { ...at, cookie: 'dispatch_session=x' }]) {
+    const details = await f.request('/api/communications/phone/app', undefined, headers);
+    assert.equal(details.status, 200, details.body);
+    assert.deepEqual(details.value, {
+      version: '1.4.0',
+      versionCode: 14,
+      size: APKS.dev.length,
+      sha256: sha256(APKS.dev),
+    });
+    const download = await fetched(f, '/api/communications/phone/app/download', headers);
+    assert.equal(download.status, 200);
+    assert.equal(download.headers['content-type'], 'application/vnd.android.package-archive');
+    assert.match(download.headers['content-disposition']!, /dsp-dispatch-relay-dev-1\.4\.0\.apk/);
+    assert.equal(download.body.toString(), APKS.dev);
+  }
+  assert.equal((await f.request('/api/communications/phone/app')).status, 401);
+
+  // A phone hears of the latest version as its outbox answers.
+  const pairing = await owner.post('/api/dsp/communications/phones/pairing');
+  const paired = await f.request(
+    '/api/communications/phone/pair',
+    { code: pairing.value.code, number: '', model: 'Pixel 8a', version: '1.3.0' },
+    at,
+  );
+  const key = { ...at, authorization: `Bearer ${paired.value.key}` };
+  const text = { clientId: 'sms-1', direction: 'in', number: '4255550142', body: 'Hi', at: 1 };
+  assert.equal(
+    (await f.request('/api/communications/phone/texts', { texts: [text] }, key)).status,
+    200,
+  );
+  let conversation = '';
+  await until(async () => {
+    const listed: { id: string; number?: string }[] = (await owner.read('/api/dsp/communications'))
+      .conversations;
+    conversation = listed.find((each) => each.number === '+14255550142')?.id ?? '';
+    return conversation !== '';
+  });
+  const answered = await owner.post(
+    `/api/dsp/communications/conversations/${conversation}/messages`,
+    {
+      text: 'Hello',
+    },
+  );
+  assert.equal(answered.status, 201, answered.body);
+  const outbox = await f.request('/api/communications/phone/outbox', undefined, key);
+  assert.equal(outbox.value.texts[0].body, 'Hello');
+  assert.deepEqual(outbox.value.app, { version: '1.4.0', versionCode: 14 });
+
+  // It says the app it runs with each wait, kept as its own: one older than the version handed
+  // out has an update. Paired, it said no versionCode.
+  const listed = async () => {
+    const { phones } = await owner.read('/api/dsp/communications/phones');
+    const row = phones.find((p: { id: string }) => p.id === paired.value.phone.id);
+    return [row.appVersion, row.update];
+  };
+  assert.deepEqual(await listed(), ['1.3.0', false]);
+  for (const [version, versionCode, update] of [
+    ['1.3.1', 13, true],
+    ['1.4.0', 14, false],
+  ] as const) {
+    const query = `version=${version}&versionCode=${versionCode}`;
+    const waited = await f.request(`/api/communications/phone/outbox?${query}`, undefined, key);
+    assert.equal(waited.status, 200, waited.body);
+    assert.deepEqual(await listed(), [version, update]);
+  }
+  for (const query of ['version=1.4.1', 'versionCode=15', 'version=1.4.1&versionCode=0']) {
+    const refused = await f.request(`/api/communications/phone/outbox?${query}`, undefined, key);
+    assert.equal(refused.value.error, 'invalid_input', query);
+  }
+  assert.deepEqual(await listed(), ['1.4.0', false]);
+
+  // While Communications is off for the DSP, its address hands out nothing.
+  const switches = `/api/platform/dsps/${north.id}/features`;
+  assert.equal(
+    (await owner.post(switches, { feature: 'communications', enabled: false })).status,
+    200,
+  );
+  const off = await f.request('/api/communications/phone/app', undefined, at);
+  assert.equal(off.value.error, 'phones_off');
 });

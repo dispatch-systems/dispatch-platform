@@ -24,7 +24,7 @@ use std::sync::Arc;
 const TYPED_MOST: usize = 16;
 /// The most characters a phone's model may be, and the app's version.
 const MODEL_MOST: usize = 100;
-const VERSION_MOST: usize = 40;
+pub(super) const VERSION_MOST: usize = 40;
 
 /// What pairing answers the phone with: its key, which it keeps and sends with every call, and
 /// what it's called.

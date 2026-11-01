@@ -6,7 +6,7 @@ import {
   login,
   openDsp,
 } from '../../../../core/shell/tests/support/fixtures.js';
-import type { PhonePairing } from '../../api/index.js';
+import type { PhoneApp, PhonePairing, Phones } from '../../api/index.js';
 
 // The seeded DSP has every feature switched on, its demo's stand-in phone paired, and its owner
 // holds every permission.
@@ -99,4 +99,71 @@ test('Add phone closes once its own code pairs a phone, and a rename asks before
   await page.keyboard.press('Escape');
   const asking = page.getByRole('dialog', { name: 'Save changes?' });
   await expect(asking.getByRole('button')).toHaveText(['Discard changes', 'Save changes']);
+});
+
+test('The card offers the app its DSP hands out: its download, an update to an older one, and in Add phone, to install first', async ({
+  page,
+  dispatch,
+}) => {
+  // The server's answer, with the app a runtime's build packed in it.
+  const app: PhoneApp = {
+    name: 'DSP Dispatch: Relay Dev',
+    version: '1.4.0',
+    link: `http://${dispatch.at(demo.memberDsp).host}/api/communications/phone/app/download`,
+    picture: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=',
+  };
+  // Its stand-in phone runs an older version than that.
+  await page.route('**/api/dsp/communications/phones', async (route) => {
+    const response = await route.fetch();
+    const { phones } = (await response.json()) as Phones;
+    // Long details, which the row cuts short, never hide the tag: a model as long as a phone may
+    // report (`MODEL_MOST`).
+    const older = phones.map((phone) => ({
+      ...phone,
+      name: 'Dispatch phone at the north station, by the loading dock',
+      model: `Samsung Galaxy ${'A'.repeat(85)}`,
+      appVersion: '1.3.0',
+      update: true,
+    }));
+    await route.fulfill({ response, json: { phones: older, app } });
+  });
+  await login(page);
+  await openDsp(page, 'Northline Logistics');
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Settings', exact: true })
+    .click();
+  await page
+    .getByRole('navigation', { name: 'Settings', exact: true })
+    .getByRole('link', { name: 'Connections', exact: true })
+    .click();
+  const card = page
+    .getByRole('article')
+    .filter({ has: page.getByRole('heading', { name: 'Phones', level: 3 }) });
+  await expect(card.getByRole('link', { name: 'Download app' })).toHaveAttribute('href', app.link);
+  const row = card.getByRole('listitem').filter({ hasText: '(206) 555-0100' });
+  const tag = row.getByText('Update', { exact: true });
+  await expect(tag).toBeVisible();
+  // Shown, not cut short with the row's details: the tag is what's drawn at its own middle. The
+  // row comes into view, never the tag itself, which would scroll the details' clipped line too.
+  await row.scrollIntoViewIfNeeded();
+  const drawn = await tag.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return hit !== null && element.contains(hit);
+  });
+  expect(drawn).toBe(true);
+
+  await card.getByRole('button', { name: 'Add phone' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add phone' });
+  const install = dialog.getByRole('region', { name: 'Install' });
+  await expect(
+    install.getByRole('img', { name: 'Download DSP Dispatch: Relay Dev' }),
+  ).toHaveAttribute('src', app.picture);
+  await expect(install).toContainText('DSP Dispatch: Relay Dev 1.4.0');
+  await expect(
+    dialog
+      .getByRole('region', { name: 'Pair' })
+      .getByRole('img', { name: /^Pairing code [A-HJ-NP-Z2-9]{8}$/ }),
+  ).toBeVisible();
 });

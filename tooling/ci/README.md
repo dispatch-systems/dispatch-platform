@@ -38,7 +38,9 @@ runs in the checkout, which records itself in `.runtime/dev-server.json` while i
 runs none of the local checks and tests (`tooling/cli/src/machine.rs`
 says why): there `check`, `test` and `verify` refuse, and the checks on the PR decide alone.
 `dispatchdev build` builds the package's two executables, the backend and the support worker,
-in one Cargo pass, through a cache keyed by their exact inputs and the compiler's fingerprint.
+in one Cargo pass, through a cache keyed by their exact inputs and the compiler's fingerprint,
+and packs the relay app's APKs that `android/relay/release.json` names in `dashboard/relay/`
+([Publishing](../../android/README.md#publishing)), which `npm run build` copies into the package.
 `dispatchdev test` runs the tests a change touches, committed or not, or `--all` of the Rust and
 API tests, one at a time, a line each. Each run builds in a folder of its own under
 `.test-build/`, without incremental data, and deletes it when it ends, with the release build
