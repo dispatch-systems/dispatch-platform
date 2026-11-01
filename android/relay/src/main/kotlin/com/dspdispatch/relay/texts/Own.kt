@@ -31,7 +31,7 @@ class SentByApp(private val sends: Sends, private val app: String) : Own {
         // Another app wrote it, however like one of the app's it is: the same reply typed on the phone.
         if (row.creator != null && row.creator != app) return Whose.PHONE
         // Sent to the same number about then, with no row of its own yet: each send claims one row.
-        val unplaced = sends.unplaced(row.at - RESULT_WAIT_MS - SLACK_MS, row.at + SLACK_MS)
+        val unplaced = sends.unplaced(row.at - RESULT_WAIT_MS - ROW_SLACK_MS, row.at + ROW_SLACK_MS)
             .filter { send -> message.numbers.any { Numbers.same(it, send.number) } }
         val match = unplaced.firstOrNull { it.body == message.body }
         if (match != null || row.creator == app) {
@@ -39,10 +39,5 @@ class SentByApp(private val sends: Sends, private val app: String) : Own {
             return Whose.DISPATCH
         }
         return if (unplaced.any { it.outcome == null }) Whose.UNSURE else Whose.PHONE
-    }
-
-    private companion object {
-        /** How far a row's time may be from its send's: a picture message's is in whole seconds. */
-        const val SLACK_MS = 60_000L
     }
 }

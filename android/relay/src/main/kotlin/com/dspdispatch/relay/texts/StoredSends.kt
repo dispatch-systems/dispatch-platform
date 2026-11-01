@@ -96,7 +96,7 @@ abstract class StoredSends : Sends {
     protected abstract suspend fun update(send: Send)
 
     @Query("SELECT * FROM sends WHERE id = :id AND attempt = :attempt")
-    protected abstract suspend fun find(id: String, attempt: Long): Send?
+    abstract override suspend fun find(id: String, attempt: Long): Send?
 
     @Query("SELECT * FROM send_reports WHERE id = :id AND attempt = :attempt")
     protected abstract suspend fun reports(id: String, attempt: Long): List<Report>

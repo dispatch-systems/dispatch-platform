@@ -27,6 +27,9 @@ data class Send(
     val finished: Long? = null,
     val delivered: Boolean = false,
 ) {
+    /** The provider table Android writes this attempt to. */
+    val table get() = if (mms) Table.MMS else Table.SMS
+
     /** The status Dispatch is to hear of this attempt. */
     fun status(status: SendStatus, at: Long, error: String? = null) = Told(id, attempt, status, at, error)
 
@@ -151,6 +154,9 @@ interface Sends {
     /** Dispatch heard [told]. */
     suspend fun told(told: List<Told>)
 
+    /** The attempt [attempt] at the text [id], if it's kept. */
+    suspend fun find(id: String, attempt: Long): Send?
+
     /** Whether a send was written to the provider row [row] ([Row.key]). */
     suspend fun wrote(row: String): Boolean
 
@@ -160,6 +166,9 @@ interface Sends {
     /** [send] was written to the provider row [row] ([Row.key]). */
     suspend fun placed(send: Send, row: String)
 }
+
+/** How far the time of a send's provider row may be from its own: a picture message's is in whole seconds. */
+internal const val ROW_SLACK_MS = 60_000L
 
 /** How long Android may take to say how a text it took went; past it, the provider says. */
 internal const val RESULT_WAIT_MS = 10 * 60 * 1000L

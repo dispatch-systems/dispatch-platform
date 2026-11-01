@@ -99,9 +99,9 @@ class FakeProvider : Provider {
         return if (message.parts.any { away.remove(it.uri) }) Reading.Later else Reading.Whole(message)
     }
 
-    override fun key(uri: String): String? {
+    override fun message(uri: String): Message? {
         val (table, id) = rowAt(uri) ?: return null
-        return messages.map(Message::row).firstOrNull { it.table == table && it.id == id }?.key
+        return messages.firstOrNull { it.row.table == table && it.row.id == id }
     }
 
     override fun size(uri: String): Long? {

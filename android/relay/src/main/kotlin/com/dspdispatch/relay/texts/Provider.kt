@@ -74,8 +74,11 @@ interface Provider {
     /** The text [row] holds, if it's whole yet. */
     fun read(row: Row): Reading
 
-    /** The [Row.key] of the row at [uri], as Android names one in a send's result, or null once it's gone. */
-    fun key(uri: String): String?
+    /**
+     * The text at [uri], as Android names a row in a send's result, or null once it's gone or
+     * while it isn't whole yet.
+     */
+    fun message(uri: String): Message?
 
     /** How many bytes the part at [uri] holds now, or null once it's gone; [Unavailable] if it can't say. */
     fun size(uri: String): Long?

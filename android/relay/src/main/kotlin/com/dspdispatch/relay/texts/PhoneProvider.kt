@@ -33,12 +33,13 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         Reading.Later
     }
 
-    override fun key(uri: String): String? {
+    override fun message(uri: String): Message? {
         val (table, id) = rowAt(uri) ?: return null
-        val (content, date) = if (table == Table.SMS) Sms.CONTENT_URI to Sms.DATE else Mms.CONTENT_URI to Mms.DATE
-        val at = resolver.query(Uri.withAppendedPath(content, id.toString()), arrayOf(date), null, null, null)
-            .rows { it.getLong(0) }.firstOrNull() ?: return null
-        return Row(table, id, if (table == Table.MMS) at * MS_PER_SECOND else at, Direction.OUT).key
+        val row = when (table) {
+            Table.SMS -> sms(Uri.withAppendedPath(Sms.CONTENT_URI, id.toString()), null, null)
+            Table.MMS -> mms(Uri.withAppendedPath(Mms.CONTENT_URI, id.toString()), null, null)
+        }.firstOrNull() ?: return null
+        return (read(row) as? Reading.Whole)?.message
     }
 
     // Android answers nothing for a provider that crashed a moment ago, and says a part's not
@@ -53,27 +54,41 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
 
     override fun open(uri: String): InputStream = resolver.openInputStream(uri.toUri()) ?: throw Unavailable(uri)
 
-    private fun smsRows(scan: Scan): List<Row> = resolver.query(
+    private fun smsRows(scan: Scan): List<Row> = sms(
         Sms.CONTENT_URI,
-        arrayOf(Sms._ID, Sms.DATE, Sms.TYPE, Sms.CREATOR),
         "${Sms.DATE} >= ? AND (${Sms.DATE} >= ? OR ${Sms._ID} > ?) AND " +
             "${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_INBOX}, ${TextBasedSmsColumns.MESSAGE_TYPE_SENT})",
         arrayOf(scan.paired.toString(), scan.since.toString(), scan.sms.toString()),
+    )
+
+    // One received counts once the texting app has downloaded it, when it holds the message
+    // itself and not only word of it.
+    private fun mmsRows(scan: Scan): List<Row> = mms(
+        Mms.CONTENT_URI,
+        "${Mms.DATE} >= ? AND (${Mms.DATE} >= ? OR ${Mms._ID} > ?) AND " +
+            "((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR " +
+            "${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})",
+        arrayOf(seconds(scan.paired).toString(), seconds(scan.since).toString(), scan.mms.toString()),
+    )
+
+    /** The plain texts' rows at [uri] that [where] selects. */
+    private fun sms(uri: Uri, where: String?, args: Array<String>?): List<Row> = resolver.query(
+        uri,
+        arrayOf(Sms._ID, Sms.DATE, Sms.TYPE, Sms.CREATOR),
+        where,
+        args,
         null,
     ).rows { cursor ->
         val direction = if (cursor.getInt(2) == TextBasedSmsColumns.MESSAGE_TYPE_INBOX) Direction.IN else Direction.OUT
         Row(Table.SMS, cursor.getLong(0), cursor.getLong(1), direction, cursor.getString(3))
     }
 
-    // A picture message's time is in seconds. One received counts once the texting app has
-    // downloaded it, when it holds the message itself and not only word of it.
-    private fun mmsRows(scan: Scan): List<Row> = resolver.query(
-        Mms.CONTENT_URI,
+    /** The picture messages' rows at [uri] that [where] selects: their time is in seconds. */
+    private fun mms(uri: Uri, where: String?, args: Array<String>?): List<Row> = resolver.query(
+        uri,
         arrayOf(Mms._ID, Mms.DATE, Mms.MESSAGE_BOX, Mms.CREATOR),
-        "${Mms.DATE} >= ? AND (${Mms.DATE} >= ? OR ${Mms._ID} > ?) AND " +
-            "((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR " +
-            "${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})",
-        arrayOf(seconds(scan.paired).toString(), seconds(scan.since).toString(), scan.mms.toString()),
+        where,
+        args,
         null,
     ).rows { cursor ->
         val direction = if (cursor.getInt(2) == BaseMmsColumns.MESSAGE_BOX_INBOX) Direction.IN else Direction.OUT

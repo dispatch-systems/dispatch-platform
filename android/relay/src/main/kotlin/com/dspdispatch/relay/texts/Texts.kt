@@ -1,7 +1,6 @@
 package com.dspdispatch.relay.texts
 
 import android.content.Context
-import android.database.sqlite.SQLiteException
 import androidx.room3.Room
 import com.dspdispatch.relay.dispatch.Dispatch
 import com.dspdispatch.relay.dispatch.Outbox
@@ -30,6 +29,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private val queue = database.queue()
     private val sends = database.sends()
     private val provider = PhoneProvider(context.contentResolver)
+    private val own = OwnRows(provider, sends, context.packageName)
     private val inbox = Inbox(provider, queue, SentByApp(sends, context.packageName))
     private val texting = Texting { textingAllowed(context) }
     private val reporter = Reporter(dispatch, queue, provider, texting)
@@ -82,20 +82,8 @@ class Texts(private val context: Context, dispatch: Dispatch) {
      * [uri] it wrote the text to, where it says.
      */
     suspend fun heard(heard: Heard, uri: String?) {
-        sender.heard(heard.copy(row = uri?.let(::keyAt), uri = uri))
+        sender.heard(heard.copy(row = uri?.let { own.row(heard, it) }, uri = uri))
         this.heard.trySend(Unit)
-    }
-
-    // Known by its time as well as its ID, read now, as the provider uses an ID again once its row
-    // is deleted. A row that can't be read now is placed by its number and words as it's read.
-    private fun keyAt(uri: String): String? = try {
-        provider.key(uri)
-    } catch (_: SecurityException) {
-        null
-    } catch (_: SQLiteException) {
-        null
-    } catch (_: Unavailable) {
-        null
     }
 
     private companion object {
