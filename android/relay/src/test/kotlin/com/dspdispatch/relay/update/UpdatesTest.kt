@@ -69,6 +69,18 @@ class UpdatesTest {
     }
 
     @Test
+    fun notifiesOfAVersionOnceThroughARollback() = runTest {
+        val updates = updates()
+        updates.heard(newer)
+        updates.heard(newest)
+        updates.heard(newer)
+        assertEquals(Update.Available(newer), updates.update.value)
+        assertEquals(listOf(newer, newest), notice.shown)
+        updates().heard(newer)
+        assertEquals(listOf(newer, newest), notice.shown)
+    }
+
+    @Test
     fun notifiesOnceTheAppMayNotifyAgain() = runTest {
         notice.allowed = false
         val updates = updates()
@@ -260,7 +272,7 @@ class UpdatesTest {
         var allowed = true
         val shown = mutableListOf<AppVersion>()
         var cancelled = 0
-        override var notified = 0
+        override var notified = emptySet<Int>()
 
         override fun show(app: AppVersion): Boolean {
             if (allowed) shown += app
