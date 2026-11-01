@@ -6,13 +6,16 @@ plugins {
     alias(libs.plugins.room) apply false
 }
 
-// A test that runs away fails instead of taking the machine with it: each app's tests write no file
-// over 1 GB (`gradle/capped-jdk`), run 15 minutes at most, and keep their scratch files in the app's
-// build folder, emptied before each run, never in the machine's own temp folder.
+// Each app's tests write no file over 1 GB (`gradle/capped-jdk`), so a test that writes without end
+// fails on its own write; run 15 minutes at most; and take their temp folder in the app's build
+// folder, emptied before each run, not the machine's.
 subprojects {
     tasks.withType<Test>().configureEach {
+        val capped = rootProject.file("gradle/capped-jdk/bin/java")
         val scratch = layout.buildDirectory.dir("tmp/test-scratch/$name").get().asFile
-        executable = rootProject.file("gradle/capped-jdk/bin/java").absolutePath
+        executable = capped.absolutePath
+        // Gradle doesn't track the executable's contents: a change to the cap reruns the tests.
+        inputs.file(capped).withPropertyName("cappedJava").withPathSensitivity(PathSensitivity.NONE)
         systemProperty("java.io.tmpdir", scratch.absolutePath)
         timeout = java.time.Duration.ofMinutes(15)
         doFirst {

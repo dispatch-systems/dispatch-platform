@@ -5,8 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// The guards android/build.gradle.kts puts on every test run, so a test that runs away can't fill
-// the disk.
+// The guards android/build.gradle.kts puts on every test run: the temp folder in the build folder,
+// and the cap on any file's size.
 class TestGuardsTest {
     @Test
     fun scratchFilesStayInTheBuildFolder() {
