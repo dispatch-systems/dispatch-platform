@@ -59,6 +59,8 @@ class Texts(private val context: Context, dispatch: Dispatch) {
                 // Texting was turned off, which ends the app; nothing to read until it's back.
             } catch (_: SQLiteException) {
                 // The provider failed this once; its next change reads again.
+            } catch (_: Unavailable) {
+                // The provider's away a moment; its next change reads again.
             }
         }
     }

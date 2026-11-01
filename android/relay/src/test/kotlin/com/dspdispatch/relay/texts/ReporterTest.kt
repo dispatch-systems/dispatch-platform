@@ -91,6 +91,25 @@ class ReporterTest {
     }
 
     @Test
+    fun keepsAFileWhileTheProviderIsAway() = runTest {
+        answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "door.jpg", "image/jpeg", 3, "file_1"))
+        provider.bytes["content://mms/part/1"] = byteArrayOf(1, 2, 3)
+        provider.away += "content://mms/part/1"
+        try {
+            reporter.upload(site, KEY)
+            fail("Read")
+        } catch (_: Unavailable) {
+        }
+        assertEquals(0, server.requestCount)
+        assertEquals(1, queue.files.size)
+
+        server.enqueue(json(200, """{"ok":true}"""))
+        assertTrue(reporter.upload(site, KEY))
+        assertEquals("/api/communications/phone/files/file_1", server.takeRequest().url.encodedPath)
+        assertTrue(queue.files.isEmpty())
+    }
+
+    @Test
     fun leavesAFileGoneFromThePhoneOrFromDispatch() = runTest {
         answered(WaitingFile("mms-1-1", 0, "content://mms/part/1", "gone.jpg", "image/jpeg", 3, "file_1"))
         answered(WaitingFile("mms-2-2", 0, "content://mms/part/2", "door.jpg", "image/jpeg", 3, "file_2"))

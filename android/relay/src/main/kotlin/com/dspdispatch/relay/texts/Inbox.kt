@@ -37,7 +37,11 @@ class Inbox(
                 queue.read(Seen(row.key, row.at, null), emptyList(), emptyList())
                 continue
             }
-            val message = provider.read(row) ?: continue
+            val message = when (val reading = provider.read(row)) {
+                is Reading.Whole -> reading.message
+                // Not marked read: a later read goes over it again.
+                Reading.Later, Reading.Gone -> continue
+            }
             val texts = reports(message)
             val reported = Seen(row.key, row.at, row.direction.takeIf { texts.isNotEmpty() })
             queue.read(reported, texts.map { it.first }, texts.flatMap { it.second })

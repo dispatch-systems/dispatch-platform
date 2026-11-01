@@ -68,6 +68,9 @@ class FakeProvider : Provider {
     /** Whether the phone lets the app read its texts: reading them while it doesn't fails, as on a phone. */
     var allowed = true
 
+    /** Parts the provider can't read the next time, as when it crashed a moment before. */
+    val away = mutableSetOf<String>()
+
     /** Whether Texting is turned off as the next read starts, just after the app saw it on. */
     var turnedOffAtRead = false
 
@@ -76,10 +79,15 @@ class FakeProvider : Provider {
 
     override fun rows(since: Long) = (messages.map(Message::row) + writing).filter { it.at >= since }.sortedBy(Row::at)
 
-    override fun read(row: Row) = messages.firstOrNull { it.row == row }
+    override fun read(row: Row): Reading {
+        if (row in writing) return Reading.Later
+        val message = messages.firstOrNull { it.row == row } ?: return Reading.Gone
+        return if (message.parts.any { away.remove(it.uri) }) Reading.Later else Reading.Whole(message)
+    }
 
     override fun size(uri: String): Long? {
         readable()
+        if (away.remove(uri)) throw Unavailable(uri)
         return bytes[uri]?.size?.toLong()
     }
 

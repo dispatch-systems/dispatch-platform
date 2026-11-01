@@ -3,6 +3,7 @@ package com.dspdispatch.relay.texts
 import android.content.ContentResolver
 import android.database.Cursor
 import android.net.Uri
+import android.provider.BaseColumns
 import android.provider.Telephony.BaseMmsColumns
 import android.provider.Telephony.Mms
 import android.provider.Telephony.Sms
@@ -10,27 +11,33 @@ import android.provider.Telephony.TextBasedSmsColumns
 import androidx.core.net.toUri
 import com.dspdispatch.relay.dispatch.Direction
 import java.io.FileNotFoundException
+import java.io.IOException
 import java.io.InputStream
 
 /** The phone's texts in Android's own texting provider, `Telephony.Sms` and `Telephony.Mms`. */
 class PhoneProvider(private val resolver: ContentResolver) : Provider {
     override fun rows(since: Long): List<Row> = (smsRows(since) + mmsRows(since)).sortedWith(compareBy(Row::at, Row::id))
 
-    override fun read(row: Row): Message? = when (row.table) {
-        Table.SMS -> readSms(row)
-        Table.MMS -> readMms(row)
-    }
-
-    override fun size(uri: String): Long? = try {
-        resolver.openAssetFileDescriptor(uri.toUri(), "r")?.use { file ->
-            file.length.takeIf { it >= 0 } ?: resolver.openInputStream(uri.toUri())?.use(::count)
+    override fun read(row: Row): Reading = try {
+        when (row.table) {
+            Table.SMS -> readSms(row)
+            Table.MMS -> readMms(row)
         }
-    } catch (_: FileNotFoundException) {
-        null
+    } catch (_: IOException) {
+        // The provider away, or failing as a part's read: it's all still there.
+        Reading.Later
     }
 
-    override fun open(uri: String): InputStream =
-        resolver.openInputStream(uri.toUri()) ?: throw FileNotFoundException(uri)
+    // Android answers nothing for a provider that crashed a moment ago, and says a part's not
+    // found for one gone as for a provider it can't reach: a part's gone only as the provider says.
+    override fun size(uri: String): Long? = try {
+        val file = resolver.openAssetFileDescriptor(uri.toUri(), "r") ?: throw Unavailable(uri)
+        file.use { it.length.takeIf { length -> length >= 0 } ?: open(uri).use(::count) }
+    } catch (_: FileNotFoundException) {
+        if (answers(uri.toUri())) null else throw Unavailable(uri)
+    }
+
+    override fun open(uri: String): InputStream = resolver.openInputStream(uri.toUri()) ?: throw Unavailable(uri)
 
     private fun smsRows(since: Long): List<Row> = resolver.query(
         Sms.CONTENT_URI,
@@ -57,26 +64,41 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         Row(Table.MMS, cursor.getLong(0), cursor.getLong(1) * MS_PER_SECOND, direction)
     }
 
-    private fun readSms(row: Row): Message? = resolver.query(
+    // By its ID and time both: a row's ID is used again once it's deleted.
+    private fun readSms(row: Row): Reading = resolver.query(
         Uri.withAppendedPath(Sms.CONTENT_URI, row.id.toString()),
         arrayOf(Sms.ADDRESS, Sms.BODY),
+        "${Sms.DATE} = ?",
+        arrayOf(row.at.toString()),
         null,
-        null,
-        null,
-    ).rows { Message(row, listOfNotNull(it.getString(0)), it.getString(1).orEmpty(), emptyList()) }.firstOrNull()
+    ).rows { Message(row, listOfNotNull(it.getString(0)), it.getString(1).orEmpty(), emptyList()) }
+        .firstOrNull()?.let(Reading::Whole) ?: Reading.Gone
 
     // The texting app writes a picture message's row first, then its parts and addresses: one
     // without them is still being written, and read again once it's whole.
-    private fun readMms(row: Row): Message? {
+    private fun readMms(row: Row): Reading {
+        if (!there(row)) return Reading.Gone
         val numbers = addresses(row)
         val parts = parts(row)
-        if (numbers.isEmpty() || parts.isEmpty()) return null
+        if (numbers.isEmpty() || parts.isEmpty()) return Reading.Later
         val body = parts.filter { it.mime == TEXT }.joinToString("\n") { it.text ?: readText(it.uri) }
         val files = parts.filter { it.mime != TEXT && it.mime != SMIL }.mapNotNull { part ->
             size(part.uri)?.let { Part(part.uri, part.name, part.mime, it) }
         }
-        return Message(row, numbers, body, files)
+        return Reading.Whole(Message(row, numbers, body, files))
     }
+
+    /** Whether the picture message [row] is still there, by its ID and time both. */
+    private fun there(row: Row): Boolean = resolver.query(
+        Uri.withAppendedPath(Mms.CONTENT_URI, row.id.toString()),
+        arrayOf(Mms._ID),
+        "${Mms.DATE} = ?",
+        arrayOf((row.at / MS_PER_SECOND).toString()),
+        null,
+    ).rows {}.isNotEmpty()
+
+    /** Whether the provider answers for [uri] at all, as it doesn't while it's away. */
+    private fun answers(uri: Uri): Boolean = resolver.query(uri, arrayOf(BaseColumns._ID), null, null, null)?.use { true } ?: false
 
     /** A picture message's parts, in order: its words, its layout, and its pictures and files. */
     private fun parts(row: Row): List<MmsPart> = resolver.query(
@@ -147,9 +169,9 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
             }
         }
 
-        /** Each row's value, closing the cursor; none when the provider answers nothing. */
-        inline fun <T> Cursor?.rows(value: (Cursor) -> T): List<T> = this?.use { cursor ->
+        /** Each row's value, closing the cursor; [Unavailable] when the provider answers nothing. */
+        inline fun <T> Cursor?.rows(value: (Cursor) -> T): List<T> = (this ?: throw Unavailable("its texts")).use { cursor ->
             buildList { while (cursor.moveToNext()) add(value(cursor)) }
-        }.orEmpty()
+        }
     }
 }

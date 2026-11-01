@@ -96,6 +96,20 @@ class InboxTest {
     }
 
     @Test
+    fun readsAPictureMessageAgainAfterTheProviderWasAway() = runTest {
+        inbox.begin("phone_1", PAIRED)
+        val door = Part("content://mms/part/9", "door.jpg", "image/jpeg", 48_213)
+        mms(5, PAIRED + 10, Direction.IN, listOf("(206) 555-0105"), "Door", door)
+        provider.away += door.uri
+        read()
+        assertTrue(queue.texts.isEmpty())
+        assertTrue("not marked read", queue.seen.isEmpty())
+        read()
+        assertEquals(listOf("mms-5-${PAIRED + 10}"), queue.texts.keys.toList())
+        assertEquals(listOf(door.uri), queue.files.map(WaitingFile::uri))
+    }
+
+    @Test
     fun reportsAGroupTextFromItsSenderAndOneSentToEachRecipient() = runTest {
         inbox.begin("phone_1", PAIRED)
         mms(6, PAIRED + 10, Direction.IN, listOf("(206) 555-0106"), "To the group")
