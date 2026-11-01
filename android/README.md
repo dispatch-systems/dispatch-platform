@@ -38,33 +38,106 @@ place. App IDs never change once phones have the app.
 
 ## Signing
 
-Release builds are signed on the MacBook alone. The key is kept outside the repo, with a copy in
-the owner's password manager: a phone only updates to an APK signed with the key it was
-installed with. `dispatch.relay.signing` in `~/.gradle/gradle.properties` names a properties file
-of `storeFile`, `storePassword`, `keyAlias` and `keyPassword`; without it, a release builds
-unsigned.
+Release builds are signed in CI alone, each with its server's key, kept as secrets of a GitHub
+environment and never in the repo: `relay-dev` holds the Dev key, for `main` and
+`release-checks/v*`, and `relay-production` the Production key, for `release-checks/v*` alone.
+Each has `RELAY_KEYSTORE` (the PKCS12 keystore in base64), `RELAY_KEYSTORE_PASSWORD`,
+`RELAY_KEY_ALIAS` and `RELAY_KEY_PASSWORD`. A copy of each key is in the owner's password manager:
+a phone only updates to an APK signed with the key it was installed with. Gradle signs a release
+build when `RELAY_KEYSTORE_FILE` names the keystore, with the other three beside it; without it, a
+release builds unsigned.
 
-## Publishing
+## Versions
 
-Each version is published from the MacBook as a GitHub pre-release of this repository, tagged
-`relay-v<version>`, with both builds' signed APKs: a pre-release is never GitHub's latest
-release, which Production installs. From this folder, in a branch's worktree:
+A build's version comes from the build, never the source:
+`./gradlew -Prelay.versionCode=<n> -Prelay.versionName=<name> …`. Without them it's versionCode 1,
+named `0.0.0-local`, clearly no release.
 
-```sh
-./publish --dry-run 1.4.0  # builds and checks it all, publishing and changing nothing
-./publish 1.4.0
+- `versionCode`: the commit count of the built commit on `main` (`git rev-list --count HEAD`), the
+  same for its Dev and Production builds, higher with each commit.
+- Production's name: the app version, three numbers from `0.0.1`, which goes up only with a
+  release that changes the app: its next patch, or more with the release's `--bump`. A release
+  without app changes carries the last released app unchanged.
+- Dev's name: `<next app version>-dev.<versionCode>`, as `0.0.2-dev.1372`, the next app version
+  being the last released one's next patch, `0.0.1` before any.
+
+## Releases
+
+CI builds and signs both apps (`.github/workflows/checks.yml`, with `tooling/ci/relay.py`):
+
+- **Each commit of `main`:** `relay-dev` builds Dev's app (the `dev` flavor's release build),
+  signed with the Dev key. It builds again for each commit that changes `android/`, a revert
+  too, and when the next app version or the key changes; otherwise the signed APK of the same
+  inputs comes from the Actions cache, while it still holds it, so a change elsewhere rarely waits
+  on Gradle. `build` packs it in the runtime package, which Dev installs as it does each commit
+  of `main`.
+- **A release:** the release command is to dispatch the checks for its commit on its branch
+  `release-checks/v<version>`, with `relay-version`, the app version it releases. Given one,
+  `relay-production` builds Production's app at that commit, named that version and signed with
+  the Production key, and `build` packs it beside Dev's. Empty, as for a release without app
+  changes, `build` packs the Production APK the latest release carries, byte for byte, checked
+  against its entry and GitHub's digest of it (`relay.py carry`); none before any release carried
+  one. The release stamps that run's package, which Production installs.
+- **A PR:** only the debug builds (`android`), unsigned, and no app packed.
+
+`dispatchdev build` packs the builds of the folder `DISPATCH_RELAY_APPS` names, each entry
+(`dev.json`, `production.json`) beside its APK, checking each APK against its entry, in the
+runtime's `dashboard/relay/` with `relay.json`, the entries together. Without the variable, no app
+is packed, as for `npm run dev`. Each server hands out its own build, the Dev build on Dev, at
+every DSP's address ([Communications](../features/communications/README.md#dispatch-phones)):
+Production's only from a release's package, which alone carries it.
+
+```json
+{
+  "dev": {
+    "version": "0.0.2-dev.1372",
+    "versionCode": 1372,
+    "commit": "<40 hex>",
+    "asset": "dsp-dispatch-relay-0.0.2-dev.1372.apk",
+    "sha256": "<64 hex>",
+    "size": 18350112
+  },
+  "production": {
+    "version": "0.0.1",
+    "versionCode": 1369,
+    "commit": "<40 hex>",
+    "asset": "dsp-dispatch-relay-0.0.1.apk",
+    "sha256": "<64 hex>",
+    "size": 18350112
+  }
+}
 ```
 
-`./publish` refuses unless signing is configured, the tree is clean, `origin` is this repository,
-`HEAD` is on GitHub, neither the tag nor the branch `publish-relay-v<version>` exists there or
-here, and the version is above the app's. On that branch it commits `versionName` and the next
-`versionCode` in `relay/build.gradle.kts`, builds both release APKs from that commit, checks that
-both are signed with the one key, tags the commit, pushes the branch and the tag, and publishes
-the APKs to the tag's pre-release (`gh release create --verify-tag --prerelease --latest=false`).
-Then it commits `relay/release.json` on the branch, pushes it, and prints the command that opens
-its PR: merged, Dev hands the version out; once a release includes it, Production. A failure
-before publishing leaves nothing behind: the tree, the branch and the tag are as they were, here
-and on GitHub.
+- `version` and `versionCode` as [above](#versions); `commit`: the commit it was built from.
+- `asset`: its APK's file name, `dsp-dispatch-relay-<version>.apk`; `sha256`: its SHA-256 in
+  lowercase hex; `size`: its size in bytes, at most 200 MiB.
+- `production` only in a release's package, once an app was released.
+
+The format's fixture is `tooling/cli/src/build/relay/relay.json`.
+
+### What the release command keeps
+
+The release command (`ops/host-manager/src/release/`) doesn't do this yet: until it does, a
+release stamps `main`'s package, which carries no Production app. It is to:
+
+- **Dispatch:** every release runs
+  `gh workflow run checks.yml --ref release-checks/v<version> -f relay-version=<X.Y.Z or empty>`,
+  since `main`'s package never carries Production's app.
+- **The last released app:** the `production` entry of the `relay.json` attached to GitHub's latest
+  release; without one, none was released.
+- **App changes:** `git diff <production.commit> <commit> -- android` isn't empty, or none was
+  released and `android/` exists. With changes, `relay-version` is the last released app
+  version's next patch (or more, with `--bump`), `0.0.1` first; without, empty.
+- **The record:** once an app exists, each published release attaches its package's
+  `dashboard/relay/relay.json` and Production's APK, its `asset`, which the next release's run and
+  `main`'s Dev builds read.
+- **Its checks:** stamp the run it dispatched, never `main`'s push run, which carries no
+  Production app; refuse a `relay-version` at or below the last released app version; check the
+  package's `production` entry is that version, built at the release's commit; and compare Dev's
+  build, not the whole package, with what Dev serves, since Production's APK makes the release's
+  package unlike Dev's.
+
+## Updates
 
 Each outbox wait tells the app the version its DSP hands out; one above its own shows Update,
 with a notification. Install downloads it from the DSP, checks its size and SHA-256 against the
@@ -73,39 +146,3 @@ DSP's details and that it's the same app signed with the same key, and installs 
 an app updating itself (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`); Android decides each time, and
 wherever it asks anyway, as before Android 12 or under its own rules, its confirmation shows, and
 Install shows it again. The relay starts again once it's replaced.
-
-`relay/release.json` names the version published, and merged, it's what Dispatch hands out:
-
-```json
-{
-  "version": "1.4.0",
-  "versionCode": 14,
-  "builds": {
-    "dev": {
-      "asset": "dsp-dispatch-relay-dev-1.4.0.apk",
-      "sha256": "<64 hex>",
-      "size": 18350112
-    },
-    "production": {
-      "asset": "dsp-dispatch-relay-1.4.0.apk",
-      "sha256": "<64 hex>",
-      "size": 18350112
-    }
-  }
-}
-```
-
-- `version`: three numbers, as `1.4.0`. `versionCode`: the app's, 1 or more, higher with each
-  version, which Android compares to tell a newer one.
-- `builds`: `dev` and `production`, each its APK's asset name on the pre-release (letters,
-  digits, `.`, `_` and `-`, ending `.apk`, one of its own), its SHA-256 in lowercase hex, and its
-  size in bytes.
-
-`dispatchdev build`, which CI's build and `npm run dev` run, fetches each APK from the
-pre-release once, into a cache every worktree shares, refuses one whose SHA-256 or size differs,
-fetched or kept, and packs both with the file in the runtime's `dashboard/relay/`. A debug build
-that can't download one, as offline, warns and packs none; a release build fails. Dev serves the new version as it installs `main`, and Production
-once a release includes it. Each server hands out its own build, the Dev build on Dev, at every
-DSP's address ([Communications](../features/communications/README.md#dispatch-phones)). Without
-the file, no app is packed or offered. The format's fixture is
-`tooling/cli/src/build/relay/release.json`.

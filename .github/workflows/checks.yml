@@ -2,12 +2,19 @@ name: Platform checks
 # Every suite on every PR, and again on each push to main: the squash commit the PR became. The
 # `platform` gate is the one required check. On a PR it only judges; on main it also attests and
 # publishes the tested build, which Dev installs and a release stamps. A manual run publishes the
-# build of the commit it ran on the same way, as a release asks for a commit whose build expired.
+# build of the commit it ran on the same way, as a release asks for its commit's build. Outside a PR
+# the build of main or a release's branch carries DSP Dispatch: Relay, signed here: Dev's app, and
+# Production's in a release's run (android/README.md#releases).
 on:
   pull_request:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      relay-version:
+        description: "Production's relay app version this release builds, as 0.0.1; empty carries the last released one"
+        type: string
+        default: ''
 permissions:
   contents: read
   actions: read
@@ -21,10 +28,182 @@ env:
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
 jobs:
+  # DSP Dispatch: Relay's Dev app at this commit, a release build signed with the Dev key, for the
+  # build to pack: on each commit of main, and in a dispatched run on main or a release's branch,
+  # the branches the relay-dev environment allows. Built again only when android/, the app version
+  # it names, or the key changed; otherwise the signed APK of the same inputs comes from the cache.
+  relay-dev:
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release-checks/v'))
+    environment: relay-dev
+    permissions:
+      contents: read
+    outputs:
+      apps: ${{ steps.apps.outputs.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          # Every commit, not their files: the versionCode is the commit count.
+          fetch-depth: 0
+          filter: blob:none
+      - name: Read the signing key
+        id: key
+        env:
+          RELAY_KEYSTORE: ${{ secrets.RELAY_KEYSTORE }}
+          RELAY_KEYSTORE_PASSWORD: ${{ secrets.RELAY_KEYSTORE_PASSWORD }}
+          RELAY_KEY_ALIAS: ${{ secrets.RELAY_KEY_ALIAS }}
+        run: python3 tooling/ci/relay.py key "$RUNNER_TEMP/relay.p12" >> "$GITHUB_OUTPUT"
+      - name: Name the build
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tooling/ci/relay.py version dev >> "$GITHUB_OUTPUT"
+      - name: Restore the signed build of the same inputs
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ runner.temp }}/relay-apps
+          key: relay-dev-${{ steps.version.outputs.changed }}-${{ steps.version.outputs.next }}-${{ steps.key.outputs.cert }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '21'
+      # Gradle's caches only read: a signing build saves nothing another run restores.
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+        with:
+          cache-read-only: true
+      # Neither Gradle's configuration cache nor its build cache, which would keep the signing
+      # passwords or the signed outputs.
+      - name: Build and sign
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: android
+        env:
+          RELAY_KEYSTORE_FILE: ${{ runner.temp }}/relay.p12
+          RELAY_KEYSTORE_PASSWORD: ${{ secrets.RELAY_KEYSTORE_PASSWORD }}
+          RELAY_KEY_ALIAS: ${{ secrets.RELAY_KEY_ALIAS }}
+          RELAY_KEY_PASSWORD: ${{ secrets.RELAY_KEY_PASSWORD }}
+          CODE: ${{ steps.version.outputs.code }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: >-
+          ./gradlew --no-configuration-cache --no-build-cache
+          -Prelay.versionCode="$CODE" -Prelay.versionName="$NAME" :relay:assembleDevRelease
+      - if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          COMMIT: ${{ steps.version.outputs.commit }}
+          CODE: ${{ steps.version.outputs.code }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: >-
+          python3 tooling/ci/relay.py entry dev
+          android/relay/build/outputs/apk/dev/release/relay-dev-release.apk
+          "$RUNNER_TEMP/relay-apps" "$COMMIT" "$CODE" "$NAME"
+      - name: Check the signed build
+        env:
+          CERT: ${{ steps.key.outputs.cert }}
+        run: python3 tooling/ci/relay.py signed "$RUNNER_TEMP/relay-apps" dev "$CERT"
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ runner.temp }}/relay-apps
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+      - id: apps
+        run: echo "name=relay-dev-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.apps.outputs.name }}
+          path: ${{ runner.temp }}/relay-apps
+          if-no-files-found: error
+          retention-days: 2
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/relay.p12"
+  # Production's app, in a release's run that names its version (the release command's
+  # `relay-version`), built at the release's commit and signed with the Production key, which
+  # only a release's branch may use.
+  relay-production:
+    if: github.event_name == 'workflow_dispatch' && inputs.relay-version != ''
+    environment: relay-production
+    permissions:
+      contents: read
+    outputs:
+      apps: ${{ steps.apps.outputs.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+        with:
+          cache-read-only: true
+      - name: Read the signing key
+        id: key
+        env:
+          RELAY_KEYSTORE: ${{ secrets.RELAY_KEYSTORE }}
+          RELAY_KEYSTORE_PASSWORD: ${{ secrets.RELAY_KEYSTORE_PASSWORD }}
+          RELAY_KEY_ALIAS: ${{ secrets.RELAY_KEY_ALIAS }}
+        run: python3 tooling/ci/relay.py key "$RUNNER_TEMP/relay.p12" >> "$GITHUB_OUTPUT"
+      - name: Name the build
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.relay-version }}
+        run: python3 tooling/ci/relay.py version production "$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Build and sign
+        working-directory: android
+        env:
+          RELAY_KEYSTORE_FILE: ${{ runner.temp }}/relay.p12
+          RELAY_KEYSTORE_PASSWORD: ${{ secrets.RELAY_KEYSTORE_PASSWORD }}
+          RELAY_KEY_ALIAS: ${{ secrets.RELAY_KEY_ALIAS }}
+          RELAY_KEY_PASSWORD: ${{ secrets.RELAY_KEY_PASSWORD }}
+          CODE: ${{ steps.version.outputs.code }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: >-
+          ./gradlew --no-configuration-cache --no-build-cache
+          -Prelay.versionCode="$CODE" -Prelay.versionName="$NAME" :relay:assembleProductionRelease
+      - env:
+          COMMIT: ${{ steps.version.outputs.commit }}
+          CODE: ${{ steps.version.outputs.code }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: >-
+          python3 tooling/ci/relay.py entry production
+          android/relay/build/outputs/apk/production/release/relay-production-release.apk
+          "$RUNNER_TEMP/relay-apps" "$COMMIT" "$CODE" "$NAME"
+      - name: Check the signed build
+        env:
+          CERT: ${{ steps.key.outputs.cert }}
+        run: python3 tooling/ci/relay.py signed "$RUNNER_TEMP/relay-apps" production "$CERT"
+      - id: apps
+        run: echo "name=relay-production-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.apps.outputs.name }}
+          path: ${{ runner.temp }}/relay-apps
+          if-no-files-found: error
+          retention-days: 2
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/relay.p12"
   # Packages the runtime: the release backend and support worker, built together or from the
-  # exact-input cache when their sources are unchanged, and the dashboard from Vite.
-  # Everything that tests the runtime downloads this package instead of building again.
+  # exact-input cache when their sources are unchanged, and the dashboard from Vite, with the
+  # relay apps signed above, or in a release's run without a new Production app, the one the
+  # latest release carries. Everything that tests the runtime downloads this package instead of
+  # building again.
   build:
+    needs: [relay-dev, relay-production]
+    # Once the relay apps are built, or skipped, as on a PR, where it starts at once.
+    if: ${{ !cancelled() && !failure() }}
     permissions:
       contents: read
       id-token: write
@@ -45,8 +224,27 @@ jobs:
         with:
           profile: release
           save: 'false'
+      - if: needs.relay-dev.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ needs.relay-dev.outputs.apps }}
+          path: ${{ runner.temp }}/relay-apps
+      - if: needs.relay-production.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ needs.relay-production.outputs.apps }}
+          path: ${{ runner.temp }}/relay-apps
+      - name: Carry the released Production relay app
+        if: github.event_name == 'workflow_dispatch' && inputs.relay-version == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tooling/ci/relay.py carry "$RUNNER_TEMP/relay-apps"
       - name: Build the runtime
-        run: npm run check:ci -- build
+        run: |
+          if [ -d "$RUNNER_TEMP/relay-apps" ]; then
+            export DISPATCH_RELAY_APPS="$RUNNER_TEMP/relay-apps"
+          fi
+          npm run check:ci -- build
       - name: Package the runtime
         id: candidate
         run: |
@@ -67,6 +265,7 @@ jobs:
   # The bundle test verifies the package through the host tool, which setup-tools restores.
   checks:
     needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -88,6 +287,7 @@ jobs:
   # its own server, port, database and mail. Failed shards upload their traces.
   browser:
     needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -174,6 +374,7 @@ jobs:
   # same bytes, so a release never finds out first. It speaks HTTP only, so it needs no browser.
   smoke:
     needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -226,7 +427,7 @@ jobs:
       - run: npm run check:ci -- scaffold
   # The Android apps in android/: their unit tests, lint (the dev debug and production release
   # builds) and debug builds, only when a change touches them or this workflow, so any other
-  # change passes it at once. Release builds are signed on the MacBook, never here.
+  # change passes it at once. Release builds are signed only in relay-dev and relay-production.
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -367,12 +568,24 @@ jobs:
         with:
           path: .ci-tools/fixture/
           key: ${{ steps.restore.outputs.fixture-key }}
-  # The one required check. It passes only when every suite passed and the build carries the
-  # run's own commit and a complete inventory. Outside a PR it then publishes that build under
-  # the commit's name: Dev installs it and a release stamps it.
+  # The one required check. It passes only when every suite passed, the relay apps' builds too
+  # wherever they ran, and the build carries the run's own commit and a complete inventory.
+  # Outside a PR it then publishes that build under the commit's name: Dev installs it and a
+  # release stamps it.
   platform:
     needs:
-      [build, checks, browser, smoke, core, api, collectors, rust-advisories, scaffold, android]
+      - build
+      - checks
+      - browser
+      - smoke
+      - core
+      - api
+      - collectors
+      - rust-advisories
+      - scaffold
+      - android
+      - relay-dev
+      - relay-production
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -381,7 +594,11 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: |
-          failed=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"')
+          # The relay apps' builds alone may be skipped: they run outside PRs, Production's in a
+          # release's run.
+          failed=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success")
+            | select(.value.result != "skipped" or (.key | IN("relay-dev", "relay-production") | not))
+            | "\(.key): \(.value.result)"')
           if [ -n "$failed" ]; then
             echo "Suites that did not pass:"
             echo "$failed"

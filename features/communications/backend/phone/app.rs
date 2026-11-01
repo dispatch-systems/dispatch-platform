@@ -1,31 +1,27 @@
 //! The app this server hands out to the DSP's phones: the latest version of DSP Dispatch: Relay
-//! its build packed, as `android/relay/release.json` names it, in the runtime's `dashboard/relay/`.
-//! A preview server, as Dev is, hands out Dev's build, and Production its own. None while the build
-//! packed none.
+//! its build packed, as CI built and signed it, in the runtime's `dashboard/relay/`. A preview
+//! server, as Dev is, hands out Dev's build, which main's and a release's packages carry, and
+//! Production its own, which only a release's package carries. None while the build packed none.
 use dispatch_core::foundation::config::{Config, Environment};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 /// Where the build packs the app, in the runtime's dashboard folder.
 const FOLDER: &str = "relay";
-/// The release the app was packed from, beside its APKs.
-const RELEASE: &str = "release.json";
+/// The file naming each build packed, beside their APKs.
+const BUILDS: &str = "relay.json";
 
-/// What the release says, as the build checked it.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Release {
-    version: String,
-    version_code: u32,
-    builds: Builds,
-}
+/// Each build packed, as the build checked it.
 #[derive(Deserialize)]
 struct Builds {
-    dev: Apk,
-    production: Apk,
+    dev: Option<Build>,
+    production: Option<Build>,
 }
 #[derive(Deserialize)]
-struct Apk {
+#[serde(rename_all = "camelCase")]
+struct Build {
+    version: String,
+    version_code: u32,
     asset: String,
     sha256: String,
     size: u64,
@@ -54,23 +50,22 @@ pub fn latest(config: &Config) -> Option<App> {
 }
 /// The build of the app packed in `folder` for `environment`, while its APK is there whole.
 fn packed(folder: &Path, environment: Environment) -> Option<App> {
-    let release: Release =
-        serde_json::from_slice(&std::fs::read(folder.join(RELEASE)).ok()?).ok()?;
-    let (name, apk) = match environment {
-        Environment::Preview => ("DSP Dispatch: Relay Dev", release.builds.dev),
-        Environment::Production => ("DSP Dispatch: Relay", release.builds.production),
+    let builds: Builds = serde_json::from_slice(&std::fs::read(folder.join(BUILDS)).ok()?).ok()?;
+    let (name, build) = match environment {
+        Environment::Preview => ("DSP Dispatch: Relay Dev", builds.dev?),
+        Environment::Production => ("DSP Dispatch: Relay", builds.production?),
     };
-    let path = folder.join(&apk.asset);
-    let whole = Path::new(&apk.asset).file_name() == Some(apk.asset.as_ref())
+    let path = folder.join(&build.asset);
+    let whole = Path::new(&build.asset).file_name() == Some(build.asset.as_ref())
         && std::fs::symlink_metadata(&path)
-            .is_ok_and(|kept| kept.is_file() && kept.len() == apk.size);
+            .is_ok_and(|kept| kept.is_file() && kept.len() == build.size);
     whole.then_some(App {
         name,
-        version: release.version,
-        version_code: release.version_code,
-        sha256: apk.sha256,
-        size: apk.size,
-        file: apk.asset,
+        version: build.version,
+        version_code: build.version_code,
+        sha256: build.sha256,
+        size: build.size,
+        file: build.asset,
         path,
     })
 }
