@@ -57,7 +57,8 @@ export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
 
 # Refused unless the key is there to sign with and the tree holds nothing but what's committed.
 properties=${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties
-signing=$(sed -n 's/^dispatch\.relay\.signing=//p' "$properties" 2>/dev/null | tail -n 1)
+signing=
+[[ -f $properties ]] && signing=$(sed -n 's/^dispatch\.relay\.signing=//p' "$properties" | tail -n 1)
 [[ -n $signing && -f $signing ]] || fail "signing isn't configured: dispatch.relay.signing in $properties names no file"
 [[ -z $(git status --porcelain) ]] || fail "the tree isn't clean: commit or set aside its changes first"
 
