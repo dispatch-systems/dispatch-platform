@@ -83,14 +83,17 @@ class Probe(private val context: Context) {
      */
     private fun restricted(): Boolean? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return null
+        // The install sources Android restricts, as its EnhancedConfirmationService has them.
         val fromFile = try {
-            packages.getInstallSourceInfo(name).packageSource in FILE_SOURCES
+            packages.getInstallSourceInfo(name).packageSource.let {
+                it == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE || it == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE
+            }
         } catch (_: PackageManager.NameNotFoundException) {
             false
         }
         val mode = try {
             context.getSystemService(AppOpsManager::class.java)
-                .unsafeCheckOpNoThrow(RESTRICTED_SETTINGS_OP, Process.myUid(), name)
+                .checkOpNoThrow(RESTRICTED_SETTINGS_OP, Process.myUid(), name)
         } catch (_: IllegalArgumentException) {
             // A phone whose Android doesn't know the app op: none of its settings is restricted.
             return null
@@ -112,8 +115,5 @@ class Probe(private val context: Context) {
 
         /** Android's `AppOpsManager.OPSTR_ACCESS_RESTRICTED_SETTINGS`, which it doesn't publish. */
         private const val RESTRICTED_SETTINGS_OP = "android:access_restricted_settings"
-
-        /** The install sources Android 15+ restricts, as its EnhancedConfirmationService has them. */
-        private val FILE_SOURCES = setOf(PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE, PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE)
     }
 }
