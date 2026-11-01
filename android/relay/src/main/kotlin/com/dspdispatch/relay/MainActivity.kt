@@ -60,12 +60,21 @@ class MainActivity : ComponentActivity() {
             val items by relay.setup.items.collectAsStateWithLifecycle()
             val finished by relay.setup.finished.collectAsStateWithLifecycle()
             val today by relay.texts.today.collectAsStateWithLifecycle(Today())
+            val mmsWhenBusy by relay.texts.mmsWhenBusy.on.collectAsStateWithLifecycle()
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
             when {
                 now is Standing.Pairing && !finished -> SetupScreen(now.paired, items, fixes::apply, relay.setup::finish)
-                now is Standing.Pairing -> ConnectedScreen(now.paired, link, today, items?.firstOrNull { !it.done }, fixes::apply)
+                now is Standing.Pairing -> ConnectedScreen(
+                    now.paired,
+                    link,
+                    today,
+                    items?.firstOrNull { !it.done },
+                    fixes::apply,
+                    mmsWhenBusy,
+                    relay.texts.mmsWhenBusy::set,
+                )
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }
                 scanning -> ScanScreen(::read) { scanning = false }
                 now is Standing.Removed -> RemovedScreen(now.dsp, ::scan, pairing, problem)

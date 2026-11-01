@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -68,10 +71,18 @@ fun RemovedScreen(dsp: String, scan: () -> Unit, pairing: Boolean, problem: Int?
 
 /**
  * Paired: a step of Set up undone, if one is, the DSP, how the line to it stands, today's texts,
- * and the app's version.
+ * the app's version, and the switch of [mmsWhenBusy], which [setMmsWhenBusy] turns.
  */
 @Composable
-fun ConnectedScreen(paired: Paired, link: Link, today: Today, undone: Item?, fix: (Item, Fix) -> Unit) = Page {
+fun ConnectedScreen(
+    paired: Paired,
+    link: Link,
+    today: Today,
+    undone: Item?,
+    fix: (Item, Fix) -> Unit,
+    mmsWhenBusy: Boolean,
+    setMmsWhenBusy: (Boolean) -> Unit,
+) = Page {
     Top()
     undone?.let { item -> UndoneBanner(item) { fix(item, it) } }
     DspLine(paired)
@@ -87,6 +98,23 @@ fun ConnectedScreen(paired: Paired, link: Link, today: Today, undone: Item?, fix
         }
     }
     TodayCard(today)
+    SwitchCard(R.string.mms_when_busy, mmsWhenBusy, setMmsWhenBusy)
+}
+
+/** A switch with its [label], [on] or off, which [set] turns: the whole card turns it, read as one. */
+@Composable
+private fun SwitchCard(@StringRes label: Int, on: Boolean, set: (Boolean) -> Unit) = Surface(
+    Modifier.fillMaxWidth().padding(top = 12.dp),
+    RoundedCornerShape(12.dp),
+    MaterialTheme.colorScheme.surfaceVariant,
+) {
+    Row(
+        Modifier.toggleable(on, role = Role.Switch, onValueChange = set).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Switch(on, onCheckedChange = null)
+    }
 }
 
 /** The DSP, and the phone's name at it. */
@@ -220,4 +248,6 @@ private fun ConnectedPreview() = ConnectedScreen(
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
     Item(Step.BATTERY, false, listOf(Fix.BATTERY_REQUEST)),
     { _, _ -> },
+    mmsWhenBusy = true,
+    setMmsWhenBusy = {},
 )

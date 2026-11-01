@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The picture messages the app hands Android to send (Texts' SENDING). -->
+<paths>
+    <cache-path
+        name="sending"
+        path="sending/" />
+</paths>
