@@ -176,6 +176,9 @@ interface Sends {
     /** The provider rows ([Row.key]) [send] is known to have been written to. */
     suspend fun rows(send: Send): List<String>
 
+    /** Whether Android said it sent [send]'s parts joined, as one message ([Report.joined]). */
+    suspend fun joined(send: Send): Boolean
+
     /** Whether a send was written to the provider row [row] ([Row.key]). */
     suspend fun wrote(row: String): Boolean
 

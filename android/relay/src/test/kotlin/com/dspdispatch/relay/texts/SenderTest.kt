@@ -228,6 +228,88 @@ class SenderTest {
     }
 
     @Test
+    fun settlesATextSentInPartsApartOnlyByEveryPartsRow() = runTest {
+        radio.partLength = 7
+        val sender = sender()
+        val texts = listOf(text("failed", 1, "Gate code 4412"), text("missing", 1, "Door code 5521"), text("sent", 1, "Dock door 7"))
+        sender.send(paired, KEY, Outbox(texts))
+        // Android sent each part as a text of its own, writing each to a row of its own: each first
+        // part's word heard, each last's lost.
+        val firsts = listOf(sms(7, "Gate co"), sms(9, "Door co"), sms(10, "Dock do"))
+        provider.messages += firsts
+        for ((text, row) in texts.zip(firsts)) {
+            val heard = Heard(text.id, 1, 0, Event.SENT, null, null, clock)
+            sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/${row.row.id}")))
+        }
+        val failed = sms(8, "de 4412")
+        val sent = sms(11, "or 7")
+        provider.messages += listOf(failed, sent)
+        provider.failed += failed.row
+        clock += RESULT_WAIT_MS + 1
+        sender.send(paired, KEY, Outbox(emptyList()))
+        assertEquals(
+            setOf(Told("sent", 1, SendStatus.SENT, clock)) +
+                listOf("failed", "missing").map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) },
+            sends.statuses(10).toSet(),
+        )
+        assertTrue("its last part's row taken", sends.wrote(sent.row.key))
+    }
+
+    @Test
+    fun settlesATextAndroidSaysItSentJoinedByItsOneRow() = runTest {
+        radio.partLength = 7
+        val sender = sender()
+        sender.send(paired, KEY, Outbox(listOf(text("text_1", 1, "Café door 4412"))))
+        // Its first part's word lost; its last said it went joined, naming the row Android wrote the
+        // whole text to, its words as a phone forcing 7-bit texts sends them.
+        val row = sms(7, "Cafe door 4412")
+        provider.messages += row
+        val heard = Heard("text_1", 1, 1, Event.SENT, null, null, clock, joined = true)
+        sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/7")))
+        clock += RESULT_WAIT_MS + 1
+        sender.send(paired, KEY, Outbox(emptyList()))
+        assertEquals(listOf(Told("text_1", 1, SendStatus.SENT, clock)), sends.statuses(10))
+    }
+
+    @Test
+    fun leavesLikeTextsForTheInboxToPlaceBeforeSettlingThem() = runTest {
+        sender().send(paired, KEY, Outbox(listOf(text("first", 1, "On my way"))))
+        clock += 1_000
+        sender().send(paired, KEY, Outbox(listOf(text("second", 1, "On my way"))))
+        // Android's word of both lost, and the app restarted before the inbox read their rows: one
+        // is in Sent, the other in Failed, and nothing says which is which.
+        val sent = sms(7, "On my way")
+        val failed = sms(8, "On my way")
+        provider.messages += listOf(sent, failed)
+        provider.failed += failed.row
+        clock += RESULT_WAIT_MS + 1
+        sender().send(paired, KEY, Outbox(emptyList()))
+        assertTrue("neither settled", sends.statuses(10).isEmpty())
+
+        // The inbox reads the row in Sent, placing it.
+        assertEquals(Whose.DISPATCH, SentByApp(sends, APP).whose(sent))
+        sender().send(paired, KEY, Outbox(emptyList()))
+        assertEquals(
+            setOf(Told("first", 1, SendStatus.SENT, clock), Told("second", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)),
+            sends.statuses(10).toSet(),
+        )
+    }
+
+    @Test
+    fun failsLikeTextsWhoseRowsAreAllInFailed() = runTest {
+        sender().send(paired, KEY, Outbox(listOf(text("first", 1, "Gate code?"), text("second", 1, "Gate code?"))))
+        val rows = listOf(sms(7, "Gate code?"), sms(8, "Gate code?"))
+        provider.messages += rows
+        provider.failed += rows.map(Message::row)
+        clock += RESULT_WAIT_MS + 1
+        sender().send(paired, KEY, Outbox(emptyList()))
+        assertEquals(
+            listOf("first", "second").map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) }.toSet(),
+            sends.statuses(10).toSet(),
+        )
+    }
+
+    @Test
     fun settlesATextAndroidNeverSaidMoreOfOnlyOnceTheProviderCanSay() = runTest {
         sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "On my way"))))
         provider.messages += sms(7, "On my way")
