@@ -38,8 +38,21 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         val row = when (table) {
             Table.SMS -> sms(Uri.withAppendedPath(Sms.CONTENT_URI, id.toString()), null, null)
             Table.MMS -> mms(Uri.withAppendedPath(Mms.CONTENT_URI, id.toString()), null, null)
-        }.firstOrNull() ?: return null
+        }.firstOrNull()?.first ?: return null
         return (read(row) as? Reading.Whole)?.message
+    }
+
+    override fun tried(table: Table, since: Long): List<Tried> = when (table) {
+        Table.SMS -> sms(
+            Sms.CONTENT_URI,
+            "${Sms.DATE} >= ? AND ${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_SENT}, ${TextBasedSmsColumns.MESSAGE_TYPE_FAILED})",
+            arrayOf(since.toString()),
+        ).map { (row, type) -> Tried(row, type == TextBasedSmsColumns.MESSAGE_TYPE_SENT) }
+        Table.MMS -> mms(
+            Mms.CONTENT_URI,
+            "${Mms.DATE} >= ? AND ${Mms.MESSAGE_BOX} IN (${BaseMmsColumns.MESSAGE_BOX_SENT}, ${BaseMmsColumns.MESSAGE_BOX_FAILED})",
+            arrayOf((since / MS_PER_SECOND).toString()),
+        ).map { (row, box) -> Tried(row, box == BaseMmsColumns.MESSAGE_BOX_SENT) }
     }
 
     // Android answers nothing for a provider that crashed a moment ago, and says a part's not
@@ -59,7 +72,7 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
         "${Sms.DATE} >= ? AND (${Sms.DATE} >= ? OR ${Sms._ID} > ?) AND " +
             "${Sms.TYPE} IN (${TextBasedSmsColumns.MESSAGE_TYPE_INBOX}, ${TextBasedSmsColumns.MESSAGE_TYPE_SENT})",
         arrayOf(scan.paired.toString(), scan.since.toString(), scan.sms.toString()),
-    )
+    ).map { it.first }
 
     // One received counts once the texting app has downloaded it, when it holds the message
     // itself and not only word of it.
@@ -69,30 +82,35 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
             "((${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_INBOX} AND ${Mms.MESSAGE_TYPE} = $RETRIEVE_CONF) OR " +
             "${Mms.MESSAGE_BOX} = ${BaseMmsColumns.MESSAGE_BOX_SENT})",
         arrayOf(seconds(scan.paired).toString(), seconds(scan.since).toString(), scan.mms.toString()),
-    )
+    ).map { it.first }
 
-    /** The plain texts' rows at [uri] that [where] selects. */
-    private fun sms(uri: Uri, where: String?, args: Array<String>?): List<Row> = resolver.query(
+    /** The plain texts' rows at [uri] that [where] selects, each with its type: received, sent, failed. */
+    private fun sms(uri: Uri, where: String?, args: Array<String>?): List<Pair<Row, Int>> = resolver.query(
         uri,
         arrayOf(Sms._ID, Sms.DATE, Sms.TYPE, Sms.CREATOR),
         where,
         args,
         null,
     ).rows { cursor ->
-        val direction = if (cursor.getInt(2) == TextBasedSmsColumns.MESSAGE_TYPE_INBOX) Direction.IN else Direction.OUT
-        Row(Table.SMS, cursor.getLong(0), cursor.getLong(1), direction, cursor.getString(3))
+        val type = cursor.getInt(2)
+        val direction = if (type == TextBasedSmsColumns.MESSAGE_TYPE_INBOX) Direction.IN else Direction.OUT
+        Row(Table.SMS, cursor.getLong(0), cursor.getLong(1), direction, cursor.getString(3)) to type
     }
 
-    /** The picture messages' rows at [uri] that [where] selects: their time is in seconds. */
-    private fun mms(uri: Uri, where: String?, args: Array<String>?): List<Row> = resolver.query(
+    /**
+     * The picture messages' rows at [uri] that [where] selects, each with its box: received, sent,
+     * failed. Their time is in seconds.
+     */
+    private fun mms(uri: Uri, where: String?, args: Array<String>?): List<Pair<Row, Int>> = resolver.query(
         uri,
         arrayOf(Mms._ID, Mms.DATE, Mms.MESSAGE_BOX, Mms.CREATOR),
         where,
         args,
         null,
     ).rows { cursor ->
-        val direction = if (cursor.getInt(2) == BaseMmsColumns.MESSAGE_BOX_INBOX) Direction.IN else Direction.OUT
-        Row(Table.MMS, cursor.getLong(0), cursor.getLong(1) * MS_PER_SECOND, direction, cursor.getString(3))
+        val box = cursor.getInt(2)
+        val direction = if (box == BaseMmsColumns.MESSAGE_BOX_INBOX) Direction.IN else Direction.OUT
+        Row(Table.MMS, cursor.getLong(0), cursor.getLong(1) * MS_PER_SECOND, direction, cursor.getString(3)) to box
     }
 
     // By its ID and time both: a row's ID is used again once it's deleted.

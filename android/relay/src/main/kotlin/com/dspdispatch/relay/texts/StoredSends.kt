@@ -24,12 +24,7 @@ abstract class StoredSends : Sends {
     override suspend fun handed(send: Send, parts: Int, joined: Boolean, at: Long) = handed(send.id, send.attempt, parts, joined, at)
 
     @Transaction
-    override suspend fun failed(send: Send, error: String, at: Long) {
-        val kept = find(send.id, send.attempt) ?: return
-        if (kept.outcome != null) return
-        update(kept.copy(outcome = SendStatus.FAILED, finished = at))
-        keepStatus(kept.status(SendStatus.FAILED, at, error))
-    }
+    override suspend fun failed(send: Send, error: String, at: Long) = end(send, SendStatus.FAILED, at, error)
 
     @Transaction
     override suspend fun heard(heard: Heard) {
@@ -41,16 +36,19 @@ abstract class StoredSends : Sends {
         statuses.forEach { keepStatus(it) }
     }
 
+    @Query("SELECT * FROM sends WHERE handed < :before AND outcome IS NULL")
+    abstract override suspend fun unanswered(before: Long): List<Send>
+
     @Transaction
-    override suspend fun expire(before: Long, at: Long): List<Send> {
-        val stuck = stuck(before)
-        for (send in stuck) {
-            // The inbox reads the sent texts' rows, placing the app's: one placed went out.
-            val outcome = if (placed(send.id, send.attempt)) SendStatus.SENT else SendStatus.FAILED
-            update(send.copy(outcome = outcome, finished = at))
-            keepStatus(send.status(outcome, at, Failure.NO_RESULT.takeIf { outcome == SendStatus.FAILED }))
-        }
-        return stuck
+    override suspend fun expired(send: Send, sent: Boolean, at: Long) =
+        if (sent) end(send, SendStatus.SENT, at, null) else end(send, SendStatus.FAILED, at, Failure.NO_RESULT)
+
+    /** Ends [send] [at] as [outcome], for [error] if it failed, unless it ended already. */
+    private suspend fun end(send: Send, outcome: SendStatus, at: Long, error: String?) {
+        val kept = find(send.id, send.attempt) ?: return
+        if (kept.outcome != null) return
+        update(kept.copy(outcome = outcome, finished = at))
+        keepStatus(kept.status(outcome, at, error))
     }
 
     @Transaction
@@ -65,6 +63,11 @@ abstract class StoredSends : Sends {
 
     @Delete
     abstract override suspend fun told(told: List<Told>)
+
+    @Query("SELECT row FROM send_rows WHERE id = :id AND attempt = :attempt")
+    protected abstract suspend fun rows(id: String, attempt: Long): List<String>
+
+    override suspend fun rows(send: Send) = rows(send.id, send.attempt)
 
     @Query("SELECT EXISTS (SELECT 1 FROM send_rows WHERE row = :row)")
     abstract override suspend fun wrote(row: String): Boolean
@@ -101,13 +104,7 @@ abstract class StoredSends : Sends {
     @Query("SELECT * FROM send_reports WHERE id = :id AND attempt = :attempt")
     protected abstract suspend fun reports(id: String, attempt: Long): List<Report>
 
-    @Query("SELECT * FROM sends WHERE handed < :before AND outcome IS NULL")
-    protected abstract suspend fun stuck(before: Long): List<Send>
-
-    @Query("SELECT EXISTS (SELECT 1 FROM send_rows WHERE id = :id AND attempt = :attempt)")
-    protected abstract suspend fun placed(id: String, attempt: Long): Boolean
-
-    // A send Android took and never settled is failed by expire first, so it's kept until then. A
+    // A send Android took and never settled is settled once it expired, so it's kept until then. A
     // text not yet delivered may be, failed or sent, as long as the carrier keeps trying: picture
     // messages' deliveries aren't heard.
     @Query(

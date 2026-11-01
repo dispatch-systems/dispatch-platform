@@ -21,6 +21,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 class Sender(
     private val dispatch: Dispatch,
     private val sends: Sends,
+    private val own: OwnRows,
     private val radio: Radio,
     private val message: PictureMessage,
     private val statuses: Statuses,
@@ -61,13 +62,13 @@ class Sender(
     }
 
     /**
-     * Sends each text of [outbox] that wasn't yet, failing those Android never said more of. A
+     * Sends each text of [outbox] that wasn't yet, settling those Android never said more of. A
      * text whose file couldn't be fetched goes with a later answer, after a growing pause of its
      * own, the others going on.
      */
     internal suspend fun send(paired: Paired, key: String, outbox: Outbox) = withContext(Dispatchers.IO) {
         val at = now()
-        sends.expire(at - RESULT_WAIT_MS, at).forEach { File(folder, pduName(it.id, it.attempt)).delete() }
+        expire(at)
         sends.forget(at - KEEP_MS, at - DELIVERY_WAIT_MS)
         retries.keys.retainAll(outbox.texts.map { it.id to it.attempt }.toSet())
         try {
@@ -88,6 +89,19 @@ class Sender(
             }
         } finally {
             statuses.more()
+        }
+    }
+
+    /**
+     * Settles each send Android took over [RESULT_WAIT_MS] before [at] and never said more of, as
+     * the provider holds it now: sent when its row is in Sent, else failed. One the provider can't
+     * say of now is settled with a later answer.
+     */
+    private suspend fun expire(at: Long) {
+        for (send in sends.unanswered(at - RESULT_WAIT_MS)) {
+            val sent = own.sent(send) ?: continue
+            sends.expired(send, sent, at)
+            File(folder, pduName(send.id, send.attempt)).delete()
         }
     }
 

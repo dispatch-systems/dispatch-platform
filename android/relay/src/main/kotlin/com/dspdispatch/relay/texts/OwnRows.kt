@@ -6,7 +6,7 @@ import com.dspdispatch.relay.dispatch.Direction
 /**
  * The provider rows Android wrote the app's sends to, for [app], an app that isn't the phone's
  * texting app, as the provider holds them now: whether the row a send's result names is still that
- * send's.
+ * send's, and whether a send Android never said more of is in Sent.
  */
 class OwnRows(private val provider: Provider, private val sends: Sends, private val app: String) {
     /**
@@ -18,6 +18,31 @@ class OwnRows(private val provider: Provider, private val sends: Sends, private 
         val send = sends.find(heard.id, heard.attempt) ?: return null
         val message = reading { provider.message(uri) } ?: return null
         return message.row.key.takeIf { send.mayBeIn(message) }
+    }
+
+    /**
+     * Whether [send], which Android took and never said more of, was sent: its row is in Sent, the
+     * one its results named or the inbox placed, else one with its words. Not when that row's in
+     * Failed or the provider holds none; null when the provider can't say now.
+     */
+    suspend fun sent(send: Send): Boolean? {
+        val handed = send.handed ?: return null
+        val tried = reading { provider.tried(send.table, handed - ROW_SLACK_MS) } ?: return null
+        val known = sends.rows(send).toSet()
+        val placed = tried.filter { it.row.key in known }
+        if (placed.isNotEmpty()) return placed.all(Tried::sent)
+        // Not placed yet, as when the app restarted before the inbox read it. Another app's rows
+        // aren't read, so one it's still writing holds nothing up.
+        for (candidate in tried) {
+            val row = candidate.row
+            if ((row.creator != null && row.creator != app) || sends.wrote(row.key)) continue
+            when (val reading = reading { provider.read(row) }) {
+                is Reading.Whole -> if (reading.message.body == send.body && send.mayBeIn(reading.message)) return candidate.sent
+                Reading.Gone -> Unit
+                Reading.Later, null -> return null
+            }
+        }
+        return false
     }
 
     /**

@@ -32,12 +32,15 @@ class SenderTest {
     private val statuses = Statuses(dispatch, sends)
     private val folder = Files.createTempDirectory("sending").toFile()
     private val pictures = FakePictures { ByteArray(it) }
+    private val provider = FakeProvider()
+    private val own = OwnRows(provider, sends, APP)
     private var clock = 1_793_041_515_000L
     private lateinit var paired: Paired
 
     private fun sender() = Sender(
         dispatch,
         sends,
+        own,
         radio,
         PictureMessage(pictures),
         statuses,
@@ -188,16 +191,51 @@ class SenderTest {
 
     @Test
     fun settlesATextAndroidNeverSaidMoreOfByItsRowInSent() = runTest {
-        sender().send(paired, KEY, Outbox(listOf(text("in_sent", 1, "On my way"), text("in_failed", 1, "Gate code?"))))
-        // The inbox reads the app's row in Sent; one in Failed it never reads.
-        val row = Row(Table.SMS, 7, clock + 1_000, Direction.OUT, APP)
-        assertEquals(Whose.DISPATCH, SentByApp(sends, APP).whose(Message(row, listOf("(425) 555-0199"), "On my way", emptyList())))
+        val texts = listOf(text("in_sent", 1, "On my way"), text("in_failed", 1, "Gate code?"), text("typed", 1, "Door"))
+        sender().send(paired, KEY, Outbox(texts))
+        // Android's word of each lost, and the app restarted before the inbox read their rows: the
+        // last's words sent from the phone's texting app.
+        val failed = sms(8, "Gate code?")
+        provider.messages += listOf(sms(7, "On my way"), failed, sms(9, "Door", TEXTING_APP))
+        provider.failed += failed.row
         clock += RESULT_WAIT_MS + 1
         sender().send(paired, KEY, Outbox(emptyList()))
         assertEquals(
-            setOf(Told("in_sent", 1, SendStatus.SENT, clock), Told("in_failed", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)),
+            setOf(Told("in_sent", 1, SendStatus.SENT, clock)) +
+                listOf("in_failed", "typed").map { Told(it, 1, SendStatus.FAILED, clock, Failure.NO_RESULT) },
             sends.statuses(10).toSet(),
         )
+    }
+
+    @Test
+    fun failsATextWhoseRowIsInFailedThoughItsLastPartSaidItWent() = runTest {
+        radio.partLength = 7
+        val sender = sender()
+        sender.send(paired, KEY, Outbox(listOf(text("text_1", 1, "Gate code 4412"))))
+        // Its first part failed, Android's word of it lost; its last went, naming the row Android
+        // wrote the whole text to, in Failed.
+        val row = sms(7, "Gate code 4412")
+        provider.messages += row
+        provider.failed += row.row
+        val heard = Heard("text_1", 1, 1, Event.SENT, null, null, clock, uri = "content://sms/sent/7")
+        sender.heard(heard.copy(row = own.row(heard, "content://sms/sent/7")))
+        assertTrue("its row known", sends.wrote(row.row.key))
+        clock += RESULT_WAIT_MS + 1
+        sender.send(paired, KEY, Outbox(emptyList()))
+        assertEquals(listOf(Told("text_1", 1, SendStatus.FAILED, clock, Failure.NO_RESULT)), sends.statuses(10))
+    }
+
+    @Test
+    fun settlesATextAndroidNeverSaidMoreOfOnlyOnceTheProviderCanSay() = runTest {
+        sender().send(paired, KEY, Outbox(listOf(text("text_1", 1, "On my way"))))
+        provider.messages += sms(7, "On my way")
+        provider.answering = false
+        clock += RESULT_WAIT_MS + 1
+        sender().send(paired, KEY, Outbox(emptyList()))
+        assertTrue(sends.statuses(10).isEmpty())
+        provider.answering = true
+        sender().send(paired, KEY, Outbox(emptyList()))
+        assertEquals(listOf(Told("text_1", 1, SendStatus.SENT, clock)), sends.statuses(10))
     }
 
     @Test
@@ -229,6 +267,10 @@ class SenderTest {
     private fun text(id: String, attempt: Long, body: String, vararg files: OutgoingFile) =
         OutgoingText(id, "+14255550199", body, attempt, files.toList())
 
+    /** The app's row of a text it sent, as Android writes it, just after it was handed. */
+    private fun sms(id: Long, body: String, creator: String = APP) =
+        Message(Row(Table.SMS, id, clock + 1_000, Direction.OUT, creator), listOf("(425) 555-0199"), body, emptyList())
+
     private fun ByteArray.contains(part: ByteArray) = (0..size - part.size).any { at -> part.indices.all { this[at + it] == part[it] } }
 
     private fun json(code: Int, body: String) =
@@ -238,5 +280,6 @@ class SenderTest {
         val KEY = "k".repeat(64)
         const val DAY_MS = 24 * 60 * 60 * 1000L
         const val APP = "com.dspdispatch.relay"
+        const val TEXTING_APP = "com.example.texting"
     }
 }

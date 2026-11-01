@@ -136,11 +136,14 @@ interface Sends {
     /** Keeps what Android said of a part of a send, and the statuses it moves the send to. */
     suspend fun heard(heard: Heard)
 
+    /** The sends Android took before [before] and said nothing more of. */
+    suspend fun unanswered(before: Long): List<Send>
+
     /**
-     * Settles each send Android took before [before] and said nothing more of, [at], as the
-     * provider says: sent when the app's row of it was read in Sent, else failed. Answers them.
+     * Settles [send], which Android never said more of, [at], as the provider says: [sent] when
+     * its row is in Sent, else failed. Not if Android said more of it meanwhile.
      */
-    suspend fun expire(before: Long, at: Long): List<Send>
+    suspend fun expired(send: Send, sent: Boolean, at: Long)
 
     /**
      * Leaves the sends started before [before] that Dispatch heard the end of, or never handed. A
@@ -156,6 +159,9 @@ interface Sends {
 
     /** The attempt [attempt] at the text [id], if it's kept. */
     suspend fun find(id: String, attempt: Long): Send?
+
+    /** The provider rows ([Row.key]) [send] is known to have been written to. */
+    suspend fun rows(send: Send): List<String>
 
     /** Whether a send was written to the provider row [row] ([Row.key]). */
     suspend fun wrote(row: String): Boolean

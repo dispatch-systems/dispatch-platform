@@ -37,6 +37,7 @@ class Texts(private val context: Context, dispatch: Dispatch) {
     private val sender = Sender(
         dispatch,
         sends,
+        own,
         PhoneRadio(context),
         PictureMessage(PhonePictures),
         statuses,

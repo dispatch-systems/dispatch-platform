@@ -39,6 +39,9 @@ data class Scan(val paired: Long, val since: Long, val sms: Long, val mms: Long)
  */
 data class Message(val row: Row, val numbers: List<String>, val body: String, val parts: List<Part>)
 
+/** The row of a text the phone tried to send: [sent] when it's in Sent, not Failed. */
+data class Tried(val row: Row, val sent: Boolean)
+
 /** A picture or file of a text, at [uri] in the provider, [size] bytes as it was read. */
 data class Part(val uri: String, val name: String, val mime: String, val size: Long)
 
@@ -79,6 +82,9 @@ interface Provider {
      * while it isn't whole yet.
      */
     fun message(uri: String): Message?
+
+    /** The rows of [table] of texts the phone tried to send from [since] on, in Sent or Failed. */
+    fun tried(table: Table, since: Long): List<Tried>
 
     /** How many bytes the part at [uri] holds now, or null once it's gone; [Unavailable] if it can't say. */
     fun size(uri: String): Long?
