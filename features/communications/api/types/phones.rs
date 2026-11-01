@@ -13,6 +13,23 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct Phones {
     pub phones: Vec<PhoneRow>,
+    /// The app they install, while the server hands one out at the DSP's own address.
+    pub app: Option<PhoneApp>,
+}
+
+/// The app the DSP's phones install: its build's name and latest version, where a phone downloads
+/// it at the DSP's address, and that address as a picture of a QR code, a `data:` address.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "ts",
+    ts(export_to = "features/communications/api/generated/")
+)]
+pub struct PhoneApp {
+    pub name: String,
+    pub version: String,
+    pub link: String,
+    pub picture: String,
 }
 
 /// One of the DSP's phones.
@@ -29,7 +46,10 @@ pub struct PhoneRow {
     /// Its own number, as it said when it paired; empty when it didn't know it.
     pub number: String,
     pub model: String,
+    /// The app's version it runs, as it last said it.
     pub app_version: String,
+    /// Whether that's older than the app the DSP's address hands out, so it has an update.
+    pub update: bool,
     /// Whether it checked in in the last two minutes.
     pub online: bool,
     /// When it last checked in, epoch milliseconds.

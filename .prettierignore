@@ -1,5 +1,6 @@
 node_modules/
 .build/
+/dashboard/
 package-lock.json
 
 target/

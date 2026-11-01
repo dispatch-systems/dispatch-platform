@@ -14,9 +14,11 @@
 //! - `storage`: its phones, the codes that pair them, the texts and their files, in each DSP's
 //!   own database.
 //! - `tidy`: its upkeep; `demo`, a development DSP's stand-in phone.
+//! - `app`: the app this server hands out to phones, as its build packed it.
 //!
 //! Its address, which the phones' app talks to, is `api::phone`'s; managing the DSP's phones,
 //! `api::routes::phones`'.
+pub(crate) mod app;
 pub(crate) mod demo;
 pub(crate) mod files;
 pub(crate) mod live;

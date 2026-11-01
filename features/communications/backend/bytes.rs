@@ -74,6 +74,27 @@ pub struct Reading {
     pub length: Option<u64>,
     pub chunks: Pin<Box<dyn Stream<Item = std::io::Result<Bytes>> + Send>>,
 }
+impl Reading {
+    /// The bytes of `file`, open, as they're read.
+    pub async fn of(file: tokio::fs::File) -> Self {
+        let length = file.metadata().await.ok().map(|meta| meta.len());
+        let chunks = stream::unfold(file, |mut file| async move {
+            let mut chunk = vec![0; CHUNK];
+            match file.read(&mut chunk).await {
+                Ok(0) => None,
+                Ok(read) => {
+                    chunk.truncate(read);
+                    Some((Ok(Bytes::from(chunk)), file))
+                }
+                Err(error) => Some((Err(error), file)),
+            }
+        });
+        Self {
+            length,
+            chunks: Box::pin(chunks),
+        }
+    }
+}
 
 impl Folder {
     /// The DSP's folder, made private.
@@ -180,22 +201,7 @@ impl Folder {
         let Ok(file) = tokio::fs::File::open(path).await else {
             return Ok(None);
         };
-        let length = file.metadata().await.ok().map(|meta| meta.len());
-        let chunks = stream::unfold(file, |mut file| async move {
-            let mut chunk = vec![0; CHUNK];
-            match file.read(&mut chunk).await {
-                Ok(0) => None,
-                Ok(read) => {
-                    chunk.truncate(read);
-                    Some((Ok(Bytes::from(chunk)), file))
-                }
-                Err(error) => Some((Err(error), file)),
-            }
-        });
-        Ok(Some(Reading {
-            length,
-            chunks: Box::pin(chunks),
-        }))
+        Ok(Some(Reading::of(file).await))
     }
 }
 

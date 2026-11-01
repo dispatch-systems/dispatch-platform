@@ -13,18 +13,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Standing
+import com.dspdispatch.relay.setup.Fixes
 import com.dspdispatch.relay.texts.Today
 import com.dspdispatch.relay.ui.CameraScreen
 import com.dspdispatch.relay.ui.ConnectedScreen
 import com.dspdispatch.relay.ui.RemovedScreen
 import com.dspdispatch.relay.ui.ScanScreen
+import com.dspdispatch.relay.ui.SetupScreen
 import com.dspdispatch.relay.ui.StartScreen
+import kotlinx.coroutines.launch
 
 /**
- * The app's one screen at a time: pairing while unpaired or removed, then the relay's state. A
- * pairing link opens it too, as the phone's own camera app offers one from the code's QR.
+ * The app's one screen at a time: pairing while unpaired or removed, then Set up, then the
+ * relay's state. A pairing link opens it too, as the phone's own camera app offers one from the
+ * code's QR.
  */
 class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
@@ -40,6 +45,7 @@ class MainActivity : ComponentActivity() {
     private val camera = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         cameraAllowed = allowed(Manifest.permission.CAMERA)
     }
+    private val fixes = Fixes(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,13 +57,24 @@ class MainActivity : ComponentActivity() {
             val standing by relay.pairings.standing.collectAsStateWithLifecycle()
             val link by relay.connection.link.collectAsStateWithLifecycle()
             val attempt by relay.attempting.collectAsStateWithLifecycle()
+            val items by relay.setup.items.collectAsStateWithLifecycle()
+            val finished by relay.setup.finished.collectAsStateWithLifecycle()
             val today by relay.texts.today.collectAsStateWithLifecycle(Today())
             val mmsWhenBusy by relay.texts.mmsWhenBusy.on.collectAsStateWithLifecycle()
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
             when {
-                now is Standing.Pairing -> ConnectedScreen(now.paired, link, today, mmsWhenBusy, relay.texts.mmsWhenBusy::set)
+                now is Standing.Pairing && !finished -> SetupScreen(now.paired, items, fixes::apply, relay.setup::finish)
+                now is Standing.Pairing -> ConnectedScreen(
+                    now.paired,
+                    link,
+                    today,
+                    items?.firstOrNull { !it.done },
+                    fixes::apply,
+                    mmsWhenBusy,
+                    relay.texts.mmsWhenBusy::set,
+                )
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }
                 scanning -> ScanScreen(::read) { scanning = false }
                 now is Standing.Removed -> RemovedScreen(now.dsp, ::scan, pairing, problem)
@@ -66,15 +83,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        // While shown, Android lets the app start the relay: whenever paired, make sure it runs.
-        if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
-    }
-
     override fun onResume() {
         super.onResume()
         cameraAllowed = allowed(Manifest.permission.CAMERA)
+        // While shown, Android lets the app start the relay: each time, as it may not run yet, and
+        // its notification shows only once notifications are allowed.
+        if (relay.pairings.standing.value is Standing.Pairing) RelayService.start(this)
+        lifecycleScope.launch { relay.setup.check() }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

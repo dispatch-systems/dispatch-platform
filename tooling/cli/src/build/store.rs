@@ -18,11 +18,14 @@ pub(super) fn directory(path: &Path) -> Result<()> {
     Ok(())
 }
 pub(super) fn hash(path: &Path) -> Result<String> {
-    let mut file = File::open(path)?;
+    digest(&mut File::open(path)?)
+}
+/// The SHA-256 of what's left to read, in lowercase hex.
+pub(super) fn digest(reader: &mut impl Read) -> Result<String> {
     let mut digest = Sha256::new();
     let mut buffer = [0; 65536];
     loop {
-        let count = file.read(&mut buffer)?;
+        let count = reader.read(&mut buffer)?;
         if count == 0 {
             break;
         }

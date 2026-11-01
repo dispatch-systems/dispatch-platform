@@ -1,18 +1,23 @@
 //! The texts Dispatch has for a phone to send, waited on, and how each attempt at them went.
-use super::access::{Phone, checked_in};
+use super::{
+    access::{Phone, checked_in},
+    pairing::VERSION_MOST,
+};
 use crate::backend::{
     phone::{
+        app::{self, App},
         live,
         model::{ID_MOST, Status, Text},
-        storage::{MOST_TEXTS, StatusReport, TextStore},
+        storage::{AppVersion, DeviceStore, MOST_TEXTS, StatusReport, TextStore},
     },
+    storage::DOMAIN,
     texts::filing,
 };
 use dispatch_core::{
     Error, Result, State,
     foundation::validate as v,
     server::http::{
-        input::{Input, Reply},
+        input::{Input, Reply, query_number},
         route::Grant,
     },
 };
@@ -24,12 +29,32 @@ use std::{sync::Arc, time::Duration};
 const WAIT: Duration = Duration::from_secs(20);
 /// The most characters a phone may say of why a text failed.
 const ERROR_MOST: usize = 500;
+/// The highest `versionCode` Android takes.
+const VERSION_CODE_MOST: usize = 2_100_000_000;
 
 /// The texts Dispatch has for the phone, each to send from its number to `number`, with its
-/// pictures to fetch first. A text tried again comes again with a later `attempt`.
+/// pictures to fetch first. A text tried again comes again with a later `attempt`. With them, the
+/// app's latest version, while the server hands one out, so the app offers to update within a wait.
 #[derive(Serialize)]
 struct Outbox {
     texts: Vec<Outgoing>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    app: Option<Latest>,
+}
+/// The app's latest version, and the `versionCode` Android compares.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Latest {
+    version: String,
+    version_code: u32,
+}
+impl Latest {
+    fn of(app: App) -> Self {
+        Self {
+            version: app.version,
+            version_code: app.version_code,
+        }
+    }
 }
 #[derive(Serialize)]
 struct Outgoing {
@@ -66,10 +91,21 @@ impl Outgoing {
         }
     }
 }
-/// Waits, up to twenty seconds, for texts Dispatch has for the phone: checking in, as it does.
+/// Waits, up to twenty seconds, for texts Dispatch has for the phone: checking in, as it does, and
+/// noting the app it runs once that changed.
 pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Result<Reply> {
-    v::fields(&input.query, &[])?;
+    v::fields(&input.query, &["version", "versionCode"])?;
+    let running = running(&input.query)?;
     let caller = checked_in(&state, &input, access).await?;
+    if let Some(app) = running.filter(|app| !caller.device.runs(app)) {
+        let asked = input.clone();
+        state
+            .run_scoped(caller.dsp.clone(), DOMAIN, move |db| {
+                let caller = access.authorize(db, &asked)?;
+                db.phones_app_version(&caller.dsp, &caller.device.id, &app)
+            })
+            .await?;
+    }
     let _slot = state
         .topics
         .slots
@@ -81,19 +117,33 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
     let until = tokio::time::Instant::now() + WAIT;
     loop {
         let asked = input.clone();
-        let texts = state
+        let (texts, app) = state
             .read(move |db| {
                 let caller = access.authorize(db, &asked)?;
-                db.phones_outbox(&caller.dsp, &caller.device.id)
+                let texts = db.phones_outbox(&caller.dsp, &caller.device.id)?;
+                Ok((texts, app::latest(&db.config)))
             })
             .await?;
         if !texts.is_empty() || tokio::time::Instant::now() >= until {
             return Reply::of(&Outbox {
                 texts: texts.into_iter().map(Outgoing::of).collect(),
+                app: app.map(Latest::of),
             });
         }
         let _ = tokio::time::timeout_at(until, listener.changed()).await;
     }
+}
+
+/// The app the phone runs, as its wait says it: `version` and `versionCode` together, or neither,
+/// as an app older than that says.
+fn running(query: &Value) -> Result<Option<AppVersion>> {
+    if query.get("version").is_none() && query.get("versionCode").is_none() {
+        return Ok(None);
+    }
+    Ok(Some(AppVersion {
+        version: v::name(query, "version", VERSION_MOST)?,
+        version_code: query_number(query, "versionCode", 0, 1, VERSION_CODE_MOST)? as i64,
+    }))
 }
 
 /// Notes how the texts Dispatch had for the phone went, and files those that moved.

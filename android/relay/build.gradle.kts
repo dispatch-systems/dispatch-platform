@@ -97,6 +97,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.room.runtime)
     implementation(libs.serialization.json)
+    implementation(libs.work.runtime)
     implementation(libs.zxing.core)
     debugImplementation(libs.compose.ui.tooling)
     ksp(libs.room.compiler)

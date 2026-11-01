@@ -41,6 +41,9 @@ import com.dspdispatch.relay.BuildConfig
 import com.dspdispatch.relay.R
 import com.dspdispatch.relay.connection.Link
 import com.dspdispatch.relay.pairing.Paired
+import com.dspdispatch.relay.setup.Fix
+import com.dspdispatch.relay.setup.Item
+import com.dspdispatch.relay.setup.Step
 import com.dspdispatch.relay.texts.Today
 import java.util.Date
 
@@ -67,30 +70,22 @@ fun RemovedScreen(dsp: String, scan: () -> Unit, pairing: Boolean, problem: Int?
 }
 
 /**
- * Paired: the DSP, how the line to it stands, today's texts, the app's version, and the switch of
- * [mmsWhenBusy], which [setMmsWhenBusy] turns.
+ * Paired: a step of Set up undone, if one is, the DSP, how the line to it stands, today's texts,
+ * the app's version, and the switch of [mmsWhenBusy], which [setMmsWhenBusy] turns.
  */
 @Composable
 fun ConnectedScreen(
     paired: Paired,
     link: Link,
     today: Today,
+    undone: Item?,
+    fix: (Item, Fix) -> Unit,
     mmsWhenBusy: Boolean,
     setMmsWhenBusy: (Boolean) -> Unit,
 ) = Page {
     Top()
-    Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.size(36.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(10.dp)),
-            Alignment.Center,
-        ) {
-            Text(initials(paired.dsp), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        }
-        Column(Modifier.padding(start = 10.dp)) {
-            Text(paired.dsp, fontWeight = FontWeight.SemiBold)
-            Text(paired.phoneName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    undone?.let { item -> UndoneBanner(item) { fix(item, it) } }
+    DspLine(paired)
     Surface(Modifier.fillMaxWidth(), RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.padding(16.dp)) {
             val (state, since) = when (link) {
@@ -119,6 +114,21 @@ private fun SwitchCard(@StringRes label: Int, on: Boolean, set: (Boolean) -> Uni
     ) {
         Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Switch(on, onCheckedChange = null)
+    }
+}
+
+/** The DSP, and the phone's name at it. */
+@Composable
+internal fun DspLine(paired: Paired) = Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Box(
+        Modifier.size(36.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(10.dp)),
+        Alignment.Center,
+    ) {
+        Text(initials(paired.dsp), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+    }
+    Column(Modifier.padding(start = 10.dp)) {
+        Text(paired.dsp, fontWeight = FontWeight.SemiBold)
+        Text(paired.phoneName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -158,8 +168,9 @@ private fun Detail(label: String, value: String) = Row(Modifier.fillMaxWidth().p
 /** What a detail shows while there's nothing to show. */
 private const val NONE = "–"
 
+/** A screen of the app: its theme, edge to edge clear of the system's bars. */
 @Composable
-private fun Page(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) = RelayTheme {
+internal fun Page(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) = RelayTheme {
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.safeDrawingPadding().padding(20.dp), content = content)
     }
@@ -235,6 +246,8 @@ private fun ConnectedPreview() = ConnectedScreen(
     Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0),
     Link.Connected(0),
     Today(received = 42, sent = 37, waiting = 0, latest = 0),
+    Item(Step.BATTERY, false, listOf(Fix.BATTERY_REQUEST)),
+    { _, _ -> },
     mmsWhenBusy = true,
     setMmsWhenBusy = {},
 )

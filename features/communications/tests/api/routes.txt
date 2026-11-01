@@ -1,6 +1,8 @@
 # Every route communications registers: its method and path, who may call it, the
 # database access its work runs under, and whether it wakes the scheduler.
 # Each changes with this file, so a reviewer sees who can reach what.
+GET /api/communications/phone/app Public Async
+GET /api/communications/phone/app/download Public Async
 GET /api/communications/phone/files/{id} Public Async
 GET /api/communications/phone/outbox Public Async
 GET /api/dsp/communications Dsp("communications.use") Read

@@ -87,6 +87,8 @@
         "POST /api/dsp/communications/phones/{id}/rename",
         "POST /api/dsp/communications/phones/{id}/remove",
         "POST /api/communications/phone/pair",
+        "GET /api/communications/phone/app",
+        "GET /api/communications/phone/app/download",
         "GET /api/communications/phone/outbox",
         "POST /api/communications/phone/texts",
         "POST /api/communications/phone/files/{id}",
