@@ -10,6 +10,7 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Telephony
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.PackageManagerCompat
@@ -24,9 +25,10 @@ class Probe(private val context: Context) {
 
     /**
      * What the phone says of each step now, with what the person has said of those only they can:
-     * of each maker's control by its name, and of chat features.
+     * of each maker's control by its name, and of chat features; and whether Android has let the
+     * person choose on texting ([textingUnrestricted]).
      */
-    fun read(makerBatteryByHand: (String) -> ByHand, chatFeaturesByHand: ByHand): Facts {
+    fun read(makerBatteryByHand: (String) -> ByHand, chatFeaturesByHand: ByHand, textingUnrestricted: Boolean): Facts {
         val texting = TEXTING.all(::allowed)
         return Facts(
             texting = texting,
@@ -45,7 +47,7 @@ class Probe(private val context: Context) {
             unusedApps = unusedApps(),
             backgroundData = context.getSystemService(ConnectivityManager::class.java).restrictBackgroundStatus !=
                 ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
-            restricted = restricted(texting),
+            restricted = restricted(texting, textingUnrestricted),
             textingApp = textingApp() != null,
             chatFeaturesByHand = chatFeaturesByHand,
             installUpdates = packages.canRequestPackageInstalls(),
@@ -87,20 +89,20 @@ class Probe(private val context: Context) {
      * file, as an APK downloaded in a browser is, until "Allow restricted settings" in its App
      * info, which shows once the person has tried to give one. (Android 13 and 14 restricted only
      * settings this app never asks for: accessibility and notification access.) Android lets no
-     * app read whether its restriction was lifted, so it stands until texting is allowed, the
-     * only restricted setting the app needs.
+     * app read whether it was lifted, so it's taken as lifted once Android let the person choose
+     * on texting ([unrestricted]), which it does only then.
      */
-    private fun restricted(texting: Boolean): Boolean? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return null
-        // The install sources Android restricts, as its EnhancedConfirmationService has them.
-        val fromFile = try {
-            packages.getInstallSourceInfo(name).packageSource.let {
-                it == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE || it == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE
-            }
-        } catch (_: PackageManager.NameNotFoundException) {
-            false
+    private fun restricted(texting: Boolean, unrestricted: Boolean): Boolean? =
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) null else restriction(fromFile(), texting, unrestricted)
+
+    /** Whether the app was installed from a file, an install source Android restricts. */
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    private fun fromFile() = try {
+        packages.getInstallSourceInfo(name).packageSource.let {
+            it == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE || it == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE
         }
-        return if (fromFile) !texting else null
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
     }
 
     companion object {
@@ -113,3 +115,11 @@ class Probe(private val context: Context) {
         )
     }
 }
+
+/**
+ * Whether Android still restricts texting for the app: only where it was installed [fromFile],
+ * and only until texting is allowed or Android let the person choose on it, which it does only
+ * once it lifted the restriction ([unrestricted]); null where it never did.
+ */
+internal fun restriction(fromFile: Boolean, texting: Boolean, unrestricted: Boolean): Boolean? =
+    if (fromFile) !texting && !unrestricted else null

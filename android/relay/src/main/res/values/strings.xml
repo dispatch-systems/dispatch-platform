@@ -31,6 +31,7 @@
     <string name="done">Done</string>
     <string name="fix">Fix</string>
     <string name="step_texting">Texting</string>
+    <string name="step_texting_refused">Allow SMS in Permissions</string>
     <string name="step_phone_number">Phone number</string>
     <string name="step_notifications">Turn on notifications</string>
     <string name="step_battery">Allow background use</string>

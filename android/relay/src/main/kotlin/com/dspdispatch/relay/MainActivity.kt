@@ -20,6 +20,7 @@ import com.dspdispatch.relay.setup.Fixes
 import com.dspdispatch.relay.texts.Today
 import com.dspdispatch.relay.ui.CameraScreen
 import com.dspdispatch.relay.ui.ConnectedScreen
+import com.dspdispatch.relay.ui.Page
 import com.dspdispatch.relay.ui.RemovedScreen
 import com.dspdispatch.relay.ui.ScanScreen
 import com.dspdispatch.relay.ui.SetupScreen
@@ -29,8 +30,8 @@ import kotlinx.coroutines.launch
 
 /**
  * The app's one screen at a time: pairing while unpaired or removed, then Set up and its guided
- * walk, then the relay's state, from which a step undone is walked again. A pairing link opens it too, as the phone's own camera app offers one from the
- * code's QR.
+ * walk, then the relay's state, from which a step undone is walked again. A pairing link opens it
+ * too, as the phone's own camera app offers one from the code's QR.
  */
 class MainActivity : ComponentActivity() {
     private var scanning by mutableStateOf(false)
@@ -65,9 +66,11 @@ class MainActivity : ComponentActivity() {
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
-            val place = walk?.at(items.orEmpty())
+            // A walk kept from before Android ended the app shows once the steps are checked again.
+            val place = items?.let { walk?.at(it) }
             when {
                 now is Standing.Pairing && place != null -> StepScreen(place, fixes::apply, relay.setup::stop)
+                now is Standing.Pairing && walk != null && items == null -> Page {}
                 now is Standing.Pairing && !finished -> SetupScreen(now.paired, ::startWalk)
                 now is Standing.Pairing -> ConnectedScreen(now.paired, link, today, items?.firstOrNull { !it.done }, ::startWalk)
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }

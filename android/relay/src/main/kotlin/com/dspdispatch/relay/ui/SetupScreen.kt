@@ -63,7 +63,7 @@ fun StepScreen(place: Place, fix: (Item, Fix) -> Unit, back: () -> Unit) = Page 
     )
     Column(Modifier.weight(1f).fillMaxWidth(), Arrangement.Center, Alignment.CenterHorizontally) {
         Text(
-            stringResource(item.step.heading),
+            stringResource(place.heading),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,

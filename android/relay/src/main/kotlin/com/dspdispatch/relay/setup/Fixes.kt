@@ -31,17 +31,21 @@ class Fixes(private val activity: ComponentActivity) {
         val refused = results.filterValues { !it }.keys
         // Once a permission is refused for good, Android asks no more and answers at once: App
         // info is then the only place to give it. Android 15+ answers so too for a texting
-        // permission it restricts, whose "Allow restricted settings" is in App info as well: the
-        // walk shows that step, which opens it, in Texting's place.
-        if (refused.isNotEmpty() && refused.none(activity::shouldShowRequestPermissionRationale)) {
-            val restricted = refused.any(Probe.TEXTING::contains) && setup.textingBlocked()
-            if (!restricted) open(details(Settings.ACTION_APPLICATION_DETAILS_SETTINGS))
+        // permission it restricts, whose "Allow restricted settings" is in App info as well. For
+        // texting, the walk shows whichever it is as a step of its own, in Texting's place.
+        val atOnce = refused.isNotEmpty() && refused.none(activity::shouldShowRequestPermissionRationale)
+        val texting = results.keys.any(Probe.TEXTING::contains)
+        // Android asks the person about texting only where it doesn't restrict it.
+        if (texting && !atOnce) setup.textingUnrestricted()
+        activity.lifecycleScope.launch {
+            val shown = texting && atOnce && setup.textingRefused()
+            if (atOnce && !shown) open(details(Settings.ACTION_APPLICATION_DETAILS_SETTINGS))
+            if (!shown) setup.check()
         }
-        recheck()
     }
     private val screen = activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         setup.back()
-        recheck()
+        activity.lifecycleScope.launch { setup.check() }
     }
 
     /** Does what [fix] does for [item]. */
@@ -107,9 +111,5 @@ class Fixes(private val activity: ComponentActivity) {
 
     private fun appInfoInstead(intent: Intent) {
         if (intent.action != Settings.ACTION_APPLICATION_DETAILS_SETTINGS) open(details(Settings.ACTION_APPLICATION_DETAILS_SETTINGS))
-    }
-
-    private fun recheck() {
-        activity.lifecycleScope.launch { setup.check() }
     }
 }
