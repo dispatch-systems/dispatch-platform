@@ -24,10 +24,10 @@ use std::{
 };
 
 const HELP: &str = "Dispatch release [publish|status|backup] [X.Y.Z] --root CHECKOUT
-  publish   Release main's head: run its own full checks, which build its Production relay
-            app, require Dev serving the commit, publish the release and verify Production
-            installs it (the default). A release that brings migrations publishes only after
-            a backup made for it in the last six hours.
+  publish   Release main's head: run its own full checks, which build or carry its
+            Production relay app, require Dev serving the commit, publish the release and
+            verify Production installs it (the default). A release that brings migrations
+            publishes only after a backup made for it in the last six hours.
   status    Inspect GitHub, saved assets and public health without changing release state.
   backup    Back Production up for the release over ssh, stopping it for about a second,
             restore the copy elsewhere and check every database, and record it.

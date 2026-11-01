@@ -1616,6 +1616,38 @@ fn app_changes_release_its_next_version_as_the_release_bumps() {
 }
 
 #[test]
+fn saved_app_files_unlike_the_packed_ones_stop_the_release() {
+    let f = Fixture::with_app(App::Changed);
+    f.released(Some(&Apk::production("0.0.1", &f.previous())));
+    let app = Apk::production("0.0.2", &f.system.commit);
+    f.build(Some(&app));
+    let release = f.release();
+    release.prepare(&f.system.commit).unwrap();
+    // Each still reads as an app: only its bytes differ from what the package packed.
+    let record = release.output.join("relay.json");
+    let apk = release.output.join(app.asset());
+    for (file, changed) in [
+        (
+            &record,
+            fs::read_to_string(&record)
+                .unwrap()
+                .replace("\"versionCode\":", "\"versionCode\": 1"),
+        ),
+        (&apk, "another apk".to_owned()),
+    ] {
+        let original = fs::read(file).unwrap();
+        fs::write(file, &changed).unwrap();
+        let error = release.app_assets(&release.output).unwrap_err().to_string();
+        assert!(error.contains("Prepared release bytes changed"), "{error}");
+        fs::write(file, original).unwrap();
+    }
+    assert_eq!(
+        release.app_assets(&release.output).unwrap(),
+        ["relay.json".to_owned(), app.asset()]
+    );
+}
+
+#[test]
 fn the_app_version_is_decided_once_for_its_commit_and_never_at_or_below_the_last_released() {
     let f = Fixture::with_app(App::Changed);
     f.released(Some(&Apk::production("0.0.1", &f.previous())));
