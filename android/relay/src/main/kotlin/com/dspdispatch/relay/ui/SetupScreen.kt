@@ -134,7 +134,7 @@ private fun Small(text: String, filled: Boolean, click: () -> Unit) {
 @Preview
 @Composable
 private fun SetupPreview() = SetupScreen(
-    Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch"),
+    Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch", 0),
     listOf(
         Item(Step.TEXTING, true, emptyList()),
         Item(Step.BATTERY, false, listOf(Fix.MAKER_BATTERY, Fix.CONFIRM)),

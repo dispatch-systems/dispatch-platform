@@ -1,6 +1,7 @@
 package com.dspdispatch.relay.dispatch
 
 import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -9,11 +10,15 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.serializer
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.BufferedSink
+import okio.source
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -36,12 +41,37 @@ class Dispatch(http: OkHttpClient) {
     suspend fun outbox(site: String, key: String): Outbox =
         waiting.call(Request.Builder().url(address(site, "outbox")).header(AUTHORIZATION, bearer(key)).build())
 
+    /** Reports texts the phone received or sent, answering Dispatch's IDs of them and their files. */
+    suspend fun texts(site: String, key: String, report: TextsReport): TextsAnswer =
+        http.call(post(site, "texts", wire.encodeToString(report), key))
+
+    /**
+     * Sends the [size] bytes [open] streams as those of the reported file Dispatch knows as [id].
+     */
+    suspend fun file(site: String, key: String, id: String, size: Long, open: () -> InputStream) {
+        http.call<Done>(post(site, "files/$id", Upload(size, open), key))
+    }
+
+    private fun post(site: String, path: String, json: String, key: String? = null) =
+        post(site, path, json.toRequestBody(JSON), key)
+
     // Dispatch takes anything but a read only from its own address's pages: the DSP's address
     // as the call's origin, as a page of it would send.
-    private fun post(site: String, path: String, json: String, key: String? = null) =
-        Request.Builder().url(address(site, path)).post(json.toRequestBody(JSON)).header(ORIGIN, site.trimEnd('/')).apply {
+    private fun post(site: String, path: String, body: RequestBody, key: String?) =
+        Request.Builder().url(address(site, path)).post(body).header(ORIGIN, site.trimEnd('/')).apply {
             if (key != null) header(AUTHORIZATION, bearer(key))
         }.build()
+
+    /** A file's bytes, streamed as they're sent, never held whole: a picture may be 20 MiB. */
+    private class Upload(private val size: Long, private val open: () -> InputStream) : RequestBody() {
+        override fun contentType(): MediaType = BYTES
+
+        override fun contentLength() = size
+
+        override fun writeTo(sink: BufferedSink) {
+            open().source().use(sink::writeAll)
+        }
+    }
 
     // Reading the answer's body blocks on the network too: never on the caller's thread.
     private suspend inline fun <reified T> OkHttpClient.call(request: Request): T = withContext(Dispatchers.IO) {
@@ -63,6 +93,7 @@ class Dispatch(http: OkHttpClient) {
         private const val ORIGIN = "Origin"
         private const val OUTBOX_READ_SECONDS = 40L
         private val JSON = "application/json".toMediaType()
+        private val BYTES = "application/octet-stream".toMediaType()
 
         private fun address(site: String, path: String) = "${site.trimEnd('/')}/$PATH/$path"
 

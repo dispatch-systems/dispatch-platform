@@ -10,6 +10,7 @@ import com.dspdispatch.relay.pairing.Paired
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Pairings
 import com.dspdispatch.relay.setup.Setup
+import com.dspdispatch.relay.texts.Texts
 import java.io.IOException
 import java.net.InetAddress
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +39,7 @@ class Relay(private val context: Context) {
     val dispatch = Dispatch(http())
     val connection = Connection(dispatch)
     val setup = Setup(context)
+    val texts = Texts(context, dispatch)
 
     // Pairing outlives the screen that started it: a code works once, so a pairing cancelled
     // after Dispatch took it would leave a phone no app holds the key of.
@@ -85,7 +87,8 @@ class Relay(private val context: Context) {
             link.site,
             PairRequest(link.code, Phone.number(context), Phone.model, BuildConfig.VERSION_NAME),
         )
-        pairings.save(Paired(link.site.trimEnd('/'), answer.dsp.name, answer.phone.id, answer.phone.name), answer.key)
+        val paired = Paired(link.site.trimEnd('/'), answer.dsp.name, answer.phone.id, answer.phone.name, System.currentTimeMillis())
+        pairings.save(paired, answer.key)
         connection.paired()
         RelayService.start(context)
     }

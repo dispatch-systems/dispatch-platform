@@ -16,5 +16,9 @@ class Refusal(val status: Int, val code: String) : Exception("$status $code") {
         const val SIGN_IN_REQUIRED = "sign_in_required"
         const val PAIRING_INVALID = "phones_pairing_invalid"
         const val PHONES_OFF = "phones_off"
+        const val INVALID_INPUT = "invalid_input"
+        const val REQUEST_TOO_LARGE = "request_too_large"
+        const val FILE_NOT_FOUND = "phones_file_not_found"
+        const val UPLOAD_TOO_LARGE = "upload_too_large"
     }
 }

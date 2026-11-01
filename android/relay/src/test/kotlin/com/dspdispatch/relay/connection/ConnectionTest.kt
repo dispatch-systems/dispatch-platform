@@ -21,7 +21,7 @@ class ConnectionTest {
     @Before
     fun start() {
         server.start()
-        paired = Paired(server.url("/").toString(), "Blue Heron", "phone_1", "Dispatch")
+        paired = Paired(server.url("/").toString(), "Blue Heron", "phone_1", "Dispatch", 0)
     }
 
     @After

@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** The DSP this phone is paired with, and as which of its phones. */
+/** The DSP this phone is paired with, as which of its phones, and when it paired ([at]). */
 @Serializable
-data class Paired(val site: String, val dsp: String, val phoneId: String, val phoneName: String)
+data class Paired(val site: String, val dsp: String, val phoneId: String, val phoneName: String, val at: Long)
 
 /** Where the phone stands with its DSP: paired, never paired, or removed by the DSP. */
 sealed interface Standing {
