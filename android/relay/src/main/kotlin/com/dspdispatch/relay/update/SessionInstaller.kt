@@ -17,10 +17,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
 /**
- * Installs an update of this app with Android's `PackageInstaller`, in a session of its own. On
- * Android 12+ it asks to install with no one confirming, which Android allows an app updating
- * itself; where Android asks anyway, as on older phones or the first update after installing from
- * a file, its confirmation waits in [confirm] for the app's screen to show.
+ * Installs an update of this app with Android's `PackageInstaller`, in a session of its own
+ * ([Sessions]). On Android 12+ it asks to install with no one confirming, which Android allows an
+ * app updating itself; Android decides each time, and wherever it asks anyway, as before Android 12
+ * or under its own rules, its confirmation waits in [confirm] for the app's screen to show.
  */
 class SessionInstaller(private val sessions: Sessions) : Installer {
     private val waiting = ConcurrentHashMap<Int, Waiting>()

@@ -64,9 +64,10 @@ and on GitHub.
 Each outbox wait tells the app the version its DSP hands out; one above its own shows Update,
 with a notification. Install downloads it from the DSP, checks its size and SHA-256 against the
 DSP's details and that it's the same app signed with the same key, and installs it with Android's
-`PackageInstaller`: with no one confirming on Android 12+, once the app installed the version
-it's updating from; with Android's confirmation otherwise. The relay starts again once it's
-replaced.
+`PackageInstaller`. On Android 12+ it asks to install with no one confirming, which Android allows
+an app updating itself (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`); Android decides each time, and
+wherever it asks anyway, as before Android 12 or under its own rules, its confirmation shows, and
+Install shows it again. The relay starts again once it's replaced.
 
 `relay/release.json` names the version published, and merged, it's what Dispatch hands out:
 
