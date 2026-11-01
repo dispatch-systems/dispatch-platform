@@ -25,8 +25,8 @@ class Inbox(
 
     /**
      * Reads the texts written since the last read, and those not whole then, keeping each new one
-     * to report. Whether each was whole: one that wasn't is read again by the next read, for
-     * [UNREAD_MS] at most.
+     * to report. Whether to leave the next read to its regular time: not while a text that couldn't
+     * be read is less than [UNREAD_MS] old, as one being written soon is whole.
      */
     suspend fun read(): Boolean {
         val mark = queue.mark() ?: return true
@@ -49,7 +49,11 @@ class Inbox(
         return whole
     }
 
-    /** Reads [row], first [found] unread then, at [now]: whether it's done with. */
+    /**
+     * Reads [row], first [found] unread then, at [now]: whether it's done with as far as the quick
+     * retries go. One that can't be read yet is kept until it's whole or gone, however long that
+     * takes; after a day, only the regular reads try it again.
+     */
     private suspend fun read(row: Row, found: Long, now: Long): Boolean {
         if (row.direction == Direction.OUT && own.sent(row)) return left(row)
         return when (val reading = provider.read(row)) {
@@ -60,11 +64,9 @@ class Inbox(
                 true
             }
             Reading.Gone -> left(row)
-            Reading.Later -> if (now - found >= UNREAD_MS) {
-                left(row)
-            } else {
+            Reading.Later -> {
                 queue.later(Unread(row, found))
-                false
+                now - found >= UNREAD_MS
             }
         }
     }

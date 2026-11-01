@@ -118,13 +118,24 @@ class InboxTest {
     }
 
     @Test
-    fun leavesAPictureMessageNeverWritten() = runTest {
+    fun keepsAPictureMessageItCantReadYetHoweverLongItTakes() = runTest {
         inbox.begin("phone_1", PAIRED)
-        provider.writing += Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
+        val row = Row(Table.MMS, 5, PAIRED + 10, Direction.IN)
+        provider.writing += row
         assertFalse(inbox.read())
+        // A day on, it's kept, read again only at the regular reads.
         clock += Inbox.UNREAD_MS
         assertTrue(inbox.read())
-        assertTrue(queue.unread.isEmpty() && queue.texts.isEmpty())
+        assertEquals(listOf(row.key), queue.unread.keys.toList())
+        assertTrue(queue.texts.isEmpty())
+        // Whole at last, past the look-back and below the highest row read: it's reported.
+        clock += Inbox.UNREAD_MS
+        provider.writing.clear()
+        mms(5, PAIRED + 10, Direction.IN, listOf("(206) 555-0105"), "Door")
+        mms(9, clock, Direction.IN, listOf("(206) 555-0109"), "Later")
+        inbox.read()
+        assertEquals(setOf("mms-5-${PAIRED + 10}", "mms-9-$clock"), queue.texts.keys)
+        assertTrue(queue.unread.isEmpty())
     }
 
     @Test

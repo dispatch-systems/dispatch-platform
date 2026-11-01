@@ -33,12 +33,13 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
     }
 
     // Android answers nothing for a provider that crashed a moment ago, and says a part's not
-    // found for one gone as for a provider it can't reach: a part's gone only as the provider says.
+    // found for one gone as for a provider it can't reach, or one that failed the call: a part's
+    // gone only once the provider, answering, holds no such part.
     override fun size(uri: String): Long? = try {
         val file = resolver.openAssetFileDescriptor(uri.toUri(), "r") ?: throw Unavailable(uri)
         file.use { it.length.takeIf { length -> length >= 0 } ?: open(uri).use(::count) }
     } catch (_: FileNotFoundException) {
-        if (answers(uri.toUri())) null else throw Unavailable(uri)
+        if (absent(uri.toUri())) null else throw Unavailable(uri)
     }
 
     override fun open(uri: String): InputStream = resolver.openInputStream(uri.toUri()) ?: throw Unavailable(uri)
@@ -104,7 +105,9 @@ class PhoneProvider(private val resolver: ContentResolver) : Provider {
     ).rows {}.isNotEmpty()
 
     /** Whether the provider answers for [uri] at all, as it doesn't while it's away. */
-    private fun answers(uri: Uri): Boolean = resolver.query(uri, arrayOf(BaseColumns._ID), null, null, null)?.use { true } ?: false
+    /** Whether the provider answers that it holds nothing at [uri]; not when it can't answer. */
+    private fun absent(uri: Uri): Boolean =
+        resolver.query(uri, arrayOf(BaseColumns._ID), null, null, null)?.use { it.count == 0 } ?: false
 
     /** A picture message's parts, in order: its words, its layout, and its pictures and files. */
     private fun parts(row: Row): List<MmsPart> = resolver.query(
