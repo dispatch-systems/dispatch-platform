@@ -1,12 +1,14 @@
 package com.dspdispatch.relay.ui
 
 import android.text.format.DateFormat
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +37,7 @@ import com.dspdispatch.relay.BuildConfig
 import com.dspdispatch.relay.R
 import com.dspdispatch.relay.connection.Link
 import com.dspdispatch.relay.pairing.Paired
+import com.dspdispatch.relay.texts.Today
 import java.util.Date
 
 /** Never paired: the app's mark and name, and scanning a DSP's pairing code. */
@@ -59,9 +62,9 @@ fun RemovedScreen(dsp: String, scan: () -> Unit, pairing: Boolean, problem: Int?
     ScanButton(scan, pairing, problem)
 }
 
-/** Paired: the DSP, how the line to it stands, and the app's version. */
+/** Paired: the DSP, how the line to it stands, today's texts, and the app's version. */
 @Composable
-fun ConnectedScreen(paired: Paired, link: Link) = Page {
+fun ConnectedScreen(paired: Paired, link: Link, today: Today) = Page {
     Top()
     Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -86,13 +89,44 @@ fun ConnectedScreen(paired: Paired, link: Link) = Page {
             if (since != null) Text(since, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    Spacer(Modifier.weight(1f))
-    Text(
-        "${stringResource(R.string.version)} ${BuildConfig.VERSION_NAME}",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    TodayCard(today)
 }
+
+@Composable
+private fun TodayCard(today: Today) = Surface(
+    Modifier.fillMaxWidth().padding(top = 12.dp),
+    RoundedCornerShape(12.dp),
+    MaterialTheme.colorScheme.surfaceVariant,
+) {
+    Column(Modifier.padding(16.dp)) {
+        Text(stringResource(R.string.today), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Row(Modifier.padding(vertical = 12.dp), Arrangement.spacedBy(8.dp)) {
+            Count(today.received, R.string.texts_in)
+            Count(today.sent, R.string.texts_out)
+            Count(today.waiting, R.string.texts_waiting)
+        }
+        Detail(stringResource(R.string.last_text), today.latest?.let { time(it) } ?: NONE)
+        Detail(stringResource(R.string.version), BuildConfig.VERSION_NAME)
+    }
+}
+
+@Composable
+private fun RowScope.Count(count: Int, @StringRes label: Int) = Column(
+    Modifier.weight(1f).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(vertical = 10.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+) {
+    Text("$count", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Text(stringResource(label), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun Detail(label: String, value: String) = Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+    Text(value, style = MaterialTheme.typography.bodyMedium)
+}
+
+/** What a detail shows while there's nothing to show. */
+private const val NONE = "–"
 
 @Composable
 private fun Page(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) = RelayTheme {
@@ -168,4 +202,5 @@ private fun time(at: Long) = DateFormat.getTimeFormat(LocalContext.current).form
 private fun ConnectedPreview() = ConnectedScreen(
     Paired("https://bh.dispatch.test", "Blue Heron Logistics", "phone_1", "Dispatch"),
     Link.Connected(0),
+    Today(received = 42, sent = 37, waiting = 0, latest = 0),
 )

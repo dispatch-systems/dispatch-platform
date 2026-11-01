@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dspdispatch.relay.pairing.PairingLink
 import com.dspdispatch.relay.pairing.Standing
+import com.dspdispatch.relay.texts.Today
 import com.dspdispatch.relay.ui.CameraScreen
 import com.dspdispatch.relay.ui.ConnectedScreen
 import com.dspdispatch.relay.ui.RemovedScreen
@@ -51,11 +52,12 @@ class MainActivity : ComponentActivity() {
             val standing by relay.pairings.standing.collectAsStateWithLifecycle()
             val link by relay.connection.link.collectAsStateWithLifecycle()
             val attempt by relay.attempting.collectAsStateWithLifecycle()
+            val today by relay.texts.today.collectAsStateWithLifecycle(Today())
             val pairing = attempt == Attempt.Pairing
             val problem = (attempt as? Attempt.Failed)?.problem
             val now = standing
             when {
-                now is Standing.Pairing -> ConnectedScreen(now.paired, link)
+                now is Standing.Pairing -> ConnectedScreen(now.paired, link, today)
                 scanning && !cameraAllowed -> CameraScreen(::askForCamera) { scanning = false }
                 scanning -> ScanScreen(::read) { scanning = false }
                 now is Standing.Removed -> RemovedScreen(now.dsp, ::scan, pairing, problem)

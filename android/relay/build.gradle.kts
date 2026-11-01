@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 // The key that signs the app's releases lives on the MacBook it's built on, never in the repo:
@@ -73,6 +75,11 @@ android {
     }
 }
 
+// The texts queue's schema, each version kept, so a change to it comes with its migration.
+room3 {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)
@@ -87,9 +94,11 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.service)
     implementation(libs.okhttp)
+    implementation(libs.room.runtime)
     implementation(libs.serialization.json)
     implementation(libs.zxing.core)
     debugImplementation(libs.compose.ui.tooling)
+    ksp(libs.room.compiler)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

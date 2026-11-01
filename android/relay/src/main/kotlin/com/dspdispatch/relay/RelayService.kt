@@ -33,6 +33,7 @@ class RelayService : LifecycleService() {
         if (running?.isActive != true) {
             running = lifecycleScope.launch {
                 launch { relay.connection.link.collect { show(paired.dsp, it) } }
+                launch { relay.texts.run(paired, key) }
                 relay.connection.run(paired, key) { outbox ->
                     // Sending Dispatch's texts comes with the outbox's sender. Until then a text
                     // waiting stays in each answer, which comes at once: pause, well within the
