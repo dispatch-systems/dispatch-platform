@@ -23,6 +23,7 @@ class UpdatesTest {
     private val server = MockWebServer()
     private val own = AppVersion("1.0.4", 4)
     private val newer = AppVersion("1.0.5", 5)
+    private val newest = AppVersion("1.0.6", 6)
     private val bytes = "the 1.0.5 apk".toByteArray()
     private val apk = File.createTempFile("update", ".apk")
     private val installer = FakeInstaller()
@@ -63,7 +64,6 @@ class UpdatesTest {
         restarted.heard(newer)
         assertEquals(Update.Available(newer), restarted.update.value)
         assertEquals(listOf(newer), notice.shown)
-        val newest = AppVersion("1.0.6", 6)
         restarted.heard(newest)
         assertEquals(listOf(newer, newest), notice.shown)
     }
@@ -167,6 +167,22 @@ class UpdatesTest {
     }
 
     @Test
+    fun offersTheVersionRolledBackToWhenTheConfirmationIsCancelled() = rollBackWhileConfirming(Outcome.REFUSED)
+
+    @Test
+    fun offersTheVersionRolledBackToWithoutTheFailureOfTheOneWithdrawn() = rollBackWhileConfirming(Outcome.FAILED)
+
+    @Test
+    fun offersTheVersionTheDetailsNameOverAnEarlierAnswer() = runTest {
+        val updates = updates()
+        updates.heard(newest)
+        serve(bytes, app = newer)
+        installer.outcome = Outcome.FAILED
+        updates.install(site)
+        assertEquals(Update.Available(newer, Problem.INSTALL), updates.tried())
+    }
+
+    @Test
     fun installsNothingOnceTheDspNoLongerHandsOutANewerVersion() = runTest {
         val updates = updates()
         updates.heard(newer)
@@ -176,6 +192,22 @@ class UpdatesTest {
         assertEquals(listOf(newer), notice.shown)
         assertEquals(1, notice.cancelled)
         assertEquals(1, server.requestCount)
+    }
+
+    /** Installs 1.0.6, and while Android asks to confirm it, the DSP rolls back to 1.0.5; then the try ends in [outcome]. */
+    private fun rollBackWhileConfirming(outcome: Outcome) = runTest {
+        val updates = updates()
+        updates.heard(newest)
+        serve(bytes, app = newest)
+        installer.confirm = true
+        updates.install(site)
+        updates.update.first { it is Update.Confirming }
+        updates.heard(newer)
+        assertEquals(Update.Confirming(newest), updates.update.value)
+        installer.waiting.complete(outcome)
+        assertEquals(Update.Available(newer), updates.update.first { it is Update.Available })
+        updates.heard(newer)
+        assertEquals(Update.Available(newer), updates.update.value)
     }
 
     /** Where a try Install started that didn't install leaves updating. */
@@ -194,8 +226,8 @@ class UpdatesTest {
         backgroundScope,
     )
 
-    private fun serve(apk: ByteArray, sha256: String = sha256(apk)) {
-        server.enqueue(json(200, """{"version":"1.0.5","versionCode":5,"size":${apk.size},"sha256":"$sha256"}"""))
+    private fun serve(apk: ByteArray, sha256: String = sha256(apk), app: AppVersion = newer) {
+        server.enqueue(json(200, """{"version":"${app.version}","versionCode":${app.versionCode},"size":${apk.size},"sha256":"$sha256"}"""))
         server.enqueue(MockResponse.Builder().code(200).addHeader("Content-Type", "application/vnd.android.package-archive").body(okio.Buffer().write(apk)).build())
     }
 

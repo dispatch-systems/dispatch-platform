@@ -65,7 +65,7 @@ class Updates(
     private val state = MutableStateFlow<Update>(Update.None)
     val update: StateFlow<Update> = state.asStateFlow()
 
-    /** The newer version Dispatch last told of; [heard] once it has told. */
+    /** The newer version the DSP last told of, in an outbox answer or a version's details; [heard] once it has told. */
     private var offered: AppVersion? = null
     private var heard = false
     private var installing: Job? = null
@@ -119,8 +119,8 @@ class Updates(
         cleared.join()
         val details = dispatch.app(site)
         val app = details.app
-        if (app.versionCode <= own.versionCode) {
-            offered = null
+        offered = app.takeIf { it.versionCode > own.versionCode }
+        if (offered == null) {
             notice.cancel()
             return Update.None
         }
@@ -147,12 +147,12 @@ class Updates(
     }
 
     /**
-     * Where a try at [app] that didn't install leaves updating: offering it again, with its
-     * [problem], unless Dispatch has since told of a newer version, or of none.
+     * Where a try at [app] that didn't install leaves updating: offering the version the DSP last
+     * told of, older or newer, with the try's [problem] only if it's [app]; or nothing, if none.
      */
     private fun after(app: AppVersion, problem: Problem?): Update {
-        val newest = offered ?: return Update.None
-        return if (newest.versionCode > app.versionCode) Update.Available(newest) else Update.Available(app, problem)
+        val now = offered ?: return Update.None
+        return Update.Available(now, problem.takeIf { now == app })
     }
 
     private companion object {
