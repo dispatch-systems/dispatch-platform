@@ -44,3 +44,5 @@ dispatch-slack = { path = "../slack", features = ["testing"] }
 libc = { workspace = true }
 # A clock the tests move, through sending's pace between posts.
 tokio = { workspace = true, features = ["test-util"] }
+# A runtime's folder the relay app is packed in.
+tempfile = { workspace = true }

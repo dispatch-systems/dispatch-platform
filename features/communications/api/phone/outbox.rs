@@ -2,6 +2,7 @@
 use super::access::{Phone, checked_in};
 use crate::backend::{
     phone::{
+        app::{self, App},
         live,
         model::{ID_MOST, Status, Text},
         storage::{MOST_TEXTS, StatusReport, TextStore},
@@ -26,10 +27,28 @@ const WAIT: Duration = Duration::from_secs(20);
 const ERROR_MOST: usize = 500;
 
 /// The texts Dispatch has for the phone, each to send from its number to `number`, with its
-/// pictures to fetch first. A text tried again comes again with a later `attempt`.
+/// pictures to fetch first. A text tried again comes again with a later `attempt`. With them, the
+/// app's latest version, while the server hands one out, so the app offers to update within a wait.
 #[derive(Serialize)]
 struct Outbox {
     texts: Vec<Outgoing>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    app: Option<Latest>,
+}
+/// The app's latest version, and the `versionCode` Android compares.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Latest {
+    version: String,
+    version_code: u32,
+}
+impl Latest {
+    fn of(app: App) -> Self {
+        Self {
+            version: app.version,
+            version_code: app.version_code,
+        }
+    }
 }
 #[derive(Serialize)]
 struct Outgoing {
@@ -81,15 +100,17 @@ pub(super) async fn outbox(state: Arc<State>, input: Input, access: Phone) -> Re
     let until = tokio::time::Instant::now() + WAIT;
     loop {
         let asked = input.clone();
-        let texts = state
+        let (texts, app) = state
             .read(move |db| {
                 let caller = access.authorize(db, &asked)?;
-                db.phones_outbox(&caller.dsp, &caller.device.id)
+                let texts = db.phones_outbox(&caller.dsp, &caller.device.id)?;
+                Ok((texts, app::latest(&db.config)))
             })
             .await?;
         if !texts.is_empty() || tokio::time::Instant::now() >= until {
             return Reply::of(&Outbox {
                 texts: texts.into_iter().map(Outgoing::of).collect(),
+                app: app.map(Latest::of),
             });
         }
         let _ = tokio::time::timeout_at(until, listener.changed()).await;

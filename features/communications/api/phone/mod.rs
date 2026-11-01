@@ -3,23 +3,30 @@
 //! reports (`texts`), waiting on the texts Dispatch has for it and saying how they went
 //! (`outbox`), and their pictures' bytes (`files`). No browser calls these: a request carrying a
 //! cookie, or at another address than a DSP's, is refused. What a call brings is filed as it's
-//! kept, in the same write (`texts::filing::changing`). The protocol, call by call, is `README.md`
-//! beside them.
+//! kept, in the same write (`texts::filing::changing`). The app itself (`app`), its details and its
+//! APK, is anyone's at the DSP's address, a browser's too, as a phone downloads it before it's
+//! paired. The protocol, call by call, is `README.md` beside them.
 mod access;
+mod app;
 mod files;
 mod outbox;
 mod pairing;
 mod texts;
 
 use crate::backend::phone::LIMITS;
-use access::Phone;
+use access::{Address, Phone};
 use dispatch_core::server::http::route::{Public, Route, async_get, async_post, upload};
 
-/// The phones' routes, at the DSP's own address: pairing by a code, public; every other call by
-/// the key a phone was given.
+/// Where a phone downloads the app, at its DSP's address, as the phones' card links to it.
+pub(in crate::api) const DOWNLOAD: &str = "/api/communications/phone/app/download";
+
+/// The phones' routes, at the DSP's own address: pairing by a code, and the app, public; every
+/// other call by the key a phone was given.
 pub(in crate::api) fn routes() -> Vec<Route> {
     vec![
         async_post("/api/communications/phone/pair", Public, pairing::pair),
+        async_get("/api/communications/phone/app", Address, app::details),
+        async_get(DOWNLOAD, Address, app::download),
         async_get("/api/communications/phone/outbox", Phone, outbox::outbox),
         async_post("/api/communications/phone/texts", Phone, texts::texts),
         upload(

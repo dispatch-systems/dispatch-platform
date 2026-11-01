@@ -4,10 +4,13 @@
 //! Communications is off for the DSP, which managing all its connections still lets a member in.
 use super::id;
 use crate::{
-    api::types::{PhonePairing, PhonePairingStatus, PhoneRow, Phones},
+    api::{
+        phone::DOWNLOAD,
+        types::{PhoneApp, PhonePairing, PhonePairingStatus, PhoneRow, Phones},
+    },
     backend::{
         phone::{
-            live, pairing,
+            app, live, pairing,
             storage::{Device, DeviceStore, PAIRING_MS},
         },
         texts::filing,
@@ -48,7 +51,7 @@ fn row(device: &Device, now: i64) -> PhoneRow {
     }
 }
 
-/// The DSP's phones.
+/// The DSP's phones, and the app they install.
 pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
     on(c)?;
     v::fields(&input.query, &[])?;
@@ -59,7 +62,22 @@ pub(super) fn listed(db: &Store, c: &Member, input: &Input) -> Result<Reply> {
             .iter()
             .map(|device| row(device, now))
             .collect(),
+        app: installed(db, c)?,
     })
+}
+/// The app the DSP's phones install, from its own address: none while the server hands none out,
+/// or the DSP has no address of its own for a phone to reach.
+fn installed(db: &Store, c: &Member) -> Result<Option<PhoneApp>> {
+    let (Some(code), Some(app)) = (c.dsp.code.as_deref(), app::latest(&db.config)) else {
+        return Ok(None);
+    };
+    let link = format!("{}{DOWNLOAD}", db.config.dsp_url(code));
+    Ok(Some(PhoneApp {
+        name: app.name.to_owned(),
+        version: app.version,
+        picture: pairing::picture(&link)?,
+        link,
+    }))
 }
 /// A new code to pair the next phone, in place of any shown before: refused as
 /// `phones_address_required` while the DSP has no address of its own for the phone to reach.

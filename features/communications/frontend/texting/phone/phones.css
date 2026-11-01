@@ -75,3 +75,63 @@
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+.phones-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.phones-download:hover {
+  background: var(--accent);
+}
+/* Add phone with the app to install first: Install and Pair, side by side. */
+.phones-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.phones-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.phones-step h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.phones-step h3 b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--selection);
+  color: var(--primary);
+  font-size: 12px;
+}
+.phones-step .phones-pairing {
+  margin-top: 0;
+}
+.phones-step .phones-code {
+  width: 180px;
+  height: 180px;
+}
+.phones-step > .muted {
+  font-size: 13px;
+}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ellipsis, Plus, Smartphone } from 'lucide-react';
+import { Download, Ellipsis, Plus, Smartphone } from 'lucide-react';
 import type { DspView } from '../../../../../core/accounts/api/index.js';
 import { phoneText } from '../../../../../core/shell/frontend/lib/format.js';
 import { useAction } from '../../../../../core/shell/frontend/runtime/useAction.js';
@@ -20,10 +20,12 @@ const POLL = 30_000;
 
 // Communications' card for the DSP's dispatch phones on Settings' DSP Connections: each phone, by
 // its number, with its name, model and the app's version, whether it's online, and renaming or
-// removing it; and Add phone, which shows the code that pairs the next one.
+// removing it; Add phone, which shows the code that pairs the next one, beside the app to install
+// first; and the app's download, while the DSP's address hands one out.
 
 export function PhonesCard(_: { view: DspView }) {
   const phones = usePhones(POLL);
+  const app = phones.data?.app ?? undefined;
   const [pairing, setPairing] = useState(false);
   const [renaming, setRenaming] = useState<PhoneRow>();
   const [removing, setRemoving] = useState<PhoneRow>();
@@ -94,9 +96,16 @@ export function PhonesCard(_: { view: DspView }) {
           <Plus size={16} />
           Add phone
         </button>
+        {app && (
+          <a className="phones-download" href={app.link} download>
+            <Download size={16} />
+            Download app
+          </a>
+        )}
       </footer>
       {pairing && (
         <PairDialog
+          app={app}
           onClose={() => {
             setPairing(false);
             phones.refresh();
